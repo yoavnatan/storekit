@@ -156,6 +156,7 @@ export async function applyCouponCode(
       body: JSON.stringify({ storeSlug, code }),
     });
   } catch {
+    // silent: reported by the CALLER — this returns the message the coupon panel renders.
     // Offline or the request never landed. Reported as "try again in a moment" rather than
     // "wrong code": telling a buyer their real code is invalid because our network blinked is the
     // one wrong answer here — it sends them away believing the promotion was fake.

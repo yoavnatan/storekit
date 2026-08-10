@@ -75,6 +75,39 @@ export function fromAgorot(agorot: number): number {
 }
 
 /**
+ * Split an integer agorot amount across `weights` so the PARTS SUM EXACTLY TO THE WHOLE.
+ *
+ * The case it was written for: an order carries ONE discount, against the order's subtotal, but a
+ * per-product report has to say what each product earned. Attributing the discount by
+ * `Math.round(lineGross * discount / subtotal)` per line is the obvious move and it is wrong —
+ * three lines of 33.33% each round to a total that is an agora short or an agora over, so the
+ * product report and the sales report disagree about the same day's takings by small, unexplainable
+ * amounts. That is precisely the class `tests/reporting-invariants.test.ts` exists to catch.
+ *
+ * Largest-remainder: floor every share, then hand the leftover agorot out one at a time to the
+ * lines with the biggest discarded fraction. Ties go to the earlier line, so the split is
+ * deterministic — a report run twice must not move a number.
+ *
+ * A zero total, an empty list, or weights summing to zero all give zeros: with nothing to weigh
+ * by, there is no defensible split, and spreading it evenly would invent one.
+ */
+export function allocateAgorot(totalAgorot: number, weights: readonly number[]): number[] {
+  const total = Math.trunc(Number(totalAgorot)) || 0;
+  const safe = weights.map((w) => (Number.isFinite(w) && w > 0 ? w : 0));
+  const sum = safe.reduce((a, b) => a + b, 0);
+  if (total === 0 || sum === 0) return safe.map(() => 0);
+
+  const exact = safe.map((w) => (total * w) / sum);
+  const parts = exact.map(Math.floor);
+  let left = total - parts.reduce((a, b) => a + b, 0);
+  const order = exact
+    .map((value, i) => ({ i, frac: value - Math.floor(value) }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  for (let k = 0; left > 0; k++, left--) parts[order[k % order.length].i]++;
+  return parts;
+}
+
+/**
  * An agorot amount, rendered.
  *
  * **This is where the money pipeline ends and the screen begins**, and it exists as its own name

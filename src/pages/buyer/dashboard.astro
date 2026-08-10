@@ -1194,7 +1194,7 @@ const STORES_NAMED = 2;
   import { BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
   import { filterClearButtonHtml } from '../../lib/toolbar-portal.js';
   import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
-  import { showErrorToast } from '../../lib/toast.js';
+  import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
   import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
   import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
 
@@ -1925,11 +1925,20 @@ const STORES_NAMED = 2;
             body: JSON.stringify({ replyToId: id, content }),
           });
           const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
-          if (res.ok && data.ok && data.message && repliesEl) {
-            const div = document.createElement('div');
-            div.className = 'msg-thread-entry msg-thread-entry--buyer';
-            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escB(I.msgYou)}</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(data.message.content)}</div>`;
-            repliesEl.appendChild(div);
+          // The REQUEST decides whether this failed, never `repliesEl` — a reply that reached the
+          // server with its thread collapsed must not be reported as unsent, or the buyer sends it
+          // twice. Same split as the seller-side twin in scripts/dashboard/messages.ts.
+          if (!res.ok || !data.ok || !data.message) {
+            // Silent until 2026-08-10 — the send button came back and no bubble appeared, which
+            // reads as sent. The typed text stays put so one more press re-sends it.
+            showActionFailedToast();
+          } else {
+            if (repliesEl) {
+              const div = document.createElement('div');
+              div.className = 'msg-thread-entry msg-thread-entry--buyer';
+              div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escB(I.msgYou)}</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(data.message.content)}</div>`;
+              repliesEl.appendChild(div);
+            }
             const previewTd = row.querySelector('.msg-table__td--preview');
             if (previewTd) previewTd.innerHTML = `${escB(data.message.content)} <span class="msg-table__preview-you">(${escB(I.msgYou)})</span>`;
             const dateTd = row.querySelector('.msg-table__td--date');
@@ -1937,7 +1946,9 @@ const STORES_NAMED = 2;
             row.dataset.sortDate = data.message.createdAt;
             textarea.value = '';
           }
-        } catch { /* ignore */ } finally {
+        } catch {
+          showActionFailedToast();
+        } finally {
           sendBtn.disabled = false;
         }
       });

@@ -11,11 +11,12 @@ import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/se
 import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast } from '../../lib/toast.js';
-import { businessDayISO, businessMonthStartISO, calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
-import { addDaysISO } from '../../lib/date-range.js';
+import { calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
+import { PERIOD_PRESETS as PRESETS, periodRange as presetRange, type PeriodPreset } from '../../lib/date-range.js';
 
-const PRESETS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', '7d', '30d', '90d'] as const;
-type Preset = typeof PRESETS[number];
+// The preset list and its bounds now live in lib/date-range.ts, shared with the reports tab —
+// two tabs naming the same period had to mean the same days. Only the LABELS stay here.
+type Preset = PeriodPreset;
 const PRESET_LABEL_KEY: Record<Preset, string> = {
   today: 'perfPresetToday', thisWeek: 'perfPresetThisWeek',
   thisMonth: 'perfPresetThisMonth', lastMonth: 'perfPresetLastMonth',
@@ -53,39 +54,6 @@ function getI18n(): Record<string, string> {
 
 function formatShortDate(iso: string): string {
   return new Date(iso + 'T12:00:00Z').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: BUSINESS_TIMEZONE });
-}
-
-/**
- * Every bound is derived from the BUSINESS day (business-day.ts) by calendar
- * arithmetic on the date string — never from the browser's own clock.
- *
- * This used to build each bound from a local `Date`, which is the SELLER'S DEVICE
- * timezone. On a laptop still set to another zone (or simply travelling), "this
- * month" was computed against one calendar while the server bucketed the orders
- * against another, and the range silently included or dropped a day at each end.
- * Deriving everything from one `today` string removes the possibility rather than
- * making the two agree by luck.
- */
-function presetRange(preset: string): { from: string; to: string } {
-  const to = businessDayISO(new Date());
-  if (preset === 'today') return { from: to, to };
-  if (preset === 'thisWeek') {
-    // Week starts on Sunday (Israeli convention). getUTCDay() on the parsed calendar
-    // date — a pure date string has no zone, so this is the weekday of `to` itself.
-    const weekday = new Date(to + 'T00:00:00Z').getUTCDay();
-    return { from: addDaysISO(to, -weekday), to };
-  }
-  if (preset === '7d' || preset === '30d' || preset === '90d') {
-    const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
-    return { from: addDaysISO(to, -(days - 1)), to };
-  }
-  if (preset === 'thisMonth') return { from: businessMonthStartISO(to), to };
-  if (preset === 'lastMonth') {
-    // Day before this month's 1st = last day of the previous month.
-    const end = addDaysISO(businessMonthStartISO(to), -1);
-    return { from: businessMonthStartISO(end), to: end };
-  }
-  return { from: to, to };
 }
 
 function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, i18n: Record<string, string>): void {
@@ -443,7 +411,10 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
     const { from, to } = bucketRange(key);
     try {
       const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}&from=${from}&to=${to}&products=all`);
-      if (!res.ok) { paint(msg(i18n.perfBreakdownEmpty ?? '')); return; }
+      // `perfBreakdownFailed`, never `perfBreakdownEmpty`: the empty line is a statement about the
+      // store's sales that day, and a request that did not come back has not earned it. Both used
+      // to say "no products sold in this period" — including for a dropped connection.
+      if (!res.ok) { paint(msg(i18n.perfBreakdownFailed ?? '')); return; }
       const data = await res.json() as { summary?: PerformanceSummary };
       const s = data.summary;
       const tops = s?.topProducts ?? [];
@@ -458,7 +429,7 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
       const total = slices.reduce((a, b) => a + b.value, 0);
       paint(renderSlices(slices, total));
     } catch {
-      paint(msg(i18n.perfBreakdownEmpty ?? ''));
+      paint(msg(i18n.perfBreakdownFailed ?? ''));
     }
   };
 }
@@ -576,6 +547,8 @@ export function initPerformanceTab(): void {
       if (!res.ok) return;
       const data = await res.json() as { ok?: boolean; product?: ProductPerformanceSummary };
       if (data.product) renderProductSummary(data.product);
+      // silent: an enrichment. The drill-down already on screen stays and nothing the seller
+      // pressed is waiting on it — selecting a product again re-fetches.
     } catch { /* keep last-known product data on a transient failure */ }
   }
   function refreshSelectedProduct(): void { if (selectedProductId) void loadProduct(); }
@@ -718,6 +691,8 @@ export function initPerformanceTab(): void {
       // (the admin platform tab's per-store breakdown + GMV split card read
       // `stores`/`totalStores` off this response). Harmless where unlistened.
       document.dispatchEvent(new CustomEvent('perf:loaded', { detail: data }));
+      // silent: reported in `finally` — `rendered` stays false, which restores the previous
+      // figures AND the range label, then toasts. One place covers all three failure shapes.
     } catch { /* handled by the restore below, same as any other failed path */ }
     finally {
       window.clearTimeout(pendingTimer);

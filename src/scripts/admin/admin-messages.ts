@@ -4,7 +4,7 @@ import { initAdminMsgSellerDropdown, resetAdminMsgSellerDropdown } from './admin
 import { ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 import { buildAdminUrl, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
-import { showErrorToast } from '../../lib/toast.js';
+import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
 
 const PANEL_ID = 'dash-panel-messages';
 const messagesPortal = createFloatingPortal('admin-messages-toolbar-portal');
@@ -136,15 +136,21 @@ function wireThreadRow(row: HTMLElement, known: Map<string, KnownThread>): void 
           body: JSON.stringify({ threadId, content }),
         });
         const data = await res.json() as { message?: AdminMsg };
-        if (res.ok && data.message && repliesEl) {
-          repliesEl.insertAdjacentHTML('beforeend', bubbleHtml(data.message));
+        // The REQUEST decides, not `repliesEl` — a reply that landed while its thread was
+        // collapsed must not be reported as failed. See the twin in dashboard/messages.ts.
+        if (!res.ok || !data.message) {
+          showActionFailedToast();
+        } else {
+          if (repliesEl) repliesEl.insertAdjacentHTML('beforeend', bubbleHtml(data.message));
           updateRowPreview(row, data.message);
           textarea.value = '';
           moveRowToTop(row);
           const prev = known.get(threadId);
           known.set(threadId, { sellerId: prev?.sellerId ?? row.dataset.sellerId ?? '', subject: prev?.subject ?? '', lastMessageId: data.message.id, unreadForAdmin: 0 });
         }
-      } catch { /* ignore */ } finally {
+      } catch {
+        showActionFailedToast();
+      } finally {
         sendBtn.disabled = false;
       }
     });
@@ -438,8 +444,12 @@ export function initAdminMessagesPanel(): void {
         resetAdminMsgSellerDropdown();
         if (composeEl) composeEl.hidden = true;
         composeToggle?.setAttribute('aria-expanded', 'false');
+      } else {
+        showActionFailedToast();
       }
-    } catch { /* ignore */ } finally {
+    } catch {
+      showActionFailedToast();
+    } finally {
       sendNewBtn.disabled = false;
     }
   });
