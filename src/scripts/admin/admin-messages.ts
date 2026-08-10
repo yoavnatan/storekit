@@ -121,9 +121,25 @@ function wireThreadRow(row: HTMLElement, known: Map<string, KnownThread>): void 
 
   const replyForm = threadRow?.querySelector<HTMLElement>('[data-reply-for-thread]');
   if (replyForm) {
-    const textarea = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
-    const sendBtn  = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-send')!;
-    const closeBtn = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-close')!;
+    const textarea  = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
+    const sendBtn   = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-send')!;
+    const closeBtn  = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-close')!;
+    const openBtn   = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-open')!;
+    const cancelBtn = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-cancel')!;
+    // Twin of the seller and buyer dashboards' reply toggle — one button row, two
+    // states. Kept identical here rather than left as the odd surface out: three
+    // renderers of one control is exactly where this repo's drift bugs live.
+    const setComposing = (on: boolean): void => {
+      textarea.hidden = !on;
+      sendBtn.hidden = !on;
+      cancelBtn.hidden = !on;
+      openBtn.hidden = on;
+      closeBtn.hidden = on;
+      openBtn.setAttribute('aria-expanded', String(on));
+    };
+    openBtn.addEventListener('click', () => { setComposing(true); textarea.focus(); });
+    // Focus back onto the reopening button — see the seller dashboard's twin.
+    cancelBtn.addEventListener('click', () => { textarea.value = ''; setComposing(false); openBtn.focus(); });
     closeBtn.addEventListener('click', () => { close(); row.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); });
     sendBtn.addEventListener('click', async () => {
       const content = textarea.value.trim();
@@ -135,16 +151,24 @@ function wireThreadRow(row: HTMLElement, known: Map<string, KnownThread>): void 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ threadId, content }),
         });
-        const data = await res.json() as { message?: AdminMsg };
+        const data = await res.json() as { error?: string; message?: AdminMsg };
         if (res.ok && data.message && repliesEl) {
           repliesEl.insertAdjacentHTML('beforeend', bubbleHtml(data.message));
           updateRowPreview(row, data.message);
           textarea.value = '';
+          setComposing(false);
+          openBtn.focus();
           moveRowToTop(row);
           const prev = known.get(threadId);
           known.set(threadId, { sellerId: prev?.sellerId ?? row.dataset.sellerId ?? '', subject: prev?.subject ?? '', lastMessageId: data.message.id, unreadForAdmin: 0 });
+        } else {
+          // Was silent: the button re-enabled and the draft sat there with no reason
+          // given. Same fix as the seller and buyer dashboards.
+          showErrorToast(data.error || 'ההודעה לא נשלחה. נסה שוב.');
         }
-      } catch { /* ignore */ } finally {
+      } catch {
+        showErrorToast('ההודעה לא נשלחה. נסה שוב.');
+      } finally {
         sendBtn.disabled = false;
       }
     });
@@ -198,12 +222,17 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
   </tr>
   <tr class="msg-thread-row" id="admin-msg-detail-${escapeHtml(threadId)}" hidden>
     <td colspan="6">
+      <div class="msg-thread-head">
+        <p class="msg-thread-head__subject"><span class="msg-thread-head__label">נושא</span>${escapeHtml(subject)}</p>
+      </div>
       <div class="msg-thread" id="admin-msg-replies-${escapeHtml(threadId)}">${bubbleHtml(message)}</div>
       <div class="seller-msg-reply-form" data-reply-for-thread="${escapeHtml(threadId)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-        <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
-        <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+        <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
+        <div class="seller-msg-reply-actions">
           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-          <button class="seller-msg-reply-send" type="button">שלח</button>
+          <button class="seller-msg-reply-cancel" type="button" hidden>ביטול</button>
+          <button class="seller-msg-reply-open" type="button" aria-expanded="false">כתוב תגובה</button>
+          <button class="seller-msg-reply-send" type="button" hidden>שלח</button>
         </div>
       </div>
     </td>

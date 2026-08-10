@@ -325,9 +325,21 @@
    there it simply gets that share too. */
 .msg-table__th--status { width: 12px; padding-inline-start: 0.4rem; padding-inline-end: 0; }
 .msg-table__th--actions { width: 36px; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
-.msg-table__th--from { width: 18%; }
-.msg-table__th--subject { width: 20%; }
-.msg-table__th--product { width: 14%; }
+/* 16/26, not 18/20 (2026-08-10). The sender column was sized for a name nobody
+   has: a real buyer name or shop name fills well under half of 18%, so the row
+   read as a short name, a gap, and then a subject that had already run out of
+   room — the owner's words were that the subject sits "too far" from the sender
+   and clips "too early". Two points off `from` and six onto `subject` closes the
+   gap and buys the subject ~30% more characters at the same table width; they
+   come from `product` and from the preview column, which is auto and is the one
+   cell whose whole job is to be truncated. Not lower than 16 on `from`: the
+   BUYER's table puts a 24px store avatar in that same cell (it shares this
+   class), so it starts 32px down on the seller's. And the subject in FULL now
+   lives in the opened thread's header, which is what makes a clip here a
+   shortening rather than a loss. */
+.msg-table__th--from { width: 16%; }
+.msg-table__th--subject { width: 26%; }
+.msg-table__th--product { width: 13%; }
 /* Wide enough for the longest "30.7.2026, 14:32" + cell padding — a date that
    ellipsises is worse than one that costs 28 extra px. */
 .msg-table__th--date { width: 124px; }
@@ -351,6 +363,42 @@
 .inline-alert-dot { display: inline-block; width: 7px; height: 7px; background: #ef4444; border: 1px solid var(--color-border); border-radius: 50%; flex-shrink: 0; }
 .msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
 
+/* Thread header — the opened thread's own title block.
+   It exists because the table CLIPS: the subject column ellipsises a long subject
+   and the product column disappears entirely in card mode, so a seller on a phone
+   could read a whole conversation without ever learning what it was about. The
+   label/value pair borrows the <th>'s own treatment (0.68rem, uppercase, tracked,
+   muted) rather than inventing a caption style — same question, same answer, one
+   step further in. The subject WRAPS here on purpose: this is the one place it is
+   allowed to cost a second line. */
+.msg-thread-head {
+  padding: 0.7rem 1rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start;
+}
+.msg-thread-head__label {
+  display: block;
+  font-size: 0.68rem; font-weight: 700; color: var(--color-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: 0.15rem;
+}
+.msg-thread-head__subject { font-size: 0.9rem; font-weight: 600; color: var(--color-text); margin: 0; }
+/* The product the conversation is about, as a chip — the same border + surface +
+   radius-sm recipe MessageCompose uses for its own product-context line, so the
+   buyer meets one mark for "this is about that product" in both places. */
+.msg-thread-head__product {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.76rem; color: var(--color-accent); text-decoration: none;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  transition: border-color 0.12s;
+  max-width: 100%;
+}
+.msg-thread-head__product span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.msg-thread-head__product:hover { border-color: var(--color-primary); }
+
 /* Thread view */
 .msg-thread { display: flex; flex-direction: column; }
 .msg-thread-entry { padding: 0.85rem 1rem; }
@@ -369,8 +417,26 @@
 .msg-thread-entry__body { font-size: 0.875rem; line-height: 1.65; color: var(--color-text); white-space: pre-wrap; }
 .msg-thread-unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; align-self: center; }
 
-/* Reply form */
+/* Reply form.
+   The textarea starts HIDDEN behind "כתוב תגובה" (2026-08-10, user). An always-open
+   box under every thread made the panel read as a chat window, and a chat window
+   asks for the next line — the owner wanted a reply to be a deliberate act rather
+   than the default posture of the screen. It also pairs with the flood rule in
+   lib/message-flood.ts: the two together say "answer, don't stream".
+   The button row is one row in both states — the pair swaps, the row does not move. */
 .seller-msg-reply-form { display: flex; flex-direction: column; gap: 0.5rem; }
+.seller-msg-reply-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+/* The one control visible at rest, so it carries the accent outline — and only the
+   outline: a second filled button beside "שלח" would be two primaries in one row. */
+.seller-msg-reply-open {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem; font-weight: 600; font-family: inherit;
+  background: none; color: var(--color-accent);
+  border: 1px solid var(--color-accent); border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.15s;
+}
+.seller-msg-reply-open:hover { background: var(--color-bg); }
+.seller-msg-reply-open:active { transform: scale(0.97); }
 .seller-msg-reply-textarea {
   width: 100%; min-height: 72px; resize: none;
   padding: 0.55rem 0.75rem;
@@ -383,7 +449,6 @@
 /* Shared field-focus treatment (components/forms.css) — was --color-text, a sixth answer. */
 .seller-msg-reply-textarea:focus { border-color: var(--color-primary); }
 .seller-msg-reply-send {
-  align-self: flex-end;
   padding: 0.4rem 1rem;
   font-size: 0.82rem; font-weight: 600; font-family: inherit;
   background: linear-gradient(135deg, var(--color-accent), #6088d4); color: #fff;
@@ -392,14 +457,16 @@
 }
 .seller-msg-reply-send:hover { background: linear-gradient(135deg, var(--color-accent-dark), #4f78c8); }
 .seller-msg-reply-send:disabled { opacity: 0.5; cursor: default; }
-.seller-msg-reply-close {
+.seller-msg-reply-close,
+.seller-msg-reply-cancel {
   padding: 0.4rem 1rem;
   font-size: 0.82rem; font-weight: 600; font-family: inherit;
   background: none; color: var(--color-muted);
   border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.seller-msg-reply-close:hover { background: var(--color-bg); color: var(--color-text); }
+.seller-msg-reply-close:hover,
+.seller-msg-reply-cancel:hover { background: var(--color-bg); color: var(--color-text); }
 
 /* ── Narrow panel: message table → cards ─────────────────────── */
 /* Container query, not a media query — see the .msg-cq comment above. 760px is
@@ -420,9 +487,10 @@
     grid-template-areas:
       "status from    date    actions"
       "status subject subject actions"
-      "status preview preview actions";
+      "status preview preview actions"
+      "status product product actions";
     grid-template-columns: auto 1fr auto auto;
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto auto auto;
     column-gap: 0.4rem;
     row-gap: 0.2rem;
     align-items: center;
@@ -471,8 +539,23 @@
   .msg-table__td--date    { grid-area: date;    font-size: 0.7rem; color: var(--color-muted); white-space: nowrap; }
   .msg-table__td--actions { grid-area: actions; display: flex; align-items: center; }
 
-  /* Hide on mobile */
+  /* The product a message is about used to vanish here (2026-08-10) — a flat
+     `display:none` on this cell. That is the piece of context a seller most needs
+     before opening anything ("which item is this about"), and the phone was the
+     one place it never appeared. It comes back as its own line, but ONLY when
+     there is one: the desktop cell renders an em-dash placeholder for a thread
+     with no product, and a card is not a table — a row of dashes is noise a
+     column can carry and a card cannot. Keyed off the row's `data-filter-product`
+     (already there for the filter menu) so no renderer needs a second attribute;
+     an empty value leaves the cell hidden and its grid track empty, which costs
+     one 0.2rem row-gap and no height. */
   .msg-table__td--product { display: none; }
+  .msg-table__row:not([data-filter-product='']) .msg-table__td--product {
+    grid-area: product;
+    display: block;
+    font-size: 0.74rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
   /* Thread detail row */
   .msg-thread-row { display: block; }

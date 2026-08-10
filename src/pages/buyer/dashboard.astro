@@ -1012,9 +1012,13 @@ const STORES_NAMED = 2;
                         >
                           <td class="msg-table__td msg-table__td--status"></td>
                           <td class="msg-table__td msg-table__td--from">
+                            {/* The name is its own truncating box: the cell's ellipsis cannot
+                                reach a text node that is a FLEX ITEM, so a long store name was
+                                clipped mid-character instead of trailing off. `min-w-0` is what
+                                lets it shrink at all — a flex item's floor is its content. */}
                             <span class="flex items-center gap-2">
                               <StoreAvatar name={m.toStoreName} slug={storeSlugById.get(m.toStoreId)} profileImage={storeProfileById.get(m.toStoreId)} size={24} />
-                              {m.toStoreName}
+                              <span class="min-w-0 truncate">{m.toStoreName}</span>
                             </span>
                           </td>
                           <td class="msg-table__td msg-table__td--subject">{m.subject}</td>
@@ -1037,6 +1041,19 @@ const STORES_NAMED = 2;
                         </tr>
                         <tr class="msg-thread-row" id={`bmsg-detail-${m.id}`} hidden>
                           <td colspan="7">
+                            {/* Twin of SellerMessageRow.astro's thread header — the subject
+                                in full (the column clips it) and the product the thread is
+                                about, which the buyer's card layout drops entirely on a
+                                phone. Reasoning at `.msg-thread-head` in utilities/utils.css. */}
+                            <div class="msg-thread-head">
+                              <p class="msg-thread-head__subject"><span class="msg-thread-head__label">{t.buyerDashboard.msgSubjectLabel}</span>{m.subject}</p>
+                              {m.productRef && (
+                                <a class="msg-thread-head__product" href={`/${m.productRef.storeSlug}/${m.productRef.productSlug}`} target="_blank" rel="noopener">
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                  <span>{t.buyerDashboard.msgAboutProduct}: {m.productRef.productName}</span>
+                                </a>
+                              )}
+                            </div>
                             <div class="msg-thread" id={`breplies-${m.id}`}>
                               <div class="msg-thread-entry msg-thread-entry--buyer">
                                 <div class="msg-thread-entry__header">
@@ -1059,10 +1076,12 @@ const STORES_NAMED = 2;
                               })}
                             </div>
                             <div class="seller-msg-reply-form" data-breply-for={m.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-                              <textarea class="seller-msg-reply-textarea" placeholder={t.buyerDashboard.msgReplyPlaceholder} rows="3"></textarea>
-                              <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+                              <textarea class="seller-msg-reply-textarea" placeholder={t.buyerDashboard.msgReplyPlaceholder} rows="3" hidden></textarea>
+                              <div class="seller-msg-reply-actions">
                                 <button class="seller-msg-reply-close" type="button">{t.buyerDashboard.msgReplyClose}</button>
-                                <button class="seller-msg-reply-send" type="button">{t.buyerDashboard.msgReplySend}</button>
+                                <button class="seller-msg-reply-cancel" type="button" hidden>{t.buyerDashboard.msgReplyCancel}</button>
+                                <button class="seller-msg-reply-open" type="button" aria-expanded="false">{t.buyerDashboard.msgReplyOpen}</button>
+                                <button class="seller-msg-reply-send" type="button" hidden>{t.buyerDashboard.msgReplySend}</button>
                               </div>
                             </div>
                           </td>
@@ -1157,6 +1176,7 @@ const STORES_NAMED = 2;
   data-msg-delete-ok={t.buyerDashboard.deleteConv}
   data-msg-col-store={t.buyerDashboard.msgColStore}
   data-msg-col-product={t.buyerDashboard.msgColProduct}
+  data-msg-reply-failed={t.buyerDashboard.msgReplyFailed}
   data-prof-show-pw={t.buyerDashboard.profShowPw}
   data-prof-hide-pw={t.buyerDashboard.profHidePw}
   data-prof-saved={t.buyerDashboard.profSaved}
@@ -1210,6 +1230,7 @@ const STORES_NAMED = 2;
     msgDeleteOk:     _i18nEl.dataset.msgDeleteOk      ?? 'Delete conversation',
     msgColStore:     _i18nEl.dataset.msgColStore       ?? 'Store',
     msgColProduct:   _i18nEl.dataset.msgColProduct     ?? 'Product',
+    msgReplyFailed:  _i18nEl.dataset.msgReplyFailed    ?? 'The message was not sent. Please try again.',
     profShowPw:      _i18nEl.dataset.profShowPw       ?? '+ Show password fields',
     profHidePw:      _i18nEl.dataset.profHidePw       ?? '− Hide password fields',
     profSaved:       _i18nEl.dataset.profSaved        ?? 'Details updated successfully',
@@ -1872,8 +1893,10 @@ const STORES_NAMED = 2;
             fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read-buyer', id }) })
               .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
           }
+          // Scrolls to the reply CONTROLS, without focusing the box — it is closed
+          // until "כתוב תגובה" is pressed (2026-08-10). Same change on the seller
+          // side; reasoning at `.seller-msg-reply-form` in utilities/utils.css.
           threadRow?.querySelector<HTMLElement>('[data-breply-for]')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-          threadRow?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
         }).catch(() => {});
     }
 
@@ -1908,6 +1931,23 @@ const STORES_NAMED = 2;
       const textarea  = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
       const sendBtn   = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-send')!;
       const closeBtn  = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-close')!;
+      const openBtn   = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-open')!;
+      const cancelBtn = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-cancel')!;
+
+      // Two states over one button row — twin of the seller dashboard's
+      // (scripts/dashboard/messages.ts#bindMessageRow).
+      const setComposing = (on: boolean): void => {
+        textarea.hidden = !on;
+        sendBtn.hidden = !on;
+        cancelBtn.hidden = !on;
+        openBtn.hidden = on;
+        closeBtn.hidden = on;
+        openBtn.setAttribute('aria-expanded', String(on));
+      };
+      openBtn.addEventListener('click', () => { setComposing(true); textarea.focus(); });
+      // Focus back onto the button that reopens the box — a control that is about to be
+      // `hidden` must not keep it, or the next Tab restarts from the top of the page.
+      cancelBtn.addEventListener('click', () => { textarea.value = ''; setComposing(false); openBtn.focus(); });
 
       closeBtn.addEventListener('click', () => {
         closeThread();
@@ -1924,7 +1964,7 @@ const STORES_NAMED = 2;
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ replyToId: id, content }),
           });
-          const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
+          const data = await res.json() as { ok?: boolean; error?: string; message?: { content: string; createdAt: string } };
           if (res.ok && data.ok && data.message && repliesEl) {
             const div = document.createElement('div');
             div.className = 'msg-thread-entry msg-thread-entry--buyer';
@@ -1936,8 +1976,18 @@ const STORES_NAMED = 2;
             if (dateTd) dateTd.textContent = fmtDateBuyer(data.message.createdAt);
             row.dataset.sortDate = data.message.createdAt;
             textarea.value = '';
+            setComposing(false);
+            openBtn.focus();
+          } else {
+            // A refusal was swallowed here until 2026-08-10 — the send button simply
+            // came back enabled and nothing said why. The flood limiter
+            // (lib/message-flood.ts) sends its sentence down ready to show, so the
+            // draft is kept and the reason is spoken.
+            showErrorToast(data.error || I.msgReplyFailed);
           }
-        } catch { /* ignore */ } finally {
+        } catch {
+          showErrorToast(I.msgReplyFailed);
+        } finally {
           sendBtn.disabled = false;
         }
       });

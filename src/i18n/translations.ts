@@ -1267,6 +1267,16 @@ export const translations = {
       msgReplySend: 'שלח',
       msgReplyClose: 'סגור שיחה',
       msgYou: 'אתה',
+      // The reply box is behind this button rather than open on every thread —
+      // an always-visible textarea makes the panel read like a chat window and
+      // invites the next line instead of an answer (user, 2026-08-10).
+      msgReplyOpen: 'כתוב תגובה',
+      msgReplyCancel: 'ביטול',
+      // The opened thread's own header: the subject in full (the column clips it)
+      // and the product the conversation is about, which the card layout drops.
+      msgSubjectLabel: 'נושא',
+      msgAboutProduct: 'בנוגע למוצר',
+      msgReplyFailed: 'ההודעה לא נשלחה. נסה שוב.',
     },
     gallery: {
       main: 'ראשי',
@@ -1466,6 +1476,11 @@ export const translations = {
       msgReplySend: 'שלח',
       msgReplyClose: 'סגור שיחה',
       msgYou: 'אתה',
+      msgReplyOpen: 'כתוב תגובה',
+      msgReplyCancel: 'ביטול',
+      msgSubjectLabel: 'נושא',
+      msgAboutProduct: 'בנוגע למוצר',
+      msgReplyFailed: 'ההודעה לא נשלחה. נסה שוב.',
       msgNewToast: 'יש לך הודעה חדשה ממוכר',
       profSection: 'פרטי חשבון',
       profChangePassword: 'שינוי סיסמה',
@@ -1498,6 +1513,14 @@ export const translations = {
       productContext: 'בנוגע למוצר',
       toStore: 'אל',
       unread: 'לא נקרא',
+      // The two flood refusals (lib/message-flood.ts). Written on the SERVER and
+      // sent down as ready text, so the compose dialog, the seller dashboard and
+      // the buyer dashboard cannot drift into three wordings of one rule.
+      floodRun: 'שלחת כמה הודעות ברצף בשיחה הזו. אפשר להמשיך ברגע שתגיע תשובה.',
+      /** `{minutes}` — always 2 or more; `floodRateOne` covers the singular, because
+       *  Hebrew has no reading of "בעוד 1 דקות" that is not a bug on screen. */
+      floodRate: 'נשלחו יותר מדי הודעות בזמן קצר. אפשר לנסות שוב בעוד {minutes} דקות.',
+      floodRateOne: 'נשלחו יותר מדי הודעות בזמן קצר. אפשר לנסות שוב בעוד דקה.',
     },
     wishlist: {
       title: 'פריטים שאהבתי',
@@ -2639,6 +2662,11 @@ export const translations = {
       msgReplySend: 'Send',
       msgReplyClose: 'Close conversation',
       msgYou: 'You',
+      msgReplyOpen: 'Write a reply',
+      msgReplyCancel: 'Cancel',
+      msgSubjectLabel: 'Subject',
+      msgAboutProduct: 'About product',
+      msgReplyFailed: 'The message was not sent. Please try again.',
     },
     gallery: {
       main: 'Main',
@@ -2811,6 +2839,11 @@ export const translations = {
       msgReplySend: 'Send',
       msgReplyClose: 'Close conversation',
       msgYou: 'You',
+      msgReplyOpen: 'Write a reply',
+      msgReplyCancel: 'Cancel',
+      msgSubjectLabel: 'Subject',
+      msgAboutProduct: 'About product',
+      msgReplyFailed: 'The message was not sent. Please try again.',
       msgNewToast: 'You have a new message from the seller',
       profSection: 'Account details',
       profChangePassword: 'Change password',
@@ -2841,6 +2874,9 @@ export const translations = {
       productContext: 'About product',
       toStore: 'To',
       unread: 'Unread',
+      floodRun: 'You have sent several messages in a row here. You can continue once a reply arrives.',
+      floodRate: 'Too many messages in a short time. Try again in {minutes} minutes.',
+      floodRateOne: 'Too many messages in a short time. Try again in a minute.',
     },
     wishlist: {
       title: 'My Wishlist',
