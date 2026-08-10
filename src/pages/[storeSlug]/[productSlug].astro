@@ -395,7 +395,7 @@ const pmI18n = {
           </div>
 
           {images.length > 1 && (
-            <div class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width:none;margin-top:0.625rem" role="list" aria-label={t.product.imageGallery}>
+            <div id="thumb-strip" class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width:none;margin-top:0.625rem" role="list" aria-label={t.product.imageGallery}>
               {images.map((img, i) => (
                 <button
                   type="button"
@@ -1018,7 +1018,13 @@ const pmI18n = {
   // ── Main image carousel + thumbnails ───────────────────────────────
   const mainSlides = document.getElementById('main-slides');
   const thumbBtns = document.querySelectorAll<HTMLButtonElement>('.thumb-btn');
+  /** The image the shopper CHOSE — by clicking a thumbnail, swiping the carousel, or landing on
+   *  a colour variant. Nothing a hover does may change it; that is the whole point of reverting. */
   let activeIndex = 0;
+  /** The image a hover is showing INSTEAD, for as long as the pointer stays on the strip. Null
+   *  the rest of the time, and it doubles as the flag that tells the carousel's scroll listener
+   *  the movement it is watching was ours, not the shopper's. */
+  let previewIndex: number | null = null;
 
   // ── Skeleton ────────────────────────────────────────────────────────
   // Through the shared helper, not the hand-rolled load/error pair this used to carry twice.
@@ -1048,12 +1054,17 @@ const pmI18n = {
   const slidesRtl = mainSlides ? getComputedStyle(mainSlides).direction === 'rtl' : false;
   const getMainSlideW = () => mainSlides?.offsetWidth || 1;
 
+  function scrollToSlide(idx: number, instant: boolean): void {
+    mainSlides?.scrollTo({ left: (slidesRtl ? -1 : 1) * idx * getMainSlideW(), behavior: instant ? 'auto' : 'smooth' });
+  }
+
   // Hoisted `function` so the color-variant handler above can call it before
   // its definition here — scrolls the carousel to a linked image.
   function switchMainImage(idx: number, instant = false): void {
     if (!mainSlides) return;
+    previewIndex = null;
     activeIndex = idx;
-    mainSlides.scrollTo({ left: (slidesRtl ? -1 : 1) * idx * getMainSlideW(), behavior: instant ? 'auto' : 'smooth' });
+    scrollToSlide(idx, instant);
     setThumbActive(idx);
   }
 
@@ -1073,7 +1084,10 @@ const pmI18n = {
     // rather than only after scrolling has settled.
     let scrollRaf: number | undefined;
     mainSlides.addEventListener('scroll', () => {
-      if (scrollRaf !== undefined) return;
+      // A hover preview scrolls this carousel too, and that scroll is NOT a choice — committing
+      // it would make the pointer passing over a thumbnail silently reselect that image, which
+      // is exactly the state the revert exists to protect.
+      if (previewIndex !== null || scrollRaf !== undefined) return;
       scrollRaf = requestAnimationFrame(() => {
         scrollRaf = undefined;
         const idx = Math.min(Math.round(Math.abs(mainSlides.scrollLeft) / getMainSlideW()), images.length - 1);
@@ -1082,11 +1096,46 @@ const pmI18n = {
     }, { passive: true });
   }
 
+  // ── Hover preview ───────────────────────────────────────────────────
+  // Hovering a thumbnail shows that image for as long as the pointer stays on the strip, then
+  // puts the chosen one back. Three things make it read as a preview rather than as jitter:
+  //
+  //  · **It jumps, it does not animate.** The main image is a smooth-scrolling carousel, and a
+  //    pointer sweeping five thumbnails would queue five smooth scrolls plus five back — the
+  //    result is a shaking image, not a preview. `instant` throughout.
+  //  · **The selection ring never moves.** setThumbActive() stays driven by activeIndex alone,
+  //    so the shopper can always see which image is actually theirs while another is on show.
+  //  · **It ends on the STRIP's mouseleave**, not each button's, so travelling from one
+  //    thumbnail to the next never flashes the selected image in between.
+  //
+  // Pointer-only, deliberately: on a touch screen `mouseenter` fires once on the tap that is
+  // already selecting that image, so the preview would be a duplicate of the click with no way
+  // to leave it. Nothing is lost — every image stays reachable by tap, click and swipe.
+  const canHover = window.matchMedia('(hover: hover) and (pointer: fine)');
+  const slideImgs = mainSlides ? [...mainSlides.querySelectorAll('img')] : [];
+
+  function previewImage(idx: number): void {
+    // An image still on the wire would preview as an empty box, which is worse than no preview.
+    // Momentary in practice: the idle warm-up below flips every slide to eager right after load.
+    if (!canHover.matches || idx === activeIndex || slideImgs[idx]?.complete !== true) return;
+    previewIndex = idx;
+    scrollToSlide(idx, true);
+  }
+
+  function endPreview(): void {
+    if (previewIndex === null) return;
+    previewIndex = null;
+    scrollToSlide(activeIndex, true);
+  }
+
   thumbBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      switchMainImage(Number(btn.dataset.imgIndex ?? 0));
-    });
+    const idx = Number(btn.dataset.imgIndex ?? 0);
+    btn.addEventListener('click', () => switchMainImage(idx));
+    btn.addEventListener('mouseenter', () => previewImage(idx));
   });
+  // `#thumb-strip` exists for this one listener: the strip is the hover surface, the individual
+  // buttons are not.
+  document.getElementById('thumb-strip')?.addEventListener('mouseleave', endPreview);
 
   // Note: the main image intentionally does NOT hijack wheel/scroll to cycle
   // gallery images — that trapped normal page scrolling and, past the last
