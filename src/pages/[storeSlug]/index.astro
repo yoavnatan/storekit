@@ -894,7 +894,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                           </div>
                       }
                     </div>
-                    {isNew && <span class="badge badge--new">{t.store.badgeNew}</span>}
+                    {isNew && <span class="img-badge badge--new">{t.store.badgeNew}</span>}
                     <Fragment set:html={saleBadgeHtml(pv, t.store.saleBadge)} />
                   <button
                     type="button"
@@ -1946,7 +1946,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         ${p.variantImages ? `data-variant-images="${escHtml(JSON.stringify(p.variantImages))}"` : ''}>
       <div class="product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}"${hasImages ? ' data-skeleton' : ''} ${hasImages ? `role="button" aria-label="${escHtml(p.name)}" tabindex="0"` : ''}>
         <div class="product-card__slides">${slidesHtml}</div>
-        ${isNew ? `<span class="badge badge--new">${escHtml(pi.badgeNew ?? '')}</span>` : ''}
+        ${isNew ? `<span class="img-badge badge--new">${escHtml(pi.badgeNew ?? '')}</span>` : ''}
         ${saleBadgeHtml(pv, pi.saleBadge)}
         <button type="button" class="wishlist-btn" data-wishlist-slug="${escHtml(p.slug)}" data-wishlist-name="${escHtml(p.name)}" data-wishlist-price="${pv.price}" data-wishlist-image="${escHtml(firstImg)}" data-wishlist-store-slug="${escHtml(storeSlug)}" data-wishlist-store-name="${escHtml(storeName)}" data-wishlist-stock="${p.stock}" data-wishlisted="false" aria-pressed="false" aria-label="${escHtml(pi.addToWishlist ?? '')}" style="position:absolute;top:0.45rem;inset-inline-end:0.45rem;z-index:2;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.9);color:var(--color-muted);transition:color 0.15s,background 0.15s,transform 0.15s">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>

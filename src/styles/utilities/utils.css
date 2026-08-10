@@ -563,6 +563,12 @@
   width: 3px;
   background: var(--color-accent);
 }
+/* A FAILURE takes the same card with that bar in `--color-danger`, and changes nothing else.
+   The whole variant is a hue swap on a part the card already has — the `.badge-finish` rule
+   applied to the one place the site says "something went wrong" (lib/toast.ts carries why an
+   error toast had to become tellable from a success one at all). No red fill and no icon: a
+   card that shouts for a failed draft save is how a toast surface stops being read. */
+.toast-card--error::before { background: var(--color-danger); }
 .toast-card:hover { box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border)); }
 .toast-card__body-wrap { flex: 1 1 auto; min-width: 0; }
 .toast-card__title { font-size: 0.86rem; font-weight: 600; color: var(--color-text); line-height: 1.35; }
@@ -636,33 +642,85 @@
   text-decoration-thickness: 1px;
 }
 
-/* Deliberately unlike .badge--new (accent blue, pill, pulsing): solid sale-green,
-   one-time pop. Both live on the inline-START edge — the opposite corner is the
-   wishlist heart's — and a product carrying BOTH stacks them, see below. */
-.sale-badge {
+/* ── Corner marks on a product image ────────────────────────────────────────────
+   Exactly two exist — "new" and "on sale" — they share this ONE box, and a mark
+   differs from its neighbour only by fill. That is `.badge-finish`'s rule (further
+   down this file) applied to the other place chips sit together.
+
+   Until 2026-08-10 they were two unrelated designs sharing one corner: "new" was a
+   full pill in 90%-opaque accent blue with a 2.5s INFINITE pulsing ring, "sale" a
+   solid green rounded rectangle at a different size, radius and weight. Three things
+   were wrong, and the owner saw all three from the screen:
+     • the pulse is ambient looping motion, banned site-wide — nothing here animates
+       `infinite`;
+     • that ring is drawn OUTSIDE the box, so the eye reads the ring as the badge's
+       edge and the green tag below it looks misaligned against a mark whose real edge
+       it does match — the "not aligned" he reported was the ring, not the offset;
+     • two shapes in one 24px corner is the invent-per-component failure the design
+       line's first test asks about.
+
+   The height is a declared value, not a consequence of padding, because the stacking
+   offset is computed FROM it — deriving it by hand is how the old magic `2.3rem`
+   stopped matching the box it was there to clear. Both custom properties are declared
+   here rather than on a wrapper, so the sibling rule below resolves them from the
+   element it is positioning; "new" is rendered independently on three surfaces and
+   every one emits the sale tag directly after it, so there is no wrapper to hang them
+   on. Both marks live on the inline-START edge — the opposite corner is the wishlist
+   heart's. */
+.img-badge {
+  --img-badge-h: 1.4rem;
+  --img-badge-top: 0.5rem;
   position: absolute;
-  top: 0.5rem;
-  inset-inline-start: 0.5rem;
+  top: var(--img-badge-top);
+  inset-inline-start: var(--img-badge-top);
   z-index: 1;
   display: inline-flex;
   align-items: center;
-  padding: 0.32rem 0.45rem;
+  height: var(--img-badge-h);
+  padding-inline: 0.45rem;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--color-sale);
-  color: #fff;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: 0.01em;
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-sale) 35%, transparent);
-  animation: sale-badge-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  animation: img-badge-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
-@keyframes sale-badge-in {
+/* Product-page hero image: the same mark, further in from a much larger edge. */
+.img-badge--hero { --img-badge-top: 0.75rem; }
+
+@keyframes img-badge-in {
   from { opacity: 0; transform: scale(0.82); }
   to   { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sale-badge { animation: none; }
+  .img-badge { animation: none; }
+}
+
+/* On sale — the one COLOURED mark on the image. `--color-sale` is already spoken for
+   (tokens.css): the sale price, this tag and the store banner share one green so a
+   shopper learns the mark once. */
+.sale-badge {
+  border-color: var(--color-sale);
+  background: var(--color-sale);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-sale) 35%, transparent);
+}
+
+/* New — deliberately the QUIET one, and that is the whole design decision here. The
+   accent blue it used to wear put a second brand colour in the same corner as the sale
+   green, and when two marks compete the loudest wins the eye — which should be the
+   price, never the age of the listing. So this one spends no colour at all: an opaque
+   `--color-surface` chip, the site's own text colour, and the site's own hairline. It
+   is OPAQUE (the old fill was 90%, so the photo bled through and the label's contrast
+   changed per product), and the hairline is what keeps it from dissolving into a
+   white-background product shot. */
+.badge--new {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);
 }
 
 /* Store-wide sale strip — `.card`'s own recipe (`--color-surface`, 1.5px `--color-border`,
@@ -798,14 +856,13 @@
   line-height: 1.5;
 }
 
-/* Product-page hero image: `.badge--new` sits at 0.75rem there (not 0.5rem as on a card). */
-.sale-badge--hero { top: 0.75rem; inset-inline-start: 0.75rem; }
-
-/* Both marks at once: the sale tag drops below the "new" pill instead of landing on top
-   of it. An adjacent-sibling rule rather than a wrapper, because `.badge--new` is rendered
-   independently on four surfaces and every one of them emits the sale tag directly after it. */
-.badge--new + .sale-badge { top: 2.3rem; }
-.badge--new + .sale-badge--hero { top: 2.6rem; }
+/* Both marks at once: the sale tag drops below the "new" chip instead of landing on top of
+   it. Computed from the box above rather than typed, so the two can never drift apart again
+   — and one rule now covers the hero variant too, because the only thing that differs there
+   is `--img-badge-top`, which this reads from the element it is moving. */
+.badge--new + .img-badge {
+  top: calc(var(--img-badge-top) + var(--img-badge-h) + 0.3rem);
+}
 
 
 /* ── Edge fade for a horizontally scrolling row ──────────────────────────────

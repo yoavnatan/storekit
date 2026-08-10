@@ -387,8 +387,8 @@ const pmI18n = {
                   </svg>
                 </div>
             }
-            {isNew && <span class="badge badge--new" style="position:absolute;top:0.75rem;inset-inline-start:0.75rem">{t.store.badgeNew}</span>}
-            <Fragment set:html={saleBadgeHtml(pv, t.store.saleBadge, 'sale-badge--hero')} />
+            {isNew && <span class="img-badge img-badge--hero badge--new">{t.store.badgeNew}</span>}
+            <Fragment set:html={saleBadgeHtml(pv, t.store.saleBadge, 'img-badge--hero')} />
           </div>
 
           {images.length > 1 && (
