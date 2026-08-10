@@ -68,15 +68,21 @@ export function readPlatformBoundary(el: HTMLElement | null | undefined): Platfo
  * identity because it sets the cookies, and must never receive the basket — which a fragment
  * guarantees, since it is not sent, not logged and not proxied (`cart-handoff.ts`).
  */
+/** Puts the basket as it stands NOW on a URL, or takes it off when there is none. The ONE place
+ *  that writes this fragment — `platformHref` stamps it at rewrite time and
+ *  `refreshCheckoutCartFragment` re-stamps it at click time, and a second spelling of the same rule
+ *  is how the two would come to disagree about the key or the encoding. */
+function stampCartFragment(url: URL, storeSlug: string): void {
+  const cart = readStoreCartForHandoff(storeSlug);
+  url.hash = cart ? `${CART_FRAGMENT_KEY}=${encodeHandoffCart(cart)}` : '';
+}
+
 function platformHref(path: string, boundary: PlatformBoundary, storeSlug: string): string {
   const url = new URL(path, boundary.origin);
   if (boundary.handoff) url.searchParams.set(boundary.handoffParam, boundary.handoff);
   // Only the checkout needs the basket. Every other platform link is a page the shopper is simply
   // navigating to, and a cart in its URL would be a payload nobody reads, travelling for no reason.
-  if (url.pathname === '/checkout') {
-    const cart = readStoreCartForHandoff(storeSlug);
-    if (cart) url.hash = `${CART_FRAGMENT_KEY}=${encodeHandoffCart(cart)}`;
-  }
+  if (url.pathname === '/checkout') stampCartFragment(url, storeSlug);
   return url.href;
 }
 
@@ -139,6 +145,43 @@ export function initAdLandingLinks(slug: string, isAdLanding: boolean): void {
   }).observe(document.documentElement, { childList: true, subtree: true });
 }
 
+/**
+ * Re-stamp an already-crossed checkout link with the basket as it stands NOW.
+ *
+ * **The bug this closes (found 2026-08-10, while making the product page's nav "לתשלום" add before
+ * it pays).** `platformHref` serialises the cart into the fragment at REWRITE time, and a rewrite
+ * happens once — at load for static links, or when the observer sees a new node. Every checkout
+ * link that is present at load and pressed later therefore carries the basket from before the
+ * shopper filled it. That is not an edge case, it is the main flow: `#to-checkout-btn` and
+ * `#sticky-to-checkout-btn` are in the DOM from the start (hidden) and are REVEALED by add-to-cart,
+ * so on a seller's custom domain the buy path was land → add → pay → arrive at an empty checkout.
+ * The drawer escaped it only because it redraws its links on every `cart:change`, which is the
+ * observer's comment above describing a fix that covered one caller.
+ *
+ * Fixed here rather than by re-scanning, because a re-scan cannot see it: `cross()` only touches
+ * root-relative hrefs, and these are absolute the moment they are crossed once.
+ *
+ * Only ever touches a link this module already crossed (absolute, platform origin, `/checkout`).
+ * A no-op with no boundary — on the platform itself the cart is same-origin and nothing travels.
+ */
+export function refreshCheckoutCartFragment(a: Element, storeSlug: string, boundary?: PlatformBoundary): void {
+  if (!boundary?.origin || !storeSlug) return;
+  const href = a.getAttribute('href');
+  // Root-relative means it was never crossed, so there is no fragment of ours on it to refresh —
+  // and stamping one would put the basket in the URL bar of a same-origin navigation that has no
+  // use for it.
+  if (!href || href[0] === '/') return;
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return;
+  }
+  if (url.origin !== boundary.origin || url.pathname !== '/checkout') return;
+  stampCartFragment(url, storeSlug);
+  a.setAttribute('href', url.href);
+}
+
 /** Strips the redundant '/<slug>' prefix from every in-store <a href> when on the custom domain, so
  *  the URL bar shows clean root-relative paths, and sends every PLATFORM-owned link to the platform
  *  origin. Also stamps window.__customStoreHost so the shared product modal can build its pushState
@@ -177,4 +220,14 @@ export function initCustomDomainLinks(slug: string, customHost: string, boundary
       }
     }
   }).observe(document.documentElement, { childList: true, subtree: true });
+
+  // Every checkout link gets its fragment rebuilt from the live cart the instant it is pressed
+  // (see refreshCheckoutCartFragment for what that fixes). CAPTURE phase, so it lands before any
+  // handler on the link itself — a buy-now button that adds an item and then reads `.href` must
+  // read the href that already knows about it. Delegated, so it also covers links added later
+  // without the observer having to guess when a basket changed.
+  document.addEventListener('click', (e) => {
+    const a = (e.target as Element | null)?.closest?.('a[href]');
+    if (a) refreshCheckoutCartFragment(a, slug, boundary);
+  }, true);
 }
