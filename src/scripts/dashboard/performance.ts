@@ -13,6 +13,7 @@ import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast } from '../../lib/toast.js';
 import { calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
 import { PERIOD_PRESETS as PRESETS, periodRange as presetRange, type PeriodPreset } from '../../lib/date-range.js';
+import { productShare } from '../../lib/top-product-share.js';
 
 // The preset list and its bounds now live in lib/date-range.ts, shared with the reports tab —
 // two tabs naming the same period had to mean the same days. Only the LABELS stay here.
@@ -56,20 +57,40 @@ function formatShortDate(iso: string): string {
   return new Date(iso + 'T12:00:00Z').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: BUSINESS_TIMEZONE });
 }
 
-function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, i18n: Record<string, string>): void {
+/**
+ * The client twin of components/dashboard/TopProductsList.astro — same rows, same order, same
+ * wording. Exported because the admin's platform panel re-renders this list on its own (a product
+ * search that never touches the charts around it), and a second copy of this markup is exactly how
+ * the three SSR copies drifted before they became one component.
+ *
+ * Both variations are read off the CONTAINER rather than passed in, so the range-picker's own
+ * re-render (which knows nothing about either) stays correct without threading state through it:
+ *   · `perfShowStore` — every route now carries `storeName`, but naming the store on a store's OWN
+ *     tab is noise, so only the platform panel marks its container.
+ *   · `perfSearching`  — an empty list under an active product search means "nothing matched", not
+ *     "nothing sold", and those are opposite readings of the same blank box.
+ */
+export function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, i18n: Record<string, string>): void {
   if (summary.topProducts.length === 0) {
-    container.innerHTML = `<p class="muted text-[0.85rem] m-0">${i18n.perfTopProductsEmpty ?? ''}</p>`;
+    const empty = container.dataset.perfSearching === '1' ? i18n.perfTopProductsNoMatch : i18n.perfTopProductsEmpty;
+    container.innerHTML = `<p class="muted text-[0.85rem] m-0">${escHtml(empty ?? '')}</p>`;
     return;
   }
-  const totalRevenueAgorot = Math.max(summary.topProducts.reduce((s, p) => s + p.revenueAgorot, 0), 1);
+  const showStore = container.dataset.perfShowStore === '1';
   container.innerHTML = summary.topProducts.map((p, i) => {
-    const pct = Math.round((p.revenueAgorot / totalRevenueAgorot) * 100);
+    const share = productShare(p.revenueAgorot, summary.productRevenueAgorot);
+    const store = showStore && p.storeName
+      ? `<a href="/admin/store/${encodeURIComponent(p.storeSlug ?? '')}/performance?from=performance" class="admin-link block text-[0.72rem] [color:var(--color-muted)] overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(p.storeName)}</a>`
+      : '';
     return `
       <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
-        <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style="width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(i * 60, 300)}ms"></div>
+        <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style="width:${share.pct}%;--tw:${share.pct}%;animation-delay:${Math.min(i * 60, 300)}ms"></div>
         <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
-          <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(p.name)}</span>
-          <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">${pct}%</strong> · ${p.units} ${i18n.perfUnitsSold ?? ''} · ${fmtAgorot(p.revenueAgorot)}</span>
+          <span class="min-w-0">
+            <span class="block font-medium overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(p.name)}</span>
+            ${store}
+          </span>
+          <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">${share.label}</strong> · ${p.units} ${i18n.perfUnitsSold ?? ''} · ${fmtAgorot(p.revenueAgorot)}</span>
         </div>
       </div>`;
   }).join('');

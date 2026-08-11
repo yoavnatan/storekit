@@ -5,6 +5,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 // store id, so this is also what stops a crafted POST putting an arbitrary string in a header.
 import { machineUrl } from '../../lib/url-base.js';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
+import TopProductsList from '../../components/dashboard/TopProductsList.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
@@ -608,7 +609,7 @@ const perfIsRtl = getDir(lang) === 'rtl';
 // animates instead (performance.ts, paintedOnce).
 const perfChartOpts = { emptyMessage: d.perfNoData, rtl: perfIsRtl, animate: false };
 const perfRevenueChartSvg = perfSummary
-  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice })
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatAgorot })
   : '';
 // Orders over time — the same buckets as the revenue bars, in the OTHER unit. Revenue alone
 // cannot tell "five big baskets" from "fifty small ones", and that is the difference between a
@@ -2297,22 +2298,9 @@ const orderStatusColors: Record<string, string> = {
                 a loading list must not look alike, and this is the surface where
                 "nothing sold" is the reading a seller would jump to. */}
             {!perfSummary && [0, 1, 2].map(() => <SkelBar class={SKEL.topRow} />)}
-            {perfSummary && perfSummary.topProducts.length === 0 && (
-              <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
+            {perfSummary && (
+              <TopProductsList products={perfSummary.topProducts} totalAgorot={perfSummary.productRevenueAgorot} d={d as unknown as Record<string, string>} />
             )}
-            {perfSummary?.topProducts.map((tp, tpIdx) => {
-              const totalRevenueAgorot = Math.max(perfSummary.topProducts.reduce((s, x) => s + x.revenueAgorot, 0), 1);
-              const pct = Math.round((tp.revenueAgorot / totalRevenueAgorot) * 100);
-              return (
-                <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
-                  <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(tpIdx * 60, 300)}ms`}></div>
-                  <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
-                    <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
-                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenueAgorot)}</span>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </div>
 

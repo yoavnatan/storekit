@@ -27,6 +27,12 @@ export interface TopProduct {
   name: string;
   revenueAgorot: number; // gross (pre order-level discount — discount is only stored per store-subtotal, not per item)
   units: number;
+  /** Which store sold it. Carried on every route (both builders set it) but only RENDERED by the
+   *  platform-wide leaderboard — a store's own performance tab already knows whose products it is
+   *  listing, and repeating the name on every row there is noise. Optional so an older deployed
+   *  client reading this shape keeps working (additive-API rule). */
+  storeSlug?: string;
+  storeName?: string;
 }
 
 export interface PerformanceSummary {
@@ -39,6 +45,15 @@ export interface PerformanceSummary {
   totalUniqueVisitors: number; // distinct visitors across the whole range (a returning visitor counts once)
   conversionRate: number; // orders / unique-visitors * 100 (falls back to total views when no visitor ids exist, e.g. legacy/demo data), 0 when neither
   topProducts: TopProduct[];
+  /** Gross revenue of EVERY product that sold in range — the denominator behind each top product's
+   *  share, and the one number that makes that percentage mean something.
+   *  Not `totalRevenueAgorot`: that is NET of the order-level discount while a product line is
+   *  gross, so a share taken against it could print over 100%. And not the sum of `topProducts`,
+   *  which is what the screens used to divide by — with a top-5 list those five add to exactly
+   *  100% by construction, so the leader always reads as "half the platform's sales" no matter how
+   *  long the tail behind it is. Unaffected by any product-name filter: filtering the list must
+   *  not silently re-scale what each row is a share OF. */
+  productRevenueAgorot: number;
   // Profitability (reporting only — the real deduction happens at the
   // split-payment processor). commissionRate is echoed back so the client can
   // label the expense line ("platform commission (10%)") without re-reading
@@ -200,13 +215,17 @@ export function buildPerformanceSummary(
   for (const o of inRange) {
     for (const item of o.items) {
       if (item.storeSlug !== storeSlug) continue;
-      const entry = productMap.get(item.productId) ?? { productId: item.productId, name: item.productName, revenueAgorot: 0, units: 0 };
+      const entry = productMap.get(item.productId)
+        ?? { productId: item.productId, name: item.productName, revenueAgorot: 0, units: 0, storeSlug: item.storeSlug, storeName: item.storeName };
       entry.revenueAgorot += item.priceAgorot * item.qty;
       entry.units += item.qty;
       productMap.set(item.productId, entry);
     }
   }
   const sortedProducts = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
+  // Summed over ALL of them, before the top-N cap below — that cap is a display decision and must
+  // not move the denominator every row's share is taken against.
+  const productRevenueAgorot = sortedProducts.reduce((s, p) => s + p.revenueAgorot, 0);
 
   return assemblePerformanceSummary(
     {
@@ -220,6 +239,7 @@ export function buildPerformanceSummary(
     granularity,
     commissionPercent,
     topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts,
+    productRevenueAgorot,
   );
 }
 
@@ -245,6 +265,10 @@ export function assemblePerformanceSummary(
   granularity: PerformanceGranularity,
   commissionPercent = 0,
   topProducts: TopProduct[] = [],
+  // The share denominator (see PerformanceSummary.productRevenueAgorot). Defaults to the sum of
+  // what was handed over, which is exactly right whenever the list is uncapped — a caller that
+  // capped it has to say what the full total was, because by then it is the only one that knows.
+  productRevenueAgorot = topProducts.reduce((s, p) => s + p.revenueAgorot, 0),
 ): PerformanceSummary {
   // ── period keys (x-axis), zero-filled so a quiet day/month still shows as 0, not a gap ──
   const keys = rangeKeys(fromISO, toISO, granularity);
@@ -303,6 +327,7 @@ export function assemblePerformanceSummary(
     totalUniqueVisitors,
     conversionRate: conversionBase > 0 ? (totalOrders / conversionBase) * 100 : 0,
     topProducts,
+    productRevenueAgorot,
     commissionRate: commissionPercent,
     platformCommissionAgorot,
     netProfitAgorot,

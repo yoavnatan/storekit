@@ -10,6 +10,7 @@ import { rowStateBadge } from '../../lib/store-state-badge.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import type { PerformanceSummary } from '../../lib/seller-performance.js';
 import type { PlatformStoreRow, StoreRowsQuery, StoreSortCol } from '../../lib/platform-performance.js';
+import { renderTopProducts } from '../dashboard/performance.js';
 import type { PlatformRevenue } from '../../lib/platform-revenue.js';
 
 // Admin-only glue for the platform performance tab's per-store breakdown table
@@ -34,11 +35,16 @@ interface LoadedDetail {
   storeMatched?: number;
   storePage?: number;
   storeTotalPages?: number;
+  productsMatched?: number;
 }
 
 const SEARCH_DEBOUNCE_MS = 250;
 
 let state: StoreRowsQuery = { q: '', sort: 'revenue', dir: 'desc', page: 1 };
+// The leaderboard's own name search, kept beside the table's because both ride on the same fetch:
+// pinned onto every range change (`dataset.extraParams`) so switching the period keeps the search,
+// and sent on every table fetch so one response can refresh both halves.
+let productQ = '';
 let i18n: Record<string, string> = {};
 let picker: HTMLElement | null = null;
 
@@ -129,7 +135,37 @@ function renderTable(detail: LoadedDetail): void {
 /** The table's own params, pinned onto every range fetch too (performance.ts
  *  reads this back) so changing the date range preserves the current search/sort. */
 function storeParams(): string {
-  return `storeQ=${encodeURIComponent(state.q)}&storeSort=${state.sort}&storeDir=${state.dir}&storePage=${state.page}`;
+  return `storeQ=${encodeURIComponent(state.q)}&storeSort=${state.sort}&storeDir=${state.dir}&storePage=${state.page}`
+    + `&productQ=${encodeURIComponent(productQ)}`;
+}
+
+/** "Top 5 of 214 products" / "3 products match" — the line under the heading, which is where the
+ *  list says what it is ranked by and how much of the period it is showing. */
+function renderProductsNote(detail: LoadedDetail): void {
+  if (!detail.summary) return;
+  const matched = detail.productsMatched ?? detail.summary.topProducts.length;
+  // Same rule as the SSR pass: with nothing sold there is no count worth stating next to a list
+  // that already says the range is empty.
+  setText('perf-products-note', productQ
+    ? fill('perfTopProductsMatched', { matched })
+    : matched === 0 ? '' : fill('perfTopProductsNote', { shown: detail.summary.topProducts.length, total: matched }));
+}
+
+/** The leading-products list after a fetch this module made. On a RANGE change the shared
+ *  performance.ts has already redrawn the list from the same response, so that path only refreshes
+ *  the note — redrawing it twice would replay the entrance animation over itself. */
+function renderProducts(detail: LoadedDetail): void {
+  const box = document.getElementById('perf-top-products');
+  if (box && detail.summary) {
+    renderTopProducts(box, detail.summary, i18n);
+    // A filter is not an entrance. Two reasons to strip the grow animation off a searched result
+    // rather than let it replay: it would restart on every debounced keystroke, and the container
+    // may still be carrying `chart-hold` (performance.ts pauses the entrance until the list has
+    // been scrolled to) — which would leave every bar paused at width 0, i.e. invisible. The final
+    // width is on the element inline, so removing the class costs nothing but the growth.
+    box.querySelectorAll('.animate-top-bar-grow').forEach((el) => el.classList.remove('animate-top-bar-grow'));
+  }
+  renderProductsNote(detail);
 }
 
 let inFlight = 0;
@@ -153,6 +189,7 @@ async function fetchTable(): Promise<void> {
     // A slower earlier request must not overwrite a newer one's rows.
     if (token !== inFlight) return;
     renderTable(data);
+    renderProducts(data);
   } catch {
     // Keep the last-known rows — blanking the table would claim the search matched nothing — but
     // say so. This runs on a typed search and on a sort click, and a table that does not move
@@ -221,6 +258,24 @@ export function initAdminPlatformPerformance(): void {
     debounce = window.setTimeout(() => void fetchTable(), SEARCH_DEBOUNCE_MS);
   });
 
+  // Product search — the same fetch, because one response carries both halves. Ranking stays
+  // revenue-desc, so a search is "the leading products whose name contains this", not a catalogue
+  // lookup: the number beside each row still means share of the WHOLE period.
+  const productSearch = document.getElementById('perf-products-search') as HTMLInputElement | null;
+  let productDebounce = 0;
+  productSearch?.addEventListener('input', () => {
+    const q = productSearch.value.trim();
+    if (q === productQ) return;
+    productQ = q;
+    // Set the moment the query changes, not at render time: on a range change the SHARED renderer
+    // paints this list before this module is told anything, and it is the flag that decides whether
+    // an empty box reads "nothing matched" or "nothing sold".
+    const box = document.getElementById('perf-top-products');
+    if (box) box.dataset.perfSearching = q ? '1' : '0';
+    clearTimeout(productDebounce);
+    productDebounce = window.setTimeout(() => void fetchTable(), SEARCH_DEBOUNCE_MS);
+  });
+
   document.getElementById('perf-stores-pager')?.addEventListener('click', (e) => {
     const btn = (e.target as Element).closest<HTMLButtonElement>('[data-store-page-step]');
     if (!btn || btn.disabled) return;
@@ -234,6 +289,7 @@ export function initAdminPlatformPerformance(): void {
     const detail = (e as CustomEvent<LoadedDetail>).detail;
     if (!detail) return;
     if (Array.isArray(detail.stores)) renderTable(detail);
+    renderProductsNote(detail);
     if (detail.summary) updateSplitCard(detail.summary);
     if (detail.revenue) updateIncomeCard(detail.revenue);
   });

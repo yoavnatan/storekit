@@ -9,7 +9,7 @@ import {
   type PerformanceSummary,
   type TopProduct,
 } from './seller-performance.js';
-import { EMPTY_STORE_SALES, type PlatformSales, type StoreSales } from './order-reporting.js';
+import { EMPTY_STORE_SALES, PRODUCT_QUERY_MAX, type PlatformSales, type StoreSales } from './order-reporting.js';
 import { EMPTY_VIEW_STATS, type StoreViewStats } from './store-pageviews.js';
 import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
 
@@ -216,6 +216,7 @@ export function buildPlatformSales(
   toISO: string,
   granularity: PerformanceGranularity,
   topLimit = 5,
+  productQuery = '',
 ): PlatformSales {
   const byStore = new Map<string, StoreSales>();
   const productMap = new Map<string, TopProduct>();
@@ -230,14 +231,26 @@ export function buildPlatformSales(
       totalOrders: s.totalOrders,
     });
     for (const tp of s.topProducts) {
-      const entry = productMap.get(tp.productId) ?? { productId: tp.productId, name: tp.name, revenueAgorot: 0, units: 0 };
+      const entry = productMap.get(tp.productId)
+        ?? { productId: tp.productId, name: tp.name, revenueAgorot: 0, units: 0, storeSlug: tp.storeSlug, storeName: tp.storeName };
       entry.revenueAgorot += tp.revenueAgorot;
       entry.units += tp.units;
       productMap.set(tp.productId, entry);
     }
   }
   const sorted = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
-  return { byStore, topProducts: topLimit > 0 ? sorted.slice(0, topLimit) : sorted };
+  // The denominator is taken before the filter and before the cap, exactly as the query's inner
+  // window is — a searched row still reports its share of the period, not of the search.
+  const productRevenueAgorot = sorted.reduce((s, p) => s + p.revenueAgorot, 0);
+  const q = productQuery.trim().slice(0, PRODUCT_QUERY_MAX).toLowerCase();
+  const matching = q ? sorted.filter((p) => p.name.toLowerCase().includes(q)) : sorted;
+  return {
+    byStore,
+    topProducts: topLimit > 0 ? matching.slice(0, topLimit) : matching,
+    // Empty match → 0, the same answer the query gives when its windows have no row to ride on.
+    productRevenueAgorot: matching.length ? productRevenueAgorot : 0,
+    productsMatched: matching.length,
+  };
 }
 
 /**
@@ -342,6 +355,10 @@ export function buildPlatformPerformance(
     totalUniqueVisitors,
     conversionRate,
     topProducts,
+    // Straight from the query's own window (order-reporting.ts) — the platform's whole product
+    // revenue for the period. Never re-derived from `topProducts` here: this list is capped and
+    // may be filtered, and summing it would make the shares add to 100% by construction.
+    productRevenueAgorot: sales.productRevenueAgorot,
     // Revenue-weighted actual, not any one tier's rate — the only honest headline across a
     // mixed-tier seller base (see pricing.ts#blendedCommissionRate).
     commissionRate: blendedCommissionRate(totalRevenueAgorot, platformCommissionAgorot),
