@@ -11,12 +11,23 @@
 // money rule is a copy that drifts. A refusal comes back with the FIELD that caused it, which is
 // what lets this focus the right box instead of printing one message above six.
 
+// A pure leaf module — no database, no request — so importing it into the browser bundle costs the
+// composition rule and nothing else. Same split `seller-report-shapes.ts` exists for.
+import { businessSummaryLine, type BusinessType } from '../../lib/payout-details.js';
 import { showToast, showErrorToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
+import { discardChanges } from './unsaved-guard.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { registerPanelRefresh } from './tab-sync.js';
 
-interface SaveResponse { ok?: boolean; error?: string; field?: string; bankLine?: string | null }
+interface SaveResponse {
+  ok?: boolean; error?: string; field?: string;
+  bankLine?: string | null;
+  /** The STORED, normalised values — not what was typed. A seller who enters `51-234-5678` has
+   *  `512345678` saved, and the summary must show the second. */
+  businessId?: string;
+  businessType?: string;
+}
 
 function i18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
@@ -64,6 +75,67 @@ export function initPayoutsTab(): void {
   if (!form || !save || !error) return;
 
   /**
+   * ── The closed bank summary ↔ the open form (owner, סשן א׳ §2) ──
+   *
+   * **A visibility toggle, not a renderer.** Both halves are in the server's markup with `hidden`
+   * on the one that does not apply, so the first paint is already right and there is no second
+   * copy of a money form living in a template literal here. All this does is swap which is hidden.
+   *
+   * `hidden` and not a class: `reset.css` gives `[hidden]` an `!important` display:none, which is
+   * the one rule that cannot be lost to a `display:flex` further up the cascade — the
+   * `project_tailwind_hidden_vs_flex` trap, on markup that is inside a `.card` (a flex column).
+   */
+  const summary = document.getElementById('pay-bank-summary');
+  const fields = document.getElementById('pay-bank-fields');
+  function showFields(open: boolean): void {
+    // Only meaningful when there IS a summary — a seller with no bank on file has no closed state
+    // to return to, and the fields must never be hidden from them.
+    if (!summary || !fields) return;
+    summary.hidden = open;
+    fields.hidden = !open;
+  }
+  document.getElementById('pay-bank-edit')?.addEventListener('click', () => {
+    showFields(true);
+    form!.querySelector<HTMLInputElement>('#pay-bank-code')?.focus();
+  });
+  document.getElementById('pay-bank-cancel')?.addEventListener('click', () => {
+    /**
+     * Back to the LAST SAVE, and `discardChanges` rather than `form.reset()` — which is the whole
+     * point and was a real bug in the first version of this handler.
+     *
+     * `form.reset()` restores each input's `value` ATTRIBUTE, i.e. what the server rendered when
+     * the page loaded. This form saves over `fetch` and never reloads, so after one save those
+     * attributes are stale: edit account A to account B, save, press ערוך, press ביטול, and the
+     * inputs go back to **A** while the summary above them says **B**. The next save would then
+     * post A and silently move the seller's payouts back to an account they had replaced —
+     * `record-rev.ts`'s rule ("a save must never revert a field the seller did not touch"),
+     * reached from the other direction.
+     *
+     * `unsaved-guard.ts` already owns the correct baseline: it retakes one on every `dash:saved`,
+     * which the submit handler below fires. So "cancel" means exactly what "discard" means
+     * everywhere else on this dashboard, and there is one definition of it rather than two.
+     */
+    discardChanges(form!);
+    error!.classList.add('hidden');
+    showFields(false);
+  });
+
+  /**
+   * "פרטים נוספים" → the rules block at the bottom of the panel (owner, §3).
+   *
+   * A real `<a href="#pay-how">` in the markup, so it works with no JS, intercepted here for the
+   * same reason the "fill in your details" button is not an anchor: an anchor jump parks the
+   * target's top at the VIEWPORT's top, which on this site is underneath the fixed header.
+   * `scrollBelowPinnedChrome` clears it.
+   */
+  document.getElementById('pay-how-link')?.addEventListener('click', (e) => {
+    const target = document.getElementById('pay-how');
+    if (!target) return;
+    e.preventDefault();
+    scrollBelowPinnedChrome(target);
+  });
+
+  /**
    * "Fill in the details" → the details CARD parked at the top of the readable area, with the first
    * empty field focused.
    *
@@ -81,9 +153,13 @@ export function initPayoutsTab(): void {
    * focus scrolling cannot undo the placement.
    */
   document.getElementById('pay-goto-details')?.addEventListener('click', () => {
+    // Defensive: the banner only renders when there is NO payable bank, so the fields are already
+    // open. Opening them anyway costs nothing and means the button can never scroll a seller to a
+    // collapsed summary and focus something they cannot see.
+    showFields(true);
     scrollBelowPinnedChrome(form);
-    const fields = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select'));
-    (fields.find((f) => !f.value) ?? fields[0])?.focus({ preventScroll: true });
+    const inputs = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select'));
+    (inputs.find((f) => !f.value) ?? inputs[0])?.focus({ preventScroll: true });
   });
 
   form.addEventListener('submit', async (e) => {
@@ -135,6 +211,35 @@ export function initPayoutsTab(): void {
         document.getElementById('pay-bank-dot')?.remove();
         document.querySelector('#tab-payouts [data-tab-alert]')?.remove();
       }
+
+      /**
+       * Back to the closed summary, carrying the account the SERVER just stored (owner, §2).
+       *
+       * `bankLine` is non-null only when all four fields came back as a payable account, so a save
+       * of the business fields alone correctly leaves the form open. The summary markup is always
+       * present (hidden when there was no account), which is what lets a seller who has just filled
+       * this in for the FIRST time land on the closed card without a reload — and why the cancel
+       * button has to be un-hidden here rather than only rendered when the page loaded with one.
+       *
+       * The values come from the response and never from the form: the server normalises what was
+       * typed (`51-234-5678` is stored as `512345678`), and a summary built from the inputs would
+       * describe something slightly different from what is on file.
+       */
+      if (body.bankLine && summary) {
+        const line = document.getElementById('pay-bank-summary-line');
+        if (line) line.textContent = body.bankLine;
+        const business = document.getElementById('pay-business-summary');
+        if (business) {
+          business.textContent = businessSummaryLine(
+            { businessId: body.businessId || undefined, businessType: body.businessType as BusinessType || undefined },
+            { exempt: t['payBusinessExempt'] ?? '', licensed: t['payBusinessLicensed'] ?? '', company: t['payBusinessCompany'] ?? '' },
+            t['payBusinessMissing'] ?? '',
+          );
+        }
+        const cancel = document.getElementById('pay-bank-cancel');
+        if (cancel) cancel.hidden = false;
+        showFields(false);
+      }
     } catch {
       // A network failure, as a toast: nothing on screen is wrong, the request simply did not land.
       showErrorToast(t['payDetailsFailed'] ?? 'Could not save.');
@@ -161,39 +266,17 @@ export function watchPayoutsFreshness(): void {
   let stale = false;
 
   /**
-   * Paging swaps the TABLE, not the page.
+   * Nothing on this panel pages any more.
    *
-   * The pagers are real links so they work with no JS, and followed as links they reload the whole
-   * dashboard — 865KB of HTML and every panel's markup, to move one table by ten rows (owner,
-   * 2026-08-10). Intercepted here they go through the same panel refresh an order change already
-   * uses: the server renders the panel, this swaps `#payouts-root`, and nothing else on the page
-   * moves. `pushState` keeps the address bar honest, so a reload or a shared link lands on the same
-   * page of the same table.
-   *
-   * **In here and not in `initPayoutsTab`, and that distinction is a bug this file already made
-   * once.** The listener is delegated on `#dash-panel-payouts`, which a refresh does NOT replace —
-   * only `#payouts-root` inside it is swapped. Registering it from the function that re-runs after
-   * every refresh therefore stacked a second handler on every page turn, so the third click fired
-   * four refreshes. Everything bound to markup that gets replaced belongs in `initPayoutsTab`;
-   * everything bound to the panel, the window or the document belongs here, once.
-   *
-   * A refresh that fails falls back to the navigation the link would have done anyway — the seller
-   * asked for a page and gets one, slowly, rather than a click that does nothing.
+   * The delegated pager handler that used to live here — and the `popstate` listener beside it —
+   * went with the payout-history table, which moved to the Reports tab as the `payouts` report
+   * (owner, סשן א׳ §6). Worth recording rather than silently deleting, because the bug it carried
+   * generalises: it was delegated on `#dash-panel-payouts`, which a refresh does NOT replace (only
+   * `#payouts-root` inside it is swapped), so registering it from `initPayoutsTab` — which re-runs
+   * after every refresh — stacked a handler per page turn. **Everything bound to markup that gets
+   * replaced belongs in `initPayoutsTab`; everything bound to the panel, the window or the document
+   * belongs here, once.**
    */
-  panel.addEventListener('click', (e) => {
-    const link = (e.target as Element | null)?.closest<HTMLAnchorElement>('[data-payouts-pager] a[href]');
-    if (!link || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    e.preventDefault();
-    history.pushState(null, '', link.href);
-    void refreshPayoutsPanel().catch(() => { window.location.href = link.href; });
-  });
-
-  // Back and Forward across the pages the pager pushed. Bound once, for the same reason.
-  window.addEventListener('popstate', () => {
-    if (!document.getElementById('payouts-root')) return;
-    void refreshPayoutsPanel().catch(() => { /* the panel stays as it is; the URL is still honest */ });
-  });
-
   registerPanelRefresh('dash-panel-payouts', refreshPayoutsPanel);
 
   window.addEventListener('dash:mutated', (e) => {

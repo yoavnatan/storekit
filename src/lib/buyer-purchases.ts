@@ -107,3 +107,21 @@ export function groupBuyerPurchases(orders: readonly Order[]): BuyerPurchase[] {
     };
   });
 }
+
+/**
+ * How many purchases sit under each of the buyer's two sub-tabs.
+ *
+ * One function because the numbers are rendered by TWO paths that must agree: the dashboard builds
+ * them server-side for the first paint, and `/api/buyer/orders` returns them again on every
+ * refresh. Computed separately — which is how this started — the two would drift the moment
+ * "active" changed meaning, and the symptom would be the count on screen changing when the buyer
+ * switches tabs and back. That is the exact complaint this whole area came from (owner,
+ * 2026-08-11), so leaving a second definition in place would have been rebuilding it.
+ *
+ * `history` is the remainder rather than its own predicate, so the two can never both miss a
+ * purchase or both claim one.
+ */
+export function countBuyerPurchases(purchases: readonly BuyerPurchase[]): { active: number; history: number } {
+  const active = purchases.filter((p) => p.awaiting).length;
+  return { active, history: purchases.length - active };
+}

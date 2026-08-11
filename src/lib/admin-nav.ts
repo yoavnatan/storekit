@@ -3,6 +3,10 @@
 // URLs from its current filter state) and client-side by the tab scripts
 // (sellers.ts/stores.ts/orders-filter.ts, to navigate on search/sort/filter
 // change). One implementation so the two never drift out of sync.
+// `panel-freshness` touches no DOM at import time, which is what lets this module keep being
+// imported by admin/index.astro's server-side frontmatter as well as by the browser scripts.
+import { markPanelFresh } from './panel-freshness.js';
+
 export function buildAdminUrl(panel: string, params: Record<string, string | undefined>): string {
   const qp = new URLSearchParams();
   qp.set('panel', panel);
@@ -137,6 +141,11 @@ export async function swapPanel(url: string, panelId: string, reinit: () => void
     // content swap still happens either way: the panel is simply ready and correct
     // for their return.
     if (!current.hidden) history.pushState({}, '', url);
+    // Stamped HERE rather than at each of the ~dozen call sites that swap a panel — filters,
+    // sorts, chips, pagers and the lazy first open all funnel through this one function, and a
+    // list of places to remember to stamp is a rule that rots (the same reasoning tab-sync.ts
+    // gives for observing `fetch` once). After the swap, so a failed load is never marked fresh.
+    markPanelFresh(panelId);
     doneBusy();
     reinit();
   } catch {

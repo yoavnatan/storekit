@@ -57,7 +57,7 @@ import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusC
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
 import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
-import { orderPayoutLine, payoutWhyText, payoutFilterValue } from '../../lib/order-payout-line.js';
+import { orderPayoutLine, payoutWhyText, payoutFilterValue, splitHeldByBasis } from '../../lib/order-payout-line.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
@@ -357,12 +357,6 @@ function ordersClearHref(): string {
   return `/seller/dashboard?${params.toString()}`;
 }
 
-function payoutsTabHref(payhist: number): string {
-  const params = new URLSearchParams({ panel: 'payouts' });
-  if (store) params.set('store', store.id);
-  if (payhist > 1) params.set('payhist', String(payhist));
-  return `/seller/dashboard?${params.toString()}`;
-}
 // The rule is `payout-details.ts#needsBankDetails` and it is shared with the site header, which
 // asks the same question without an account to hand (`payouts.ts#sellerNeedsBankDetails`). This
 // page passes the figure it is already showing in the tile, so the dot, the banner and the number
@@ -696,6 +690,36 @@ const unshippedOrdersCount = orderStatusCounts.processing ?? 0;
 /** Every order this store has ever taken — the "orders so far" stat, and the test the tab's
  *  empty state asks ("no orders at all" is a different screen from "none match this filter"). */
 const storeOrdersTotal = Object.values(orderStatusCounts).reduce((sum, n) => sum + n, 0);
+
+/**
+ * The overview's money row (owner, סשן א׳ §4: *"צריך גם להוסיף לסקירה הכללית של המוכר, תשלומים
+ * קרובים, תשלומים ממתינים. והכל פר חנות ובכל החנויות, בנפרד"*).
+ *
+ * **Two scopes, and each tile says which it is** — the same rule the Payments tab itself follows,
+ * because a figure that is silently about somewhere else is exactly what the owner objected to on
+ * 2026-08-11. A payout is one bank transfer per seller ACCOUNT, so "תשלום קרוב" cannot be split by
+ * shop and is labelled "מכל החנויות"; what is on hold CAN be, so the seller gets this shop's share
+ * and, when they own more than one, the account-wide total beside it.
+ *
+ * **Costing nothing extra.** `payoutAccount` is already read on every dashboard load for the tab's
+ * badge, and `splitHeldByBasis` is the same pure function the Payments tab calls — so these three
+ * figures are a reduce over rows already in memory, not a query. That also makes them the SAME
+ * numbers the Payments tab prints, which is what `reporting-invariants.test.ts` exists to keep true:
+ * two screens computing one seller's held money separately is how they come to disagree.
+ */
+function heldTotalFor(slug?: string): number {
+  if (!payoutAccount) return 0;
+  const split = splitHeldByBasis(payoutAccount.account.slices, slug);
+  return split.groups.reduce((t, g) => t + g.agorot, 0) + split.unknownAgorot;
+}
+// ⚠️ `heldTotalFor(undefined)` is the WHOLE ACCOUNT, not "this store" — that is `splitHeldByBasis`'s
+// documented contract and the reason `store?.slug` is not passed straight through. With no store in
+// the switcher, `store?.slug` would be `undefined` and the per-store tile would silently print the
+// account-wide figure under a label naming one shop. It is zero in practice (no store, no orders),
+// which is exactly what makes it the kind of mislabelling that ships.
+const ovHeldThisStore = store ? heldTotalFor(store.slug) : 0;
+const ovHeldAllStores = heldTotalFor();
+const ovPayableNow = payoutAccount?.account.payableNowAgorot ?? 0;
 // The toolbar's filter badge is SSR-computed (same as AdminOrdersPanel.astro) because
 // the first paint ALREADY shows a filtered list — the default "active" preset. Leaving
 // it hidden until the client's refreshOrdersFilterBadge() first runs (only on a filter/
@@ -1044,6 +1068,41 @@ const orderStatusColors: Record<string, string> = {
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeFavoriteCount}</dd>
           </div>
         </dl>
+
+        {/* ── The money row (owner, סשן א׳ §4) ────────────────────────────────────────────────
+            Its own `<dl>` under the counts rather than three more cells in that grid: these are
+            shekels and the ones above are quantities, and a row of five numbers where two are money
+            reads as one list of comparable things. A rule and a heading are cheaper than teaching
+            the seller to re-read the labels.
+
+            Every tile jumps to the Payments tab, where the same figures are broken down — the
+            overview's job is to say "there is something here", not to answer it.
+
+            The labels carry their SCOPE, always, because a payout is account-wide and a hold is not
+            (`PayoutsPanel.astro`'s header). The account-wide held tile appears only for a seller who
+            owns more than one store; for everyone else it is the same number as the one beside it,
+            and two identical tiles is worse than one. */}
+        {payoutAccount && (
+          <>
+            <h3 class="text-[0.95rem] font-semibold m-0 mt-6 mb-2">{d.tabPayouts}</h3>
+            <dl class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="payouts">
+                <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow} · {d.payAllStoresShort}</dt>
+                <dd class={`m-0 text-[1.15rem] font-bold ${ovPayableNow > 0 ? '[color:var(--color-accent)]' : '[color:var(--color-muted)]'}`}>{formatAgorot(ovPayableNow)}</dd>
+              </button>
+              <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="payouts">
+                <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld}{allStores.length > 1 && store ? ` · ${store.name}` : ''}</dt>
+                <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{formatAgorot(ovHeldThisStore)}</dd>
+              </button>
+              {allStores.length > 1 && (
+                <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="payouts">
+                  <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld} · {d.payAllStoresShort}</dt>
+                  <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{formatAgorot(ovHeldAllStores)}</dd>
+                </button>
+              )}
+            </dl>
+          </>
+        )}
       </div>
 
       <!-- ── Panel: Products ── -->
@@ -2589,11 +2648,8 @@ const orderStatusColors: Record<string, string> = {
         {payoutAccount && (
           <PayoutsPanel
             account={payoutAccount.account}
-            payouts={payoutAccount.payouts}
             seller={payoutAccount.seller}
             multiStore={allStores.length > 1}
-            payoutPage={parsePage(Astro.url.searchParams, 'payhist')}
-            payoutPageHref={(p) => payoutsTabHref(p)}
             ordersHref={ordersForHoldBasisHref}
             storeSlug={store?.slug ?? null}
             storeName={store?.name ?? null}

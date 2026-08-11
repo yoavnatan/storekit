@@ -25,6 +25,16 @@ import { createNotification } from '../../../lib/notifications.js';
  * being paid. So it is ANNOUNCED instead, which is what actually surfaces a change the seller did
  * not make. ⚠️ When mail is really wired (GO_LIVE §4) this notification wants an email beside it —
  * an in-app badge is only seen by someone who signs in.
+ *
+ * ── The announcement carries NO account details (owner, סשן א׳ §2, 2026-08-11) ──
+ * *"ההתראה לא צריכה לכלול את הפרטים, רק ״עודכן חשבון בנק, אם לא ביצעתם את השינוי — נא לפנות
+ * אלינו״"*. It used to interpolate the masked account line, which was wrong in two ways at once and
+ * only one of them is about privacy. A notification is the surface most likely to be read somewhere
+ * the seller's own dashboard is not — a phone on a desk, a shared screen, and an email once §4
+ * lands — so it is the LAST place bank digits belong, masked or otherwise. And the digits answered
+ * a question nobody asked: someone who made the change knows what they typed, and someone who did
+ * not needs one instruction, not a number to squint at. The masked line stays on the dashboard,
+ * where the seller went looking for it.
  */
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -59,10 +69,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       // Not 'order_update' (what it used to be): this is about the payout account, and the type is
       // what decides where clicking it lands — the payouts tab, not the orders one.
       type: 'payout_status',
-      title: 'פרטי חשבון הבנק עודכנו',
-      body: hasPayableBank(seller)
-        ? `התשלומים הבאים יועברו לחשבון ${maskedBankLine(seller)}. אם לא אתם עשיתם את זה — פנו אלינו מיד.`
-        : 'פרטי חשבון הבנק נמחקו. עד שיוזנו מחדש היתרה ממשיכה להיצבר ולא מועברת.',
+      title: 'עודכן חשבון בנק',
+      // One instruction, and the same one either way. The deletion case used to add "עד שיוזנו
+      // מחדש היתרה ממשיכה להיצבר" — true, reassuring, and not what this message is for: it is the
+      // alarm for a change the seller did not make, and a second sentence about accrual is the one
+      // they read instead of the first.
+      body: 'אם לא ביצעתם את השינוי — פנו אלינו מיד.',
       // Swallowed: the details are already saved, and a badge that failed to write must not report
       // to the seller that their save did not happen.
     }).catch(() => null);

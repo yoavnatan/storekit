@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Order, OrderItem } from '../src/lib/orders.js';
 import type { StoreProduct } from '../src/lib/store-products.js';
 import {
-  buildSalesReport, buildProductSalesReport, buildStockReport, isReportId, LOW_STOCK_AT,
+  buildSalesReport, buildProductSalesReport, buildStockReport, buildPayoutsReport, isReportId,
+  LOW_STOCK_AT, type PayoutInput,
 } from '../src/lib/seller-reports.js';
 import { allocateAgorot } from '../src/lib/money.js';
 
@@ -214,9 +215,83 @@ describe('stock report', () => {
   });
 });
 
+/**
+ * The accounting report (owner, סשן א׳ §6) — the four things it must not get wrong.
+ *
+ * This is a report about money that has ALREADY LEFT the company's bank account, so every case
+ * below is a way a seller's books could be handed a number that no statement matches.
+ */
+describe('platform payments report', () => {
+  const payout = (o: Partial<PayoutInput> & { periodKey: string }): PayoutInput => ({
+    amountAgorot: 10_000,
+    commissionAgorot: 1_000,
+    status: 'paid',
+    createdAt: '2026-07-01T09:00:00.000Z',
+    sentAt: null,
+    ...o,
+  });
+
+  it('windows on the day the money MOVED, not the day the row was created', () => {
+    // The payout run creates March's row in April and the transfer leaves later still. A seller
+    // reconciling April against a bank statement is asking about the second date.
+    const rows = buildPayoutsReport([
+      payout({ periodKey: '2026-03', createdAt: '2026-04-01T06:00:00.000Z', sentAt: '2026-04-09T06:00:00.000Z' }),
+    ], '2026-04-05', '2026-04-30').rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.dayISO).toBe('2026-04-09');
+    // …and the same row is OUT of a window that only covers the creation date.
+    expect(buildPayoutsReport([
+      payout({ periodKey: '2026-03', createdAt: '2026-04-01T06:00:00.000Z', sentAt: '2026-04-09T06:00:00.000Z' }),
+    ], '2026-04-01', '2026-04-05').rows).toHaveLength(0);
+  });
+
+  it('falls back to the created date for a transfer that has not gone out yet', () => {
+    const rows = buildPayoutsReport([
+      payout({ periodKey: '2026-07', status: 'pending', createdAt: '2026-08-01T09:00:00.000Z', sentAt: null }),
+    ], '2026-08-01', '2026-08-31').rows;
+    expect(rows[0]!.dayISO).toBe('2026-08-01');
+  });
+
+  it('buckets by the BUSINESS calendar, so a transfer just after midnight is not last month', () => {
+    // 2026-08-01 at 01:30 Israel time is 2026-07-31T22:30Z. Read in UTC it is July — the wrong
+    // month, on the report a bookkeeper closes a month with. Same bug `business-day.ts` exists for.
+    const rows = buildPayoutsReport([
+      payout({ periodKey: '2026-06', sentAt: '2026-07-31T22:30:00.000Z' }),
+    ], '2026-08-01', '2026-08-31').rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.dayISO).toBe('2026-08-01');
+  });
+
+  it('lists a failed transfer and counts none of it', () => {
+    // Money that came back. Excluding it from the totals is what `seller-account.ts` does with the
+    // same rows; DROPPING it would leave a gap the seller cannot ask about.
+    const built = buildPayoutsReport([
+      payout({ periodKey: '2026-07', amountAgorot: 50_000, commissionAgorot: 5_000, status: 'failed', sentAt: '2026-07-10T09:00:00.000Z' }),
+      payout({ periodKey: '2026-06', amountAgorot: 30_000, commissionAgorot: 3_000, status: 'paid', sentAt: '2026-07-12T09:00:00.000Z' }),
+    ], '2026-07-01', '2026-07-31');
+    expect(built.rows).toHaveLength(2);
+    expect(built.rows.find((r) => r.status === 'failed')!.countsAsPaid).toBe(false);
+    expect(built.totals).toEqual({ rows: 1, amountAgorot: 30_000, commissionAgorot: 3_000 });
+  });
+
+  it('totals exactly the rows it marked as counting, newest transfer first', () => {
+    const built = buildPayoutsReport([
+      payout({ periodKey: '2026-05', amountAgorot: 1_111, commissionAgorot: 111, sentAt: '2026-06-10T09:00:00.000Z' }),
+      payout({ periodKey: '2026-06', amountAgorot: 2_222, commissionAgorot: 222, sentAt: '2026-06-25T09:00:00.000Z' }),
+      payout({ periodKey: '2026-07', amountAgorot: 3_333, commissionAgorot: 333, status: 'failed', sentAt: '2026-06-20T09:00:00.000Z' }),
+    ], '2026-06-01', '2026-06-30');
+    expect(built.rows.map((r) => r.dayISO)).toEqual(['2026-06-25', '2026-06-20', '2026-06-10']);
+    const counted = built.rows.filter((r) => r.countsAsPaid);
+    expect(built.totals.rows).toBe(counted.length);
+    expect(built.totals.amountAgorot).toBe(counted.reduce((t, r) => t + r.amountAgorot, 0));
+    expect(built.totals.commissionAgorot).toBe(counted.reduce((t, r) => t + r.commissionAgorot, 0));
+  });
+});
+
 describe('isReportId', () => {
-  it('rejects anything not one of the three', () => {
+  it('rejects anything not one of the four', () => {
     expect(isReportId('sales')).toBe(true);
+    expect(isReportId('payouts')).toBe(true);
     expect(isReportId('revenue')).toBe(false);
     expect(isReportId(null)).toBe(false);
   });
