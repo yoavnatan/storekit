@@ -11,6 +11,11 @@ import { getLang, getT } from '../../i18n/index.js';
 // Every label here is a `t.dashboard` key that already existed in both languages —
 // the SSR row and its client twin (scripts/dashboard/messages.ts#buildMessageRow)
 // both wrote them inline instead, so an English dashboard rendered Hebrew rows.
+//
+// The thread row opens with a HEADER (subject in full + the product it is about)
+// and its reply box starts hidden behind "כתוב תגובה" — both 2026-08-10, both
+// mirrored in buildMessageRow(). The reasoning is on the CSS: `.msg-thread-head`
+// and `.seller-msg-reply-form` in utilities/utils.css.
 interface Props { row: SellerThreadRow }
 const { row } = Astro.props;
 const d = getT(getLang(Astro.cookies)).dashboard;
@@ -54,6 +59,20 @@ const d = getT(getLang(Astro.cookies)).dashboard;
 </tr>
 <tr class="msg-thread-row" id={`msg-detail-${row.id}`} hidden>
   <td colspan="7">
+    <div class="msg-thread-head">
+      <p class="msg-thread-head__subject"><span class="msg-thread-head__label">{d.msgSubjectLabel}</span>{row.subject}</p>
+      {row.productName && (
+        row.productHref
+          ? <a class="msg-thread-head__product" href={row.productHref} target="_blank" rel="noopener">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span>{d.msgAboutProduct}: {row.productName}</span>
+            </a>
+          : <span class="msg-thread-head__product">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span>{d.msgAboutProduct}: {row.productName}</span>
+            </span>
+      )}
+    </div>
     <div class="msg-thread msg-thread--seller-pov" id={`replies-${row.id}`}>
       {row.entries.map((entry) => (
         <div class={`msg-thread-entry ${entry.fromSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`}>
@@ -67,10 +86,12 @@ const d = getT(getLang(Astro.cookies)).dashboard;
       ))}
     </div>
     <div class="seller-msg-reply-form" data-reply-for={row.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-      <textarea class="seller-msg-reply-textarea" placeholder={d.msgReplyPlaceholder} rows="3"></textarea>
-      <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+      <textarea class="seller-msg-reply-textarea" placeholder={d.msgReplyPlaceholder} rows="3" hidden></textarea>
+      <div class="seller-msg-reply-actions">
         <button class="seller-msg-reply-close" type="button">{d.msgReplyClose}</button>
-        <button class="seller-msg-reply-send" type="button">{d.msgReplySend}</button>
+        <button class="seller-msg-reply-cancel" type="button" hidden>{d.msgReplyCancel}</button>
+        <button class="seller-msg-reply-open" type="button" aria-expanded="false">{d.msgReplyOpen}</button>
+        <button class="seller-msg-reply-send" type="button" hidden>{d.msgReplySend}</button>
       </div>
     </div>
   </td>

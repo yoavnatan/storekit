@@ -487,7 +487,10 @@ async function resetStoresPanel(): Promise<void> {
     if (!res.ok) return;
     const next = new DOMParser().parseFromString(await res.text(), 'text/html').getElementById(PANEL_ID);
     if (next) { panel.innerHTML = next.innerHTML; initAdminStoresPanel(); }
-  } catch { /* leave the current (filtered) view as-is on failure */ }
+  } catch {
+    // silent: nobody is looking. This readies the stores tab for a RETURN to it — the admin is
+    // already on another tab — so the stale (filtered) view stays and the next visit re-renders.
+  }
 }
 
 function initStoresFilterAutoReset(): void {

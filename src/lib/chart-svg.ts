@@ -221,6 +221,28 @@ export function buildBarChartSvg(points: BarChartPoint[], opts: BarChartOptions 
 // Line variant of buildBarChartSvg (same options + tooltip contract) — a soft
 // area fill under a stroked smooth curve (smoothPathD) with a dot per point.
 // Per-point full-height
+// ── What a line chart is HOVERABLE on (owner, 2026-08-11) ───────────────────
+// A tooltip used to appear anywhere inside the point's full-height column, so pointing at empty
+// space near the top of the box explained a value drawn near the bottom of it — "לא על גבי כל
+// הקונטיינר". A line chart's marks are the LINE and its DOTS, and those are now the only two
+// things that answer a cursor.
+//
+// Both are invisible and both are generous, because a 2px stroke and a 2.4px dot are not pointing
+// targets. The column rect stays in the markup — it is where the tooltip TEXT lives, read back by
+// initChartTooltips — but it is `pointer-events="none"` and no longer a hit surface. Bar charts are
+// untouched: there the bar IS the mark, and hovering it is already hovering the data.
+
+/** Invisible pointing target over a dot. r=9 against the dot's 2.4 — comfortably clickable at a
+ *  trackpad's precision without reaching the neighbouring point (columns are ~20px at 31 points). */
+const hitDot = (x: number, y: number): string =>
+  `<circle class="chart-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9" fill="transparent"></circle>`;
+
+/** Invisible wide stroke tracing the same curve, so the LINE between two dots is hoverable too.
+ *  `pointer-events="stroke"` and no fill: the area under the curve must not become a hit surface,
+ *  which would quietly re-create the column it replaces. */
+const hitLinePath = (d: string): string =>
+  `<path class="chart-hit-line" d="${d}" fill="none" stroke="transparent" stroke-width="14" pointer-events="stroke"></path>`;
+
 // transparent hit rects carry class="chart-bar" + data-label/data-value so the
 // EXISTING initChartTooltips() wiring (performance.ts) lights up on hover with
 // no extra code. The line draws itself in on render (animate-line-draw).
@@ -261,14 +283,14 @@ export function buildLineChartSvg(points: BarChartPoint[], opts: BarChartOptions
   const areaPath = n > 1
     ? `<path d="${curve} L${xy[n - 1].x.toFixed(1)},${baseline.toFixed(1)} L${xy[0].x.toFixed(1)},${baseline.toFixed(1)} Z" fill="${color}" fill-opacity="0.08" stroke="none"/>`
     : '';
+  const hitLine = n > 1 ? hitLinePath(curve) : '';
   const line = n > 1
     ? `<path class="chart-line${animate ? ' animate-line-draw' : ''}" pathLength="1" d="${curve}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
     : '';
 
-  // One group per point: a full-height transparent hit rect (tooltip target,
-  // class="chart-bar") + the visible dot. Grouping lets pure CSS
-  // (.chart-point:hover .line-dot) highlight a point's own dot while its column
-  // is hovered — the same column that drives the tooltip — with no JS.
+  // One group per point: the column rect (which now only CARRIES the tooltip text — see hitDot),
+  // the hit circle, and the visible dot. Grouping lets pure CSS (.chart-point:hover .line-dot)
+  // highlight a point's own dot while it is hovered, with no JS.
   const half = n > 1 ? step / 2 : geom.w / 2;
   const pointGroups = points.map((p, i) => {
     const pt = xy[i];
@@ -280,14 +302,14 @@ export function buildLineChartSvg(points: BarChartPoint[], opts: BarChartOptions
     // always-shown last label so they can't overlap.
     const showLabel = i === n - 1 || (i % labelEvery === 0 && n - 1 - i >= labelEvery);
     const label = showLabel ? xLabelSvg(p.label, pt.x, i, n, height) : '';
-    return `<g class="chart-point"><rect class="chart-bar" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(p.tipLabel ?? p.label)}" data-value="${escXml(fmt(p.value))}"></rect><circle class="line-dot" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.4" fill="${color}"></circle>${label}</g>`;
+    return `<g class="chart-point"><rect class="chart-bar" pointer-events="none" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(p.tipLabel ?? p.label)}" data-value="${escXml(fmt(p.value))}"></rect>${hitDot(pt.x, pt.y)}<circle class="line-dot" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.4" fill="${color}"></circle>${label}</g>`;
   }).join('');
 
   // preserveAspectRatio="none" + style="direction:ltr" — see buildBarChartSvg.
   // Fills the container width exactly; the fixed height keeps text at full pixel
   // height; the explicit ltr direction keeps the axis labels from bidi-flipping
   // (and clipping) on an RTL page.
-  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr;height:${height}px">${axis}${areaPath}${line}${pointGroups}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr;height:${height}px">${axis}${areaPath}${line}${hitLine}${pointGroups}</svg>`;
 }
 
 export interface LineSeries {
@@ -349,7 +371,9 @@ export function buildMultiLineChartSvg(series: LineSeries[], opts: BarChartOptio
     const line = n > 1
       ? `<path class="${cls}"${dash} d="${curve}" fill="none" stroke="${s.color}" stroke-width="${s.dashed ? 1.5 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`
       : '';
-    return area + line;
+    // Every series gets its own hit stroke — pointing at the dashed envelope has to work exactly
+    // as well as pointing at the solid line, and it is drawn thinner.
+    return area + line + (n > 1 ? hitLinePath(curve) : '');
   }).join('');
 
   const primary = clean[0];
@@ -358,13 +382,25 @@ export function buildMultiLineChartSvg(series: LineSeries[], opts: BarChartOptio
     const px = xOf(i);
     const rx = Math.max(geom.left, px - half);
     const rw = Math.min(geom.right, px + half) - rx;
-    // Combined tooltip value: "<label> <value> · <label> <value>" for every series.
+    // Combined tooltip value: "<label> <value> · <label> <value>" for every series. Kept as the
+    // FALLBACK only — the client builds one row per series from the dots below (a flat sentence in
+    // one colour was the reported confusion), and this is what an older deployed client, or a
+    // browser that somehow finds no dots, still reads.
     const combined = clean.map((s) => `${s.label ? s.label + ' ' : ''}${fmt(s.points[i]?.value ?? 0)}`).join(' · ');
     const showLabel = i === n - 1 || (i % labelEvery === 0 && n - 1 - i >= labelEvery);
     const label = showLabel ? xLabelSvg(primary.points[i].label, px, i, n, height) : '';
     // One dot per series; primary first so it's initChartTooltips' anchor.
-    const dots = clean.map((s) => `<circle class="line-dot" cx="${px.toFixed(1)}" cy="${yOf(s.points[i]?.value ?? 0).toFixed(1)}" r="2.4" fill="${s.color}"></circle>`).join('');
-    return `<g class="chart-point"><rect class="chart-bar" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(primary.points[i].label)}" data-value="${escXml(combined)}"></rect>${dots}${label}</g>`;
+    //
+    // Each dot carries its OWN series name, value and dash state, and is its own tooltip's ANCHOR —
+    // the two tooltips appear beside the two points rather than as one box explaining both. Not a
+    // second payload on the column rect: the dot is already where the series' colour lives
+    // (`fill`), so a tooltip anchored to it cannot end up describing one line in another's colour.
+    const dots = clean.map((s) => {
+      const dy = yOf(s.points[i]?.value ?? 0);
+      return hitDot(px, dy)
+        + `<circle class="line-dot" cx="${px.toFixed(1)}" cy="${dy.toFixed(1)}" r="2.4" fill="${s.color}" data-label="${escXml(s.label ?? '')}" data-value="${escXml(fmt(s.points[i]?.value ?? 0))}"${s.dashed ? ' data-dashed="1"' : ''}></circle>`;
+    }).join('');
+    return `<g class="chart-point"><rect class="chart-bar" pointer-events="none" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(primary.points[i].label)}" data-value="${escXml(combined)}"></rect>${dots}${label}</g>`;
   }).join('');
 
   return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr;height:${height}px">${axis}${layers}${pointGroups}</svg>`;

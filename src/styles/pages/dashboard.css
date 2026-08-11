@@ -1617,3 +1617,118 @@ textarea.input { resize: none; }
   font-size: 1rem;
   font-weight: 600;
 }
+
+/* ── Reports tab ─────────────────────────────────────────────────────────────
+   A report is columns of numbers, which is the one layout a phone genuinely cannot show side by
+   side: at 375px a nine-column sales table either scrolls sideways (so the seller reads one
+   column at a time with no idea which row they are on) or squeezes every figure to an ellipsis.
+   So under 700px each ROW becomes a card and each cell states its own heading.
+
+   This is a NEW pattern in this codebase — the products table solves the same problem by fixing
+   column widths and hiding columns instead, which works for a table you scan and not for one you
+   reconcile against a bank statement. It lives in CSS rather than in utilities because both
+   halves are documented exceptions: `content: attr(data-label)` on a `::before` has no utility
+   form, and neither does re-declaring `display` on `table`/`tr`/`td` inside a media query. The
+   label text comes from the same `Column` objects that build the `<thead>`
+   (scripts/dashboard/reports.ts), so a heading and its mobile label cannot drift — that was the
+   real risk here, not the styling.
+
+   `--report-min` keeps the desktop table from crushing its money columns to two characters
+   before the horizontal scroller takes over. */
+.report-table-wrap {
+  --report-min: 46rem;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.report-table {
+  width: 100%;
+  min-width: var(--report-min);
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.report-table th,
+.report-table td {
+  padding: 0.55rem 0.75rem;
+  text-align: start;
+  border-bottom: 1px solid var(--color-border);
+}
+.report-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg);
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.report-table tbody tr:last-child td { border-bottom: 0; }
+.report-table tbody tr:hover { background: var(--color-bg); }
+
+/* The report table's sortable headings reuse .sort-btn / .sort-icon from the products table
+   above — there is deliberately nothing here for them. The first version of this table drew its
+   own arrows and its own button, which is the invent-per-component failure the design line's
+   first test asks about. */
+
+/* Money and counts: aligned to the END of the column and tabular, so a column of figures forms a
+   readable stack instead of a ragged edge. `font-variant-numeric`, not a monospace face — Heebo's
+   own tabular figures keep the whole table in one typeface. */
+.report-num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Whether a row is IN the totals (sales) or needs restocking (stock). Never colour alone — the
+   word carries the meaning and the tint is the second channel (WCAG 2.1 AA, and this project's
+   own rule against colour-only state). */
+.report-state {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.report-state--ok   { color: var(--color-sale);    background: color-mix(in srgb, var(--color-sale) 9%, transparent); }
+.report-state--warn { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 11%, transparent); }
+.report-state--off  { color: var(--color-muted);   background: var(--color-bg); }
+
+@media (max-width: 700px) {
+  .report-table-wrap { border: 0; background: none; overflow-x: visible; }
+  .report-table { min-width: 0; font-size: 0.87rem; }
+  /* The heading row is what every cell now carries itself, so leaving it visible says it twice. */
+  .report-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .report-table,
+  .report-table tbody,
+  .report-table tr,
+  .report-table td { display: block; }
+  .report-table tr {
+    margin-bottom: 0.6rem;
+    padding: 0.2rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+  }
+  .report-table tbody tr:hover { background: var(--color-surface); }
+  .report-table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+    text-align: start;
+  }
+  .report-table tr td:last-child { border-bottom: 0; }
+  .report-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--color-muted);
+  }
+  /* Alignment is the ROW's job now, not the cell's: an `end`-aligned block inside a flex row
+     would fight the `space-between` that already puts each value opposite its own label. */
+  .report-num { text-align: start; }
+}

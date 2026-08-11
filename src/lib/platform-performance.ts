@@ -9,7 +9,7 @@ import {
   type PerformanceSummary,
   type TopProduct,
 } from './seller-performance.js';
-import { EMPTY_STORE_SALES, type PlatformSales, type StoreSales } from './order-reporting.js';
+import { EMPTY_STORE_SALES, PRODUCT_QUERY_MAX, type PlatformSales, type StoreSales } from './order-reporting.js';
 import { EMPTY_VIEW_STATS, type StoreViewStats } from './store-pageviews.js';
 import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
 
@@ -216,6 +216,7 @@ export function buildPlatformSales(
   toISO: string,
   granularity: PerformanceGranularity,
   topLimit = 5,
+  productQuery = '',
 ): PlatformSales {
   const byStore = new Map<string, StoreSales>();
   const productMap = new Map<string, TopProduct>();
@@ -230,14 +231,26 @@ export function buildPlatformSales(
       totalOrders: s.totalOrders,
     });
     for (const tp of s.topProducts) {
-      const entry = productMap.get(tp.productId) ?? { productId: tp.productId, name: tp.name, revenueAgorot: 0, units: 0 };
+      const entry = productMap.get(tp.productId)
+        ?? { productId: tp.productId, name: tp.name, revenueAgorot: 0, units: 0, storeSlug: tp.storeSlug, storeName: tp.storeName };
       entry.revenueAgorot += tp.revenueAgorot;
       entry.units += tp.units;
       productMap.set(tp.productId, entry);
     }
   }
   const sorted = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
-  return { byStore, topProducts: topLimit > 0 ? sorted.slice(0, topLimit) : sorted };
+  // The denominator is taken before the filter and before the cap, exactly as the query's inner
+  // window is — a searched row still reports its share of the period, not of the search.
+  const productRevenueAgorot = sorted.reduce((s, p) => s + p.revenueAgorot, 0);
+  const q = productQuery.trim().slice(0, PRODUCT_QUERY_MAX).toLowerCase();
+  const matching = q ? sorted.filter((p) => p.name.toLowerCase().includes(q)) : sorted;
+  return {
+    byStore,
+    topProducts: topLimit > 0 ? matching.slice(0, topLimit) : matching,
+    // Empty match → 0, the same answer the query gives when its windows have no row to ride on.
+    productRevenueAgorot: matching.length ? productRevenueAgorot : 0,
+    productsMatched: matching.length,
+  };
 }
 
 /**
@@ -250,11 +263,15 @@ export function buildPlatformSales(
  * LIMIT n` in the query, which is a true platform top-N. Merging per-store top-5s here would have
  * produced a top-N of each store's top-5, a different and quietly wrong list.
  *
- * Note: unique visitors are SUMMED across stores (a browser visiting two stores
- * is counted once per store), so the platform figure is an upper bound. Exact
- * cross-store de-dup is one `COUNT(DISTINCT visitor_id)` without the store filter,
- * and is deliberately not attempted here: this function merges per-store results
- * and has none of the underlying ids, by design.
+ * **Unique visitors are the one figure that does NOT come from the merge (2026-08-11).** They used
+ * to: each store's uniques were summed, so one shopper who opened four stores was four visitors.
+ * That is not a small skew and it is not random — cross-store browsing is what a mall IS, so the
+ * number inflated exactly as the platform began to work, while the conversion rate that divides by
+ * it sank by the same factor. Measured on this database for August 2026: 60 reported, 37 people.
+ * This function merges per-store results and holds no visitor ids, so it genuinely cannot fix it —
+ * `platformViews` is the answer to the same question asked once, without the per-store `GROUP BY`
+ * (`store-pageviews.ts#getPlatformViewStats`). Omit it and the old sum is used, which is what an
+ * older caller and the pure test twins still do.
  */
 export function buildPlatformPerformance(
   sales: PlatformSales,
@@ -263,6 +280,7 @@ export function buildPlatformPerformance(
   fromISO: string,
   toISO: string,
   granularity: PerformanceGranularity,
+  platformViews?: StoreViewStats,
 ): PlatformPerformance {
   // Zero-filled point skeleton for the whole range, derived straight from the
   // dates — the exact x-axis keys/labels the seller math produces, so the merge
@@ -321,6 +339,18 @@ export function buildPlatformPerformance(
 
   const topProducts = sales.topProducts;
 
+  // ── People, counted once ──
+  // The loop above summed each store's uniques; where the caller supplied the platform-wide count,
+  // that sum is replaced rather than adjusted — there is no factor to divide by, only the real
+  // answer or an upper bound. Per bucket as well as for the range: the visitors chart and the KPI
+  // read against each other, and a chart still summing while the headline de-dupes is a worse
+  // state than either alone. Views stay summed (a load is a load, wherever it happened).
+  if (platformViews) {
+    totalUniqueVisitors = platformViews.totalUniqueVisitors;
+    const uniquesByKey = new Map(platformViews.buckets.map((b) => [b.key, b.uniqueVisitors]));
+    for (const p of points) p.uniqueVisitors = uniquesByKey.get(p.key) ?? 0;
+  }
+
   // Each store's commission was rounded to the agora against its OWN tier rate (that is why this
   // sums per-store figures rather than applying one blended rate to the platform total), so the
   // sum is already whole.
@@ -328,6 +358,8 @@ export function buildPlatformPerformance(
   const netProfitAgorot = totalRevenueAgorot - platformCommissionAgorot;
   // Conversion = orders / unique visitors (matches the seller tab's definition),
   // falling back to total views when no visitor ids exist (legacy/demo data).
+  // This is the reason the de-dup above is worth a second query: an inflated denominator here is a
+  // platform that reports itself converting worse than it does, on the number it is judged by.
   const conversionRate = totalUniqueVisitors > 0
     ? (totalOrders / totalUniqueVisitors) * 100
     : totalViews > 0 ? (totalOrders / totalViews) * 100 : 0;
@@ -342,6 +374,10 @@ export function buildPlatformPerformance(
     totalUniqueVisitors,
     conversionRate,
     topProducts,
+    // Straight from the query's own window (order-reporting.ts) — the platform's whole product
+    // revenue for the period. Never re-derived from `topProducts` here: this list is capped and
+    // may be filtered, and summing it would make the shares add to 100% by construction.
+    productRevenueAgorot: sales.productRevenueAgorot,
     // Revenue-weighted actual, not any one tier's rate — the only honest headline across a
     // mixed-tier seller base (see pricing.ts#blendedCommissionRate).
     commissionRate: blendedCommissionRate(totalRevenueAgorot, platformCommissionAgorot),

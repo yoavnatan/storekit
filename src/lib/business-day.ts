@@ -90,6 +90,33 @@ export function businessMonthStartISO(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
 }
 
+const businessOffsetParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: BUSINESS_TIMEZONE,
+  timeZoneName: 'longOffset',
+});
+
+/**
+ * The UTC offset the business calendar was on during a given day, as ISO-8601 `±hhmm`
+ * (`+0300` in summer, `+0200` in winter).
+ *
+ * Exists because one consumer has to hand a business day to an OUTSIDE system as a real instant:
+ * a seller's sale runs "through the end of the 14th" on this calendar, and Google's feed wants
+ * that as a timestamped range (product-feed.ts#salePriceEffectiveDate). Everything internal keeps
+ * comparing day strings and never needs this.
+ *
+ * Resolved per DAY rather than once, because a range can straddle a DST change — Israel's
+ * transitions land at 02:00 local, so the noon-UTC probe used here (14:00/15:00 local) is never
+ * near one, and each end of a range gets the offset that was actually in force on it.
+ */
+export function businessOffsetForDay(dayISO: string): string {
+  const name = businessOffsetParts
+    .formatToParts(new Date(`${dayISO}T12:00:00Z`))
+    .find((p) => p.type === 'timeZoneName')?.value ?? '';
+  // 'GMT+03:00' → '+0300'. A zone sitting exactly on UTC formats as a bare 'GMT'.
+  const m = /^GMT([+-])(\d{2}):(\d{2})$/.exec(name);
+  return m ? `${m[1]}${m[2]}${m[3]}` : '+0000';
+}
+
 /** 'YYYY-MM-DD' of a synthetic calendar cursor (axis enumeration only — see the
  *  file header). NOT for order timestamps: it reads the date in UTC. */
 export function calendarDayISO(d: Date): string {

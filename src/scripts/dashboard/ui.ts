@@ -62,6 +62,7 @@ export function initSettingsForm(): void {
     // 2) Server answered — read its verdict (a crash page may not be JSON).
     type StoreSaveResult = { ok?: boolean; name?: string; error?: string; conflict?: boolean; conflictFields?: string[]; rev?: string };
     let data: StoreSaveResult | null = null;
+  // silent: a body that is not JSON. The `!res.ok || !data?.ok` check right below is what speaks.
     try { data = await res.json() as StoreSaveResult; } catch { /* non-JSON body */ }
 
     // 2a) Some field here was set differently in another tab (or on another device)

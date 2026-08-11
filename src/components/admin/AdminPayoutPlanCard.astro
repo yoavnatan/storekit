@@ -1,0 +1,89 @@
+---
+import { formatAgorot } from '../../lib/money.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
+import type { PayoutPlan, PayoutState } from '../../lib/payout-run.js';
+
+/**
+ * **What leaves the company's bank account on the next payout day, and who is stuck.**
+ *
+ * The one question the money journal could not answer. That panel is a record of what HAS happened;
+ * this is the only surface anywhere that looks forward — and the forward-looking number is the one
+ * the owner has to plan around, because on the 10th of the month it really goes out.
+ *
+ * **Nothing here is computed in this file.** Every figure comes from `payout-run.ts#planPayouts`,
+ * which is the same function `runPayouts` then acts on — so the amount shown before the run and the
+ * transfers the run creates are one answer, not two that happen to agree. That is the rule
+ * `reporting-invariants.test.ts` exists for, and it is at its sharpest here: this number is read and
+ * acted on before there is any row to check it against.
+ *
+ * **Three of the five states are shown as money that is NOT moving, and that is the point.** A
+ * seller sitting on a released balance with no bank details on file is invisible from every other
+ * screen — the run reports them as a count in a log line nobody reads, and the seller sees a banner
+ * only if they sign in. Here it is a number of shekels, and the count under it is a LINK to the
+ * names.
+ *
+ * ── The per-seller table that used to be under these tiles ──
+ * It listed every seller with money behind them: name, email, amount, commission, state. The owner
+ * rejected it (סשן א׳ §3): *"מרגיש לי שהפרטים האלו אמורים וצריכים להיות בתוך כרטיסיות המוכרים
+ * בלשונית מוכרים, למה ליצור עוד רשימה של מוכרים?"* — and he was right that it was a second roster
+ * of the same people, one tab away, searchable and sortable by nothing.
+ *
+ * Every fact it carried belongs to a seller, so every fact now sits on that seller's card
+ * (`AdminSellersPanel.astro`), and the capability it uniquely had — finding the stuck ones among a
+ * thousand — became a filter on the tab that already lists them (`spayout`). What is left here is
+ * the only thing that was never per-seller: **how much leaves the company's bank account on the
+ * 10th**, which is a platform figure the owner plans around and which no card can show.
+ */
+interface Props {
+  plan: PayoutPlan;
+  /** Deep link into the Sellers tab, filtered to one payout state. The tiles are counts; this is
+   *  what turns each of them back into the names behind it. */
+  sellersHref: (state: PayoutState) => string;
+}
+const { plan, sellersHref } = Astro.props;
+
+const TILE = 'rounded-[var(--radius)] border [border-color:var(--color-border)] p-3';
+/** The counts under the tiles are links, and they look like links. Inheriting the muted colour
+ *  keeps the tile's hierarchy — the figure above is the thing being read, this is the way in. */
+const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [color:inherit] hover:[color:var(--color-accent)]';
+---
+
+<div class="rounded-[var(--radius)] border [border-color:var(--color-border)] p-3.5 mb-5">
+  <div class="flex items-baseline justify-between gap-3 flex-wrap">
+    <strong class="text-[0.9rem]">התשלום הקרוב למוכרים · {formatBusinessDayLabel(plan.payoutDayISO)}</strong>
+    <span class="text-[0.76rem] [color:var(--color-muted)]">תקופה {plan.periodKey}</span>
+  </div>
+  <p class="m-0 mt-1 text-[0.78rem] [color:var(--color-muted)] leading-relaxed">
+    כמה כסף יוצא מהחשבון שלנו למוכרים בתאריך הזה, ומה תקוע ולמה. ההעברה יוצאת אוטומטית באותו
+    תאריך, והמספרים כאן הם בדיוק מה שהיא תעשה — אותו חישוב מזין את שניהם.
+  </p>
+
+  <dl class="grid grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
+    <div class={TILE}>
+      {/* "תשלום קרוב", the same words the seller's own tile uses (owner, סשן א׳ §1) — one name for
+          one event on both sides of the platform. The date it goes out is already in the heading
+          above, so repeating it here as "יוצא בתאריך הזה" only made the tile a second clock. */}
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">תשלום קרוב</dt>
+      <dd class="m-0 text-[1.15rem] font-bold tabular-nums [color:var(--color-accent)]">{formatAgorot(plan.payableAgorot)}</dd>
+      <a class={TILE_LINK} href={sellersHref('payable')}>{plan.payableSellers} מוכרים</a>
+    </div>
+    {/* Danger, not muted: this is money we owe, that we are holding, and that no transfer is going
+        to move — for a reason a seller can fix in a minute once they know. */}
+    <div class={TILE}>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">תקוע — אין פרטי בנק</dt>
+      <dd class={`m-0 text-[1.15rem] font-bold tabular-nums ${plan.noBankAgorot > 0 ? '[color:var(--color-danger)]' : '[color:var(--color-muted)]'}`}>{formatAgorot(plan.noBankAgorot)}</dd>
+      <a class={TILE_LINK} href={sellersHref('no_bank')}>{plan.noBankSellers} מוכרים</a>
+    </div>
+    <div class={TILE}>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">מתחת למינימום · מתגלגל</dt>
+      <dd class="m-0 text-[1.15rem] font-bold tabular-nums">{formatAgorot(plan.belowMinimumAgorot)}</dd>
+      <a class={TILE_LINK} href={sellersHref('below_minimum')}>{plan.belowMinimumSellers} מוכרים</a>
+    </div>
+  </dl>
+
+  {plan.payableSellers + plan.noBankSellers + plan.belowMinimumSellers === 0 && (
+    <p class="muted m-0 mt-3 text-[0.8rem]">אין כרגע יתרה משוחררת לאף מוכר.</p>
+  )}
+  {/* No table under this, deliberately — see the header. The names are on the seller cards, and
+      each tile's count is the link to them. */}
+</div>

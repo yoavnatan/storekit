@@ -23,7 +23,9 @@ export function buildAdminUrl(panel: string, params: Record<string, string | und
 export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   overview: [],
   data: ['datapreset'],
-  sellers: ['sq', 'ssort', 'sblocked', 'spage', 'snew'],
+  // `spayout` arrived when the payouts tab's per-seller table was folded into these cards
+  // (סשן א׳ §3): the tiles there are counts, and this is what turns one back into the names.
+  sellers: ['sq', 'ssort', 'sblocked', 'spayout', 'spage', 'snew'],
   // `stblocked` is the retired yes/no form of `ststate` — still parsed (parseStoreQuery) so an
   // older bookmark keeps filtering to blocked stores, so it still has to be owned here or it
   // would be stripped out of the URL before the parser ever saw it.
@@ -34,6 +36,10 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],
   alerts: ['alsort', 'alsource', 'alsev', 'alref', 'alq', 'alstore', 'alfrom', 'alto', 'alpage', 'alnew'],
+  // No params of its own since סשן א׳ §3 — the per-seller table it paged now lives on the seller
+  // cards. The key stays so `stripForeignTabParams` still knows this tab exists; an empty list is
+  // the honest description, not an omission.
+  payouts: [],
   moneylog: ['mtype', 'mlpage', 'mq', 'mfrom', 'mto', 'mev'],
 };
 

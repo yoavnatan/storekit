@@ -5,7 +5,7 @@ import { getAllStores } from '../../../lib/stores.js';
 import { getPlatformSales } from '../../../lib/order-reporting.js';
 import { pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../../lib/platform-performance.js';
-import { getStoreViewStats } from '../../../lib/store-pageviews.js';
+import { getPlatformViewStats, getStoreViewStats } from '../../../lib/store-pageviews.js';
 import { isDayISO } from '../../../lib/business-day.js';
 import { buildPlatformRevenue } from '../../../lib/platform-revenue.js';
 import { getCampaignsInRange } from '../../../lib/ad-campaigns.js';
@@ -51,19 +51,27 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // ?products=all → uncap topProducts (the revenue-breakdown donut wants the
   // full per-period composition, not just the top-5 leaderboard).
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
+  // ?productQ= → the leaderboard's own name search. Deliberately separate from ?storeQ: it narrows
+  // the product LIST and nothing else — every KPI, chart and store row on the page still describes
+  // the whole platform, and each shown product still reports its share of the whole period.
+  const productQ = url.searchParams.get('productQ') ?? '';
 
   const sellers = await getAllSellers();
   const stores = buildPlatformStoreInputs(await getAllStores(), sellers);
   // Traffic AND sales in one query each, for every store at once. Both used to be per-store passes
   // inside the aggregation loop — views as a file read, sales as a filter over every order on the
   // platform (DB_MIGRATION_PLAN.md §3/§5).
-  const [views, sales, campaigns, tiers] = await Promise.all([
+  // `platformViews` is the same traffic question asked WITHOUT the per-store grouping — the only
+  // way to count a shopper who opened four stores once (store-pageviews.ts#getPlatformViewStats).
+  // In the same Promise.all, so it costs a query and not a round trip.
+  const [views, platformViews, sales, campaigns, tiers] = await Promise.all([
     getStoreViewStats(stores.map((s) => s.id), from, to, granularity),
-    getPlatformSales(stores.map((s) => s.slug), from, to, granularity, topLimit),
+    getPlatformViewStats(stores.map((s) => s.id), from, to, granularity),
+    getPlatformSales(stores.map((s) => s.slug), from, to, granularity, topLimit, productQ),
     getCampaignsInRange(from, to),
     getSubscriptionAccrual(from, to),
   ]);
-  const result = buildPlatformPerformance(sales, stores, views, from, to, granularity);
+  const result = buildPlatformPerformance(sales, stores, views, from, to, granularity, platformViews);
   const page = selectStoreRows(result.stores, parseStoreRowsQuery(url.searchParams));
   const revenue = buildPlatformRevenue(
     result.summary.platformCommissionAgorot,
@@ -89,5 +97,8 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     storeMatched: page.matched,
     storePage: page.page,
     storeTotalPages: page.totalPages,
+    // How many products the name search matched before the top-N cap — the count line under the
+    // leaderboard heading. Additive, like everything else added here.
+    productsMatched: sales.productsMatched,
   });
 }

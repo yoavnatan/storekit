@@ -19,6 +19,16 @@
  * it undoes the recovery it was meant to survive.
  *
  * Scanned rather than listed, so the widget written next month is covered the day it exists.
+ *
+ * **The rule has a READER half, and it cost a fifth instance to notice (2026-08-10).** Everything
+ * above is about a widget that WRITES a field. `scripts/form-validity.ts` writes none — it paints
+ * state FROM a field's value (the invalid line and its message) — and it broke the same way: the
+ * seller emptied a required field, saved, saw the message, pressed "בטל שינויים", and the value
+ * came back with the message still under it. Anything that DERIVES what is on screen from a
+ * field's value owes the same listener, not only anything that sets one.
+ * That half is held behaviourally rather than by this scan — `tests/form-validity-repaint.test.ts`
+ * drives the real listeners — because 'reads a field' has no grep-able shape the way
+ * `announceValueChange` does.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';

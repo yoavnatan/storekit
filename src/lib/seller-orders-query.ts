@@ -1,6 +1,7 @@
 import type { Order } from './orders.js';
 import { SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
 import { decodeList } from './admin-nav.js';
+import { orderPayoutLine, payoutFilterValue, PAYOUT_FILTER_VALUES } from './order-payout-line.js';
 import { storeSliceTotalAgorot } from './order-totals.js';
 
 // Server-side counterpart of the seller dashboard's Orders tab toolbar
@@ -18,9 +19,38 @@ export type SellerOrderSortDir = 'asc' | 'desc';
 // by order-age.ts) sit above fresh new ones. Then shipped (out of the seller's
 // hands), then delivered (done — only present if the user explicitly filtered
 // them in), then cancelled. Mirrors the order-age escalation model.
-const URGENCY_GROUP: Record<string, number> = {
-  pending: 0, processing: 0, ready: 0, shipped: 1, delivered: 2, cancelled: 3,
-};
+/**
+ * The four urgency groups, in order, DERIVED from the status table rather than listed here —
+ * `tests/money-guards.test.ts` refuses a second copy of those statuses, and it is right to: a
+ * status added to `order-status-rules.ts` has to arrive in this sort on the same commit, not on
+ * the day someone notices it sorting last.
+ *
+ * The ranking is a reading of three columns, and each says whose turn it is:
+ *   0 — `sellerOwesAction`: the only rows the seller can act on. Top of the list.
+ *   1 — the courier has it (`buyerAwaiting`, nothing owed by the seller).
+ *   2 — done and not terminal: delivered.
+ *   3 — `terminal`: cancelled, nothing left to happen.
+ *
+ * It is the shape BOTH consumers need: the JS sort reads a rank out of the map below, and the SQL
+ * sort (`orders.ts#getSellerOrdersPage`) is handed the two flat arrays as query parameters.
+ */
+export const URGENCY_GROUPS: readonly (readonly string[])[] = (() => {
+  const statuses = Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[];
+  const rank = (s: ShippingStatus): number => {
+    const rule = SHIPPING_STATUS_RULES[s];
+    if (rule.terminal) return 3;
+    if (rule.sellerOwesAction) return 0;
+    return rule.buyerAwaiting ? 1 : 2;
+  };
+  return [0, 1, 2, 3].map((r) => statuses.filter((s) => rank(s) === r));
+})();
+/** `URGENCY_GROUPS` flattened into the two parallel arrays a query can take: status → its rank. */
+export const URGENCY_STATUSES: readonly string[] = URGENCY_GROUPS.flat();
+export const URGENCY_RANKS: readonly number[] = URGENCY_GROUPS.flatMap((g, i) => g.map(() => i));
+
+const URGENCY_GROUP: Record<string, number> = Object.fromEntries(
+  URGENCY_GROUPS.flatMap((group, rank) => group.map((status) => [status, rank])),
+);
 /** The statuses the seller's Orders filter menu can express, in workflow order — the one
  *  source both this module and the client toolbar (scripts/dashboard/orders.ts) read.
  *  'ready' (ממתין לאיסוף) is deliberately absent: no seller can set it today, and it returns
@@ -42,9 +72,27 @@ export interface SellerOrderQuery {
   sortCol: SellerOrderSortCol;
   sortDir: SellerOrderSortDir;
   shippingStatus: string[];
+  /**
+   * Payout status — a second, INDEPENDENT filter column, empty meaning "no opinion".
+   *
+   * It exists because the payments tab needed to send the seller to "the orders holding my money
+   * up", and the first attempt did that by naming shipping statuses in the link. The owner asked
+   * for the obvious thing instead — *"עוד רובריקה בסינון לפי סטטוס תשלום"* (2026-08-11) — and it is
+   * also the more correct one: a shipping list is a RESTATEMENT of the hold rule, so it would have
+   * gone on filtering the old way the day a status's payout behaviour changed. This filters on the
+   * rule's own answer (`order-payout-line.ts#payoutFilterValue`).
+   *
+   * Deliberately NOT folded into `shippingStatus`: they answer different questions and a seller can
+   * reasonably want both at once ("shipped orders whose money is still in the return window").
+   */
+  payoutStatus: string[];
 }
 
 const VALID_SORT_COLS = new Set<string>(['date', 'amount', 'urgency']);
+
+/** Matches the money journal's ceiling — one number, one reason, in two places that both take a
+ *  free-text term off a URL. */
+const MAX_SEARCH_LENGTH = 200;
 
 export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
   const [rawCol, rawDir] = (sp.get('osort') ?? 'date:desc').split(':');
@@ -55,11 +103,31 @@ export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
   // explicit empty value (?ostatus=) means "cleared" — show every status.
   const hasStatusParam = sp.has('ostatus');
   return {
-    q: (sp.get('oq') ?? '').trim(),
+    // Capped for the same reason the money journal's box is (admin-moneylog-filter.ts): the term is
+    // request-supplied and now travels into a query, and a query string can carry ~16KB. No search
+    // anyone types is longer, so the cap costs nothing and removes the amplification.
+    q: (sp.get('oq') ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     sortCol,
     sortDir,
     shippingStatus: hasStatusParam ? decodeList(sp.get('ostatus') ?? '') : ORDER_ACTIVE_STATUSES,
+    // No default: absent means "every payout status", which is what a seller who has never touched
+    // this column expects. Whitelisted rather than echoed — an unrecognised value would otherwise
+    // match nothing and read as "you have no orders".
+    payoutStatus: decodeList(sp.get('opay') ?? '')
+      .filter((v) => (PAYOUT_FILTER_VALUES as readonly string[]).includes(v)),
   };
+}
+
+/** This order's payout status, as the filter sees it. One place, so the SSR list and the client
+ *  toolbar cannot disagree about which bucket a row is in. */
+export function orderPayoutFilterValue(o: Order, storeSlug: string): string {
+  return payoutFilterValue(orderPayoutLine({
+    paymentStatus: o.paymentStatus,
+    shippingStatus: o.shippingStatus,
+    paidAt: o.paidAt ?? null,
+    deliveredAt: o.deliveredAt ?? null,
+    deliveryMethod: o.storeSubtotals[storeSlug]?.deliveryMethod ?? null,
+  }));
 }
 
 function orderAmount(o: Order, storeSlug: string): number {
@@ -77,10 +145,15 @@ function orderSearchHaystack(o: Order): string {
 // multi-store) order.
 export function filterAndSortSellerOrders(orders: Order[], storeSlug: string, query: SellerOrderQuery): Order[] {
   const statusSet = query.shippingStatus.length ? new Set(query.shippingStatus) : null;
+  const paySet = query.payoutStatus.length ? new Set(query.payoutStatus) : null;
   const q = query.q.toLowerCase();
 
   const filtered = orders.filter((o) => {
     if (statusSet && !statusSet.has(o.shippingStatus)) return false;
+    // Computed per row rather than pre-indexed: it is a pure function of four fields already on the
+    // order, this list is one page of one store, and a second copy of the hold rule keyed by id is
+    // the thing this column exists to avoid.
+    if (paySet && !paySet.has(orderPayoutFilterValue(o, storeSlug))) return false;
     if (q && !orderSearchHaystack(o).includes(q)) return false;
     return true;
   });

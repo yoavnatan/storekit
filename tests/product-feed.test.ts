@@ -220,3 +220,117 @@ describe('feed values Google/Meta reject outright', () => {
     expect(f.description).toBe('תיאור');
   });
 });
+
+/**
+ * `sale_price_effective_date` — the window a `sale_price` is the price FOR.
+ *
+ * Why the feed carries it at all is in `product-feed.ts#salePriceEffectiveDate`: the feed is
+ * FETCHED on Google's schedule, so without an end date a sale that expired at midnight keeps being
+ * advertised until the next crawl, against a landing page that has already stopped honouring it.
+ * That is a feed/landing price mismatch, which is the family that suspends accounts.
+ *
+ * Format checked against the attribute's own Merchant Center help page, 2026-08-10: two ISO-8601
+ * instants separated by `/`, each `YYYY-MM-DDThh:mm±hhmm`.
+ */
+describe('sale_price_effective_date', () => {
+  const AUG = Date.parse('2026-08-10T09:00:00.000Z'); // a summer day — Israel on UTC+3
+  const JAN = Date.parse('2026-01-15T09:00:00.000Z'); // a winter day — Israel on UTC+2
+  // A feed ROW needs a usable image and a price — without one the product is excluded entirely
+  // (buildFeedItems), and the XML assertions below would pass against an empty document.
+  const withImage = (over: Partial<StoreProduct> = {}) => product({ images: ['https://cdn.example/a.jpg'], ...over });
+  const feedCtx = { storeName: 'x', baseUrl: 'https://shop.example', productLink: (s: string) => `https://shop.example/s/${s}` };
+  const channel = { title: 'f', link: 'https://shop.example', description: 'f', currency: 'ILS' };
+
+  it('spans the whole schedule, at the offset Israel was actually on', () => {
+    const f = buildProductFeedAttributes(
+      product({ price: 200, discount: { type: 'percent', value: 25, startsAt: '2026-08-01', endsAt: '2026-08-14' } }),
+      { storeName: 'x', nowMs: AUG },
+    );
+    expect(f.salePrice).toBe(150);
+    expect(f.salePriceEffectiveDate).toBe('2026-08-01T00:00+0300/2026-08-14T23:59+0300');
+  });
+
+  it('uses winter time for a winter sale — the offset is per day, not a constant', () => {
+    const f = buildProductFeedAttributes(
+      product({ price: 200, discount: { type: 'percent', value: 25, startsAt: '2026-01-10', endsAt: '2026-01-20' } }),
+      { storeName: 'x', nowMs: JAN },
+    );
+    expect(f.salePriceEffectiveDate).toBe('2026-01-10T00:00+0200/2026-01-20T23:59+0200');
+  });
+
+  it('ends at 23:59 on the LAST day, because endsAt is inclusive', () => {
+    // The same off-by-one `priceValidUntil` exists to avoid, in hours rather than days: closing the
+    // window at 00:00 on endsAt would retire the sale a full day early, every time.
+    const f = buildProductFeedAttributes(
+      product({ price: 100, discount: { type: 'amount', value: 10, endsAt: '2026-08-14' } }),
+      { storeName: 'x', nowMs: AUG },
+    );
+    expect(f.salePriceEffectiveDate?.split('/')[1]).toBe('2026-08-14T23:59+0300');
+  });
+
+  it('opens at today when the discount has no start date', () => {
+    const f = buildProductFeedAttributes(
+      product({ price: 100, discount: { type: 'amount', value: 10, endsAt: '2026-08-14' } }),
+      { storeName: 'x', nowMs: AUG },
+    );
+    expect(f.salePriceEffectiveDate?.split('/')[0]).toBe('2026-08-10T00:00+0300');
+  });
+
+  it('is absent for an open-ended markdown — there is no window to state', () => {
+    const f = buildProductFeedAttributes(
+      product({ price: 200, discount: { type: 'percent', value: 25 } }),
+      { storeName: 'x', nowMs: AUG },
+    );
+    expect(f.salePrice).toBe(150);
+    expect(f.salePriceEffectiveDate).toBeUndefined();
+  });
+
+  it('is absent when nothing is discounted', () => {
+    const f = buildProductFeedAttributes(product({ price: 200 }), { storeName: 'x', nowMs: AUG });
+    expect(f.salePrice).toBeUndefined();
+    expect(f.salePriceEffectiveDate).toBeUndefined();
+  });
+
+  it("names the WINNING lever's dates, not whichever schedule happens to exist", () => {
+    // The product's own 5% loses to the store-wide 40%. Publishing the loser's window would date a
+    // price nobody is being charged — the drift `activeDiscountWindow` exists to make impossible.
+    const f = buildProductFeedAttributes(
+      product({ price: 200, discount: { type: 'percent', value: 5, startsAt: '2026-08-01', endsAt: '2026-08-31' } }),
+      {
+        storeName: 'x',
+        nowMs: AUG,
+        sale: { active: true, title: 'סוף עונה', percent: 40, startsAt: '2026-08-05', endsAt: '2026-08-12' },
+      },
+    );
+    expect(f.salePrice).toBe(120);
+    expect(f.salePriceEffectiveDate).toBe('2026-08-05T00:00+0300/2026-08-12T23:59+0300');
+  });
+
+  it('is not emitted before the sale opens — an unopened schedule has no sale price to date', () => {
+    // Also pins that `nowMs` reaches the PRICE and not only the recency label: read against the
+    // wall clock this row would go on sale on its own, months after the feed was built.
+    const f = buildProductFeedAttributes(
+      product({ price: 200, discount: { type: 'percent', value: 25, startsAt: '2026-09-01', endsAt: '2026-09-30' } }),
+      { storeName: 'x', nowMs: AUG },
+    );
+    expect(f.salePrice).toBeUndefined();
+    expect(f.salePriceEffectiveDate).toBeUndefined();
+  });
+
+  it('reaches the XML, and never appears without the sale_price it dates', () => {
+    const rows = buildFeedItems(
+      withImage({ price: 200, discount: { type: 'percent', value: 25, startsAt: '2026-08-01', endsAt: '2026-08-14' } }),
+      { ...feedCtx, nowMs: AUG },
+    );
+    expect(rows).toHaveLength(1);
+    expect(toMerchantXml(rows, channel)).toContain(
+      '<g:sale_price_effective_date>2026-08-01T00:00+0300/2026-08-14T23:59+0300</g:sale_price_effective_date>',
+    );
+
+    const plainRows = buildFeedItems(withImage({ price: 200 }), { ...feedCtx, nowMs: AUG });
+    expect(plainRows).toHaveLength(1);
+    const plainXml = toMerchantXml(plainRows, channel);
+    expect(plainXml).not.toContain('sale_price_effective_date');
+    expect(plainXml).not.toContain('<g:sale_price>');
+  });
+});

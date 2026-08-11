@@ -15,13 +15,25 @@
  * about once a year. This runs by hand, its output is committed, and nothing at
  * runtime depends on it.
  *
- * The geometry is NOT re-typed here. The `D` path and every spacing value are
- * read out of `src/components/BrandLogo.astro` at generation time, so a change
- * to the component can never leave a stale logo in people's inboxes.
+ * The geometry is NOT re-typed here. Every path and every spacing value comes
+ * from `src/lib/brand-lockup.ts` — the same module the component and the favicon
+ * read — so a change to the lockup can never leave a stale logo in people's
+ * inboxes. Node imports that `.ts` directly (type stripping, ≥22.18); it holds
+ * only `export const`s, so there is nothing to compile.
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { chromium } from 'playwright';
+import {
+  MARK_PATH,
+  LETTERS_PATH,
+  STROKE_WIDTH,
+  VIEW_BOX,
+  MARK_VIEW_BOX,
+  HEIGHT_EM,
+  GRADIENT,
+  TAGLINE,
+} from '../src/lib/brand-lockup.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const OUT = resolve(ROOT, 'public');
@@ -30,82 +42,73 @@ const FONTS = resolve(ROOT, 'node_modules/@fontsource');
 /** The site's brand gradient — the one `.btn` wears. Kept in one place here too. */
 const BRAND_A = '#2a3c40';
 const BRAND_B = '#3a5260';
-/** The D's slice of that ramp: it covers the first 16.7% of the wordmark. */
-const D_SLICE_END = '#2d4045';
+/** The mark's own box — its viewBox is cropped to the stroked ink, so these two
+ *  ARE the letter, and the tile below re-centres itself when it is redrawn. */
+const [MARK_X, MARK_Y, MARK_W, MARK_H] = MARK_VIEW_BOX.split(' ').map(Number);
 
 const b64 = (p) => readFileSync(p).toString('base64');
 
-/** Pull the drawn D straight out of the component, so the two cannot drift. */
-function readMarkPath() {
-  const src = readFileSync(resolve(ROOT, 'src/components/BrandLogo.astro'), 'utf8');
-  const d = src.match(/\n\s*d="([^"]+)"/)?.[1];
-  if (!d) throw new Error('BrandLogo.astro: could not find the D path — did the markup change?');
-  return d.replace(/\s+/g, ' ').trim();
-}
-
 /**
- * One lockup, as HTML. Every number here is the same one the component uses:
- * Heebo 800 tracked −0.04em (the density IS the mark — see BrandLogo.astro),
- * −0.0156em between the D and the e, and a tagline at 0.3886em carrying the
- * negative inline-start margin that makes the two lines flush INK to ink rather
- * than box to box.
+ * One lockup, as HTML.
  *
- * Those five numbers are typed twice, here and in the component, and that is the
- * one thing this file cannot check for you: the D's PATH is read out of the
- * component so it can't drift, but the typography around it isn't. Change either
- * side and re-run `npm run brand:assets` — a stale mail header is invisible from
- * inside the site.
+ * NOTHING GEOMETRIC IS TYPED HERE ANY MORE (2026-08-10). This function used to
+ * re-type five numbers the component also carried — the tracking, the D→e
+ * margin, the tagline's size and margin — and its own comment admitted that was
+ * the one thing it could not check for you. It now draws the same paths from
+ * `src/lib/brand-lockup.ts` that the component draws, so a stale mail header is
+ * no longer possible: there is one drawing, and this only decides how big and on
+ * what ground. The only face still needed is Heebo, for the Hebrew line.
  */
-function page({ path, size, tone, tagline, background }) {
-  const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-800-normal.woff2`);
+function page({ size, tone, tagline, background }) {
   const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-500-normal.woff2`);
-  const ink = tone === 'white' ? '#fff' : `url(#g)`;
-  const textFill =
-    tone === 'white'
-      ? 'color:#fff'
-      : `background-image:linear-gradient(135deg,${BRAND_A},${BRAND_B});-webkit-background-clip:text;background-clip:text;color:transparent`;
+  const paint = tone === 'white' ? '#fff' : 'url(#g)';
   return `<!doctype html><meta charset="utf-8"><style>
-    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2');font-weight:800;}
     @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:500;}
     html,body{margin:0;height:100%}
     body{background:${background};display:flex;align-items:center;justify-content:center}
     .logo{display:inline-flex;flex-direction:column;align-items:flex-start;gap:.05em;font-size:${size}px}
-    .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:800;
-          line-height:1;letter-spacing:-.04em;${textFill}}
-    .word svg{height:.75em;width:auto;flex:none;display:block;margin-inline-end:-.0163em}
-    .tag{font-family:'Heebo';font-weight:500;font-size:.3886em;line-height:1;direction:rtl;
-         margin-inline-start:-.0532em;color:${tone === 'white' ? '#fff' : BRAND_A}}
+    .logo svg{height:${HEIGHT_EM}em;width:auto;flex:none;display:block;max-width:none}
+    .tag{font-family:'Heebo';font-weight:500;font-size:${TAGLINE.sizeEm}em;line-height:1;direction:rtl;
+         margin-inline-start:${TAGLINE.marginEm}em;color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">
-    <div class="word">
-      <svg viewBox="10.75 8 21.626 28"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="${BRAND_A}"/><stop offset="1" stop-color="${D_SLICE_END}"/>
-      </linearGradient></defs><path fill="${ink}" fill-rule="evenodd" d="${path}"/></svg><span>ezabin</span>
-    </div>
+    <svg viewBox="${VIEW_BOX}">
+      <defs><linearGradient id="g" gradientUnits="userSpaceOnUse"
+        x1="${GRADIENT.x1}" y1="${GRADIENT.y1}" x2="${GRADIENT.x2}" y2="${GRADIENT.y2}">
+        <stop offset="0" stop-color="${GRADIENT.from}"/><stop offset="1" stop-color="${GRADIENT.to}"/>
+      </linearGradient></defs>
+      <g fill="${paint}" stroke="${paint}" stroke-width="${STROKE_WIDTH}" stroke-linejoin="miter" paint-order="stroke">
+        <path fill-rule="evenodd" d="${MARK_PATH}"/><path d="${LETTERS_PATH}"/>
+      </g>
+    </svg>
     ${tagline ? '<div class="tag">מתחם חנויות דיגיטלי</div>' : ''}
   </div>`;
 }
 
 /** The favicon tile, at the sizes iOS and Android ask for.
  *
- *  The letter is nudged to centre it, and that is not a tweak: the D's ink runs
- *  11.25 → 31.876 inside a 44-wide tile, so it sits off-centre by its own width
- *  change. It was exactly centred only because the 700 drawing happened to be
- *  21.5 wide. Off by even 1% of the tile is visible on a home screen, where the
- *  icon is the only thing in its box. */
-function tilePage({ path, px }) {
-  const centreShift = ((44 - 20.626) / 2 - 11.25).toFixed(3);
+ *  The letter is centred by arithmetic, not by eye, and that is not a tweak: it
+ *  was exactly centred once only because the 700 Heebo drawing happened to be
+ *  21.5 wide in a 44 tile, and a redraw silently broke it. Off by even 1% of the
+ *  tile is visible on a home screen, where the icon is the only thing in its
+ *  box. Both terms come from the module, so a new D re-centres itself. */
+function tilePage({ px }) {
+  const TILE = 44;
+  const scale = (TILE * 0.52) / MARK_H; // the mark occupies 52% of the tile's height
+  const w = MARK_W * scale;
+  const h = MARK_H * scale;
   return `<!doctype html><meta charset="utf-8"><style>html,body{margin:0}
     svg{display:block}</style>
-  <svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 44 44">
+  <svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${TILE} ${TILE}">
     <defs><linearGradient id="t" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="${BRAND_A}"/><stop offset="1" stop-color="${BRAND_B}"/></linearGradient></defs>
-    <rect width="44" height="44" fill="url(#t)"/>
-    <path fill="#fff" fill-rule="evenodd" transform="translate(${centreShift} 0)" d="${path}"/>
+    <rect width="${TILE}" height="${TILE}" fill="url(#t)"/>
+    <g transform="translate(${((TILE - w) / 2 - MARK_X * scale).toFixed(3)} ${((TILE - h) / 2 - MARK_Y * scale).toFixed(3)}) scale(${scale.toFixed(5)})">
+      <path fill="#fff" stroke="#fff" stroke-width="${STROKE_WIDTH}" stroke-linejoin="miter"
+            paint-order="stroke" fill-rule="evenodd" d="${MARK_PATH}"/>
+    </g>
   </svg>`;
 }
-
-const path = readMarkPath();
 const browser = await chromium.launch();
 
 async function shot(html, { width, height, scale = 1, file, transparent = false, quality }) {
@@ -113,14 +116,14 @@ async function shot(html, { width, height, scale = 1, file, transparent = false,
   await p.setContent(html);
   // Passed as a STRING on purpose: the expression runs in the page, not in Node,
   // and a callback here would put `document` in this file's (node-only) scope.
-  // Waiting for it is not optional — screenshotting before the faces resolve
-  // rasterises a fallback serif, which is exactly the mistake that produced a
-  // wrong measurement earlier in this task.
-  // `fonts.status` alone is not enough — it reads "loaded" before anything has
-  // been asked for. Ask about the two faces by name instead.
-  await p.waitForFunction(
-    'document.fonts.check("800 34px Heebo") && document.fonts.check("500 12px Heebo", "ק")',
-  );
+  //
+  // Only the Hebrew line is text now — the wordmark is paths and cannot be
+  // waiting on anything — but this wait is still not optional: screenshotting
+  // before the face resolves rasterises a fallback, which is exactly the mistake
+  // that produced a wrong measurement in August. `fonts.status` alone is not
+  // enough; it reads "loaded" before anything has been asked for, so ask about
+  // the face by name.
+  await p.waitForFunction('document.fonts.check("500 12px Heebo", "ק")');
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(
     file,
@@ -141,7 +144,7 @@ console.log('brand assets:');
 // ON A SOLID PLATE the exact colour of the mail's header bar — not transparent.
 // Alpha is the one thing old Outlook still gets wrong, and an opaque plate whose
 // colour matches the bar is invisible either way.
-await shot(page({ path, size: 34, tone: 'white', tagline: true, background: BRAND_A }),
+await shot(page({ size: 34, tone: 'white', tagline: true, background: BRAND_A }),
   { width: 260, height: 74, scale: 2, file: `${OUT}/logo-email.png` });
 
 // Share card. 1200×630 is what Facebook/WhatsApp/X crop to; the lockup sits on
@@ -152,12 +155,12 @@ await shot(page({ path, size: 34, tone: 'white', tagline: true, background: BRAN
 // case for PNG — it dithers into a quarter of a megabyte. At q92 this is a fifth
 // of that with no visible artefact on flat colour and white type.
 await shot(page({
-    path, size: 96, tone: 'white', tagline: true,
+    size: 96, tone: 'white', tagline: true,
     background: `linear-gradient(135deg,${BRAND_A},${BRAND_B})`,
   }), { width: 1200, height: 630, quality: 92, file: `${OUT}/og-default.jpg` });
 
 // Home-screen icon. iOS ignores SVG favicons and falls back to a screenshot
 // without this file.
-await shot(tilePage({ path, px: 180 }), { width: 180, height: 180, file: `${OUT}/apple-touch-icon.png` });
+await shot(tilePage({ px: 180 }), { width: 180, height: 180, file: `${OUT}/apple-touch-icon.png` });
 
 await browser.close();

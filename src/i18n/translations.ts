@@ -32,6 +32,9 @@ export const translations = {
       searchSectionStores: 'חנויות',
       searchSectionProducts: 'מוצרים',
       searchEmpty: 'לא נמצאו תוצאות',
+      /** The search REQUEST failed. Never `searchEmpty` — that one is a statement about the
+       *  catalogue, and a request that did not arrive is not entitled to make it. */
+      searchFailed: 'החיפוש אינו זמין כרגע. נסו שוב.',
       allStores: 'כל החנויות',
       viewAllStores: 'כל החנויות',
       shelfLiked: 'חנויות ששמרת',
@@ -226,6 +229,11 @@ export const translations = {
       filterSearchLabel: 'חיפוש בקטגוריה זו',
       searchResultsFor: 'תוצאות חיפוש ל"{query}"',
       noResultsFor: 'לא נמצאו תוצאות ל"{query}"',
+      /** The request for a page of products failed. Says "we could not load", never "there is
+       *  nothing" — telling a shopper a store is empty because the server did not answer is the
+       *  bug this string exists to end (see fetchProductsPage in [storeSlug]/index.astro). */
+      loadFailedTitle: 'לא הצלחנו לטעון את המוצרים',
+      loadFailedBody: 'בדקו את החיבור ונסו שוב.',
       clearSearchLabel: 'נקה חיפוש',
       closeSearchLabel: 'סגור חיפוש',
       saveStore: 'שמור חנות',
@@ -281,6 +289,28 @@ export const translations = {
       confirm: 'אשר',
       cancel: 'ביטול',
       working: 'מבצע',
+    },
+    // The site's replacement for the browser's native validation bubble — lib/field-validity.ts.
+    // Deliberately short and without an exclamation mark: the field's own line has already said
+    // WHICH one, so this only has to say what is missing.
+    // The site-wide "that didn't go through" pair — lib/toast.ts#showActionFailedToast. One
+    // wording for every retryable action that failed, because six hand-written Hebrew sentences
+    // for one event is what the 2026-08-10 audit actually found. Never used for money.
+    common: {
+      actionFailedTitle: 'הפעולה לא בוצעה',
+      actionFailedBody: 'משהו השתבש בדרך לשרת. נסו שוב.',
+    },
+    formErrors: {
+      required: 'יש למלא שדה זה',
+      email: 'כתובת אימייל לא תקינה',
+      url: 'כתובת אתר לא תקינה',
+      number: 'יש להזין מספר',
+      tooShort: 'לפחות {n} תווים',
+      tooLong: 'עד {n} תווים',
+      min: 'לא פחות מ-{n}',
+      max: 'לא יותר מ-{n}',
+      pattern: 'הערך אינו בפורמט הנדרש',
+      invalid: 'הערך אינו תקין',
     },
     auth: {
       sellerLogin: 'כניסה',
@@ -507,6 +537,9 @@ export const translations = {
       bulkDeleteTitle: 'מחיקת מוצרים',
       bulkDeleteMsg: 'המוצרים הנבחרים יימחקו לצמיתות.',
       bulkDeleted: 'המוצרים נמחקו.',
+      // Names the NUMBER, because "חלק נכשלו" leaves the seller counting rows by hand. The ones
+      // that failed stay selected, so pressing delete again retries exactly them.
+      bulkDeleteFailed: '{n} מוצרים לא נמחקו. הם עדיין מסומנים — נסו שוב.',
       csvImportExport: 'ייבוא/ייצוא CSV',
       csvExport: 'ייצוא קטלוג (CSV)',
       csvTemplate: 'הורד תבנית לדוגמה',
@@ -666,7 +699,178 @@ export const translations = {
       tabProducts: 'מוצרים',
       tabOrders: 'הזמנות',
       tabPerformance: 'ביצועים',
+      tabReports: 'דוחות',
+      // ── Reports tab ──────────────────────────────────────────────────────────────────
+      // The wording separates two things a seller conflates: ביצועים is "how am I doing",
+      // דוחות is "give me the rows". Every description below names the person the report is
+      // FOR, because that is what tells him which of the three he wants.
+      repTitle: 'דוחות',
+      repSubtitle: 'טבלה מסודרת לכל שאלה, וייצוא לאקסל בלחיצה.',
+      repPickLabel: 'בחירת דוח',
+      repPeriodLabel: 'תקופה:',
+      repExportCsv: 'ייצוא לאקסל',
+      repLoading: 'טוען דוח…',
+      repEmpty: 'אין נתונים בתקופה שנבחרה.',
+      // A refusal the seller can act on, so it gets its own sentence rather than the generic one:
+      // the endpoint caps a report window at two years (MAX_DAYS in /api/seller/reports).
+      repRangeTooLongTitle: 'הטווח ארוך מדי',
+      repRangeTooLongBody: 'אפשר להפיק דוח לטווח של עד שנתיים. בחרו טווח קצר יותר.',
+      repLoadFailedTitle: 'לא הצלחנו לטעון את הדוח',
+      repLoadFailedBody: 'בדקו את החיבור ונסו שוב.',
+
+      repSalesTitle: 'מכירות לפי הזמנה',
+      repSalesDesc: 'שורה לכל הזמנה, עם עמלה ונטו — הדוח שרואה החשבון מבקש.',
+      repProductsTitle: 'מוצרים',
+      repProductsDesc: 'כמה נמכר מכל מוצר ומה נשאר במלאי.',
+      repStockTitle: 'מלאי',
+      repStockDesc: 'גיליון לספירת מלאי ולהזמנה מהספק. תמונת מצב להיום.',
+
+      repColDate: 'תאריך',
+      repColCustomer: 'לקוח',
+      repColItems: 'פריטים',
+      // ── The money columns, and why none of them says "נטו" ──────────────────────────────
+      // They used to read ברוטו · הנחה · נטו · עמלה · לתשלום לך, and the owner read that row and
+      // asked what the difference between the last two was — which is the right question, because
+      // in Israeli business Hebrew נטו is what is left AFTER deductions, i.e. the last column.
+      // The word had leaked out of the code, where `netAgorot` legitimately means "net of the
+      // discount"; a field name is not a column heading.
+      // So the row now spells the arithmetic instead of naming it: 100 · −10 · 90 · −11 · 79.
+      // Nothing is called נטו, because two columns were competing for it.
+      repColGross: 'לפני הנחה',
+      repColDiscount: 'הנחה',
+      repColNet: 'סכום המכירה',
+      repColCommission: 'עמלה',
+      repColPayout: 'לתשלום לך',
+      repColState: 'מצב',
+      repColProduct: 'מוצר',
+      repColSku: 'מק"ט',
+      repColUnits: 'יחידות',
+      repColStock: 'מלאי',
+      repColStockValue: 'שווי מלאי',
+
+      // A cancelled order stays in the table — a month is reconciled against what happened, not
+      // against what earned — so the row has to say why it adds nothing to the totals.
+      repStateCounted: 'נספר',
+      repStateNotCounted: 'לא נספר',
+      repStockOut: 'אזל',
+      repStockLow: 'נמוך',
+      repStockOk: 'תקין',
+
+      repSumOrders: 'הזמנות:',
+      repSumUnits: 'יחידות:',
+      repSumNet: 'מחזור:',
+      repSumCommission: 'עמלה:',
+      repSumPayout: 'לתשלום לך:',
+      repSumProducts: 'מוצרים:',
+      repSumStockValue: 'שווי מלאי:',
+      repSumOut: 'אזלו:',
       tabAdvertising: 'פרסום',
+      tabPayouts: 'תשלומים',
+      // ── Payments tab ─────────────────────────────────────────────────────────────────
+      // The one screen in this dashboard that is NOT about the store in the switcher: a payout is
+      // per registered business, so it covers every store the seller owns. `payAllStores` says so
+      // out loud rather than leaving them to work it out from a number that looks too big.
+      // Every "nothing is lost" line is a promise `terms.astro` also makes, in the same words.
+      payTitle: 'התשלומים שלי',
+      paySubtitle: 'כל הזמנה מקבלת אישור סופי אחרי שחלון ההחזרה של הקונה נסגר, והכסף עובר לחשבון שלכם ב-{day} לכל חודש.',
+      payAllStores: 'כולל את כל החנויות שלך',
+      // The short form, for a tile label rather than a sentence. The two figures a payout cannot be
+      // split by wear it; everything else on the screen is this shop's (owner, 2026-08-11).
+      payAllStoresShort: 'מכל החנויות',
+      // The one line that reconciles the per-store tiles with the transfer that actually leaves.
+      // Only rendered for a multi-store seller — for everyone else the two are the same number.
+      payAccountTotal: 'התשלום שיצא בפועל מאחד את כל החנויות שלך: {amount}.',
+      // "תשלום קרוב" / "שולם בעבר" — the tile names an EVENT on a calendar, not a state of the
+      // money (owner, סשן א׳ §1–2). "מוכן להעברה אליך" described a readiness the seller cannot act
+      // on and made the tile sound like a button; the date is the thing they came to read.
+      payPayableNow: 'תשלום קרוב',
+      payPayableNowHint: 'הסכום שיעבור לחשבון שלך בהעברה הבאה.',
+      payHeld: 'ממתין לאישור סופי',
+      payHeldHint: 'הכסף שלכם, מהזמנות שעוד בתוך חלון ההחזרה של הקונה. עובר אליכם לבד ברגע שהוא נסגר.',
+      payPaidOut: 'שולם בעבר',
+      // The hint answers the question the title raises — "how far back does this count?" (owner,
+      // §2). It is a LIFETIME total: `getPayoutsForSeller` has no date filter and `sumPayouts`
+      // adds every non-failed row, so the figure only ever grows. Saying so is cheaper than
+      // letting a seller assume it resets each year and reconcile against the wrong number.
+      payPaidOutHint: 'סך כל ההעברות שיצאו אליך מאז שפתחתם חנות. הסכום מצטבר ולא מתאפס.',
+      payCarried: 'חוב שגולגל',
+      payCarriedHint: 'סכום שקוזז ולא היה ממה לנכות אותו. יופחת מהתשלום הבא.',
+      payMinNote: 'מתחת ל-{min} היתרה ממתינה לחודש הבא. שום דבר לא יורד.',
+      payBankTitle: 'פרטי בנק ופרטי עסק',
+      payBankHint: 'בלי אלה אין לאן להעביר. הכסף ממשיך להצטבר ומחכה לכם.',
+      payBankCode: 'קוד בנק',
+      payBankBranch: 'סניף',
+      payBankAccount: 'מספר חשבון',
+      payBankHolder: 'שם בעל החשבון',
+      payBankHolderHint: 'כפי שהוא רשום בבנק. שם אחר יגרום להעברה לחזור.',
+      payBusinessId: 'מספר עוסק / ח״פ',
+      payBusinessType: 'סוג העסק',
+      payBusinessNone: 'לא נבחר',
+      payBusinessExempt: 'עוסק פטור',
+      payBusinessLicensed: 'עוסק מורשה',
+      payBusinessCompany: 'חברה בע״מ',
+      payBusinessHint: 'קובע איך נראית החשבונית שאתם מוציאים לקונה.',
+      payDetailsSave: 'שמירת פרטים',
+      payDetailsSaved: 'הפרטים נשמרו',
+      payDetailsFailed: 'לא הצלחנו לשמור. בדקו את החיבור ונסו שוב.',
+      payCurrentBank: 'החשבון שרשום כרגע:',
+      // The held-orders TABLE became a three-line split by reason (owner, סשן א׳ §4 — a second
+      // list of orders one tab away from the Orders tab read as a second place to manage them).
+      // So the heading asks the question the split answers, instead of naming a list.
+      // "תשלומים ממתינים" — the owner asked for "תשלומים ממתינים לטיפולך" (2026-08-11) and the
+      // heading stops one word short of it deliberately: two of the three rows under it need
+      // NOTHING from the seller, and a heading promising otherwise is contradicted by its own
+      // "אין פעולה נדרשת" column. The rows that ARE waiting on them say so, in the action column
+      // and in the one colour on this table.
+      payHeldTitle: 'תשלומים ממתינים',
+      payHeldEmpty: 'אין כרגע כסף שממתין לאישור.',
+      payHeldFootnote: 'ההזמנות עצמן מנוהלות בלשונית ההזמנות — ליד כל הזמנה שם רשום מתי התשלום עליה משתחרר.',
+      // The banner a deep link from here raises on the Orders tab. It names the filter and offers
+      // the way out — a seller who followed a link and cannot tell what narrowed the list, or how
+      // to widen it again, has been dropped somewhere rather than taken there (owner, 2026-08-11).
+      ordersFromUnshipped: 'מוצגות רק הזמנות שעוד לא נשלחו — הן אלה שמעכבות את התשלום.',
+      ordersFromPayment: 'מוצגות רק הזמנות שנשלחו וטרם סומנו כנמסרו.',
+      ordersShowAll: 'הצג את כל ההזמנות',
+      // The Orders tab's payout-status filter column. Each value names the SITUATION rather than
+      // the internal state — a seller looking for "מה תקוע אצלי" should find that sentence in the
+      // menu, not a word like "unshipped".
+      filterColPayout: 'סטטוס תשלום',
+      payFilter_unshipped: 'ממתין לשליחה שלך',
+      payFilter_undelivered: 'נשלח, ממתין לסימון ״נמסר״',
+      payFilter_window: 'בתוך חלון ההחזרה',
+      payFilter_released: 'שוחרר לתשלום',
+      payFilter_none: 'לא ייכלל בתשלום',
+      payPagePrev: 'הקודם',
+      payPageNext: 'הבא',
+      payPageOf: 'עמוד {n} מתוך {total}',
+      payColOrders: 'הזמנות',
+      payColAmount: 'סכום',
+      payColWhy: 'סיבה',
+      payColAction: 'פעולה ממתינה',
+      // Each of these is one SENTENCE, not a heading joined to a number by a dash (owner,
+      // 2026-08-11: "ההזמנה לא סומנה כנמסרה — 30 ימים מיום התשלום, זה לא ברור לי בכלל"). The dash
+      // was doing the work of a verb: it read as two facts side by side, and the reader had to
+      // guess whether the 30 days had passed or were still to come. Every one of them now says
+      // what happens and when, in that order.
+      payWhyDelivery: 'הכסף משתחרר {n} ימים אחרי המסירה — זה חלון ההחזרה של הקונה',
+      payActionNone: 'אין פעולה נדרשת',
+      payWhyPayment: 'לא סומן ״נמסר״, ולכן הכסף משתחרר {n} ימים מיום התשלום במקום',
+      payActionMarkDelivered: 'סימון ״נמסר״ כשהחבילה מגיעה לקונה',
+      payWhyUnshipped: 'הספירה מתחילה רק כשההזמנה נשלחת',
+      payActionShip: 'שליחת הזמנה',
+      payWhyUnknown: 'אנחנו בודקים את ההזמנה',
+      payHistoryTitle: 'היסטוריית תשלומים',
+      payHistoryEmpty: 'עוד לא יצא תשלום.',
+      payColPeriod: 'תקופה',
+      payColStatus: 'מצב',
+      payColSent: 'נשלח',
+      payStatusPending: 'ממתין',
+      payStatusSent: 'נשלח לבנק',
+      payStatusPaid: 'הועבר',
+      payStatusFailed: 'נכשל',
+      payNoBankTitle: 'יש לך כסף שמחכה',
+      payNoBankBody: 'הזינו פרטי בנק כדי שנוכל להעביר אותו. עד אז הוא נשמר ולא הולך לשום מקום.',
+      payNoBankCta: 'למילוי הפרטים',
       tabSettings: 'הגדרות',
       tabPromotions: 'מבצעים',
       storeSaleTitle: 'מבצע רוחבי',
@@ -722,6 +926,7 @@ export const translations = {
       couponsTip: 'הקוד לא מופיע בשום מקום באתר — אתם מפיצים אותו. שדה הקופון בתשלום מוצג רק כשיש לכם קוד פעיל.',
       couponsEmpty: 'אין עדיין קודי קופון.',
       couponAdd: 'קוד חדש',
+      couponsLoadFailed: 'לא הצלחנו לטעון את קודי ההנחה. רעננו את העמוד.',
       couponCode: 'הקוד',
       couponCodePlaceholder: 'למשל SUMMER10',
       couponKind: 'סוג ההנחה',
@@ -838,7 +1043,15 @@ export const translations = {
       perfConversionHint: 'האחוז מתוך המבקרים הייחודיים בחנות שביצעו רכישה',
       perfRevenueChartTitle: 'הכנסות',
       perfVisitorsChartTitle: 'ביקורים',
-      perfTopProducts: 'המוצרים המובילים',
+      // "Leading by WHAT" was the reported gap (סשן ג׳) — the heading names the ranking, the hint
+      // names what the percentage is a share of, and the note says how much of the period is on
+      // screen. Three separate questions, and a tooltip alone answered none of them at a glance.
+      perfTopProducts: 'המוצרים המובילים בהכנסות',
+      perfTopProductsHint: 'מדורג לפי הכנסה בטווח שנבחר. האחוז הוא חלקו של המוצר מכלל מכירות המוצרים בתקופה — לא מתוך החמישה שמוצגים כאן.',
+      perfTopProductsNote: 'מוצגים {shown} מתוך {total} מוצרים שנמכרו בתקופה',
+      perfTopProductsMatched: '{matched} מוצרים תואמים · מדורגים לפי הכנסה',
+      perfTopProductsNoMatch: 'אין מוצר שנמכר בתקופה ושמו מכיל את החיפוש.',
+      perfTopProductSearch: 'חיפוש מוצר',
       perfTopProductsEmpty: 'אין עדיין מכירות בטווח שנבחר.',
       perfNoData: 'אין נתונים להצגה בטווח שנבחר.',
       perfUnitsSold: 'יחידות נמכרו',
@@ -867,13 +1080,15 @@ export const translations = {
       perfProductRevenueChart: 'הכנסה',
       perfProductViewsChart: 'צפיות',
       perfProfitTitle: 'רווחיות',
-      perfProfitHint: 'הרווח הנקי שלך אחרי עמלת הפלטפורמה. העמלה נגבית אוטומטית בעת הסליקה — הסכום הנקי נשלח ישירות לחשבונך.',
+      perfProfitHint: 'הרווח הנקי שלך אחרי עמלת הפלטפורמה. העמלה יורדת במקור מכל הזמנה, והיתרה משולמת לחשבון הבנק שלך בתשלום המרוכז — אחרי שההזמנה נמסרה ותקופת ההמתנה הסתיימה.',
       perfGrossRevenue: 'הכנסות ברוטו',
       perfCommission: 'עמלת פלטפורמה',
       perfNetProfit: 'רווח נטו',
       perfBreakdownTitle: 'הרכב ההכנסות',
       perfBreakdownClose: 'סגור',
       perfBreakdownEmpty: 'אין מכירות בתקופה זו.',
+      // A statement about the REQUEST, never about the store — the two used to share one line.
+      perfBreakdownFailed: 'לא הצלחנו לטעון את הפילוח. נסו שוב.',
       perfErrorLoading: 'שגיאה בטעינת הנתונים.',
       // Admin platform-wide performance tab (aggregates every store)
       perfPlatformTitle: 'ביצועי הפלטפורמה',
@@ -890,7 +1105,7 @@ export const translations = {
       perfStoresNoMatch: 'לא נמצאה חנות שתואמת לחיפוש.',
       perfStoresEmpty: 'אין עדיין חנויות עם פעילות בטווח שנבחר.',
       perfPlatformSplitTitle: 'מחזור ותשלומים',
-      perfPlatformSplitHint: 'המחזור הכולל (GMV) הוא כל הכסף שקונים שילמו בטווח. הפלטפורמה שומרת ממנו רק את עמלת המכירה — היתרה עוברת למוכר אוטומטית בעת הסליקה.',
+      perfPlatformSplitHint: 'המחזור הכולל (GMV) הוא כל הכסף שקונים שילמו בטווח. הפלטפורמה שומרת ממנו רק את עמלת המכירה — היתרה מוחזקת בנאמנות עבור המוכרים ומשולמת להם בתשלום המרוכז.',
       perfPlatformGmv: 'מחזור כולל (GMV)',
       perfPlatformCommissionIncome: 'עמלות (הכנסת הפלטפורמה)',
       perfPlatformSellerPayout: 'תשלום למוכרים',
@@ -1039,6 +1254,17 @@ export const translations = {
       orderBuyer: 'לקוח',
       orderItems: 'פריטים',
       orderTotal: 'סה"כ',
+      // The order card's payout line (owner, סשן א׳ §4 — the per-order answer moved here from the
+      // Payments tab's table). Four states, and each has to be a complete answer on its own: a
+      // seller reads one of them and nothing else.
+      // "סטטוס תשלום" and not "התשלום עליה" (owner, 2026-08-11) — the row sits beside a shipping
+      // status, and naming it the same way is what makes the pair read as two statuses of one order
+      // rather than as a sentence someone started.
+      orderPayoutLabel: 'סטטוס תשלום:',
+      orderPayoutReleasable: 'שוחרר — נכנס לתשלום הקרוב',
+      orderPayoutOn: 'משתחרר ב-{date}',
+      orderPayoutPending: 'הספירה עוד לא התחילה',
+      orderPayoutNone: 'לא ייכלל בתשלום',
       orderShipping: 'משלוח',
       orderPaymentStatus: 'תשלום',
       orderShippingStatus: 'סטטוס הזמנה',
@@ -1130,6 +1356,9 @@ export const translations = {
       weightPlaceholder: 'לדוגמה: 250',
       seoHeading: 'טיפים לנראות במנועי חיפוש',
       seoProgress: '{done} מתוך {total}',
+      seoLevelWeak: 'בסיסי',
+      seoLevelPartial: 'טוב',
+      seoLevelStrong: 'מצוין',
       seoPreviewLabel: 'כך המוצר ייראה בתוצאת חיפוש בגוגל',
       seoPreviewEmptyDesc: 'עדיין אין תיאור',
       seoLabelImage: 'תמונה (חובה)',
@@ -1164,6 +1393,7 @@ export const translations = {
       saveCategoryName: 'שמור',
       cancelCategoryEdit: 'ביטול',
       deleteCategoryTitle: 'למחוק את הקטגוריה?',
+      deleteCategoryFailed: 'מחיקת הקטגוריה נכשלה. נסו שוב.',
       deleteCategoryMsg: 'הפעולה לא ניתנת לביטול.',
       categoryHasChildrenTooltip: 'יש למחוק קודם את תתי-הקטגוריות',
       noCategoriesYet: 'עדיין לא הוספת קטגוריות.',
@@ -1267,6 +1497,15 @@ export const translations = {
       msgReplySend: 'שלח',
       msgReplyClose: 'סגור שיחה',
       msgYou: 'אתה',
+      // The reply box is behind this button rather than open on every thread —
+      // an always-visible textarea makes the panel read like a chat window and
+      // invites the next line instead of an answer (user, 2026-08-10).
+      msgReplyOpen: 'כתוב תגובה',
+      msgReplyCancel: 'ביטול',
+      // The opened thread's own header: the subject in full (the column clips it)
+      // and the product the conversation is about, which the card layout drops.
+      msgSubjectLabel: 'נושא',
+      msgAboutProduct: 'בנוגע למוצר',
     },
     gallery: {
       main: 'ראשי',
@@ -1466,6 +1705,10 @@ export const translations = {
       msgReplySend: 'שלח',
       msgReplyClose: 'סגור שיחה',
       msgYou: 'אתה',
+      msgReplyOpen: 'כתוב תגובה',
+      msgReplyCancel: 'ביטול',
+      msgSubjectLabel: 'נושא',
+      msgAboutProduct: 'בנוגע למוצר',
       msgNewToast: 'יש לך הודעה חדשה ממוכר',
       profSection: 'פרטי חשבון',
       profChangePassword: 'שינוי סיסמה',
@@ -1498,6 +1741,14 @@ export const translations = {
       productContext: 'בנוגע למוצר',
       toStore: 'אל',
       unread: 'לא נקרא',
+      // The two flood refusals (lib/message-flood.ts). Written on the SERVER and
+      // sent down as ready text, so the compose dialog, the seller dashboard and
+      // the buyer dashboard cannot drift into three wordings of one rule.
+      floodRun: 'שלחת כמה הודעות ברצף בשיחה הזו. אפשר להמשיך ברגע שתגיע תשובה.',
+      /** `{minutes}` — always 2 or more; `floodRateOne` covers the singular, because
+       *  Hebrew has no reading of "בעוד 1 דקות" that is not a bug on screen. */
+      floodRate: 'נשלחו יותר מדי הודעות בזמן קצר. אפשר לנסות שוב בעוד {minutes} דקות.',
+      floodRateOne: 'נשלחו יותר מדי הודעות בזמן קצר. אפשר לנסות שוב בעוד דקה.',
     },
     wishlist: {
       title: 'פריטים שאהבתי',
@@ -1556,6 +1807,7 @@ export const translations = {
       searchSectionStores: 'Stores',
       searchSectionProducts: 'Products',
       searchEmpty: 'No results found',
+      searchFailed: 'Search is unavailable right now. Please try again.',
       allStores: 'All Stores',
       viewAllStores: 'All stores',
       shelfLiked: 'Stores you saved',
@@ -1672,6 +1924,8 @@ export const translations = {
       filterSearchLabel: 'Search in this category',
       searchResultsFor: 'Search results for "{query}"',
       noResultsFor: 'No results for "{query}"',
+      loadFailedTitle: 'We could not load the products',
+      loadFailedBody: 'Check your connection and try again.',
       clearSearchLabel: 'Clear search',
       closeSearchLabel: 'Close search',
       saveStore: 'Save store',
@@ -1722,6 +1976,22 @@ export const translations = {
       confirm: 'Confirm',
       cancel: 'Cancel',
       working: 'Working',
+    },
+    common: {
+      actionFailedTitle: 'That did not go through',
+      actionFailedBody: 'Something went wrong on the way to the server. Please try again.',
+    },
+    formErrors: {
+      required: 'Please fill in this field',
+      email: 'That email address is not valid',
+      url: 'That web address is not valid',
+      number: 'Please enter a number',
+      tooShort: 'At least {n} characters',
+      tooLong: 'Up to {n} characters',
+      min: 'No less than {n}',
+      max: 'No more than {n}',
+      pattern: 'That is not the required format',
+      invalid: 'That value is not valid',
     },
     auth: {
       sellerLogin: 'Log in',
@@ -1921,6 +2191,7 @@ export const translations = {
       bulkDeleteTitle: 'Delete products',
       bulkDeleteMsg: 'Selected products will be permanently deleted.',
       bulkDeleted: 'Products deleted.',
+      bulkDeleteFailed: '{n} products were not deleted. They are still selected — try again.',
       csvImportExport: 'CSV Import/Export',
       csvExport: 'Export catalog (CSV)',
       csvTemplate: 'Download sample template',
@@ -2070,7 +2341,127 @@ export const translations = {
       tabProducts: 'Products',
       tabOrders: 'Orders',
       tabPerformance: 'Performance',
+      tabReports: 'Reports',
+      repTitle: 'Reports',
+      repSubtitle: 'A clean table for each question, and a one-click export to Excel.',
+      repPickLabel: 'Choose a report',
+      repPeriodLabel: 'Period:',
+      repExportCsv: 'Export to Excel',
+      repLoading: 'Loading report…',
+      repEmpty: 'No data for the selected period.',
+      repRangeTooLongTitle: 'That range is too long',
+      repRangeTooLongBody: 'A report can cover up to two years. Please choose a shorter range.',
+      repLoadFailedTitle: 'We could not load the report',
+      repLoadFailedBody: 'Check your connection and try again.',
+
+      repSalesTitle: 'Sales by order',
+      repSalesDesc: 'One row per order, with commission and net — the report your bookkeeper asks for.',
+      repProductsTitle: 'Products',
+      repProductsDesc: 'How much of each product sold, and what is left in stock.',
+      repStockTitle: 'Stock',
+      repStockDesc: 'A sheet for a stocktake or a supplier order. A snapshot of today.',
+
+      repColDate: 'Date',
+      repColCustomer: 'Customer',
+      repColItems: 'Items',
+      repColGross: 'Before discount',
+      repColDiscount: 'Discount',
+      repColNet: 'Sale total',
+      repColCommission: 'Commission',
+      repColPayout: 'Your payout',
+      repColState: 'State',
+      repColProduct: 'Product',
+      repColSku: 'SKU',
+      repColUnits: 'Units',
+      repColStock: 'Stock',
+      repColStockValue: 'Stock value',
+
+      repStateCounted: 'Counted',
+      repStateNotCounted: 'Not counted',
+      repStockOut: 'Out of stock',
+      repStockLow: 'Low',
+      repStockOk: 'OK',
+
+      repSumOrders: 'Orders:',
+      repSumUnits: 'Units:',
+      repSumNet: 'Turnover:',
+      repSumCommission: 'Commission:',
+      repSumPayout: 'Your payout:',
+      repSumProducts: 'Products:',
+      repSumStockValue: 'Stock value:',
+      repSumOut: 'Out of stock:',
       tabAdvertising: 'Advertising',
+      tabPayouts: 'Payments',
+      payTitle: 'My payments',
+      paySubtitle: 'Each order is finally approved once the buyer\'s return window closes, and the money reaches your account on the {day} of each month.',
+      payAllStores: 'Covers all of your stores',
+      payAllStoresShort: 'all stores',
+      payAccountTotal: 'The transfer that actually goes out pools all of your stores: {amount}.',
+      payPayableNow: 'Next payment',
+      payPayableNowHint: 'What moves to your account in the next transfer.',
+      payHeld: 'Awaiting final approval',
+      payHeldHint: 'Your money, from orders still inside the buyer\'s return window. It reaches you on its own once that closes.',
+      payPaidOut: 'Paid previously',
+      payPaidOutHint: 'Every transfer that has gone out to you since you opened. It only ever grows.',
+      payCarried: 'Carried debt',
+      payCarriedHint: 'An offset larger than the balance it came out of. It comes off your next payment.',
+      payMinNote: 'Below {min} the balance waits for next month. Nothing is deducted.',
+      payBankTitle: 'Bank and business details',
+      payBankHint: 'Without these there is nowhere to send it. The money keeps accruing and waits for you.',
+      payBankCode: 'Bank code',
+      payBankBranch: 'Branch',
+      payBankAccount: 'Account number',
+      payBankHolder: 'Account holder',
+      payBankHolderHint: 'As the bank has it. A different name makes the transfer bounce.',
+      payBusinessId: 'Business / company number',
+      payBusinessType: 'Business type',
+      payBusinessNone: 'Not set',
+      payBusinessExempt: 'VAT-exempt dealer',
+      payBusinessLicensed: 'Licensed dealer',
+      payBusinessCompany: 'Limited company',
+      payBusinessHint: 'Decides what the invoice you issue to the buyer looks like.',
+      payDetailsSave: 'Save details',
+      payDetailsSaved: 'Details saved',
+      payDetailsFailed: 'Could not save. Check your connection and try again.',
+      payCurrentBank: 'Account on file:',
+      payHeldTitle: 'Payments waiting',
+      payHeldFootnote: 'The orders themselves are managed on the Orders tab — each one says when its payment is released.',
+      ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
+      ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
+      ordersShowAll: 'Show all orders',
+      filterColPayout: 'Payment status',
+      payFilter_unshipped: 'Waiting for you to ship',
+      payFilter_undelivered: 'Shipped, awaiting "delivered"',
+      payFilter_window: 'Inside the return window',
+      payFilter_released: 'Released for payment',
+      payFilter_none: 'Will not be paid out',
+      payHeldEmpty: 'Nothing is awaiting approval right now.',
+      payPagePrev: 'Previous',
+      payPageNext: 'Next',
+      payPageOf: 'Page {n} of {total}',
+      payColOrders: 'Orders',
+      payColAmount: 'Amount',
+      payColWhy: 'Reason',
+      payColAction: 'Action needed',
+      payWhyDelivery: 'The money releases {n} days after delivery — that is the buyer\'s return window',
+      payActionNone: 'No action needed',
+      payWhyPayment: 'Not marked delivered, so the money releases {n} days from the payment date instead',
+      payActionMarkDelivered: 'Mark as delivered when the parcel reaches the buyer',
+      payWhyUnshipped: 'The countdown starts only once the order ships',
+      payActionShip: 'Ship the order',
+      payWhyUnknown: 'We are checking this order',
+      payHistoryTitle: 'Payment history',
+      payHistoryEmpty: 'No payment has gone out yet.',
+      payColPeriod: 'Period',
+      payColStatus: 'Status',
+      payColSent: 'Sent',
+      payStatusPending: 'Pending',
+      payStatusSent: 'Sent to the bank',
+      payStatusPaid: 'Transferred',
+      payStatusFailed: 'Failed',
+      payNoBankTitle: 'You have money waiting',
+      payNoBankBody: 'Add your bank details so we can send it. Until then it is held for you and goes nowhere.',
+      payNoBankCta: 'Fill in the details',
       tabSettings: 'Settings',
       tabPromotions: 'Promotions',
       storeSaleTitle: 'Store-wide sale',
@@ -2120,6 +2511,7 @@ export const translations = {
       couponsTip: 'The code appears nowhere on the site — you hand it out. The coupon field at checkout is shown only while you have a live code.',
       couponsEmpty: 'No coupon codes yet.',
       couponAdd: 'New code',
+      couponsLoadFailed: 'We could not load your discount codes. Please refresh the page.',
       couponCode: 'Code',
       couponCodePlaceholder: 'e.g. SUMMER10',
       couponKind: 'Discount type',
@@ -2231,7 +2623,12 @@ export const translations = {
       perfConversionHint: 'The share of unique store visitors who made a purchase',
       perfRevenueChartTitle: 'Revenue',
       perfVisitorsChartTitle: 'Visits',
-      perfTopProducts: 'Top products',
+      perfTopProducts: 'Top products by revenue',
+      perfTopProductsHint: 'Ranked by revenue in the selected range. The percentage is the product’s share of ALL product sales in the period — not of the five shown here.',
+      perfTopProductsNote: 'Showing {shown} of {total} products sold in this period',
+      perfTopProductsMatched: '{matched} products match · ranked by revenue',
+      perfTopProductsNoMatch: 'No product sold in this period has a name containing that.',
+      perfTopProductSearch: 'Search products',
       perfTopProductsEmpty: 'No sales yet in this range.',
       perfNoData: 'No data to show for this range.',
       perfUnitsSold: 'units sold',
@@ -2252,13 +2649,14 @@ export const translations = {
       perfProductRevenueChart: 'Revenue',
       perfProductViewsChart: 'Views',
       perfProfitTitle: 'Profitability',
-      perfProfitHint: 'Your net profit after the platform commission. The commission is deducted automatically at checkout — the net amount is sent directly to your account.',
+      perfProfitHint: 'Your net profit after the platform commission. The commission is deducted at source from every order, and the remainder is paid to your bank account in the scheduled payout — once the order has been delivered and the hold period has ended.',
       perfGrossRevenue: 'Gross revenue',
       perfCommission: 'Platform commission',
       perfNetProfit: 'Net profit',
       perfBreakdownTitle: 'Revenue breakdown',
       perfBreakdownClose: 'Close',
       perfBreakdownEmpty: 'No sales in this period.',
+      perfBreakdownFailed: 'We could not load the breakdown. Please try again.',
       perfLoading: 'Loading data…',
       dashHydrating: 'Loading this tab…',
       dashPanelLoadFailed: 'This tab did not load. Please reload the page and try again.',
@@ -2278,7 +2676,7 @@ export const translations = {
       perfStoresNoMatch: 'No store matches that search.',
       perfStoresEmpty: 'No stores with activity in this range yet.',
       perfPlatformSplitTitle: 'GMV & payouts',
-      perfPlatformSplitHint: 'GMV is everything buyers paid in this range. The platform keeps only the sales commission from it — the remainder goes to the seller automatically at checkout.',
+      perfPlatformSplitHint: 'GMV is everything buyers paid in this range. The platform keeps only the sales commission from it — the remainder is held on the sellers\' behalf and paid out to them on the payout schedule.',
       perfPlatformGmv: 'Total GMV',
       perfPlatformCommissionIncome: 'Commission (platform revenue)',
       perfPlatformSellerPayout: 'Seller payouts',
@@ -2423,6 +2821,11 @@ export const translations = {
       orderBuyer: 'Customer',
       orderItems: 'Items',
       orderTotal: 'Total',
+      orderPayoutLabel: 'Payment status:',
+      orderPayoutReleasable: 'Released — in the next payment',
+      orderPayoutOn: 'Releases on {date}',
+      orderPayoutPending: 'The countdown has not started',
+      orderPayoutNone: 'Will not be paid out',
       orderShipping: 'Shipping',
       orderPaymentStatus: 'Payment',
       orderShippingStatus: 'Order status',
@@ -2507,6 +2910,9 @@ export const translations = {
       weightPlaceholder: 'e.g. 250',
       seoHeading: 'Tips for search visibility',
       seoProgress: '{done} of {total}',
+      seoLevelWeak: 'Basic',
+      seoLevelPartial: 'Good',
+      seoLevelStrong: 'Excellent',
       seoPreviewLabel: 'How the product looks in a Google result',
       seoPreviewEmptyDesc: 'No description yet',
       seoLabelImage: 'Photo (required)',
@@ -2541,6 +2947,7 @@ export const translations = {
       saveCategoryName: 'Save',
       cancelCategoryEdit: 'Cancel',
       deleteCategoryTitle: 'Delete this category?',
+      deleteCategoryFailed: 'Deleting the category failed. Please try again.',
       deleteCategoryMsg: 'This cannot be undone.',
       categoryHasChildrenTooltip: 'Delete its subcategories first',
       noCategoriesYet: "You haven't added any categories yet.",
@@ -2639,6 +3046,10 @@ export const translations = {
       msgReplySend: 'Send',
       msgReplyClose: 'Close conversation',
       msgYou: 'You',
+      msgReplyOpen: 'Write a reply',
+      msgReplyCancel: 'Cancel',
+      msgSubjectLabel: 'Subject',
+      msgAboutProduct: 'About product',
     },
     gallery: {
       main: 'Main',
@@ -2811,6 +3222,10 @@ export const translations = {
       msgReplySend: 'Send',
       msgReplyClose: 'Close conversation',
       msgYou: 'You',
+      msgReplyOpen: 'Write a reply',
+      msgReplyCancel: 'Cancel',
+      msgSubjectLabel: 'Subject',
+      msgAboutProduct: 'About product',
       msgNewToast: 'You have a new message from the seller',
       profSection: 'Account details',
       profChangePassword: 'Change password',
@@ -2841,6 +3256,9 @@ export const translations = {
       productContext: 'About product',
       toStore: 'To',
       unread: 'Unread',
+      floodRun: 'You have sent several messages in a row here. You can continue once a reply arrives.',
+      floodRate: 'Too many messages in a short time. Try again in {minutes} minutes.',
+      floodRateOne: 'Too many messages in a short time. Try again in a minute.',
     },
     wishlist: {
       title: 'My Wishlist',

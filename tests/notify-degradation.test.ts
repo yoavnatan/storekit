@@ -108,14 +108,27 @@ describe('nothing to announce', () => {
   });
 });
 
-describe('the seller order route', () => {
+describe('the status-change pipeline', () => {
+  // Moved here from the seller route on 2026-08-10: the whole block was extracted into
+  // `order-status-change.ts` so the SLA job that auto-cancels an unshipped order goes through the
+  // same code the dashboard does. The shape being pinned did not change — its address did, and a
+  // guard left pointing at the old address is a guard that passes vacuously.
   it('cannot let a failed announcement skip the store closure behind it', async () => {
     // Guarding at the call site is what makes the block's ORDER safe, and the order is the point:
     // `settleStoreClosure` runs after this line and completes a closure the seller asked for and is
-    // waiting on. A source assertion because the route needs a session, a store and a database to
-    // call — and what is being pinned is the shape, which is exactly what regressed.
+    // waiting on. A source assertion because the function needs a store and a database to call —
+    // and what is being pinned is the shape, which is exactly what regressed.
     const { readFileSync } = await import('node:fs');
-    const source = readFileSync(new URL('../src/pages/api/seller/orders.ts', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/lib/order-status-change.ts', import.meta.url), 'utf8');
     expect(source).toMatch(/try\s*\{\s*\n\s*await notifyOrderStatusChanged\([\s\S]{0,200}?\}\s*catch\b/);
+    // …and the closure really is what sits behind it, which is the half the regex above cannot see.
+    expect(source.indexOf('settleStoreClosure(')).toBeGreaterThan(source.indexOf('notifyOrderStatusChanged('));
+  });
+
+  it('is what the seller route uses, rather than a second copy of the block', async () => {
+    const { readFileSync } = await import('node:fs');
+    const route = readFileSync(new URL('../src/pages/api/seller/orders.ts', import.meta.url), 'utf8');
+    expect(route).toMatch(/settleStatusChange\(/);
+    expect(route).not.toMatch(/notifyOrderStatusChanged\(/);
   });
 });

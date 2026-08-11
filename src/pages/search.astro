@@ -105,7 +105,12 @@ const jsonLd = {
             <ul class="search-products-grid" role="list">
               {products.map((p, i) => (
                 <li>
-                  <a href={`/${p.storeSlug}/${p.slug}`} class="search-product-card card">
+                  {/* The one product link on the site that really navigates, which is why it is
+                      the only product card that opts in: the store page's product name is
+                      hijacked into the quick-view modal, and the modal's own "full page" link is
+                      built via innerHTML, which prefetch cannot bind to (astro.config.mjs). Here
+                      a hover genuinely predicts the next page load. */}
+                  <a href={`/${p.storeSlug}/${p.slug}`} class="search-product-card card" data-astro-prefetch>
                     <div class="search-product-card__img-wrap" data-skeleton={p.image ? '' : undefined}>
                       {p.image
                         ? <Image src={p.image} alt={p.name} width={300} height={300} class="search-product-card__img" loading={i < 6 ? 'eager' : 'lazy'} />

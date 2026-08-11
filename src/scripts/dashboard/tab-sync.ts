@@ -153,6 +153,32 @@ export function initDashTabSync(storeId: string): void {
   document.getElementById('dash-stale-refresh')?.addEventListener('click', () => window.location.reload());
   document.getElementById('dash-stale-dismiss')?.addEventListener('click', () => bar?.classList.add('!hidden'));
 
+  /**
+   * The SAME-PAGE half, added 2026-08-10 — and it is a different failure from the one above.
+   *
+   * Everything this module did was about other browser TABS. But a dashboard panel is also a
+   * snapshot taken at load, and the panels sit in one page: changing an order's status on the
+   * Orders tab moves money between "still held" and "ready to send you" on the Payments tab, and
+   * that tab kept showing the numbers it was rendered with until a full reload (owner, 2026-08-10).
+   * Same class, one layer in: a surface displaying a value that another surface just changed.
+   *
+   * Emitted from the observer that is already here rather than from the ~20 mutating call sites,
+   * for the reason this module's header gives: a list of call sites to remember is a rule that
+   * rots. A panel that cares subscribes; every other panel is unaffected.
+   */
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await origFetch(input, init);
+    try {
+      if (res.ok && isMutation(input, init)) {
+        const path = new URL(requestUrl(input), window.location.origin).pathname;
+        window.dispatchEvent(new CustomEvent('dash:mutated', { detail: { path } }));
+        channel?.postMessage({ type: 'dash:changed', storeId: currentStoreId } satisfies DashChange);
+      }
+    } catch { /* observation must never break the call it observed */ }
+    return res;
+  };
+
   if (typeof BroadcastChannel === 'undefined') return;
   channel = new BroadcastChannel(CHANNEL_NAME);
 
@@ -164,15 +190,4 @@ export function initDashTabSync(storeId: string): void {
     // choose when. The notice is the fallback, not the default.
     void refreshQuietly().then((done) => { if (!done) markDashboardStale(); });
   });
-
-  const origFetch = window.fetch.bind(window);
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const res = await origFetch(input, init);
-    try {
-      if (res.ok && isMutation(input, init)) {
-        channel?.postMessage({ type: 'dash:changed', storeId: currentStoreId } satisfies DashChange);
-      }
-    } catch { /* observation must never break the call it observed */ }
-    return res;
-  };
 }

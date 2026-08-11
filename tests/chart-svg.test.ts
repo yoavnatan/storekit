@@ -71,7 +71,13 @@ describe('chart-svg smooth line', () => {
       { points: pts([1, 6, 2, 7]), color: 'red', fill: true },
       { points: pts([3, 8, 4, 9]), color: 'grey', dashed: true },
     ]);
-    // Two curves: the solid primary and the dashed secondary (no chart-line class).
-    expect([...svg.matchAll(/<path class="[^"]*"[^>]*d="M[^"]*C/g)]).toHaveLength(2);
+    // Two DRAWN curves: the solid primary and the dashed secondary (no chart-line class). The
+    // `.chart-hit-line` paths are excluded — they trace the same curve as an invisible wide stroke
+    // so the line is hoverable between points, and counting them here would make this assertion
+    // pass on a chart whose visible line had stopped being smoothed.
+    const curves = [...svg.matchAll(/<path class="([^"]*)"[^>]*d="M[^"]*C/g)]
+      .filter(([, cls]) => !cls!.includes('chart-hit-line'));
+    expect(curves).toHaveLength(2);
+    expect([...svg.matchAll(/class="chart-hit-line"/g)], 'and one hit stroke per series').toHaveLength(2);
   });
 });

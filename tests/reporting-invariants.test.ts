@@ -19,8 +19,12 @@ import { daysInRangeInclusive } from '../src/lib/date-range.js';
 import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, getStoreRevenueBySlug } from '../src/lib/order-reporting.js';
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
-import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
+import { productShare } from '../src/lib/top-product-share.js';
+import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
+import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
+import { getPayableNowForSeller, getSellerAccountFor } from '../src/lib/payouts.js';
+import { planPayouts } from '../src/lib/payout-run.js';
 
 /** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
  *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
@@ -32,7 +36,7 @@ const platformTotals = (bs: readonly SellerBalance[]) => ({
 });
 import { commissionPercentForTier } from '../src/lib/pricing.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
-import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
+import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
 const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getOrderTotals, getStoreOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
@@ -336,6 +340,42 @@ describe('the seller performance summary reconciles with itself', () => {
     expectSameMoney(gross, s.totalRevenueAgorot + discounts, 'gross product revenue vs net revenue + discounts');
   });
 
+  it('the share denominator is the WHOLE period, not the capped list on screen', () => {
+    // The percentage beside each leading product used to be a share of the five rows shown, so
+    // those five always added to 100% no matter how long the tail was (CURRENT_TASK.md → סשן ג׳:
+    // "ומה זה האחוז שמופיע שם?"). `productRevenueAgorot` is what it is a share of now, and the one
+    // property that makes it mean anything is that CAPPING THE LIST MUST NOT MOVE IT.
+    const all = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
+    expectSameMoney(
+      all.topProducts.reduce((a, p) => a + p.revenueAgorot, 0),
+      all.productRevenueAgorot,
+      'uncapped list vs its own denominator',
+    );
+    for (const cap of [1, 2, 3, 5, 50]) {
+      const capped = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, cap);
+      expectSameMoney(capped.productRevenueAgorot, all.productRevenueAgorot, `denominator at cap ${cap}`);
+      expect(capped.topProducts.length, `rows at cap ${cap}`).toBeLessThanOrEqual(cap);
+      for (const p of capped.topProducts) {
+        expect(p.revenueAgorot, `${p.productId} never exceeds the period`).toBeLessThanOrEqual(capped.productRevenueAgorot);
+        const share = productShare(p.revenueAgorot, capped.productRevenueAgorot);
+        expect(share.pct, `${p.productId} share is a percentage`).toBeGreaterThanOrEqual(0);
+        expect(share.pct, `${p.productId} share is a percentage`).toBeLessThanOrEqual(100);
+      }
+      // Parts sum to the whole: the shares of a capped list can never claim the whole period, and
+      // the uncapped one can never claim more than it (rounding gives it a row of slack).
+      const sum = capped.topProducts.reduce((a, p) => a + productShare(p.revenueAgorot, capped.productRevenueAgorot).pct, 0);
+      expect(sum, `shares at cap ${cap} do not exceed 100%`).toBeLessThanOrEqual(100 + capped.topProducts.length);
+    }
+  });
+
+  it('every leading product names the store that sold it', () => {
+    // The admin's list spans every store, so a bare product name has no owner on it ("לא רשום גם
+    // מאיזה חנות הם"). Carried by BOTH builders, or the platform panel renders a blank line.
+    const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
+    expect(s.topProducts.length).toBeGreaterThan(0);
+    for (const p of s.topProducts) expect(p.storeSlug, `${p.productId} store`).toBe(STORE);
+  });
+
   it('a single product drill-down reconciles with its own bars', () => {
     const p = buildProductPerformance(orders, EMPTY_PRODUCT_VIEW_STATS, STORE, 'p1', '2026-07-01', '2026-07-31', 'day');
     expectSameMoney(p.points.reduce((a, x) => a + x.revenueAgorot, 0), p.totalRevenueAgorot, 'product day buckets vs its total');
@@ -347,6 +387,70 @@ describe('the seller performance summary reconciles with itself', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. Two surfaces describing the same money must produce the same number.
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('the three seller reports reconcile with each other and with Performance', () => {
+  // One discounted multi-line order, one plain one, one cancelled. The discount is deliberately
+  // indivisible across its lines: that is where a per-line rounding loses or invents an agora, and
+  // where the sales and product exports would start disagreeing by amounts nobody can explain.
+  const orders = [
+    makeOrder('r1', {
+      items: [{ productId: 'p1', priceAgorot: 1999, qty: 1 }, { productId: 'p2', priceAgorot: 4001, qty: 1 }],
+      discount: { type: 'amount', value: 1, appliedAgorot: 100 },
+      createdAt: '2026-07-04T09:00:00.000Z',
+    }),
+    makeOrder('r2', { items: [{ productId: 'p1', priceAgorot: 1999, qty: 3 }], createdAt: '2026-07-09T09:00:00.000Z' }),
+    makeOrder('r3', {
+      items: [{ productId: 'p3', priceAgorot: 90000, qty: 1 }],
+      createdAt: '2026-07-15T09:00:00.000Z',
+      over: { shippingStatus: 'cancelled' },
+    }),
+  ];
+  const FROM = '2026-07-01';
+  const TO = '2026-07-31';
+  const RATE = 12;
+
+  const sales = buildSalesReport(orders, STORE, FROM, TO, RATE);
+  const byProduct = buildProductSalesReport(orders, [], STORE, FROM, TO);
+
+  it('the product report and the sales report agree to the agora', () => {
+    expect(byProduct.totals.grossAgorot).toBe(sales.totals.grossAgorot);
+    expect(byProduct.totals.discountAgorot).toBe(sales.totals.discountAgorot);
+    expect(byProduct.totals.netAgorot).toBe(sales.totals.netAgorot);
+  });
+
+  it('the sales report and the Performance tab agree about the same window', () => {
+    // The two are read side by side — a seller checks the tab's headline and then exports the rows
+    // behind it — so a difference here is the one that gets noticed and never explained.
+    const perf = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, FROM, TO, 'day', RATE);
+    expect(sales.totals.netAgorot).toBe(perf.totalRevenueAgorot);
+    expect(sales.totals.commissionAgorot).toBe(perf.platformCommissionAgorot);
+    expect(sales.totals.rows).toBeGreaterThan(perf.totalOrders); // the cancelled row is listed, not counted
+  });
+
+  it('a cancelled order is listed, contributes nothing, and is charged no commission', () => {
+    const row = sales.rows.find((r) => r.orderId === 'r3');
+    expect(row?.countsAsRevenue).toBe(false);
+    expect(row?.commissionAgorot).toBe(0);
+    expect(sales.totals.grossAgorot).toBe(1999 + 4001 + 1999 * 3);
+  });
+
+  it('every payout is net minus commission, and no figure is ever negative', () => {
+    for (const r of sales.rows) {
+      expect(r.payoutAgorot).toBe(r.netAgorot - r.commissionAgorot);
+      for (const v of [r.grossAgorot, r.netAgorot, r.commissionAgorot, r.payoutAgorot]) expect(v).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('the stock report values the shelf at the same agorot every money surface uses', () => {
+    const stock = buildStockReport([
+      { id: 'p1', storeId: 's', slug: 'p1', name: 'p1', description: '', price: 19.99, stock: 3 },
+      { id: 'p2', storeId: 's', slug: 'p2', name: 'p2', description: '', price: 0.145, stock: 1 },
+    ] as never);
+    // 19.99 → 1999 and not 1998: `toAgorot`'s EPSILON nudge, the same one product prices are
+    // stored with, so a stocktake and the catalogue cannot disagree about a shelf's worth.
+    expect(stock.totals.valueAgorot).toBe(1999 * 3 + 15);
+  });
+});
 
 describe('the admin surfaces reconcile with each other', () => {
   const orders = [
@@ -745,9 +849,54 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
           Object.fromEntries(buckets.map((x) => [x.key, [x.revenueAgorot, x.orders]]));
         expect(keyed(a.buckets), `${slug} buckets (${granularity})`).toEqual(keyed(b.buckets));
       }
-      expect(fromDb.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]),
-        `top products (${granularity})`).toEqual(fromJs.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]));
+      expect(fromDb.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units, p.storeSlug]),
+        `top products (${granularity})`).toEqual(fromJs.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units, p.storeSlug]));
+      // The denominator behind every percentage on that list, and the count under its heading.
+      // The query gets both from window functions and the JS twin from two reduces; nothing else
+      // would notice if the SQL's nesting stopped computing them before the LIMIT.
+      expectSameMoney(fromDb.productRevenueAgorot, fromJs.productRevenueAgorot, `product revenue (${granularity})`);
+      expect(fromDb.productsMatched, `products matched (${granularity})`).toBe(fromJs.productsMatched);
     }
+  });
+
+  it('a product search narrows the LIST and never the denominator', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const unfiltered = await getPlatformSales(slugs, from, to, 'month', 0);
+    expect(unfiltered.topProducts.length, 'fixture sells something').toBeGreaterThan(0);
+    // A fragment of a real product name, so the search matches at least itself but not everything.
+    const target = unfiltered.topProducts[0]!;
+    const needle = target.name.slice(0, Math.max(2, Math.ceil(target.name.length / 2)));
+
+    const fromDb = await getPlatformSales(slugs, from, to, 'month', 0, needle);
+    const fromJs = buildPlatformSales(stored, slugs, from, to, 'month', 0, needle);
+    expect(fromDb.topProducts.map((p) => p.productId)).toEqual(fromJs.topProducts.map((p) => p.productId));
+    expect(fromDb.productsMatched).toBe(fromJs.productsMatched);
+    expect(fromDb.topProducts.length, 'the searched-for product is in its own results').toBeGreaterThan(0);
+    for (const p of fromDb.topProducts) expect(p.name.toLowerCase()).toContain(needle.toLowerCase());
+    // The whole point: a row found by search still reports its share of the PERIOD. If the filter
+    // leaked into the window the denominator would collapse onto the matches and every search
+    // would print inflated percentages.
+    expectSameMoney(fromDb.productRevenueAgorot, unfiltered.productRevenueAgorot, 'searched denominator');
+
+    // A search that matches nothing is the one case where both windows have no row to ride on.
+    const none = await getPlatformSales(slugs, from, to, 'month', 0, 'zzz-no-such-product-zzz');
+    expect(none.topProducts).toEqual([]);
+    expect(none.productsMatched).toBe(0);
+    expect(none.productRevenueAgorot).toBe(0);
+    expect(buildPlatformSales(stored, slugs, from, to, 'month', 0, 'zzz-no-such-product-zzz')).toEqual(none);
+  });
+
+  it('a LIKE wildcard typed into the product search is searched for, not obeyed', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    // '%' matches everything if it reaches LIKE unescaped — which would make the search silently
+    // stop filtering exactly when someone searches for a product with a percentage in its name.
+    const fromDb = await getPlatformSales(slugs, from, to, 'month', 0, '%');
+    const fromJs = buildPlatformSales(stored, slugs, from, to, 'month', 0, '%');
+    expect(fromDb.topProducts.map((p) => p.productId)).toEqual(fromJs.topProducts.map((p) => p.productId));
+    const everything = await getPlatformSales(slugs, from, to, 'month', 0);
+    expect(fromDb.productsMatched, 'a literal % is not "match all"').toBeLessThan(everything.productsMatched);
   });
 
   it('the platform summary built from the query equals the one built from the orders', async () => {
@@ -761,6 +910,79 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     expectSameMoney(fromDb.summary.platformCommissionAgorot, fromJs.summary.platformCommissionAgorot, 'platform commission');
     expect(fromDb.summary.totalOrders).toBe(fromJs.summary.totalOrders);
     expect(fromDb.stores.map((r) => [r.slug, r.revenueAgorot, r.orders])).toEqual(fromJs.stores.map((r) => [r.slug, r.revenueAgorot, r.orders]));
+  });
+
+  it('a shopper who opened several stores is ONE platform visitor', async () => {
+    // The figure that used to be a sum of per-store uniques, so a mall working as intended — one
+    // shopper, several storefronts — reported several people and sank the conversion rate that
+    // divides by it. Three invariants, and the first two are what make the third believable:
+    // the platform count can never exceed the sum (that IS the double count it removes), can never
+    // be below the largest single store (those visitors are all platform visitors too), and views
+    // stay a plain sum because a load really did happen once per store opened.
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const stores = await getAllStores();
+    const ids = stores.map((s) => s.id);
+    const [perStore, platform] = await Promise.all([
+      getStoreViewStats(ids, from, to, 'month'),
+      getPlatformViewStats(ids, from, to, 'month'),
+    ]);
+    const summed = [...perStore.values()].reduce((a, v) => a + v.totalUniqueVisitors, 0);
+    const largest = Math.max(0, ...[...perStore.values()].map((v) => v.totalUniqueVisitors));
+    expect(platform.totalUniqueVisitors, 'never more than the double-counted sum').toBeLessThanOrEqual(summed);
+    expect(platform.totalUniqueVisitors, 'never fewer than one store already had').toBeGreaterThanOrEqual(largest);
+    expect(platform.totalViews, 'loads are summed, not de-duped')
+      .toBe([...perStore.values()].reduce((a, v) => a + v.totalViews, 0));
+
+    // Per BUCKET as well: the visitors chart and the KPI above it are read against each other, so
+    // a chart still summing while the headline de-dupes is worse than either alone.
+    const summedByKey = new Map<string, number>();
+    for (const v of perStore.values()) {
+      for (const b of v.buckets) summedByKey.set(b.key, (summedByKey.get(b.key) ?? 0) + b.uniqueVisitors);
+    }
+    for (const b of platform.buckets) {
+      expect(b.uniqueVisitors, `bucket ${b.key} vs its per-store sum`).toBeLessThanOrEqual(summedByKey.get(b.key) ?? 0);
+    }
+    // And a range total is never a sum of its buckets — a visitor returning in two months is one
+    // person. Stated here because it is the same trap one level up from the per-store version.
+    expect(platform.totalUniqueVisitors, 'range unique <= sum of bucket uniques')
+      .toBeLessThanOrEqual(platform.buckets.reduce((a, b) => a + b.uniqueVisitors, 0));
+
+    // And the assertions above must be able to FAIL — a `<=` between two numbers that are always
+    // equal passes for the wrong reason. `v1` browses both keramika and tachshitim in the fixture
+    // precisely so that this de-dup has something to do: 4 store-visits, 3 people.
+    expect(summed, 'the fixture really does contain a cross-store shopper').toBe(4);
+    expect(platform.totalUniqueVisitors, 'and the platform counts them once').toBe(3);
+  });
+
+  it('the platform summary reports the de-duped count, and falls back to the sum without it', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const inputs = buildPlatformStoreInputs(
+      (await getAllStores()).map((s) => ({ ...s, sellerId: s.sellerId })),
+      await getAllSellers(),
+    );
+    const [views, platformViews, sales] = await Promise.all([
+      getStoreViewStats(inputs.map((s) => s.id), from, to, 'month'),
+      getPlatformViewStats(inputs.map((s) => s.id), from, to, 'month'),
+      getPlatformSales(inputs.map((s) => s.slug), from, to, 'month'),
+    ]);
+    const deduped = buildPlatformPerformance(sales, inputs, views, from, to, 'month', platformViews);
+    const summedFallback = buildPlatformPerformance(sales, inputs, views, from, to, 'month');
+
+    expect(deduped.summary.totalUniqueVisitors).toBe(platformViews.totalUniqueVisitors);
+    expect(deduped.summary.totalUniqueVisitors).toBeLessThanOrEqual(summedFallback.summary.totalUniqueVisitors);
+    // Everything else is untouched by the de-dup — it is one figure, not a rescaling of the tab.
+    expect(deduped.summary.totalViews).toBe(summedFallback.summary.totalViews);
+    expect(deduped.summary.totalOrders).toBe(summedFallback.summary.totalOrders);
+    expectSameMoney(deduped.summary.totalRevenueAgorot, summedFallback.summary.totalRevenueAgorot, 'revenue is unaffected');
+    expect(deduped.stores.map((r) => [r.slug, r.views, r.conversionRate]),
+      'per-store rows stay per-store').toEqual(summedFallback.stores.map((r) => [r.slug, r.views, r.conversionRate]));
+    // Fewer visitors over the same orders can only move conversion UP — the direction is the point
+    // of the fix, so it is asserted rather than left to the reader.
+    if (deduped.summary.totalOrders > 0 && deduped.summary.totalUniqueVisitors > 0) {
+      expect(deduped.summary.conversionRate).toBeGreaterThanOrEqual(summedFallback.summary.conversionRate);
+    }
   });
 
   it('the live reconciliation reaches the same verdict as the one over the orders', async () => {
@@ -911,6 +1133,43 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
       .toBe(sellers.filter((s) => billable(s.createdAt) > 0).length);
     expect(tiers.reduce((a, t) => a + t.billableDays, 0), 'billable days')
       .toBe(sellers.reduce((a, s) => a + billable(s.createdAt), 0));
+  });
+
+  /**
+   * **Two surfaces, one figure.** The seller's payments tab builds a whole per-order account and
+   * reads `payableNowAgorot` off it; the site header cannot afford that on every page load, so
+   * `getPayableNowForSeller` asks the database for the same three sums instead. Both draw the same
+   * red dot (`needsBankDetails`), so a disagreement between them is a dot leading to a screen with
+   * nothing on it — or, worse, no dot on a seller whose money is stuck.
+   *
+   * They are deliberately different spellings of the hold rule (JS in `seller-account.ts`, SQL in
+   * `payout-hold.ts`), which is exactly the arrangement this file exists to police. The one known
+   * way they may legitimately diverge is a seller past `getSellerAccountRows`' 500-slice bound;
+   * no fixture is near it, so on this data they must agree exactly.
+   */
+  it('payable-now: the header\'s cheap figure equals the seller\'s own screen', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      const cheap = await getPayableNowForSeller(seller.id);
+      expect(cheap, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
+    }
+  });
+
+  /**
+   * And the third spelling: the payout RUN. Its plan is what actually creates transfers, so a seller
+   * shown one number and paid another is the worst of the three failures available here. `settled`
+   * rows carry a zero balance and are absent from the plan, which is why the lookup falls back to 0
+   * rather than skipping them — "not in the plan" is a claim about the money too.
+   */
+  it('payable-now: the payout run would send exactly what the screen promises', async () => {
+    const plan = await planPayouts();
+    const byId = new Map(plan.rows.map((r) => [r.sellerId, r.balanceAgorot]));
+    for (const seller of await getAllSellers()) {
+      const account = await getSellerAccountFor(seller.id);
+      expect(byId.get(seller.id) ?? 0, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
+    }
   });
 });
 

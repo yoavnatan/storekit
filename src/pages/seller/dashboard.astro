@@ -5,11 +5,14 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 // store id, so this is also what stops a crafted POST putting an arbitrary string in a header.
 import { machineUrl } from '../../lib/url-base.js';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
+import TopProductsList from '../../components/dashboard/TopProductsList.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
+import ReportsPanel from '../../components/dashboard/ReportsPanel.astro';
+import PayoutsPanel from '../../components/dashboard/PayoutsPanel.astro';
 import HeaderStyleCard from '../../components/dashboard/HeaderStyleCard.astro';
 import ImageActionIcon from '../../components/dashboard/ImageActionIcon.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
@@ -24,7 +27,7 @@ import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-fie
 import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
-import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
@@ -50,10 +53,12 @@ import { thumbUrl } from '../../lib/cloudinary.js';
 import { getThreadRootsBySeller, getRepliesForMessages } from '../../lib/messages.js';
 import { getAdminThreadsForSeller } from '../../lib/admin-messages.js';
 import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro';
-import { getOrdersByStoreSlug, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
+import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusCounts, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
-import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { orderPayoutLine, payoutWhyText, payoutFilterValue } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
@@ -80,6 +85,8 @@ import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxono
 import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
+import { getSellerAccountFor } from '../../lib/payouts.js';
+import { needsBankDetails } from '../../lib/payout-details.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -262,6 +269,83 @@ if (Astro.request.method === 'POST') {
 
 const allStores = await getStoresBySellerId(sellerId);
 const hasNoStore = allStores.length === 0;
+// **The one read on this page that is not about the store in the switcher.** A payout is per
+// registered business, so this covers every store the seller owns — three small indexed reads
+// assembled by one call (`payouts.ts#getSellerAccountFor`), issued on every load rather than only
+// when the tab is open, because what it decides is the tab's BADGE: money released with no bank
+// account to send it to is the one state a seller has to be told about from wherever they are
+// standing. It also carries the seller row, which the performance tab reads for the tier.
+const payoutAccount = await getSellerAccountFor(sellerId);
+const seller = payoutAccount?.seller ?? null;
+// The badge condition, and it is the banner's condition too — one predicate, so the strip and the
+// panel cannot disagree about whether there is anything to do (PayoutsPanel.astro).
+// Both tables on the Payments tab page through the URL, so each link has to carry the OTHER
+// table's page too — otherwise stepping through the history silently resets the held list under
+// the seller's cursor. Built here rather than in the component so the store id and the open tab
+// stay this page's business.
+/**
+ * From a hold reason on the Payments tab to the orders behind it, in the tab that manages orders.
+ *
+ * The half of the deleted held-orders table that was worth keeping (owner, סשן א׳ §4): a seller
+ * told "3 orders are waiting on you to ship" needs the three orders, and a link that lands them on
+ * an unfiltered list has sent them to look for something rather than at it. The statuses are
+ * derived from what each reason MEANS — `unshipped` is every status the payout clock does NOT run
+ * from — so a new shipping status is filtered correctly by `order-status-rules.ts` rather than by a
+ * list here going stale.
+ *
+ * It reads the courier column and not `pickupPayoutClockRuns`, which is a simplification and a safe
+ * one: the only status where the two differ is `ready`, which the seller's filter menu cannot
+ * express at all (`ORDER_FILTER_STATUSES`). This decides which rows a link shows, never which money
+ * moves — `payout-hold.ts` is the only thing that does that, and it reads the right column.
+ */
+function ordersForHoldBasisHref(basis: 'payment' | 'unshipped', storeSlug: string | null): string {
+  const params = new URLSearchParams({ panel: 'orders' });
+  // The row's OWN shop, not the one in the switcher. The payments tab is account-wide and the
+  // Orders tab shows one store, so a link that always used the current store sent a two-shop seller
+  // to the wrong list and showed them a subset as if it were the answer (owner, 2026-08-11).
+  const target = storeSlug ? allStores.find((s) => s.slug === storeSlug) : store;
+  if (target) params.set('store', target.id);
+  // `opay` — the Orders tab's own payout-status column, NOT a list of shipping statuses. The first
+  // version spelled the hold rule out as `?ostatus=pending,processing`, which is a restatement of
+  // `order-status-rules.ts` inside a link: it would have gone on filtering the old way the day a
+  // status's payout behaviour changed. The owner asked for the filter column instead, and it is
+  // also the version that cannot drift.
+  params.set('opay', basis === 'unshipped' ? 'unshipped' : 'undelivered');
+  // Says why the list is narrowed once it gets there, and offers the way out. Without it the seller
+  // lands on a filtered Orders tab with no idea what filtered it or how to leave (owner, same).
+  params.set('ofrom', basis);
+  return `/seller/dashboard?${params.toString()}`;
+}
+
+/** The reason the Orders tab is narrowed, when the seller arrived from the payments tab. Whitelisted
+ *  rather than echoed: it is printed on the page, and an unknown value simply means no banner. */
+const ordersFromBasis = ['payment', 'unshipped'].includes(Astro.url.searchParams.get('ofrom') ?? '')
+  ? Astro.url.searchParams.get('ofrom')! as 'payment' | 'unshipped'
+  : null;
+/** The way back: the same tab with no status filter at all. `ostatus=` (explicitly empty) is
+ *  "cleared" rather than "default" — `parseSellerOrderQuery` distinguishes them, and a seller
+ *  pressing "show everything" means everything, including delivered and cancelled.
+ *
+ *  A function and not a const, like the two hrefs above it: `store` is resolved further down this
+ *  frontmatter, so anything reading it at declaration time is a temporal-dead-zone error. */
+function ordersClearHref(): string {
+  const params = new URLSearchParams({ panel: 'orders' });
+  if (store) params.set('store', store.id);
+  params.set('ostatus', '');
+  return `/seller/dashboard?${params.toString()}`;
+}
+
+function payoutsTabHref(payhist: number): string {
+  const params = new URLSearchParams({ panel: 'payouts' });
+  if (store) params.set('store', store.id);
+  if (payhist > 1) params.set('payhist', String(payhist));
+  return `/seller/dashboard?${params.toString()}`;
+}
+// The rule is `payout-details.ts#needsBankDetails` and it is shared with the site header, which
+// asks the same question without an account to hand (`payouts.ts#sellerNeedsBankDetails`). This
+// page passes the figure it is already showing in the tile, so the dot, the banner and the number
+// beside them can never be three different answers.
+const payoutNeedsBank = !!payoutAccount && needsBankDetails(payoutAccount.seller, payoutAccount.account.payableNowAgorot);
 // `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
 // for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
 // seller's stores bill through their one registered business, so extra stores are extra brands,
@@ -364,7 +448,7 @@ const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.search
 // `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
 // bookmark, a link someone edited) hid ALL of them and served a dashboard with
 // an empty body. Fall back to the landing tab instead.
-const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'advertising', 'messages', 'promotions', 'settings'] as const;
+const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
 const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
 const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
 // Performance + Advertising are the two heaviest tabs to render server-side —
@@ -412,7 +496,6 @@ const messagesPage = paginate(filteredMessageRows, parsePage(Astro.url.searchPar
 // rows live in the DOM at a time.
 const msgDistinctProducts = [...new Set(messageRows.map((r) => r.productName))].sort((a, b) => a.localeCompare(b, 'he'));
 const msgDistinctFrom = [...new Set(messageRows.map((r) => r.fromName))].sort((a, b) => a.localeCompare(b, 'he'));
-const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : [];
 
 // Performance tab — SSR renders the default "this month" range so it's never
 // a blank flash before JS runs; range-picker changes re-fetch from
@@ -427,10 +510,18 @@ const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : []
 const perfToISO = businessTodayISO();
 const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfViews = (store && perfIsInitial)
-  ? await getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity)
-  : EMPTY_VIEW_STATS;
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier((await getSellerById(sellerId))?.tier)) : undefined;
+// The two reads this tab needs are independent, so one round trip (AI_INSTRUCTIONS → Scalability) —
+// and the orders read is bounded to the range being charted. It used to receive the store's ENTIRE
+// order history and throw away everything outside the month (owner, 2026-08-11: "at least stop
+// loading all of infinity every time"); `buildPerformanceSummary` re-applies the same business-day
+// membership rule, so bounding the read changed the cost and not the chart.
+const [perfViews, perfOrders] = (store && perfIsInitial)
+  ? await Promise.all([
+      getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity),
+      getOrdersByStoreSlugInRange(store.slug, perfFromISO, perfToISO),
+    ])
+  : [EMPTY_VIEW_STATS, [] as Order[]];
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(seller?.tier)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
@@ -515,7 +606,7 @@ const perfIsRtl = getDir(lang) === 'rtl';
 // animates instead (performance.ts, paintedOnce).
 const perfChartOpts = { emptyMessage: d.perfNoData, rtl: perfIsRtl, animate: false };
 const perfRevenueChartSvg = perfSummary
-  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice })
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatAgorot })
   : '';
 // Orders over time — the same buckets as the revenue bars, in the OTHER unit. Revenue alone
 // cannot tell "five big baskets" from "fifty small ones", and that is the difference between a
@@ -560,27 +651,45 @@ const SKEL = {
   topRow:     'block w-full h-[2.4rem] rounded-[var(--radius)]',
 };
 const perfChartSkeleton = `<span class="skel-bar ${SKEL.chart}"></span>`;
-const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
+// Orders tab pagination — same server-paginated approach as Products above
+// (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
+// 15/page like the admin dashboard's own list tabs (no items-per-page
+// control here — that was only asked for on Products).
+//
+// **The page is a page in the QUERY now (2026-08-11).** The tab was already paginated, but the read
+// behind it was the store's entire order history, filtered and sorted in JavaScript so fifteen rows
+// could be kept — on the first paint of the page a seller opens all day. The three counts beside it
+// were three more passes over that same array and are one `GROUP BY` now. Both reads are
+// independent, so they go together.
+const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
+const [ordersPage, orderStatusCounts] = store
+  ? await Promise.all([
+      getSellerOrdersPage(store.slug, sellerOrderQuery, parsePage(Astro.url.searchParams, 'opage'), 15),
+      getSellerOrderStatusCounts(store.slug),
+    ])
+  : [{ orders: [] as Order[], total: 0, page: 1, totalPages: 1 }, {} as Record<string, number>];
+const newOrdersCount = orderStatusCounts.pending ?? 0;
 // Overview "orders needing attention" square (CURRENT_TASK item 4): 'processing'
 // (בטיפול) = started but not yet shipped, the second attention stage after the
 // new-orders ('pending') count above. 'ready' (ממתין לאיסוף) is omitted for the
 // same reason the Orders filter omits it — no seller can reach it today (carrier-
 // driven once shipping is wired). Clicking a square jumps to the Orders tab filtered
 // to exactly that status, so the count and the filtered list always agree.
-const unshippedOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'processing').length;
-// Orders tab pagination — same server-paginated approach as Products above
-// (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
-// 15/page like the admin dashboard's own list tabs (no items-per-page
-// control here — that was only asked for on Products).
-const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
-const filteredSortedOrders = filterAndSortSellerOrders(storeOrders, store?.slug ?? '', sellerOrderQuery);
-const ordersPage = paginate(filteredSortedOrders, parsePage(Astro.url.searchParams, 'opage'), 15);
+const unshippedOrdersCount = orderStatusCounts.processing ?? 0;
+/** Every order this store has ever taken — the "orders so far" stat, and the test the tab's
+ *  empty state asks ("no orders at all" is a different screen from "none match this filter"). */
+const storeOrdersTotal = Object.values(orderStatusCounts).reduce((sum, n) => sum + n, 0);
 // The toolbar's filter badge is SSR-computed (same as AdminOrdersPanel.astro) because
 // the first paint ALREADY shows a filtered list — the default "active" preset. Leaving
 // it hidden until the client's refreshOrdersFilterBadge() first runs (only on a filter/
 // sort/page change) told the seller "no filter" while rows were in fact being hidden.
-// One entry per filter column, so a second column later just joins the array.
-const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus].filter((v) => v.length > 0).length;
+// One entry per filter column — and the second column ACTUALLY ARRIVED (payout status,
+// 2026-08-11) and was not added here, so a deep link that selected both showed "1" on the badge
+// while the client's own count said 2 the moment anything was clicked (owner). The comment
+// promised this would be a one-line change and then nobody made it; it is made now, and the
+// two counts are the same question asked on two sides of one request.
+const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus, sellerOrderQuery.payoutStatus]
+  .filter((v) => v.length > 0).length;
 
 // Alerts per store for store-switcher dots (pending orders or unread messages)
 const storeAlerts: Record<string, boolean> = allStores.length > 1 ? await getSellerStoreAlerts(sellerId) : {};
@@ -763,6 +872,17 @@ const orderStatusColors: Record<string, string> = {
           aria-selected={initialPanel === 'performance'}
           tabindex={initialPanel === 'performance' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>{d.tabPerformance}</button>
+        {/* Next to Performance and not next to Orders, deliberately: the two answer the same
+            question — "how did this period go" — and a seller who wants the rows behind a figure
+            looks beside the figure. */}
+        <button
+          class={`dash-tab${initialPanel === 'reports' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-reports"
+          data-panel="reports"
+          aria-selected={initialPanel === 'reports'}
+          tabindex={initialPanel === 'reports' ? 0 : -1}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>{d.tabReports}</button>
         <button
           class={`dash-tab${initialPanel === 'advertising' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -783,6 +903,27 @@ const orderStatusColors: Record<string, string> = {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
           {unreadMsgRows > 0 && (
             <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
+          )}
+        </button>
+        {/* Between Messages and Settings, and the position is the argument: this is the seller's
+            own money rather than the store's operation, so it sits at the end of the working tabs
+            and beside the other account-shaped one. */}
+        <button
+          class={`dash-tab${initialPanel === 'payouts' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-payouts"
+          data-panel="payouts"
+          aria-selected={initialPanel === 'payouts'}
+          tabindex={initialPanel === 'payouts' ? 0 : -1}
+          style="position:relative"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>{d.tabPayouts}
+          {/* "danger", like the orders badge and unlike the stock one: this is not a wrong state
+              that can wait, it is the seller's own money sitting still because of a form nobody
+              has asked them to fill in. `data-tab-alert` is what lets the strip's edge flag it
+              while this tab is scrolled off screen (scripts/dashboard/tab-alert-edges.ts). */}
+          {payoutNeedsBank && (
+            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={d.payNoBankTitle}></span>
           )}
         </button>
         <button
@@ -854,7 +995,7 @@ const orderStatusColors: Record<string, string> = {
               something to act on, muted "all clear" otherwise. */}
           <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="orders">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.tabOrders}</dt>
-            <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrders.length}</dd>
+            <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrdersTotal}</dd>
           </button>
           <button type="button" id="ov-new-orders" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovNewOrders}</dt>
@@ -1747,10 +1888,20 @@ const orderStatusColors: Record<string, string> = {
           {/* Orders is cards-only at every screen size (no table/header to fall
               back to), so this toolbar is always visible — unlike
               .table-toolbar (products/messages), it's not display:none above
-              640px. Default filter selection = the old "active" preset
-              (pending/processing/ready/shipped), matching today's default. */}
-          {storeOrders.length > 0 && (
-            <div class="dash-toolbar w-full" id="orders-toolbar">
+              640px.
+
+              `data-status` hands the client the filter the SERVER just rendered this list with.
+              Without it the toolbar always started from its own "active" default, so arriving on a
+              deep link (`?ostatus=…`, which the payments tab now builds) showed the right rows and
+              then silently widened them back the first time anything touched the toolbar — the
+              funnel badge said "1 filter" while the list was unfiltered. Empty string means the
+              seller explicitly cleared it, which is not the same as absent.
+
+              (This comment is ABOVE the `{expr && (` and not inside it. Astro 7's compiler rejects
+              a comment as that expression's first child and fails with no file and no line —
+              scripts/verify.mjs's header carries the case.) */}
+          {storeOrdersTotal > 0 && (
+            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')} data-payout={sellerOrderQuery.payoutStatus.join(',')}>
               <div class="relative flex-1 min-w-[110px] max-w-[280px]">
                 <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="search" id="orders-search-input" value={sellerOrderQuery.q} placeholder={d.ordersSearchPlaceholder ?? 'חיפוש הזמנות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
@@ -1769,20 +1920,57 @@ const orderStatusColors: Record<string, string> = {
             </div>
           )}
         </div>
-        {storeOrders.length === 0 ? (
+        {storeOrdersTotal === 0 ? (
           <p class="seller-msg-empty">{d.noOrders}</p>
         ) : (
           <Fragment>
+          {/* "You are not looking at all your orders, here is why, and here is the way out."
+              A deep link from the payments tab narrows this list, and without this the seller
+              arrives at a shorter list with no explanation and no obvious undo — the filter menu's
+              own clear is two clicks inside a dropdown (owner, 2026-08-11). Server-rendered from
+              `?ofrom=`, so it is right at first paint and gone the moment the seller filters by
+              hand instead.
+
+              **NOT a `.card`, and that is the fix rather than a preference** (owner, 2026-08-11 —
+              it stayed misaligned through one attempt). `.card` is UNLAYERED css setting
+              `display:flex; flex-direction:column` (cards.css), so a `flex-row` utility from
+              `@layer utilities` loses to it regardless of source order — the documented trap (f) in
+              the CSS rule. The row never became a row; every other flex utility on it was then
+              arranging a COLUMN, which is how the link ended up parked in the middle of the line
+              instead of under the text. A plain block with `text-start` needs none of it: the two
+              lines follow the page's direction because that is what block layout does in RTL, and
+              there is no legacy rule left to fight.
+
+              (Comment ABOVE the `{expr && (`, never as its first child — that is the silent Astro
+              compile failure scripts/verify.mjs's header carries.) */}
+          {ordersFromBasis && (
+            <div id="orders-from-banner" class="p-3 mb-3 rounded-[var(--radius)] border [border-color:var(--color-border)] [background:var(--color-surface)] text-start text-[0.85rem]" role="status">
+              <p class="m-0">{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</p>
+              <a class="inline-block mt-1 underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
+            </div>
+          )}
           <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
           <div class="flex flex-col gap-3" id="orders-list">
-            {ordersPage.items.map((order) => {
+            {ordersPage.orders.map((order) => {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
               const storeSub   = order.storeSubtotals[store!.slug];
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
+              /* When this order's money reaches the seller, and why then. The Payments tab used to
+                 carry this as a row in a table of its own; the owner asked for it here, where the
+                 order is managed (סשן א׳ §4). `order-payout-line.ts` is the shared derivation —
+                 `buildOrderCard` in scripts/dashboard/orders.ts renders the same three fields from
+                 the same function, which is what keeps the SSR card and the AJAX one one card. */
+              const payLine    = orderPayoutLine({
+                paymentStatus: order.paymentStatus,
+                shippingStatus: order.shippingStatus,
+                paidAt: order.paidAt ?? null,
+                deliveredAt: order.deliveredAt ?? null,
+                deliveryMethod: storeSub?.deliveryMethod ?? null,
+              });
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-payout={payoutFilterValue(payLine)} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the
@@ -1899,6 +2087,24 @@ const orderStatusColors: Record<string, string> = {
                           <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatAgorot(storeSliceTotalAgorot(storeSub))}</strong>
                         </div>
                       )}
+                      {/* When the money from THIS order reaches the seller, and why then.
+                          Deliberately no amount: the figure a seller acts on is the total on the
+                          Payments tab, and a per-order net would be a new seller-visible number
+                          (and therefore a new invariant) to say something the timing already says.
+                          Rendered for every order, including cancelled ones — "לא ייכלל בתשלום" is
+                          the answer a seller looking at a cancelled order came for. */}
+                      <div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]">
+                        <span class="[color:var(--color-muted)]">{d.orderPayoutLabel}</span>
+                        <strong class="text-[color:var(--color-text)]">
+                          {payLine.state === 'not_payable' ? d.orderPayoutNone
+                            : payLine.state === 'releasable' ? d.orderPayoutReleasable
+                            : payLine.releaseDayISO ? d.orderPayoutOn.replace('{date}', formatBusinessDayLabel(payLine.releaseDayISO))
+                            : d.orderPayoutPending}
+                        </strong>
+                        {payLine.state === 'held' && (
+                          <span class="[color:var(--color-muted)]">· {payoutWhyText(payLine, d[payLine.whyKey])}</span>
+                        )}
+                      </div>
                     </div>
                     <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
                       {/* Multi-note UI: a list of private notes (each an inline line with
@@ -2101,26 +2307,18 @@ const orderStatusColors: Record<string, string> = {
                 a loading list must not look alike, and this is the surface where
                 "nothing sold" is the reading a seller would jump to. */}
             {!perfSummary && [0, 1, 2].map(() => <SkelBar class={SKEL.topRow} />)}
-            {perfSummary && perfSummary.topProducts.length === 0 && (
-              <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
+            {perfSummary && (
+              <TopProductsList products={perfSummary.topProducts} totalAgorot={perfSummary.productRevenueAgorot} d={d as unknown as Record<string, string>} />
             )}
-            {perfSummary?.topProducts.map((tp, tpIdx) => {
-              const totalRevenueAgorot = Math.max(perfSummary.topProducts.reduce((s, x) => s + x.revenueAgorot, 0), 1);
-              const pct = Math.round((tp.revenueAgorot / totalRevenueAgorot) * 100);
-              return (
-                <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
-                  <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(tpIdx * 60, 300)}ms`}></div>
-                  <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
-                    <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
-                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenueAgorot)}</span>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </div>
 
         {store && <PerfProductSection products={products} />}
+      </div>
+
+      <!-- ── Panel: Reports ── -->
+      <div id="dash-panel-reports" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-reports" hidden={initialPanel !== 'reports'}>
+        <ReportsPanel storeSlug={store.slug} d={d as unknown as Record<string, string>} />
       </div>
 
       <!-- ── Panel: Advertising ── -->
@@ -2363,6 +2561,27 @@ const orderStatusColors: Record<string, string> = {
       <!-- ── Panel: Promotions ── -->
       <div id="dash-panel-promotions" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-promotions" hidden={initialPanel !== 'promotions'}>
         <PromotionsPanel store={store} products={products} categories={storeCategoryList} selectedScopeLabel={t.store.saleOnSelected} storeScopeLabel={t.store.saleOnWholeStore} andMoreLabel={t.store.saleAndMore} d={d} />
+      </div>
+
+      <!-- ── Panel: Payments ── -->
+      {/* Server-rendered rather than deferred like Reports/Performance: its numbers ARE the reason
+          the tab is opened, and they cost three small indexed reads that the page has already made
+          for the badge above. `data-hydrating` only because the details form needs its handler. */}
+      <div id="dash-panel-payouts" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-payouts" hidden={initialPanel !== 'payouts'}>
+        {payoutAccount && (
+          <PayoutsPanel
+            account={payoutAccount.account}
+            payouts={payoutAccount.payouts}
+            seller={payoutAccount.seller}
+            multiStore={allStores.length > 1}
+            payoutPage={parsePage(Astro.url.searchParams, 'payhist')}
+            payoutPageHref={(p) => payoutsTabHref(p)}
+            ordersHref={ordersForHoldBasisHref}
+            storeSlug={store?.slug ?? null}
+            storeName={store?.name ?? null}
+            d={d}
+          />
+        )}
       </div>
 
       <!-- ── Panel: Settings ── -->
@@ -3252,6 +3471,11 @@ const orderStatusColors: Record<string, string> = {
       initPerformanceTab();
     },
 
+    reports: async () => {
+      const { initReportsTab } = await import('../../scripts/dashboard/reports.js');
+      initReportsTab();
+    },
+
     advertising: async () => {
       const { initAdvertisingTab } = await import('../../scripts/dashboard/advertising.js');
       initAdvertisingTab();
@@ -3267,6 +3491,14 @@ const orderStatusColors: Record<string, string> = {
       ]);
       promo.initPromotionsTab();
       coupons.initCouponsCard();
+    },
+
+    payouts: async () => {
+      const { initPayoutsTab, watchPayoutsFreshness } = await import('../../scripts/dashboard/payouts.js');
+      initPayoutsTab();
+      // Once per page: it survives the panel being replaced by a refresh, which `initPayoutsTab`
+      // deliberately does not (it binds the form that was just swapped out).
+      watchPayoutsFreshness();
     },
 
     settings: async () => {

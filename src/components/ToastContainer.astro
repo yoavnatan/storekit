@@ -42,11 +42,20 @@ const t = getT(getLang(Astro.cookies));
     new MutationObserver(updateBottomOffset).observe(cartPreviewEl, { attributes: true, attributeFilter: ['class'] });
   }
 
-  function showToast(title: string, body: string, duration = 5000, href?: string) {
+  function showToast(title: string, body: string, duration = 5000, href?: string, tone?: string) {
     updateBottomOffset();
     const toast = document.createElement('div');
-    toast.setAttribute('role', 'status');
-    toast.className = 'toast-card';
+    // `alert` for a failure, `status` for everything else. The difference is real and not
+    // cosmetic: `status` is announced only once the screen reader finishes what it is saying,
+    // which for "the order did not go through" is the wrong moment. See lib/toast.ts.
+    const isError = tone === 'error';
+    toast.setAttribute('role', isError ? 'alert' : 'status');
+    // Spelled out rather than left to `role="alert"`'s implicit mapping: this container declares
+    // `aria-live="polite"`, and the live-region politeness a screen reader uses is the nearest one
+    // it finds walking UP from the changed node — so the ancestor can swallow the implied
+    // assertiveness. The explicit attribute on the node itself is what makes it hold.
+    if (isError) toast.setAttribute('aria-live', 'assertive');
+    toast.className = isError ? 'toast-card toast-card--error' : 'toast-card';
     toast.style.pointerEvents = 'auto';
 
     toast.innerHTML = `
@@ -82,17 +91,17 @@ const t = getT(getLang(Astro.cookies));
   // key = dedup id (e.g. notification relatedId) — skips a repeat toast if
   // two independent pollers (a page-local one + the site-wide notification
   // poller) both notice the same event.
-  function toastOnce(key: string | undefined, title: string, body: string, duration?: number, href?: string) {
+  function toastOnce(key: string | undefined, title: string, body: string, duration?: number, href?: string, tone?: string) {
     if (key) {
       if (shownKeys.has(key)) return;
       shownKeys.add(key);
     }
-    showToast(title, body, duration, href);
+    showToast(title, body, duration, href, tone);
   }
 
   window.addEventListener('toast:show', (e: Event) => {
-    const { title = '', body = '', duration, href, key } = (e as CustomEvent<{ title: string; body: string; duration?: number; href?: string; key?: string }>).detail;
-    toastOnce(key, title, body, duration, href);
+    const { title = '', body = '', duration, href, key, tone } = (e as CustomEvent<{ title: string; body: string; duration?: number; href?: string; key?: string; tone?: string }>).detail;
+    toastOnce(key, title, body, duration, href, tone);
   });
 
   (window as unknown as { showToast: typeof showToast }).showToast = showToast;
@@ -103,9 +112,9 @@ const t = getT(getLang(Astro.cookies));
   // JS chunk has loaded — had a chance to attach the listener above. toastOnce's
   // key-based dedup makes this safe even if the live listener above already caught
   // the same event in the meantime.
-  type QueuedToast = { title: string; body: string; duration?: number; href?: string; key?: string };
+  type QueuedToast = { title: string; body: string; duration?: number; href?: string; key?: string; tone?: string };
   const queue = (window as unknown as { __toastQueue?: QueuedToast[] }).__toastQueue;
   if (Array.isArray(queue)) {
-    queue.splice(0).forEach((d) => toastOnce(d.key, d.title, d.body, d.duration, d.href));
+    queue.splice(0).forEach((d) => toastOnce(d.key, d.title, d.body, d.duration, d.href, d.tone));
   }
 </script>

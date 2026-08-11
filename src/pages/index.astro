@@ -635,7 +635,12 @@ const jsonLd = {
                                    below, which is lifted above it, and it points at the same store.
                                    `inset-0` resolves against `.home-section-header` (the `relative`
                                    above), not against this link, which is unpositioned. -->
-                              <a href={`/${s.slug}`} class="flex items-center gap-2.5 after:absolute after:inset-0 after:content-['']" style="color:inherit;text-decoration:none">
+                              <!-- Prefetches, and the sibling "visit store" button below does not:
+                                   they point at the same URL, Astro dedupes by URL, and this one is
+                                   both the whole header's hover target (the stretched `::after`) and
+                                   the first of the two in tab order. Marking both would be a second
+                                   attribute buying nothing. -->
+                              <a href={`/${s.slug}`} data-astro-prefetch class="flex items-center gap-2.5 after:absolute after:inset-0 after:content-['']" style="color:inherit;text-decoration:none">
                                 <StoreAvatar name={s.name} slug={s.slug} profileImage={s.profileImage} size={36} />
                                 <!-- A shade larger than a shelf heading (1rem): this is a store's
                                      NAME beside its logo, not a row label, and at 1rem next to a

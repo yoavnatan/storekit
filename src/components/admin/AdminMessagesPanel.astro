@@ -136,12 +136,17 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
               </tr>
               <tr class="msg-thread-row" id={`admin-msg-detail-${id}`} hidden>
                 <td colspan="6">
+                  <div class="msg-thread-head">
+                    <p class="msg-thread-head__subject"><span class="msg-thread-head__label">נושא</span>{subject}</p>
+                  </div>
                   <div class="msg-thread" id={`admin-msg-replies-${id}`}></div>
                   <div class="seller-msg-reply-form" data-reply-for-thread={id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-                    <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
-                    <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+                    <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
+                    <div class="seller-msg-reply-actions">
                       <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-                      <button class="seller-msg-reply-send" type="button">שלח</button>
+                      <button class="seller-msg-reply-cancel" type="button" hidden>ביטול</button>
+                      <button class="seller-msg-reply-open" type="button" aria-expanded="false">כתוב תגובה</button>
+                      <button class="seller-msg-reply-send" type="button" hidden>שלח</button>
                     </div>
                   </div>
                 </td>

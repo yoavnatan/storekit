@@ -1,0 +1,52 @@
+---
+/**
+ * The arrow pager for the Payments tab's two tables — the seller-side twin of `AdminPager.astro`,
+ * with this dashboard's own translated labels rather than the admin's hardcoded Hebrew.
+ *
+ * **A component rather than the markup twice.** Both tables had their own copy of it, which is one
+ * copy too many for a control this small.
+ *
+ * ⚠️ **A correction, recorded because the wrong version was believed for a few minutes and is
+ * exactly the kind of thing that gets re-derived.** The first version of this note claimed the
+ * `hidden={page <= 1}` it replaced was inert, on the grounds that `.btn` sets
+ * `display: inline-flex` and a class beats an attribute selector. **That is false here.**
+ * `reset.css` carries `[hidden] { display: none !important; }` precisely so the attribute always
+ * wins, and an `!important` declaration in a cascade layer beats an unlayered normal one whatever
+ * the specificity. The `.home-spotlight-arrow[hidden]` rule in `home.css` is about a different
+ * problem, not evidence for this one. The pager was never broken.
+ *
+ * The edges are still rendered CONDITIONALLY rather than hidden, and now for the ordinary reason:
+ * it is what `AdminPager` does, and a disabled placeholder keeps the row from reflowing as the
+ * seller pages through it, which an absent element would not.
+ */
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
+  /** Names the table this pager belongs to, for a screen reader that meets two of them. */
+  label: string;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { page, totalPages, buildUrl, label, d } = Astro.props;
+const DISABLED = 'btn btn--ghost btn--sm opacity-40 pointer-events-none';
+---
+
+{/* `data-payouts-pager` is what the panel's delegated handler looks for
+    (scripts/dashboard/payouts.ts): followed as plain links these reload the whole dashboard to move
+    one table by ten rows, so the click is intercepted and only this panel is re-rendered. The links
+    stay real, so with no JS the navigation still works.
+    The comment sits OUTSIDE the `&&` — inside it, a comment and an element are two expressions
+    where the parentheses allow one, and it does not compile. */}
+{totalPages > 1 && (
+  <nav class="flex items-center gap-2 mt-3 text-[0.8rem]" aria-label={label} data-payouts-pager>
+    {page > 1
+      ? <a href={buildUrl(page - 1)} rel="prev" class="btn btn--ghost btn--sm">{d.payPagePrev}</a>
+      : <span class={DISABLED} aria-disabled="true">{d.payPagePrev}</span>}
+    <span class="muted tabular-nums">{d.payPageOf.replace('{n}', String(page)).replace('{total}', String(totalPages))}</span>
+    {page < totalPages
+      ? <a href={buildUrl(page + 1)} rel="next" class="btn btn--ghost btn--sm">{d.payPageNext}</a>
+      : <span class={DISABLED} aria-disabled="true">{d.payPageNext}</span>}
+  </nav>
+)}
