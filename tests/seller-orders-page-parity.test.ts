@@ -304,6 +304,54 @@ describe('the new-order poll asks for a watermark, not for the history', () => {
     expect(junk.orders).toEqual([]);
     expect(Date.parse(junk.since)).toBeGreaterThan(0);
   });
+
+  /**
+   * **The same phantom toast, at the precision that actually produces it** (owner, 2026-08-11:
+   * "עדיין יש לי טוסט רפאים של הזמנה חדשה … מופיע כל פעם שמרעננים את הדף").
+   *
+   * The test above this one was already green while the bug was live on real data, and the reason
+   * is the fixture: every `at` in `SEEDS` is a whole millisecond, and so is everything the demo
+   * seeder writes. `timestamptz` keeps MICROseconds and a JS `Date` does not, so the seed's
+   * round-trip through `isoOf` truncated the watermark — and the old `= at` lookup then matched no
+   * row at all. On whole milliseconds there is nothing to truncate and the bug cannot appear.
+   *
+   * A real checkout inserts with `now()`. On the owner's own database that was 6 of 38 stores —
+   * exactly the ones whose newest order came from a checkout rather than the seeder — and the
+   * seller saw a toast plus a phantom card on EVERY refresh, with nothing in the bell behind it.
+   *
+   * So this seeds the precision the seeder cannot produce, and asserts the only thing that matters:
+   * whatever the first real poll hands back, the seed already named it.
+   */
+  it('an order written with microsecond precision is still reported by the seed', async () => {
+    const micro = 'mikro-shniot';
+    const id = crypto.randomUUID();
+    await query(
+      `INSERT INTO orders (id, checkout_ref, buyer_name, buyer_email, buyer_phone, total_agorot,
+                           payment_status, shipping_status, created_at)
+       VALUES ($1, 'SO-MICRO', 'מיקרו', 'micro@example.com', '0509999999', 1000, 'paid', 'pending',
+               '2026-08-07T11:00:46.001380Z'::timestamptz)`,
+      [id],
+    );
+    await query(
+      `INSERT INTO order_items (id, order_id, product_name, store_slug, store_name, price_agorot, qty, position)
+       VALUES ($1, $2, 'פריט', $3, 'מיקרו', 1000, 1, 0)`,
+      [crypto.randomUUID(), id, micro],
+    );
+
+    const seed = await getSellerOrdersSince(micro, '');
+    expect(seed.orders, 'the seed still hands back no rows').toEqual([]);
+    expect(seed.seenIds, 'the microsecond order must be reported as already seen').toEqual([id]);
+
+    const firstPoll = await getSellerOrdersSince(micro, seed.since);
+    const seen = new Set(seed.seenIds ?? []);
+    expect(
+      firstPoll.orders.filter((o) => !seen.has(o.id)).map((o) => o.checkoutRef),
+      'nothing existing may be announced as new',
+    ).toEqual([]);
+
+    await query('DELETE FROM order_items WHERE order_id = $1', [id]);
+    await query('DELETE FROM orders WHERE id = $1', [id]);
+  });
 });
 
 describe('the urgency grouping stays derived from the status table', () => {
