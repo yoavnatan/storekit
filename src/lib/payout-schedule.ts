@@ -43,10 +43,21 @@ export const STATUTORY_RETURN_DAYS = 14;
 /**
  * How long a delivered order's money waits before it may be paid out.
  *
- * **21, and the number is derived rather than chosen** — `STATUTORY_RETURN_DAYS` + a week. A hold of
- * exactly 14 released a seller's money on the very last day the buyer could still cancel, and a
- * cancellation that lands after the payout is a debt to chase instead of money we are holding. It
- * has to clear the statutory window with room for the notice to reach us, not land exactly on it.
+ * **21, and the number is derived rather than chosen** — `STATUTORY_RETURN_DAYS` + a week.
+ *
+ * ── What the extra week is actually for (corrected 2026-08-11 by the owner) ──
+ * It was first written as margin "for the notice to reach us", and the owner cut through that:
+ * *"אם הוא מבטל זה בתנאי שהוא החזיר את המוצר!"* — a cancellation is not a loss, the goods come
+ * back. So the exposure is narrower and more specific than the first version claimed, and naming it
+ * correctly is what stops the number being argued from the wrong premise:
+ *
+ *   The buyer may declare the cancellation on day 14. The parcel is then still in transit. A payout
+ *   made on day 14 therefore leaves the platform CLAWING BACK from a seller who already has the
+ *   money, while the goods are somewhere on a courier's van — which is `refund-owed.ts` writing a
+ *   `refund_due` we have no automatic way to collect against.
+ *
+ * The margin buys the return journey, not the paperwork. That is also why it may not simply be
+ * "14 + one day": one day does not get a parcel across the country.
  *
  * ⚠️ Still an owner decision, and still tied to the returns policy — but it may not go BELOW the
  * statutory window whatever that policy says. `tests/payout-schedule.test.ts` pins that floor.
