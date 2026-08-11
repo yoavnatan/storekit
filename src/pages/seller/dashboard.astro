@@ -312,11 +312,10 @@ function ordersForHoldBasisHref(basis: 'payment' | 'unshipped'): string {
   return `/seller/dashboard?${params.toString()}`;
 }
 
-function payoutsTabHref(pages: { paypage: number; payhist: number }): string {
+function payoutsTabHref(payhist: number): string {
   const params = new URLSearchParams({ panel: 'payouts' });
   if (store) params.set('store', store.id);
-  if (pages.paypage > 1) params.set('paypage', String(pages.paypage));
-  if (pages.payhist > 1) params.set('payhist', String(pages.payhist));
+  if (payhist > 1) params.set('payhist', String(payhist));
   return `/seller/dashboard?${params.toString()}`;
 }
 // The rule is `payout-details.ts#needsBankDetails` and it is shared with the site header, which
@@ -2512,7 +2511,7 @@ const orderStatusColors: Record<string, string> = {
             seller={payoutAccount.seller}
             multiStore={allStores.length > 1}
             payoutPage={parsePage(Astro.url.searchParams, 'payhist')}
-            payoutPageHref={(p) => payoutsTabHref({ paypage: parsePage(Astro.url.searchParams, 'paypage'), payhist: p })}
+            payoutPageHref={(p) => payoutsTabHref(p)}
             ordersHref={ordersForHoldBasisHref}
             d={d}
           />

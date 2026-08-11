@@ -100,6 +100,15 @@ export function sumPayouts(payouts: readonly AccountPayout[]): number {
   return total;
 }
 
+/** The signed total of a seller's ledger adjustments. A plain sum today, and exported for the same
+ *  reason `sumPayouts` is: the moment a KIND has to be excluded (a set-off that is not settled
+ *  yet, say) the exclusion must land in one place rather than in whichever caller was remembered. */
+export function sumAdjustments(adjustments: readonly AccountAdjustment[]): number {
+  let total = 0;
+  for (const a of adjustments) total += a.amountAgorot;
+  return total;
+}
+
 /**
  * The invariant in the header, as one function: `releasable − paidOut + adjustments`, SIGNED.
  *
@@ -158,8 +167,7 @@ export function buildSellerAccount(
   });
 
   const paidOutAgorot = sumPayouts(payouts);
-  let adjustmentsAgorot = 0;
-  for (const a of adjustments) adjustmentsAgorot += a.amountAgorot;
+  const adjustmentsAgorot = sumAdjustments(adjustments);
 
   const balance = payoutBalanceAgorot(releasableAgorot, paidOutAgorot, adjustmentsAgorot);
   const payableNowAgorot = Math.max(0, balance);

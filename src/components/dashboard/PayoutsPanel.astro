@@ -8,6 +8,14 @@
  * stores (`pricing.ts`, `seller-account.ts`) — so this covers all of them and says so in a line
  * rather than leaving the seller to reconcile a figure that looks too large.
  *
+ * ⚠️ **"Per registered business" is true only because a seller ACCOUNT is currently assumed to be
+ * one business, and the owner has decided that assumption is wrong** (2026-08-11): one person can
+ * hold two ח״פ, and under the agent model the buyer's invoice is issued in the seller's name and
+ * binds to that ח״פ's tax file, so pooling two of them is a tax problem rather than a UX one. The
+ * schema, the backfill and the full list of modules that move are written down in
+ * `DB_MIGRATION_PLAN.md` §10. Until that lands, this panel is per seller account — do not write
+ * new code here that assumes it will stay that way.
+ *
  * **Server-rendered, unlike Reports and Performance.** Those defer because a report is the heaviest
  * thing the dashboard can build. This is three small queries assembled by one call
  * (`payouts.ts#getSellerAccountFor`) and its numbers are the reason a seller opens the tab at all —
@@ -65,10 +73,12 @@ const { account, payouts, seller, multiStore, payoutPage, payoutPageHref, orders
  * on the seller.** That is a money question, it is three lines instead of a hundred rows, and it
  * links to the Orders tab for the rows rather than reprinting them.
  *
- * A consequence worth naming: this panel no longer pages, which removes the `?paypage=` half of the
- * two-parameter dance the history table still needs. The props stay in place — the page still
- * builds both hrefs — because `payhist` alone would have been a silent URL break for anyone holding
- * a bookmark, and one unused parameter is cheaper than that.
+ * A consequence worth naming: the held section no longer pages, so `?paypage=` is gone and only
+ * `?payhist=` is left. The two-parameter dance existed so that paging one table could not reset the
+ * other under the seller's cursor; with one table it is a parameter that answers nothing. An old
+ * bookmark carrying `paypage` still opens the tab — an unknown query parameter is ignored, not an
+ * error — it simply lands on the first page of the history, which is where it would have landed
+ * anyway.
  */
 /** The split, and every figure in it, comes from `order-payout-line.ts#splitHeldByBasis` — nothing
  *  on this screen is computed in this file, which is the rule the panel's header already states and

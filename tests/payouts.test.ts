@@ -11,6 +11,8 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { query } from '../src/lib/db.js';
 import { createPayout, setPayoutStatus, recordAdjustment, getPayoutsForSeller, getAdjustmentsForSeller } from '../src/lib/payouts.js';
 import { buildSellerAccount, payoutBalanceAgorot, type AccountSlice } from '../src/lib/seller-account.js';
@@ -317,5 +319,36 @@ describe('when the bank details are actually asked for', () => {
 
   it('and clears the moment all four fields are there', () => {
     expect(needsBankDetails(fullBank, 100_000)).toBe(false);
+  });
+
+  /**
+   * The grep guard, in the shape `safe-redirect.test.ts` and `email-address.test.ts` established:
+   * scan the TREE, not a file list, so a surface written next month is covered the day it exists.
+   *
+   * The rule had three call sites the moment it was extracted (the tab badge, the banner and the
+   * header dot), which is exactly the count at which a fourth gets hand-rolled — and a hand-rolled
+   * fourth is how a dot appears on a screen with nothing to do on it, which is the failure this
+   * whole chain was built to stop.
+   */
+  it('nothing hand-rolls the condition — every surface goes through needsBankDetails', () => {
+    const root = path.resolve(__dirname, '../src');
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.(ts|astro)$/.test(entry.name)) continue;
+        // The module that DEFINES the rule is allowed to spell it.
+        if (full.endsWith(path.join('lib', 'payout-details.ts'))) continue;
+        const src = fs.readFileSync(full, 'utf8');
+        // "some payable figure > 0" on the same line as a negated bank test — the exact shape the
+        // three call sites carried before they were folded into one function.
+        if (/payable\w*\s*>\s*0[\s\S]{0,80}?!\s*hasPayableBank/.test(src)) {
+          offenders.push(path.relative(root, full));
+        }
+      }
+    };
+    walk(root);
+    expect(offenders, 'use needsBankDetails() from lib/payout-details.ts instead').toEqual([]);
   });
 });

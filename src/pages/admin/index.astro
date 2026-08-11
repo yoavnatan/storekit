@@ -693,7 +693,14 @@ const badgeFor: Record<string, number> = badgeCounts;
         />
       </AdminPanelShell>
 
-      <AdminPanelShell panel="payouts" active={!!payoutPlan}>
+      {/* `shows('payouts')` and not `!!payoutPlan`, and the difference became load-bearing on
+          2026-08-11: the plan is now fetched for the SELLERS tab too (its cards render the
+          per-seller half of it), so a truthiness test on the data would mark this panel `active`
+          while the admin is looking at Sellers — `AdminPanelShell` renders `hidden={!active}`, so
+          two panels would be open at once and this one would lose its `data-lazy` marker. Every
+          other shell here asks the same question; this is the one where the answer stopped being
+          the same. */}
+      <AdminPanelShell panel="payouts" active={shows('payouts') && !!payoutPlan}>
         {payoutPlan && <AdminPayoutPlanCard
           plan={payoutPlan}
           sellersHref={(state) => tabUrl('sellers', { spayout: state })}
