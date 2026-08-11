@@ -24,17 +24,20 @@ import type { PlatformStatement } from './platform-statement.js';
 
 const money = (agorot: number): string => fromAgorot(agorot).toFixed(2);
 
-const ACCRUAL = 'נצבר בתקופה (בסיס צבירה)';
-const CASH = 'תנועה בפועל (בסיס מזומן)';
+// The same two sections the screen shows, under the same names — a reader comparing the file to
+// the page must not have to work out which row is which.
+const ACCRUAL = 'ההכנסה שלנו (בסיס צבירה)';
+const CASH = 'תנועה בפועל — כספי מוכרים (בסיס מזומן)';
 
 export function platformStatementCsv(s: PlatformStatement): string {
   const rows: (string | number)[][] = [
     ['סעיף', 'שורה', 'סכום בשקלים'],
 
-    [ACCRUAL, 'מחזור מכירות (GMV)', money(s.grossAgorot)],
+    // Turnover leads the section as CONTEXT — it is what the commission is a percentage of, and it
+    // is not the platform's money. The two rows after it are, and they are the ones that sum.
+    [ACCRUAL, 'נמכר דרך הפלטפורמה (מחזור)', money(s.grossAgorot)],
     [ACCRUAL, 'מספר רכישות', s.purchases],
     [ACCRUAL, 'עמלת פלטפורמה שנצברה', money(s.commissionAccruedAgorot)],
-    [ACCRUAL, 'נצבר למוכרים (נטו)', money(s.sellerEarnedAgorot)],
     [ACCRUAL, 'דמי מנוי שנצברו', money(s.subscriptionsAccruedAgorot)],
     [ACCRUAL, 'סה"כ הכנסה שנצברה', money(s.incomeAccruedAgorot)],
 
