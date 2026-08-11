@@ -60,8 +60,11 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // which is the seed. It used to be handed the store's ENTIRE order history, on load and then
   // every fifteen seconds, to diff ids against (owner, 2026-08-11).
   if (!url.searchParams.has('page')) {
-    const { orders, since } = await getSellerOrdersSince(storeSlug, url.searchParams.get('since') ?? '');
-    return json({ orders: orders.map((o) => scopeOrder(o, storeSlug)), since });
+    const { orders, since, seenIds } = await getSellerOrdersSince(storeSlug, url.searchParams.get('since') ?? '');
+    // `seenIds` is what the seed hands back instead of rows — without it the poll announced the
+    // store's newest existing order as new (orders.ts#OrdersSincePage). Additive field, so an older
+    // client mid-deploy simply ignores it, which is the behaviour it had anyway.
+    return json({ orders: orders.map((o) => scopeOrder(o, storeSlug)), since, seenIds: seenIds ?? [] });
   }
 
   const query = parseSellerOrderQuery(url.searchParams);

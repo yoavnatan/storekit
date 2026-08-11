@@ -2,6 +2,9 @@
 import type { AdminSellerSortCol, AdminSortDir, SellerCardData, PayoutStateFilter } from '../../lib/admin-stats.js';
 import type { SellerBalance } from '../../lib/seller-balance.js';
 import type { PayoutPlanRow, PayoutState } from '../../lib/payout-run.js';
+/** The five real states plus "this seller is not in the plan at all" — see `payoutState_`. Local,
+ *  because it is a fact about this SCREEN's lookup and not about how payouts work. */
+type PayoutStateOrNone = PayoutState | 'none';
 import { MIN_PAYOUT_AGOROT } from '../../lib/payout-schedule.js';
 import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import { formatAgorot } from '../../lib/money.js';
@@ -56,24 +59,45 @@ const PAYOUT_CHIPS: { value: PayoutStateFilter; label: string }[] = [
   { value: 'no_bank', label: 'תקוע — אין פרטי בנק' },
   { value: 'below_minimum', label: 'מתחת למינימום' },
 ];
-/** One label per state, shared with the payout tab's tiles so the chip, the badge on the card and
- *  the tile the admin arrived from all say the same word. */
-const PAYOUT_STATE_LABEL: Record<PayoutState, string> = {
+/**
+ * One label per state, and each is a complete ANSWER to the question this card raises — "there is a
+ * balance here, why is it not in the next payment?" (owner, 2026-08-11). Naming the state was not
+ * enough: `settled` said "אין יתרה" beside a card showing ₪5,000 of lifetime earnings, which reads
+ * as a contradiction rather than an explanation.
+ *
+ * The reconciliation the admin needs, in one line: **"יתרה למוכר/ת" is a LIFETIME figure** — every
+ * shekel this seller has ever earned net of commission — while "תשלום קרוב" is one moment. The
+ * difference between them is money already transferred plus money still inside the buyers' return
+ * windows, and it is these labels' job to say which.
+ */
+const PAYOUT_STATE_LABEL: Record<PayoutStateOrNone, string> = {
   payable: 'ישולם בתשלום הקרוב',
   no_bank: 'תקוע — אין פרטי בנק',
   below_minimum: `מתחת ל-${formatAgorot(MIN_PAYOUT_AGOROT)} · מתגלגל`,
   already_paid: 'שולם לתקופה הזו',
-  settled: 'אין יתרה',
+  settled: 'הכל הועבר · היתרה שנותרה עוד בהמתנה',
+  none: 'עוד לא השתחרר כסף לתשלום',
 };
 /** Only `no_bank` is a problem someone has to fix, so only it is red. `payable` is the system
- *  working. */
-const PAYOUT_STATE_CLASS: Record<PayoutState, string> = {
+ *  working; the rest are the system waiting. */
+const PAYOUT_STATE_CLASS: Record<PayoutStateOrNone, string> = {
   payable: 'admin-badge--paid',
   no_bank: 'admin-badge--failed',
   below_minimum: 'admin-badge--muted',
   already_paid: 'admin-badge--muted',
   settled: 'admin-badge--muted',
+  none: 'admin-badge--muted',
 };
+/**
+ * A seller `planPayouts` says nothing about at all — nothing of theirs has come out of hold yet.
+ *
+ * It is a state, not a gap: `getReleasableBySeller` only returns sellers with releasable money, so
+ * "absent" is a fact about them and not a missing lookup. Giving it a name is what lets the badge
+ * be unconditional, which is what makes the card answerable.
+ */
+function payoutState_(row: PayoutPlanRow | undefined): PayoutStateOrNone {
+  return row?.state ?? 'none';
+}
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -149,6 +173,15 @@ const sortLabels: Record<string, string> = {
             </span>
             <span class="admin-seller-card__email">{seller.email}</span>
             <span class="admin-seller-card__joined">הצטרף/ה {fmtDate(seller.createdAt)}</span>
+            {/* Always rendered, and that is the point of it. It used to appear only when a payout
+                was pending, so the commonest question this card raises had no answer on it: an
+                admin looking at "יתרה למוכר/ת ₪5,000" with no badge could not tell whether that
+                money is on its way, already sent, stuck on a missing bank account, or still inside
+                the buyers' return windows (owner, 2026-08-11). Every one of those is a different
+                state and each now says its own name. */}
+            <span class="admin-seller-card__payout-state">
+              <span class:list={['admin-badge', PAYOUT_STATE_CLASS[payoutState_(payout)]]}>{PAYOUT_STATE_LABEL[payoutState_(payout)]}</span>
+            </span>
           </div>
           {/* Labelled mini stat-tiles (label above value) — the bare "₪0 סה"כ"
               suffixes read as "what am I looking at?" (owner feedback). Same
@@ -175,32 +208,26 @@ const sortLabels: Record<string, string> = {
                 what the seller is left with once the platform's commission comes out. Deliberately
                 the last tile — it is a consequence of the one before it, and reading them in that
                 order is what makes the pair legible. */}
-            <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)}). דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
+            {/* The tooltip carries the reconciliation the two money tiles otherwise leave the admin
+                to work out: this one is a LIFETIME total and "תשלום קרוב" is one moment, so they
+                are not the same kind of number and the gap between them is not an error. */}
+            <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`סך הכל מאז שנפתחה החנות, אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)}). כולל גם כסף שכבר הועבר וגם כסף שעוד בתוך חלון ההחזרה של הקונה — ולכן הוא גדול מ״תשלום קרוב״. דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
               <span class="admin-seller-card__stat-label">יתרה למוכר/ת</span>
               <span class="admin-seller-card__stat-value">{formatAgorot(balance?.totalEarnedAgorot ?? 0)}</span>
             </span>
             {/* The forward-looking tile, and the only one on this card that is about something
                 ABOUT to happen — the rest are history. Rendered only when there is money moving:
-                `planPayouts` already drops the settled and already-paid rows, so an absent entry
-                means nothing is due, and a permanent "0 ₪ תשלום קרוב" tile on every card would
-                bury the handful that are not zero. The tooltip carries the platform's own cut of
-                the transfer, which is the pairing the deleted table put on one line. */}
-            {payout && (
+                a permanent "₪0 תשלום קרוב" tile on every card would bury the handful that are not
+                zero, and the badge under the seller's name already says why a card has none. The
+                tooltip carries the platform's own cut of the transfer, which is the pairing the
+                deleted table put on one line. */}
+            {payout && payout.balanceAgorot > 0 && (
               <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`עמלה שתיגבה בתשלום הזה: ${formatAgorot(payout.commissionAgorot)}`}>
                 <span class="admin-seller-card__stat-label">תשלום קרוב</span>
                 <span class="admin-seller-card__stat-value">{formatAgorot(payout.balanceAgorot)}</span>
               </span>
             )}
           </div>
-          {/* The state beside the number, because the number alone is a lie of omission: "₪4,200
-              תשלום קרוב" on a seller with no bank details on file is money that is NOT going
-              anywhere on the 10th. It is the one row of the deleted table that was an instruction
-              rather than a report. */}
-          {payout && (
-            <div class="admin-seller-card__payout-state" style="grid-column:1/-1">
-              <span class:list={['admin-badge', PAYOUT_STATE_CLASS[payout.state]]}>{PAYOUT_STATE_LABEL[payout.state]}</span>
-            </div>
-          )}
           {/* Actions moved into a three-dot kebab menu (CURRENT_TASK admin item) —
               consistent with the Stores tab, and ready to hold more per-seller
               actions without crowding the card. onclick stops the click from

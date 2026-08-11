@@ -811,9 +811,20 @@ export const translations = {
       // The held-orders TABLE became a three-line split by reason (owner, סשן א׳ §4 — a second
       // list of orders one tab away from the Orders tab read as a second place to manage them).
       // So the heading asks the question the split answers, instead of naming a list.
-      payHeldTitle: 'למה הכסף עוד לא אצלך',
+      // "תשלומים ממתינים" — the owner asked for "תשלומים ממתינים לטיפולך" (2026-08-11) and the
+      // heading stops one word short of it deliberately: two of the three rows under it need
+      // NOTHING from the seller, and a heading promising otherwise is contradicted by its own
+      // "אין פעולה נדרשת" column. The rows that ARE waiting on them say so, in the action column
+      // and in the one colour on this table.
+      payHeldTitle: 'תשלומים ממתינים',
       payHeldEmpty: 'אין כרגע כסף שממתין לאישור.',
       payHeldFootnote: 'ההזמנות עצמן מנוהלות בלשונית ההזמנות — ליד כל הזמנה שם רשום מתי התשלום עליה משתחרר.',
+      // The banner a deep link from here raises on the Orders tab. It names the filter and offers
+      // the way out — a seller who followed a link and cannot tell what narrowed the list, or how
+      // to widen it again, has been dropped somewhere rather than taken there (owner, 2026-08-11).
+      ordersFromUnshipped: 'מוצגות רק הזמנות שעוד לא נשלחו — הן אלה שמעכבות את התשלום.',
+      ordersFromPayment: 'מוצגות רק הזמנות שנשלחו וטרם סומנו כנמסרו.',
+      ordersShowAll: 'הצג את כל ההזמנות',
       payPagePrev: 'הקודם',
       payPageNext: 'הבא',
       payPageOf: 'עמוד {n} מתוך {total}',
@@ -1226,7 +1237,10 @@ export const translations = {
       // The order card's payout line (owner, סשן א׳ §4 — the per-order answer moved here from the
       // Payments tab's table). Four states, and each has to be a complete answer on its own: a
       // seller reads one of them and nothing else.
-      orderPayoutLabel: 'התשלום עליה:',
+      // "סטטוס תשלום" and not "התשלום עליה" (owner, 2026-08-11) — the row sits beside a shipping
+      // status, and naming it the same way is what makes the pair read as two statuses of one order
+      // rather than as a sentence someone started.
+      orderPayoutLabel: 'סטטוס תשלום:',
       orderPayoutReleasable: 'שוחרר — נכנס לתשלום הקרוב',
       orderPayoutOn: 'משתחרר ב-{date}',
       orderPayoutPending: 'הספירה עוד לא התחילה',
@@ -2388,8 +2402,11 @@ export const translations = {
       payDetailsSaved: 'Details saved',
       payDetailsFailed: 'Could not save. Check your connection and try again.',
       payCurrentBank: 'Account on file:',
-      payHeldTitle: 'Why the money is not with you yet',
+      payHeldTitle: 'Payments waiting',
       payHeldFootnote: 'The orders themselves are managed on the Orders tab — each one says when its payment is released.',
+      ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
+      ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
+      ordersShowAll: 'Show all orders',
       payHeldEmpty: 'Nothing is awaiting approval right now.',
       payPagePrev: 'Previous',
       payPageNext: 'Next',
@@ -2776,7 +2793,7 @@ export const translations = {
       orderBuyer: 'Customer',
       orderItems: 'Items',
       orderTotal: 'Total',
-      orderPayoutLabel: 'Payment for it:',
+      orderPayoutLabel: 'Payment status:',
       orderPayoutReleasable: 'Released — in the next payment',
       orderPayoutOn: 'Releases on {date}',
       orderPayoutPending: 'The countdown has not started',

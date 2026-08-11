@@ -712,8 +712,10 @@ export async function getSellerOrdersPage(
  * seller's dashboard re-reading ten thousand rows four times a minute to discover that nothing
  * happened. The poll's actual question is "anything newer than this?", and that is a watermark.
  *
- * Called with no `sinceISO` it answers with the watermark ALONE and no rows — the seed. From then
- * on the caller passes back what it was given and gets only what arrived after.
+ * Called with no `sinceISO` it answers with the watermark and the ids sitting on it, but no rows —
+ * the seed. From then on the caller passes back what it was given and gets only what arrived after.
+ * Why the seed has to report those ids at all is on `seenIds` below, and it is a bug that reached a
+ * real seller.
  *
  * `>=`, not `>`, and the caller de-duplicates by id: two orders written in the same transaction
  * share a `created_at` to the microsecond, so a strict `>` on the newest one silently drops its
@@ -728,6 +730,23 @@ export interface OrdersSincePage {
   /** Pass this back on the next call. Never empty — with no orders at all it is the moment asked
    *  about, so a store's first order is still newer than it. */
   since: string;
+  /**
+   * The ids sitting exactly ON the watermark, returned by the SEED call only.
+   *
+   * ── The bug this exists for (owner, 2026-08-11: "למה כל רגע מופיעה לי התראה של הזמנה חדשה?") ──
+   * The window is `>=` on purpose (see above), so the first real poll always re-reads whatever sits
+   * at the watermark, and de-duplication by id is what makes that harmless. But the SEED returned
+   * no rows at all — so the caller's id set started EMPTY, and the very next tick handed it the
+   * store's newest existing order as something it had never seen. **Every seller with at least one
+   * order got a "new order" toast fifteen seconds after opening their dashboard, for an order from
+   * whenever.** It announced nothing to the notifications table and inserted nothing new into the
+   * list, which is exactly why it read as a phantom: a toast with nothing behind it.
+   *
+   * Ids rather than rows, because the seed's whole point is not to hand the browser the store's
+   * order history to diff against — that shape was removed the day before this one was found.
+   * Empty on a store with no orders, and empty on every non-seed call.
+   */
+  seenIds?: string[];
 }
 
 export async function getSellerOrdersSince(storeSlug: string, sinceISO: string, limit = 50): Promise<OrdersSincePage> {
@@ -740,7 +759,22 @@ export async function getSellerOrdersSince(storeSlug: string, sinceISO: string, 
     const newest = await firstRow<{ at: Date | string | null }>(
       `SELECT MAX(o.created_at) AS at FROM orders o WHERE ${BELONGS_TO_SLUGS}`, [[storeSlug]],
     );
-    return { orders: [], since: newest?.at ? isoOf(newest.at) : now };
+    // A store with no orders at all: the watermark is now, and there is nothing to have seen.
+    if (!newest?.at) return { orders: [], since: now, seenIds: [] };
+    const at = isoOf(newest.at);
+    // The ids AT that instant, so the caller starts knowing about exactly what the first `>=` poll
+    // is about to hand back.
+    //
+    // `= at` and not `>= at`, and the difference is what makes the two-statement gap safe rather
+    // than merely unlikely: an order written between these two queries carries a `created_at`
+    // strictly LATER than the MAX just read, so it cannot match `= at`, is not reported as seen,
+    // and is announced by the first poll — which is exactly right, because it really is new.
+    // `>= at` would have swallowed it.
+    const atIds = await rows<{ id: string }>(
+      `SELECT o.id FROM orders o WHERE ${BELONGS_TO_SLUGS} AND o.created_at = $2::timestamptz`,
+      [[storeSlug], at],
+    );
+    return { orders: [], since: at, seenIds: atIds.map((r) => r.id) };
   }
   const found = await selectOrders(
     `${BELONGS_TO_SLUGS} AND o.created_at >= $2::timestamptz`,

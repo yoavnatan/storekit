@@ -16,7 +16,7 @@
  *      dropped, unattributable slices reported rather than swallowed).
  */
 import { describe, it, expect } from 'vitest';
-import { orderPayoutLine, payoutWhyText, splitHeldByBasis, HELD_BASES, type HeldSlice } from '../src/lib/order-payout-line.js';
+import { orderPayoutLine, payoutWhyText, splitHeldByBasis, storesWithHeldMoney, HELD_BASES, type HeldSlice } from '../src/lib/order-payout-line.js';
 import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../src/lib/payout-schedule.js';
 import { addDaysISO } from '../src/lib/date-range.js';
 
@@ -104,9 +104,10 @@ describe('the payout line an order card shows', () => {
 });
 
 describe('the held split on the payments tab', () => {
-  const slice = (basis: HeldSlice['hold']['basis'], agorot: number, state = 'held'): HeldSlice => ({
+  const slice = (basis: HeldSlice['hold']['basis'], agorot: number, state = 'held', storeSlug = 'shop'): HeldSlice => ({
     hold: { state, basis },
     netOfCommissionAgorot: agorot,
+    storeSlug,
   });
 
   it('groups by reason, in the order the screen shows them', () => {
@@ -141,6 +142,44 @@ describe('the held split on the payments tab', () => {
     const split = splitHeldByBasis([slice('delivery', 100), slice(null, 250)]);
     expect(split.unknownOrders).toBe(1);
     expect(split.unknownAgorot).toBe(250);
+  });
+
+  /**
+   * The per-store split (owner, 2026-08-11). The seller's Orders tab shows ONE shop, so a row that
+   * pooled two of them could only link into one — it showed a subset and called it the answer. The
+   * money above the table stays account-wide (a payout is one transfer across every shop), so the
+   * property that has to hold is that the sections still add up to it.
+   */
+  it('narrows to one shop, and the shops still sum to the whole account', () => {
+    const slices = [
+      slice('unshipped', 500, 'held', 'shop-a'),
+      slice('delivery', 100, 'held', 'shop-a'),
+      slice('payment', 200, 'held', 'shop-b'),
+      slice('delivery', 300, 'held', 'shop-b'),
+    ];
+    const a = splitHeldByBasis(slices, 'shop-a');
+    expect(a.groups.map((g) => g.basis)).toEqual(['delivery', 'unshipped']);
+    expect(a.groups.reduce((t, g) => t + g.agorot, 0)).toBe(600);
+
+    const b = splitHeldByBasis(slices, 'shop-b');
+    expect(b.groups.map((g) => g.basis)).toEqual(['delivery', 'payment']);
+    expect(b.groups.reduce((t, g) => t + g.agorot, 0)).toBe(500);
+
+    const whole = splitHeldByBasis(slices);
+    const perStore = [a, b].reduce((t, s) => t + s.groups.reduce((x, g) => x + g.agorot, 0) + s.unknownAgorot, 0);
+    expect(perStore, 'the sections must add up to the tile above them')
+      .toBe(whole.groups.reduce((t, g) => t + g.agorot, 0) + whole.unknownAgorot);
+  });
+
+  it('lists the shops that actually have money waiting, and only those', () => {
+    const slices = [
+      slice('delivery', 100, 'held', 'shop-a'),
+      slice('delivery', 999, 'releasable', 'shop-b'),
+      slice('unshipped', 200, 'held', 'shop-c'),
+      slice('payment', 50, 'held', 'shop-a'),
+    ];
+    // shop-b's money is released, not held — it belongs to the payable tile, not to this table.
+    expect(storesWithHeldMoney(slices)).toEqual(['shop-a', 'shop-c']);
   });
 
   it('adds up: every held slice lands in exactly one line', () => {

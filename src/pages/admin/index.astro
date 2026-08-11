@@ -324,15 +324,20 @@ const sellerQuery = parseSellerQuery(sp);
 const sellersTab = shows('sellers') ? await (async () => {
   const all = getSellerCards(sellers, stores, productCounts, revenueByStore);
   // What the next run would do, keyed by seller — the payouts tab's deleted table, as a lookup.
-  // Only the rows with money behind them: `settled`/`already_paid` are most sellers most months,
-  // and a card that renders a payout tile for every one of them buries the few that matter.
-  const payoutRows = (payoutPlan?.rows ?? []).filter((r) => r.balanceAgorot > 0 && r.state !== 'settled' && r.state !== 'already_paid');
+  // EVERY row, including `settled` and `already_paid`: the card's badge is unconditional now,
+  // because "there is a balance and no payout" was the question it existed to answer and dropping
+  // those two states left exactly that case blank (owner, 2026-08-11). A seller absent from the
+  // plan altogether has had nothing come out of hold yet, which the card names as its own state.
+  const payoutRows = payoutPlan?.rows ?? [];
   const payoutBySeller = new Map(payoutRows.map((r) => [r.sellerId, r]));
   // Counted BEFORE the filter, so the chips keep reporting what exists while one of them is
-  // selected — the same rule the Stores tab's state chips follow.
+  // selected — the same rule the Stores tab's state chips follow. Only over rows with money
+  // behind them, because the three chips are the three states worth acting on.
   const payoutStateCounts: Record<string, number> = {};
-  for (const r of payoutRows) payoutStateCounts[r.state] = (payoutStateCounts[r.state] ?? 0) + 1;
-  const stateBySeller = new Map([...payoutBySeller].map(([id, r]) => [id, r.state as string]));
+  for (const r of payoutRows) {
+    if (r.balanceAgorot > 0) payoutStateCounts[r.state] = (payoutStateCounts[r.state] ?? 0) + 1;
+  }
+  const stateBySeller = new Map(payoutRows.map((r) => [r.sellerId, r.state as string]));
   const filtered = keepNewOnly(filterAndSortSellerCards(all, sellerQuery, stateBySeller), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
   const page = paginate(filtered, parsePage(sp, 'spage'));
   return {
