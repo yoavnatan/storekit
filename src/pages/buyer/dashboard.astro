@@ -752,8 +752,13 @@ const STORES_NAMED = 2;
         <button class="my-nav-btn is-active" data-tab="orders" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           <span class="my-nav-label">{t.buyerDashboard.tabOrders}</span>
-          {orders.length > 0 && (
-            <span style="font-size:0.7rem;color:var(--color-muted)">{orders.length}</span>
+          {/* The count that opens, not the count that exists. `orders` is one row per STORE and
+              includes everything ever delivered, so a two-store basket read as 2 and a buyer with
+              nothing open still saw a number beside an "אין הזמנות פעילות" list. This is the same
+              unit as the cards below (a purchase) and the same semantic as the unread badge beside
+              it — what is waiting on you. */}
+          {activeOrdersCount > 0 && (
+            <span style="font-size:0.7rem;color:var(--color-muted)">{activeOrdersCount}</span>
           )}
         </button>
         <button class="my-nav-btn" data-tab="messages" type="button">
