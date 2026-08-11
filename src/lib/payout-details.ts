@@ -4,13 +4,23 @@
  * Pure, with no database and no request in sight, for the same reason `seller-account.ts` is pure:
  * this decides where a bank transfer goes, and every case has to be assertable from three literals.
  *
- * ── The product rule these fields live under ──
- * **They are never asked for at registration or at store-opening** (`feedback_seller_form_burden`).
- * A seller uploads a catalogue, opens a store and takes orders without ever meeting this form; it
- * exists on the payments screen, and the only thing that ever points at it is a banner that appears
- * when there is real money waiting and no account to send it to. Until then the balance accrues and
- * is never forfeited, which `terms.astro` says in those words and `payout-run.ts` implements by
- * rolling the seller over rather than dropping them.
+ * ── The product rule these fields live under, AMENDED 2026-08-11 ──
+ * The rule is `feedback_seller_form_burden`, and what it forbids is a field that BLOCKS a seller —
+ * a gate they cannot pass, or a rubric they cannot answer, standing between them and a working
+ * shop. For a long time that was read as "never at registration or store-opening", and the owner
+ * has replaced that reading with a sharper one: *"אני גם חושב שזה כן צריך להיות חלק מההרשמה…
+ * או שזה יהיה חלק שאפשר לדלג עליו אבל שהוא כן יופיע"*.
+ *
+ * So the block IS on the store-opening card now (`CreateStoreCard.astro`), collapsed, headed "לא
+ * חובה", with nothing `required` and a form that submits empty. **Optional is the invariant, not
+ * absent.** A seller still uploads a catalogue, opens a store and takes orders without filling any
+ * of it in; the balance accrues and is never forfeited, which `terms.astro` says in those words and
+ * `payout-run.ts` implements by rolling the seller over rather than dropping them. What changed is
+ * that they meet the question while they are thinking about being paid, instead of finding it weeks
+ * later behind a banner.
+ *
+ * ⚠️ If you are about to "restore" the old rule by deleting that block: don't. It was a deliberate
+ * reversal, and the thing to preserve is that no field there is ever required.
  *
  * ── Why the bank is all-four-or-nothing ──
  * `payout-run.ts#bankOf` returns null unless every field is present, because a transfer missing any
