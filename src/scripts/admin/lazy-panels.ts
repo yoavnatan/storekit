@@ -10,6 +10,7 @@ import { initAdminPlatformPerformance } from './platform-performance.js';
 import { initAdminDataPanel } from './data-panel.js';
 import { initAdminMoneyLogPanel } from './moneylog.js';
 import { initAdminPayoutsPanel } from './payouts.js';
+import { initAdminStatementPanel } from './statement.js';
 import { initPerformanceTab } from '../dashboard/performance.js';
 
 /**
@@ -45,6 +46,7 @@ const INIT: Record<string, () => void> = {
   advertising: initAdminAdvertisingPanel,
   data: initAdminDataPanel,
   payouts: initAdminPayoutsPanel,
+  statement: initAdminStatementPanel,
   moneylog: initAdminMoneyLogPanel,
   performance: () => { initPerformanceTab(); initAdminPlatformPerformance(); },
 };

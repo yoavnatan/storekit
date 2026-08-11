@@ -45,6 +45,10 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   // cards. The key stays so `stripForeignTabParams` still knows this tab exists; an empty list is
   // the honest description, not an omission.
   payouts: [],
+  // The accounting statement's period: a month key, or a free range. `ac*` rather than `st*` —
+  // every store-tab param already starts `st`, and two tabs whose params are told apart by the
+  // third letter is how one of them ends up owned by the wrong list.
+  statement: ['acmonth', 'acfrom', 'acto'],
   moneylog: ['mtype', 'mlpage', 'mq', 'mfrom', 'mto', 'mev'],
 };
 

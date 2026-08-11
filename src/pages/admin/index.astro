@@ -25,7 +25,10 @@ import { getPlatformAdSettings } from '../../lib/platform-ads.js';
 import { getCampaignsInRange, getCampaignTotals } from '../../lib/ad-campaigns.js';
 import { getBrandCampaignsInRange, getBrandCampaignTotals } from '../../lib/brand-campaigns.js';
 import { presetRange, coerceRange, previousPeriod, AD_RANGE_PRESETS, type AdRangePreset } from '../../lib/date-range.js';
-import { businessTodayISO, businessMonthStartISO, businessMonthKey } from '../../lib/business-day.js';
+import { businessTodayISO, businessMonthStartISO, businessMonthKey, isDayISO } from '../../lib/business-day.js';
+import { loadPlatformStatement } from '../../lib/admin-statement-load.js';
+import { monthPeriod, recentMonthKeys, statementPeriod } from '../../lib/platform-statement.js';
+import AdminStatementPanel from '../../components/admin/AdminStatementPanel.astro';
 import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage, ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
@@ -79,7 +82,11 @@ const tabs = [
   // Beside the journal and before it: this one is what is ABOUT to happen and the journal is what
   // already did, and a number you can still act on comes before a number you can only check.
   { id: 'payouts', label: 'תשלומים למוכרים' },
+  // Last of the three money tabs, and the order is the timeline: what is about to happen
+  // (payouts), what already did (the journal), and — here — what a closed period ADDS UP TO. The
+  // first two are operational screens; this one is a document.
   { id: 'moneylog', label: 'יומן כספי' },
+  { id: 'statement', label: 'דוח חשבונאי' },
 ] as const;
 
 const requestedPanel = Astro.url.searchParams.get('panel');
@@ -197,6 +204,22 @@ const perfToISO = businessTodayISO();
 const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
 
+// ── Accounting statement (סשן ב׳ follow-up, 2026-08-11) ──
+// A month key, or a free range — resolved BEFORE wave 1, since the read below is gated on it.
+// Both are validated here rather than trusted: an unparseable value falls back to the current
+// month, which is the one period that is always a real one. The whole-month collapse lives in
+// `statementPeriod`, so `?acfrom=2026-08-01&acto=2026-08-31` and `?acmonth=2026-08` are one
+// document rather than two that describe the period differently.
+const STATEMENT_MONTHS = 18;
+const askedMonth = sp.get('acmonth') ?? '';
+const askedFrom = sp.get('acfrom') ?? '';
+const askedTo = sp.get('acto') ?? '';
+const statementMonths = recentMonthKeys(businessTodayISO(), STATEMENT_MONTHS);
+const statementPeriodAsked =
+  isDayISO(askedFrom) && isDayISO(askedTo) && askedFrom <= askedTo && !askedMonth
+    ? statementPeriod(askedFrom, askedTo)
+    : monthPeriod(statementMonths.includes(askedMonth) ? askedMonth : statementMonths[0]!);
+
 const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth'];
 const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
 const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
@@ -207,7 +230,7 @@ const [
   sellers, stores, newSince, openOrdersByStore, orderTotals, revenueByStore,
   orderStoreNamesRaw, threadsPage, errorsAll,
   brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings,
-  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog,
+  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog, statement,
 ] = await Promise.all([
   only(SELLER_ROSTER_PANELS, getAllSellers, []),
   only(STORE_ROSTER_PANELS, getAllStores, []),
@@ -247,6 +270,10 @@ const [
   // used to read every row of its 30-day window to display fifteen of them, over a network. Its own
   // three-step chain (permalink → window → page) is stated once, in admin-moneylog-panel.ts.
   only(['moneylog'], () => loadMoneyLogPanel(sp), null),
+  // The accounting statement — five aggregates in one wave (admin-statement-load.ts), and the SAME
+  // function `/api/admin/statement` serves the CSV from, so the screen and the downloaded file
+  // cannot be two statements of one month.
+  only(['statement'], () => loadPlatformStatement(statementPeriodAsked, businessTodayISO()), null),
 ]);
 
 const storeIds = stores.map((s) => s.id);
@@ -734,6 +761,19 @@ const badgeFor: Record<string, number> = badgeCounts;
         />}
       </AdminPanelShell>
 
+      <AdminPanelShell panel="statement" active={shows('statement') && !!statement}>
+        {statement && <AdminStatementPanel
+          statement={statement!}
+          monthKeys={statementMonths}
+          activeMonth={statementPeriodAsked.monthKey}
+          fromISO={statementPeriodAsked.fromISO}
+          toISO={statementPeriodAsked.toISO}
+          csvHref={statementPeriodAsked.monthKey
+            ? `/api/admin/statement?month=${statementPeriodAsked.monthKey}&format=csv`
+            : `/api/admin/statement?from=${statementPeriodAsked.fromISO}&to=${statementPeriodAsked.toISO}&format=csv`}
+        />}
+      </AdminPanelShell>
+
       <AdminPanelShell panel="moneylog" active={!!moneyLog && !!reconciliation}>
         {moneyLog && reconciliation && <AdminMoneyLogPanel
           events={moneyLog!.events}
@@ -769,6 +809,7 @@ const badgeFor: Record<string, number> = badgeCounts;
   import { initAdminPlatformPerformance } from '../../scripts/admin/platform-performance.js';
   import { initAdminDataPanel } from '../../scripts/admin/data-panel.js';
   import { initAdminMoneyLogPanel } from '../../scripts/admin/moneylog.js';
+  import { initAdminStatementPanel } from '../../scripts/admin/statement.js';
   import { initLazyAdminPanels } from '../../scripts/admin/lazy-panels.js';
   initDashTabs();
   // Ten of the eleven panels arrive on the click that opens them. Every init below still runs on
@@ -787,4 +828,5 @@ const badgeFor: Record<string, number> = badgeCounts;
   initAdminPlatformPerformance();
   initAdminDataPanel();
   initAdminMoneyLogPanel();
+  initAdminStatementPanel();
 </script>

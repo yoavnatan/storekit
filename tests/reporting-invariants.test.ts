@@ -26,6 +26,8 @@ import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balan
 import { getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
 import { planPayouts } from '../src/lib/payout-run.js';
 import { buildPlatformLedger } from '../src/lib/platform-ledger.js';
+import { buildPlatformStatement, monthPeriod, recentMonthKeys, statementPeriod } from '../src/lib/platform-statement.js';
+import { loadPlatformStatement } from '../src/lib/admin-statement-load.js';
 
 /** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
  *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
@@ -41,7 +43,7 @@ import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreVi
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
 const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getOrderTotals, getStoreOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
-import { businessDayISO, businessMonthKey, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
+import { businessDayISO, businessMonthKey, businessTodayISO, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
 import { storeSliceTotalAgorot } from '../src/lib/order-totals.js';
 import { groupBuyerPurchases } from '../src/lib/buyer-purchases.js';
 
@@ -1241,6 +1243,110 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     // In hold is untouched by transfers: 880,000 − 352,000, whatever has been paid out of the rest.
     expectSameMoney(hostile.heldAgorot, 880_000 - 352_000, 'hostile: held');
     expectSameMoney(hostile.platformIncomeAgorot, 120_000 - 41_000, 'hostile: commission earned − collected');
+  });
+});
+
+/**
+ * The monthly accounting statement — the one artefact here that LEAVES the building.
+ *
+ * Everything else in this file protects a screen; this protects a document an accountant reads and
+ * acts on, where a figure that does not add up is not a bug report, it is a correction to a filing.
+ * So the four properties asserted are the four an accountant would check by hand:
+ *   1. the balance movement closes (opening + accrued − paid ± adjustments = closing);
+ *   2. periods CHAIN — one month's closing is the next month's opening, with no gap and no overlap;
+ *   3. periods ADD — two consecutive months' accruals sum to the range that spans them;
+ *   4. a statement running to today agrees with the live ledger card the owner reads on the
+ *      overview. That last one is the cross-surface statement: two independent routes to "what are
+ *      we holding that is not ours", which must not be able to differ.
+ */
+describe('the accounting statement closes, chains, and agrees with the live ledger', () => {
+  const PERIOD = { fromISO: '2026-08-01', toISO: '2026-08-31', monthKey: '2026-08' };
+  const nothing = { grossAgorot: 0, commissionAgorot: 0, netAgorot: 0, purchases: 0 };
+  const noMovement = { paidOutAgorot: 0, commissionSettledAgorot: 0, adjustmentsAgorot: 0, payouts: 0 };
+
+  it('the movement closes, including on numbers no fixture produces', () => {
+    const s = buildPlatformStatement({
+      period: PERIOD,
+      generatedAtISO: '2026-09-01',
+      accrued: { grossAgorot: 500_000, commissionAgorot: 60_000, netAgorot: 440_000, purchases: 37 },
+      movement: { paidOutAgorot: 300_000, commissionSettledAgorot: 41_000, adjustmentsAgorot: -5_000, payouts: 4 },
+      before: {
+        accrued: { grossAgorot: 900_000, commissionAgorot: 108_000, netAgorot: 792_000, purchases: 61 },
+        movement: { paidOutAgorot: 700_000, commissionSettledAgorot: 95_000, adjustmentsAgorot: -1_200, payouts: 9 },
+      },
+      revenue: { subscriptionsAgorot: 29_700, subscribers: 3 },
+    });
+    // Opening is the same expression as closing, evaluated over everything before the period.
+    expectSameMoney(s.openingBalanceAgorot, 792_000 - 700_000 - 1_200, 'opening');
+    expectSameMoney(
+      s.closingBalanceAgorot,
+      s.openingBalanceAgorot + s.sellerEarnedAgorot - s.paidOutAgorot + s.adjustmentsAgorot,
+      'closing = the four lines printed above it',
+    );
+    // The bridge figure really is one number in both sections, not two that happen to agree.
+    expectSameMoney(s.sellerEarnedAgorot, 440_000, 'seller earned appears in both sections');
+    // Income is commission + subscriptions, and ads are absent BY DESIGN — an accountant may not be
+    // handed the deterministic mock the ad tabs render (GO_LIVE §2).
+    expectSameMoney(s.incomeAccruedAgorot, 60_000 + 29_700, 'income = commission + subscriptions, no ads');
+  });
+
+  it('a period with nothing in it still states the balance it inherited', () => {
+    // The quiet month is the one a report is most likely to get wrong by rendering zeros: no sales
+    // and no transfers must still carry the opening balance forward untouched.
+    const s = buildPlatformStatement({
+      period: PERIOD, generatedAtISO: '2026-09-01', accrued: nothing, movement: noMovement,
+      before: { accrued: { ...nothing, netAgorot: 74_010, grossAgorot: 84_000, commissionAgorot: 9_990 }, movement: noMovement },
+      revenue: { subscriptionsAgorot: 0, subscribers: 0 },
+    });
+    expectSameMoney(s.openingBalanceAgorot, 74_010, 'opening carried');
+    expectSameMoney(s.closingBalanceAgorot, 74_010, 'closing unchanged');
+  });
+
+  it('the period helpers name real days — leap years, December, and the whole-month collapse', () => {
+    expect(monthPeriod('2026-08')).toEqual({ fromISO: '2026-08-01', toISO: '2026-08-31', monthKey: '2026-08' });
+    expect(monthPeriod('2026-02').toISO, 'ordinary February').toBe('2026-02-28');
+    expect(monthPeriod('2028-02').toISO, 'leap February').toBe('2028-02-29');
+    expect(monthPeriod('2027-04').toISO, '30-day month').toBe('2027-04-30');
+    // A free range that IS a month must produce the same period object as asking for the month —
+    // otherwise the two spellings title, chain and name their CSV file differently.
+    expect(statementPeriod('2026-08-01', '2026-08-31')).toEqual(monthPeriod('2026-08'));
+    expect(statementPeriod('2026-08-01', '2026-08-15').monthKey, 'a partial month is not a month').toBeNull();
+    // The picker walks backwards across a year boundary without producing a month 0.
+    expect(recentMonthKeys('2026-02-11', 3)).toEqual(['2026-02', '2026-01', '2025-12']);
+  });
+
+  it('months chain and add: July closes where August opens, and both sum to the span', async () => {
+    // Read from the real fixture database, over two adjacent months chosen from the data itself, so
+    // this is a statement about the QUERIES (the window clause, the date bucketing) and not only
+    // about the arithmetic above.
+    const july = await loadPlatformStatement(monthPeriod('2026-07'), '2026-09-01');
+    const august = await loadPlatformStatement(monthPeriod('2026-08'), '2026-09-01');
+    expectSameMoney(august.openingBalanceAgorot, july.closingBalanceAgorot, 'July closing → August opening');
+
+    const span = await loadPlatformStatement(statementPeriod('2026-07-01', '2026-08-31'), '2026-09-01');
+    expectSameMoney(july.grossAgorot + august.grossAgorot, span.grossAgorot, 'GMV adds');
+    expectSameMoney(july.sellerEarnedAgorot + august.sellerEarnedAgorot, span.sellerEarnedAgorot, 'seller accrual adds');
+    expectSameMoney(july.paidOutAgorot + august.paidOutAgorot, span.paidOutAgorot, 'payouts add');
+    expect(july.purchases + august.purchases, 'purchases add').toBe(span.purchases);
+    // The span inherits July's opening and reaches August's closing — no double-counted month.
+    expectSameMoney(span.openingBalanceAgorot, july.openingBalanceAgorot, 'span opens where July does');
+    expectSameMoney(span.closingBalanceAgorot, august.closingBalanceAgorot, 'span closes where August does');
+  });
+
+  it('a statement running to today closes on the same figure the overview card shows', async () => {
+    // Two independent routes to "what are we holding that is not ours": this one sums a window of
+    // orders and payouts, the card asks for the platform accrual and the payout plan. They are
+    // different queries over the same facts and are read side by side by the same person.
+    const today = businessTodayISO();
+    const [statement, accrual, plan] = await Promise.all([
+      loadPlatformStatement(statementPeriod('2020-01-01', today), today),
+      getPlatformAccrual(),
+      planPayouts(),
+    ]);
+    const ledger = buildPlatformLedger(accrual, plan);
+    expectSameMoney(statement.closingBalanceAgorot, ledger.sellerFundsAgorot, 'statement closing vs ledger liability');
+    // Non-vacuous: two surfaces agreeing on zero would prove nothing about either.
+    expect(statement.grossAgorot, 'fixtures must have sales or this proves nothing').toBeGreaterThan(0);
   });
 });
 
