@@ -97,6 +97,14 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     portal.innerHTML = buildHtml();
     portal.hidden = false;
     position(portal, anchor);
+    // One portal serves SEVERAL triggers in the same toolbar (sort + filter on Orders/Sellers,
+    // type + dates on the money journal), and moving from one to the other never passes through
+    // close(): the trigger's own handler runs before the document-level outside-click listener,
+    // so the portal is already re-opened by the time that listener decides not to close it. The
+    // old trigger was therefore left reading aria-expanded="true" — a lie to a screen reader, and
+    // visible, since the button's open styling hangs off that attribute. Two pills would sit lit
+    // with one menu between them. `tests/toolbar-portal.test.ts` holds it.
+    if (trigger && trigger !== anchor) trigger.setAttribute('aria-expanded', 'false');
     anchor.setAttribute('aria-expanded', 'true');
     trigger = anchor;
     wire(portal);
