@@ -17,9 +17,14 @@ interface Window {
    *  late instead of being swallowed. Only `[aria-haspopup]` openers are ever stored. */
   __dashPendingClick?: HTMLElement | null;
   /** Scrolls an overflowing `.dash-tabs` strip sideways so the given tab is visible —
-   *  the strip only, never the page (a sticky strip makes scrollIntoView jump the
-   *  document). Same file, same reason as __dashTabActivate. */
+   *  clear of the edge fades, and the strip only, never the page (a sticky strip makes
+   *  scrollIntoView jump the document). Same file, same reason as __dashTabActivate. */
   __dashTabReveal?: (tab: HTMLElement) => void;
+  /** Places a strip (or every strip, with no argument) on its OPEN tab — the load-time
+   *  half of the above, re-asserted until the browser's own scroll restoration and the
+   *  font swap have settled, and switched off the moment the seller scrolls the strip
+   *  themselves. */
+  __dashTabRestore?: (strip?: HTMLElement) => void;
   /** Scrolls an element back below the dashboard's pinned chrome, and does nothing when it is
    *  already fully on screen. Published by initUnsavedGuard for the inline draft guard, which must
    *  still work on a load where no module arrived — see its comment there. */

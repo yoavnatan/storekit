@@ -50,9 +50,48 @@ describe('DashTabsBoot', () => {
     const files = ['src/components/dashboard/DashTabsBoot.astro', 'src/scripts/dashboard/ui.ts'];
     for (const rel of files) {
       const src = readFileSync(join(process.cwd(), rel), 'utf8');
-      expect(src, rel).toContain('__dashTabReveal');
       expect(src.replace(/^\s*(\/\/|\*|\/\*).*$/gm, ''), rel).not.toMatch(/dash-tab[^\n]*scrollIntoView|scrollIntoView[^\n]*\{\s*block/);
     }
+    // One implementation of "where does the strip sit", in the boot: ui.ts asks
+    // for it rather than measuring the strip itself.
+    const boot = readFileSync(join(process.cwd(), 'src/components/dashboard/DashTabsBoot.astro'), 'utf8');
+    const ui = readFileSync(join(process.cwd(), 'src/scripts/dashboard/ui.ts'), 'utf8');
+    expect(boot).toContain('window.__dashTabReveal = function');
+    expect(ui).toContain('__dashTabRestore');
+  });
+
+  it('re-asserts the open tab\'s position after the browser restores the strip', () => {
+    // A reload restores a scroller's own offset on the browser's schedule (after
+    // layout, around `load`), so a position written at parse time is overwritten
+    // a few frames later — the strip came back wherever it sat when the seller
+    // pressed refresh, which with a different panel open leaves the tab they are
+    // ON off screen (owner, 2026-08-11). Placing it once is therefore a race, and
+    // one that only loses on the machines that lay out slowest.
+    const boot = readFileSync(join(process.cwd(), 'src/components/dashboard/DashTabsBoot.astro'), 'utf8');
+    expect(boot).toMatch(/addEventListener\('load', restoreSoon\)/);
+    expect(boot).toMatch(/document\.fonts\.ready/); // the tabs resize when Heebo swaps in
+    // …and stops the moment the seller takes over: a re-assert on top of their
+    // own scroll is the page pulling the strip out from under them.
+    expect(boot).toContain('data-tab-scrolled');
+    // `scroll` must never be the off switch — our own writes and the browser's
+    // restoration both fire it, so listening for it would disarm the restore
+    // before it ever ran.
+    expect(boot).not.toMatch(/addEventListener\('scroll'/);
+  });
+
+  it('keeps the open tab clear of the edge fades, not merely inside the box', () => {
+    // The fade dissolves whatever reaches the strip's edge, so a tab landed flush
+    // there is the tab the seller is on, half washed out — "visible" by geometry
+    // and unreadable in fact. The reveal insets its target band on any side that
+    // still has strip to scroll (a fully-scrolled side lights no fade and gets no
+    // inset, so the first and last tabs still rest flush).
+    const boot = readFileSync(join(process.cwd(), 'src/components/dashboard/DashTabsBoot.astro'), 'utf8');
+    expect(boot).toMatch(/hidden\.left > 1 \? inset : 0/);
+    expect(boot).toMatch(/hidden\.right > 1 \? inset : 0/);
+    // RTL runs scrollLeft from -max to 0 and its start is the RIGHT edge, so the
+    // two hidden amounts swap — reading them off scrollLeft directly would inset
+    // the wrong side on this site's own language.
+    expect(boot).toMatch(/rtl \? \{ left: max - sl, right: sl \} : \{ left: sl, right: max - sl \}/);
   });
 
   it('does not re-activate the tab the server already opened', () => {
