@@ -226,6 +226,36 @@ describe('the new-order poll asks for a watermark, not for the history', () => {
     expect(Date.parse(seed.since)).toBeGreaterThan(0);
   });
 
+  /**
+   * **The phantom toast** (owner, 2026-08-11: "למה כל רגע מופיעה לי התראה של הזמנה חדשה?").
+   *
+   * The window is `>=` deliberately, so the first poll after a seed always re-reads whatever sits
+   * exactly on the watermark. That is harmless only if the caller already knows those ids — and the
+   * seed used to return nothing at all, so it did not. Every seller with at least one order was
+   * told about their newest existing one, fifteen seconds after opening the dashboard, with nothing
+   * in the notifications table and nothing new in the list to back it up.
+   *
+   * The assertion is the join between the two calls, not either one of them: whatever the first
+   * real poll hands back must already be covered by what the seed reported.
+   */
+  it('the seed reports the ids on its watermark, so the first poll cannot announce an old order', async () => {
+    const seed = await getSellerOrdersSince(SLUG, '');
+    expect(seed.seenIds, 'a store with orders must report them').not.toEqual([]);
+
+    const firstPoll = await getSellerOrdersSince(SLUG, seed.since);
+    const seen = new Set(seed.seenIds ?? []);
+    const wouldAnnounce = firstPoll.orders.filter((o) => !seen.has(o.id));
+    expect(wouldAnnounce.map((o) => o.checkoutRef), 'nothing existing may be announced as new').toEqual([]);
+  });
+
+  it('a store with no orders seeds clean — nothing seen, and nothing to announce', async () => {
+    const seed = await getSellerOrdersSince('no-such-store-at-all', '');
+    expect(seed.orders).toEqual([]);
+    expect(seed.seenIds).toEqual([]);
+    // And the watermark is still usable: a first order would be newer than it.
+    expect(Date.parse(seed.since)).toBeGreaterThan(0);
+  });
+
   it('returns only what is newer, and hands back a watermark that moves', async () => {
     const from = await getSellerOrdersSince(SLUG, '2026-07-03T00:00:00.000Z');
     expect(from.orders.map((o) => o.checkoutRef).sort()).toEqual(['SO-3', 'SO-4', 'SO-5', 'SO-6']);

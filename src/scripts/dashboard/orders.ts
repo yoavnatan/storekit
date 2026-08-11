@@ -512,7 +512,25 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const ACTIVE_STATUSES = new Set(ORDER_ACTIVE_STATUSES);
   const ORDER_STATUSES = ORDER_FILTER_STATUSES;
   const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
-  const ordersFilters = new Map<string, Set<string>>([['status', new Set(ACTIVE_STATUSES)]]);
+  /**
+   * Seeded from what the SERVER rendered, not from this module's own default.
+   *
+   * The list on screen was filtered by `parseSellerOrderQuery`, and the toolbar has to start from
+   * the same answer or the two disagree the moment anything is clicked: a deep link carrying
+   * `?ostatus=pending,processing` (the payments tab builds those) rendered the right rows, and then
+   * the first sort or search re-filtered them with the "active" default and quietly widened the
+   * list back. `data-status` absent = no server opinion, so the default stands; present and empty =
+   * the seller cleared it, which is a different thing and must survive.
+   */
+  const ordersToolbarEl = document.getElementById('orders-toolbar');
+  const serverStatuses = ordersToolbarEl?.dataset.status;
+  const ordersFilters = new Map<string, Set<string>>();
+  {
+    const initial = serverStatuses === undefined
+      ? [...ACTIVE_STATUSES]
+      : serverStatuses.split(',').filter(Boolean);
+    if (initial.length) ordersFilters.set('status', new Set(initial));
+  }
   let ordersSortCol: 'date' | 'amount' | 'urgency' = 'date';
   let ordersSortDir: 'asc' | 'desc' = 'desc';
   let ordersCurrentPage = 1;
@@ -732,6 +750,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // already call, just server-driven now instead of a DOM show/hide pass).
   function applyOrdersFilter(): void {
     ordersCurrentPage = 1;
+    // The "you followed a link from the payments tab" banner explains a filter the SERVER applied.
+    // The moment the seller changes that filter themselves it is explaining something that is no
+    // longer true, so it comes down here — the one funnel every filter change goes through.
+    document.getElementById('orders-from-banner')?.remove();
     applyOrdersPagination();
   }
 
@@ -985,9 +1007,18 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         // silent: a background refresh of one card's data, not something anyone pressed — the card
         // already on screen stays correct and the next poll retries.
         if (!res.ok) return null;
-        const { orders, since } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][]; since?: string };
+        const { orders, since, seenIds } = await res.json() as {
+          orders: Parameters<typeof buildOrderCard>[0][]; since?: string; seenIds?: string[];
+        };
         if (since) ordersSince = since;
+        // The seed's answer. The window is inclusive of its own edge, so the first real poll re-reads
+        // whatever sits exactly on the watermark; without these ids that order is unknown and gets
+        // announced as new. It is why a seller who had not sold anything for a month still got a
+        // "new order" toast fifteen seconds after opening the dashboard (owner, 2026-08-11).
+        for (const id of seenIds ?? []) knownIds.add(id);
         return orders;
+        // silent: a 15s background poll nobody pressed. The cards on screen stay correct, the
+        // watermark is not advanced, and the next tick asks the same question again.
       } catch { return null; }
     }
 
@@ -1036,14 +1067,16 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     }
 
     // Seed the watermark before the poll loop starts — the first call carries no `since`, so the
-    // server answers with the newest order's moment and NO rows at all. That is what stops every
-    // existing order looking "new" on the first tick (the original bug seeded from `.order-card`
-    // elements in the DOM, so anything past page 1 fired a toast), and it now costs one timestamp
-    // instead of the store's entire order history.
-    fetchNewOrders().then((orders) => {
-      (orders ?? []).forEach((o) => knownIds.add(o.id));
-      setInterval(pollOrders, 15000);
-    });
+    // server answers with the newest order's moment, the ids sitting on it, and NO rows at all.
+    // That is what stops every existing order looking "new" on the first tick (the original bug
+    // seeded from `.order-card` elements in the DOM, so anything past page 1 fired a toast), and it
+    // costs a timestamp and a handful of ids instead of the store's entire order history.
+    //
+    // **The interval starts only after the seed lands, and that ordering is the fix, not a detail.**
+    // `fetchNewOrders` is what fills `knownIds` from `seenIds`; a poll that ran before it returned
+    // would ask with an empty watermark, get the seed answer, and then have to decide about rows it
+    // had no id set for yet.
+    fetchNewOrders().then(() => setInterval(pollOrders, 15000));
   }
 
   // ── Edit Order Details Modal ─────────────────────────────────
