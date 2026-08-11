@@ -1,7 +1,9 @@
 # Seller dashboard: one panel per request
 
-**Status (2026-08-11): steps 1–3 done, step 4 open.** The weight half is built and measured; the
-refresh-on-RE-open half is not, and the reason is written under step 4 rather than left as a gap.
+**Status (2026-08-11): DONE — steps 1–3 built and measured, step 4 CLOSED by the owner.** The weight
+half shipped. The refresh-on-RE-open half was costed, judged weak ROI and dropped the same day;
+step 4 below records what it would have taken and why it is not worth it. **Do not re-propose it**
+without a new reason — the cost estimate there is the one that was rejected.
 
 Measured on the built server against the demo catalogue, same seller, before and after:
 
@@ -63,22 +65,39 @@ pins that contract.
    - `FormFallbackGuard`'s draft scan is a load-time pass over every form. Nine tabs' worth of forms
      were about to stop being drafted, and a draft that is not kept reports nothing. It publishes
      `window.__dashScanDrafts(root)` now, called after each fill.
-4. ⬜ **Refresh on RE-open — NOT built, and here is the blocker.** The admin re-runs a panel's whole
-   `init` after a refresh swap because its modules are written to survive that. The seller's are
-   not: about thirty of their listeners are delegated at the DOCUMENT (`products.ts` alone has a
-   dozen), so a second `init` answers every click twice — a delete, a status change, a stock edit.
-   Re-running is therefore off the table, and the panel loaders are already two-phase for it
-   (`() => Promise<() => void>`: fetch the chunk, then wire).
+4. ❌ **Refresh on RE-open — CLOSED, owner's decision 2026-08-11. Weak ROI. Do not re-propose.**
 
-   What it needs is a THIRD phase per panel — `rebind`, the element-level half only, run after every
-   swap — and deciding which of each panel's ~25 `init*` calls belong in it is a per-module audit of
-   thirteen modules. That audit is the work; it is not a line of glue.
+   **What it would cost.** The admin re-runs a panel's whole `init` after a refresh swap, because its
+   modules are written to survive that. The seller's are not: about thirty of their listeners are
+   delegated at the DOCUMENT (`products.ts` alone has a dozen), so a second `init` answers every
+   click twice — a delete, a status change, a stock edit. Re-running is therefore off the table. What
+   it needs instead is a THIRD phase per panel — `rebind`, the element-level half only, run after
+   every swap — and deciding which of each panel's ~25 `init*` calls belong in it is a per-module
+   audit of thirteen modules. That audit is the work; it is not a line of glue.
 
-   Worth knowing before starting it: the two tabs whose staleness has a business cost (orders,
-   messages) poll every 15s already, and with lazy panels the FIRST open of every tab is now a fresh
-   fetch. What is left un-fixed is only the second open of a tab inside one page load.
+   **What it would buy, which is what settled it.** Step 3 already makes the FIRST open of every tab
+   a fresh fetch, and the two tabs whose staleness has a business cost — orders and messages — poll
+   every 15s on their own. So the entire remaining gap is the SECOND open of the same tab inside one
+   page load, on a tab that is not orders and not messages: settings, promotions, reports,
+   advertising, payments. Nothing there is a live figure anyone watches change, and a seller who
+   wants it current reloads. Thirteen modules of surgery on the product's most important surface, to
+   fix a stale number nobody has reported.
 
-## The constraint that outranks all of it
+   **If it ever comes back**, the ground is already laid and this is the only part worth keeping: the
+   panel loaders are two-phase for exactly this (`() => Promise<() => void>` — fetch the chunk, then
+   wire), and `ui.ts#bindOnce` is the shape a `rebind` phase would generalise. The trigger to
+   reconsider is a real report of a stale panel, not a tidiness argument.
+
+   The same decision closes what step 4 was going to need: `hasUnsavedChangesIn(root)` was never
+   written, because with no refresh to call it, it would be an exported function with no caller. The
+   rule it was for is unchanged and still lives in `unsaved-guard.ts` — see the section below, which
+   is now a record of the reasoning rather than an instruction.
+
+## The constraint that outranked all of it — kept as the record, not as a task
+
+With step 4 closed there is no refresh to constrain, and none of the code below was written. It
+stays because the reasoning is the expensive part and the day someone builds a refresh here — on
+this dashboard or another — it is the page that stops them doing it wrong.
 
 **A refresh must never replace a panel holding unsaved work.** The owner raised this twice and it is
 the thing to get right before anything else works nicely.
@@ -132,8 +151,7 @@ the chunk, the shell-owned controls re-wired, the draft guard rescanned. Plus th
 matters most on this page and has no equivalent on the admin's: **a badge read is never behind the
 panel gate** — a dot that stops appearing is the failure nobody notices.
 
-Still open, and they belong to step 4: a re-open that keeps its filter params, that the refresh asks
-`hasUnsavedChangesIn(panel)` rather than the document-wide call, and that no second definition of
-"dirty" exists outside `unsaved-guard.ts`. `hasUnsavedChangesIn` is deliberately NOT written yet —
-with no refresh to call it, it would be an exported function with no caller, and the next session
-would have to guess whether it was the plan or a leftover.
+The three assertions this section used to also ask for — a re-open that keeps its filter params, that
+the refresh asks `hasUnsavedChangesIn(panel)`, and that no second definition of "dirty" exists — all
+belonged to step 4 and went with it. Nothing is untested as a result: there is no refresh for them to
+have covered.
