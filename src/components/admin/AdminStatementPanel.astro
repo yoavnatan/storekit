@@ -96,20 +96,24 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div class={SECTION}>
-      <h3 class="m-0 text-[0.9rem] font-semibold">נצבר בתקופה</h3>
-      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>לפי מועד ההזמנה — מה שנמכר בתקופה, גם אם הכסף עדיין בהמתנה.</p>
+      {/* ONLY the platform's own money (owner, 2026-08-11). "נצבר למוכרים" used to sit in this
+          table as the bridge to the one beside it, and it is the line that made the whole page
+          unreadable: it is not income, it is somebody else's money, and a reader who sees it under
+          a heading that ends in "סה"כ הכנסה" concludes that paying sellers out on the 10th reduces
+          his revenue. It does not — the seller's share was never ours (the agent model, terms
+          .astro). The figure still exists, on the right, where it is the `+` line of a LIABILITY. */}
+      <h3 class="m-0 text-[0.9rem] font-semibold">ההכנסה שלנו</h3>
+      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>לפי מועד ההזמנה — מה שהרווחנו בתקופה, גם אם הכסף עדיין בהמתנה.</p>
+      {/* Context, deliberately ABOVE the list and not a row in it: the mall's turnover is not the
+          platform's money either, and any line sitting inside a column that ends in a total reads
+          as part of that total. Here it is what the commission below is a percentage OF. */}
+      <p class={`m-0 mb-3 pb-3 border-b [border-color:var(--color-border)] ${NOTE}`}>
+        נמכר דרך הפלטפורמה: <span class="tabular-nums">{formatAgorot(s.grossAgorot)}</span> · {s.purchases} רכישות
+      </p>
       <dl class="m-0">
-        <div class={ROW}>
-          <dt class={LABEL}>מחזור מכירות (GMV)<span class={`block ${NOTE}`}>{s.purchases} רכישות</span></dt>
-          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.grossAgorot)}</dd>
-        </div>
         <div class={ROW}>
           <dt class={LABEL}>עמלת הפלטפורמה</dt>
           <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.commissionAccruedAgorot)}</dd>
-        </div>
-        <div class={ROW}>
-          <dt class={LABEL}>נצבר למוכרים (נטו)</dt>
-          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.sellerEarnedAgorot)}</dd>
         </div>
         <div class={ROW}>
           <dt class={LABEL}>דמי מנוי<span class={`block ${NOTE}`}>{s.subscribers} מנויים</span></dt>
