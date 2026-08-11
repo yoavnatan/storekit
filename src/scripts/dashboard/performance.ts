@@ -8,7 +8,7 @@ function fmtAgorot(agorot: number): string { return formatPrice(agorot / 100); }
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonutChartSvg, type PieSlice } from '../../lib/chart-svg.js';
 import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
-import { showTooltip, showTooltipAtPoint, showTooltipRows, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
+import { showTooltip, showTooltipAtPoint, showSeriesTooltips, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast } from '../../lib/toast.js';
 import { calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
@@ -296,6 +296,24 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
 // <rect> bars — renderSummary() replaces the SVG's innerHTML wholesale on
 // every range-picker fetch, which would otherwise silently drop any
 // listener bound to a bar directly.
+/** The point column nearest the cursor, but ONLY while the cursor is on a line's hit stroke.
+ *  Returns null otherwise, which is what keeps the rest of the chart box inert. Nearest is measured
+ *  against the drawn dots' own screen positions rather than re-deriving the chart's geometry here —
+ *  a second copy of that arithmetic is a second thing that can disagree with the SVG. */
+function nearestPoint(container: HTMLElement, clientX: number, target: Element): Element | null {
+  if (!target.closest('.chart-hit-line')) return null;
+  let best: Element | null = null;
+  let bestDx = Infinity;
+  for (const group of container.querySelectorAll('.chart-point')) {
+    const dot = group.querySelector('.line-dot');
+    if (!dot) continue;
+    const r = dot.getBoundingClientRect();
+    const dx = Math.abs(r.left + r.width / 2 - clientX);
+    if (dx < bestDx) { bestDx = dx; best = group; }
+  }
+  return best;
+}
+
 function initChartTooltips(): void {
   ['perf-revenue-chart', 'perf-orders-chart', 'perf-visitors-chart', 'pperf-revenue-chart', 'pperf-views-chart'].forEach((id) => {
     const container = document.getElementById(id);
@@ -316,7 +334,13 @@ function initChartTooltips(): void {
       // dot would miss and blank the tooltip (the reported bug). Anchor to the
       // dot itself (showTooltip → just above the point), independent of where in
       // the column the cursor sits.
-      const group = target.closest('.chart-point');
+      // A LINE chart answers only on its marks — the line itself or a point — never anywhere in
+      // the point's column (owner, 2026-08-11: "לא על גבי כל הקונטיינר"). Pointing at empty space
+      // near the top of the box used to explain a value drawn near the bottom of it.
+      // Two ways in, and the second is what makes the line hoverable between points: a hit circle
+      // inside a .chart-point group, or the invisible wide stroke tracing the curve — which belongs
+      // to no group, so the column is resolved from the cursor's x against the points themselves.
+      const group = target.closest('.chart-point') ?? nearestPoint(container, e.clientX, target);
       if (group) {
         const bar = group.querySelector('.chart-bar');
         const dot = group.querySelector('.line-dot');
@@ -324,19 +348,17 @@ function initChartTooltips(): void {
           if (dot !== activeDot) {
             activeDot = dot;
             const when = bar.getAttribute('data-label') ?? '';
-            // A chart with more than one series gets a ROW PER SERIES, each carrying the colour it
-            // is drawn in (chart-svg.ts puts the name and value on the dot, beside its `fill`).
-            // The flat "unique 12 · visits 40" sentence it replaces was one line in ONE colour —
-            // and the colour was the accent tint below, i.e. one of the two series' own, so both
-            // numbers read as the same thing that only one of them was (owner, 2026-08-11).
-            // A multi-series tooltip therefore takes no tint: the swatches are what carry colour.
+            // More than one series → one tooltip PER SERIES, each beside its own point and in its
+            // own colour. One box explaining both was the confusion: it read as a single sentence
+            // in a single colour, and the colour was one of the two series' own. The dashed
+            // secondary takes the default dark box — its drawn grey would be a washed-out tooltip,
+            // and "one blue, one black" is the distinction being drawn.
             const dots = [...group.querySelectorAll('.line-dot[data-label]')];
             if (dots.length > 1) {
-              showTooltipRows(dot, when, dots.map((d) => ({
-                label: d.getAttribute('data-label') ?? '',
-                value: d.getAttribute('data-value') ?? '',
-                color: d.getAttribute('fill') ?? 'currentColor',
-                dashed: d.getAttribute('data-dashed') === '1',
+              showSeriesTooltips(dots.map((d) => ({
+                anchor: d,
+                text: `${d.getAttribute('data-label') ?? ''} ${d.getAttribute('data-value') ?? ''}`.trim(),
+                color: d.getAttribute('data-dashed') === '1' ? undefined : (d.getAttribute('fill') ?? undefined),
               })));
             } else {
               showTooltip(dot, `${when}: ${bar.getAttribute('data-value') ?? ''}`, tipColor);
