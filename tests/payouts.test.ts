@@ -13,7 +13,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import crypto from 'node:crypto';
 import { query } from '../src/lib/db.js';
 import { createPayout, setPayoutStatus, recordAdjustment, getPayoutsForSeller, getAdjustmentsForSeller } from '../src/lib/payouts.js';
-import { buildSellerAccount, type AccountSlice } from '../src/lib/seller-account.js';
+import { buildSellerAccount, payoutBalanceAgorot, type AccountSlice } from '../src/lib/seller-account.js';
+import { splitHeldByBasis } from '../src/lib/order-payout-line.js';
+import { needsBankDetails, type PayoutDetails } from '../src/lib/payout-details.js';
 import { commissionOnAgorot, commissionPercentForTier } from '../src/lib/pricing.js';
 import { HOLD_DAYS_AFTER_DELIVERY } from '../src/lib/payout-schedule.js';
 import { addDaysISO } from '../src/lib/date-range.js';
@@ -39,6 +41,13 @@ const released = (netAgorot: number): AccountSlice => ({
 const stillHeld = (netAgorot: number): AccountSlice => ({
   ...released(netAgorot),
   order: { paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: at(daysAgo(3)), deliveredAt: at(daysAgo(1)) },
+});
+
+/** Paid for, never posted. Held with NO release date, and the one case where the seller is holding
+ *  up their own money — `payout-hold.ts`'s `unshipped` basis. */
+const unshipped = (netAgorot: number): AccountSlice => ({
+  ...released(netAgorot),
+  order: { paymentStatus: 'paid', shippingStatus: 'pending', paidAt: at(daysAgo(9)), deliveredAt: null },
 });
 
 async function makeSeller(): Promise<string> {
@@ -225,6 +234,34 @@ describe('the account arithmetic', () => {
     expect(account.heldAgorot + account.releasableAgorot).toBe(sellerShare);
   });
 
+  /**
+   * The payments tab's middle section is now a SPLIT of `heldAgorot` by reason rather than a list
+   * of the orders behind it (owner, סשן א׳ §4), so the rows and the tile above them are two
+   * renderings of one number. This is the invariant that keeps them one: every agora in the tile
+   * appears in exactly one line, including the anomalies.
+   */
+  it('the held split adds up to the held tile, anomalies included', () => {
+    const account = buildSellerAccount(
+      'starter',
+      [released(100_000), stillHeld(64_321), stillHeld(7_777), unshipped(23_456)],
+      [], [], TODAY,
+    );
+    const split = splitHeldByBasis(account.slices);
+    const shown = split.groups.reduce((t, g) => t + g.agorot, 0) + split.unknownAgorot;
+    expect(shown).toBe(account.heldAgorot);
+    // And the released slice is NOT double-counted into it — it is already inside payableNow.
+    expect(shown).toBeLessThan(account.grossAgorot - account.commissionAgorot);
+  });
+
+  it('an unshipped order is held, dateless, and named as the seller\'s own to unblock', () => {
+    const account = buildSellerAccount('starter', [unshipped(23_456)], [], [], TODAY);
+    expect(account.heldAgorot).toBeGreaterThan(0);
+    expect(account.payableNowAgorot).toBe(0);
+    const split = splitHeldByBasis(account.slices);
+    expect(split.groups.map((g) => g.basis)).toEqual(['unshipped']);
+    expect(split.unknownOrders).toBe(0);
+  });
+
   it('a debt larger than the balance becomes a carried debt, never a negative payout', () => {
     const account = buildSellerAccount('starter', [released(10_000)], [], [{ amountAgorot: -50_000 }], TODAY);
     expect(account.payableNowAgorot).toBe(0);
@@ -239,5 +276,46 @@ describe('the account arithmetic', () => {
     const clean = buildSellerAccount('starter', slices, [], [], TODAY);
     const clawed = buildSellerAccount('starter', slices, [], [{ amountAgorot: -20_000 }], TODAY);
     expect(clawed.payableNowAgorot).toBe(clean.payableNowAgorot - 20_000);
+  });
+
+  /** `buildSellerAccount` and `planPayouts` reach the balance from different inputs, and both go
+   *  through this. A sign error here is a seller paid twice or not at all, so it is pinned on its
+   *  own rather than only through its callers. */
+  it('the balance is releasable − paidOut + adjustments, signed', () => {
+    expect(payoutBalanceAgorot(100_000, 30_000, 0)).toBe(70_000);
+    expect(payoutBalanceAgorot(100_000, 0, -25_000)).toBe(75_000);
+    expect(payoutBalanceAgorot(10_000, 0, -50_000)).toBe(-40_000);
+    // The one arrangement that must NOT net out: money already sent plus a credit is not new money.
+    expect(payoutBalanceAgorot(0, 30_000, 30_000)).toBe(0);
+  });
+});
+
+/**
+ * The red dot that says "you have money and nowhere to send it".
+ *
+ * Three surfaces draw it — the payments tab's badge, the banner inside the tab, and the avatar in
+ * the site header — and the whole point of the chain is that following one dot reaches something to
+ * do (owner, סשן א׳ §5). A dot on a screen with nothing on it is worse than no dot, so the rule is
+ * one function and this pins its two halves.
+ */
+describe('when the bank details are actually asked for', () => {
+  const noBank: PayoutDetails = {};
+  const fullBank: PayoutDetails = { bankCode: '12', bankBranch: '345', bankAccount: '6789', bankAccountHolder: 'עסק בע״מ' };
+  const halfBank: PayoutDetails = { bankCode: '12', bankBranch: '345' };
+
+  it('never before there is money — that would be the registration-time barrier the project refuses', () => {
+    expect(needsBankDetails(noBank, 0)).toBe(false);
+  });
+
+  it('the moment money is released and there is nowhere to send it', () => {
+    expect(needsBankDetails(noBank, 1)).toBe(true);
+  });
+
+  it('a half-filled form still counts as nowhere — a transfer missing a field cannot be made', () => {
+    expect(needsBankDetails(halfBank, 100_000)).toBe(true);
+  });
+
+  it('and clears the moment all four fields are there', () => {
+    expect(needsBankDetails(fullBank, 100_000)).toBe(false);
   });
 });

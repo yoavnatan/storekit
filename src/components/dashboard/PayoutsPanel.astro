@@ -25,9 +25,10 @@
 import { formatAgorot } from '../../lib/money.js';
 import { paginate } from '../../lib/pagination.js';
 import Pager from './PayoutsPager.astro';
-import { formatBusinessDayLabel, formatBusinessDateShort } from '../../lib/format-date.js';
+import { formatBusinessDateShort } from '../../lib/format-date.js';
 import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/payout-schedule.js';
-import { BUSINESS_TYPES, hasPayableBank, maskedBankLine, type PayoutDetails } from '../../lib/payout-details.js';
+import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, type PayoutDetails } from '../../lib/payout-details.js';
+import { splitHeldByBasis } from '../../lib/order-payout-line.js';
 import type { SellerAccount } from '../../lib/seller-account.js';
 import type { SellerPayout } from '../../lib/payouts.js';
 import type { getT } from '../../i18n/index.js';
@@ -38,50 +39,58 @@ interface Props {
   seller: PayoutDetails;
   /** More than one store, so the "all your stores" line is worth saying. */
   multiStore: boolean;
-  /** 1-based pages of the two tables, from `?paypage=` and `?payhist=`. Two params, because
-   *  paging the history must not reset the held list under the seller's cursor. */
-  heldPage: number;
+  /** 1-based page of the history table, from `?payhist=`. */
   payoutPage: number;
-  /** Build a page href, preserving the open tab and the OTHER table's page. */
-  heldPageHref: (page: number) => string;
+  /** Build a history page href, preserving the open tab. */
   payoutPageHref: (page: number) => string;
+  /** Deep link into the Orders tab, filtered to the statuses one hold reason describes. Built by
+   *  the page, because the store id and the tab are its business and not this component's. */
+  ordersHref: (basis: 'payment' | 'unshipped') => string;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { account, payouts, seller, multiStore, heldPage, payoutPage, heldPageHref, payoutPageHref, d } = Astro.props;
+const { account, payouts, seller, multiStore, payoutPage, payoutPageHref, ordersHref, d } = Astro.props;
 
-/** Only what is still moving. A released slice is already inside `payableNowAgorot` above, and a
- *  seller who has traded for a year does not need every settled order rendered to be told what is
- *  waiting (the same bound `getSellerAccountRows` argues for). */
-const heldSlices = account.slices.filter((s) => s.hold.state === 'held');
 /**
- * Ten a page, with a pager — not a cap with a footnote.
+ * ── What used to be here, and why it is not ──
  *
- * It WAS a cap ("ועוד 4 בהמתנה") and the owner named the problem exactly: a number of orders you
- * are told exist and cannot look at is worse than not knowing, because the ones you cannot see are
- * the ones you would want to check. This panel is rendered on every dashboard load, hidden or not
- * — that is what pays for the tab's badge — so drawing all 500 rows the query allows is a quarter
- * of a megabyte on pages nobody opens this tab from (memory `project_dashboard_html_weight`).
- * A page slice costs the same as a cap and every row is reachable.
+ * A paged table of every held order: id, store, amount, release date, reason, action. It was
+ * accurate and the owner rejected it (סשן א׳ §4): *"אני כביכול רואה שיש עוד רשימה של הזמנות,
+ * בנוסף ללשונית הזמנות… אין סיבה ליצור עוד לשונית של ניהול הזמנות"*. Two tables of orders one tab
+ * apart do not read as two views; they read as two places an order might be, and the seller has to
+ * work out which one is authoritative.
  *
- * The sums in the tiles are computed from ALL of them and are unaffected by which page is shown.
+ * So the per-ORDER sentence moved to the order's own card in the Orders tab (`order-payout-line.ts`,
+ * which both surfaces now derive from) and what is left here is the only thing this screen was ever
+ * better placed to say: **how the waiting money splits by reason, and which part of it is waiting
+ * on the seller.** That is a money question, it is three lines instead of a hundred rows, and it
+ * links to the Orders tab for the rows rather than reprinting them.
+ *
+ * A consequence worth naming: this panel no longer pages, which removes the `?paypage=` half of the
+ * two-parameter dance the history table still needs. The props stay in place — the page still
+ * builds both hrefs — because `payhist` alone would have been a silent URL break for anyone holding
+ * a bookmark, and one unused parameter is cheaper than that.
  */
+/** The split, and every figure in it, comes from `order-payout-line.ts#splitHeldByBasis` — nothing
+ *  on this screen is computed in this file, which is the rule the panel's header already states and
+ *  the reason `tests/reporting-invariants.test.ts` can prove these rows add up to the tile above
+ *  them. */
+const held = splitHeldByBasis(account.slices);
+
+/** Every payout this seller has ever had, so it grows for as long as they trade. A statement that
+ *  is comfortable in month two and unreadable in year two is a table nobody scrolls. */
 const PAGE_SIZE = 10;
-const heldPageResult = paginate(heldSlices, heldPage, PAGE_SIZE);
-/** The same treatment for the history, and for the opposite reason: that table has no cap at all —
- *  it is every payout this seller has ever had — so it grows for as long as they trade. A statement
- *  that is comfortable in month two and unreadable in year two is a table nobody scrolls. */
 const payoutPageResult = paginate(payouts, payoutPage, PAGE_SIZE);
 
 /**
- * Three columns, and each answers a different question the seller actually has: **when** the money
- * is approved, **why** then, and **whether anything is waiting on them** (owner, 2026-08-10). The
- * third is the one that was missing, and it is the only one that can require a decision — a table
- * of dates a seller cannot influence teaches them there is nothing to do, which is true for two of
- * these three rows and false for the one that matters.
+ * The reason and the pending action, in the seller's language.
+ *
+ * The mapping from a hold basis to these two keys lives in `order-payout-line.ts` and is shared
+ * with the order card, so the sentence a seller reads beside an order and the sentence they read
+ * beside its group here cannot disagree. Only the lookup is local.
  *
  * The action reads as a NOUN — "שליחת הזמנה", not "שלחו את ההזמנה — עד אז אין ספירה" (owner,
- * 2026-08-11). A cell in a scanned column is a label, and the explanation it was carrying is
- * already in the reason beside it; saying it twice made the shorter column the harder one to read.
+ * 2026-08-11). A label in a scanned column is a label, and the explanation it was carrying is
+ * already in the reason beside it.
  *
  * The day counts are interpolated from `payout-schedule.ts` rather than written into the sentence:
  * those constants are still owner decisions, and a line promising 21 days while the code waits 30
@@ -114,8 +123,23 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const bankLine = maskedBankLine(seller);
+/**
+ * The same predicate the tab's red dot is drawn from (`payout-details.ts#needsBankDetails`), asked
+ * again here so the dot on the strip has a dot UNDER it, on the form it is actually about (owner,
+ * סשן א׳ §5). A dot on a tab tells a seller that something in a screenful of tiles, two tables and
+ * a six-field form needs them; it does not tell them which. The chain has to end on the thing to
+ * do, or the top of it is just an alarm.
+ *
+ * Computed rather than passed: the panel already holds both inputs, and a `needsBank` prop would be
+ * a second place for the condition to be decided from.
+ */
+const needsBank = needsBankDetails(seller, account.payableNowAgorot);
 const TILE = 'border [border-color:var(--color-border)] rounded-[var(--radius)] p-3';
 const CELL = 'py-2 px-2.5 text-[0.85rem]';
+/** The one dot recipe on this panel — same 7px danger circle the tab strip and the order rows use,
+ *  so a seller learns the mark once. Inline-block here rather than absolutely positioned: it sits
+ *  in the flow of a heading instead of over the corner of a button. */
+const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-danger)] align-middle ms-2';
 ---
 
 <div id="payouts-root">
@@ -161,7 +185,7 @@ const CELL = 'py-2 px-2.5 text-[0.85rem]';
   {/* The banner. It appears on ONE condition — money is genuinely released and there is nowhere to
       send it — because a standing "complete your profile" prompt is the entry barrier this project
       refuses to build (`feedback_seller_form_burden`). Nothing here is required until it is. */}
-  {account.payableNowAgorot > 0 && !hasPayableBank(seller) && (
+  {needsBank && (
     <div class="card card--flat p-4 mb-4 [border-color:var(--color-warning)]" role="status" id="pay-no-bank-banner">
       <h3 class="text-[0.98rem] font-bold m-0">{d.payNoBankTitle}</h3>
       <p class="muted m-0 mt-1 text-[0.85rem]">{d.payNoBankBody}</p>
@@ -179,7 +203,13 @@ const CELL = 'py-2 px-2.5 text-[0.85rem]';
   )}
 
   <form class="card card--flat p-4 md:p-5" id="pay-details-form" data-unsaved-guard>
-    <h3 class="text-[1.05rem] font-bold m-0">{d.payBankTitle}</h3>
+    <h3 class="text-[1.05rem] font-bold m-0">
+      {d.payBankTitle}
+      {/* `id`, because scripts/dashboard/payouts.ts clears it the moment the form saves — the tab's
+          own dot is server-rendered and would otherwise sit there until the next full load, which
+          is the "I did the thing and it still says I didn't" state. */}
+      {needsBank && <span id="pay-bank-dot" class={DOT} role="img" aria-label={d.payNoBankTitle}></span>}
+    </h3>
     <p class="muted m-0 mt-1 text-[0.82rem]">{d.payBankHint}</p>
     {bankLine && <p class="m-0 mt-2 text-[0.82rem]">{d.payCurrentBank} <code dir="ltr">{bankLine}</code></p>}
 
@@ -226,39 +256,50 @@ const CELL = 'py-2 px-2.5 text-[0.85rem]';
     <button type="submit" class="btn btn--sm mt-3 self-start" id="pay-details-save">{d.payDetailsSave}</button>
   </form>
 
+  {/* Three lines, not a hundred rows. What the seller cannot get from the Orders tab is the SPLIT —
+      how much of the waiting money is simply the buyer's return window running down, and how much
+      is sitting still because nobody has posted the parcel. The rows behind each reason are one
+      click away, in the tab that manages rows. */}
   <h3 class="text-[1.05rem] font-bold m-0 mt-6 mb-2">{d.payHeldTitle}</h3>
-  {heldPageResult.total === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHeldEmpty}</p> : (
+  {held.groups.length === 0 && held.unknownOrders === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHeldEmpty}</p> : (
     <div class="overflow-x-auto">
       <table class="w-full border-collapse text-start">
         <thead>
           <tr class="[color:var(--color-muted)] text-[0.76rem]">
-            <th class={`${CELL} text-start font-medium`}>{d.payColOrder}</th>
-            {multiStore && <th class={`${CELL} text-start font-medium`}>{d.payColStore}</th>}
-            <th class={`${CELL} text-start font-medium`}>{d.payColAmount}</th>
-            <th class={`${CELL} text-start font-medium`}>{d.payColRelease}</th>
             <th class={`${CELL} text-start font-medium`}>{d.payColWhy}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColOrders}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColAmount}</th>
             <th class={`${CELL} text-start font-medium`}>{d.payColAction}</th>
           </tr>
         </thead>
         <tbody>
-          {heldPageResult.items.map((slice) => (
+          {held.groups.map((g) => (
             <tr class="border-t [border-color:var(--color-border)]">
-              <td class={CELL}><code dir="ltr" class="text-[0.76rem]">{slice.orderId.slice(0, 8)}</code></td>
-              {multiStore && <td class={CELL}>{slice.storeSlug}</td>}
-              <td class={CELL}>{formatAgorot(slice.netOfCommissionAgorot)}</td>
-              {/* An em dash, not a blank: `basis: 'unshipped'` has NO date because the thing the
-                  date would depend on has not happened, and the two columns beside it say so. A
-                  blank reads as a value that failed to load. */}
-              <td class={CELL}>{slice.hold.releaseDayISO ? formatBusinessDayLabel(slice.hold.releaseDayISO) : '—'}</td>
-              <td class={`${CELL} [color:var(--color-muted)]`}>{WHY[slice.hold.basis ?? ''] ?? d.payWhyUnknown}</td>
-              <td class={`${CELL} ${slice.hold.basis === BLOCKING ? 'font-semibold [color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>
-                {ACTION[slice.hold.basis ?? ''] ?? d.payActionNone}
+              <td class={CELL}>{WHY[g.basis]}</td>
+              <td class={`${CELL} tabular-nums`}>{g.orders}</td>
+              <td class={`${CELL} tabular-nums`}>{formatAgorot(g.agorot)}</td>
+              {/* The action cell is a LINK for the two bases that have one, and plain text for the
+                  one that does not — a seller told to ship an order needs the order, and sending
+                  them to hunt for it in a filter menu is the half of the old table worth keeping.
+                  `ordersHref` narrows the Orders tab to exactly the statuses this reason describes. */}
+              <td class={`${CELL} ${g.basis === BLOCKING ? 'font-semibold [color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>
+                {g.basis === 'delivery' ? ACTION[g.basis] : (
+                  <a class="underline underline-offset-2 [color:inherit] hover:[color:var(--color-accent)]" href={ordersHref(g.basis)}>{ACTION[g.basis]}</a>
+                )}
               </td>
             </tr>
           ))}
+          {held.unknownOrders > 0 && (
+            <tr class="border-t [border-color:var(--color-border)]">
+              <td class={CELL}>{d.payWhyUnknown}</td>
+              <td class={`${CELL} tabular-nums`}>{held.unknownOrders}</td>
+              <td class={`${CELL} tabular-nums`}>{formatAgorot(held.unknownAgorot)}</td>
+              <td class={`${CELL} [color:var(--color-muted)]`}>{d.payActionNone}</td>
+            </tr>
+          )}
         </tbody>
       </table>
-      <Pager page={heldPageResult.page} totalPages={heldPageResult.totalPages} buildUrl={heldPageHref} label={d.payHeldTitle} d={d} />
+      <p class="muted m-0 mt-2 text-[0.78rem]">{d.payHeldFootnote}</p>
     </div>
   )}
 
