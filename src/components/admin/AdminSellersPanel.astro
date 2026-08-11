@@ -2,9 +2,6 @@
 import type { AdminSellerSortCol, AdminSortDir, SellerCardData, PayoutStateFilter } from '../../lib/admin-stats.js';
 import type { SellerBalance } from '../../lib/seller-balance.js';
 import type { PayoutPlanRow, PayoutState } from '../../lib/payout-run.js';
-/** The five real states plus "this seller is not in the plan at all" — see `payoutState_`. Local,
- *  because it is a fact about this SCREEN's lookup and not about how payouts work. */
-type PayoutStateOrNone = PayoutState | 'none';
 import { MIN_PAYOUT_AGOROT } from '../../lib/payout-schedule.js';
 import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import { formatAgorot } from '../../lib/money.js';
@@ -70,34 +67,22 @@ const PAYOUT_CHIPS: { value: PayoutStateFilter; label: string }[] = [
  * difference between them is money already transferred plus money still inside the buyers' return
  * windows, and it is these labels' job to say which.
  */
-const PAYOUT_STATE_LABEL: Record<PayoutStateOrNone, string> = {
+const PAYOUT_STATE_LABEL: Record<PayoutState, string> = {
   payable: 'ישולם בתשלום הקרוב',
   no_bank: 'תקוע — אין פרטי בנק',
   below_minimum: `מתחת ל-${formatAgorot(MIN_PAYOUT_AGOROT)} · מתגלגל`,
   already_paid: 'שולם לתקופה הזו',
   settled: 'הכל הועבר · היתרה שנותרה עוד בהמתנה',
-  none: 'עוד לא השתחרר כסף לתשלום',
 };
 /** Only `no_bank` is a problem someone has to fix, so only it is red. `payable` is the system
  *  working; the rest are the system waiting. */
-const PAYOUT_STATE_CLASS: Record<PayoutStateOrNone, string> = {
+const PAYOUT_STATE_CLASS: Record<PayoutState, string> = {
   payable: 'admin-badge--paid',
   no_bank: 'admin-badge--failed',
   below_minimum: 'admin-badge--muted',
   already_paid: 'admin-badge--muted',
   settled: 'admin-badge--muted',
-  none: 'admin-badge--muted',
 };
-/**
- * A seller `planPayouts` says nothing about at all — nothing of theirs has come out of hold yet.
- *
- * It is a state, not a gap: `getReleasableBySeller` only returns sellers with releasable money, so
- * "absent" is a fact about them and not a missing lookup. Giving it a name is what lets the badge
- * be unconditional, which is what makes the card answerable.
- */
-function payoutState_(row: PayoutPlanRow | undefined): PayoutStateOrNone {
-  return row?.state ?? 'none';
-}
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -173,15 +158,20 @@ const sortLabels: Record<string, string> = {
             </span>
             <span class="admin-seller-card__email">{seller.email}</span>
             <span class="admin-seller-card__joined">הצטרף/ה {fmtDate(seller.createdAt)}</span>
-            {/* Always rendered, and that is the point of it. It used to appear only when a payout
-                was pending, so the commonest question this card raises had no answer on it: an
-                admin looking at "יתרה למוכר/ת ₪5,000" with no badge could not tell whether that
-                money is on its way, already sent, stuck on a missing bank account, or still inside
-                the buyers' return windows (owner, 2026-08-11). Every one of those is a different
-                state and each now says its own name. */}
-            <span class="admin-seller-card__payout-state">
-              <span class:list={['admin-badge', PAYOUT_STATE_CLASS[payoutState_(payout)]]}>{PAYOUT_STATE_LABEL[payoutState_(payout)]}</span>
-            </span>
+            {/* Rendered whenever this seller has ANY released money — which is what answers the
+                question this card raises: "there is a balance, why is it not in the next payment?"
+                It used to appear only when a payout was pending, so precisely that case was blank.
+                Each state is a complete answer rather than a name.
+
+                What it does NOT do is announce the absence of money. A seller `planPayouts` says
+                nothing about has had nothing come out of hold yet, and a badge saying so on most of
+                the roster is a label that means "nothing here" (owner, 2026-08-11). No badge says
+                that better. */}
+            {payout && (
+              <span class="admin-seller-card__payout-state">
+                <span class:list={['admin-badge', PAYOUT_STATE_CLASS[payout.state]]}>{PAYOUT_STATE_LABEL[payout.state]}</span>
+              </span>
+            )}
           </div>
           {/* Labelled mini stat-tiles (label above value) — the bare "₪0 סה"כ"
               suffixes read as "what am I looking at?" (owner feedback). Same

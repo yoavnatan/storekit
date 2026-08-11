@@ -92,6 +92,31 @@ export function payoutWhyText(line: OrderPayoutLine, template: string): string {
   return line.whyDays === null ? template : template.replace('{n}', String(line.whyDays));
 }
 
+/**
+ * One order's payout status as a FILTER value — the seller's Orders tab filters by it directly.
+ *
+ * It replaced a deep link that faked the same thing by naming shipping statuses
+ * (`?ostatus=pending,processing`), which was the owner's objection on 2026-08-11: *"צריך פשוט עוד
+ * רובריקה בסינון לפי סטטוס תשלום"*. He was right, and the reason is not only tidiness — the
+ * shipping list was a RESTATEMENT of the hold rule in a second place, so a status whose payout
+ * behaviour changed in `order-status-rules.ts` would have gone on being filtered the old way here.
+ * Filtering on the answer instead of on its inputs cannot drift.
+ *
+ * Five values, and they are the five things a seller can be looking for: money waiting on them,
+ * money waiting on a delivery mark, money running down a return window, money released, and money
+ * that is never coming.
+ */
+export const PAYOUT_FILTER_VALUES = ['unshipped', 'undelivered', 'window', 'released', 'none'] as const;
+export type PayoutFilterValue = (typeof PAYOUT_FILTER_VALUES)[number];
+
+export function payoutFilterValue(line: OrderPayoutLine): PayoutFilterValue {
+  if (line.state === 'not_payable') return 'none';
+  if (line.state === 'releasable') return 'released';
+  if (line.basis === 'unshipped') return 'unshipped';
+  if (line.basis === 'payment') return 'undelivered';
+  return 'window';
+}
+
 /** The hold reasons that can be grouped, in the order the seller's screen shows them: the two they
  *  cannot influence first, their own last, because that is the one the eye should stop on. */
 export const HELD_BASES: readonly ('delivery' | 'payment' | 'unshipped')[] = ['delivery', 'payment', 'unshipped'];

@@ -7,7 +7,7 @@ import { applyStockAttentionFilter } from './products.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
-import { orderPayoutLine, payoutWhyText } from '../../lib/order-payout-line.js';
+import { orderPayoutLine, payoutWhyText, payoutFilterValue, PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { Order } from '../../lib/orders.js';
 import type { DeliveryMethod } from '../../lib/shipping.js';
@@ -511,7 +511,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // cancellable — that's business logic, not the UI.)
   const ACTIVE_STATUSES = new Set(ORDER_ACTIVE_STATUSES);
   const ORDER_STATUSES = ORDER_FILTER_STATUSES;
-  const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
+  // Two independent columns. 'payout' answers "where is the money on this order", which is a
+  // different question from "where is the parcel" and one a seller now reaches from the payments
+  // tab (owner, 2026-08-11 — it used to be faked by naming shipping statuses in the link).
+  const ORDER_FILTER_COLUMNS = ['status', 'payout'];
   /**
    * Seeded from what the SERVER rendered, not from this module's own default.
    *
@@ -530,6 +533,21 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       ? [...ACTIVE_STATUSES]
       : serverStatuses.split(',').filter(Boolean);
     if (initial.length) ordersFilters.set('status', new Set(initial));
+    // Same seeding for the payout column, so a link that arrives with `?opay=` shows as a checked
+    // box in the menu rather than as a narrowed list nobody can account for.
+    const initialPayout = (ordersToolbarEl?.dataset.payout ?? '').split(',').filter(Boolean);
+    if (initialPayout.length) ordersFilters.set('payout', new Set(initialPayout));
+  }
+
+  /**
+   * The seller-facing name of a payout filter value.
+   *
+   * Read off the shared `#i18n-data` island like every other string here — the values themselves
+   * come from `order-payout-line.ts`, and the names for them live with the rest of the copy so a
+   * wording pass reaches them (`project_client_renderer_i18n_drift`).
+   */
+  function payoutFilterLabel(value: string): string {
+    return tt(`payFilter_${value}`) || value;
   }
   let ordersSortCol: 'date' | 'amount' | 'urgency' = 'date';
   let ordersSortDir: 'asc' | 'desc' = 'desc';
@@ -560,6 +578,19 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
    * block that existed only in the `.astro` copy would vanish the moment a seller turned a page —
    * the three-renderer drift this file's header already warns about.
    */
+  /** This order's payout bucket, for the filter column. Same derivation the line below renders and
+   *  the same one the server filters by (`seller-orders-query.ts#orderPayoutFilterValue`), so a row
+   *  the toolbar hides is exactly a row the next page fetch would not have returned. */
+  function orderPayoutFilterValueOf(o: Parameters<typeof buildOrderCard>[0]): string {
+    return payoutFilterValue(orderPayoutLine({
+      paymentStatus: o.paymentStatus,
+      shippingStatus: o.shippingStatus as never,
+      paidAt: o.paidAt ?? null,
+      deliveredAt: o.deliveredAt ?? null,
+      deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
+    }));
+  }
+
   function payoutLineHtml(o: Parameters<typeof buildOrderCard>[0]): string {
     const line = orderPayoutLine({
       paymentStatus: o.paymentStatus,
@@ -619,7 +650,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // Header layout mirrors the SSR card in seller/dashboard.astro exactly — a
     // 3-column grid below 640px OF THE CARD (container query) and the desktop
     // row above it. Keep the two in sync; the comment there explains why.
-    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-payout="${esc(orderPayoutFilterValueOf(o))}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
         <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? `<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="${esc(tt('orderNewLabel'))}"></span>` : ''}</span>
@@ -706,11 +737,15 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   function getOrderFilterValue(card: HTMLElement, col: string): string {
     if (col === 'status') return card.dataset.shippingStatus ?? '';
+    // Written onto the card by BOTH renderers from `order-payout-line.ts`, never recomputed here —
+    // a client-side copy of the hold rule is the drift this module's header already warns about.
+    if (col === 'payout') return card.dataset.payout ?? '';
     return '';
   }
 
   function orderFilterColumnLabel(col: string): string {
     if (col === 'status') return tt('filterColStatus');
+    if (col === 'payout') return tt('filterColPayout');
     return col;
   }
 
@@ -719,6 +754,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // distinct values, same as products'/messages' own getDistinctFilterValues.
   function getOrderDistinctValues(col: string): string[] {
     if (col === 'status') return ORDER_STATUSES;
+    // The full vocabulary, not what happens to be on THIS page — a value that vanishes from the
+    // menu because the current page has none of it is a filter that cannot be reached.
+    if (col === 'payout') return [...PAYOUT_FILTER_VALUES];
     const values = new Set<string>();
     document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => values.add(getOrderFilterValue(card, col)));
     return [...values].sort();
@@ -726,6 +764,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   function orderFilterValueHtml(col: string, value: string): string {
     if (col === 'status') return `<span class="order-status-dot" style="background:${colorMap[value] ?? '#888'}"></span>${labelMap[value] ?? value}`;
+    if (col === 'payout') return esc(payoutFilterLabel(value));
     return value;
   }
 
@@ -756,6 +795,29 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     document.getElementById('orders-from-banner')?.remove();
     applyOrdersPagination();
   }
+
+  /**
+   * Put the tab back the way a seller expects to find it, when they LEAVE it (owner, 2026-08-11:
+   * "כשעוזבים את הלשונית היא אמורה לחזור למצב הרגיל שלה").
+   *
+   * Only a filter that arrived on a LINK is undone, and the banner is what says one did: it is
+   * removed by `applyOrdersFilter` the moment the seller touches the filter themselves, so its
+   * presence means "this narrowing is still the payments tab's doing, not theirs". A filter someone
+   * chose has to survive a tab switch; one they were handed should not outlive the errand.
+   */
+  document.getElementById('dash-panel-orders')?.addEventListener('dashtab:hide', () => {
+    if (!document.getElementById('orders-from-banner')) return;
+    ordersFilters.delete('payout');
+    ordersFilters.set('status', new Set(ACTIVE_STATUSES));
+    ordersSearchQuery = '';
+    const searchEl = document.getElementById('orders-search-input') as HTMLInputElement | null;
+    if (searchEl) searchEl.value = '';
+    // The URL carried `?opay=`/`?ofrom=`, so a reload would restore exactly what was just undone.
+    const url = new URL(window.location.href);
+    for (const p of ['opay', 'ofrom', 'ostatus']) url.searchParams.delete(p);
+    history.replaceState(null, '', url.toString());
+    applyOrdersFilter();
+  });
 
   function sortOrders(col: 'date' | 'amount' | 'urgency', dir: 'asc' | 'desc'): void {
     ordersSortCol = col;
@@ -916,6 +978,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     params.set('osort', `${ordersSortCol}:${ordersSortDir}`);
     const statusValues = ordersFilters.get('status');
     params.set('ostatus', encodeList(statusValues ? [...statusValues] : []));
+    // Absent when nothing is selected, unlike `ostatus` — an empty `ostatus` means "cleared" and an
+    // absent one means "use the default", while this column simply has no default to distinguish.
+    const payoutValues = ordersFilters.get('payout');
+    if (payoutValues?.size) params.set('opay', encodeList([...payoutValues]));
 
     let data: { ok: boolean; items?: Parameters<typeof buildOrderCard>[0][]; page?: number; totalPages?: number; total?: number };
     try {
