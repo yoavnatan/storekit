@@ -109,6 +109,9 @@ export interface HeldGroup {
 export interface HeldSlice {
   hold: { state: string; basis: 'delivery' | 'payment' | 'unshipped' | null };
   netOfCommissionAgorot: number;
+  /** Which shop this slice was bought from. A payout pools every store the seller owns, but the
+   *  ORDERS behind it are managed one store at a time, so the split has to be able to say which. */
+  storeSlug: string;
 }
 
 export interface HeldSplit {
@@ -134,9 +137,19 @@ export interface HeldSplit {
  * Takes the slices already filtered to `state === 'held'`? No — it filters them itself, so the
  * caller cannot pass a set the total was not computed over. That is the specific way this number
  * would go wrong: a panel that filters once for the table and once for the tile.
+ *
+ * `onlyStoreSlug` narrows it to one shop. **The money stays account-wide and only the WORK is per
+ * store** — a payout is one transfer covering every store the seller owns, so a per-store payable
+ * figure would be a number no bank transfer ever matches. What IS per store is the list of orders
+ * holding money up, because orders are managed one store at a time: the seller's Orders tab shows
+ * a single shop, so a link out of a row that pooled three of them could only ever land on one of
+ * them and silently drop the rest (owner, 2026-08-11). Splitting the rows is what makes the link
+ * honest. `splitHeldByBasis(slices)` with no slug is still the whole account, and the two agree by
+ * construction — which is what `reporting-invariants.test.ts` asserts.
  */
-export function splitHeldByBasis(slices: readonly HeldSlice[]): HeldSplit {
-  const held = slices.filter((s) => s.hold.state === 'held');
+export function splitHeldByBasis(slices: readonly HeldSlice[], onlyStoreSlug?: string): HeldSplit {
+  const held = slices.filter((s) => s.hold.state === 'held'
+    && (onlyStoreSlug === undefined || s.storeSlug === onlyStoreSlug));
   const groups: HeldGroup[] = [];
   for (const basis of HELD_BASES) {
     const rows = held.filter((s) => s.hold.basis === basis);
@@ -153,4 +166,16 @@ export function splitHeldByBasis(slices: readonly HeldSlice[]): HeldSplit {
     unknownOrders: unknown.length,
     unknownAgorot: unknown.reduce((total, s) => total + s.netOfCommissionAgorot, 0),
   };
+}
+
+/** Every store with money on hold, in the order the slices arrived (newest order first, so the shop
+ *  that traded most recently leads). Derived from the slices rather than taken as a store list: a
+ *  shop with nothing waiting has nothing to say on this screen. */
+export function storesWithHeldMoney(slices: readonly HeldSlice[]): string[] {
+  const seen: string[] = [];
+  for (const s of slices) {
+    if (s.hold.state !== 'held') continue;
+    if (!seen.includes(s.storeSlug)) seen.push(s.storeSlug);
+  }
+  return seen;
 }

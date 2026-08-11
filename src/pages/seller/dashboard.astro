@@ -299,7 +299,7 @@ const seller = payoutAccount?.seller ?? null;
  * express at all (`ORDER_FILTER_STATUSES`). This decides which rows a link shows, never which money
  * moves — `payout-hold.ts` is the only thing that does that, and it reads the right column.
  */
-function ordersForHoldBasisHref(basis: 'payment' | 'unshipped'): string {
+function ordersForHoldBasisHref(basis: 'payment' | 'unshipped', storeSlug: string | null): string {
   const statuses = basis === 'unshipped'
     ? ORDER_FILTER_STATUSES.filter((s) => {
         const rule = SHIPPING_STATUS_RULES[s as ShippingStatus];
@@ -307,8 +307,33 @@ function ordersForHoldBasisHref(basis: 'payment' | 'unshipped'): string {
       })
     : ['shipped'];
   const params = new URLSearchParams({ panel: 'orders' });
-  if (store) params.set('store', store.id);
+  // The row's OWN shop, not the one in the switcher. The payments tab is account-wide and the
+  // Orders tab shows one store, so a link that always used the current store sent a two-shop seller
+  // to the wrong list and showed them a subset as if it were the answer (owner, 2026-08-11).
+  const target = storeSlug ? allStores.find((s) => s.slug === storeSlug) : store;
+  if (target) params.set('store', target.id);
   params.set('ostatus', encodeList(statuses));
+  // Says why the list is narrowed once it gets there, and offers the way out. Without it the seller
+  // lands on a filtered Orders tab with no idea what filtered it or how to leave (owner, same).
+  params.set('ofrom', basis);
+  return `/seller/dashboard?${params.toString()}`;
+}
+
+/** The reason the Orders tab is narrowed, when the seller arrived from the payments tab. Whitelisted
+ *  rather than echoed: it is printed on the page, and an unknown value simply means no banner. */
+const ordersFromBasis = ['payment', 'unshipped'].includes(Astro.url.searchParams.get('ofrom') ?? '')
+  ? Astro.url.searchParams.get('ofrom')! as 'payment' | 'unshipped'
+  : null;
+/** The way back: the same tab with no status filter at all. `ostatus=` (explicitly empty) is
+ *  "cleared" rather than "default" — `parseSellerOrderQuery` distinguishes them, and a seller
+ *  pressing "show everything" means everything, including delivered and cancelled.
+ *
+ *  A function and not a const, like the two hrefs above it: `store` is resolved further down this
+ *  frontmatter, so anything reading it at declaration time is a temporal-dead-zone error. */
+function ordersClearHref(): string {
+  const params = new URLSearchParams({ panel: 'orders' });
+  if (store) params.set('store', store.id);
+  params.set('ostatus', '');
   return `/seller/dashboard?${params.toString()}`;
 }
 
@@ -1860,10 +1885,20 @@ const orderStatusColors: Record<string, string> = {
           {/* Orders is cards-only at every screen size (no table/header to fall
               back to), so this toolbar is always visible — unlike
               .table-toolbar (products/messages), it's not display:none above
-              640px. Default filter selection = the old "active" preset
-              (pending/processing/ready/shipped), matching today's default. */}
+              640px.
+
+              `data-status` hands the client the filter the SERVER just rendered this list with.
+              Without it the toolbar always started from its own "active" default, so arriving on a
+              deep link (`?ostatus=…`, which the payments tab now builds) showed the right rows and
+              then silently widened them back the first time anything touched the toolbar — the
+              funnel badge said "1 filter" while the list was unfiltered. Empty string means the
+              seller explicitly cleared it, which is not the same as absent.
+
+              (This comment is ABOVE the `{expr && (` and not inside it. Astro 7's compiler rejects
+              a comment as that expression's first child and fails with no file and no line —
+              scripts/verify.mjs's header carries the case.) */}
           {storeOrdersTotal > 0 && (
-            <div class="dash-toolbar w-full" id="orders-toolbar">
+            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')}>
               <div class="relative flex-1 min-w-[110px] max-w-[280px]">
                 <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="search" id="orders-search-input" value={sellerOrderQuery.q} placeholder={d.ordersSearchPlaceholder ?? 'חיפוש הזמנות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
@@ -1886,6 +1921,18 @@ const orderStatusColors: Record<string, string> = {
           <p class="seller-msg-empty">{d.noOrders}</p>
         ) : (
           <Fragment>
+          {/* "You are not looking at all your orders, here is why, and here is the way out."
+              A deep link from the payments tab narrows this list, and without this the seller
+              arrives at a shorter list with no explanation and no obvious undo — the filter menu's
+              own clear is two clicks inside a dropdown (owner, 2026-08-11). Server-rendered from
+              `?ofrom=`, so it is right at first paint and gone the moment the seller filters by
+              hand instead. */}
+          {ordersFromBasis && (
+            <div id="orders-from-banner" class="card card--flat p-3 mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.85rem]" role="status">
+              <span>{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</span>
+              <a class="underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
+            </div>
+          )}
           <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
           <div class="flex flex-col gap-3" id="orders-list">
             {ordersPage.orders.map((order) => {
@@ -2533,6 +2580,7 @@ const orderStatusColors: Record<string, string> = {
             payoutPage={parsePage(Astro.url.searchParams, 'payhist')}
             payoutPageHref={(p) => payoutsTabHref(p)}
             ordersHref={ordersForHoldBasisHref}
+            storeNames={Object.fromEntries(allStores.map((s) => [s.slug, s.name]))}
             d={d}
           />
         )}

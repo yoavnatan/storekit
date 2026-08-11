@@ -36,7 +36,7 @@ import Pager from './PayoutsPager.astro';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/payout-schedule.js';
 import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, type PayoutDetails } from '../../lib/payout-details.js';
-import { splitHeldByBasis } from '../../lib/order-payout-line.js';
+import { splitHeldByBasis, storesWithHeldMoney } from '../../lib/order-payout-line.js';
 import type { SellerAccount } from '../../lib/seller-account.js';
 import type { SellerPayout } from '../../lib/payouts.js';
 import type { getT } from '../../i18n/index.js';
@@ -51,12 +51,15 @@ interface Props {
   payoutPage: number;
   /** Build a history page href, preserving the open tab. */
   payoutPageHref: (page: number) => string;
-  /** Deep link into the Orders tab, filtered to the statuses one hold reason describes. Built by
-   *  the page, because the store id and the tab are its business and not this component's. */
-  ordersHref: (basis: 'payment' | 'unshipped') => string;
+  /** Deep link into ONE store's Orders tab, filtered to the statuses one hold reason describes.
+   *  Built by the page, because the store id and the tab are its business and not this component's.
+   *  A null slug means the seller's only store — the page resolves it to the one in the switcher. */
+  ordersHref: (basis: 'payment' | 'unshipped', storeSlug: string | null) => string;
+  /** slug → the name the seller gave that shop, for the per-store section headings. */
+  storeNames: Record<string, string>;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { account, payouts, seller, multiStore, payoutPage, payoutPageHref, ordersHref, d } = Astro.props;
+const { account, payouts, seller, multiStore, payoutPage, payoutPageHref, ordersHref, storeNames, d } = Astro.props;
 
 /**
  * ── What used to be here, and why it is not ──
@@ -84,7 +87,20 @@ const { account, payouts, seller, multiStore, payoutPage, payoutPageHref, orders
  *  on this screen is computed in this file, which is the rule the panel's header already states and
  *  the reason `tests/reporting-invariants.test.ts` can prove these rows add up to the tile above
  *  them. */
-const held = splitHeldByBasis(account.slices);
+/**
+ * One section per shop that has money waiting, or a single unnamed section for a one-store seller.
+ *
+ * `storeSlug: null` is what "do not print a heading" means, and it is decided HERE rather than in
+ * the markup so the two cannot disagree about when a seller counts as multi-store. The sections are
+ * built from `splitHeldByBasis` per shop, which is the same function the account-wide total comes
+ * from — so the sections still add up to the "ממתין לאישור סופי" tile above them, and
+ * `reporting-invariants.test.ts` asserts exactly that.
+ */
+const heldStores = multiStore ? storesWithHeldMoney(account.slices) : [];
+const heldSections = (multiStore ? heldStores : [null]).map((storeSlug) => ({
+  storeSlug,
+  split: splitHeldByBasis(account.slices, storeSlug ?? undefined),
+})).filter((s) => s.split.groups.length > 0 || s.split.unknownOrders > 0);
 
 /** Every payout this seller has ever had, so it grows for as long as they trade. A statement that
  *  is comfortable in month two and unreadable in year two is a table nobody scrolls. */
@@ -266,13 +282,23 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
     <button type="submit" class="btn btn--sm mt-3 self-start" id="pay-details-save">{d.payDetailsSave}</button>
   </form>
 
-  {/* Three lines, not a hundred rows. What the seller cannot get from the Orders tab is the SPLIT —
-      how much of the waiting money is simply the buyer's return window running down, and how much
-      is sitting still because nobody has posted the parcel. The rows behind each reason are one
-      click away, in the tab that manages rows. */}
+  {/* Three lines per shop, not a hundred rows. What the seller cannot get from the Orders tab is
+      the SPLIT — how much of the waiting money is simply the buyer's return window running down,
+      and how much is sitting still because nobody has posted the parcel.
+
+      **Sectioned per store when there is more than one, and that is a correctness fix rather than a
+      layout choice** (owner, 2026-08-11). The money above is account-wide, because a payout is one
+      transfer covering every shop; the ORDERS behind it are managed one shop at a time. A pooled
+      row's "שליחת הזמנה" link could only ever open one store's Orders tab, so for a seller with two
+      shops it quietly showed a subset and called it the answer. */}
   <h3 class="text-[1.05rem] font-bold m-0 mt-6 mb-2">{d.payHeldTitle}</h3>
-  {held.groups.length === 0 && held.unknownOrders === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHeldEmpty}</p> : (
-    <div class="overflow-x-auto">
+  {heldSections.length === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHeldEmpty}</p> : heldSections.map((section) => (
+    <div class="overflow-x-auto mb-4 last:mb-0">
+      {/* Named only when there is more than one shop to tell apart — a single-store seller reading
+          their own store's name above their own table learns nothing from it. */}
+      {section.storeSlug && (
+        <p class="m-0 mb-1 text-[0.85rem] font-semibold">{storeNames[section.storeSlug] ?? section.storeSlug}</p>
+      )}
       <table class="w-full border-collapse text-start">
         <thead>
           <tr class="[color:var(--color-muted)] text-[0.76rem]">
@@ -283,7 +309,7 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
           </tr>
         </thead>
         <tbody>
-          {held.groups.map((g) => (
+          {section.split.groups.map((g) => (
             <tr class="border-t [border-color:var(--color-border)]">
               <td class={CELL}>{WHY[g.basis]}</td>
               <td class={`${CELL} tabular-nums`}>{g.orders}</td>
@@ -291,27 +317,28 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
               {/* The action cell is a LINK for the two bases that have one, and plain text for the
                   one that does not — a seller told to ship an order needs the order, and sending
                   them to hunt for it in a filter menu is the half of the old table worth keeping.
-                  `ordersHref` narrows the Orders tab to exactly the statuses this reason describes. */}
+                  `ordersHref` narrows the Orders tab to this shop AND to exactly the statuses this
+                  reason describes; the tab then says so, with a way back to the full list. */}
               <td class={`${CELL} ${g.basis === BLOCKING ? 'font-semibold [color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>
                 {g.basis === 'delivery' ? ACTION[g.basis] : (
-                  <a class="underline underline-offset-2 [color:inherit] hover:[color:var(--color-accent)]" href={ordersHref(g.basis)}>{ACTION[g.basis]}</a>
+                  <a class="underline underline-offset-2 [color:inherit] hover:[color:var(--color-accent)]" href={ordersHref(g.basis, section.storeSlug)}>{ACTION[g.basis]}</a>
                 )}
               </td>
             </tr>
           ))}
-          {held.unknownOrders > 0 && (
+          {section.split.unknownOrders > 0 && (
             <tr class="border-t [border-color:var(--color-border)]">
               <td class={CELL}>{d.payWhyUnknown}</td>
-              <td class={`${CELL} tabular-nums`}>{held.unknownOrders}</td>
-              <td class={`${CELL} tabular-nums`}>{formatAgorot(held.unknownAgorot)}</td>
+              <td class={`${CELL} tabular-nums`}>{section.split.unknownOrders}</td>
+              <td class={`${CELL} tabular-nums`}>{formatAgorot(section.split.unknownAgorot)}</td>
               <td class={`${CELL} [color:var(--color-muted)]`}>{d.payActionNone}</td>
             </tr>
           )}
         </tbody>
       </table>
-      <p class="muted m-0 mt-2 text-[0.78rem]">{d.payHeldFootnote}</p>
     </div>
-  )}
+  ))}
+  {heldSections.length > 0 && <p class="muted m-0 mt-2 text-[0.78rem]">{d.payHeldFootnote}</p>}
 
   <h3 class="text-[1.05rem] font-bold m-0 mt-6 mb-2">{d.payHistoryTitle}</h3>
   {payoutPageResult.total === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHistoryEmpty}</p> : (
