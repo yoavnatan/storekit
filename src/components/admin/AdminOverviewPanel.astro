@@ -4,9 +4,13 @@ import type { PlatformOverview } from '../../lib/admin-stats.js';
 
 interface Props {
   overview: PlatformOverview;
-  attentionCount: number;
+  /** Stores with an empty catalogue — the retired "לתשומת לב" tab, now a chip on the Stores tab
+   *  (סשן ב׳ §1). The card below is a LINK rather than a panel jump because it carries a filter
+   *  with it; `data-goto-panel` can only switch tabs. */
+  emptyStoreCount: number;
+  emptyStoresHref: string;
 }
-const { overview, attentionCount } = Astro.props;
+const { overview, emptyStoreCount, emptyStoresHref } = Astro.props;
 ---
 
 {/* Each card jumps to its tab (data-goto-panel, wired in tab-nav.ts's
@@ -47,10 +51,10 @@ const { overview, attentionCount } = Astro.props;
     <dt>מחזור מכירות (GMV)</dt>
     <dd>{formatAgorot(overview.gmvAgorot)}</dd>
   </button>
-  {attentionCount > 0 && (
-    <button type="button" class="admin-stat-card admin-stat-card--warning w-full text-inherit font-inherit cursor-pointer" data-goto-panel="attention">
-      <dt>חנויות לתשומת לב</dt>
-      <dd>{attentionCount}</dd>
-    </button>
+  {emptyStoreCount > 0 && (
+    <a href={emptyStoresHref} class="admin-stat-card admin-stat-card--warning no-underline [color:inherit]">
+      <dt>חנויות ללא מוצרים</dt>
+      <dd>{emptyStoreCount}</dd>
+    </a>
   )}
 </div>
