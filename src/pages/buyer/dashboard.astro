@@ -1365,7 +1365,10 @@ const STORES_NAMED = 2;
     // Never over typed text — a half-written search or message is worth more than a fresher list.
     if (panelHoldsTypedText(panel) || !isPanelStale(`buyer:${key}`)) return;
     if (key === 'orders')   void applyBuyerOrdersPagination();
-    if (key === 'messages') void pollBuyerUnread();
+    // The whole panel, not `pollBuyerUnread`: the poll walks `[data-bmsg-id]` and can only update
+    // rows that already exist, so a conversation a seller opened since page load had nothing for
+    // it to update and never appeared at all.
+    if (key === 'messages') void refreshBuyerMessages();
   }
 
   function activateBuyerTab(key: string) {
@@ -2152,8 +2155,10 @@ const STORES_NAMED = 2;
 
       markPanelFresh('buyer:messages');
     } catch {
-      // Same reasoning as the missing-panel case above: a dropped request leaves the panel exactly
-      // as it was, and the next tab open tries again because nothing marked it fresh.
+      // silent: the buyer did not press anything — this fires from opening a tab, and its failure
+      // costs them nothing they can see. The panel keeps the conversations it already had, which
+      // are stale rather than wrong, and nothing marked it fresh, so the next open simply tries
+      // again. A toast here would report a problem about an action the buyer never took.
     } finally {
       bmsgRefreshInFlight = false;
     }
@@ -2489,9 +2494,12 @@ const STORES_NAMED = 2;
           }
         });
         applyBmsgFilter();
-        // Inside the `then`, so a failed poll leaves the panel stale and the next tab open
-        // retries it — the 15s timer below would otherwise be the only thing that ever recovered.
-        markPanelFresh('buyer:messages');
+        // Deliberately does NOT mark the panel fresh, and that is load-bearing rather than an
+        // omission. This poll updates rows that already exist; it cannot bring in a conversation
+        // that has none. Stamping here would have it claim, every 15 seconds, that the panel is
+        // current — and since the staleness window is 30s the panel would never be stale, so the
+        // full refresh on tab open could never run and a new conversation would still be invisible.
+        // The freshness stamp belongs only to whatever can actually make the panel current.
       }).catch(() => {});
   }
   setInterval(pollBuyerUnread, 15000);
