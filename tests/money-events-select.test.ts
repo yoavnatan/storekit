@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isMoneyEventType, selectMoneyEvents, MONEY_EVENT_TYPES, type MoneyEvent } from '../src/lib/money-events.js';
+import { isMoneyEventType, selectMoneyEvents, MONEY_EVENT_TYPES, MONEY_EVENT_LABELS, type MoneyEvent } from '../src/lib/money-events.js';
+import { MONEY_EVENT_GROUPS } from '../src/lib/money-event-types.js';
 
 // The admin money journal's type filter was validated against the rows it had just
 // loaded (`events.some(e => e.type === requested)`), so filtering to a type the
@@ -26,6 +27,30 @@ describe('isMoneyEventType', () => {
   it('accepts a type the journal contains no rows for — the filter must come back empty, not unfiltered', () => {
     expect(isMoneyEventType('duplicate_checkout_blocked')).toBe(true);
     expect(selectMoneyEvents([ev('order_created', '2026-07-30T10:00:00Z')], 'duplicate_checkout_blocked')).toEqual([]);
+  });
+});
+
+// The admin's type filter is a MENU rendered from MONEY_EVENT_GROUPS (סשן ב׳ — thirteen chips had
+// stopped saying what the journal was for). A menu built from sections can lose a value in a way a
+// list built from the vocabulary cannot: add a type, forget the section, and it silently becomes
+// unfilterable while `?mtype=` still accepts it. That is the whole failure this guards.
+describe('MONEY_EVENT_GROUPS covers the vocabulary exactly', () => {
+  const grouped = MONEY_EVENT_GROUPS.flatMap((g) => g.types);
+
+  it('places every type in a section', () => {
+    expect([...grouped].sort()).toEqual([...MONEY_EVENT_TYPES].sort());
+  });
+
+  it('places no type in two sections', () => {
+    expect(new Set(grouped).size).toBe(grouped.length);
+  });
+
+  it('names every section, and every type it lists has a label to render', () => {
+    for (const g of MONEY_EVENT_GROUPS) {
+      expect(g.label.trim()).not.toBe('');
+      expect(g.types.length).toBeGreaterThan(0);
+      for (const t of g.types) expect(MONEY_EVENT_LABELS[t]).toBeTruthy();
+    }
   });
 });
 

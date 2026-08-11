@@ -4,17 +4,17 @@ import '../../../../styles/pages/admin.css';
 import AdminStoreStateBadge from '../../../../components/admin/AdminStoreStateBadge.astro';
 import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import PerfProductSection from '../../../../components/dashboard/PerfProductSection.astro';
+import TopProductsList from '../../../../components/dashboard/TopProductsList.astro';
 import { isAdminRequest } from '../../../../lib/admin-auth.js';
 import { getStoreBySlug } from '../../../../lib/stores.js';
 import { getSellerById } from '../../../../lib/seller-auth.js';
 import { getProductsByStoreId } from '../../../../lib/store-products.js';
-import { getOrdersByStoreSlug } from '../../../../lib/orders.js';
-import type { Order } from '../../../../lib/orders.js';
+import { getOrdersByStoreSlugInRange } from '../../../../lib/orders.js';
 import { buildPerformanceSummary, pickGranularity } from '../../../../lib/seller-performance.js';
 import { getViewStatsForStore } from '../../../../lib/store-pageviews.js';
 import { VISITOR_RETENTION_DAYS } from '../../../../lib/visitor-retention.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../../../lib/chart-svg.js';
-import { formatPrice } from '../../../../config/store.config.js';
+import { formatAgorot } from '../../../../lib/money.js';
 import { getLang, getDir, getT } from '../../../../i18n/index.js';
 import { commissionPercentForTier } from '../../../../lib/pricing.js';
 import { jsonForScript } from '../../../../lib/json-script.js';
@@ -49,14 +49,19 @@ const d = t.dashboard;
 // runs — identical setup to the seller dashboard's performance tab so the two
 // stay visually in lockstep (see src/pages/seller/dashboard.astro). Range
 // changes re-fetch from /api/admin/performance (admin-guarded) client-side.
-const storeOrders: Order[] = await getOrdersByStoreSlug(store.slug);
-const storeProductsList = await getProductsByStoreId(store.id);
 const today = new Date();
 const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 const fromISO = toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1));
 const toISO = toLocalISO(today);
 const granularity = pickGranularity(fromISO, toISO);
-const views = await getViewStatsForStore(store.id, fromISO, toISO, granularity);
+// The range is decided BEFORE the orders are read, which is the whole point: this page renders one
+// month and used to load the store's entire history to do it (owner, 2026-08-11). Three
+// independent reads, so one round trip rather than three (AI_INSTRUCTIONS → Scalability).
+const [storeOrders, storeProductsList, views] = await Promise.all([
+  getOrdersByStoreSlugInRange(store.slug, fromISO, toISO),
+  getProductsByStoreId(store.id),
+  getViewStatsForStore(store.id, fromISO, toISO, granularity),
+]);
 const summary = buildPerformanceSummary(storeOrders, views, store.slug, fromISO, toISO, granularity, commissionPercentForTier(seller?.tier));
 
 // This blob is injected via set:html into a <script type="application/json">.
@@ -73,7 +78,7 @@ const isRtl = dir === 'rtl';
 const chartOpts = { emptyMessage: d.perfNoData, rtl: isRtl, animate: false };
 const revenueChartSvg = buildBarChartSvg(
   summary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })),
-  { ...chartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice },
+  { ...chartOpts, color: 'var(--color-primary)', valueFormatter: formatAgorot },
 );
 const visitorsChartSvg = buildMultiLineChartSvg(
   [
@@ -133,7 +138,7 @@ const visitorsChartSvg = buildMultiLineChartSvg(
         <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5" aria-live="polite">
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfRevenue}</dt>
-            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue">{formatPrice(summary.totalRevenueAgorot)}</dd>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue">{formatAgorot(summary.totalRevenueAgorot)}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfOrders}</dt>
@@ -141,7 +146,7 @@ const visitorsChartSvg = buildMultiLineChartSvg(
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfAvgOrder}</dt>
-            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg">{formatPrice(summary.avgOrderValueAgorot)}</dd>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg">{formatAgorot(summary.avgOrderValueAgorot)}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <div class="flex items-center gap-1 mb-1">
@@ -194,15 +199,15 @@ const visitorsChartSvg = buildMultiLineChartSvg(
           <dl class="m-0 flex flex-col gap-2 text-[0.86rem]">
             <div class="flex items-center justify-between gap-3">
               <dt class="[color:var(--color-muted)]">{d.perfGrossRevenue}</dt>
-              <dd class="m-0 font-medium" id="perf-gross">{formatPrice(summary.totalRevenueAgorot)}</dd>
+              <dd class="m-0 font-medium" id="perf-gross">{formatAgorot(summary.totalRevenueAgorot)}</dd>
             </div>
             <div class="flex items-center justify-between gap-3">
               <dt class="[color:var(--color-muted)]">{d.perfCommission} <span class="text-[0.78rem]">(<span id="perf-commission-rate">{summary.commissionRate}</span>%)</span></dt>
-              <dd class="m-0 font-medium [color:var(--color-danger)]" id="perf-commission">−{formatPrice(summary.platformCommissionAgorot)}</dd>
+              <dd class="m-0 font-medium [color:var(--color-danger)]" id="perf-commission">−{formatAgorot(summary.platformCommissionAgorot)}</dd>
             </div>
             <div class="flex items-center justify-between gap-3 pt-2 border-t [border-color:var(--color-border)]">
               <dt class="font-semibold">{d.perfNetProfit}</dt>
-              <dd class="m-0 font-bold text-[1.02rem] [color:var(--color-success)]" id="perf-net">{formatPrice(summary.netProfitAgorot)}</dd>
+              <dd class="m-0 font-bold text-[1.02rem] [color:var(--color-success)]" id="perf-net">{formatAgorot(summary.netProfitAgorot)}</dd>
             </div>
           </dl>
         </div>
@@ -228,22 +233,7 @@ const visitorsChartSvg = buildMultiLineChartSvg(
         <div>
           <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfTopProducts}</h3>
           <div id="perf-top-products" class="flex flex-col gap-2">
-            {summary.topProducts.length === 0 && (
-              <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
-            )}
-            {summary.topProducts.map((tp, tpIdx) => {
-              const totalRevenue = Math.max(summary.topProducts.reduce((s, x) => s + x.revenueAgorot, 0), 1);
-              const pct = Math.round((tp.revenueAgorot / totalRevenue) * 100);
-              return (
-                <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
-                  <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(tpIdx * 60, 300)}ms`}></div>
-                  <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
-                    <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
-                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenueAgorot)}</span>
-                  </div>
-                </div>
-              );
-            })}
+            <TopProductsList products={summary.topProducts} totalAgorot={summary.productRevenueAgorot} d={d as unknown as Record<string, string>} />
           </div>
         </div>
 

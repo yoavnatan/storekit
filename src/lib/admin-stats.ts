@@ -206,24 +206,6 @@ export function attachProducts(cards: SellerCardData[], productsByStore: Readonl
   }));
 }
 
-// Informational only — never written back to the Store record and never
-// read by any registration/checkout path. Purely a heads-up for the owner.
-function attentionReasons(_store: Store, productCount: number): string[] {
-  const reasons: string[] = [];
-  if (productCount === 0) reasons.push('0 מוצרים');
-  return reasons;
-}
-
-export function isStoreIncomplete(store: Store, productCount: number): boolean {
-  return attentionReasons(store, productCount).length > 0;
-}
-
-export interface AttentionEntry {
-  store: Store;
-  seller: Seller | undefined;
-  reasons: string[];
-}
-
 export interface StoreRow {
   store: Store;
   seller: Seller | undefined;
@@ -292,7 +274,23 @@ export interface AdminSellerQuery {
   sortCol: AdminSellerSortCol;
   sortDir: AdminSortDir;
   blockedOnly: boolean;
+  /**
+   * Narrow to sellers in one payout state, or `'all'`.
+   *
+   * It exists because the per-seller payout TABLE does not any more: the owner asked for those
+   * facts inside the seller cards rather than as a second roster of the same people (סשן א׳ §3),
+   * and the one thing that roster could do which a card cannot is answer "who is stuck". A card
+   * shows one seller; a filter finds them among a thousand. Without this, removing the table would
+   * have removed a real capability along with the duplication.
+   */
+  payoutState: PayoutStateFilter;
 }
+
+/** `payable` / `no_bank` / `below_minimum` from `payout-run.ts`, plus "don't filter". The two
+ *  states with nothing to act on (`settled`, `already_paid`) are deliberately not offered: they are
+ *  most sellers most months, so a chip for them is a chip that selects everybody. */
+export type PayoutStateFilter = 'all' | 'payable' | 'no_bank' | 'below_minimum';
+export const PAYOUT_STATE_FILTERS: readonly PayoutStateFilter[] = ['all', 'payable', 'no_bank', 'below_minimum'];
 
 export interface AdminStoreQuery {
   q: string;
@@ -302,6 +300,17 @@ export interface AdminStoreQuery {
    *  states (lib/store-status.ts) a yes/no switch could no longer answer "which stores did their
    *  sellers pause, and which are waiting to close". */
   state: StoreStateFilter;
+  /**
+   * Only stores with an empty catalogue — what the "לתשומת לב" TAB used to be (owner, סשן ב׳ §1:
+   * *"נראית לי מיותרת. מה היא בעצם אומרת לנו?"*). The honest answer was: one thing, "0 מוצרים",
+   * about the same stores this tab already lists, with the count already printed on every row. So
+   * it is a filter here instead of a tab of its own, and it composes with the state chips and the
+   * search — which the tab could not do, because it was a separate list with no filters at all.
+   *
+   * Orthogonal to `state` on purpose: a paused store can also be empty, and folding "empty" into
+   * the lifecycle enum would have made those two facts unable to be true at once.
+   */
+  emptyOnly: boolean;
 }
 
 export type StoreStateFilter = StoreLifecycle | 'all';
@@ -316,11 +325,30 @@ export function countStoreStates(rows: StoreRow[]): Record<StoreStateFilter, num
   return counts;
 }
 
-export function filterAndSortSellerCards(cards: SellerCardData[], query: AdminSellerQuery): SellerCardData[] {
+/** Stores with nothing in the catalogue — the count behind the "ללא מוצרים" chip, and the number
+ *  the overview card shows. Counted over every store like the state counts beside it, so selecting
+ *  the chip does not change what it says. */
+export function countEmptyStores(rows: StoreRow[]): number {
+  return rows.reduce((n, r) => (r.productCount === 0 ? n + 1 : n), 0);
+}
+
+/**
+ * @param payoutStateBySeller sellerId → the state `payout-run.ts#planPayouts` put them in. Passed
+ *   in rather than read here for the reason this whole module is pure: a GROUP BY belongs in the
+ *   database and everything else belongs in a function a test can call with three literals. A
+ *   seller absent from the map has no released balance at all, which is `settled` — so the three
+ *   offered filters correctly exclude them.
+ */
+export function filterAndSortSellerCards(
+  cards: SellerCardData[],
+  query: AdminSellerQuery,
+  payoutStateBySeller?: ReadonlyMap<string, string>,
+): SellerCardData[] {
   const nq = normSearch(query.q);
   const filtered = cards.filter((c) => {
     if (nq && !sellerSearchMatch(nq, c)) return false;
     if (query.blockedOnly && !c.stores.some((s) => s.store.blocked)) return false;
+    if (query.payoutState !== 'all' && payoutStateBySeller?.get(c.seller.id) !== query.payoutState) return false;
     return true;
   });
 
@@ -337,6 +365,7 @@ export function filterAndSortStoreRows(rows: StoreRow[], query: AdminStoreQuery)
   const filtered = rows.filter((r) => {
     if (nq && !storeSearchMatch(nq, r)) return false;
     if (query.state !== 'all' && storeLifecycle(r.store) !== query.state) return false;
+    if (query.emptyOnly && r.productCount > 0) return false;
     return true;
   });
 
@@ -361,7 +390,11 @@ const VALID_SELLER_SORT_COMBOS = new Set(['joined:desc', 'joined:asc', 'revenue:
 export function parseSellerQuery(sp: URLSearchParams): AdminSellerQuery {
   const requested = sp.get('ssort') ?? 'joined:desc';
   const [sortCol, sortDir] = (VALID_SELLER_SORT_COMBOS.has(requested) ? requested : 'joined:desc').split(':') as [AdminSellerSortCol, AdminSortDir];
-  return { q: (sp.get('sq') ?? '').trim(), sortCol, sortDir, blockedOnly: sp.get('sblocked') === '1' };
+  // Whitelisted, like every other filter param here: a hand-edited `?spayout=nonsense` falls back
+  // to "no filter" rather than silently matching nothing and reading as "no sellers exist".
+  const rawPayout = sp.get('spayout') as PayoutStateFilter | null;
+  const payoutState: PayoutStateFilter = PAYOUT_STATE_FILTERS.includes(rawPayout as PayoutStateFilter) ? rawPayout! : 'all';
+  return { q: (sp.get('sq') ?? '').trim(), sortCol, sortDir, blockedOnly: sp.get('sblocked') === '1', payoutState };
 }
 
 const VALID_STORE_SORT_COMBOS = new Set(['name:asc', 'name:desc', 'revenue:desc', 'revenue:asc', 'products:desc']);
@@ -380,17 +413,6 @@ export function parseStoreQuery(sp: URLSearchParams): AdminStoreQuery {
   const state = (STORE_STATE_FILTERS as readonly string[]).includes(requestedState)
     ? requestedState as StoreStateFilter
     : 'all';
-  return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, state };
+  return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, state, emptyOnly: sp.get('stempty') === '1' };
 }
 
-export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], countsByStore: ReadonlyMap<string, StoreProductCounts>): AttentionEntry[] {
-  const sellerById = new Map(sellers.map((s) => [s.id, s]));
-  return stores
-    .map((store) => {
-      const productCount = countsByStore.get(store.id)?.total ?? 0;
-      const reasons = attentionReasons(store, productCount);
-      if (reasons.length === 0) return null;
-      return { store, seller: sellerById.get(store.sellerId), reasons };
-    })
-    .filter((entry): entry is AttentionEntry => entry !== null);
-}

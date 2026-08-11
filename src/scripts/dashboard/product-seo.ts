@@ -15,7 +15,7 @@
  * covered with no re-init — the same reason the other dashboard editors delegate.
  */
 
-import { productSeoBodyHtml, productSeoLabels, type ProductSeoLabels, type ProductSeoPreview } from '../../lib/product-seo-field.js';
+import { productSeoBodyHtml, productSeoLabels, productSeoMeterView, type ProductSeoLabels, type ProductSeoPreview } from '../../lib/product-seo-field.js';
 import type { ProductSeoInput } from '../../lib/product-seo-hints.js';
 
 /** The dashboard strings live under `.dashboard` in `#i18n-data` — the same accessor shape
@@ -66,12 +66,36 @@ function previewOf(panel: HTMLElement): ProductSeoPreview {
 
 let cached: ProductSeoLabels | null = null;
 
+/**
+ * The meter is UPDATED, never rebuilt — the fill has to keep the element it already had or the
+ * width transition has nothing to animate from (see productSeoMeterHtml's note). Every value
+ * written here comes out of productSeoMeterView(), the same function that rendered the markup
+ * on the server, so there is no second definition of the bands or their colours.
+ */
+function paintMeter(panel: HTMLElement, input: ProductSeoInput, l: ProductSeoLabels): void {
+  const view = productSeoMeterView(input, l);
+  const fill = panel.querySelector<HTMLElement>('[data-seo-meter]');
+  if (fill) {
+    fill.style.width = `${view.percent}%`;
+    fill.style.backgroundColor = view.color;
+  }
+  const level = panel.querySelector<HTMLElement>('[data-seo-level]');
+  if (level) {
+    level.textContent = view.levelText;
+    level.style.color = view.color;
+  }
+  const progress = panel.querySelector<HTMLElement>('[data-seo-progress]');
+  if (progress) progress.textContent = view.progressText;
+}
+
 function refresh(panel: HTMLElement): void {
   const form = panel.closest('form');
   const body = panel.querySelector<HTMLElement>('[data-seo-body]');
   if (!form || !body) return;
   cached ??= labels();
-  body.innerHTML = productSeoBodyHtml(readForm(form), previewOf(panel), cached);
+  const input = readForm(form);
+  body.innerHTML = productSeoBodyHtml(input, previewOf(panel), cached);
+  paintMeter(panel, input, cached);
 }
 
 function refreshFrom(target: EventTarget | null): void {

@@ -104,7 +104,9 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   text-align: center;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
-/* Cards are <button data-goto-panel> (AdminOverviewPanel.astro) — the hover
+/* Cards are <button data-goto-panel> — except the empty-stores one, which is an <a> because it
+   carries a FILTER into the Stores tab and a panel jump cannot (AdminOverviewPanel.astro). Both are
+   grid items, so both are blockified and this rule needs no display of its own. The hover
    itself has to live here rather than as a Tailwind hover: utility class,
    because this file is a plain unlayered import (see main.css's own header
    comment) and unlayered CSS beats @layer'd Tailwind utilities regardless of
@@ -146,18 +148,32 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
    the same vertical columns regardless of that row's own digit count or
    identity-column width — see CURRENT_TASK.md "not aligned" feedback
    (2026-07-15): a plain flex row let the columns drift per row. */
+/* Three EQUAL columns over two rows, not four fixed ones over however many rows the tile count
+   happens to need. The fixed set was sized for exactly four tiles; a fifth wrapped into a 3.6rem
+   column with `white-space: nowrap` on both its lines, so a label like "יתרה למוכר/ת" and a value
+   like "₪12,340" ran straight over the tile beside them (owner, 2026-08-11: "המספרים החדשים עולים
+   אחד על השני"). Equal fractions still line every card's stats into the same vertical columns,
+   which is what the fixed widths were for, and they keep doing it when a seventh tile is added. */
 .admin-seller-card__nums {
   display: grid;
-  grid-template-columns: 3.6rem 4rem 6.4rem 6.4rem;
-  gap: 0 0.9rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem 0.9rem;
   font-size: 0.82rem;
   color: var(--color-text);
 }
 /* Each metric is a label-above-value mini stat-tile ("what am I looking at?"
    owner feedback) — same clarity as the Stores tab's labelled revenue. */
 .admin-seller-card__stat { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
-.admin-seller-card__stat-label { font-size: 0.68rem; font-weight: 500; color: var(--color-muted); white-space: nowrap; }
-.admin-seller-card__stat-value { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* `overflow: hidden` + ellipsis, and it is the CLASS fix rather than this instance's: whatever the
+   column ends up being, a tile now truncates inside its own box instead of printing over the next
+   one. Without it the failure is silent and looks like a rendering glitch rather than a value that
+   did not fit. Both lines carry it — the label overflowed first. */
+.admin-seller-card__stat-label { font-size: 0.68rem; font-weight: 500; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-seller-card__stat-value { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+/* The payout state, in the identity column under the join date — NOT a row of its own across the
+   card (owner, 2026-08-11: "התווית לא צריכה ליצור שורה חדשה, היא יכולה לשבת ליד פרטי המוכר").
+   It is a fact about this seller, so it belongs with the other facts about them. */
+.admin-seller-card__payout-state { margin-top: 0.3rem; }
 .admin-seller-card__stat--rev .admin-seller-card__stat-value { color: var(--color-success); }
 /* Desktop: kebab centred against the identity block (owner confirmed this was
    already good — do NOT top-pin it here). The top-corner placement is a
@@ -566,20 +582,10 @@ button.admin-store-row__count { padding: 0; text-align: start; }
   .admin-store-row__actions { grid-column: 2; grid-row: 1; align-self: start; justify-content: flex-end; }
 }
 
-/* ── Attention list ── */
+/* The "this list is for looking at, nothing here blocks anyone" line. Named for the לתשומת לב tab
+   it was written for; that tab is gone (סשן ב׳ §1) and the Alerts panel is now its only user — the
+   name is kept because renaming a class to match its remaining caller is a diff with no reader. */
 .admin-attention-note { font-size: 0.82rem; color: var(--color-muted); margin: 0 0 1rem; }
-.admin-attention-list { display: flex; flex-direction: column; gap: 0.6rem; list-style: none; padding: 0; margin: 0; }
-.admin-attention-item {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 0.75rem 1rem;
-}
-.admin-attention-item__info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1 1 220px; }
-.admin-attention-item__store { font-weight: 700; color: var(--color-text); }
-.admin-attention-item__seller { font-size: 0.78rem; }
-.admin-attention-item__reasons { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 
 @media (max-width: 640px) {
   .admin-seller-card__nums { gap: 0.6rem 1rem; }
@@ -633,4 +639,31 @@ button.admin-store-row__count { padding: 0; text-align: start; }
 @media (prefers-reduced-motion: reduce) {
   /* The chip alone still says "working", and it says it without moving. */
   [data-busy]::after { animation: none; opacity: 1; }
+}
+
+/* ── Printing the accounting statement ──
+   The owner hands this document to a רו״ח, so "print" has to produce the DOCUMENT and not a
+   screenshot of a dashboard. No PDF library and no second layout surface: the browser's own engine
+   renders what is left after this hides everything that is not the statement — the site header and
+   footer, the tab strip, the dashboard heading, the period controls, and every other panel (those
+   are in the DOM, merely `hidden`, and a print sheet is exactly where one would reappear).
+
+   Scoped to `body:has(#admin-statement-doc)` so it can only ever fire on the tab that owns it: the
+   condition is the panel's own presence in the DOM, not a class someone has to remember to add.
+   Left as CSS rather than converted to Tailwind — a `print:` utility cannot express `:has()` on the
+   body from inside a component, and these rules target elements this component does not own
+   (AI_INSTRUCTIONS → convert-on-contact, exceptions (a) and (e)). */
+@media print {
+  body:has(#admin-statement-doc) header,
+  body:has(#admin-statement-doc) footer,
+  body:has(#admin-statement-doc) .dash-tabs,
+  body:has(#admin-statement-doc) .dash-head,
+  body:has(#admin-statement-doc) .admin-statement-controls,
+  body:has(#admin-statement-doc) .dash-panel:not(#dash-panel-statement) { display: none !important; }
+  /* The card's own chrome is screen furniture — on paper the page IS the card. */
+  body:has(#admin-statement-doc) #dash-main-card,
+  body:has(#admin-statement-doc) .dash-section { border: 0; box-shadow: none; padding: 0; margin: 0; }
+  /* Keep each section whole rather than letting a total land alone on page two. */
+  #admin-statement-doc section,
+  #admin-statement-doc dl { break-inside: avoid; }
 }

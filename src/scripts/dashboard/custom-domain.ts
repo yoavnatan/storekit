@@ -66,6 +66,7 @@ export function initCustomDomain(): void {
     try {
       const res = await fetch('/api/store', { method: 'POST', body: form });
       return await res.json() as CdResponse;
+    // silent: the caller turns this into `cdErrorMessage` in the panel.
     } catch { return { ok: false }; }
   }
 

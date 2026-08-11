@@ -95,6 +95,90 @@ function pendingFiles(applied) {
   return pending;
 }
 
+/**
+ * ── The check the checksum guard cannot make: does the SCHEMA match what the files describe? ──
+ *
+ * `pendingFiles` watches the migration TEXT, and it is right about what it watches. It cannot see
+ * the failure found on 2026-08-10: `seller_payouts` was missing `commission_agorot`, while 0023 —
+ * the migration that declares it — was recorded as applied with a checksum that matched perfectly.
+ * Nothing had been edited. The table simply already existed from an earlier attempt, so
+ * `CREATE TABLE IF NOT EXISTS` skipped the entire statement including that column, and the ledger
+ * recorded the run as successful because every statement really had run.
+ *
+ * The cost of not noticing was not cosmetic: `createPayout` INSERTs into that column, so the first
+ * real payout run would have thrown on the day money was due to leave the company's account. The
+ * tests could not have caught it — they build their own database from these same files, where the
+ * column has always existed (memory `project_migration_not_applied_class`).
+ *
+ * ── What this parses, and what it deliberately does not ──
+ * Column NAMES out of `CREATE TABLE [IF NOT EXISTS] x (…)` and `ALTER TABLE x ADD COLUMN [IF NOT
+ * EXISTS] y`, compared against `information_schema`. Not types, not constraints, not indexes: a
+ * missing column is the failure this class produces, it is the one a regex can find without
+ * becoming a SQL parser, and a guard that tries to be a schema differ is a guard that cries wolf
+ * and gets skipped. A column present with the wrong type is a different bug and this will not
+ * catch it.
+ *
+ * Reported, never repaired: only a person can know whether the fix is a new migration or a
+ * database that should be rebuilt.
+ */
+function declaredColumns() {
+  const byTable = new Map();
+  const add = (table, column) => {
+    const key = table.toLowerCase();
+    if (!byTable.has(key)) byTable.set(key, new Set());
+    byTable.get(key).add(column.toLowerCase());
+  };
+
+  for (const name of migrationFiles()) {
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8')
+      .replace(/--[^\n]*/g, '');   // line comments only; this file uses no block comments
+
+    for (const m of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)\s*\(([\s\S]*?)\n\s*\);/gi)) {
+      const [, table, body] = m;
+      for (const line of body.split('\n')) {
+        // A column definition starts with an identifier; a table-level CONSTRAINT/PRIMARY KEY/
+        // UNIQUE/CHECK/FOREIGN KEY clause starts with its keyword, and a continuation line is
+        // indented past one level. Anything ambiguous is skipped rather than guessed at.
+        const col = /^\s{2}([a-z_][a-z0-9_]*)\s+[a-z]/i.exec(line);
+        if (!col) continue;
+        if (/^(constraint|primary|unique|check|foreign|exclude|like)$/i.test(col[1])) continue;
+        add(table, col[1]);
+      }
+    }
+    for (const m of sql.matchAll(/ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
+      add(m[1], m[2]);
+    }
+    // A column the migrations later drop is not expected to be there.
+    for (const m of sql.matchAll(/ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
+      byTable.get(m[1].toLowerCase())?.delete(m[2].toLowerCase());
+    }
+  }
+  return byTable;
+}
+
+/** Columns the migrations declare and the database does not have. Tables absent entirely are left
+ *  to `pendingFiles` — a database with no such table has migrations still to run, which is a
+ *  different message. */
+async function columnDrift() {
+  const declared = declaredColumns();
+  const { rows: live } = await client.query(
+    `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`,
+  );
+  const actual = new Map();
+  for (const r of live) {
+    if (!actual.has(r.table_name)) actual.set(r.table_name, new Set());
+    actual.get(r.table_name).add(r.column_name);
+  }
+
+  const missing = [];
+  for (const [table, columns] of declared) {
+    const have = actual.get(table);
+    if (!have) continue;
+    for (const column of columns) if (!have.has(column)) missing.push(`${table}.${column}`);
+  }
+  return missing.sort();
+}
+
 async function main() {
   await client.connect();
   await client.query(`
@@ -122,6 +206,22 @@ async function main() {
   }
 
   const pending = pendingFiles(applied);
+
+  // After the ledger checks and BEFORE deciding there is nothing to do — a database that is up to
+  // date by name can still be wrong by shape, and that is the whole point of this one.
+  const missing = await columnDrift();
+  if (missing.length) {
+    console.error(
+      `\nmigrations/ declare ${missing.length} column(s) this database does not have:\n` +
+        missing.map((c) => `  · ${c}`).join('\n') +
+        '\n\nThe ledger says every migration ran, and it did — a CREATE TABLE IF NOT EXISTS whose\n' +
+        'table already existed skips its whole body, columns included, and reports success. So the\n' +
+        'file and the checksum both look right while the schema does not.\n' +
+        'Fix it with a NEW migration (ALTER TABLE … ADD COLUMN IF NOT EXISTS …); never by editing\n' +
+        'the one that was already applied.\n',
+    );
+    process.exitCode = 1;
+  }
 
   if (!pending.length) {
     console.log(`Nothing to do — ${applied.size} migration(s) already applied.`);

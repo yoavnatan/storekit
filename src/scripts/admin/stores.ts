@@ -36,6 +36,30 @@ const STORE_SORT_OPTIONS: { col: StoreSortCol; dir: 'asc' | 'desc'; label: strin
   { col: 'products', dir: 'desc', label: 'מוצרים: רב — מעט' },
 ];
 
+/**
+ * This tab's URL, from the toolbar's own rendered state plus whatever the caller is changing.
+ *
+ * Module-level and reading the DOM rather than a closure, because the SEARCH box is wired in a
+ * different function and used to build its URL from the search term alone — so typing a name
+ * silently cleared every active filter. It was survivable while the only one was the state chip;
+ * with "ללא מוצרים" beside it (סשן ב׳ §1) it reads as the new chip being broken, which is how a
+ * filter that composes gets reported as a filter that does not work.
+ */
+function storesNavUrl(overrides: Record<string, string | undefined> = {}): string {
+  const state = document.getElementById('admin-stores-toolbar')?.dataset ?? {};
+  const sortCol = state.sortCol || 'name';
+  const sortDir = state.sortDir || 'asc';
+  const searchInput = document.getElementById('admin-store-search') as HTMLInputElement | null;
+  return buildAdminUrl('stores', {
+    stq: searchInput?.value.trim() || undefined,
+    stsort: (sortCol !== 'name' || sortDir !== 'asc') ? `${sortCol}:${sortDir}` : undefined,
+    ststate: state.state && state.state !== 'all' ? state.state : undefined,
+    stempty: state.emptyOnly === '1' ? '1' : undefined,
+    stnew: state.newOnly === '1' ? '1' : undefined,
+    ...overrides,
+  });
+}
+
 // Same pattern as sellers.ts's wireSellersToolbar (sort portal + filter chips, no
 // column→values filter menu needed).
 function wireStoresToolbar(): void {
@@ -43,37 +67,22 @@ function wireStoresToolbar(): void {
   if (!root) return;
 
   const state = root.dataset;
-  let sortCol = (state.sortCol as StoreSortCol) || 'name';
-  let sortDir = (state.sortDir as 'asc' | 'desc') || 'asc';
-  let storeState = state.state || 'all';
-  let newOnly = state.newOnly === '1';
+  const storeState = state.state || 'all';
 
-  function buildStoresNavUrl(): string {
-    const searchInput = document.getElementById('admin-store-search') as HTMLInputElement | null;
-    return buildAdminUrl('stores', {
-      stq: searchInput?.value.trim() || undefined,
-      stsort: (sortCol !== 'name' || sortDir !== 'asc') ? `${sortCol}:${sortDir}` : undefined,
-      ststate: storeState !== 'all' ? storeState : undefined,
-      stnew: newOnly ? '1' : undefined,
-    });
-  }
-
-  function navigate(): void {
-    swapPanel(buildStoresNavUrl(), PANEL_ID, () => initAdminStoresPanel());
+  function navigate(overrides: Record<string, string | undefined> = {}): void {
+    swapPanel(storesNavUrl(overrides), PANEL_ID, () => initAdminStoresPanel());
   }
 
   const sortTrigger = document.getElementById('admin-stores-sort-trigger') as HTMLButtonElement | null;
   sortTrigger?.addEventListener('click', () => {
     if (storesPortal.currentTrigger() === sortTrigger) { storesPortal.close(); return; }
     storesPortal.open(sortTrigger, '15rem', () => STORE_SORT_OPTIONS.map((o) => {
-      const selected = o.col === sortCol && o.dir === sortDir;
+      const selected = o.col === (state.sortCol || 'name') && o.dir === (state.sortDir || 'asc');
       return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          sortCol = (btn.dataset.sortCol as StoreSortCol) ?? 'name';
-          sortDir = (btn.dataset.sortDir as 'asc' | 'desc') ?? 'asc';
-          navigate();
+          navigate({ stsort: `${btn.dataset.sortCol ?? 'name'}:${btn.dataset.sortDir ?? 'asc'}` });
         });
       });
     });
@@ -84,17 +93,21 @@ function wireStoresToolbar(): void {
   root.querySelectorAll<HTMLButtonElement>('.admin-stores-state-chip').forEach((chip) => {
     chip.addEventListener('click', () => {
       const picked = chip.dataset['state'] ?? 'all';
-      storeState = picked === storeState ? 'all' : picked;
-      navigate();
+      navigate({ ststate: picked === storeState ? undefined : picked });
     });
+  });
+
+  // "ללא מוצרים" — the retired לתשומת לב tab. Toggles like the state chips beside it, and composes
+  // with them instead of replacing them, which is the whole reason it stopped being a tab.
+  document.getElementById('admin-stores-empty-chip')?.addEventListener('click', () => {
+    navigate({ stempty: state.emptyOnly === '1' ? undefined : '1' });
   });
 
   // "חדשים בלבד" — matters most on this tab: it sorts by name by default, so a
   // brand-new store lands anywhere in the list (or on another page entirely).
   const newToggle = document.getElementById('admin-stores-new-toggle') as HTMLButtonElement | null;
   newToggle?.addEventListener('click', () => {
-    newOnly = !newOnly;
-    navigate();
+    navigate({ stnew: state.newOnly === '1' ? undefined : '1' });
   });
 }
 
@@ -110,8 +123,9 @@ function initStoreSearch(): void {
   const searchInput = document.getElementById('admin-store-search') as HTMLInputElement | null;
   if (!searchInput) return;
   searchInput.addEventListener('input', debounce(() => {
-    const url = buildAdminUrl('stores', { stq: searchInput.value.trim() || undefined });
-    swapPanel(url, PANEL_ID, () => {
+    // Keeps whatever the toolbar is filtered by — searching inside "מוקפאות" or "ללא מוצרים" is
+    // the point of having both, and this used to silently drop them (see `storesNavUrl`).
+    swapPanel(storesNavUrl(), PANEL_ID, () => {
       initAdminStoresPanel();
       const fresh = document.getElementById('admin-store-search') as HTMLInputElement | null;
       if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
@@ -487,7 +501,10 @@ async function resetStoresPanel(): Promise<void> {
     if (!res.ok) return;
     const next = new DOMParser().parseFromString(await res.text(), 'text/html').getElementById(PANEL_ID);
     if (next) { panel.innerHTML = next.innerHTML; initAdminStoresPanel(); }
-  } catch { /* leave the current (filtered) view as-is on failure */ }
+  } catch {
+    // silent: nobody is looking. This readies the stores tab for a RETURN to it — the admin is
+    // already on another tab — so the stale (filtered) view stays and the next visit re-renders.
+  }
 }
 
 function initStoresFilterAutoReset(): void {

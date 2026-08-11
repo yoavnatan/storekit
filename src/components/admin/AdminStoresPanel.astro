@@ -24,6 +24,9 @@ interface Props {
   sortDir: AdminSortDir;
   state: StoreStateFilter;
   stateCounts: Record<StoreStateFilter, number>;
+  /** The "לתשומת לב" tab, as a chip (admin-stats.ts#AdminStoreQuery.emptyOnly). */
+  emptyOnly: boolean;
+  emptyCount: number;
   newSince: string;  // ISO — anything created after this is what the tab's "(N)" counted
   newOnly: boolean;
   newCount: number;
@@ -33,7 +36,7 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { storeRows, q, sortCol, sortDir, state, stateCounts, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+const { storeRows, q, sortCol, sortDir, state, stateCounts, emptyOnly, emptyCount, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
 
 // The state chips. Labels come from the same map the row badges use, so a chip and the badge on
 // the rows it filters to can never say different words for the same state.
@@ -70,7 +73,7 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
   <p class="admin-empty">אין חנויות עדיין.</p>
 ) : (
   <Fragment>
-    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-stores-toolbar" data-sort-col={sortCol} data-sort-dir={sortDir} data-state={state} data-new-only={newOnly ? '1' : ''}>
+    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-stores-toolbar" data-sort-col={sortCol} data-sort-dir={sortDir} data-state={state} data-empty-only={emptyOnly ? '1' : ''} data-new-only={newOnly ? '1' : ''}>
       <button type="button" id="admin-stores-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
         <span id="admin-stores-sort-label">{sortLabels[`${sortCol}:${sortDir}`] ?? sortLabels['name:asc']}</span>
@@ -91,6 +94,22 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
           <span class="opacity-70 tabular-nums">{stateCounts[f]}</span>
         </button>
       ))}
+      {/* What the "לתשומת לב" tab was (owner, סשן ב׳ §1). It sits beside the state chips rather
+          than among them because it is a different question — a store can be paused AND empty —
+          and it appears only when there is one, like the empty state chips above. */}
+      {(emptyCount > 0 || emptyOnly) && (
+        <button
+          type="button"
+          id="admin-stores-empty-chip"
+          class="table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
+          style={emptyOnly ? 'background:var(--color-warning);border-color:var(--color-warning);color:var(--color-text)' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
+          aria-pressed={emptyOnly}
+          title="חנויות שעדיין לא העלו מוצר — מעקב בלבד, שום פעולה של המוכר/ת אינה חסומה"
+        >
+          ללא מוצרים
+          <span class="opacity-70 tabular-nums">{emptyCount}</span>
+        </button>
+      )}
       {(newCount > 0 || newOnly) && <AdminNewOnlyToggle id="admin-stores-new-toggle" active={newOnly} count={newCount} />}
     </div>
 

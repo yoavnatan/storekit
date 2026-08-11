@@ -20,10 +20,10 @@ export interface PriceHtmlOptions {
   saleLabel?: string;
 }
 
-/** The corner tag on a product image. Deliberately unlike `.badge--new` (accent blue, pill,
- *  pulsing): solid sale-green, one-time pop, no pulse — so "new" and "on sale" never read as
- *  two versions of the same mark. Both sit on the inline-START edge, and the CSS stacks this one
- *  below `.badge--new` when a product carries both (utils.css); the opposite corner belongs to
+/** The corner tag on a product image. Shares ONE box with `.badge--new` — `.img-badge` in
+ *  utils.css, where the reasoning lives — and differs from it only by fill: this is the coloured
+ *  mark (sale green), "new" is the quiet white chip. Both sit on the inline-START edge, and the
+ *  CSS stacks this one below "new" when a product carries both; the opposite corner belongs to
  *  the wishlist heart.
  *
  *  `dir="ltr"` is on an INNER span, never the badge itself: a logical inset (`inset-inline-start`)
@@ -35,7 +35,10 @@ export function saleBadgeHtml(view: PriceView, saleLabel = 'מבצע', className
   // Coerced rather than trusted: on the client the view is rebuilt from an API payload, so the
   // percentage is only a number by convention until it is made one here.
   const text = view.percentOff >= 1 ? `-${Math.round(Number(view.percentOff) || 0)}%` : escapeHtml(saleLabel);
-  const cls = `sale-badge${className ? ` ${className}` : ''}`;
+  // `img-badge` FIRST and always: it carries the whole box (position, size, radius, type) and
+  // `sale-badge` only the fill. Dropping it renders an unpositioned scrap of green text in the
+  // middle of the card — there is nothing left in `sale-badge` that could hold it in the corner.
+  const cls = `img-badge sale-badge${className ? ` ${className}` : ''}`;
   return `<span class="${escapeHtml(cls)}"><span dir="ltr">${text}</span></span>`;
 }
 

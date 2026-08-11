@@ -3,6 +3,10 @@
 // URLs from its current filter state) and client-side by the tab scripts
 // (sellers.ts/stores.ts/orders-filter.ts, to navigate on search/sort/filter
 // change). One implementation so the two never drift out of sync.
+// `panel-freshness` touches no DOM at import time, which is what lets this module keep being
+// imported by admin/index.astro's server-side frontmatter as well as by the browser scripts.
+import { markPanelFresh } from './panel-freshness.js';
+
 export function buildAdminUrl(panel: string, params: Record<string, string | undefined>): string {
   const qp = new URLSearchParams();
   qp.set('panel', panel);
@@ -23,17 +27,28 @@ export function buildAdminUrl(panel: string, params: Record<string, string | und
 export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   overview: [],
   data: ['datapreset'],
-  sellers: ['sq', 'ssort', 'sblocked', 'spage', 'snew'],
+  // `spayout` arrived when the payouts tab's per-seller table was folded into these cards
+  // (סשן א׳ §3): the tiles there are counts, and this is what turns one back into the names.
+  sellers: ['sq', 'ssort', 'sblocked', 'spayout', 'spage', 'snew'],
   // `stblocked` is the retired yes/no form of `ststate` — still parsed (parseStoreQuery) so an
   // older bookmark keeps filtering to blocked stores, so it still has to be owned here or it
   // would be stripped out of the URL before the parser ever saw it.
-  stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stpage', 'stnew'],
+  // `stempty` is the retired "לתשומת לב" TAB (סשן ב׳ §1) — one thing that tab could say, said as a
+  // filter on the list it was always about.
+  stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stempty', 'stpage', 'stnew'],
   orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opage', 'onew'],
-  attention: ['apage'],
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],
   alerts: ['alsort', 'alsource', 'alsev', 'alref', 'alq', 'alstore', 'alfrom', 'alto', 'alpage', 'alnew'],
+  // No params of its own since סשן א׳ §3 — the per-seller table it paged now lives on the seller
+  // cards. The key stays so `stripForeignTabParams` still knows this tab exists; an empty list is
+  // the honest description, not an omission.
+  payouts: [],
+  // The accounting statement's period: a month key, or a free range. `ac*` rather than `st*` —
+  // every store-tab param already starts `st`, and two tabs whose params are told apart by the
+  // third letter is how one of them ends up owned by the wrong list.
+  statement: ['acmonth', 'acfrom', 'acto'],
   moneylog: ['mtype', 'mlpage', 'mq', 'mfrom', 'mto', 'mev'],
 };
 
@@ -126,6 +141,11 @@ export async function swapPanel(url: string, panelId: string, reinit: () => void
     // content swap still happens either way: the panel is simply ready and correct
     // for their return.
     if (!current.hidden) history.pushState({}, '', url);
+    // Stamped HERE rather than at each of the ~dozen call sites that swap a panel — filters,
+    // sorts, chips, pagers and the lazy first open all funnel through this one function, and a
+    // list of places to remember to stamp is a rule that rots (the same reasoning tab-sync.ts
+    // gives for observing `fetch` once). After the swap, so a failed load is never marked fresh.
+    markPanelFresh(panelId);
     doneBusy();
     reinit();
   } catch {

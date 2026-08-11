@@ -54,6 +54,19 @@ const ADMIN_LIMIT = 5;
 const WINDOW_SEC = 15 * 60;
 
 /**
+ * The longest window ANY rule on the platform uses — the purge job's cut-off, and nothing else.
+ *
+ * It exists because the purge used to delete by `WINDOW_SEC`, i.e. by the window of the surface
+ * this file was written for. That was correct only for as long as this file was the only caller.
+ * `lib/message-flood.ts` (2026-08-10) buckets over an hour, and a 15-minute purge would have
+ * deleted its rows at minute 16 — a limiter that silently stops limiting, with a green test suite
+ * and no error anywhere. Purging is size management only (an expired row is already invisible to
+ * `checkAuthRate`), so erring long costs a handful of rows and erring short costs the feature.
+ * `tests/message-flood.test.ts` fails if any rule builder returns a longer window than this.
+ */
+export const MAX_RATE_WINDOW_SEC = 60 * 60;
+
+/**
  * Lower-cased and trimmed so `A@b.com ` and `a@b.com` share one row — otherwise the identity bucket
  * is bypassed by changing the case of a letter.
  *
@@ -179,11 +192,12 @@ export function retryAfterMinutes(retryAfterSec: number): number {
 }
 
 /** Drops rows whose window has lapsed. Idempotent — a second pass finds nothing. Size management
- *  only: an expired row is already invisible to `checkAuthRate`. */
+ *  only: an expired row is already invisible to `checkAuthRate`. Cut off at
+ *  {@link MAX_RATE_WINDOW_SEC}, not at this file's own `WINDOW_SEC` — see that constant. */
 export async function purgeExpiredAuthAttempts(): Promise<number> {
   const { rowCount } = await query(
     'DELETE FROM auth_attempts WHERE window_start < now() - make_interval(secs => $1)',
-    [WINDOW_SEC],
+    [MAX_RATE_WINDOW_SEC],
   );
   return rowCount;
 }

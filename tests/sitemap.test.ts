@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildUrlSetXml, xmlEscape, toSitemapDate, type SitemapEntry } from '../src/lib/sitemap.js';
+import { buildUrlSetXml, buildSitemapIndexXml, SITEMAP_MAX_URLS, xmlEscape, toSitemapDate, type SitemapEntry } from '../src/lib/sitemap.js';
 
 describe('xmlEscape', () => {
   it('escapes the five XML-significant characters', () => {
@@ -49,5 +49,34 @@ describe('buildUrlSetXml', () => {
     const xml = buildUrlSetXml([{ loc: 'https://example.com/store/a&b' }]);
     expect(xml).toContain('<loc>https://example.com/store/a&amp;b</loc>');
     expect(xml).not.toContain('a&b<');
+  });
+});
+
+describe('buildSitemapIndexXml', () => {
+  // The platform's content sitemap is sharded because a sitemap FILE may hold no more than 50,000
+  // URLs (sitemaps.org/protocol.html, checked 2026-08-09) and is rejected whole above that. This is
+  // the document that names the shards.
+  it('names every shard, with the build date, in one <sitemapindex>', () => {
+    const xml = buildSitemapIndexXml(
+      ['https://example.com/sitemap-content-1.xml', 'https://example.com/sitemap-content-2.xml'],
+      '2026-08-09',
+    );
+    expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+    expect(xml).toContain('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect((xml.match(/<sitemap>/g) ?? []).length).toBe(2);
+    expect(xml).toContain('<loc>https://example.com/sitemap-content-2.xml</loc>');
+    expect((xml.match(/<lastmod>2026-08-09<\/lastmod>/g) ?? []).length).toBe(2);
+    expect(xml.trimEnd().endsWith('</sitemapindex>')).toBe(true);
+  });
+
+  it('drops lastmod rather than emitting an empty tag when the date is unknown', () => {
+    const xml = buildSitemapIndexXml(['https://example.com/sitemap-content-1.xml'], undefined);
+    expect(xml).not.toContain('<lastmod>');
+  });
+
+  it('leaves margin under the protocol ceiling', () => {
+    // The count moves every time a seller adds a product, and the ceiling has nothing between
+    // "fine" and "the whole file is refused" — the margin is what makes that a non-event.
+    expect(SITEMAP_MAX_URLS).toBeLessThan(50_000);
   });
 });

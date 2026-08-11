@@ -327,7 +327,10 @@ const pmI18n = {
         </svg>
         {lang === 'he' ? 'לחנות' : 'To store'}
       </a>
-      <a href={checkoutHref}
+      <!-- Stays a real <a href> — with JS off, or when this product cannot be added at all (out of
+           stock, no add-to-cart row rendered), "go to checkout" is exactly what it should still do.
+           The script upgrades it to buy-now; see the "Nav 'לתשלום' = buy now" block. -->
+      <a href={checkoutHref} id="nav-to-checkout-btn"
          class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
          style="color:var(--color-muted);text-decoration:none">
         {lang === 'he' ? 'לתשלום' : 'Checkout'}
@@ -387,12 +390,26 @@ const pmI18n = {
                   </svg>
                 </div>
             }
-            {isNew && <span class="badge badge--new" style="position:absolute;top:0.75rem;inset-inline-start:0.75rem">{t.store.badgeNew}</span>}
-            <Fragment set:html={saleBadgeHtml(pv, t.store.saleBadge, 'sale-badge--hero')} />
+            <!-- Hover preview, cross-fading OVER the carousel rather than scrolling it. The
+                 carousel underneath never moves, so the chosen image is still exactly where it
+                 was and "revert" is just this fading back out — see the script for why that
+                 beats the scroll-and-scroll-back version it replaced.
+                 No `src`: it is filled at hover time from the slide's own `currentSrc`, which is
+                 already in cache (the script refuses to preview a slide that is not). That is
+                 NOT the hand-rolled lazy-loading the image guard bans — nothing here defers a
+                 real image, the slides carry their own eager/lazy src and preload normally.
+                 `opacity-0` in the markup, never revealed by JS arriving: an overlay that starts
+                 visible flashes over the product photo on every page load. -->
+            {images.length > 1 && (
+              <img id="preview-img" alt="" aria-hidden="true" loading="lazy" decoding="async"
+                   class="absolute inset-0 w-full h-full object-cover opacity-0 pointer-events-none [transition:opacity_0.16s_ease-out]" />
+            )}
+            {isNew && <span class="img-badge img-badge--hero badge--new">{t.store.badgeNew}</span>}
+            <Fragment set:html={saleBadgeHtml(pv, t.store.saleBadge, 'img-badge--hero')} />
           </div>
 
           {images.length > 1 && (
-            <div class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width:none;margin-top:0.625rem" role="list" aria-label={t.product.imageGallery}>
+            <div id="thumb-strip" class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width:none;margin-top:0.625rem" role="list" aria-label={t.product.imageGallery}>
               {images.map((img, i) => (
                 <button
                   type="button"
@@ -833,7 +850,7 @@ const pmI18n = {
   import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../../lib/lightbox-image.js';
   import { spawnHeartBurst } from '../../lib/burst.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
-  import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
+  import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary, refreshCheckoutCartFragment } from '../../lib/custom-domain-links.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
@@ -842,7 +859,8 @@ const pmI18n = {
   // Clean in-store URLs when served on the store's own verified domain, and — the load-bearing
   // half — every PLATFORM-owned link (cart, checkout, login, buyer area) sent to the platform
   // origin, carrying the basket and the visitor's identity with it (custom-domain-links.ts).
-  initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '', readPlatformBoundary(page));
+  const platformBoundary = readPlatformBoundary(page);
+  initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '', platformBoundary);
   // The crossing that goes the other way: an ad landing is on the platform, and the 301 off it
   // carries no handoff, so the click after the landing would drop the ad attribution.
   initAdLandingLinks(storeSlug, page?.dataset.adLanding === '1');
@@ -1014,7 +1032,17 @@ const pmI18n = {
   // ── Main image carousel + thumbnails ───────────────────────────────
   const mainSlides = document.getElementById('main-slides');
   const thumbBtns = document.querySelectorAll<HTMLButtonElement>('.thumb-btn');
+  /** The image the shopper CHOSE — by clicking a thumbnail, swiping the carousel, or landing on
+   *  a colour variant. Nothing a hover does may change it; that is the whole point of reverting. */
   let activeIndex = 0;
+  /** The image the hover overlay is currently showing on TOP of the chosen one, or null. */
+  let previewIndex: number | null = null;
+  // Declared here rather than beside the hover handlers below: switchMainImage() is hoisted and
+  // the colour-variant landing calls it during setup, so anything endPreview() touches has to be
+  // initialised before that runs — a `const` further down would be in its temporal dead zone.
+  const canHover = window.matchMedia('(hover: hover) and (pointer: fine)');
+  const previewImg = document.getElementById('preview-img') as HTMLImageElement | null;
+  const slideImgs = mainSlides ? [...mainSlides.querySelectorAll('img')] : [];
 
   // ── Skeleton ────────────────────────────────────────────────────────
   // Through the shared helper, not the hand-rolled load/error pair this used to carry twice.
@@ -1048,6 +1076,7 @@ const pmI18n = {
   // its definition here — scrolls the carousel to a linked image.
   function switchMainImage(idx: number, instant = false): void {
     if (!mainSlides) return;
+    endPreview();
     activeIndex = idx;
     mainSlides.scrollTo({ left: (slidesRtl ? -1 : 1) * idx * getMainSlideW(), behavior: instant ? 'auto' : 'smooth' });
     setThumbActive(idx);
@@ -1078,10 +1107,75 @@ const pmI18n = {
     }, { passive: true });
   }
 
+  // ── Hover preview ───────────────────────────────────────────────────
+  // Hovering a thumbnail shows that image for as long as the pointer is on it, then puts the
+  // chosen one back.
+  //
+  // It CROSS-FADES AN OVERLAY; it does not drive the carousel. The first version scrolled the
+  // carousel to the hovered slide and scrolled it back on leave, and that was wrong twice over:
+  // a scroll cannot fade, so the change could only ever be an abrupt jump (owner) — and the
+  // carousel's own scroll listener is what decides which image is selected, so every preview
+  // had to be fenced off from committing itself. Fading a copy on top deletes both problems at
+  // once: the chosen image never moves, so "revert" is just this overlay fading back out, and
+  // there is no scroll for anything to misread.
+  //
+  // The selection ring deliberately does not follow the preview — setThumbActive() stays driven
+  // by activeIndex alone, so the shopper can always see which image is actually theirs while
+  // another is on show.
+  //
+  // Pointer-only, deliberately: on a touch screen the hover events fire once on the tap that is
+  // already selecting that image, so the preview would be a duplicate of the click with no way
+  // to leave it. Nothing is lost — every image stays reachable by tap, click and swipe.
+  async function previewImage(idx: number): Promise<void> {
+    if (!canHover.matches || !previewImg || idx === previewIndex) return;
+    // Hovering the image already on screen has nothing to preview — and if one is showing, this
+    // is the shopper arriving back at their own choice, which should clear it.
+    if (idx === activeIndex) { endPreview(); return; }
+    const slide = slideImgs[idx];
+    // An image still on the wire would fade in as an empty box, which is worse than no preview.
+    // Momentary in practice: the idle warm-up below flips every slide to eager right after load.
+    if (!slide?.complete) return;
+    previewIndex = idx;
+    // `currentSrc` is the exact derivative the browser already chose and cached for that slide,
+    // and the overlay is the same box — so this repaints from cache rather than fetching a
+    // second width of the same photo.
+    previewImg.src = slide.currentSrc || slide.src;
+    // Decode before revealing: a fade that starts on an undecoded image shows the fade, then
+    // the image. Cached, so this settles within a frame.
+    try { await previewImg.decode(); } catch { return; }
+    if (previewIndex !== idx) return; // the pointer moved on while that resolved
+    previewImg.style.opacity = '1';
+  }
+
+  function endPreview(): void {
+    if (previewIndex === null) return;
+    previewIndex = null;
+    // Only the opacity is reset — clearing `src` too would throw away the decoded frame and make
+    // the next hover of the same thumbnail fetch and decode again.
+    if (previewImg) previewImg.style.opacity = '0';
+  }
+
+  const thumbStrip = document.getElementById('thumb-strip');
+  // Delegated, and on `mouseover` rather than each button's `mouseenter`, because the gaps
+  // between the thumbnails and the empty run of strip past the last one are part of the strip
+  // too. Bound per button, the preview stayed up when the pointer merely slipped off a
+  // thumbnail without leaving the row — most visible with two images, where the strip is mostly
+  // empty space (owner). Here anything hovered that is not a thumbnail ends the preview, and
+  // travelling from one thumbnail straight to the next still never flashes the chosen image.
+  thumbStrip?.addEventListener('mouseover', (e) => {
+    const btn = (e.target as Element | null)?.closest?.('.thumb-btn') as HTMLElement | null;
+    if (btn) void previewImage(Number(btn.dataset.imgIndex ?? 0));
+    else endPreview();
+  });
+  thumbStrip?.addEventListener('mouseleave', endPreview);
+
   thumbBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      switchMainImage(Number(btn.dataset.imgIndex ?? 0));
-    });
+    const idx = Number(btn.dataset.imgIndex ?? 0);
+    // Instant when a preview is up: that image is ALREADY on screen under the pointer, so the
+    // carousel only has to be where the overlay says it is before the overlay fades off it.
+    // Animating there would play a scroll the shopper watches through a dissolving copy of the
+    // destination. With no preview (touch, keyboard) the click keeps its smooth scroll.
+    btn.addEventListener('click', () => switchMainImage(idx, previewIndex !== null));
   });
 
   // Note: the main image intentionally does NOT hijack wheel/scroll to cycle
@@ -1381,6 +1475,51 @@ const pmI18n = {
         addBtn.classList.remove('btn--confirmed');
         applyStockState(); // re-enables only if stock remains, not blindly
       }, 1400);
+    });
+  }
+
+  // ── Nav "לתשלום" = buy now ─────────────────────────────────────────
+  // The other two checkout buttons on this page (#to-checkout-btn, #sticky-to-checkout-btn) START
+  // HIDDEN and are revealed by add-to-cart, so pressing either always means "pay for what I just
+  // added". This one sits in the top nav and is visible on arrival, which made it the only
+  // checkout on the page that could be pressed with the product NOT in the cart — from a fresh
+  // visit it opened a checkout with nothing on it. The link was never wrong about the store
+  // (`?store=` has always been on it); it was wrong that there was anything to pay for.
+  //
+  // So it now does the whole gesture: choose → add → checkout. Deliberately NOT a fourth code path
+  // — it reuses this module's own selection state, the same `flagMissingVariants` gate and the same
+  // `addItem`, because a second implementation of "what did the buyer pick" is how the swatch and
+  // the cart end up disagreeing.
+  const navToCheckoutBtn = document.getElementById('nav-to-checkout-btn') as HTMLAnchorElement | null;
+  if (navToCheckoutBtn && addBtn) {
+    navToCheckoutBtn.addEventListener('click', (e) => {
+      // Sold out: nothing to add, and the href is then the honest action. Also leaves middle-click
+      // / ⌘-click / "open in new tab" alone — those never fire a plain left click.
+      if (addBtn.disabled || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      // Variants unchosen → stay on the page and shake the missing dimension(s). Same gate as
+      // add-to-cart, so a product needing a size can no more be bought from here than from there.
+      if (pageVariants.length && flagMissingVariants()) return;
+
+      const { slug = '', productId = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
+      const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
+      // Already in the cart — from an earlier press of add-to-cart, or a previous visit. Adding
+      // again would silently double the quantity of someone who only asked to go and pay.
+      if (getCartQty(storeSlug, slug, variantsCopy) === 0) {
+        addItem(storeSlug, storeName, { slug, productId, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
+        // `addItem` can REFUSE — a seller may not buy from their own store, and it says so in a
+        // toast (own-store-guard.ts). Navigating on top of that answers the explanation by moving
+        // them to a checkout with nothing on it. Re-reading the cart, rather than re-testing that
+        // one rule here, is what keeps a future refusal from silently doing the same.
+        if (getCartQty(storeSlug, slug, variantsCopy) === 0) return;
+        trackAddToCart({ id: adItemId(productId, variantsCopy), productId, name, price: Number(price), category }, qty);
+      }
+      // The delegated refresh in `initCustomDomainLinks` already ran (capture phase) — but it ran
+      // BEFORE the add above, so on a custom domain it stamped the basket without this item.
+      // Re-stamp now that there is something to carry, then read the attribute back: `href`, not
+      // the constant, because the rewrite is what points this at the platform origin at all.
+      refreshCheckoutCartFragment(navToCheckoutBtn, storeSlug, platformBoundary);
+      window.location.href = navToCheckoutBtn.href;
     });
   }
 

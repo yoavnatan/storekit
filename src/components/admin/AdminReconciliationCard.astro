@@ -3,54 +3,66 @@ import { formatPrice } from '../../config/store.config.js';
 import type { ReconciliationReport } from '../../lib/reconcile.js';
 
 /**
- * Live cross-check banner for the money journal (lib/reconcile.ts) — every headline
- * recomputed by a second, independent route and compared. A test proves the code was
- * right when it was written; this runs over the REAL data on every page load, which is
- * the only thing that can tell the owner his numbers are right *now*.
+ * Live cross-check for the money journal (lib/reconcile.ts) — every headline recomputed by a
+ * second, independent route and compared. A test proves the code was right when it was written;
+ * this runs over the REAL data on every page load, which is the only thing that can tell the owner
+ * his numbers are right *now*.
  *
- * Its own component since סשן ג׳ only because the journal panel grew a search/date
- * toolbar around it — this block is unchanged, it just stopped fitting in one file.
+ * **The two states are not one component in two colours (owner, סשן ב׳: "everything up top is
+ * heavy", and, of the green banner, "is there even a case where the data is NOT balanced?").**
+ * That question is the whole diagnosis: a full-width card explaining at length that nothing is
+ * wrong is read once, and from then on it is furniture — which also teaches the eye to skip the
+ * exact spot where the red version will appear. So the clean state is ONE muted line whose tooltip
+ * holds what used to be the paragraph, and the alarm keeps every bit of its weight.
+ *
+ * (His question — "is there even a case where the data is NOT balanced?" — has a real answer, and
+ * it is not "only if we write a bug". `reconcile.ts` runs nine checks and three of them describe
+ * states this platform can reach with every line of code behaving: a refund owed to a buyer that
+ * nothing has paid back, because no payment provider is connected yet and the repayment is a
+ * manual act; an order stuck at `pending` because a capture never completed; and a charge in the
+ * journal with no order behind it. Those are facts about the world, not defects, and they are
+ * exactly what the loud state is for.)
  */
 interface Props {
   reconciliation: ReconciliationReport;
 }
 const { reconciliation } = Astro.props;
+
+const CLEAN_TITLE = 'כל מספר נבדק מול חישוב שני, עצמאי: שורות ההזמנה מול הסכום השמור, סכום ההזמנה מול מרכיביו, והמחזור הכללי מול סכום החנויות.';
 ---
 
-<div
-  class:list={[
-    'rounded-[var(--radius)] border p-3.5 mb-5',
-    reconciliation.clean
-      ? 'border-[color:color-mix(in_srgb,var(--color-success)_35%,var(--color-border))] bg-[color:color-mix(in_srgb,var(--color-success)_7%,transparent)]'
-      : 'border-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)]',
-  ]}
->
+{reconciliation.clean ? (
+  <p class="m-0 mb-3 text-[0.76rem] [color:var(--color-muted)] flex items-center gap-1.5" title={CLEAN_TITLE}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+    <span class="tabular-nums">הנתונים מאוזנים · {reconciliation.checkedOrders} הזמנות נבדקו</span>
+  </p>
+) : (
+<div class="rounded-[var(--radius)] border border-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)] p-3.5 mb-5">
   <div class="flex items-baseline justify-between gap-3 flex-wrap">
-    <strong class="text-[0.9rem]">
-      {reconciliation.clean ? '✓ הנתונים מאוזנים' : `⚠ נמצאו ${reconciliation.discrepancies.length} אי-התאמות`}
-    </strong>
+    <strong class="text-[0.9rem]">⚠ נמצאו {reconciliation.discrepancies.length} אי-התאמות</strong>
     <span class="text-[0.76rem] [color:var(--color-muted)]">{reconciliation.checkedOrders} הזמנות נבדקו</span>
   </div>
+  {/* `truncated` was set by reconcile.ts and rendered by nobody, which is the one reading this
+      banner must never allow: a systemic bug makes EVERY order disagree, and a list that silently
+      stops at fifty would report the worst possible state in the calmest possible words. */}
   <p class="m-0 mt-1 text-[0.78rem] [color:var(--color-muted)] leading-relaxed">
-    {reconciliation.clean
-      ? 'כל מספר שמוצג נבדק מול חישוב שני, עצמאי: שורות ההזמנה מול הסכום השמור, סכום ההזמנה מול מרכיביו, והמחזור הכללי מול סכום החנויות. כולם תואמים.'
-      : 'שני חישובים עצמאיים של אותו מספר לא הסכימו. כל שורה למטה מפרטת מה נבדק, מה יצא, ומה זה אומר.'}
+    שני חישובים עצמאיים של אותו מספר לא הסכימו. כל שורה למטה מפרטת מה נבדק, מה יצא, ומה זה אומר.
+    {reconciliation.truncated && ' יש עוד — מוצגות כאן הראשונות בלבד.'}
   </p>
 
-  {!reconciliation.clean && (
-    <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-2.5">
-      {reconciliation.discrepancies.map((d) => (
-        <li class="text-[0.8rem] border-t border-[color:color-mix(in_srgb,var(--color-danger)_25%,transparent)] pt-2.5">
-          <div class="flex flex-wrap items-baseline gap-x-2">
-            <strong>{d.check}</strong>
-            {d.subject && <span class="[color:var(--color-muted)] text-[0.75rem]">{d.subject}</span>}
-          </div>
-          <div class="mt-0.5 tabular-nums text-[0.78rem]">
-            צפוי {formatPrice(d.expected)} · בפועל {formatPrice(d.actual)} · פער {formatPrice(d.drift)}
-          </div>
-          <div class="mt-0.5 [color:var(--color-muted)] text-[0.76rem] leading-relaxed">{d.explanation}</div>
-        </li>
-      ))}
-    </ul>
-  )}
+  <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-2.5">
+    {reconciliation.discrepancies.map((d) => (
+      <li class="text-[0.8rem] border-t border-[color:color-mix(in_srgb,var(--color-danger)_25%,transparent)] pt-2.5">
+        <div class="flex flex-wrap items-baseline gap-x-2">
+          <strong>{d.check}</strong>
+          {d.subject && <span class="[color:var(--color-muted)] text-[0.75rem]">{d.subject}</span>}
+        </div>
+        <div class="mt-0.5 tabular-nums text-[0.78rem]">
+          צפוי {formatPrice(d.expected)} · בפועל {formatPrice(d.actual)} · פער {formatPrice(d.drift)}
+        </div>
+        <div class="mt-0.5 [color:var(--color-muted)] text-[0.76rem] leading-relaxed">{d.explanation}</div>
+      </li>
+    ))}
+  </ul>
 </div>
+)}

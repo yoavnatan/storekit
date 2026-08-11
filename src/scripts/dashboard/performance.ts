@@ -8,14 +8,16 @@ function fmtAgorot(agorot: number): string { return formatPrice(agorot / 100); }
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonutChartSvg, type PieSlice } from '../../lib/chart-svg.js';
 import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
-import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
+import { showTooltip, showTooltipAtPoint, showSeriesTooltips, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast } from '../../lib/toast.js';
-import { businessDayISO, businessMonthStartISO, calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
-import { addDaysISO } from '../../lib/date-range.js';
+import { calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
+import { PERIOD_PRESETS as PRESETS, periodRange as presetRange, type PeriodPreset } from '../../lib/date-range.js';
+import { productShare } from '../../lib/top-product-share.js';
 
-const PRESETS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', '7d', '30d', '90d'] as const;
-type Preset = typeof PRESETS[number];
+// The preset list and its bounds now live in lib/date-range.ts, shared with the reports tab —
+// two tabs naming the same period had to mean the same days. Only the LABELS stay here.
+type Preset = PeriodPreset;
 const PRESET_LABEL_KEY: Record<Preset, string> = {
   today: 'perfPresetToday', thisWeek: 'perfPresetThisWeek',
   thisMonth: 'perfPresetThisMonth', lastMonth: 'perfPresetLastMonth',
@@ -56,52 +58,39 @@ function formatShortDate(iso: string): string {
 }
 
 /**
- * Every bound is derived from the BUSINESS day (business-day.ts) by calendar
- * arithmetic on the date string — never from the browser's own clock.
+ * The client twin of components/dashboard/TopProductsList.astro — same rows, same order, same
+ * wording. Exported because the admin's platform panel re-renders this list on its own (a product
+ * search that never touches the charts around it), and a second copy of this markup is exactly how
+ * the three SSR copies drifted before they became one component.
  *
- * This used to build each bound from a local `Date`, which is the SELLER'S DEVICE
- * timezone. On a laptop still set to another zone (or simply travelling), "this
- * month" was computed against one calendar while the server bucketed the orders
- * against another, and the range silently included or dropped a day at each end.
- * Deriving everything from one `today` string removes the possibility rather than
- * making the two agree by luck.
+ * Both variations are read off the CONTAINER rather than passed in, so the range-picker's own
+ * re-render (which knows nothing about either) stays correct without threading state through it:
+ *   · `perfShowStore` — every route now carries `storeName`, but naming the store on a store's OWN
+ *     tab is noise, so only the platform panel marks its container.
+ *   · `perfSearching`  — an empty list under an active product search means "nothing matched", not
+ *     "nothing sold", and those are opposite readings of the same blank box.
  */
-function presetRange(preset: string): { from: string; to: string } {
-  const to = businessDayISO(new Date());
-  if (preset === 'today') return { from: to, to };
-  if (preset === 'thisWeek') {
-    // Week starts on Sunday (Israeli convention). getUTCDay() on the parsed calendar
-    // date — a pure date string has no zone, so this is the weekday of `to` itself.
-    const weekday = new Date(to + 'T00:00:00Z').getUTCDay();
-    return { from: addDaysISO(to, -weekday), to };
-  }
-  if (preset === '7d' || preset === '30d' || preset === '90d') {
-    const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
-    return { from: addDaysISO(to, -(days - 1)), to };
-  }
-  if (preset === 'thisMonth') return { from: businessMonthStartISO(to), to };
-  if (preset === 'lastMonth') {
-    // Day before this month's 1st = last day of the previous month.
-    const end = addDaysISO(businessMonthStartISO(to), -1);
-    return { from: businessMonthStartISO(end), to: end };
-  }
-  return { from: to, to };
-}
-
-function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, i18n: Record<string, string>): void {
+export function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, i18n: Record<string, string>): void {
   if (summary.topProducts.length === 0) {
-    container.innerHTML = `<p class="muted text-[0.85rem] m-0">${i18n.perfTopProductsEmpty ?? ''}</p>`;
+    const empty = container.dataset.perfSearching === '1' ? i18n.perfTopProductsNoMatch : i18n.perfTopProductsEmpty;
+    container.innerHTML = `<p class="muted text-[0.85rem] m-0">${escHtml(empty ?? '')}</p>`;
     return;
   }
-  const totalRevenueAgorot = Math.max(summary.topProducts.reduce((s, p) => s + p.revenueAgorot, 0), 1);
+  const showStore = container.dataset.perfShowStore === '1';
   container.innerHTML = summary.topProducts.map((p, i) => {
-    const pct = Math.round((p.revenueAgorot / totalRevenueAgorot) * 100);
+    const share = productShare(p.revenueAgorot, summary.productRevenueAgorot);
+    const store = showStore && p.storeName
+      ? `<a href="/admin/store/${encodeURIComponent(p.storeSlug ?? '')}/performance?from=performance" class="admin-link block text-[0.72rem] [color:var(--color-muted)] overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(p.storeName)}</a>`
+      : '';
     return `
       <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
-        <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style="width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(i * 60, 300)}ms"></div>
+        <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style="width:${share.pct}%;--tw:${share.pct}%;animation-delay:${Math.min(i * 60, 300)}ms"></div>
         <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
-          <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(p.name)}</span>
-          <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">${pct}%</strong> · ${p.units} ${i18n.perfUnitsSold ?? ''} · ${fmtAgorot(p.revenueAgorot)}</span>
+          <span class="min-w-0">
+            <span class="block font-medium overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(p.name)}</span>
+            ${store}
+          </span>
+          <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">${share.label}</strong> · ${p.units} ${i18n.perfUnitsSold ?? ''} · ${fmtAgorot(p.revenueAgorot)}</span>
         </div>
       </div>`;
   }).join('');
@@ -307,6 +296,24 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
 // <rect> bars — renderSummary() replaces the SVG's innerHTML wholesale on
 // every range-picker fetch, which would otherwise silently drop any
 // listener bound to a bar directly.
+/** The point column nearest the cursor, but ONLY while the cursor is on a line's hit stroke.
+ *  Returns null otherwise, which is what keeps the rest of the chart box inert. Nearest is measured
+ *  against the drawn dots' own screen positions rather than re-deriving the chart's geometry here —
+ *  a second copy of that arithmetic is a second thing that can disagree with the SVG. */
+function nearestPoint(container: HTMLElement, clientX: number, target: Element): Element | null {
+  if (!target.closest('.chart-hit-line')) return null;
+  let best: Element | null = null;
+  let bestDx = Infinity;
+  for (const group of container.querySelectorAll('.chart-point')) {
+    const dot = group.querySelector('.line-dot');
+    if (!dot) continue;
+    const r = dot.getBoundingClientRect();
+    const dx = Math.abs(r.left + r.width / 2 - clientX);
+    if (dx < bestDx) { bestDx = dx; best = group; }
+  }
+  return best;
+}
+
 function initChartTooltips(): void {
   ['perf-revenue-chart', 'perf-orders-chart', 'perf-visitors-chart', 'pperf-revenue-chart', 'pperf-views-chart'].forEach((id) => {
     const container = document.getElementById(id);
@@ -327,14 +334,35 @@ function initChartTooltips(): void {
       // dot would miss and blank the tooltip (the reported bug). Anchor to the
       // dot itself (showTooltip → just above the point), independent of where in
       // the column the cursor sits.
-      const group = target.closest('.chart-point');
+      // A LINE chart answers only on its marks — the line itself or a point — never anywhere in
+      // the point's column (owner, 2026-08-11: "לא על גבי כל הקונטיינר"). Pointing at empty space
+      // near the top of the box used to explain a value drawn near the bottom of it.
+      // Two ways in, and the second is what makes the line hoverable between points: a hit circle
+      // inside a .chart-point group, or the invisible wide stroke tracing the curve — which belongs
+      // to no group, so the column is resolved from the cursor's x against the points themselves.
+      const group = target.closest('.chart-point') ?? nearestPoint(container, e.clientX, target);
       if (group) {
         const bar = group.querySelector('.chart-bar');
         const dot = group.querySelector('.line-dot');
         if (bar && dot) {
           if (dot !== activeDot) {
             activeDot = dot;
-            showTooltip(dot, `${bar.getAttribute('data-label') ?? ''}: ${bar.getAttribute('data-value') ?? ''}`, tipColor);
+            const when = bar.getAttribute('data-label') ?? '';
+            // More than one series → one tooltip PER SERIES, each beside its own point and in its
+            // own colour. One box explaining both was the confusion: it read as a single sentence
+            // in a single colour, and the colour was one of the two series' own. The dashed
+            // secondary takes the default dark box — its drawn grey would be a washed-out tooltip,
+            // and "one blue, one black" is the distinction being drawn.
+            const dots = [...group.querySelectorAll('.line-dot[data-label]')];
+            if (dots.length > 1) {
+              showSeriesTooltips(dots.map((d) => ({
+                anchor: d,
+                text: `${d.getAttribute('data-label') ?? ''} ${d.getAttribute('data-value') ?? ''}`.trim(),
+                color: d.getAttribute('data-dashed') === '1' ? undefined : (d.getAttribute('fill') ?? undefined),
+              })));
+            } else {
+              showTooltip(dot, `${when}: ${bar.getAttribute('data-value') ?? ''}`, tipColor);
+            }
           }
           return;
         }
@@ -443,7 +471,10 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
     const { from, to } = bucketRange(key);
     try {
       const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}&from=${from}&to=${to}&products=all`);
-      if (!res.ok) { paint(msg(i18n.perfBreakdownEmpty ?? '')); return; }
+      // `perfBreakdownFailed`, never `perfBreakdownEmpty`: the empty line is a statement about the
+      // store's sales that day, and a request that did not come back has not earned it. Both used
+      // to say "no products sold in this period" — including for a dropped connection.
+      if (!res.ok) { paint(msg(i18n.perfBreakdownFailed ?? '')); return; }
       const data = await res.json() as { summary?: PerformanceSummary };
       const s = data.summary;
       const tops = s?.topProducts ?? [];
@@ -458,7 +489,7 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
       const total = slices.reduce((a, b) => a + b.value, 0);
       paint(renderSlices(slices, total));
     } catch {
-      paint(msg(i18n.perfBreakdownEmpty ?? ''));
+      paint(msg(i18n.perfBreakdownFailed ?? ''));
     }
   };
 }
@@ -576,6 +607,8 @@ export function initPerformanceTab(): void {
       if (!res.ok) return;
       const data = await res.json() as { ok?: boolean; product?: ProductPerformanceSummary };
       if (data.product) renderProductSummary(data.product);
+      // silent: an enrichment. The drill-down already on screen stays and nothing the seller
+      // pressed is waiting on it — selecting a product again re-fetches.
     } catch { /* keep last-known product data on a transient failure */ }
   }
   function refreshSelectedProduct(): void { if (selectedProductId) void loadProduct(); }
@@ -718,6 +751,8 @@ export function initPerformanceTab(): void {
       // (the admin platform tab's per-store breakdown + GMV split card read
       // `stores`/`totalStores` off this response). Harmless where unlistened.
       document.dispatchEvent(new CustomEvent('perf:loaded', { detail: data }));
+      // silent: reported in `finally` — `rendered` stays false, which restores the previous
+      // figures AND the range label, then toasts. One place covers all three failure shapes.
     } catch { /* handled by the restore below, same as any other failed path */ }
     finally {
       window.clearTimeout(pendingTimer);
@@ -780,14 +815,21 @@ export function initPerformanceTab(): void {
     // inline Apply sit on ONE line (so the button never falls below the fold,
     // forcing a scroll — CURRENT_TASK item 1). A labelled sub-group makes clear
     // this Apply commits only the custom dates, not "the whole menu".
+    // `dir="ltr"` belongs on each DATE FIELD, never on the row that holds them. A date is an LTR
+    // run and its segments need it; the row is a Hebrew reading order, and the attribute on the
+    // row flipped the whole thing — so "החל" sat on the RIGHT, at the START of an RTL row, before
+    // the fields it applies to. On an RTL page the action belongs at the END, which is the left.
+    // (Reported on the reports picker 2026-08-10. The advertising picker had it right all along
+    // and is what both of these now match. Same trap as price-html.ts's badge: a direction set on
+    // a container resolves that container's own inline axis too.)
     return `${presetsHtml}
       <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
       <div class="px-3 pt-1.5 pb-2">
         <div class="text-[.72rem] [color:var(--color-muted)] mb-1.5">${i18n.perfPresetCustom ?? 'Custom'}</div>
-        <div class="flex items-center gap-1.5" dir="ltr">
-          <input type="date" data-range-from value="${fromInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+        <div class="flex items-center gap-1.5">
+          <input type="date" dir="ltr" data-range-from value="${fromInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
           <span class="muted text-[0.8rem] shrink-0">–</span>
-          <input type="date" data-range-to value="${toInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <input type="date" dir="ltr" data-range-to value="${toInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
           <button type="button" class="btn btn--sm btn--ghost shrink-0" data-range-apply>${i18n.perfApply ?? 'Apply'}</button>
         </div>
       </div>`;

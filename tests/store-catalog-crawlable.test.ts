@@ -142,7 +142,11 @@ describe('the store page keeps its catalog crawlable', () => {
 });
 
 describe('the sitemap advertises category pages', () => {
-  const sitemap = read('src/pages/sitemap-content.xml.ts');
+  // `lib/sitemap-document.ts` since 2026-08-09: the enumeration moved out of the route, which now
+  // streams a pre-built artifact (GO_LIVE §7). `storeEntries` is still the ONE definition of a
+  // store's crawlable surface — both the platform build and the custom-domain branch call it — so
+  // this is still exactly one place to assert.
+  const sitemap = read('src/lib/sitemap-document.ts');
 
   it('builds the param via categoryUrlParam, so an unsluggable name cannot emit `?category=`', () => {
     expect(sitemap).toContain("?category=${urlSegment(categoryUrlParam(c))}");

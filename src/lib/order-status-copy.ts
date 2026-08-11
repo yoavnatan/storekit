@@ -21,9 +21,11 @@ export const STATUS_MESSAGES: Record<NotifiableStatus, { title: string; body: (o
   },
   shipped: {
     title: 'ההזמנה שלך נשלחה',
+    // "אליך" was dropped on 2026-08-11 (user): the buyer is reading their own order page, so the
+    // recipient is never in question, and the shorter sentence is the one that reads as a fact.
     body: (o) => o.trackingNumber
-      ? `ההזמנה בדרך אליך. מספר מעקב: ${o.trackingNumber}`
-      : 'ההזמנה יצאה לדרך אליך.',
+      ? `ההזמנה יצאה לדרך. מספר מעקב: ${o.trackingNumber}`
+      : 'ההזמנה יצאה לדרך.',
   },
   cancelled: {
     title: 'ההזמנה שלך בוטלה',

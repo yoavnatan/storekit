@@ -16,12 +16,21 @@
 
 import { escapeHtml } from './html-escape.js';
 import { toSlug } from './url-base.js';
-import { productSeoHints, type ProductSeoHintId, type ProductSeoInput } from './product-seo-hints.js';
+import {
+  productSeoHints,
+  productSeoScore,
+  type ProductSeoHintId,
+  type ProductSeoInput,
+  type ProductSeoLevel,
+} from './product-seo-hints.js';
 
 export interface ProductSeoLabels {
   heading: string;
   /** "3 מתוך 5" — {done}/{total} substituted. */
   progress: string;
+  /** One word per band, because the meter's COLOUR must never be the only thing that says
+   *  where the listing stands (WCAG: never colour-only state). */
+  level: Record<ProductSeoLevel, string>;
   previewLabel: string;
   /** Shown in the preview when the seller hasn't written a description yet. */
   previewEmptyDesc: string;
@@ -33,6 +42,7 @@ export interface ProductSeoLabels {
 const FALLBACK: ProductSeoLabels = {
   heading: 'Tips for search visibility',
   progress: '{done}/{total}',
+  level: { weak: 'Basic', partial: 'Good', strong: 'Excellent' },
   previewLabel: 'How it looks in search',
   previewEmptyDesc: 'No description yet',
   hint: {
@@ -53,6 +63,11 @@ export function productSeoLabels(d: Readonly<Record<string, unknown>>): ProductS
   return {
     heading: str(d.seoHeading, FALLBACK.heading),
     progress: str(d.seoProgress, FALLBACK.progress),
+    level: {
+      weak: str(d.seoLevelWeak, FALLBACK.level.weak),
+      partial: str(d.seoLevelPartial, FALLBACK.level.partial),
+      strong: str(d.seoLevelStrong, FALLBACK.level.strong),
+    },
     previewLabel: str(d.seoPreviewLabel, FALLBACK.previewLabel),
     previewEmptyDesc: str(d.seoPreviewEmptyDesc, FALLBACK.previewEmptyDesc),
     hint: {
@@ -99,8 +114,6 @@ export function productSeoBodyHtml(
   l: ProductSeoLabels,
 ): string {
   const hints = productSeoHints(input);
-  const done = hints.filter((h) => h.done).length;
-  const progress = l.progress.replace('{done}', String(done)).replace('{total}', String(hints.length));
 
   const items = hints.map((h) => {
     // Satisfied items stay listed rather than disappearing: a list that shrinks as you work
@@ -127,7 +140,7 @@ export function productSeoBodyHtml(
   return `<div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:flex-start">
     <ul data-seo-hint-list style="list-style:none;margin:0;padding:0;font-size:0.82rem;line-height:1.5;min-width:11rem;flex:1 1 11rem">${items}</ul>
     <div data-seo-preview style="flex:1 1 16rem;min-width:0">
-      <p style="margin:0 0 0.3rem;font-size:0.74rem;color:var(--color-muted)">${escapeHtml(l.previewLabel)} · <span data-seo-progress>${escapeHtml(progress)}</span></p>
+      <p style="margin:0 0 0.3rem;font-size:0.74rem;color:var(--color-muted)">${escapeHtml(l.previewLabel)}</p>
       <div dir="auto" style="border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:0.55rem 0.7rem;background:var(--color-bg)">
         <span data-seo-preview-url style="display:block;font-size:0.72rem;color:var(--color-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(preview.host + path)}</span>
         <span data-seo-preview-title style="display:block;font-size:0.9rem;color:var(--color-accent);margin-top:0.1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(title)}</span>
@@ -135,6 +148,63 @@ export function productSeoBodyHtml(
       </div>
     </div>
   </div>`;
+}
+
+/**
+ * One token per band — no new colour is invented for this meter, which is the first of the four
+ * design-line tests ("is it already in the system?").
+ *
+ * `--color-accent` for `partial` rather than a fourth status colour: mid-fill is not a status,
+ * it is the ordinary in-progress state of a form, and the accent is what this dashboard already
+ * uses for "you are working on it". Amber and green keep the jobs they have everywhere else.
+ */
+const LEVEL_COLOR: Record<ProductSeoLevel, string> = {
+  weak: 'var(--color-warning)',
+  partial: 'var(--color-accent)',
+  strong: 'var(--color-success)',
+};
+
+/** Everything the meter shows, resolved once. The SSR pass renders it into the shell's markup
+ *  and the browser writes the same four values back onto that same markup as the seller types —
+ *  so the fill ANIMATES (the element persists) and there is still only one rule for what it
+ *  should say. A second computation in the script is the drift this module exists to prevent. */
+export interface ProductSeoMeterView {
+  percent: number;
+  color: string;
+  /** "3 מתוך 5" */
+  progressText: string;
+  /** "טוב" — the band in words, so the colour is never the only signal. */
+  levelText: string;
+}
+
+export function productSeoMeterView(input: ProductSeoInput, l: ProductSeoLabels): ProductSeoMeterView {
+  const score = productSeoScore(input);
+  return {
+    percent: score.percent,
+    color: LEVEL_COLOR[score.level],
+    progressText: l.progress.replace('{done}', String(score.done)).replace('{total}', String(score.total)),
+    levelText: l.level[score.level],
+  };
+}
+
+/**
+ * The heading row + fill bar.
+ *
+ * Lives in the SHELL, not in `data-seo-body`: the body is replaced wholesale on every keystroke,
+ * and a brand-new element has no previous width to transition from, so a bar rendered there
+ * would jump rather than fill. Kept here it is one persistent element the script re-styles.
+ *
+ * The bar is `aria-hidden` — it is a picture of the two words beside it, and announcing a
+ * progressbar as well would read the same state twice.
+ */
+function productSeoMeterHtml(view: ProductSeoMeterView, l: ProductSeoLabels): string {
+  return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:0.6rem;flex-wrap:wrap">
+      <p style="margin:0;font-size:0.87rem;font-weight:500">${escapeHtml(l.heading)}</p>
+      <p style="margin:0;font-size:0.78rem;color:var(--color-muted);white-space:nowrap"><span data-seo-level style="font-weight:600;color:${view.color}">${escapeHtml(view.levelText)}</span> · <span data-seo-progress>${escapeHtml(view.progressText)}</span></p>
+    </div>
+    <div aria-hidden="true" style="margin-top:0.45rem;height:4px;border-radius:999px;background:var(--color-bg);overflow:hidden">
+      <div data-seo-meter style="height:100%;border-radius:999px;width:${view.percent}%;background-color:${view.color};transition:width 0.3s ease-out,background-color 0.3s ease-out"></div>
+    </div>`;
 }
 
 /**
@@ -152,7 +222,7 @@ export function productSeoPanelHtml(
     data-product-slug="${escapeHtml(preview.productSlug ?? '')}"
     data-host="${escapeHtml(preview.host)}"
     class="mt-4 border-t [border-color:var(--color-border)] pt-3">
-    <p style="margin:0 0 0.5rem;font-size:0.87rem;font-weight:500">${escapeHtml(l.heading)}</p>
-    <div data-seo-body>${productSeoBodyHtml(input, preview, l)}</div>
+    ${productSeoMeterHtml(productSeoMeterView(input, l), l)}
+    <div data-seo-body style="margin-top:0.7rem">${productSeoBodyHtml(input, preview, l)}</div>
   </section>`;
 }
