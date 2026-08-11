@@ -184,6 +184,15 @@ describe('every state where money moved and the purchase did not is reported som
     expect(page).toMatch(/reconcilePlatform\(/);
     expect(page).toMatch(/reconciliation=\{/);
   });
+
+  it('the banner says when the list of problems was cut short', () => {
+    // `reconcile.ts` caps the per-row findings and sets `truncated`, and for a while nothing
+    // rendered that flag. The state it exists for is the worst one this banner can report — a
+    // systemic bug makes EVERY order disagree — and unsaid, it would arrive as a calm "50
+    // discrepancies" that reads like a bounded, finite problem.
+    const card = fs.readFileSync(path.join(process.cwd(), 'src/components/admin/AdminReconciliationCard.astro'), 'utf8');
+    expect(card, 'AdminReconciliationCard must render reconciliation.truncated').toMatch(/reconciliation\.truncated/);
+  });
 });
 
 describe('the money vocabulary stays complete', () => {
