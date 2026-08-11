@@ -136,6 +136,25 @@ export function hasPayableBank(seller: PayoutDetails): boolean {
   return Boolean(seller.bankCode && seller.bankBranch && seller.bankAccount && seller.bankAccountHolder);
 }
 
+/**
+ * The condition every red dot about money-with-nowhere-to-go is drawn from.
+ *
+ * It is a rule, not a query, so it lives beside `hasPayableBank` and takes the amount as a
+ * parameter. Two callers supply that amount from two different places and both are correct:
+ * the seller's own dashboard already holds their account and passes `payableNowAgorot` straight
+ * from it, while the site header cannot afford to build one and asks the database for the same
+ * figure (`payouts.ts#getPayableNowForSeller`). What must not vary is the TEST — a header dot
+ * drawn on one condition and a tab dot on another is a seller following a dot to a screen with
+ * nothing on it (owner, סשן א׳ §5).
+ *
+ * Both halves matter. Without money there is nothing to ask for, and asking anyway is the
+ * registration-time entry barrier this project refuses to build (`feedback_seller_form_burden`).
+ * Without the bank test the dot never clears.
+ */
+export function needsBankDetails(details: PayoutDetails, payableNowAgorot: number): boolean {
+  return payableNowAgorot > 0 && !hasPayableBank(details);
+}
+
 /** `12 · 345 · ****6789` — enough for a seller to recognise their own account, never the whole
  *  number. It is rendered inside their own dashboard, so this is not a secrecy boundary; it is so
  *  a screen-share or a support screenshot does not carry a full account number for no reason. */

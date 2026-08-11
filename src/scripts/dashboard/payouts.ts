@@ -118,7 +118,23 @@ export function initPayoutsTab(): void {
       // The banner exists to say "there is money here and nowhere to send it". The moment there is
       // somewhere, it is answered — leaving it up until the next page load would keep telling the
       // seller to do a thing they have just done.
-      if (body.bankLine) document.getElementById('pay-no-bank-banner')?.remove();
+      //
+      // All THREE marks come down together, and that is the point of the chain (owner, סשן א׳ §5):
+      // the banner, the dot on the form's own heading, and the dot on the tab in the strip. They
+      // are one server-rendered condition, so a save that cleared only the one the seller happened
+      // to be looking at would leave the other two pointing at a form that is now filled in — the
+      // dead end this whole change is about. The avatar dot in the site header is not touched from
+      // here: it re-reads `/api/seller/alerts` on its own 30s poll, and reaching across into
+      // another component's markup is how two owners of one indicator start disagreeing.
+      //
+      // `bankLine` is the server's answer, not the form's: it is non-null only when all four fields
+      // came back as a payable account, so a save of the business fields alone correctly leaves
+      // every mark up.
+      if (body.bankLine) {
+        document.getElementById('pay-no-bank-banner')?.remove();
+        document.getElementById('pay-bank-dot')?.remove();
+        document.querySelector('#tab-payouts [data-tab-alert]')?.remove();
+      }
     } catch {
       // A network failure, as a toast: nothing on screen is wrong, the request simply did not land.
       showErrorToast(t['payDetailsFailed'] ?? 'Could not save.');

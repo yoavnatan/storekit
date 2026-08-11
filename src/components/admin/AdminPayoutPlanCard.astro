@@ -1,9 +1,6 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
-import { MIN_PAYOUT_AGOROT } from '../../lib/payout-schedule.js';
-import { paginate } from '../../lib/pagination.js';
-import AdminPager from './AdminPager.astro';
 import type { PayoutPlan, PayoutState } from '../../lib/payout-run.js';
 
 /**
@@ -22,41 +19,33 @@ import type { PayoutPlan, PayoutState } from '../../lib/payout-run.js';
  * **Three of the five states are shown as money that is NOT moving, and that is the point.** A
  * seller sitting on a released balance with no bank details on file is invisible from every other
  * screen — the run reports them as a count in a log line nobody reads, and the seller sees a banner
- * only if they sign in. Here it is a number of shekels with names under it.
+ * only if they sign in. Here it is a number of shekels, and the count under it is a LINK to the
+ * names.
+ *
+ * ── The per-seller table that used to be under these tiles ──
+ * It listed every seller with money behind them: name, email, amount, commission, state. The owner
+ * rejected it (סשן א׳ §3): *"מרגיש לי שהפרטים האלו אמורים וצריכים להיות בתוך כרטיסיות המוכרים
+ * בלשונית מוכרים, למה ליצור עוד רשימה של מוכרים?"* — and he was right that it was a second roster
+ * of the same people, one tab away, searchable and sortable by nothing.
+ *
+ * Every fact it carried belongs to a seller, so every fact now sits on that seller's card
+ * (`AdminSellersPanel.astro`), and the capability it uniquely had — finding the stuck ones among a
+ * thousand — became a filter on the tab that already lists them (`spayout`). What is left here is
+ * the only thing that was never per-seller: **how much leaves the company's bank account on the
+ * 10th**, which is a platform figure the owner plans around and which no card can show.
  */
 interface Props {
   plan: PayoutPlan;
-  /** 1-based page of the per-seller table, from `?paypage=`. */
-  page: number;
-  buildUrl: (page: number) => string;
+  /** Deep link into the Sellers tab, filtered to one payout state. The tiles are counts; this is
+   *  what turns each of them back into the names behind it. */
+  sellersHref: (state: PayoutState) => string;
 }
-const { plan, page, buildUrl } = Astro.props;
+const { plan, sellersHref } = Astro.props;
 
-/** Rows worth listing: everything with real money behind it, in the plan's own order (most owed
- *  first). `settled` and `already_paid` carry nothing to act on and would bury the rest. */
-const rows = plan.rows.filter((r) => r.balanceAgorot > 0 && r.state !== 'already_paid' && r.state !== 'settled');
-// Paged, not capped. The three tiles above are sums over EVERY seller and are unaffected; this
-// table is the names behind them, and at a thousand sellers a single unbounded list is a page
-// nobody reads. Same argument as the seller's own two tables (PayoutsPanel.astro).
-const pageResult = paginate(rows, page, 15);
-
-const STATE_LABEL: Record<PayoutState, string> = {
-  payable: 'ישולם',
-  no_bank: 'חסרים פרטי בנק',
-  below_minimum: `מתחת ל-${formatAgorot(MIN_PAYOUT_AGOROT)}`,
-  already_paid: 'שולם לתקופה הזו',
-  settled: 'אין יתרה',
-};
-const STATE_CLASS: Record<PayoutState, string> = {
-  payable: 'admin-badge--paid',
-  no_bank: 'admin-badge--failed',
-  below_minimum: 'admin-badge--muted',
-  already_paid: 'admin-badge--muted',
-  settled: 'admin-badge--muted',
-};
-
-const CELL = 'py-2 px-2.5 text-[0.82rem]';
 const TILE = 'rounded-[var(--radius)] border [border-color:var(--color-border)] p-3';
+/** The counts under the tiles are links, and they look like links. Inheriting the muted colour
+ *  keeps the tile's hierarchy — the figure above is the thing being read, this is the way in. */
+const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [color:inherit] hover:[color:var(--color-accent)]';
 ---
 
 <div class="rounded-[var(--radius)] border [border-color:var(--color-border)] p-3.5 mb-5">
@@ -71,56 +60,30 @@ const TILE = 'rounded-[var(--radius)] border [border-color:var(--color-border)] 
 
   <dl class="grid grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
     <div class={TILE}>
-      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">יוצא בתאריך הזה</dt>
+      {/* "תשלום קרוב", the same words the seller's own tile uses (owner, סשן א׳ §1) — one name for
+          one event on both sides of the platform. The date it goes out is already in the heading
+          above, so repeating it here as "יוצא בתאריך הזה" only made the tile a second clock. */}
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">תשלום קרוב</dt>
       <dd class="m-0 text-[1.15rem] font-bold tabular-nums [color:var(--color-accent)]">{formatAgorot(plan.payableAgorot)}</dd>
-      <p class="muted m-0 mt-1 text-[0.72rem]">{plan.payableSellers} מוכרים</p>
+      <a class={TILE_LINK} href={sellersHref('payable')}>{plan.payableSellers} מוכרים</a>
     </div>
     {/* Danger, not muted: this is money we owe, that we are holding, and that no transfer is going
         to move — for a reason a seller can fix in a minute once they know. */}
     <div class={TILE}>
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">תקוע — אין פרטי בנק</dt>
       <dd class={`m-0 text-[1.15rem] font-bold tabular-nums ${plan.noBankAgorot > 0 ? '[color:var(--color-danger)]' : '[color:var(--color-muted)]'}`}>{formatAgorot(plan.noBankAgorot)}</dd>
-      <p class="muted m-0 mt-1 text-[0.72rem]">{plan.noBankSellers} מוכרים</p>
+      <a class={TILE_LINK} href={sellersHref('no_bank')}>{plan.noBankSellers} מוכרים</a>
     </div>
     <div class={TILE}>
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">מתחת למינימום · מתגלגל</dt>
       <dd class="m-0 text-[1.15rem] font-bold tabular-nums">{formatAgorot(plan.belowMinimumAgorot)}</dd>
-      <p class="muted m-0 mt-1 text-[0.72rem]">{plan.belowMinimumSellers} מוכרים</p>
+      <a class={TILE_LINK} href={sellersHref('below_minimum')}>{plan.belowMinimumSellers} מוכרים</a>
     </div>
   </dl>
 
-  {rows.length === 0 ? (
+  {plan.payableSellers + plan.noBankSellers + plan.belowMinimumSellers === 0 && (
     <p class="muted m-0 mt-3 text-[0.8rem]">אין כרגע יתרה משוחררת לאף מוכר.</p>
-  ) : (
-    <div class="overflow-x-auto mt-3">
-      <table class="w-full border-collapse text-start">
-        <thead>
-          <tr class="[color:var(--color-muted)] text-[0.74rem]">
-            <th class={`${CELL} text-start font-medium`}>מוכר/ת</th>
-            <th class={`${CELL} text-start font-medium`}>לתשלום</th>
-            <th class={`${CELL} text-start font-medium`}>עמלה שתיגבה</th>
-            <th class={`${CELL} text-start font-medium`}>מצב</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pageResult.items.map((r) => (
-            <tr class="border-t [border-color:var(--color-border)]">
-              <td class={CELL}>
-                {r.sellerName}
-                <span class="block [color:var(--color-muted)] text-[0.72rem]" dir="ltr">{r.sellerEmail}</span>
-              </td>
-              <td class={`${CELL} tabular-nums`}>{formatAgorot(r.balanceAgorot)}</td>
-              {/* The platform's own income out of this transfer, beside the transfer — the only
-                  place the two appear on one line. */}
-              <td class={`${CELL} tabular-nums [color:var(--color-muted)]`}>{formatAgorot(r.commissionAgorot)}</td>
-              <td class={CELL}>
-                <span class:list={['admin-badge', STATE_CLASS[r.state]]}>{STATE_LABEL[r.state]}</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <AdminPager page={pageResult.page} totalPages={pageResult.totalPages} buildUrl={buildUrl} />
-    </div>
   )}
+  {/* No table under this, deliberately — see the header. The names are on the seller cards, and
+      each tile's count is the link to them. */}
 </div>

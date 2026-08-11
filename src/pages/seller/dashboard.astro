@@ -55,7 +55,11 @@ import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro'
 import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusCounts, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
-import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { parseSellerOrderQuery, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
+import { SHIPPING_STATUS_RULES, type ShippingStatus } from '../../lib/order-status-rules.js';
+import { encodeList } from '../../lib/admin-nav.js';
+import { orderPayoutLine, payoutWhyText } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
@@ -83,7 +87,7 @@ import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
 import { getSellerAccountFor } from '../../lib/payouts.js';
-import { hasPayableBank } from '../../lib/payout-details.js';
+import { needsBankDetails } from '../../lib/payout-details.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -280,14 +284,45 @@ const seller = payoutAccount?.seller ?? null;
 // table's page too — otherwise stepping through the history silently resets the held list under
 // the seller's cursor. Built here rather than in the component so the store id and the open tab
 // stay this page's business.
-function payoutsTabHref(pages: { paypage: number; payhist: number }): string {
-  const params = new URLSearchParams({ panel: 'payouts' });
+/**
+ * From a hold reason on the Payments tab to the orders behind it, in the tab that manages orders.
+ *
+ * The half of the deleted held-orders table that was worth keeping (owner, סשן א׳ §4): a seller
+ * told "3 orders are waiting on you to ship" needs the three orders, and a link that lands them on
+ * an unfiltered list has sent them to look for something rather than at it. The statuses are
+ * derived from what each reason MEANS — `unshipped` is every status the payout clock does NOT run
+ * from — so a new shipping status is filtered correctly by `order-status-rules.ts` rather than by a
+ * list here going stale.
+ *
+ * It reads the courier column and not `pickupPayoutClockRuns`, which is a simplification and a safe
+ * one: the only status where the two differ is `ready`, which the seller's filter menu cannot
+ * express at all (`ORDER_FILTER_STATUSES`). This decides which rows a link shows, never which money
+ * moves — `payout-hold.ts` is the only thing that does that, and it reads the right column.
+ */
+function ordersForHoldBasisHref(basis: 'payment' | 'unshipped'): string {
+  const statuses = basis === 'unshipped'
+    ? ORDER_FILTER_STATUSES.filter((s) => {
+        const rule = SHIPPING_STATUS_RULES[s as ShippingStatus];
+        return !rule.payoutClockRuns && !rule.terminal;
+      })
+    : ['shipped'];
+  const params = new URLSearchParams({ panel: 'orders' });
   if (store) params.set('store', store.id);
-  if (pages.paypage > 1) params.set('paypage', String(pages.paypage));
-  if (pages.payhist > 1) params.set('payhist', String(pages.payhist));
+  params.set('ostatus', encodeList(statuses));
   return `/seller/dashboard?${params.toString()}`;
 }
-const payoutNeedsBank = !!payoutAccount && payoutAccount.account.payableNowAgorot > 0 && !hasPayableBank(payoutAccount.seller);
+
+function payoutsTabHref(payhist: number): string {
+  const params = new URLSearchParams({ panel: 'payouts' });
+  if (store) params.set('store', store.id);
+  if (payhist > 1) params.set('payhist', String(payhist));
+  return `/seller/dashboard?${params.toString()}`;
+}
+// The rule is `payout-details.ts#needsBankDetails` and it is shared with the site header, which
+// asks the same question without an account to hand (`payouts.ts#sellerNeedsBankDetails`). This
+// page passes the figure it is already showing in the tile, so the dot, the banner and the number
+// beside them can never be three different answers.
+const payoutNeedsBank = !!payoutAccount && needsBankDetails(payoutAccount.seller, payoutAccount.account.payableNowAgorot);
 // `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
 // for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
 // seller's stores bill through their one registered business, so extra stores are extra brands,
@@ -1859,6 +1894,18 @@ const orderStatusColors: Record<string, string> = {
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
+              /* When this order's money reaches the seller, and why then. The Payments tab used to
+                 carry this as a row in a table of its own; the owner asked for it here, where the
+                 order is managed (סשן א׳ §4). `order-payout-line.ts` is the shared derivation —
+                 `buildOrderCard` in scripts/dashboard/orders.ts renders the same three fields from
+                 the same function, which is what keeps the SSR card and the AJAX one one card. */
+              const payLine    = orderPayoutLine({
+                paymentStatus: order.paymentStatus,
+                shippingStatus: order.shippingStatus,
+                paidAt: order.paidAt ?? null,
+                deliveredAt: order.deliveredAt ?? null,
+                deliveryMethod: storeSub?.deliveryMethod ?? null,
+              });
               return (
                 <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
@@ -1977,6 +2024,30 @@ const orderStatusColors: Record<string, string> = {
                           <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatAgorot(storeSliceTotalAgorot(storeSub))}</strong>
                         </div>
                       )}
+                      {/* When the money from THIS order reaches the seller, and why then.
+                          Deliberately no amount: the figure a seller acts on is the total on the
+                          Payments tab, and a per-order net would be a new seller-visible number
+                          (and therefore a new invariant) to say something the timing already says.
+                          Rendered for every order, including cancelled ones — "לא ייכלל בתשלום" is
+                          the answer a seller looking at a cancelled order came for. */}
+                      <div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]">
+                        <span class="[color:var(--color-muted)]">{d.orderPayoutLabel}</span>
+                        <strong class="text-[color:var(--color-text)]">
+                          {payLine.state === 'not_payable' ? d.orderPayoutNone
+                            : payLine.state === 'releasable' ? d.orderPayoutReleasable
+                            : payLine.releaseDayISO ? d.orderPayoutOn.replace('{date}', formatBusinessDayLabel(payLine.releaseDayISO))
+                            : d.orderPayoutPending}
+                        </strong>
+                        {payLine.state === 'held' && (
+                          <span class="[color:var(--color-muted)]">· {payoutWhyText(payLine, d[payLine.whyKey])}</span>
+                        )}
+                        {/* The only line here that can be acted on takes the colour, and only when
+                            it is the seller who is holding it up — a date they cannot influence
+                            highlighted in warning teaches them to ignore the colour. */}
+                        {payLine.blocking && (
+                          <span class="font-semibold [color:var(--color-warning)]">· {d[payLine.actionKey]}</span>
+                        )}
+                      </div>
                     </div>
                     <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
                       {/* Multi-note UI: a list of private notes (each an inline line with
@@ -2459,10 +2530,9 @@ const orderStatusColors: Record<string, string> = {
             payouts={payoutAccount.payouts}
             seller={payoutAccount.seller}
             multiStore={allStores.length > 1}
-            heldPage={parsePage(Astro.url.searchParams, 'paypage')}
             payoutPage={parsePage(Astro.url.searchParams, 'payhist')}
-            heldPageHref={(p) => payoutsTabHref({ paypage: p, payhist: parsePage(Astro.url.searchParams, 'payhist') })}
-            payoutPageHref={(p) => payoutsTabHref({ paypage: parsePage(Astro.url.searchParams, 'paypage'), payhist: p })}
+            payoutPageHref={(p) => payoutsTabHref(p)}
+            ordersHref={ordersForHoldBasisHref}
             d={d}
           />
         )}

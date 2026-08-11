@@ -7,6 +7,10 @@ import { applyStockAttentionFilter } from './products.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { orderPayoutLine, payoutWhyText } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
+import type { Order } from '../../lib/orders.js';
+import type { DeliveryMethod } from '../../lib/shipping.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
@@ -531,12 +535,41 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
    *  `fmtPrice` on one of them would print a figure a hundred times too large. */
   function fmtAgorot(agorot: number): string { return fmtPrice(agorot / 100); }
 
+  /**
+   * The payout line's three fields, from the SAME derivation the SSR card uses
+   * (`lib/order-payout-line.ts`). Rendering it here rather than leaving it to the server is not
+   * optional: this function draws the cards for AJAX pagination and for a polled new order, so a
+   * block that existed only in the `.astro` copy would vanish the moment a seller turned a page —
+   * the three-renderer drift this file's header already warns about.
+   */
+  function payoutLineHtml(o: Parameters<typeof buildOrderCard>[0]): string {
+    const line = orderPayoutLine({
+      paymentStatus: o.paymentStatus,
+      shippingStatus: o.shippingStatus as never,
+      paidAt: o.paidAt ?? null,
+      deliveredAt: o.deliveredAt ?? null,
+      deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
+    });
+    const state = line.state === 'not_payable' ? tt('orderPayoutNone')
+      : line.state === 'releasable' ? tt('orderPayoutReleasable')
+      : line.releaseDayISO ? tt('orderPayoutOn').replace('{date}', formatBusinessDayLabel(line.releaseDayISO))
+      : tt('orderPayoutPending');
+    const why = line.state === 'held' ? `<span class="[color:var(--color-muted)]">· ${esc(payoutWhyText(line, tt(line.whyKey)))}</span>` : '';
+    const action = line.blocking ? `<span class="font-semibold [color:var(--color-warning)]">· ${esc(tt(line.actionKey))}</span>` : '';
+    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}${action}</div>`;
+  }
+
   function buildOrderCard(o: {
     id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
     buyerAddress: { city: string; street: string; zip?: string };
     shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
-    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } }>;
+    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; deliveryMethod?: DeliveryMethod; discount?: { type: string; value: number; appliedAgorot: number } }>;
     notes?: string[];
+    // The payout line's inputs. `/api/seller/orders` already returns the whole order
+    // (`scopeOrder`), so these arrive with no endpoint change — they were simply never named here.
+    paymentStatus: Order['paymentStatus'];
+    paidAt?: string;
+    deliveredAt?: string;
   }): string {
     const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
     const color    = colorMap[o.shippingStatus] ?? '#888';
@@ -621,6 +654,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             ${storeSub.discount?.appliedAgorot ? `<span class="text-[color:var(--color-success)]">${esc(tt('orderEditDiscount'))}: −${fmtAgorot(storeSub.discount.appliedAgorot)}</span>` : ''}
             <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtAgorot(total)}</strong>
           </div>
+          ${payoutLineHtml(o)}
         </div>
         <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
           <div class="order-note mb-3">
