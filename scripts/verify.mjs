@@ -54,6 +54,22 @@
 // run `npx astro build`: its [CompilerError] output carries a `Location:` with the exact file:line.
 // (That one burned a whole session. Do not hand-write an AST differ to binary-search it.)
 //
+// THE ERRORS THAT ALL POINT AT THE WRONG PLACE — `as const` after `Astro.props` in a COMPONENT
+// (2026-08-11, and it cost most of an hour). In a `.astro` COMPONENT's frontmatter, an `as const`
+// assertion written anywhere BELOW `const { … } = Astro.props;` makes the compiler stop wiring
+// `interface Props` to `Astro.props`. Nothing says so. What you get instead is every prop typed
+// `unknown` and a page of ts(7006) "implicitly has an 'any' type" / ts(18046) "'x' is of type
+// 'unknown'" on lines that are all perfectly correct — including generic helpers like
+// `paginate(props.rows)` suddenly returning `unknown[]`. The tell is an IDE hint saying
+// **"'Props' is declared but never used"** on a component that plainly uses it; astro check does
+// not print that hint, so from the terminal there is no clue at all.
+//   · Reproduce: add `const P = ['x'] as const;` under the destructure. Move the same line ABOVE
+//     `interface Props` and everything goes green — it is POSITION, not the assertion.
+//   · Fix: annotate instead of asserting (`const X: readonly Foo[] = [...]`). `as const` inside a
+//     callback in the MARKUP is unaffected, which is why other components get away with it.
+//   · Do NOT chase the reported lines. Nothing is wrong with them, and adding `: any` to silence
+//     them buries a working `Props`. Worked example: components/dashboard/PayoutsPanel.astro.
+//
 // THE FAILURE THAT REPORTS NOTHING AT ALL (moved here from AI_INSTRUCTIONS 2026-08-04, because this
 // is the tool you reach for when it happens): Astro 7's compiler rejects an HTML comment as the
 // first child right after `{expr && (` — put comments ABOVE the expression, never inside it. In a
