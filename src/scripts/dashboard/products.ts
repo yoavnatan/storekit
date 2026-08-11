@@ -1534,7 +1534,6 @@ export function initSpecsEditors(): void {
 
 export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTMLTableRowElement, HTMLTableRowElement] {
   const i = getDashI18n();
-  const g = getGalleryI18n();
 
   const uploadCfg = document.getElementById('upload-config');
   const resolvedStoreSlug = storeSlug || uploadCfg?.dataset.storeSlug || '';
@@ -1593,6 +1592,24 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       </div>
     </td>`;
 
+  return [display, buildEditRow(p)];
+}
+
+/**
+ * The inline edit form for one product — the WHOLE form, which is why it is built here and not
+ * server-rendered any more.
+ *
+ * Measured 2026-08-11: 43KB of HTML per row, and the Products tab shipped one for every product on
+ * the page whether or not the seller opened any of them — 58% of that tab's response, for forms
+ * that were unreachable without JavaScript anyway (the "ערוך" control is a `<button>` inside a
+ * scripted menu, so without JS nothing could open them). They are built on the click that opens
+ * one now, from the page's product island, and this became the ONE definition of the form rather
+ * than the client half of a twin the .astro had to be kept in step with.
+ */
+export function buildEditRow(p: ProductData): HTMLTableRowElement {
+  const i = getDashI18n();
+  const g = getGalleryI18n();
+
   const edit = document.createElement('tr');
   edit.className = 'edit-row';
   edit.dataset.productEdit = p.id;
@@ -1639,7 +1656,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   // instead of showing an empty "price after discount" until the seller touches something.
   refreshDiscountFieldsIn(edit);
 
-  return [display, edit];
+  return edit;
 }
 
 /**
@@ -1655,6 +1672,52 @@ function syncEditRowRev(displayRow: Element | null | undefined, rev: string | un
   if (!rev) return;
   const form = displayRow?.nextElementSibling?.querySelector<HTMLFormElement>('form.inline-edit-form');
   if (form) form.dataset.baseRev = rev;
+  // …and the same, for a row whose form does not exist yet. A pending row is built later from the
+  // page's product island, which is a snapshot taken when the document was served — so a change
+  // made here and not written back would come out of that island as the OLD value the next time the
+  // seller opens the form, and their next save would put it back. See `syncPageProductFromRow`.
+  syncPageProductFromRow(displayRow, rev);
+}
+
+/**
+ * Put what the table now shows back into the product island, for a row nobody has opened yet.
+ *
+ * The island (`#dash-products-page`) is what `buildEditRow` reads, and it is a snapshot: it does
+ * not move when an inline cell edit, a visibility toggle or a per-combo stock change patches a row
+ * in place. A row the seller has ALREADY opened is immune — it is built once and then patched like
+ * any other, which is what the caller above does — so this covers exactly the rows still pending.
+ *
+ * It re-reads the DISPLAY ROW rather than taking a patch object, because that row is what every one
+ * of those edits already updates (they must: the client-side sort and filter run off these
+ * attributes). One reader here cannot fall out of step with four writers there.
+ *
+ * The name comes from the cell rather than `data-sort-name`, which is lower-cased for sorting and
+ * would quietly rewrite the seller's capitalisation.
+ */
+function syncPageProductFromRow(displayRow: Element | null | undefined, rev?: string): void {
+  if (!(displayRow instanceof HTMLElement)) return;
+  const id = displayRow.dataset.productDisplay ?? '';
+  pageProductCache ??= pageProducts();
+  const p = pageProductCache[id];
+  if (!p) return;
+  const name = displayRow.querySelector<HTMLElement>('.product-name')?.textContent?.trim();
+  if (name) p.name = name;
+  const price = Number(displayRow.dataset.sortPrice);
+  if (Number.isFinite(price)) p.price = price;
+  const stock = Number(displayRow.dataset.sortStock);
+  if (Number.isFinite(stock)) p.stock = stock;
+  p.hidden = displayRow.dataset.hidden === '1';
+  try { p.discount = displayRow.dataset.discount ? JSON.parse(displayRow.dataset.discount) : undefined; }
+  catch { /* an unparseable attribute is not a reason to drop the rest of the patch */ }
+  if (rev) p.rev = rev;
+}
+
+/** The discount roll-up's seam (promotions.ts#syncProductRow). It writes the row's `data-discount`
+ *  and nothing else, so it does not go through `syncEditRowRev` — but the island still has to
+ *  follow, or a product whose discount was changed from the Promotions tab would open its edit form
+ *  holding the old one, and saving would put it back. */
+export function syncPageProduct(displayRow: Element | null | undefined): void {
+  syncPageProductFromRow(displayRow);
 }
 
 /**
@@ -1959,18 +2022,83 @@ function restoreEditRow(display: HTMLTableRowElement, edit: HTMLTableRowElement,
   refreshBulkEditLabel();
 }
 
+/**
+ * The products the SERVER put on this page, for the edit rows it deliberately did not render.
+ *
+ * Same objects `/api/seller/products` returns — one mapper answers both (lib/seller-product-row.ts)
+ * — so a row opened on the first paint and a row opened after a filter change are the same form.
+ * Absent (an older cached document, a store with no products) simply means nothing to build from,
+ * and `materialiseEditRow` says what happens then.
+ */
+function pageProducts(): Record<string, ProductData> {
+  try {
+    const raw = JSON.parse(document.getElementById('dash-products-page')?.textContent ?? '[]');
+    const byId: Record<string, ProductData> = {};
+    for (const p of Array.isArray(raw) ? raw : []) if (p?.id) byId[p.id] = p;
+    return byId;
+  } catch { return {}; }
+}
+let pageProductCache: Record<string, ProductData> | null = null;
+
+/**
+ * Build the edit form the server left out, for the row belonging to `productId`.
+ *
+ * Every path that OPENS an edit row goes through this — the row menu's "ערוך" and the toolbar's
+ * bulk-edit toggle, which opens one per selected product. It is module-level and re-queries the row
+ * by id rather than living in `attachListeners`' closure, and that is the point: the build REPLACES
+ * the element, so a second opener holding a reference to the old empty node would show the seller an
+ * empty form and nothing would say why.
+ *
+ * Returns the row either way. A pending row whose product is not in the island (a document left open
+ * across a deploy, a product deleted in another tab) simply stays empty rather than throwing — an
+ * edit row with nothing in it, which a reload fixes, is a far better failure than a menu item that
+ * does nothing and says nothing.
+ */
+export function ensureEditRow(productId: string, cloud: string, preset: string): HTMLTableRowElement | null {
+  const row = document.querySelector<HTMLTableRowElement>(`[data-product-edit="${CSS.escape(productId)}"]`);
+  if (!row) return null;
+  // `hasAttribute`, never `dataset.editPending` — the server writes it as a bare `data-edit-pending`
+  // with no value, so `dataset` hands back `''`, which is FALSY. Read as a truthiness test this
+  // silently never built a single row: the form simply opened empty, with no error anywhere.
+  if (!row.hasAttribute('data-edit-pending')) return row;
+  row.removeAttribute('data-edit-pending');
+  pageProductCache ??= pageProducts();
+  const p = pageProductCache[productId];
+  if (!p) return row;
+  const built = buildEditRow(p);
+  row.replaceWith(built);
+  // Both of these belong to the row that now exists: the snapshot "cancel" restores, and the
+  // per-field wiring (images, variants, specs, category, the save handler).
+  originalEditHtml.set(built, built.innerHTML);
+  const display = document.querySelector<HTMLTableRowElement>(`[data-product-display="${CSS.escape(productId)}"]`);
+  if (display) bindEditFormInternals(display, built, cloud, preset);
+  // The inline draft guard scans for forms when the DOCUMENT loads, and this one did not exist
+  // then. Without this the seller's typing in a product edit form would stop being kept — a crash
+  // or a closed tab would lose it, silently, and only for the tab's own most-used form.
+  // (components/dashboard/FormFallbackGuard.astro publishes this; it is deliberately inline, so it
+  // is absent exactly on the loads it is insurance against — hence the optional call.)
+  window.__dashScanDrafts?.(built);
+  return built;
+}
+
 export function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRowElement, cloud: string, preset: string): void {
   originalEditHtml.set(edit, edit.innerHTML);
   display.querySelector('[data-edit-toggle]')?.addEventListener('click', () => {
-    display.hidden = true; edit.hidden = false;
+    // Re-resolved through `ensureEditRow`, never through the `edit` captured above: on a first open
+    // that reference is the placeholder this call is about to replace.
+    const row = ensureEditRow(display.dataset.productDisplay ?? '', cloud, preset) ?? edit;
+    display.hidden = true; row.hidden = false;
     // Paint tag suggestions now the row is populated + visible (covers rows
     // built after page load, e.g. via pagination, which the init paint missed).
-    const tagsField = edit.querySelector<HTMLElement>('[data-tags-field]');
+    const tagsField = row.querySelector<HTMLElement>('[data-tags-field]');
     if (tagsField) renderTagSuggestions(tagsField, getDashI18n());
-    scrollEditRowIntoView(edit);
+    scrollEditRowIntoView(row);
     refreshBulkEditLabel();
   });
-  bindEditFormInternals(display, edit, cloud, preset);
+  // A row the client built (pagination, a filter, a fresh product) is full already and is wired
+  // now, as it always was. A pending one is wired by `materialiseEditRow`, because there is nothing
+  // inside it to wire until then.
+  if (!edit.hasAttribute('data-edit-pending')) bindEditFormInternals(display, edit, cloud, preset);
 }
 
 export function bindExistingRows(cloud: string, preset: string): void {
@@ -3377,7 +3505,9 @@ export function initBulkSelect(cloud: string, preset: string): void {
     let firstRow: HTMLElement | undefined;
     ids.forEach((productId) => {
       const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
-      const editRow    = document.querySelector<HTMLElement>(`[data-product-edit="${productId}"]`);
+      // Through `ensureEditRow`, like the row menu's own "ערוך": the server does not render these
+      // forms any more, so opening one straight off the DOM would show an empty row.
+      const editRow    = ensureEditRow(productId, cloud, preset);
       if (displayRow && editRow) {
         if (anyOpen) {
           editRow.hidden = true;

@@ -25,7 +25,9 @@ import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
 import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-field.js';
-import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
+// `productSeoInputFrom` went with the edit rows — the only panel this page still renders is the
+// ADD form's, which starts from a product that does not exist yet (`EMPTY_PRODUCT_SEO` below).
+import type { ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
@@ -68,7 +70,7 @@ import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { formatAgorot, fromAgorot } from '../../lib/money.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { LOW_STOCK_THRESHOLD, comboStockRows, isFullyPerCombo, sumComboOverrides, type VariantDimension } from '../../lib/variant-combo.js';
+import { LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath, type StoreCategory } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
@@ -85,7 +87,8 @@ import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 import StoreCategoryPicker from '../../components/StoreCategoryPicker.astro';
 import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
-import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
+import { storeSettingsRev } from '../../lib/record-rev.js';
+import { toSellerProductRow } from '../../lib/seller-product-row.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
 import { getSellerAccountFor } from '../../lib/payouts.js';
@@ -1683,21 +1686,11 @@ const orderStatusColors: Record<string, string> = {
             <tbody id="products-tbody">
               {productsPage.items.map((p, idx) => {
                 const fmtDateAdded = (iso: string) => new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
-                const { hasAnyStock: pHasVariantStock, combos: pVariantCombos } = variantCombosData(p.variants ?? [], p.variantStock, p.stock);
-                const pVariantColumns = (p.variants ?? []).map((v) => v.name);
-                const pHasVariants = (p.variants ?? []).length > 0;
-                // Locked ONLY once every combo carries its own bucket — that is the point at which
-                // the shared pool sells nothing and the total really is their sum. While any combo
-                // is still pooled, this field IS that pool: a live quantity the seller owns and
-                // nothing else records, so locking it would leave them no way to state it.
-                const pStockLocked = pHasVariants && isFullyPerCombo(p.variants ?? [], p.variantStock);
-                const pStockFieldValue = pStockLocked ? sumComboOverrides(p.variantStock) : p.stock;
-                // Same rule as scripts/dashboard/products.ts#updateComboTotal, which takes this
-                // cell over as soon as anything is typed: the counted buckets, plus the shared pool
-                // ONCE if any combo is still drawing on it. Once per table, not once per pooled row
-                // — the pool is a single quantity they all share.
-                const pComboTotal = sumComboOverrides(p.variantStock)
-                  + (pVariantCombos.some((c) => c.shared) ? p.stock : 0);
+                // The per-combo rows behind the stock cell's breakdown dropdown — the ONE thing the
+                // display row still needs from the variant machinery. Everything else this block
+                // used to derive (the locked total, the column list, the combo sum) belonged to the
+                // edit form, which products.ts#buildEditRow now owns end to end.
+                const { combos: pVariantCombos } = variantCombosData(p.variants ?? [], p.variantStock, p.stock);
                 return (
                 <>
                   <tr data-product-display={p.id} data-store-id={store.id} data-discount={p.discount ? JSON.stringify(p.discount) : ''} data-hidden={p.hidden ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
@@ -1811,222 +1804,14 @@ const orderStatusColors: Record<string, string> = {
                       </div>
                     </td>
                   </tr>
-                  <tr class="edit-row" data-product-edit={p.id} hidden>
-                    <td class="num row-num pe-[0.2rem]">{idx + 1}</td>
-                    <td colspan="20">
-                      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard data-base-rev={productEditRev(p)}>
-                        <input type="hidden" name="_action" value="edit-product" />
-                        <input type="hidden" name="productId" value={p.id} />
-                        <div class="edit-row-header">
-                          {/* Twin of the string in products.ts's buildEditRow — keep both in step. */}
-                          {p.images?.[0] && (
-                            <span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[color:var(--color-surface)]" data-skeleton>
-                              <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover" />
-                            </span>
-                          )}
-                          <span class="edit-row-title">{p.name}</span>
-                          <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
-                            <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
-                            <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
-                          </div>
-                        </div>
-                        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
-                          <label class="field">
-                            <span>{d.nameReq}</span>
-                            <input class="input" name="name" value={p.name} required />
-                          </label>
-                          <label class="field">
-                            <span>{d.priceLabel}</span>
-                            <input class="input" name="price" type="number" min="0" step="0.01" value={p.price} />
-                          </label>
-                          <label class="field">
-                            <span>{d.colStock}</span>
-                            <input class="input" name="stock" type="number" min="0" step="1" value={pStockFieldValue} readonly={pStockLocked} style={pStockLocked ? 'background:var(--color-bg)' : undefined} />
-                            {/* Same element and same rule as the add form's — revealed by
-                                initLockedStockHint() only when the seller actually tries to type
-                                in a locked field, which is the only moment the question exists. */}
-                            <p data-stock-from-variants class="m-0 mt-1 text-[0.76rem] [color:var(--color-muted)]" hidden>{d.stockFromVariants}</p>
-                          </label>
-                        </div>
-                        <Fragment set:html={discountFieldHtml(p.discount, discountLabels)} />
-                        <label class="field">
-                          <span>{d.descLabel}</span>
-                          <textarea class="input" name="description" rows="2">{p.description}</textarea>
-                        </label>
-
-                        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
-                          <div class="field max-w-[280px]">
-                            <span>{d.categoryLabel}</span>
-                            <div class="category-picker relative" data-category-picker>
-                              <input type="hidden" name="categoryId" value={p.categoryId ?? ''} />
-                              <button type="button" class="category-picker__trigger group flex items-center justify-between gap-2 w-full px-[0.7rem] py-2 bg-[color:var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius)] cursor-pointer text-sm text-[color:var(--color-text)] text-start transition-colors duration-[120ms] hover:border-[var(--color-muted)] aria-expanded:border-[var(--color-accent)]" aria-haspopup="true" aria-expanded="false">
-                                <span class="category-picker__label overflow-hidden text-ellipsis whitespace-nowrap">{(p.categoryId && productCategoryPaths.get(p.id)) || d.categoryNone}</span>
-                                <svg class="category-picker__chevron shrink-0 text-[color:var(--color-muted)] transition-transform duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-                              </button>
-                              <div class="category-picker__menu absolute start-0 top-[calc(100%+5px)] w-max min-w-full max-w-[20rem] max-h-[18rem] overflow-y-auto bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-[0.3rem] shadow-[0_4px_20px_rgba(0,0,0,0.12)] z-[60] animate-status-pop" hidden></div>
-                            </div>
-                            <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.categoryEditHint}</p>
-                          </div>
-                          <label class="field max-w-[280px]">
-                            <span>{d.skuLabel}</span>
-                            <input class="input" name="sku" value={p.sku ?? ''} placeholder={d.skuPlaceholder} />
-                          </label>
-                          {/* Third cell of the existing 3-column grid — the row already had a free
-                              slot, so brand costs no extra vertical space in an already long form. */}
-                          <label class="field max-w-[280px]">
-                            <span>{d.brandLabel}</span>
-                            <input class="input" name="brand" maxlength="70" value={p.brand ?? ''} placeholder={store.name} />
-                            <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.brandFallbackNote}</p>
-                          </label>
-                          <label class="field max-w-[280px]">
-                            <span>{d.weightLabel}</span>
-                            <input class="input" name="weightGrams" type="number" min="1" max={MAX_WEIGHT_GRAMS} step="1" inputmode="numeric" value={p.weightGrams ?? ''} placeholder={d.weightPlaceholder} />
-                          </label>
-                        </div>
-
-                        <div class="field max-w-none" data-tags-field>
-                          <span>{d.tagsLabel}</span>
-                          <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
-                            {(p.tags ?? []).map((tag) => (
-                              <span class="variant-chip" data-tag-chip data-value={tag} style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">
-                                <span class="variant-chip-label">{tag}</span>
-                                <button type="button" class="variant-chip-remove" data-tag-chip-remove aria-label={d.variantChipRemove} style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:none;background:none;color:var(--color-muted);cursor:pointer;font-size:0.85rem;line-height:1;padding:0">×</button>
-                              </span>
-                            ))}
-                            <span data-tag-adder>
-                              <button type="button" class="variant-chip-add-trigger btn btn--ghost btn--sm" data-tag-add-trigger style="border-radius:999px">{d.variantValueAddBtn}</button>
-                            </span>
-                          </div>
-                          <input type="hidden" name="tags" value={p.tags?.join(',') ?? ''} />
-                        </div>
-
-                        <div class="field variants-editor" data-variants-editor>
-                          <span class="field-label">{d.variantsLabel}</span>
-                          <div class="variant-dims" data-variant-dims>
-                            {(p.variants ?? []).map((v) => (
-                              <div class="variant-dim" data-variant-dim style="border:1px solid var(--color-border);border-radius:var(--radius);padding:0.65rem;margin-bottom:0.5rem">
-                                <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
-                                  <input class="input" data-dim-name value={v.name} placeholder={d.variantNamePlaceholder} style="width:130px;flex:0 0 auto" />
-                                  <button type="button" class="variant-dim-remove btn btn--ghost btn--sm" aria-label={d.variantRemove} style="flex-shrink:0">×</button>
-                                </div>
-                                <div class="variant-chips" data-variant-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
-                                  {v.options.map((opt) => {
-                                    const isColor = isColorVariant(v.name);
-                                    const resolved = isColor ? resolveVariantColor(opt) : { display: opt, hex: null as string | null };
-                                    return (
-                                      <span class="variant-chip" data-variant-chip data-value={opt} style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">
-                                        {isColor && (resolved.hex
-                                          ? <span class="variant-chip-swatch" aria-hidden="true" style={`width:14px;height:14px;border-radius:3px;background:${resolved.hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block`}></span>
-                                          : <input type="color" class="variant-chip-color-input" value="#9ca3af" aria-label={d.variantColorPicker} style="width:16px;height:16px;padding:0;border:1px solid rgba(0,0,0,0.15);border-radius:3px;flex-shrink:0;cursor:pointer;background:none" />
-                                        )}
-                                        <span class="variant-chip-label">{resolved.display}</span>
-                                        <button type="button" class="variant-chip-remove" aria-label={d.variantChipRemove} style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:none;background:none;color:var(--color-muted);cursor:pointer;font-size:0.85rem;line-height:1;padding:0">×</button>
-                                      </span>
-                                    );
-                                  })}
-                                  <span data-dim-value-adder>
-                                    <button type="button" class="variant-chip-add-trigger btn btn--ghost btn--sm" data-dim-value-trigger style="border-radius:999px">{d.variantValueAddBtn}</button>
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.25rem">{d.variantAddBtn}</button>
-                          <div class="variant-combos" data-variant-combos style="margin-top:0.75rem" hidden={!(p.variants ?? []).length}>
-                            <p class="field-label" style="margin:0 0 0.3rem">{d.variantComboLabel}</p>
-                            <p class="muted" data-variant-combo-hint style="font-size:0.78rem;margin:0 0 0.5rem" hidden={pHasVariantStock}>{d.variantComboHint}</p>
-                            <div style="max-height:260px;overflow:auto;border:1px solid var(--color-border);border-radius:var(--radius)">
-                              <table style="width:100%;border-collapse:separate;border-spacing:0">
-                                <thead data-variant-combo-thead>
-                                  <tr data-variant-combo-header>
-                                    {pVariantColumns.map((col, i) => (
-                                      <th style="padding:0.4rem 0.6rem;text-align:start;border-bottom:1px solid var(--color-border);white-space:nowrap">
-                                        <div style="display:flex;align-items:center;gap:0.25rem">
-                                          <button type="button" class="combo-sort-btn" data-combo-sort-col={i} aria-label={`${d.sortByLabel} ${col}`}>{col}<svg class="combo-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
-                                          <span class="combo-filter" data-combo-filter data-filter-col={i} style="display:inline-flex">
-                                            <button type="button" class="combo-filter-btn" aria-expanded="false" aria-haspopup="true" aria-label={`${d.variantFilterAriaPrefix} ${col}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
-                                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                                            </button>
-                                          </span>
-                                        </div>
-                                      </th>
-                                    ))}
-                                    <th style="padding:0.4rem 0.6rem;text-align:end;border-bottom:1px solid var(--color-border);white-space:nowrap;position:sticky;inset-inline-end:0;background:var(--color-surface);z-index:2">
-                                      <button type="button" class="combo-sort-btn" data-combo-sort-col="stock" aria-label={`${d.sortByLabel} ${d.variantStockColLabel}`}>{d.variantStockColLabel}<svg class="combo-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody data-variant-combo-rows>
-                                  {pVariantCombos.map((c) => (
-                                    <tr class="variant-combo-row" data-variant-combo-row data-combo-key={c.key}>
-                                      {c.parts.map((part) => (
-                                        <td style="padding:0.4rem 0.6rem;font-size:0.85rem;color:var(--color-text);white-space:nowrap;vertical-align:middle">
-                                          {part.hex
-                                            ? <span style="display:inline-flex;align-items:center;gap:0.3rem"><span aria-hidden="true" style={`display:inline-block;width:10px;height:10px;border-radius:3px;background:${part.hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0`}></span>{part.text}</span>
-                                            : part.text}
-                                        </td>
-                                      ))}
-                                      <td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;position:sticky;inset-inline-end:0;background:var(--color-surface);z-index:1">
-                                        <span style="display:inline-flex;align-items:center;gap:0.4rem;justify-content:flex-end">
-                                          {c.shared && <span data-combo-shared style="font-size:0.72rem;color:var(--color-muted);white-space:nowrap">{d.comboFromPool.replace('{n}', String(p.stock))}</span>}
-                                          {/* Blank, not a number: `value` is undefined for a combo
-                                              with no bucket, and readComboStock() skips a blank
-                                              input so the key stays out of variantStock. */}
-                                          <input type="number" min="0" step="1" class="input" data-combo-stock value={c.value ?? ''} placeholder={String(p.stock)} style="width:80px;text-align:center;padding:0.3rem 0.4rem" />
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                                <tfoot data-variant-combo-tfoot>
-                                  <tr data-variant-combo-total-row>
-                                    <td colspan={pVariantColumns.length} data-variant-combo-total-label style="padding:0.4rem 0.6rem;font-size:0.82rem;font-weight:600;color:var(--color-text);white-space:nowrap;border-top:1px solid var(--color-border);position:sticky;bottom:0;background:var(--color-surface)">{`${d.variantComboTotal} (${d.variantFilterAll})`}</td>
-                                    <td data-variant-combo-total-value style="padding:0.4rem 0.6rem;text-align:end;font-weight:600;color:var(--color-text);border-top:1px solid var(--color-border);position:sticky;inset-inline-end:0;bottom:0;background:var(--color-surface);z-index:1">{pComboTotal}</td>
-                                  </tr>
-                                </tfoot>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="field">
-                          <span class="field-label">{d.specsLabel}</span>
-                          <div class="specs-rows"
-                               data-label-placeholder={d.specsLabelPlaceholder}
-                               data-value-placeholder={d.specsValuePlaceholder}>
-                            {(p.specs ?? []).map((s) => (
-                              <div class="specs-row" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
-                                <input class="input" name="specs_label" value={s.label} placeholder={d.specsLabelPlaceholder} style="width:170px;flex:0 0 auto" />
-                                <input class="input" name="specs_value" value={s.value} placeholder={d.specsValuePlaceholder} style="width:220px;flex:0 0 auto" />
-                                <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label={d.specsRemoveRow}>×</button>
-                              </div>
-                            ))}
-                          </div>
-                          <button type="button" class="specs-add-row btn btn--ghost btn--sm" style="margin-top:0.5rem">{d.specsAddRow}</button>
-                        </div>
-
-                        <label class="field max-w-none">
-                          <span class="inline-flex items-center gap-[0.35rem]">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:var(--color-muted)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
-                            {d.sellerNoteLabel}
-                          </span>
-                          <textarea class="input resize-none" name="sellerNote" rows="2" maxlength="2000" placeholder={d.sellerNotePlaceholder}>{p.sellerNote ?? ''}</textarea>
-                        </label>
-
-                        <div class="field">
-                          <span class="field-label">{d.productImages}</span>
-                          <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
-                        </div>
-                        {/* Rendered from the STORED product, so it is already correct on first
-                            paint and the script only has to keep it correct. */}
-                        <div set:html={productSeoPanelHtml(productSeoInputFrom(p), { ...seoPreviewCtx, productSlug: p.slug }, seoLabels)}></div>
-                        <div class="flex gap-2 mt-2">
-                          <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
-                          <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
-                        </div>
-                      </form>
-                    </td>
-                  </tr>
+                  {/* The edit form is NOT rendered here. It is built on the click that opens it,
+                      by products.ts#buildEditRow, from the product island below the table.
+                      Measured 2026-08-11: 43KB of markup per product and 58% of this tab's whole
+                      response, for forms nothing could reach without JavaScript anyway — the edit
+                      control is a scripted menu item, so a no-JS seller could never open one.
+                      The row itself stays and stays EMPTY: products.ts pairs it with its display
+                      row by id, and `data-edit-pending` is what tells it to fill this one. */}
+                  <tr class="edit-row" data-product-edit={p.id} data-edit-pending hidden></tr>
                 </>
                 );
               })}
@@ -2039,6 +1824,15 @@ const orderStatusColors: Record<string, string> = {
           </table>
 
           <nav id="products-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={d.productsTitle} data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
+
+          {/* The products on this page, as the edit-row builder needs them — the same objects
+              /api/seller/products returns, from the same mapper (lib/seller-product-row.ts), so a
+              form opened on the first paint and one opened after a filter change cannot differ.
+              This replaces the rendered forms, and it is a fraction of their weight: the markup
+              wrapped each of these values in labels, selects, SVGs and a gallery widget.
+              `jsonForScript`, never a bare JSON.stringify — `</script>` inside a product name would
+              otherwise end this element early and put the rest of it in the page as markup. */}
+          <script is:inline type="application/json" id="dash-products-page" set:html={jsonForScript(productsPage.items.map((p) => toSellerProductRow(p, { wishlistCounts, purchasedCounts, categoryPaths: productCategoryPaths })))} />
         </div>
       </SellerPanelShell>
 
