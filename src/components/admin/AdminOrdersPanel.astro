@@ -313,7 +313,7 @@ const purchases = groupBuyerPurchases(orders);
                           <span class="[color:var(--color-muted)]">התשלום למוכר/ת:</span>
                           <strong class="[color:var(--color-text)]">
                             {line.state === 'not_payable' ? 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר'
-                              : line.state === 'releasable' ? 'ישולם בתשלום הקרוב'
+                              : line.state === 'releasable' ? 'אושר לתשלום'
                               : line.releaseDayISO ? `ישולם אחרי ${formatBusinessDayLabel(line.releaseDayISO)}`
                               : 'הספירה מתחילה כשההזמנה נשלחת'}
                           </strong>
