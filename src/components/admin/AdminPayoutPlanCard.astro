@@ -71,7 +71,10 @@ const TILE = 'rounded-[var(--radius)] border [border-color:var(--color-border)] 
 
   <dl class="grid grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
     <div class={TILE}>
-      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">יוצא בתאריך הזה</dt>
+      {/* "תשלום קרוב", the same words the seller's own tile uses (owner, סשן א׳ §1) — one name for
+          one event on both sides of the platform. The date it goes out is already in the heading
+          above, so repeating it here as "יוצא בתאריך הזה" only made the tile a second clock. */}
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">תשלום קרוב</dt>
       <dd class="m-0 text-[1.15rem] font-bold tabular-nums [color:var(--color-accent)]">{formatAgorot(plan.payableAgorot)}</dd>
       <p class="muted m-0 mt-1 text-[0.72rem]">{plan.payableSellers} מוכרים</p>
     </div>
