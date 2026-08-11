@@ -20,7 +20,7 @@ import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, ge
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { productShare } from '../src/lib/top-product-share.js';
-import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
+import { buildSalesReport, buildProductSalesReport, buildStockReport, buildPayoutsReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
 import { getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
@@ -1164,6 +1164,29 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
    * rows carry a zero balance and are absent from the plan, which is why the lookup falls back to 0
    * rather than skipping them — "not in the plan" is a claim about the money too.
    */
+  /**
+   * The accounting report and the account agree about what has been transferred (owner, סשן א׳ §6).
+   *
+   * The Payments tab used to carry a lifetime "שולם בעבר" tile computed by `seller-account.ts`, and
+   * that figure moved to the Reports tab as a windowed, exportable report built by a different
+   * function. That is precisely the shape this file exists to police: one fact, two modules. Over a
+   * window wide enough to hold every transfer, `buildPayoutsReport`'s total must be `paidOutAgorot`
+   * to the agora — including the exclusion of `failed` rows, which both sides have to make the same
+   * way or the seller's books and their dashboard part company by exactly one bounced transfer.
+   */
+  it('paid-out: the payouts report over all time equals the account\'s own figure', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      if (!account) continue;
+      const report = buildPayoutsReport(account.payouts, '1970-01-01', '2999-12-31');
+      // Every payout row reaches the report — the window cannot be the thing making them agree.
+      expect(report.rows.length, `seller ${seller.id}: rows`).toBe(account.payouts.length);
+      expect(report.totals.amountAgorot, `seller ${seller.id}: transferred`).toBe(account.account.paidOutAgorot);
+    }
+  });
+
   it('payable-now: the payout run would send exactly what the screen promises', async () => {
     const plan = await planPayouts();
     const byId = new Map(plan.rows.map((r) => [r.sellerId, r.balanceAgorot]));

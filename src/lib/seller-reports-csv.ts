@@ -28,7 +28,7 @@
  */
 import { BOM, toCsvCell, sanitizeCsvCell } from './csv-bulk.js';
 import { fromAgorot } from './money.js';
-import type { SalesRow, ProductSalesRow, StockRow, ReportId } from './seller-reports.js';
+import type { SalesRow, ProductSalesRow, StockRow, PayoutRow, ReportId } from './seller-reports.js';
 import type { Lang } from '../i18n/translations.js';
 
 /** Agorot → the decimal a spreadsheet can add up. Two places always, so a column of them lines up. */
@@ -73,7 +73,23 @@ const STOCK_HEADERS: Header[] = [
   { he: 'מצב', en: 'State' },
 ];
 
+const PAYOUT_HEADERS: Header[] = [
+  { he: 'תאריך העברה', en: 'Transfer date' },
+  { he: 'תקופה', en: 'Period' },
+  { he: 'הועבר אליך', en: 'Transferred to you' },
+  { he: 'עמלה שנגבתה', en: 'Commission taken' },
+  { he: 'מצב', en: 'Status' },
+];
+
 const YES_NO: Record<Lang, [string, string]> = { he: ['כן', 'לא'], en: ['Yes', 'No'] };
+/** The seller-facing name of each payout state. Spelled here rather than reused from the dashboard
+ *  translation table because a CSV is a FILE — it is opened by a bookkeeper, in a spreadsheet, with
+ *  no i18n runtime anywhere near it, and the same `Lang` shape every other header in this module
+ *  uses is what makes that one lookup instead of a second mechanism. */
+const PAYOUT_STATUS: Record<Lang, Record<PayoutRow['status'], string>> = {
+  he: { pending: 'ממתין', sent: 'נשלח לבנק', paid: 'הועבר', failed: 'נכשל' },
+  en: { pending: 'Pending', sent: 'Sent to the bank', paid: 'Transferred', failed: 'Failed' },
+};
 const STOCK_STATE: Record<Lang, Record<StockRow['state'], string>> = {
   he: { out: 'אזל', low: 'נמוך', ok: 'תקין' },
   en: { out: 'Out of stock', low: 'Low', ok: 'OK' },
@@ -108,6 +124,12 @@ export function productSalesReportCsv(rows: readonly ProductSalesRow[], lang: La
 export function stockReportCsv(rows: readonly StockRow[], lang: Lang): string {
   return serialize(STOCK_HEADERS, rows.map((r) => [
     r.name, r.sku, String(r.stock), r.price.toFixed(2), money(r.valueAgorot), STOCK_STATE[lang][r.state],
+  ]), lang);
+}
+
+export function payoutsReportCsv(rows: readonly PayoutRow[], lang: Lang): string {
+  return serialize(PAYOUT_HEADERS, rows.map((r) => [
+    r.dayISO, r.periodKey, money(r.amountAgorot), money(r.commissionAgorot), PAYOUT_STATUS[lang][r.status],
   ]), lang);
 }
 

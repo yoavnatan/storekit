@@ -62,17 +62,25 @@ const PAYOUT_CHIPS: { value: PayoutStateFilter; label: string }[] = [
  * enough: `settled` said "אין יתרה" beside a card showing ₪5,000 of lifetime earnings, which reads
  * as a contradiction rather than an explanation.
  *
- * The reconciliation the admin needs, in one line: **"יתרה למוכר/ת" is a LIFETIME figure** — every
+ * The reconciliation the admin needs, in one line: **"רווח מצטבר" is a LIFETIME figure** — every
  * shekel this seller has ever earned net of commission — while "תשלום קרוב" is one moment. The
  * difference between them is money already transferred plus money still inside the buyers' return
  * windows, and it is these labels' job to say which.
+ *
+ * ── Why it is no longer called "יתרה" (owner, סשן א׳ §7, 2026-08-11) ──
+ * *"לא ברור ״תשלום קרוב״ ו״יתרה למוכר״ — לא באדמין ולא בדשבורד מוכרים, היתרה כוללת את התשלום הקרוב
+ * או לא?"* — and the honest answer was worse than the question: it includes the upcoming payment
+ * AND everything already transferred, so it is not a balance in any sense the word carries. A
+ * balance is what is LEFT; this is what has ever been. Renaming it to "רווח מצטבר" makes the
+ * question answer itself, which is the only fix that does not need a tooltip to work. The tooltip
+ * stays for the commission breakdown, not to rescue the label.
  */
 const PAYOUT_STATE_LABEL: Record<PayoutState, string> = {
   payable: 'ישולם בתשלום הקרוב',
   no_bank: 'תקוע — אין פרטי בנק',
   below_minimum: `מתחת ל-${formatAgorot(MIN_PAYOUT_AGOROT)} · מתגלגל`,
   already_paid: 'שולם לתקופה הזו',
-  settled: 'הכל הועבר · היתרה שנותרה עוד בהמתנה',
+  settled: 'הכל הועבר · מה שנותר עוד ממתין',
 };
 /** Only `no_bank` is a problem someone has to fix, so only it is red. `payable` is the system
  *  working; the rest are the system waiting. */
@@ -202,7 +210,7 @@ const sortLabels: Record<string, string> = {
                 to work out: this one is a LIFETIME total and "תשלום קרוב" is one moment, so they
                 are not the same kind of number and the gap between them is not an error. */}
             <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`סך הכל מאז שנפתחה החנות, אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)}). כולל גם כסף שכבר הועבר וגם כסף שעוד בתוך חלון ההחזרה של הקונה — ולכן הוא גדול מ״תשלום קרוב״. דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
-              <span class="admin-seller-card__stat-label">יתרה למוכר/ת</span>
+              <span class="admin-seller-card__stat-label">רווח מצטבר</span>
               <span class="admin-seller-card__stat-value">{formatAgorot(balance?.totalEarnedAgorot ?? 0)}</span>
             </span>
             {/* The forward-looking tile, and the only one on this card that is about something
@@ -250,7 +258,7 @@ const sortLabels: Record<string, string> = {
                 </span>
                 <span class="admin-store-block__nums">{products.length} מוצרים</span>
                 <span class="admin-store-block__nums">{formatAgorot(revenue.totalRevenueAgorot)} סה"כ · {formatAgorot(revenue.monthRevenueAgorot)} החודש</span>
-                <span class="admin-store-block__nums">{formatAgorot(balance?.stores.find((b) => b.storeId === store.id)?.totalEarnedAgorot ?? 0)} יתרה</span>
+                <span class="admin-store-block__nums">{formatAgorot(balance?.stores.find((b) => b.storeId === store.id)?.totalEarnedAgorot ?? 0)} רווח מצטבר</span>
                 <svg class="admin-store-link__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
               </a>
             ))

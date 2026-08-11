@@ -36,10 +36,10 @@ import type { StoreProduct } from './store-products.js';
 // Ids and row shapes live in their own leaf module so the reports TAB can import them without
 // dragging `orders.ts` → `db.ts` into the browser bundle — its header carries the reasoning.
 // Re-exported here so a server caller has one import for the whole feature.
-import type { SalesRow, ReportTotals, ProductSalesRow, StockRow } from './seller-report-shapes.js';
+import type { SalesRow, ReportTotals, ProductSalesRow, StockRow, PayoutRow, PayoutReportTotals } from './seller-report-shapes.js';
 import { LOW_STOCK_AT } from './seller-report-shapes.js';
-export type { ReportId, SalesRow, ProductSalesRow, StockRow } from './seller-report-shapes.js';
-export { isReportId, LOW_STOCK_AT } from './seller-report-shapes.js';
+export type { ReportId, SalesRow, ProductSalesRow, StockRow, PayoutRow } from './seller-report-shapes.js';
+export { isReportId, LOW_STOCK_AT, ACCOUNT_WIDE_REPORTS } from './seller-report-shapes.js';
 
 /* ── 1. Sales, one row per order ─────────────────────────────────────────────────────────── */
 
@@ -216,4 +216,63 @@ export function buildStockReport(products: readonly StoreProduct[]): {
       low: rows.filter((r) => r.state === 'low').length,
     },
   };
+}
+
+/* ── 4. Platform payments, one row per transfer ──────────────────────────────────────────── */
+
+/** A payout as this builder needs it — a projection of `payouts.ts#SellerPayout`, so a test can
+ *  assert the whole report from three literals and this module still imports no database. */
+export interface PayoutInput {
+  periodKey: string;
+  amountAgorot: number;
+  commissionAgorot: number;
+  status: 'pending' | 'sent' | 'paid' | 'failed';
+  /** ISO timestamps, as `payouts.ts` returns them. */
+  createdAt: string;
+  sentAt: string | null;
+}
+
+/**
+ * Every transfer that reached this seller inside `[fromISO, toISO]`, newest first (owner, סשן א׳ §6).
+ *
+ * **Which date the window is applied to, and why it is not `createdAt`.** A payout row is created by
+ * the monthly run and stamped `sent_at` when the transfer actually leaves; those can fall on
+ * different days and, at a month boundary, in different months. A seller reconciling March against a
+ * bank statement is asking about the day the money MOVED, so `sentAt` wins where it exists and
+ * `createdAt` is the fallback for a row that has not been sent yet. The row prints the date it was
+ * filtered on, so the window and the column can never describe different things.
+ *
+ * `businessDayISO` and never `toISOString().slice(0,10)` — a transfer at 01:30 Israel time on the
+ * 1st is a UTC 30th, and a report that puts it in the wrong month is the whole reason
+ * `business-day.ts` exists.
+ *
+ * **A `failed` transfer is listed and excluded from the totals.** It is money that came back
+ * (`seller-account.ts` excludes it from `paidOut` for the same reason), and a seller who sees a gap
+ * where a bounced transfer was has no way to ask about it. Same stance the sales report takes with a
+ * cancelled order, deliberately.
+ */
+export function buildPayoutsReport(
+  payouts: readonly PayoutInput[],
+  fromISO: string,
+  toISO: string,
+): { rows: PayoutRow[]; totals: PayoutReportTotals } {
+  const rows = payouts
+    .map<PayoutRow>((p) => ({
+      dayISO: businessDayISO(new Date(p.sentAt ?? p.createdAt)),
+      periodKey: p.periodKey,
+      amountAgorot: p.amountAgorot,
+      commissionAgorot: p.commissionAgorot,
+      status: p.status,
+      countsAsPaid: p.status !== 'failed',
+    }))
+    .filter((r) => r.dayISO >= fromISO && r.dayISO <= toISO)
+    .sort((a, b) => (a.dayISO < b.dayISO ? 1 : a.dayISO > b.dayISO ? -1 : 0));
+
+  const totals = rows.reduce<PayoutReportTotals>(
+    (t, r) => (r.countsAsPaid
+      ? { rows: t.rows + 1, amountAgorot: t.amountAgorot + r.amountAgorot, commissionAgorot: t.commissionAgorot + r.commissionAgorot }
+      : t),
+    { rows: 0, amountAgorot: 0, commissionAgorot: 0 },
+  );
+  return { rows, totals };
 }
