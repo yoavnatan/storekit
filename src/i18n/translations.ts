@@ -740,6 +740,9 @@ export const translations = {
       //    the store scope is stated in the description instead of left to be discovered.
       //  • **"עמלה שנגבתה" was ours-facing:** it is the platform's commission on the sales that
       //    transfer covered, already deducted — so it says that, in the seller's terms.
+      // The chip on the picker card, drawn from `ACCOUNT_WIDE_REPORTS` so it marks whichever
+      // reports are declared account-wide rather than a report named here.
+      repAllStoresChip: 'כל החנויות',
       repPayoutsTitle: 'העברות לבנק',
       repPayoutsDesc: 'כל העברה שיצאה לחשבון שלכם, וכמה עמלת פלטפורמה נוכתה ממנה. העברה אחת מאחדת את כל החנויות שלכם.',
       repColCommissionTaken: 'עמלת פלטפורמה',
@@ -789,9 +792,11 @@ export const translations = {
       tabAdvertising: 'פרסום',
       tabPayouts: 'תשלומים',
       // ── Payments tab ─────────────────────────────────────────────────────────────────
-      // The one screen in this dashboard that is NOT about the store in the switcher: a payout is
-      // per registered business, so it covers every store the seller owns. `payAllStores` says so
-      // out loud rather than leaving them to work it out from a number that looks too big.
+      // Every number on it is the store in the switcher, like the rest of the dashboard, EXCEPT the
+      // two account-wide lines under the tiles and the note on the bank card — a payout is one
+      // transfer per registered business, so those genuinely cannot be split by shop and each says
+      // so on ITSELF, rather than a heading saying it about the whole screen (owner, 2026-08-11).
+      // All three appear only for a seller who owns more than one shop.
       // Every "nothing is lost" line is a promise `terms.astro` also makes, in the same words.
       payTitle: 'התשלומים שלי',
       // ONE short line, and every rule that used to be crammed into it moved to the "איך זה עובד"
@@ -805,9 +810,6 @@ export const translations = {
       // — where it described the whole screen instead of the one card it is true of, and made a
       // store's dashboard read as somebody else's.
       payBankAllStores: 'פרטים אלו מתייחסים לכל החנויות בבעלותך.',
-      // The short form, for a tile label rather than a sentence. The two figures a payout cannot be
-      // split by wear it; everything else on the screen is this shop's (owner, 2026-08-11).
-      payAllStoresShort: 'מכל החנויות',
       // The one line that reconciles the per-store tiles with the transfer that actually leaves.
       // Only rendered for a multi-store seller — for everyone else the two are the same number.
       // The owner's own wording (2026-08-11). It replaced "התשלום שיצא בפועל מאחד את כל החנויות
@@ -2439,6 +2441,7 @@ export const translations = {
       repProductsDesc: 'How much of each product sold, and what is left in stock.',
       repStockTitle: 'Stock',
       repStockDesc: 'A sheet for a stocktake or a supplier order. A snapshot of today.',
+      repAllStoresChip: 'All stores',
       repPayoutsTitle: 'Bank transfers',
       repPayoutsDesc: 'Every transfer that reached your account, and how much platform commission was deducted from it. One transfer covers all of your stores.',
       repColCommissionTaken: 'Platform commission',
@@ -2480,7 +2483,6 @@ export const translations = {
       payTitle: 'My payments',
       paySubtitle: 'Your money reaches you in one transfer on the {day} of each month.',
       payBankAllStores: 'These details apply to every store you own.',
-      payAllStoresShort: 'all stores',
       payAccountTotal: 'Next payment across all of your stores: {amount}.',
       payAccountHeld: 'Waiting across all of your stores: {amount}.',
       payPayableNow: 'Next payment',

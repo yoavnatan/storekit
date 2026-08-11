@@ -21,7 +21,7 @@
  * statement, where losing a column loses the point of the export.
  */
 import { PERIOD_PRESET_LABEL_KEY } from '../../lib/date-range.js';
-import { REPORT_IDS } from '../../lib/seller-report-shapes.js';
+import { REPORT_IDS, ACCOUNT_WIDE_REPORTS, type ReportId } from '../../lib/seller-report-shapes.js';
 
 interface Props {
   storeSlug: string;
@@ -35,10 +35,21 @@ const REPORT_META: Record<string, { titleKey: string; descKey: string; icon: 're
   products: { titleKey: 'repProductsTitle', descKey: 'repProductsDesc', icon: 'box' },
   stock:    { titleKey: 'repStockTitle',    descKey: 'repStockDesc',    icon: 'layers' },
   // The accounting report (owner, סשן א׳ §6) — what the platform transferred, by period. It is the
-  // one report here that is account-wide rather than about the store in the switcher, and its
-  // DESCRIPTION says so; `seller-report-shapes.ts#ACCOUNT_WIDE_REPORTS` is where that is declared.
+  // one report here that is account-wide rather than about the store in the switcher.
   payouts:  { titleKey: 'repPayoutsTitle',  descKey: 'repPayoutsDesc',  icon: 'bank' },
 };
+
+/**
+ * Which reports are NOT about the store in the switcher, read from the declaration rather than
+ * remembered here.
+ *
+ * `ACCOUNT_WIDE_REPORTS` existed for one day as an exported constant that only comments referred
+ * to, which is the shape `reporting-invariants.test.ts` warns about in its own header: an export
+ * with no caller reads as one that is wired to something. It drives the badge below, so a report
+ * added to that list gets marked without anyone touching this file — and a scope that is declared
+ * in the shapes module and drawn from it cannot drift from what the route actually does.
+ */
+const isAccountWide = (id: string): boolean => ACCOUNT_WIDE_REPORTS.includes(id as ReportId);
 
 ---
 
@@ -73,6 +84,13 @@ const REPORT_META: Record<string, { titleKey: string; descKey: string; icon: 're
               arrived somewhere, which a wallet or a shekel glyph would not say. */}
           {REPORT_META[id].icon === 'bank' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="21" x2="21" y2="21"/><polyline points="12 3 21 8 3 8 12 3"/><line x1="6" y1="11" x2="6" y2="18"/><line x1="12" y1="11" x2="12" y2="18"/><line x1="18" y1="11" x2="18" y2="18"/></svg>}
           {d[REPORT_META[id].titleKey]}
+          {/* The scope, ON the card that carries it, for the one report that is not about the store
+              in the switcher. The owner asked why that report is not per store (2026-08-11) — a
+              fair question to reach the description having read only the title, which is how a
+              picker is read. A chip answers it before the click. */}
+          {isAccountWide(id) && (
+            <span class="shrink-0 text-[0.68rem] font-medium rounded-full px-[0.45rem] py-[0.1rem] [color:var(--color-muted)] [background:var(--color-bg)]">{d.repAllStoresChip}</span>
+          )}
         </span>
         <span class="muted block text-[0.78rem] mt-1 leading-snug">{d[REPORT_META[id].descKey]}</span>
       </button>
