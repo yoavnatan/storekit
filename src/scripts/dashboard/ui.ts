@@ -358,10 +358,14 @@ export function initDashTabs(): void {
       strip.scrollLeft += rtl ? -e.deltaY : e.deltaY;
       e.preventDefault();
     }, { passive: false });
-    // Horizontal only, via the boot's shared helper — see its comment for why a
-    // scrollIntoView here scrolled the whole page instead (sticky strip).
-    const active = strip.querySelector<HTMLElement>('.dash-tab--active');
-    if (active) window.__dashTabReveal?.(active);
+    // Place the strip on the open tab, via the boot's shared helper (which uses
+    // __dashTabReveal — horizontal only; see its comment for why a scrollIntoView
+    // here scrolled the whole PAGE instead, the strip being sticky). The boot
+    // already did this at parse time and re-runs it as the geometry settles; this
+    // call is the one that happens after the fades exist and the module's own
+    // measurements have run, and it is skipped outright once the seller has
+    // touched the strip.
+    window.__dashTabRestore?.(strip);
   });
 }
 

@@ -29,15 +29,25 @@ const SHIPPING_COLORS: Record<string, string> = {
 // side so the column cannot be read as the money going out to a seller.
 const PAYMENT_LABELS: Record<string, string> = { pending: 'החיוב טרם הושלם', paid: 'הכסף התקבל', failed: 'החיוב נכשל' };
 const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a34a', failed: '#ef4444' };
-// Admin-side wording of the seller's own payout vocabulary. Not read from `getT`: this dashboard is
-// Hebrew-only by construction (i18n-hardcoded-strings.test.ts), and the seller's copy is phrased in
-// the second person ("ממתין לשליחה שלך") which is wrong for someone looking at another person's shop.
+/**
+ * The five payout states — WORD FOR WORD what the seller sees (translations.ts#payFilter_*).
+ *
+ * Duplicated rather than imported because this dashboard is Hebrew-only by construction
+ * (i18n-hardcoded-strings.test.ts) and `getT` is not reachable from it; kept identical because the
+ * owner reads both screens, and a state that changes its name between them is the confusion this
+ * round was about. They used to differ — the seller's said "שלך" — and dropping that second person
+ * is what let them converge.
+ *
+ * The set is a JOURNEY, and that is the fix (owner, 2026-08-11: "הניסוחים גרועים ולא
+ * אינטואיטיביים"). Every label answers one question — when does this money arrive — in the order it
+ * actually happens, so reading the list top to bottom explains the model without a tooltip.
+ */
 const PAYOUT_LABELS: Record<string, string> = {
-  unshipped: 'ממתין לשליחה של המוכר/ת',
-  undelivered: 'נשלח, טרם סומן "נמסר"',
-  window: 'בתוך חלון ההחזרה',
-  released: 'מוכן לתשלום',
-  none: 'לא ייכלל בתשלום',
+  unshipped: 'ממתין לשליחה',
+  undelivered: 'בדרך ללקוח',
+  window: 'ממתין לסיום ימי החזרה',
+  released: 'ישולם בתשלום הקרוב',
+  none: 'לא ישולם — ההזמנה בוטלה או שהכסף לא התקבל',
 };
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
@@ -128,6 +138,13 @@ export function initAdminOrdersFilter(): void {
 // own debounce handler below calls swapPanel directly instead, so it can
 // also refocus itself after the swap).
   function navigate(): void {
+    // **Close the menu FIRST.** Its answer has been given; every other dropdown on this site shuts
+    // the moment it is acted on, and this one stayed open through the panel swap — which destroys
+    // the button it is anchored to, so it then re-measured against a detached element (a zero-size
+    // rect at 0,0) and reappeared in the corner of the screen. The earlier guard closed it on the
+    // NEXT scroll, which is a repair rather than the behaviour: it should never have been open
+    // (owner, 2026-08-11: "אחרי ההחל הדרופדאון לא נסגר, הוא פתאום מופיע בקצה העליון של המסך").
+    ordersPortal.close();
     swapPanel(buildOrdersNavUrl(), PANEL_ID, () => initAdminOrdersFilter());
   }
 

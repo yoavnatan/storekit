@@ -47,14 +47,104 @@
      * ever wanted and cannot touch the vertical axis. It is direction-agnostic:
      * RTL reports scrollLeft negative, but in both directions a POSITIVE delta
      * moves the view toward the visual right.
+     *
+     * "Visible" here means visible ENOUGH TO READ, not "its box overlaps the
+     * strip's". Landing the tab flush against the edge parks it under the 1.8rem
+     * edge fade, which is painted precisely to dissolve whatever reaches that
+     * edge — so the tab the seller is ON came back from a refresh half washed out
+     * at the rim, which is the same as not knowing where you are (owner,
+     * 2026-08-11). So the target is an inset band: the tab must clear the edge by
+     * `insetOf()` on any side that still has strip left to scroll. A side that is
+     * fully scrolled has no fade lit and needs no inset, which is what keeps the
+     * first and last tabs resting flush instead of being pushed off their end.
      */
+    function insetOf(strip) {
+      // Half a tab's worth of breathing room, so the neighbour peeks and the
+      // active tab reads as inside the strip rather than falling off it. Capped
+      // at a fifth of a narrow strip: on a 320px phone a fixed 64px would be a
+      // fifth of the visible width spent on margin at each end.
+      return Math.min(64, strip.clientWidth * 0.2);
+    }
+
+    /** How much strip is hidden past each VISUAL edge. RTL runs scrollLeft from
+     *  -max (end) to 0 (start), and its start is the right-hand side. */
+    function hiddenSides(strip, rtl) {
+      var max = strip.scrollWidth - strip.clientWidth;
+      var sl = Math.abs(strip.scrollLeft);
+      return rtl ? { left: max - sl, right: sl } : { left: sl, right: max - sl };
+    }
+
     window.__dashTabReveal = function (tab) {
       var strip = tab.closest('.dash-tabs');
       if (!strip || strip.scrollWidth <= strip.clientWidth + 1) return;
       var t = tab.getBoundingClientRect(), s = strip.getBoundingClientRect();
-      if (t.left < s.left) strip.scrollLeft += t.left - s.left;
-      else if (t.right > s.right) strip.scrollLeft += t.right - s.right;
+      var rtl = getComputedStyle(strip).direction === 'rtl';
+      var hidden = hiddenSides(strip, rtl), inset = insetOf(strip);
+      var left = s.left + (hidden.left > 1 ? inset : 0);
+      var right = s.right - (hidden.right > 1 ? inset : 0);
+      // Already inside the band: move nothing. A tab that is comfortably on
+      // screen must not slide because something re-ran this (no-op interactions
+      // are invisible).
+      if (t.left >= left && t.right <= right) return;
+      // A tab WIDER than the band (a long label on a narrow phone) can satisfy
+      // neither edge. Pin its READING start — the side its label begins on — and
+      // let the tail run under the far fade. Without this branch the two tests
+      // below both stay true forever and each re-assert flips the strip to the
+      // other edge.
+      if (t.width > right - left) strip.scrollLeft += rtl ? t.right - right : t.left - left;
+      else if (t.left < left) strip.scrollLeft += t.left - left;
+      else strip.scrollLeft += t.right - right;
     };
+
+    /**
+     * Put the strip where the OPEN tab is — on load, and again after the browser
+     * has had its say.
+     *
+     * A reload restores a scroller's own offset, and the browser applies that
+     * restoration on its own schedule (after layout, around `load`), so a
+     * position written at parse time is simply overwritten a few frames later.
+     * What came back was wherever the strip happened to sit when the seller
+     * pressed refresh — with a different panel open, that is an arbitrary tab,
+     * and the active one could be off screen entirely. Re-asserting at each point
+     * the geometry can still change (DOM ready → fonts swapped → load) is what
+     * makes the answer stable rather than a race.
+     *
+     * `data-tab-scrolled` is the off switch: the moment the seller touches the
+     * strip themselves — a wheel, a drag, a tab click — their position is the
+     * right one and a later re-assert would be the page yanking the strip out
+     * from under them.
+     */
+    window.__dashTabRestore = function (strip) {
+      var strips = strip ? [strip] : document.querySelectorAll('.dash-tabs');
+      for (var i = 0; i < strips.length; i++) {
+        if (strips[i].hasAttribute('data-tab-scrolled')) continue;
+        var active = strips[i].querySelector('.dash-tab--active');
+        if (active) window.__dashTabReveal(active);
+      }
+    };
+
+    function markScrolled(e) {
+      var el = e.target instanceof Element ? e.target.closest('.dash-tabs') : null;
+      if (el) el.setAttribute('data-tab-scrolled', '');
+    }
+    // Capture, and the gestures that MOVE a strip — not `scroll`, which our own
+    // writes (and the browser's restoration) fire too, and which would therefore
+    // switch the restore off before it ever ran.
+    for (var g = 0, gestures = ['pointerdown', 'wheel', 'touchstart', 'keydown']; g < gestures.length; g++) {
+      document.addEventListener(gestures[g], markScrolled, { capture: true, passive: true });
+    }
+
+    function restoreSoon() { requestAnimationFrame(function () { window.__dashTabRestore(); }); }
+    // Now (this script is rendered after its strip, so on the seller dashboard
+    // the tabs already exist and the placement is right in the first paint),
+    // then at every later point the measurement can still change.
+    window.__dashTabRestore();
+    document.addEventListener('DOMContentLoaded', restoreSoon);
+    window.addEventListener('load', restoreSoon);
+    // A tab's width changes when Heebo swaps in (main.css), which moves every tab
+    // after it — a strip placed against fallback metrics is placed against the
+    // wrong ones.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(restoreSoon);
 
     window.__dashTabActivate = function (tab) {
       var name = tab.getAttribute('data-panel') || '';

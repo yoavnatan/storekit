@@ -53,6 +53,9 @@ function wireSellersToolbar(): void {
   }
 
   function navigate(): void {
+    // Close the menu before the swap: it has been acted on, and the swap destroys the button it is
+    // anchored to (same reason as orders-filter.ts's own note).
+    sellersPortal.close();
     swapPanel(buildSellersNavUrl(), PANEL_ID, () => initAdminSellersPanel());
   }
 
