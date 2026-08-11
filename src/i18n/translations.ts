@@ -815,6 +815,12 @@ export const translations = {
       // wanted the same LABEL as the tile above it with its scope on the end. The tile and this
       // line are one question asked at two scopes, so they read best as one phrase apart.
       payAccountTotal: 'תשלום קרוב מכל החנויות שלך: {amount}.',
+      // The pair to the line above (owner, 2026-08-11). The two tiles are this shop's; these two
+      // lines are the same two questions asked of the whole account, in the same order, so a
+      // multi-store seller can read the pair down and the pair across. Held is account-wide from
+      // `buildSellerAccount` — the same figure `splitHeldByBasis` with no slug totals to, which is
+      // what `reporting-invariants.test.ts` asserts.
+      payAccountHeld: 'ממתינים מכל החנויות שלך: {amount}.',
       // "תשלום קרוב" / "שולם בעבר" — the tile names an EVENT on a calendar, not a state of the
       // money (owner, סשן א׳ §1–2). "מוכן להעברה אליך" described a readiness the seller cannot act
       // on and made the tile sound like a button; the date is the thing they came to read.
@@ -2475,7 +2481,8 @@ export const translations = {
       paySubtitle: 'Your money reaches you in one transfer on the {day} of each month.',
       payBankAllStores: 'These details apply to every store you own.',
       payAllStoresShort: 'all stores',
-      payAccountTotal: 'The transfer that actually goes out pools all of your stores: {amount}.',
+      payAccountTotal: 'Next payment across all of your stores: {amount}.',
+      payAccountHeld: 'Waiting across all of your stores: {amount}.',
       payPayableNow: 'Next payment',
       payPayableNowHint: 'What moves to your account in the next transfer.',
       payHeld: 'Waiting',

@@ -24,6 +24,7 @@ import { buildSalesReport, buildProductSalesReport, buildStockReport, buildPayou
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
 import { getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
+import { splitHeldByBasis } from '../src/lib/order-payout-line.js';
 import { planPayouts } from '../src/lib/payout-run.js';
 import { buildPlatformLedger } from '../src/lib/platform-ledger.js';
 import { buildPlatformStatement, monthPeriod, recentMonthKeys, statementPeriod } from '../src/lib/platform-statement.js';
@@ -1176,6 +1177,34 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
    * to the agora — including the exclusion of `failed` rows, which both sides have to make the same
    * way or the seller's books and their dashboard part company by exactly one bounced transfer.
    */
+  /**
+   * The two "ממתינים" figures the payments tab prints ONE LINE APART (2026-08-11).
+   *
+   * The tile is this shop's share, from `splitHeldByBasis(slices, slug)`; the line under it is the
+   * account's, from `buildSellerAccount`. They are computed by different functions from different
+   * inputs and they sit close enough together that a seller will subtract one from the other — so
+   * "the shops add up to the account" is not a nice property here, it is the only thing that makes
+   * the pair readable. A drift shows up as a shop's held money belonging to no shop.
+   *
+   * Asserted over the FIXTURES rather than over a literal, so a seller who appears later with a
+   * shape nobody imagined is covered the day their rows exist.
+   */
+  it('held: every shop\'s share sums to the account-wide figure beside it', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      if (!account) continue;
+      const slices = account.account.slices;
+      const shops = [...new Set(slices.map((s) => s.storeSlug))];
+      const perShop = shops.reduce((total, slug) => {
+        const split = splitHeldByBasis(slices, slug);
+        return total + split.groups.reduce((t, g) => t + g.agorot, 0) + split.unknownAgorot;
+      }, 0);
+      expectSameMoney(perShop, account.account.heldAgorot, `seller ${seller.id}: shops vs account held`);
+    }
+  });
+
   it('paid-out: the payouts report over all time equals the account\'s own figure', async () => {
     const sellers = await getAllSellers();
     expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);

@@ -246,9 +246,19 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
       `payMinNote` went with it: it was a second standing sentence in this spot, and the minimum is
       one of the four things `#pay-how` now answers (owner, סשן א׳ §1). */}
   {multiStore && (
-    <p class="m-0 mb-4 text-[0.82rem]">
-      {d.payAccountTotal.replace('{amount}', formatAgorot(account.payableNowAgorot))}
-    </p>
+    <div class="m-0 mb-4 text-[0.82rem] flex flex-col gap-0.5">
+      <p class="m-0">{d.payAccountTotal.replace('{amount}', formatAgorot(account.payableNowAgorot))}</p>
+      {/* Its pair, added 2026-08-11 at the owner's request, and DIRECTLY under it on purpose: the
+          two tiles above are this shop's "תשלום קרוב" and "ממתינים", and these are the same two
+          questions asked of the whole account, in the same order. A seller can then read the column
+          down or the pair across, and neither reading is a scope they have to work out.
+
+          `account.heldAgorot` — the account-wide figure from `buildSellerAccount`, NOT the
+          per-store `heldHereAgorot` the tile shows. They are the same number for a seller with one
+          shop, which is exactly why this block is `multiStore`-only: two identical figures a line
+          apart teach a seller that the scope labels mean nothing. */}
+      <p class="m-0">{d.payAccountHeld.replace('{amount}', formatAgorot(account.heldAgorot))}</p>
+    </div>
   )}
 
   {/* The banner. It appears on ONE condition — money is genuinely released and there is nowhere to
