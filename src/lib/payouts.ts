@@ -4,7 +4,7 @@ import { RELEASABLE_SQL, releasableParams, RELEASABLE_PARAM_COUNT } from './payo
 import { NET_SQL } from './order-reporting.js';
 import { REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES } from './order-status-rules.js';
 import { SELLER_TIERS, DEFAULT_TIER } from './pricing.js';
-import { businessTodayISO } from './business-day.js';
+import { businessTodayISO, BUSINESS_TIMEZONE } from './business-day.js';
 import { buildSellerAccount, payoutBalanceAgorot, sumAdjustments, sumPayouts, type AccountSlice, type SellerAccount } from './seller-account.js';
 import { hasPayableBank, needsBankDetails, type PayoutDetails } from './payout-details.js';
 import { getSellerById, type Seller } from './seller-auth.js';
@@ -291,6 +291,123 @@ export async function getReleasableBySeller(
     const commissionAgorot = big(r.commission);
     return { sellerId: r.seller_id, grossAgorot, commissionAgorot, netAgorot: grossAgorot - commissionAgorot };
   });
+}
+
+/**
+ * A period, as the accounting statement means it: both ends optional and INCLUSIVE, on the business
+ * calendar. `from: null` means "since the beginning", which is how an opening balance is asked for —
+ * everything up to the day before the period starts.
+ */
+export interface LedgerWindow {
+  from: string | null;
+  to: string | null;
+}
+
+/** `col` bounded by `w`, as SQL + the parameters it consumes. An absent bound produces no clause at
+ *  all rather than a sentinel date, so an open-ended question stays an index scan over the column
+ *  instead of a comparison against year 0001. */
+function windowClause(col: string, w: LedgerWindow, params: unknown[]): string {
+  const parts: string[] = [];
+  const day = `(${col} AT TIME ZONE '${BUSINESS_TIMEZONE}')::date`;
+  if (w.from) { params.push(w.from); parts.push(`${day} >= $${params.length}::date`); }
+  if (w.to) { params.push(w.to); parts.push(`${day} <= $${params.length}::date`); }
+  return parts.length ? ` AND ${parts.join(' AND ')}` : '';
+}
+
+/** What the platform accrued in one window — the top half of the accounting statement. */
+export interface LedgerAccrual {
+  grossAgorot: number;
+  commissionAgorot: number;
+  /** gross − commission: what the sellers earned, before anything is transferred. */
+  netAgorot: number;
+  /** Distinct purchases, not per-store slices — the count a person would say out loud. */
+  purchases: number;
+}
+
+/**
+ * Sales accrued in a window, for every seller at once.
+ *
+ * **Bucketed by `orders.created_at`, and that is a decision rather than a default.** Every other
+ * report on this platform buckets by that column (`order-reporting.ts#businessBucket`), so a
+ * statement using `paid_at` would put a handful of orders in a different month from the Performance
+ * tab and no one could tell which was wrong. `paid_at` is the right clock for the payout HOLD —
+ * money moving is what that measures — and this measures a sale happening.
+ *
+ * The revenue predicate and the per-slice commission rounding are the shared ones
+ * (`order-status-rules.ts`, `pricing.ts` via `getReleasableBySeller`'s spelling), so a period's
+ * figures are the same arithmetic the balances are, restricted to a window.
+ */
+export async function getLedgerAccrual(w: LedgerWindow): Promise<LedgerAccrual> {
+  const params: unknown[] = [REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES];
+  const where = `o.payment_status = ANY($1::text[]) AND o.shipping_status = ANY($2::text[])${windowClause('o.created_at', w, params)}`;
+  params.push(SELLER_TIERS.map((t) => t.id), SELLER_TIERS.map((t) => t.commissionPercent), DEFAULT_TIER);
+  const A = params.length - 2, B = params.length - 1, C = params.length;
+  const found = await firstRow<{ gross: string | number; commission: string | number; purchases: string | number }>(
+    `SELECT COALESCE(SUM(${NET_SQL}), 0)                                   AS gross,
+            COALESCE(SUM(ROUND(${NET_SQL} * r.pct / 100.0)), 0)            AS commission,
+            COUNT(DISTINCT o.id)                                           AS purchases
+       FROM order_stores os
+       JOIN orders  o   ON o.id = os.order_id
+       JOIN stores  st  ON st.slug = os.store_slug
+       JOIN sellers sel ON sel.id = st.seller_id
+       JOIN unnest($${A}::text[], $${B}::numeric[]) AS r(tier, pct)
+              ON r.tier = COALESCE(sel.tier, $${C}::text)
+      WHERE ${where}`,
+    params,
+  );
+  const grossAgorot = big(found?.gross);
+  const commissionAgorot = big(found?.commission);
+  return { grossAgorot, commissionAgorot, netAgorot: grossAgorot - commissionAgorot, purchases: big(found?.purchases) };
+}
+
+/** Money that actually moved in a window, and the manual corrections beside it. */
+export interface LedgerMovement {
+  paidOutAgorot: number;
+  commissionSettledAgorot: number;
+  /** Signed: negative reduces what we owe. */
+  adjustmentsAgorot: number;
+  payouts: number;
+}
+
+/**
+ * Transfers and adjustments inside a window — the bottom half of the statement.
+ *
+ * **`status <> 'failed'`, exactly like `getPayoutTotalsBySeller`, and a `pending` row therefore
+ * counts as money gone.** That looks wrong for a cash statement and is deliberate: it is the rule
+ * every balance on this platform already uses, because a pending payout has been committed to and
+ * must not be paid a second time by the next run. Using "only what the bank confirmed" here would
+ * produce a closing balance that disagrees with the liability tile on the overview by exactly the
+ * payouts in flight — two screens, one question, two answers, which is the class
+ * `reporting-invariants.test.ts` exists to prevent. The statement names the rule on its own face.
+ *
+ * Dated by `created_at`, the day the run committed the obligation — not `period_key`, which names
+ * the period being SETTLED and would file August's transfer under July.
+ */
+export async function getLedgerMovement(w: LedgerWindow): Promise<LedgerMovement> {
+  const payoutParams: unknown[] = [];
+  const adjustmentParams: unknown[] = [];
+  const [payoutRow, adjustmentRow] = await Promise.all([
+    firstRow<{ paid: string | number; commission: string | number; n: string | number }>(
+      `SELECT COALESCE(SUM(amount_agorot), 0)     AS paid,
+              COALESCE(SUM(commission_agorot), 0) AS commission,
+              COUNT(*)                            AS n
+         FROM seller_payouts
+        WHERE status <> 'failed'${windowClause('created_at', w, payoutParams)}`,
+      payoutParams,
+    ),
+    firstRow<{ total: string | number }>(
+      `SELECT COALESCE(SUM(amount_agorot), 0) AS total
+         FROM seller_ledger_adjustments
+        WHERE TRUE${windowClause('created_at', w, adjustmentParams)}`,
+      adjustmentParams,
+    ),
+  ]);
+  return {
+    paidOutAgorot: big(payoutRow?.paid),
+    commissionSettledAgorot: big(payoutRow?.commission),
+    adjustmentsAgorot: big(adjustmentRow?.total),
+    payouts: big(payoutRow?.n),
+  };
 }
 
 /** What every seller together has earned through the mall, and how much of it is out of hold.
