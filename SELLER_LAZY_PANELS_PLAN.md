@@ -1,8 +1,24 @@
 # Seller dashboard: one panel per request
 
-**Status:** decided, not started. Written 2026-08-11 as a handoff for a fresh session — the work is
-too large to start at the end of a long one, and it touches the most important surface in the
-product.
+**Status (2026-08-11): steps 1–3 done, step 4 open.** The weight half is built and measured; the
+refresh-on-RE-open half is not, and the reason is written under step 4 rather than left as a gap.
+
+Measured on the built server against the demo catalogue, same seller, before and after:
+
+| landing tab | before | after |
+|---|---|---|
+| סקירה כללית | 923KB · 1.14s | **163KB · 0.77s** |
+| הזמנות | 923KB | **189KB** |
+| הגדרות | 923KB | **188KB** |
+| מוצרים | 923KB | 803KB |
+
+Products barely moves because its own table IS that weight — 20 rows, each carrying a full inline
+edit form. That is now the one thing left worth measuring on this page, and it is a different fix
+(render the edit form on demand, not per row).
+
+Driven in a real browser afterwards: all ten tabs fill on the click that opens them, no console
+errors, and a control the SHELL script owns inside a lazily-filled panel (the add-product toggle)
+still answers.
 
 **Two problems, one fix.** Both were reported by the owner and neither is fixable without the other:
 
@@ -29,16 +45,38 @@ pins that contract.
 
 ## Order of work
 
-1. **Make the frontmatter's reads conditional on the panel.** This is the real work and where the
-   bugs will be — the file loads orders, products, reports, payouts, campaigns and settings data at
-   the top, and several panels share a read. Get the sharing map right before moving any markup:
-   a panel that quietly needs a value the new condition skipped renders empty rather than throwing.
-2. **A shell per panel**, so the container exists even when empty — the admin needed this because
-   delegated listeners bind to the container once and must survive every swap.
-3. **Fill on open**, through `swapPanel`, reusing `lib/panel-freshness.ts` exactly as the admin
-   does: `markPanelFresh` inside the swap, `isPanelStale` on `dashtab:show`.
-4. **Refresh on RE-open.** Same branch as `lazy-panels.ts`: a first open passes no params, a re-open
-   keeps the panel's own.
+1. ✅ **The frontmatter's reads are conditional on the panel** (`only()` / `shows()`, the admin's own
+   helpers). The sharing map that mattered: the catalogue is wanted by five panels, the category
+   tree by three, and four reads are NOT gated because they are the tab strip's badges — a signal
+   about a tab you are not looking at has to be computed anyway. The checklist behind the per-tab
+   hints moved onto `getProductCountsByStore` for the same reason, and the platform-wide category
+   vocabulary — which walked every visible store on EVERY load — is now read for two surfaces only.
+2. ✅ **`components/dashboard/SellerPanelShell.astro`**, the twin of `AdminPanelShell`.
+3. ✅ **Fill on open**, through `swapPanel` — which moved to `lib/panel-swap.ts` so both dashboards
+   share one copy of the fetch-swap-stamp-or-navigate rule.
+
+   Two things this uncovered, both silent, both fixed here rather than left:
+   - The page's STAGE-1 script binds controls that live inside panels (the settings form, the
+     add-product toggle, the hours editor, the overview's jump cards). None of them exists at load
+     any more, so that pass runs again per panel — behind a per-element mark (`ui.ts#bindOnce`), or
+     the second run would give the settings form a second submit handler.
+   - `FormFallbackGuard`'s draft scan is a load-time pass over every form. Nine tabs' worth of forms
+     were about to stop being drafted, and a draft that is not kept reports nothing. It publishes
+     `window.__dashScanDrafts(root)` now, called after each fill.
+4. ⬜ **Refresh on RE-open — NOT built, and here is the blocker.** The admin re-runs a panel's whole
+   `init` after a refresh swap because its modules are written to survive that. The seller's are
+   not: about thirty of their listeners are delegated at the DOCUMENT (`products.ts` alone has a
+   dozen), so a second `init` answers every click twice — a delete, a status change, a stock edit.
+   Re-running is therefore off the table, and the panel loaders are already two-phase for it
+   (`() => Promise<() => void>`: fetch the chunk, then wire).
+
+   What it needs is a THIRD phase per panel — `rebind`, the element-level half only, run after every
+   swap — and deciding which of each panel's ~25 `init*` calls belong in it is a per-module audit of
+   thirteen modules. That audit is the work; it is not a line of glue.
+
+   Worth knowing before starting it: the two tabs whose staleness has a business cost (orders,
+   messages) poll every 15s already, and with lazy panels the FIRST open of every tab is now a fresh
+   fetch. What is left un-fixed is only the second open of a tab inside one page load.
 
 ## The constraint that outranks all of it
 
@@ -88,7 +126,14 @@ rejected by the owner because it collided with the messages dot. Words, or nothi
 
 ## Done when
 
-`tests/admin-lazy-panels.test.ts` has a seller twin: a shell per declared panel, one panel's data
-per request, and a re-open that keeps its filter params. Plus two guards on the rule above — that
-the refresh asks `hasUnsavedChangesIn(panel)` rather than the document-wide call, and that no second
-definition of "dirty" exists outside `unsaved-guard.ts`.
+`tests/seller-lazy-panels.test.ts` ✅ — the admin twin: a shell per declared panel, one panel's data
+per request, the fill claiming the panel before it fetches, the wiring waiting for both the HTML and
+the chunk, the shell-owned controls re-wired, the draft guard rescanned. Plus the invariant that
+matters most on this page and has no equivalent on the admin's: **a badge read is never behind the
+panel gate** — a dot that stops appearing is the failure nobody notices.
+
+Still open, and they belong to step 4: a re-open that keeps its filter params, that the refresh asks
+`hasUnsavedChangesIn(panel)` rather than the document-wide call, and that no second definition of
+"dirty" exists outside `unsaved-guard.ts`. `hasUnsavedChangesIn` is deliberately NOT written yet —
+with no refresh to call it, it would be an exported function with no caller, and the next session
+would have to guess whether it was the plan or a leftover.

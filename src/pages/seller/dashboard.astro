@@ -3782,18 +3782,29 @@ const orderStatusColors: Record<string, string> = {
     // tab was activated, and a second entry for the same place is a back button that has to be
     // pressed twice. `busy: false` — the shell is showing its placeholder, which already says
     // "loading" without a chip on top of it.
-    return swapPanel(`/seller/dashboard?${params.toString()}`, el.id, () => wireSharedControls(el), { busy: false, pushUrl: false });
+    return swapPanel(`/seller/dashboard?${params.toString()}`, el.id, () => {
+      wireSharedControls(el);
+      // Forms the draft guard has never seen. Without this a crash would lose work typed into any
+      // tab but the one the page was opened on, and nothing anywhere would report it.
+      //
+      // Only here, never from the load-time call above: this module is a DEFERRED script, so it
+      // runs BEFORE `DOMContentLoaded` — and the guard's own load scan, which fires there, resets
+      // its offer table without taking down any bar an earlier scan had already inserted. A scan
+      // from stage 1 would therefore leave the seller looking at two identical "restore your
+      // draft?" bars in one form.
+      window.__dashScanDrafts?.(el);
+    }, { busy: false, pushUrl: false });
   }
 
   /**
    * The controls the SHELL script owns that happen to live inside a panel — the settings form, the
    * add-product toggle, the opening-hours editor, the overview's jump-to-tab cards, the "(i)"
-   * tooltips, the discount readouts, and the inline draft guard's baseline.
+   * tooltips and the discount readouts.
    *
    * They are wired once at load for the panel the server rendered, and again for each panel as it
    * is filled, because none of those elements existed when the page loaded. Every one of them is
-   * safe to call twice: the `ui.ts` pair mark the element they bound (`bindOnce`), the tooltip
-   * initialiser has always done so, and the draft scan skips a form it has already met.
+   * safe to call twice: the `ui.ts` group mark the element they bound (`bindOnce`) and the tooltip
+   * and discount initialisers have always done so.
    */
   function wireSharedControls(root: ParentNode = document): void {
     initSettingsForm();
@@ -3805,9 +3816,6 @@ const orderStatusColors: Record<string, string> = {
     // the app dropdown — the document-level listener behind them was registered at load and covers
     // them already, but nothing has drawn them yet.
     refreshDiscountFieldsIn(root);
-    // Forms the draft guard has never seen. Without this a crash would lose work typed into any
-    // tab but the one the page was opened on.
-    window.__dashScanDrafts?.(root);
   }
 
   const hydrated = new Map<string, Promise<void>>();

@@ -113,16 +113,23 @@ describe('the panel filler', () => {
     // The settings form, the add-product toggle, the hours editor, the overview's jump cards, the
     // tooltips and the discount readouts are bound by the page's stage-1 script — which ran before
     // any of those elements existed.
-    expect(page).toMatch(/swapPanel\([^;]*el\.id, \(\) => wireSharedControls\(el\)/);
+    expect(page).toMatch(/swapPanel\([^;]*el\.id, \(\) => \{\s*\n\s*wireSharedControls\(el\);/);
     for (const call of ['initSettingsForm()', 'initFormToggles()', 'initStoreHours()', 'initGotoPanelLinks()', 'initInfoTooltips(root)', 'refreshDiscountFieldsIn(root)']) {
       expect(page, `${call} has to run again for a panel filled after load`).toContain(call);
     }
   });
 
-  it('gives the draft guard the forms that arrived with the panel', () => {
+  it('gives the draft guard the forms that arrived with the panel — and only those', () => {
     // Without this a crash loses work typed into any tab but the one the page was opened on, and
     // nothing anywhere reports it (project_dashboard_draft_recovery).
-    expect(page).toContain('window.__dashScanDrafts?.(root)');
+    //
+    // Scoped to the filled panel, never `document`: this module is deferred, so a load-time scan
+    // would run BEFORE the guard's own `DOMContentLoaded` pass — which resets its offer table
+    // without removing the bars an earlier scan inserted, leaving two identical "restore your
+    // draft?" bars in one form.
+    expect(page).toContain('window.__dashScanDrafts?.(el)');
+    expect(page).not.toContain('window.__dashScanDrafts?.(root)');
+    expect(page).not.toContain('window.__dashScanDrafts?.(document)');
     const guard = read(path.join(ROOT, 'src/components/dashboard/FormFallbackGuard.astro'));
     expect(guard).toContain('window.__dashScanDrafts = function (root)');
     // Additive: a form already being typed into on a visible panel must not have its baseline
