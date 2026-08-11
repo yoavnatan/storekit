@@ -8,7 +8,7 @@ function fmtAgorot(agorot: number): string { return formatPrice(agorot / 100); }
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonutChartSvg, type PieSlice } from '../../lib/chart-svg.js';
 import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
-import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
+import { showTooltip, showTooltipAtPoint, showTooltipRows, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast } from '../../lib/toast.js';
 import { calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
@@ -323,7 +323,24 @@ function initChartTooltips(): void {
         if (bar && dot) {
           if (dot !== activeDot) {
             activeDot = dot;
-            showTooltip(dot, `${bar.getAttribute('data-label') ?? ''}: ${bar.getAttribute('data-value') ?? ''}`, tipColor);
+            const when = bar.getAttribute('data-label') ?? '';
+            // A chart with more than one series gets a ROW PER SERIES, each carrying the colour it
+            // is drawn in (chart-svg.ts puts the name and value on the dot, beside its `fill`).
+            // The flat "unique 12 · visits 40" sentence it replaces was one line in ONE colour —
+            // and the colour was the accent tint below, i.e. one of the two series' own, so both
+            // numbers read as the same thing that only one of them was (owner, 2026-08-11).
+            // A multi-series tooltip therefore takes no tint: the swatches are what carry colour.
+            const dots = [...group.querySelectorAll('.line-dot[data-label]')];
+            if (dots.length > 1) {
+              showTooltipRows(dot, when, dots.map((d) => ({
+                label: d.getAttribute('data-label') ?? '',
+                value: d.getAttribute('data-value') ?? '',
+                color: d.getAttribute('fill') ?? 'currentColor',
+                dashed: d.getAttribute('data-dashed') === '1',
+              })));
+            } else {
+              showTooltip(dot, `${when}: ${bar.getAttribute('data-value') ?? ''}`, tipColor);
+            }
           }
           return;
         }
