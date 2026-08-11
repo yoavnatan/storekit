@@ -9,7 +9,7 @@ import { getWishlistCountsForStore } from '../../../lib/user-carts.js';
 import { getPurchasedCountsByStoreSlug } from '../../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../../lib/seller-products-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
-import { productEditRev } from '../../../lib/record-rev.js';
+import { toSellerProductRow } from '../../../lib/seller-product-row.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -46,16 +46,10 @@ export const GET: APIRoute = async ({ url, cookies }) => {
 
   return json({
     ok: true,
-    items: items.map((p) => ({
-      ...p,
-      wishlistCount: wishlistCounts[p.slug] ?? 0,
-      purchasedCount: purchasedCounts[p.id] ?? 0,
-      categoryPath: categoryPaths.get(p.id) ?? '',
-      // The edit row this page builds carries the product's revision, so a save from
-      // it can be checked against the stored record (lib/record-rev.ts). Computed here
-      // rather than in the browser so an AJAX row and an SSR row can never disagree.
-      rev: productEditRev(p),
-    })),
+    // One mapper, shared with the dashboard's own first paint (lib/seller-product-row.ts) — both
+    // feed the same client-side row builder, so a row from here and a row from there have to be
+    // the same object. Its header carries why `rev` is computed server-side.
+    items: items.map((p) => toSellerProductRow(p, { wishlistCounts, purchasedCounts, categoryPaths })),
     page,
     totalPages,
     total,
