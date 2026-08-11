@@ -48,8 +48,11 @@ export interface OrderPayoutLine {
   /**
    * The seller is holding up their OWN money — no clock runs until they ship.
    *
-   * The one row on any of these screens that is worth colouring. The other bases are dates a seller
-   * cannot influence, and highlighting three things highlights none of them.
+   * Read by the payments tab, where it colours the one row that can be acted on and turns its
+   * action into a link. **Not read by the order CARD any more** (owner, 2026-08-11): a bare
+   * "שליחת הזמנה" sat in the payment line with no heading and nothing to click, next to the
+   * shipping-status control that actually does it. A label that names an action it cannot perform,
+   * beside the thing that performs it, is one word too many.
    */
   blocking: boolean;
 }
@@ -191,6 +194,29 @@ export function splitHeldByBasis(slices: readonly HeldSlice[], onlyStoreSlug?: s
     unknownOrders: unknown.length,
     unknownAgorot: unknown.reduce((total, s) => total + s.netOfCommissionAgorot, 0),
   };
+}
+
+/**
+ * One shop's share of what has come OUT of hold — its contribution to the next transfer.
+ *
+ * **Not the same thing as the transfer, and the difference is why this is its own function.** The
+ * payout is `releasable − paidOut + adjustments` across the whole account, and neither of those
+ * last two can be attributed to a shop: a bank transfer covers every store the seller owns, and a
+ * chargeback lands on the account. So the honest per-store figure is the part that IS the store's —
+ * what its own orders have released — and the screen shows the real transfer separately when the
+ * seller has more than one shop (owner, 2026-08-11: *"זה לא רלוונטי מכל החנויות, רק החנות שהוא
+ * עליה"*).
+ *
+ * For a single-store seller the two are the same number until a payout or an adjustment exists, and
+ * `PayoutsPanel` shows the account figure there rather than this one — a seller with one shop has
+ * no per-store question to ask.
+ */
+export function releasedForStore(slices: readonly HeldSlice[], storeSlug: string): number {
+  let total = 0;
+  for (const s of slices) {
+    if (s.hold.state === 'releasable' && s.storeSlug === storeSlug) total += s.netOfCommissionAgorot;
+  }
+  return total;
 }
 
 /** Every store with money on hold, in the order the slices arrived (newest order first, so the shop

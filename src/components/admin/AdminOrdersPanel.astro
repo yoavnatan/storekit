@@ -314,9 +314,6 @@ const purchases = groupBuyerPurchases(orders);
                           {line.state === 'held' && (
                             <span class="[color:var(--color-muted)]">· {payoutWhyText(line, PAYOUT_WHY[line.whyKey])}</span>
                           )}
-                          {line.blocking && (
-                            <span class="font-semibold [color:var(--color-warning)]">· המוכר/ת עוד לא שלח/ה</span>
-                          )}
                         </div>
                       );
                     })()}

@@ -27,7 +27,7 @@ import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-fie
 import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
-import { getSellerSession, updateSellerPayoutDetails } from '../../lib/seller-auth.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
@@ -86,7 +86,7 @@ import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
 import { getSellerAccountFor } from '../../lib/payouts.js';
-import { needsBankDetails, parsePayoutDetails } from '../../lib/payout-details.js';
+import { needsBankDetails } from '../../lib/payout-details.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -227,28 +227,11 @@ if (Astro.request.method === 'POST') {
       // Server-side gate — the entry point is hidden at the cap, but a hidden link is not a guard.
       error = d.storeLimitReached;
     } else {
-      // ── The optional bank block, validated BEFORE the store is created ──
-      // Order matters: `parsePayoutDetails` refuses a half-filled bank block (all four fields or
-      // none — a transfer missing one cannot be made), and a refusal after `createStore` would
-      // leave the seller with a shop they did not know they had and an error saying otherwise.
-      // Every field empty parses clean and writes nothing, which is the skip path and the common one.
-      const payout = parsePayoutDetails({
-        bankCode: form.get('bankCode'), bankBranch: form.get('bankBranch'),
-        bankAccount: form.get('bankAccount'), bankAccountHolder: form.get('bankAccountHolder'),
-        businessId: form.get('businessId'), businessType: form.get('businessType'),
-      });
-      if (!payout.ok) {
-        error = payout.error;
-      } else {
-        const { id: newStoreId } = await createStore(sellerId, { name, slug, tagline, description });
-        // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
-        const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
-        if (initialCategories.length) await updateStore(newStoreId, { categories: initialCategories });
-        // Only when something was actually typed. An empty write would clear details an existing
-        // seller already has — this same card is how they open a SECOND store.
-        if (Object.keys(payout.details).length) await updateSellerPayoutDetails(sellerId, payout.details);
-        return Astro.redirect(machineUrl(`/seller/dashboard?store=${newStoreId}`));
-      }
+      const { id: newStoreId } = await createStore(sellerId, { name, slug, tagline, description });
+      // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
+      const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
+      if (initialCategories.length) await updateStore(newStoreId, { categories: initialCategories });
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${newStoreId}`));
     }
   } else if (action === 'add-product') {
     const storeId = String(form.get('storeId') || '');
@@ -1966,18 +1949,22 @@ const orderStatusColors: Record<string, string> = {
               `?ofrom=`, so it is right at first paint and gone the moment the seller filters by
               hand instead.
 
-              `justify-start` on the flex row is what makes it follow the page's direction: `.card`
-              is `display:flex; flex-direction:column` (cards.css), and overriding it to a row
-              without saying where the row starts left the content packed to the physical LEFT
-              inside a right-aligned page (owner, 2026-08-11). `text-start` covers the text for the
-              same reason — both are logical properties, so neither needs a `[dir]` rule.
+              **NOT a `.card`, and that is the fix rather than a preference** (owner, 2026-08-11 —
+              it stayed misaligned through one attempt). `.card` is UNLAYERED css setting
+              `display:flex; flex-direction:column` (cards.css), so a `flex-row` utility from
+              `@layer utilities` loses to it regardless of source order — the documented trap (f) in
+              the CSS rule. The row never became a row; every other flex utility on it was then
+              arranging a COLUMN, which is how the link ended up parked in the middle of the line
+              instead of under the text. A plain block with `text-start` needs none of it: the two
+              lines follow the page's direction because that is what block layout does in RTL, and
+              there is no legacy rule left to fight.
 
               (Comment ABOVE the `{expr && (`, never as its first child — that is the silent Astro
               compile failure scripts/verify.mjs's header carries.) */}
           {ordersFromBasis && (
-            <div id="orders-from-banner" class="card card--flat p-3 mb-3 flex flex-row flex-wrap justify-start items-baseline text-start gap-x-2 gap-y-1 text-[0.85rem]" role="status">
-              <span>{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</span>
-              <a class="underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
+            <div id="orders-from-banner" class="p-3 mb-3 rounded-[var(--radius)] border [border-color:var(--color-border)] [background:var(--color-surface)] text-start text-[0.85rem]" role="status">
+              <p class="m-0">{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</p>
+              <a class="inline-block mt-1 underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
             </div>
           )}
           <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
@@ -2134,12 +2121,6 @@ const orderStatusColors: Record<string, string> = {
                         </strong>
                         {payLine.state === 'held' && (
                           <span class="[color:var(--color-muted)]">· {payoutWhyText(payLine, d[payLine.whyKey])}</span>
-                        )}
-                        {/* The only line here that can be acted on takes the colour, and only when
-                            it is the seller who is holding it up — a date they cannot influence
-                            highlighted in warning teaches them to ignore the colour. */}
-                        {payLine.blocking && (
-                          <span class="font-semibold [color:var(--color-warning)]">· {d[payLine.actionKey]}</span>
                         )}
                       </div>
                     </div>
