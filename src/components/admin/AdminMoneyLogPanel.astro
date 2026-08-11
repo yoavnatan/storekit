@@ -95,10 +95,17 @@ const highlightId = targetMissing ? '' : query.eventId;
 <section>
   <header class="mb-4">
     <h2 class="m-0 mb-1 text-[1.05rem] font-semibold">יומן אירועים כספיים</h2>
+    {/* Two sentences, and the second one is the answer to a question the owner asked about the
+        SCREEN (סשן ב׳: "why is one order split into several rows here?"). It is not decoration:
+        a checkout across three stores is one charge and three orders — that is what the platform
+        writes, because each seller owns their own order — so the journal shows four rows for it.
+        Without the sentence the only way to learn that is to notice that the אסמכתא repeats. */}
+    <p class="m-0 mb-1 text-[0.82rem] [color:var(--color-muted)] leading-relaxed">
+      רישום בלבד־הוספה של כל אירוע שמזיז כסף: חיוב, יצירת הזמנה, ביטול, שינוי סכום וזיכוי. שורות לא
+      נערכות ולא נמחקות — תיקון נרשם כשורה חדשה.
+    </p>
     <p class="m-0 text-[0.82rem] [color:var(--color-muted)] leading-relaxed">
-      רישום בלבד־הוספה של כל אירוע שמזיז כסף: חיוב, יצירת הזמנה, ביטול, שינוי סכום, וחיוב כפול שנמנע.
-      שורות לא נערכות ולא נמחקות — תיקון נרשם כשורה חדשה. לחיצה על מספר הזמנה או אסמכתא מציגה את כל
-      האירועים שלה, וכפתור הקישור שבסוף כל שורה מעתיק קישור ישיר אליה.
+      קנייה מכמה חנויות היא <strong class="font-semibold [color:var(--color-text)]">חיוב אחד</strong> ו<strong class="font-semibold [color:var(--color-text)]">הזמנה נפרדת לכל חנות</strong>, ולכן היא מופיעה כאן בכמה שורות עם אותה אסמכתא. לחיצה על האסמכתא מציגה את כל הקנייה, ולחיצה על מספר הזמנה — רק את החנות ההיא.
     </p>
   </header>
 
@@ -190,7 +197,7 @@ const highlightId = targetMissing ? '' : query.eventId;
                           <a href={traceUrl(e.orderId)} title="כל האירועים של הזמנה זו" class="[color:var(--color-primary)] no-underline hover:underline">הזמנה {e.orderId.slice(0, 8)}</a>
                         )}
                         {e.checkoutRef && (
-                          <Fragment> · <a href={traceUrl(e.checkoutRef)} title="כל האירועים של אסמכתא זו" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא {e.checkoutRef}</a></Fragment>
+                          <Fragment> · <a href={traceUrl(e.checkoutRef)} title="כל הקנייה — כל החנויות שנקנו יחד באסמכתא הזאת" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא {e.checkoutRef}</a></Fragment>
                         )}
                         {/* Labelled, and it is not decoration. Unlabelled behind the same `·` as
                             the two links above it, the raw value read as part of the reference
