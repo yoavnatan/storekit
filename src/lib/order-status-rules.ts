@@ -1,4 +1,5 @@
 import type { Order } from './orders.js';
+import type { DeliveryMethod } from './shipping.js';
 
 /**
  * What every order status MEANS, as one table.
@@ -59,15 +60,77 @@ export interface ShippingStatusRule {
    *  parcel that is still their responsibility is not an operational choice. 'shipped' still
    *  counts: it is moving, and the seller is the one who marks it arrived. */
   blocksStoreClosure: boolean;
+  /**
+   * Has the parcel actually LEFT the seller — so the payout clock may run?
+   *
+   * Its own column, and the reason is a hole this table was asked to close (2026-08-10, owner:
+   * *"he can just never send the product, and the money still goes to him?"* — and it did).
+   * `payout-hold.ts` has a fallback clock: an order nobody marked delivered releases N days after
+   * payment, so a seller who ships and then never touches the status dropdown does not freeze their
+   * own money forever. That rule read `countsAsRevenue`, which is TRUE from `pending` onward — so
+   * an order the seller never touched at all released on the same timer. **The platform paid for
+   * parcels that were never sent.**
+   *
+   * `countsAsRevenue` could not have answered this: a paid order that has not shipped yet IS
+   * revenue — the sale happened, the money is real, every report is right to count it. "Is this a
+   * sale" and "has the seller done enough to be paid for it" are different questions, and this is
+   * the second one.
+   *
+   * `ready` is FALSE, and it is the row worth pausing on: the seller has packed the parcel and
+   * printed a label, which feels like having done the work. It is not — the parcel is still on
+   * their table, and a status the seller sets alone must never start a clock that ends in a
+   * transfer. `shipped` means it is with the courier and moving, which is the first point anyone
+   * outside the seller can corroborate. ⚠️ And it is still the SELLER who sets `shipped` today;
+   * the honest source is the courier's webhook (GO_LIVE §5), which is why this column is a floor
+   * and not the whole answer.
+   */
+  payoutClockRuns: boolean;
+  /**
+   * The same question for an order the buyer COLLECTS — where the answer is different by one row.
+   *
+   * Self-pickup has no shipping leg: nothing is ever handed to a courier, so the order goes
+   * `pending → processing → ready → delivered` and never touches `shipped`. Under
+   * `payoutClockRuns` alone, a pickup order's money would therefore be frozen until the seller
+   * remembered to press "נמסר" after the buyer walked out — and if they forgot, frozen forever.
+   * That is the same freeze the fallback clock exists to prevent, arriving through a different door.
+   *
+   * So for pickup, **`ready` is the milestone**: it is the last thing the seller controls. After it
+   * the parcel is packed and waiting and the remaining step belongs to the buyer, exactly as
+   * `shipped` means the remaining step belongs to the courier.
+   *
+   * **Why the weaker evidence is acceptable here and not for a courier order.** `ready` is a status
+   * the seller sets with nothing corroborating it — the objection that keeps it FALSE in the column
+   * above. It is much weaker for pickup: the buyer physically turns up at the shop, so an order
+   * marked ready with nothing behind it produces a person standing at the counter that day, not a
+   * silent non-delivery discovered weeks later. The fallback hold still has to elapse on top.
+   */
+  pickupPayoutClockRuns: boolean;
+  /**
+   * Is the next move the SELLER's?
+   *
+   * The "by urgency" sort on the seller's Orders tab floats these to the top, oldest first, because
+   * they are the only rows on that screen the seller can do anything about. It used to be a hand-
+   * written list of three statuses in `seller-orders-query.ts`, which is precisely the second copy
+   * of this table that `tests/money-guards.test.ts` exists to refuse — and it had to become a
+   * column rather than a derivation the day the sort also had to be written in SQL
+   * (`orders.ts#getSellerOrdersPage`), because a rule spelled twice in two languages is the one
+   * that drifts.
+   *
+   * Deliberately NOT `!payoutClockRuns`, which happens to select the same three rows today: that
+   * column is about evidence that a parcel left, and this one is about whose turn it is. They
+   * answer differently the moment a status arrives that the courier owns while the seller still
+   * has something to do — and reading one for the other would silently mis-sort that day.
+   */
+  sellerOwesAction: boolean;
 }
 
 export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> = {
-  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true  },
-  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true  },
-  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true  },
-  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true  },
-  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false },
-  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false },
+  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true  },
+  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true  },
+  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: true , sellerOwesAction: true  },
+  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
+  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
+  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: false },
 };
 
 export interface PaymentStatusRule {
@@ -137,6 +200,37 @@ export const REVENUE_SHIPPING_STATUSES = shippingWhere('countsAsRevenue');
  */
 export const SHIPPING_PIPELINE_ORDER: ShippingStatus[] =
   (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[]).filter((s) => !SHIPPING_STATUS_RULES[s].terminal);
+
+/** The shipping statuses from which a payout clock may run (`payoutClockRuns`), for the SQL half of
+ *  the hold rule in `payout-hold.ts`. ANDed with the revenue lists, never instead of them: a
+ *  cancelled order is excluded by revenue, an unshipped one by this. */
+export const PAYOUT_CLOCK_SHIPPING_STATUSES = shippingWhere('payoutClockRuns');
+
+/** The same list for an order the buyer collects — `ready` and later. See the column's own doc
+ *  for why self-pickup has a different milestone and why weaker evidence is acceptable there. */
+export const PICKUP_PAYOUT_CLOCK_SHIPPING_STATUSES = shippingWhere('pickupPayoutClockRuns');
+
+/**
+ * Has the seller done everything they control, so money may release on a timer?
+ *
+ * Asked of the table rather than compared against 'shipped'/'delivered' — the whole reason the
+ * table exists — and it takes the DELIVERY METHOD because the milestone genuinely differs: a
+ * courier order needs `shipped`, a collected one needs `ready`. Passing the method in and picking a
+ * column keeps both answers in the table; an `if (method === 'pickup')` at the call site would be a
+ * second definition of the pipeline living next to the payout rule.
+ *
+ * An unknown or absent method takes the stricter courier answer. Orders predate the field
+ * (`StoreSubtotal.deliveryMethod` is optional for backward compatibility), and defaulting the other
+ * way would release an old order's money a status early.
+ */
+export function orderPayoutClockRuns(
+  o: Pick<Order, 'shippingStatus'>,
+  deliveryMethod?: DeliveryMethod | null,
+): boolean {
+  const rule = SHIPPING_STATUS_RULES[o.shippingStatus];
+  if (!rule) return false;
+  return deliveryMethod === 'pickup' ? rule.pickupPayoutClockRuns : rule.payoutClockRuns;
+}
 
 /** Both halves of `orderBlocksStoreClosure`. */
 export const CLOSURE_BLOCKING_PAYMENT_STATUSES = paymentWhere('blocksStoreClosure');

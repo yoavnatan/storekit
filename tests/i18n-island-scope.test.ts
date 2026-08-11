@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { needsDashboardI18n } from '../src/lib/i18n-island.js';
 
 /**
  * `#i18n-data` (BaseLayout.astro) is the JSON island client scripts read strings
  * from. Its `dashboard` slice is 34.9KB — 95% of the whole island — and since
- * 2026-08-03 it is emitted ONLY on `/seller/`, `/admin/` and `/buyer/` routes,
+ * 2026-08-03 it is emitted ONLY on the `/seller`, `/admin` and `/buyer` areas,
  * because those are the only places anything reads it. Everywhere else it was
  * 34.9KB of HTML on the pages whose weight is the SEO surface.
  *
@@ -70,9 +71,10 @@ describe('#i18n-data dashboard slice stays inside the routes that ship it', () =
     expect(readers.length).toBeGreaterThan(5);
   });
 
-  it('BaseLayout still gates the slice on those three prefixes', () => {
+  it('the three areas are still the whole list, and the slice is still conditional', () => {
+    const gate = readFileSync(join(SRC, 'lib', 'i18n-island.ts'), 'utf8');
+    expect(gate).toMatch(/DASHBOARD_AREAS\s*=\s*\['\/seller',\s*'\/admin',\s*'\/buyer'\]/);
     const layout = readFileSync(join(SRC, 'layouts', 'BaseLayout.astro'), 'utf8');
-    expect(layout).toMatch(/DASHBOARD_ROUTES\s*=\s*\['\/seller\/',\s*'\/admin\/',\s*'\/buyer\/'\]/);
     expect(layout).toMatch(/needsDashboardStrings\s*\?\s*\{\s*dashboard:\s*t\.dashboard\s*\}/);
   });
 
@@ -87,6 +89,32 @@ describe('#i18n-data dashboard slice stays inside the routes that ship it', () =
         `the strings out of the dashboard dict, or widen DASHBOARD_ROUTES in BaseLayout.astro ` +
         `AND the list here.`,
     ).toEqual([]);
+  });
+
+  it('the gate fires for every dashboard route, INCLUDING each area root', () => {
+    // The half this file never checked. It proves each reader sits on a dashboard route; nothing
+    // proved the gate matches that route, and it did not: `'/admin/'` as a prefix, with a trailing
+    // slash, against a site configured `trailingSlash: 'never'`. So `/admin` — the admin dashboard
+    // itself, where the performance, advertising and data panels all read the dict — shipped none
+    // of its strings and every client-built label fell back to English inside a Hebrew UI.
+    for (const path of ['/admin', '/seller', '/buyer']) {
+      expect(needsDashboardI18n(path), `${path} — the area root is a real page`).toBe(true);
+      expect(needsDashboardI18n(`${path}/`), `${path}/ — and its slashed form`).toBe(true);
+    }
+    for (const path of ['/admin/store/keramika/performance', '/seller/dashboard', '/buyer/orders']) {
+      expect(needsDashboardI18n(path), path).toBe(true);
+    }
+    // And it must stay a gate: these are the shopper-facing pages the 34.9KB was removed from.
+    for (const path of ['/', '/stores', '/checkout', '/keramika', '/administrators', '/sellers-guide']) {
+      expect(needsDashboardI18n(path), `${path} must NOT carry the dashboard dict`).toBe(false);
+    }
+  });
+
+  it('BaseLayout decides with that function rather than a second copy of the rule', () => {
+    // A prefix list re-typed in the layout is how the first one drifted from the router.
+    const layout = readFileSync(join(SRC, 'layouts', 'BaseLayout.astro'), 'utf8');
+    expect(layout).toMatch(/needsDashboardI18n\(/);
+    expect(layout, 'no inline path-prefix list beside the call').not.toMatch(/DASHBOARD_ROUTES/);
   });
 
   it('the homepage\'s borrowed ui.ts export still cannot reach the dict', () => {

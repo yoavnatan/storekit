@@ -97,6 +97,14 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     portal.innerHTML = buildHtml();
     portal.hidden = false;
     position(portal, anchor);
+    // One portal serves SEVERAL triggers in the same toolbar (sort + filter on Orders/Sellers,
+    // type + dates on the money journal), and moving from one to the other never passes through
+    // close(): the trigger's own handler runs before the document-level outside-click listener,
+    // so the portal is already re-opened by the time that listener decides not to close it. The
+    // old trigger was therefore left reading aria-expanded="true" — a lie to a screen reader, and
+    // visible, since the button's open styling hangs off that attribute. Two pills would sit lit
+    // with one menu between them. `tests/toolbar-portal.test.ts` holds it.
+    if (trigger && trigger !== anchor) trigger.setAttribute('aria-expanded', 'false');
     anchor.setAttribute('aria-expanded', 'true');
     trigger = anchor;
     wire(portal);
@@ -141,6 +149,14 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     const portal = document.getElementById(portalId);
     if (!portal || portal.hidden || !trigger) return;
     if (e.target instanceof Node && portal.contains(e.target)) return;
+    // **The trigger may no longer be in the document.** Every admin filter applies by re-fetching
+    // the panel and replacing its innerHTML (`swapPanel`), which destroys the button this portal is
+    // anchored to. A detached element measures as a zero-size rect at 0,0, so the next reposition
+    // threw the open menu into the top corner of the screen — and the panel swap changes the page
+    // height, which fires exactly such a scroll (owner, 2026-08-11: "הוא זז למעלה אחרי שבוחרים
+    // משהו והטבלה משתנה"). The menu's answer has already been given by then, so the right move is
+    // to close it rather than to re-anchor it to something that no longer exists.
+    if (!trigger.isConnected) { close(); return; }
     position(portal, trigger);
   }, true);
 

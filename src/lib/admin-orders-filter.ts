@@ -1,4 +1,5 @@
 import type { Order } from './orders.js';
+import { PAYOUT_FILTER_VALUES, orderPayoutLine, payoutFilterValue } from './order-payout-line.js';
 import { decodeList } from './admin-nav.js';
 import { SHIPPING_PIPELINE_ORDER } from './order-status-rules.js';
 
@@ -45,6 +46,15 @@ export interface AdminOrderQuery {
   shippingStatus?: string[];
   paymentStatus?: string[];
   store?: string[];
+  /**
+   * Where each slice's money stands (`payout-hold.ts#PAYOUT_CLASS_SQL`) — the same five values the
+   * seller's own orders tab filters by.
+   *
+   * It exists because the admin could see a large held balance and had no way to reach the orders
+   * behind it (owner, 2026-08-11). The seller's copy of this screen has had the filter all along
+   * and the admin's did not, which is the inconsistency he named.
+   */
+  payout?: string[];
 }
 
 function orderStoreNames(o: Order): string[] {
@@ -55,15 +65,41 @@ function orderSearchHaystack(o: Order, stores: string[]): string {
   return `${o.id} ${o.checkoutRef ?? ''} ${o.buyerName} ${o.buyerEmail} ${o.buyerPhone} ${stores.join(' ')}`.toLowerCase();
 }
 
+/**
+ * Every payout state this order's slices are in — one per store, because a five-store purchase can
+ * have one seller shipped and another not, and the two halves of its money are in different places.
+ *
+ * The same `orderPayoutLine` the order CARD renders from, so a row that says "משתחרר ב-24" and the
+ * filter that finds it are one derivation. `PAYOUT_CLASS_SQL` is the SQL twin of this, and
+ * `tests/admin-orders-page.test.ts` runs both over the same rows.
+ */
+function orderPayoutStates(o: Order): Set<string> {
+  const slices = Object.entries(o.storeSubtotals ?? {});
+  // An order with no per-store rows still HAS a payout state — it is one slice by definition, and
+  // dropping it here would quietly exclude such orders from every payout filter.
+  const methods = slices.length ? slices.map(([, s]) => s?.deliveryMethod ?? null) : [null];
+  return new Set(methods.map((deliveryMethod) => payoutFilterValue(orderPayoutLine({
+    paymentStatus: o.paymentStatus,
+    shippingStatus: o.shippingStatus,
+    paidAt: o.paidAt ?? null,
+    deliveredAt: o.deliveredAt ?? null,
+    deliveryMethod,
+  }))));
+}
+
 export function filterAndSortOrders(orders: Order[], query: AdminOrderQuery): Order[] {
   const q = query.q?.trim().toLowerCase() ?? '';
   const shipSet = query.shippingStatus?.length ? new Set(query.shippingStatus) : null;
   const paySet = query.paymentStatus?.length ? new Set(query.paymentStatus) : null;
   const storeSet = query.store?.length ? new Set(query.store) : null;
+  const payoutSet = query.payout?.length ? new Set(query.payout) : null;
 
   const filtered = orders.filter((o) => {
     if (shipSet && !shipSet.has(o.shippingStatus)) return false;
     if (paySet && !paySet.has(o.paymentStatus)) return false;
+    // ANY slice, matching the `EXISTS` in the query and the rule it states: a purchase matches if
+    // part of it does, and then the whole purchase is shown.
+    if (payoutSet && ![...orderPayoutStates(o)].some((s) => payoutSet.has(s))) return false;
     const stores = orderStoreNames(o);
     if (q && !orderSearchHaystack(o, stores).includes(q)) return false;
     if (storeSet && !stores.some((s) => storeSet.has(s))) return false;
@@ -100,6 +136,10 @@ export function parseOrderQuery(sp: URLSearchParams): Required<AdminOrderQuery> 
     shippingStatus: (sp.get('oship') ?? '').split(',').filter(Boolean),
     paymentStatus: (sp.get('opay') ?? '').split(',').filter(Boolean),
     store: decodeList(sp.get('ostore') ?? ''), // store names may contain commas
+    // Whitelisted against the vocabulary, like every other filter here: a hand-edited value must
+    // fall back to "no filter" rather than reach the query and match nothing, which on this screen
+    // would read as "there are no orders" instead of "that word means nothing".
+    payout: (sp.get('opayout') ?? '').split(',').filter((v) => (PAYOUT_FILTER_VALUES as readonly string[]).includes(v)),
   };
 }
 

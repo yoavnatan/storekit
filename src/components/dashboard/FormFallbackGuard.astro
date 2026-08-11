@@ -638,16 +638,16 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       drop(e.target);
     });
 
-    document.addEventListener('DOMContentLoaded', function () {
-      wireNoticeButtons();
-      // A scan describes ONE document: both of these are "since this page loaded", so a re-scan
-      // that inherited them would measure his typing against a form that no longer exists.
-      offers = {};
-      touched = {};
-      var forms = document.querySelectorAll('form');
+    /** Every form under `root` that this has not met yet: mark it live for drafting, take its
+     *  server baseline, and offer back anything the last page left behind. */
+    function scanForms(root) {
+      var forms = root.querySelectorAll('form');
       for (var i = 0; i < forms.length; i++) {
         var form = forms[i];
         if (form.hasAttribute('data-native-submit')) continue;
+        // Already scanned — a panel arriving later must not retake the baseline of a form the
+        // seller has been typing into on another tab.
+        if (form.hasAttribute('data-draft-live')) continue;
         var key = keyFor(form);
         if (!key) continue;
         // Found once, findable again: this is the marker `queueDraft` requires. And what the server
@@ -666,11 +666,20 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
         if (!pending) { drop(form); continue; }
         offer(form, pending);
       }
+    }
 
-      // Nothing offered means nothing to point at, ever — so don't put a scroll listener on the
-      // page for the overwhelmingly common load where the seller has no unsaved work waiting.
+    /** Wired the first time there is ever something to point at. Nothing offered means nothing to
+     *  point at — so the overwhelmingly common load, where the seller has no unsaved work waiting,
+     *  does not put a scroll listener on the page. */
+    var noticeWatched = false;
+    function watchNotice() {
       if (!Object.keys(offers).length) return;
       refreshNotice();
+      // The listeners below are on `window`/`document` and outlive any one panel, so they are
+      // registered once — but the refresh above is not: a panel filled later can produce the offer
+      // this call is the only thing that draws.
+      if (noticeWatched) return;
+      noticeWatched = true;
       window.addEventListener('scroll', scheduleNotice, { passive: true });
       window.addEventListener('resize', scheduleNotice);
       // Typing is what raises UnsavedChangesBar under this one, and it is the only signal that it
@@ -680,6 +689,35 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       // A panel becoming visible is the other half of "can he see it", and it fires no scroll
       // event (DashTabsBoot dispatches this on the panel it just revealed).
       document.addEventListener('dashtab:show', scheduleNotice);
+    }
+
+    /**
+     * A panel filled AFTER load brings forms this has never seen (seller dashboard, one panel per
+     * request — SELLER_LAZY_PANELS_PLAN.md). Without this hook their drafts would neither be kept
+     * nor offered back, silently, for nine tabs out of ten.
+     *
+     * Deliberately does NOT reset `offers`/`touched` the way the load scan does: those describe
+     * forms in panels that are still on screen, and throwing them away here would drop an offer the
+     * seller is currently being shown. Published on `window` for the same reason the whole file is
+     * inline — the page's module graph is exactly what this is insurance against.
+     */
+    window.__dashScanDrafts = function (root) {
+      scanForms(root || document);
+      watchNotice();
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+      wireNoticeButtons();
+      // A scan describes ONE document: all three of these are "since this page loaded", so a
+      // re-scan that inherited them would measure his typing against a form that no longer exists.
+      // The marker goes too — it is what makes the SCOPED rescan below additive, and on a fresh
+      // document there is nothing for it to protect.
+      offers = {};
+      touched = {};
+      var seen = document.querySelectorAll('form[data-draft-live]');
+      for (var s = 0; s < seen.length; s++) seen[s].removeAttribute('data-draft-live');
+      scanForms(document);
+      watchNotice();
     });
   })();
 </script>

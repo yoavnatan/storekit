@@ -48,18 +48,33 @@ vi.mock('../src/lib/store-products.js', () => ({
 }));
 
 import { GET } from '../src/pages/sitemap-content.xml';
+import { GET as shardGET } from '../src/pages/sitemap-content-[shard].xml';
+import { platformSitemapEntries } from '../src/lib/sitemap-document.js';
+import { buildUrlSetXml } from '../src/lib/sitemap.js';
+import { newBuildStats } from '../src/lib/catalog-build.js';
 
 /** A request context carrying just the Host header, which is all this route reads of it. */
 const ctxOn = (host: string) =>
   ({ request: new Request('https://x/sitemap-content.xml', { headers: { host } }) }) as never;
 
+/**
+ * The platform copy, as the job would write it.
+ *
+ * It moved out of the route on 2026-08-09 — the route streams what a job pre-built, because
+ * assembling the whole mall inside a request blocked the one event loop every shopper shares
+ * (GO_LIVE §7). So these assertions follow the enumeration to `sitemap-document.ts`; what they
+ * assert is unchanged, which is the point. The custom-domain case below still goes through `GET`,
+ * because that branch is still answered live.
+ */
+async function platformXml(): Promise<string> {
+  const entries = [];
+  for await (const entry of platformSitemapEntries(newBuildStats())) entries.push(entry);
+  return buildUrlSetXml(entries);
+}
+
 describe('/sitemap-content.xml', () => {
   it('serves valid XML and covers both store and product pages', async () => {
-    const res = await GET(ctxOn('dezabin.co.il'));
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toContain('xml');
-
-    const xml = await res.text();
+    const xml = await platformXml();
     expect(xml).toContain('<urlset');
     // The store page must be present… (root-level store URL: /<slug>)
     expect(xml).toMatch(/<loc>https?:\/\/[^<]*\/acme<\/loc>/);
@@ -72,14 +87,14 @@ describe('/sitemap-content.xml', () => {
   it('never advertises a showcase store or its products', async () => {
     // Fabricated catalog in Google's index costs the shared platform domain real
     // ranking — the reason showcase stores are noindex on-page as well.
-    const xml = await (await GET(ctxOn('dezabin.co.il'))).text();
+    const xml = await platformXml();
     expect(xml).not.toContain('showcase-fashion');
     expect(xml).not.toContain('demo-shirt');
   });
 
   it('leaves a store on its own domain out of the PLATFORM copy', async () => {
     // Its platform URLs 301 to that domain, and a sitemap of redirects is a sitemap of nothing.
-    const xml = await (await GET(ctxOn('dezabin.co.il'))).text();
+    const xml = await platformXml();
     expect(xml).not.toContain('/boots');
   });
 
@@ -93,5 +108,15 @@ describe('/sitemap-content.xml', () => {
     // And nothing from the rest of the mall — cross-host entries are what makes a sitemap invalid.
     expect(xml).not.toContain('acme');
     expect(xml).not.toContain('dezabin.co.il');
+  });
+
+  it('refuses to serve a PLATFORM shard from a seller domain', async () => {
+    // A path with a dot passes the custom-domain rewrite through untouched, so `/sitemap-content-1.xml`
+    // reaches the shard route on shop.acme.co.il as easily as on ours. Serving it there would put the
+    // platform's URLs in a sitemap hosted on a domain that owns none of them — invalid by the
+    // protocol, and the exact boundary robots.txt.ts was rewritten to hold. That domain's sitemap is
+    // its own single file, asserted above.
+    const res = await shardGET({ params: { shard: '1' }, request: new Request('https://x/sitemap-content-1.xml', { headers: { host: 'boots.example' } }) } as never);
+    expect(res.status).toBe(404);
   });
 });

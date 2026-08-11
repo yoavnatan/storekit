@@ -14,7 +14,11 @@ import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
+import { orderPayoutLine, payoutWhyText, type PayoutWhyKey } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
+import { buildAdminUrl } from '../../lib/admin-nav.js';
+import { businessDayISO } from '../../lib/business-day.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
 import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
@@ -29,6 +33,8 @@ interface Props {
   shippingStatus: string[];
   paymentStatus: string[];
   store: string[];
+  /** Where each order's money stands — the filter the seller's tab always had (opayout). */
+  payout: string[];
   storeNames: string[]; // every store name across all orders, for the filter dropdown
   newSince: string;  // ISO — anything created after this is what the tab's "(N)" counted
   newOnly: boolean;
@@ -38,9 +44,43 @@ interface Props {
   buildUrl: (page: number) => string;
 }
 const {
-  orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, storeNames,
+  orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, payout, storeNames,
   newSince, newOnly, newCount, page, totalPages, buildUrl,
 } = Astro.props;
+
+/**
+ * This purchase's own money trail (`?panel=moneylog&mq=<ref>`).
+ *
+ * The window is named rather than left to the journal's 30-day default, and that is the whole
+ * difference between a link that works and one that answers "no events" for every order older than
+ * a month: nothing about this purchase can have happened before the purchase, so its own day is the
+ * correct `from` and there is no reason to hide anything after it.
+ *
+ * The ref matches either spelling — `buyer-purchases.ts` uses the checkout reference when there is
+ * one and the order id's first 8 characters otherwise, and the journal's search is `ILIKE` over both
+ * `checkout_ref` and `order_id` (moneylog-search.ts), so the uppercased fallback still finds its
+ * rows.
+ */
+const moneyLogHref = (ref: string, createdAt: string): string =>
+  buildAdminUrl('moneylog', { mq: ref, mfrom: businessDayISO(new Date(createdAt)) });
+
+/**
+ * The hold reason, in the admin's language.
+ *
+ * Hebrew literals rather than `getT`, like every other string on this admin surface — the admin
+ * dashboard is Hebrew-only by construction (`i18n-hardcoded-strings.test.ts` treats a file with no
+ * `getT(` as exactly that).
+ *
+ * The `{n}` is NOT written out here: `payoutWhyText` fills it from the line's own `whyDays`, which
+ * come from `payout-schedule.ts`. Those constants are still owner decisions, and a sentence
+ * promising 21 days while the code waits 30 is a promise we break.
+ */
+const PAYOUT_WHY: Record<PayoutWhyKey, string> = {
+  payWhyDelivery: 'חלון ההחזרה של הקונה — {n} ימים מהמסירה',
+  payWhyPayment: 'ההזמנה לא סומנה כנמסרה — {n} ימים מיום התשלום',
+  payWhyUnshipped: 'ההזמנה עוד לא נשלחה',
+  payWhyUnknown: 'ההזמנה בבדיקה',
+};
 
 const shippingLabel: Record<string, string> = {
   pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
@@ -59,7 +99,7 @@ const sortLabels: Record<string, string> = {
   'amount:asc': 'סכום: נמוך — גבוה',
   'shippingStatus:asc': 'סטטוס משלוח: הזמנות חדשות קודם',
 };
-const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s.length > 0).length;
+const activeFilterCount = [shippingStatus, paymentStatus, store, payout].filter((s) => s.length > 0).length;
 
 // The page's rows, grouped back into the purchases they came from. `getAdminOrdersPage` already
 // paged BY purchase and returned the rows in that page order, so this only has to re-assemble them
@@ -85,6 +125,7 @@ const purchases = groupBuyerPurchases(orders);
         data-ship={shippingStatus.join(',')}
         data-pay={paymentStatus.join(',')}
         data-store={store.join(',')}
+        data-payout={payout.join(',')}
         data-store-names={JSON.stringify(storeNames)}
         data-new-only={newOnly ? '1' : ''}
       >
@@ -127,6 +168,20 @@ const purchases = groupBuyerPurchases(orders);
         const productsLabel = itemCount === 1 ? 'מוצר אחד' : `${itemCount} מוצרים`;
         const storesLabel = uniqueStores.length === 1 ? 'חנות אחת' : `${uniqueStores.length} חנויות`;
         const split = purchase.slices.length > 1;
+        /**
+         * Do the stores of this purchase actually DISAGREE about where it is up to?
+         *
+         * A multi-store purchase is several order rows, so it has several statuses — that is the
+         * model, not a display accident: each seller fulfils, ships and cancels on their own, and
+         * one status could only ever be the least advanced of them. But when they all say the same
+         * thing, printing it once per store repeats the badge in the card's header three times over
+         * and the card reads as "so many statuses" for a single purchase (owner, 2026-08-11).
+         *
+         * So the per-store badge is what it was always FOR: the mark of a disagreement. Agreeing
+         * slices show the store name and its share, and let the header's one badge speak for all of
+         * them. Nothing is hidden — a card with per-store badges is exactly a card where they differ.
+         */
+        const slicesDisagree = new Set(purchase.slices.map((s) => s.order.shippingStatus)).size > 1;
         // What the buyer paid for the whole cart. `purchase.totalAgorot` is the sum of the slices,
         // from the same function the buyer's card reads — never a re-derivation here.
         const totalAgorot = purchase.totalAgorot;
@@ -218,9 +273,11 @@ const purchases = groupBuyerPurchases(orders);
                     {split && (
                       <div class="flex items-center gap-2 flex-wrap mb-1.5">
                         <a href={`/${slice.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-[0.82rem] font-semibold [color:var(--color-text)] no-underline hover:underline">{slice.storeName}</a>
-                        <span class="order-card__status-badge text-[0.7rem] font-semibold px-[0.5rem] py-[0.15rem] rounded-[20px] whitespace-nowrap" style={`background:${shippingColor[slice.order.shippingStatus] ?? '#888'}1a;color:${shippingColor[slice.order.shippingStatus] ?? '#888'}`}>
-                          {shippingLabel[slice.order.shippingStatus] ?? slice.order.shippingStatus}
-                        </span>
+                        {slicesDisagree && (
+                          <span class="order-card__status-badge text-[0.7rem] font-semibold px-[0.5rem] py-[0.15rem] rounded-[20px] whitespace-nowrap" style={`background:${shippingColor[slice.order.shippingStatus] ?? '#888'}1a;color:${shippingColor[slice.order.shippingStatus] ?? '#888'}`}>
+                            {shippingLabel[slice.order.shippingStatus] ?? slice.order.shippingStatus}
+                          </span>
+                        )}
                         <span class="text-[0.75rem] [color:var(--color-muted)] ms-auto tabular-nums">{formatAgorot(slice.totalAgorot)}</span>
                       </div>
                     )}
@@ -234,26 +291,69 @@ const purchases = groupBuyerPurchases(orders);
                         </li>
                       ))}
                     </ul>
+                    {/* When this slice's money reaches its seller, and why then — the same line the
+                        seller sees on their own copy of this order, from the same derivation
+                        (`order-payout-line.ts`). Asked for here on 2026-08-11, and it belongs PER
+                        SLICE rather than per purchase: each store's share runs its own hold clock
+                        off its own shipping status, so one purchase can have a seller paid next
+                        week and another blocked on a parcel that never went out. */}
+                    {(() => {
+                      const line = orderPayoutLine({
+                        paymentStatus: slice.order.paymentStatus,
+                        shippingStatus: slice.order.shippingStatus,
+                        paidAt: slice.order.paidAt ?? null,
+                        deliveredAt: slice.order.deliveredAt ?? null,
+                        deliveryMethod: slice.order.storeSubtotals[slice.storeSlug]?.deliveryMethod ?? null,
+                      });
+                      return (
+                        <div class="mt-2 pt-2 border-t [border-color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.78rem]">
+                          {/* "התשלום למוכר", not "סטטוס תשלום": this card carries TWO payment
+                              facts — the buyer's charge and the seller's payout — and both were
+                              called תשלום, so neither could be read (owner, 2026-08-11). */}
+                          <span class="[color:var(--color-muted)]">התשלום למוכר/ת:</span>
+                          <strong class="[color:var(--color-text)]">
+                            {line.state === 'not_payable' ? 'לא ישולם — ההזמנה בוטלה או שהכסף לא התקבל'
+                              : line.state === 'releasable' ? 'ישולם בתשלום הקרוב'
+                              : line.releaseDayISO ? `ישולם אחרי ${formatBusinessDayLabel(line.releaseDayISO)}`
+                              : 'הספירה מתחילה כשההזמנה נשלחת'}
+                          </strong>
+                          {line.state === 'held' && (
+                            <span class="[color:var(--color-muted)]">· {payoutWhyText(line, PAYOUT_WHY[line.whyKey])}</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
                 <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
                   <span>משלוח: {shippingAgorot === 0 ? 'חינם' : formatAgorot(shippingAgorot)}</span>
                   <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatAgorot(totalAgorot)}</strong>
                 </div>
+                {/* Into the journal, filtered to this purchase — the answer to "what actually
+                    happened to this order's money", which is the one question the journal is FOR
+                    (owner, סשן ב׳ §4: *"מה בעצם נותן לי יומן כספי?"*). The journal already links
+                    out to an order; nothing linked in, so it could only be reached by opening a tab
+                    of every event on the platform and searching for a reference by hand. */}
+                <p class="m-0 mt-2 text-[0.75rem]">
+                  <a href={moneyLogHref(purchase.ref, purchase.createdAt)} class="[color:var(--color-primary)] no-underline hover:underline">כל האירועים הכספיים של הרכישה הזאת</a>
+                </p>
               </div>
-              <div>
-                <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
-                <div class="flex gap-2 items-center flex-wrap">
-                  <span class={`admin-badge admin-badge--shipping-${headlineStatus}`}>הזמנה: {shippingLabel[headlineStatus] ?? headlineStatus}</span>
-                  {/* Payment is 'paid' on every order today (stub — real split-payment
-                      not wired yet), so a "שולם" badge is pure noise. Surface it only
-                      when it actually needs attention — pending/failed — which becomes
-                      meaningful once the payment webhook lands (CURRENT_TASK #2). */}
-                  {o.paymentStatus !== 'paid' && (
-                    <span class={`admin-badge admin-badge--${o.paymentStatus}`}>תשלום: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
-                  )}
+              {/* ── The shipping status is NOT repeated here ──
+                  It is in the card's header, on the row the admin clicked to open this, and once
+                  more beside every store that disagrees with it. A third copy under a heading
+                  called "סטטוס" was the third statement of one fact (owner, 2026-08-11).
+                  What is left is the one status the header does not carry — payment — and since
+                  that is 'paid' on every order today (stub; the real webhook is CURRENT_TASK א׳#2)
+                  the section renders only when it has something to say. An empty heading is the
+                  same clutter by another route. */}
+              {o.paymentStatus !== 'paid' && (
+                <div>
+                  <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
+                  <div class="flex gap-2 items-center flex-wrap">
+                    <span class={`admin-badge admin-badge--${o.paymentStatus}`}>חיוב הקונה: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         );

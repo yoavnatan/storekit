@@ -1,0 +1,59 @@
+---
+interface Props {
+  /** Tab id — `dash-panel-<panel>` is what DashTabsBoot toggles and what the lazy loader fills. */
+  panel: string;
+  /** Is this the panel this request was asked for? */
+  active: boolean;
+  /** Extra classes for the container itself (the messages panel is a container-query root). */
+  class?: string;
+  /** Does this panel need its JS chunk before it can answer a click? Everything but the overview
+   *  does; the marker is what `DashTabsBoot` reads to remember a tap on a control that is not
+   *  wired yet, and what the panel loader removes once it is. */
+  hydrating?: boolean;
+}
+const { panel, active, class: className = '', hydrating = true } = Astro.props;
+
+/**
+ * One seller tab's container — rendered for all ten, filled for one.
+ *
+ * The twin of `components/admin/AdminPanelShell.astro`, and deliberately a second file rather than
+ * one shared component: the two dashboards agree on the id and on `data-lazy` and on nothing else
+ * (this one carries `data-hydrating`, a per-panel class hook and a taller placeholder), and a shell
+ * with a flag for each difference would be harder to read than either.
+ *
+ * **Why the container is always here even when its contents are not.** Four mechanisms address a
+ * panel by id or by class and would break if the element only existed while open: `DashTabsBoot`
+ * toggles `hidden` on `#dash-panel-<id>`, the lazy loader replaces that element's `innerHTML`,
+ * `unsaved-guard.ts` finds a tab's panel through `aria-labelledby`, and the page's own
+ * `dashtab:show` hydration listener reads the id. So the shell is server-rendered always; only what
+ * goes inside it is conditional.
+ *
+ * `data-lazy` is the contract with the loader at the bottom of `seller/dashboard.astro`: it means
+ * "this panel has never been filled", and it is removed the moment a load starts, so a second tab
+ * click cannot start a second one.
+ *
+ * The placeholder is **static** — bars, no shimmer. A skeleton that shimmers on nine hidden panels
+ * would be exactly the ambient looping motion this project does not use, and the page already has
+ * one honest progress signal (`#dash-hydrating-bar`). The bars are here so the panel has a shape
+ * rather than collapsing to nothing and jumping when the content arrives.
+ */
+const BAR_WIDTHS = ['38%', '92%', '76%', '84%', '61%'];
+---
+
+<div
+  id={`dash-panel-${panel}`}
+  class={`dash-panel${className ? ` ${className}` : ''}`}
+  role="tabpanel"
+  aria-labelledby={`tab-${panel}`}
+  hidden={!active}
+  data-hydrating={hydrating ? '' : undefined}
+  data-lazy={active ? undefined : ''}
+>
+  {active ? <slot /> : (
+    <div class="flex flex-col gap-3 py-2" aria-hidden="true">
+      {BAR_WIDTHS.map((width) => (
+        <span class="block h-3 rounded-[var(--radius-sm)] bg-[color:var(--color-skeleton)]" style={`width:${width}`}></span>
+      ))}
+    </div>
+  )}
+</div>

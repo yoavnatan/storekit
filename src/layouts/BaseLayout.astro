@@ -11,6 +11,7 @@ import StoreProductModal from '../components/StoreProductModal.astro';
 import ToastContainer from '../components/ToastContainer.astro';
 import MessageCompose from '../components/MessageCompose.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
+import { needsDashboardI18n } from '../lib/i18n-island.js';
 import { store as platform } from '../config/store.config.js';
 import { jsonForScript } from '../lib/json-script.js';
 import { getSellerSession } from '../lib/seller-auth.js';
@@ -71,12 +72,22 @@ const storeIcon =
  * as English fallback strings appearing in a Hebrew UI. Every consumer already
  * lives under one of these three prefixes and `tests/i18n-island-scope.test.ts`
  * fails the build if a new one appears outside them.
+ *
+ * The MATCH itself lives in `lib/i18n-island.ts` — it was written inline here as a `'/admin/'`
+ * prefix, which the admin dashboard's own `/admin` does not match under `trailingSlash: 'never'`,
+ * and the English strings that produced went unnoticed for weeks. Its header carries the case.
  */
-const DASHBOARD_ROUTES = ['/seller/', '/admin/', '/buyer/'];
-const needsDashboardStrings = DASHBOARD_ROUTES.some((p) => Astro.url.pathname.startsWith(p));
+const needsDashboardStrings = needsDashboardI18n(Astro.url.pathname);
 const i18nJson = jsonForScript({
   cart: t.cart,
   confirm: t.confirm,
+  // Ungated, unlike `dashboard` below: forms exist on shopper-facing pages too (message
+  // compose, search), it is ten short strings, and a missing slice here degrades to the
+  // Hebrew fallbacks baked into lib/field-validity.ts — i.e. silently wrong in English.
+  formErrors: t.formErrors,
+  // Two strings, and ungated for the same reason: `showActionFailedToast` is the answer on every
+  // surface that can fail, shopper-facing ones included.
+  common: t.common,
   gallery: t.gallery,
   wishlist: t.wishlist,
   // Gated on `isLoggedIn`, not on a path: the notification bell Header draws is
@@ -302,6 +313,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
     <script>import '../lib/cart-sync.js';</script>
     <script>import { initErrorReporter } from '../scripts/error-reporter.js'; initErrorReporter();</script>
     <script>import { initIconTooltips } from '../scripts/icon-tooltips.js'; initIconTooltips();</script>
+    <script>import { initFormValidity } from '../scripts/form-validity.js'; initFormValidity();</script>
     <script>import { initNavProgress } from '../scripts/nav-progress.js'; initNavProgress();</script>
     {sessionUserId && (
       <script is:inline set:html={`
@@ -336,7 +348,10 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
         : notifs;
       if(toToast.length>0){
         toToast.slice(0,3).forEach(function(n){
-          var href=n.type==='new_message'?'/seller/dashboard?panel=messages':(n.type==='new_order'||n.type==='order_update')?'/seller/dashboard?panel=orders':'/buyer/dashboard?tab=messages';
+          // Where the toast leads is decided server-side, per row, by notification-link.ts — the
+          // same value the bell dropdown uses. This block is is:inline plain JS and can import
+          // nothing, which is exactly why the rule is on the API response instead of in a helper.
+          var href=n.href||(n.role==='buyer'?'/buyer/dashboard':'/seller/dashboard');
           var body=n.storeName?(n.body?n.storeName+' — '+n.body:n.storeName):n.body;
           window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:body,key:n.relatedId||n.id,href:href}}));
         });
@@ -349,6 +364,8 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
       // next since-filtered poll silently excluded it forever: unreadCount still
       // counted it, since that's always recomputed fresh, but no toast ever fired).
       if(notifs.length>0){ lastCheck=notifs[0].createdAt; localStorage.setItem(CURSOR_KEY,lastCheck); }
+    // silent: the 15s notification poll. Nothing is waiting on it, the badge keeps its last
+    // true value, and the next tick retries.
     }).catch(function(){});
   }
   poll();

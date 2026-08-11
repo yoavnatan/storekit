@@ -325,9 +325,28 @@
    there it simply gets that share too. */
 .msg-table__th--status { width: 12px; padding-inline-start: 0.4rem; padding-inline-end: 0; }
 .msg-table__th--actions { width: 36px; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
-.msg-table__th--from { width: 18%; }
-.msg-table__th--subject { width: 20%; }
-.msg-table__th--product { width: 14%; }
+/* 16/26, not 18/20 (2026-08-10). The sender column was sized for a name nobody
+   has: a real buyer name or shop name fills well under half of 18%, so the row
+   read as a short name, a gap, and then a subject that had already run out of
+   room — the owner's words were that the subject sits "too far" from the sender
+   and clips "too early". Two points off `from` and six onto `subject` closes the
+   gap and buys the subject ~30% more characters at the same table width; they
+   come from `product` and from the preview column, which is auto and is the one
+   cell whose whole job is to be truncated. Not lower than 16 on `from`: the
+   BUYER's table puts a 24px store avatar in that same cell (it shares this
+   class), so it starts 32px down on the seller's. And the subject in FULL now
+   lives in the opened thread's header, which is what makes a clip here a
+   shortening rather than a loss. */
+.msg-table__th--from { width: 16%; }
+.msg-table__th--subject { width: 26%; }
+.msg-table__th--product { width: 13%; }
+/* The SELLER's inbox goes three points further, and needs its own rule to do it:
+   16% is the floor for the shared class only because the buyer's twin puts a 24px
+   store avatar in this same cell. The seller's holds a bare name, so the same width
+   still read as a name, a gap, then a clipped subject (owner, twice). Scoped by the
+   panel id — an ID beats the class above it, so nothing here fights for order. */
+#dash-panel-messages .msg-table__th--from { width: 13%; }
+#dash-panel-messages .msg-table__th--subject { width: 29%; }
 /* Wide enough for the longest "30.7.2026, 14:32" + cell padding — a date that
    ellipsises is worse than one that costs 28 extra px. */
 .msg-table__th--date { width: 124px; }
@@ -351,6 +370,42 @@
 .inline-alert-dot { display: inline-block; width: 7px; height: 7px; background: #ef4444; border: 1px solid var(--color-border); border-radius: 50%; flex-shrink: 0; }
 .msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
 
+/* Thread header — the opened thread's own title block.
+   It exists because the table CLIPS: the subject column ellipsises a long subject
+   and the product column disappears entirely in card mode, so a seller on a phone
+   could read a whole conversation without ever learning what it was about. The
+   label/value pair borrows the <th>'s own treatment (0.68rem, uppercase, tracked,
+   muted) rather than inventing a caption style — same question, same answer, one
+   step further in. The subject WRAPS here on purpose: this is the one place it is
+   allowed to cost a second line. */
+.msg-thread-head {
+  padding: 0.7rem 1rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start;
+}
+.msg-thread-head__label {
+  display: block;
+  font-size: 0.68rem; font-weight: 700; color: var(--color-muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: 0.15rem;
+}
+.msg-thread-head__subject { font-size: 0.9rem; font-weight: 600; color: var(--color-text); margin: 0; }
+/* The product the conversation is about, as a chip — the same border + surface +
+   radius-sm recipe MessageCompose uses for its own product-context line, so the
+   buyer meets one mark for "this is about that product" in both places. */
+.msg-thread-head__product {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.76rem; color: var(--color-accent); text-decoration: none;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  transition: border-color 0.12s;
+  max-width: 100%;
+}
+.msg-thread-head__product span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.msg-thread-head__product:hover { border-color: var(--color-primary); }
+
 /* Thread view */
 .msg-thread { display: flex; flex-direction: column; }
 .msg-thread-entry { padding: 0.85rem 1rem; }
@@ -369,8 +424,26 @@
 .msg-thread-entry__body { font-size: 0.875rem; line-height: 1.65; color: var(--color-text); white-space: pre-wrap; }
 .msg-thread-unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; align-self: center; }
 
-/* Reply form */
+/* Reply form.
+   The textarea starts HIDDEN behind "כתוב תגובה" (2026-08-10, user). An always-open
+   box under every thread made the panel read as a chat window, and a chat window
+   asks for the next line — the owner wanted a reply to be a deliberate act rather
+   than the default posture of the screen. It also pairs with the flood rule in
+   lib/message-flood.ts: the two together say "answer, don't stream".
+   The button row is one row in both states — the pair swaps, the row does not move. */
 .seller-msg-reply-form { display: flex; flex-direction: column; gap: 0.5rem; }
+.seller-msg-reply-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+/* The one control visible at rest, so it carries the accent outline — and only the
+   outline: a second filled button beside "שלח" would be two primaries in one row. */
+.seller-msg-reply-open {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem; font-weight: 600; font-family: inherit;
+  background: none; color: var(--color-accent);
+  border: 1px solid var(--color-accent); border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.15s;
+}
+.seller-msg-reply-open:hover { background: var(--color-bg); }
+.seller-msg-reply-open:active { transform: scale(0.97); }
 .seller-msg-reply-textarea {
   width: 100%; min-height: 72px; resize: none;
   padding: 0.55rem 0.75rem;
@@ -383,7 +456,6 @@
 /* Shared field-focus treatment (components/forms.css) — was --color-text, a sixth answer. */
 .seller-msg-reply-textarea:focus { border-color: var(--color-primary); }
 .seller-msg-reply-send {
-  align-self: flex-end;
   padding: 0.4rem 1rem;
   font-size: 0.82rem; font-weight: 600; font-family: inherit;
   background: linear-gradient(135deg, var(--color-accent), #6088d4); color: #fff;
@@ -392,14 +464,16 @@
 }
 .seller-msg-reply-send:hover { background: linear-gradient(135deg, var(--color-accent-dark), #4f78c8); }
 .seller-msg-reply-send:disabled { opacity: 0.5; cursor: default; }
-.seller-msg-reply-close {
+.seller-msg-reply-close,
+.seller-msg-reply-cancel {
   padding: 0.4rem 1rem;
   font-size: 0.82rem; font-weight: 600; font-family: inherit;
   background: none; color: var(--color-muted);
   border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.seller-msg-reply-close:hover { background: var(--color-bg); color: var(--color-text); }
+.seller-msg-reply-close:hover,
+.seller-msg-reply-cancel:hover { background: var(--color-bg); color: var(--color-text); }
 
 /* ── Narrow panel: message table → cards ─────────────────────── */
 /* Container query, not a media query — see the .msg-cq comment above. 760px is
@@ -420,9 +494,10 @@
     grid-template-areas:
       "status from    date    actions"
       "status subject subject actions"
-      "status preview preview actions";
+      "status preview preview actions"
+      "status product product actions";
     grid-template-columns: auto 1fr auto auto;
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto auto auto;
     column-gap: 0.4rem;
     row-gap: 0.2rem;
     align-items: center;
@@ -471,8 +546,23 @@
   .msg-table__td--date    { grid-area: date;    font-size: 0.7rem; color: var(--color-muted); white-space: nowrap; }
   .msg-table__td--actions { grid-area: actions; display: flex; align-items: center; }
 
-  /* Hide on mobile */
+  /* The product a message is about used to vanish here (2026-08-10) — a flat
+     `display:none` on this cell. That is the piece of context a seller most needs
+     before opening anything ("which item is this about"), and the phone was the
+     one place it never appeared. It comes back as its own line, but ONLY when
+     there is one: the desktop cell renders an em-dash placeholder for a thread
+     with no product, and a card is not a table — a row of dashes is noise a
+     column can carry and a card cannot. Keyed off the row's `data-filter-product`
+     (already there for the filter menu) so no renderer needs a second attribute;
+     an empty value leaves the cell hidden and its grid track empty, which costs
+     one 0.2rem row-gap and no height. */
   .msg-table__td--product { display: none; }
+  .msg-table__row:not([data-filter-product='']) .msg-table__td--product {
+    grid-area: product;
+    display: block;
+    font-size: 0.74rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
   /* Thread detail row */
   .msg-thread-row { display: block; }
@@ -563,6 +653,12 @@
   width: 3px;
   background: var(--color-accent);
 }
+/* A FAILURE takes the same card with that bar in `--color-danger`, and changes nothing else.
+   The whole variant is a hue swap on a part the card already has — the `.badge-finish` rule
+   applied to the one place the site says "something went wrong" (lib/toast.ts carries why an
+   error toast had to become tellable from a success one at all). No red fill and no icon: a
+   card that shouts for a failed draft save is how a toast surface stops being read. */
+.toast-card--error::before { background: var(--color-danger); }
 .toast-card:hover { box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border)); }
 .toast-card__body-wrap { flex: 1 1 auto; min-width: 0; }
 .toast-card__title { font-size: 0.86rem; font-weight: 600; color: var(--color-text); line-height: 1.35; }
@@ -636,33 +732,85 @@
   text-decoration-thickness: 1px;
 }
 
-/* Deliberately unlike .badge--new (accent blue, pill, pulsing): solid sale-green,
-   one-time pop. Both live on the inline-START edge — the opposite corner is the
-   wishlist heart's — and a product carrying BOTH stacks them, see below. */
-.sale-badge {
+/* ── Corner marks on a product image ────────────────────────────────────────────
+   Exactly two exist — "new" and "on sale" — they share this ONE box, and a mark
+   differs from its neighbour only by fill. That is `.badge-finish`'s rule (further
+   down this file) applied to the other place chips sit together.
+
+   Until 2026-08-10 they were two unrelated designs sharing one corner: "new" was a
+   full pill in 90%-opaque accent blue with a 2.5s INFINITE pulsing ring, "sale" a
+   solid green rounded rectangle at a different size, radius and weight. Three things
+   were wrong, and the owner saw all three from the screen:
+     • the pulse is ambient looping motion, banned site-wide — nothing here animates
+       `infinite`;
+     • that ring is drawn OUTSIDE the box, so the eye reads the ring as the badge's
+       edge and the green tag below it looks misaligned against a mark whose real edge
+       it does match — the "not aligned" he reported was the ring, not the offset;
+     • two shapes in one 24px corner is the invent-per-component failure the design
+       line's first test asks about.
+
+   The height is a declared value, not a consequence of padding, because the stacking
+   offset is computed FROM it — deriving it by hand is how the old magic `2.3rem`
+   stopped matching the box it was there to clear. Both custom properties are declared
+   here rather than on a wrapper, so the sibling rule below resolves them from the
+   element it is positioning; "new" is rendered independently on three surfaces and
+   every one emits the sale tag directly after it, so there is no wrapper to hang them
+   on. Both marks live on the inline-START edge — the opposite corner is the wishlist
+   heart's. */
+.img-badge {
+  --img-badge-h: 1.4rem;
+  --img-badge-top: 0.5rem;
   position: absolute;
-  top: 0.5rem;
-  inset-inline-start: 0.5rem;
+  top: var(--img-badge-top);
+  inset-inline-start: var(--img-badge-top);
   z-index: 1;
   display: inline-flex;
   align-items: center;
-  padding: 0.32rem 0.45rem;
+  height: var(--img-badge-h);
+  padding-inline: 0.45rem;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--color-sale);
-  color: #fff;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: 0.01em;
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-sale) 35%, transparent);
-  animation: sale-badge-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  animation: img-badge-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
-@keyframes sale-badge-in {
+/* Product-page hero image: the same mark, further in from a much larger edge. */
+.img-badge--hero { --img-badge-top: 0.75rem; }
+
+@keyframes img-badge-in {
   from { opacity: 0; transform: scale(0.82); }
   to   { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sale-badge { animation: none; }
+  .img-badge { animation: none; }
+}
+
+/* On sale — the one COLOURED mark on the image. `--color-sale` is already spoken for
+   (tokens.css): the sale price, this tag and the store banner share one green so a
+   shopper learns the mark once. */
+.sale-badge {
+  border-color: var(--color-sale);
+  background: var(--color-sale);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-sale) 35%, transparent);
+}
+
+/* New — deliberately the QUIET one, and that is the whole design decision here. The
+   accent blue it used to wear put a second brand colour in the same corner as the sale
+   green, and when two marks compete the loudest wins the eye — which should be the
+   price, never the age of the listing. So this one spends no colour at all: an opaque
+   `--color-surface` chip, the site's own text colour, and the site's own hairline. It
+   is OPAQUE (the old fill was 90%, so the photo bled through and the label's contrast
+   changed per product), and the hairline is what keeps it from dissolving into a
+   white-background product shot. */
+.badge--new {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);
 }
 
 /* Store-wide sale strip — `.card`'s own recipe (`--color-surface`, 1.5px `--color-border`,
@@ -798,14 +946,13 @@
   line-height: 1.5;
 }
 
-/* Product-page hero image: `.badge--new` sits at 0.75rem there (not 0.5rem as on a card). */
-.sale-badge--hero { top: 0.75rem; inset-inline-start: 0.75rem; }
-
-/* Both marks at once: the sale tag drops below the "new" pill instead of landing on top
-   of it. An adjacent-sibling rule rather than a wrapper, because `.badge--new` is rendered
-   independently on four surfaces and every one of them emits the sale tag directly after it. */
-.badge--new + .sale-badge { top: 2.3rem; }
-.badge--new + .sale-badge--hero { top: 2.6rem; }
+/* Both marks at once: the sale tag drops below the "new" chip instead of landing on top of
+   it. Computed from the box above rather than typed, so the two can never drift apart again
+   — and one rule now covers the hero variant too, because the only thing that differs there
+   is `--img-badge-top`, which this reads from the element it is moving. */
+.badge--new + .img-badge {
+  top: calc(var(--img-badge-top) + var(--img-badge-h) + 0.3rem);
+}
 
 
 /* ── Edge fade for a horizontally scrolling row ──────────────────────────────

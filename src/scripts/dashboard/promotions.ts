@@ -420,6 +420,7 @@ async function refreshPromotionsPanel(): Promise<void> {
     if (!fresh) return;
     panel.innerHTML = fresh.innerHTML;
     initSaleForm();
+    // silent: a background re-render of a panel nobody is waiting on; the stale one stays usable.
   } catch {
     // A failed refresh must not leave the panel permanently un-refreshable.
     promotionsStale = true;

@@ -17,6 +17,9 @@
  *
  * The card links to the STORE, not the product page — deliberate, and the reason
  * it isn't `<a href={product url}>`: the row is a discovery surface for stores.
+ * Which is also why it prefetches like StoreCard does: same destination, same
+ * hover-means-intent bet. Every tile in one carousel points at one store, and
+ * Astro dedupes by URL, so a row of twelve costs one fetch however it is swept.
  */
 import type { StoreProduct } from '../lib/store-products.js';
 import { formatPrice, cdnSrc, cdnSrcSet } from '../config/store.config.js';
@@ -46,6 +49,7 @@ const WIDTHS = [220, 440];
 
 <a
   href={`/${storeSlug}`}
+  data-astro-prefetch
   class="home-product-card card"
   role={role}
   aria-label={`${p.name} — ${formatPrice(pv.price)}`}

@@ -193,8 +193,16 @@ const t = getT(getLang(Astro.cookies));
       });
       if (!res.ok) {
         const body = await res.json() as { error?: string };
-        if (res.status === 401) {
-          if (status) { status.textContent = str.login; status.style.color = 'var(--color-danger)'; }
+        // 401 and 429 both have something specific to say, and the generic catch below
+        // would replace both with "try again" — which is wrong advice for a refusal that
+        // is a rule (lib/message-flood.ts, "you have opened too many conversations with
+        // this shop"). The server writes that sentence in the reader's own language, so
+        // it is shown verbatim rather than re-worded here.
+        if (res.status === 401 || res.status === 429) {
+          if (status) {
+            status.textContent = res.status === 401 ? str.login : (body.error ?? str.error);
+            status.style.color = 'var(--color-danger)';
+          }
           submitBtn.disabled = false; submitBtn.textContent = str.send;
           return;
         }

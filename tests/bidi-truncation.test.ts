@@ -76,3 +76,55 @@ describe('a truncating label isolates its direction instead of adopting it', () 
     expect(offenders, 'wrap the text in <bdi> and drop dir="auto" — see this file\'s header').toEqual([]);
   });
 });
+
+/**
+ * A range picker's custom row may not carry `dir="ltr"` on the row itself.
+ *
+ * Same shape as the trap above, and as the one price-html.ts's badge fell into: `dir` decides the
+ * direction of the TEXT and the direction of the BOX, and here only the first was wanted. The row
+ * holds two date fields and an Apply button. A date is an LTR run, so each FIELD needs the
+ * attribute — but on the row it also flipped the layout, and Apply landed at that row's
+ * left-to-right end, which on a Hebrew page is the RIGHT: the action sat before the fields it
+ * applies to instead of after them (owner, 2026-08-10, on the reports picker).
+ *
+ * Three pickers emit this row — performance, advertising, reports — and two had it wrong.
+ * Advertising was right, which is exactly why this is a test and not a note: the correct version
+ * was already in the tree and got copied past anyway.
+ *
+ * ── What this asserts, and why it stopped asserting the other thing (2026-08-11) ──
+ * It used to demand that `input` be the ONLY tag in the whole file carrying `dir="ltr"`, which
+ * happens to be true while a file emits nothing else — and stopped being true the moment
+ * `reports.ts` grew a `<code dir="ltr">` for a `YYYY-MM` period cell. That is the attribute doing
+ * exactly its job: an LTR run inside an inline leaf, laying out nothing.
+ *
+ * The rule was never "only inputs". It is **`dir` may not sit on an element that LAYS OUT other
+ * elements**, because there it flips their order as well as their text. So the assertion is now
+ * against the containers — a `div`, a `nav`, a `td`, a `tr`, a `form`, a `label` — and a leaf that
+ * holds a left-to-right string is free to declare itself one. Widening an allowlist to make a
+ * failure go away is the move this repo treats as silencing a gate; naming the actual rule is not.
+ */
+describe('the custom-range row keeps its direction on the fields, not on itself', () => {
+  const PICKERS = [
+    'src/scripts/dashboard/reports.ts',
+    'src/scripts/dashboard/performance.ts',
+    'src/scripts/dashboard/advertising.ts',
+  ];
+
+  /** Tags whose `dir` reorders CHILDREN, not just glyphs. The row that shipped the bug was a
+   *  `div`. `label` is here because a field's label wraps its input. */
+  const LAYS_OUT_CHILDREN = ['div', 'nav', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'form', 'label', 'section', 'header', 'footer', 'main', 'p'];
+
+  it.each(PICKERS)('%s puts dir="ltr" only on the date inputs', (file) => {
+    const src = readFileSync(file, 'utf8');
+    expect(src, 'this file should still emit a custom-range row').toContain('data-range-apply');
+    // Every TAG carrying the attribute. A `//` comment explaining the rule is not a tag, so the
+    // match has to start at `<`.
+    const tags = [...src.matchAll(/<([a-z]+)[^>]*\bdir="ltr"/g)].map((m) => m[1]);
+    expect(tags.length, 'the scan should be seeing the date fields').toBeGreaterThan(0);
+    expect(tags, 'the two date fields must still declare themselves LTR').toContain('input');
+    expect(
+      tags.filter((tag) => LAYS_OUT_CHILDREN.includes(tag)),
+      'dir="ltr" on a container flips the ORDER of its children too — put it on the leaf that holds the LTR text',
+    ).toEqual([]);
+  });
+});

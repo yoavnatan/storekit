@@ -113,6 +113,39 @@ export function openProductSeoHints(input: ProductSeoInput): ProductSeoHint[] {
 }
 
 /**
+ * How well this listing is set up, as a band rather than a number.
+ *
+ * There are exactly three, and the boundaries are NOT new thresholds — they are the two rules
+ * this module already had, reused so the editor's meter and the products table's marker can
+ * never say different things about the same product:
+ *  · `weak`    = `needsSeoAttention` is true (no image, or three-plus hints open).
+ *  · `strong`  = nothing open at all.
+ *  · `partial` = everything in between — worth improving, not worth flagging in the table.
+ *
+ * Deliberately no `danger` band. Nothing here is broken; a half-filled form is a form being
+ * filled, and colouring that as an error is the nag this whole module refuses to be (see the
+ * header). The strongest signal it gives is the amber of `weak`, which is also the only state
+ * that carries a real consequence — an image-less product is dropped from the ad feed.
+ */
+export type ProductSeoLevel = 'weak' | 'partial' | 'strong';
+
+export interface ProductSeoScore {
+  done: number;
+  total: number;
+  /** 0-100, for the meter's width. Rounded, so 3-of-5 is exactly 60. */
+  percent: number;
+  level: ProductSeoLevel;
+}
+
+export function productSeoScore(input: ProductSeoInput): ProductSeoScore {
+  const hints = productSeoHints(input);
+  const done = hints.filter((h) => h.done).length;
+  const total = hints.length;
+  const level: ProductSeoLevel = needsSeoAttention(input) ? 'weak' : done === total ? 'strong' : 'partial';
+  return { done, total, percent: total === 0 ? 100 : Math.round((done / total) * 100), level };
+}
+
+/**
  * Is this listing thin enough to be worth marking in the products table?
  *
  * Deliberately NOT "has any open hint". A catalog where most products sit at 4-of-5 would then

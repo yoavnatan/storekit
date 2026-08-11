@@ -154,8 +154,16 @@
         tabs[i].setAttribute('aria-selected', 'false');
         tabs[i].setAttribute('tabindex', '-1');
       }
+      // `dashtab:hide` is the mirror of the `dashtab:show` below, and it is dispatched only for a
+      // panel that really WAS visible — a broadcast to nine already-hidden panels would make
+      // "your tab is being left" fire eight times for something that never happened. Same
+      // bubbling + inert-unless-listened-to contract: the Orders tab uses it to undo a filter it
+      // was handed by a link (scripts/dashboard/orders.ts).
       var panels = document.querySelectorAll('.dash-panel');
-      for (var j = 0; j < panels.length; j++) panels[j].hidden = true;
+      for (var j = 0; j < panels.length; j++) {
+        if (!panels[j].hidden) panels[j].dispatchEvent(new CustomEvent('dashtab:hide', { bubbles: true }));
+        panels[j].hidden = true;
+      }
 
       tab.classList.add('dash-tab--active');
       tab.setAttribute('aria-selected', 'true');
@@ -177,6 +185,25 @@
       var u = new URL(window.location.href);
       u.searchParams.set('panel', name);
       history.replaceState(null, '', u.toString());
+
+      // Links that must FOLLOW the open tab rather than the one the page was loaded with — the
+      // seller's store switcher above all. Their href is server-rendered with `panel=<initial>`,
+      // which is correct without JS (the tab cannot change) and quietly wrong the moment it can:
+      // a seller who arrived from an order notification (?panel=orders), browsed to מוצרים and
+      // then switched store landed back on הזמנות, and the new page then re-baked the same stale
+      // panel into its own links, so it kept happening (owner, סשן ב׳ §2). Rewritten here rather
+      // than in the dashboard bundle because a switch clicked before those 61 KB arrive would
+      // still carry the stale value.
+      var followers = document.querySelectorAll('a[data-panel-link]');
+      for (var k = 0; k < followers.length; k++) {
+        var raw = followers[k].getAttribute('href');
+        // A marker on an element with no href would resolve to the page's own URL and rewrite the
+        // link to point at itself — silently, and only for that one element.
+        if (!raw) continue;
+        var href = new URL(raw, window.location.href);
+        href.searchParams.set('panel', name);
+        followers[k].setAttribute('href', href.pathname + href.search + href.hash);
+      }
     };
 
     // Delegated, so it covers tabs rendered later and synthetic `.click()`

@@ -213,10 +213,32 @@ describe('the registry itself', () => {
     // DISPLAYS inside its window, which is why its idempotency argument and the AUX_EVENTS carve-out
     // it depends on are pinned in a file of their own (`tests/visitor-retention-db.test.ts`) rather
     // than in the double-run pass below.
+    // And `feed-artifact` + `sitemap-artifact` (2026-08-09) — the two public documents that used to
+    // be assembled inside a request, whole platform catalogue at a time, on the event loop every
+    // shopper shares (GO_LIVE §7). They are the only jobs here whose output a route SERVES, so
+    // their idempotency argument is about the pointer swap rather than about a delete.
+    // And `payout-run` (2026-08-10) — the only job that creates an obligation to move MONEY, so its
+    // idempotency argument is the strongest one here and it does not rest on this job's control
+    // flow at all: `seller_payouts` is UNIQUE on (seller_id, period_key), and `createPayout` inserts
+    // with ON CONFLICT DO NOTHING and reads the affected-row count as the answer. A second pass on
+    // the same day therefore creates nothing, whether it is a retry, a second app server, or a
+    // person re-triggering it. It also moves no money: it writes `pending` rows and a separate,
+    // later step performs the transfer, so a run that dies halfway has created some rows and sent
+    // nothing. Its own cases are in `tests/payouts.test.ts`.
+    // And `order-sla` (2026-08-10) — the only job that CANCELS anything, and the only one that
+    // gives money back to a real person. Its idempotency rests on the status table rather than on
+    // its own control flow: a cancelled order fails `REVENUE_SHIPPING_STATUSES` and is not even a
+    // candidate on the next pass, and a race that got one through is refused by `canTransition`,
+    // which treats `cancelled` as terminal. The warning half is deduplicated against the seller's
+    // own notification feed — the notification IS the record — so a second pass in the same day
+    // says nothing twice. It re-uses the SAME cancellation path the seller's dashboard uses
+    // (`order-status-change.ts`), which is what stops an automatic cancel and a manual one from
+    // disagreeing about stock or about the buyer's refund. Its cases are in
+    // `tests/order-sla-run.test.ts`.
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-sync', 'merchant-status', 'purge-auth-attempts', 'purge-checkouts', 'purge-visitor-detail'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'merchant-status', 'order-sla', 'payout-run', 'purge-auth-attempts', 'purge-checkouts', 'purge-visitor-detail', 'sitemap-artifact'],
     );
   });
 });

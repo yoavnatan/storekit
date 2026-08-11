@@ -128,6 +128,13 @@ function byStoreVsByOrder(byOrder: number, byStore: number, orphans: string[]): 
   // Catches an order whose storeSubtotals hold a slug outside the known set — the shape a store
   // rename leaves behind if the repointing missed a row, which would make that money vanish from
   // every per-store view while still counting in GMV.
+  //
+  // **Under the agent model this stopped being a reporting problem and became a payment one**
+  // (2026-08-10). The payout run reaches a seller by joining `order_stores.store_slug` to
+  // `stores.slug`, exactly as the per-store views do — so a slug no store answers to is money the
+  // platform is holding for a seller that no run will ever pay out, silently and indefinitely.
+  // The check was already here and already `error`; what changed is what it is warning about, and
+  // the explanation below now says so rather than describing a missing dashboard row.
   return {
     severity: 'error',
     check: 'הכנסות לפי חנות מול הכנסות לפי הזמנה',
@@ -135,7 +142,7 @@ function byStoreVsByOrder(byOrder: number, byStore: number, orphans: string[]): 
     actual: byStore,
     drift: drift(byOrder, byStore),
     explanation: orphans.length
-      ? `יש הזמנות ששייכות לחנויות שלא קיימות ברשימה: ${orphans.join(', ')}. הכסף הזה נספר במחזור הכללי אבל לא מופיע באף חנות — כנראה שינוי כתובת חנות שלא עודכן בכל ההזמנות.`
+      ? `יש הזמנות ששייכות לחנויות שלא קיימות ברשימה: ${orphans.join(', ')}. הכסף הזה נספר במחזור הכללי, לא מופיע באף חנות — ו**לא ישולם לאף מוכר**, כי התשלום המרוכז מאתר את המוכר לפי אותה כתובת חנות. כנראה שינוי כתובת חנות שלא עודכן בכל ההזמנות.`
       : 'סכום ההכנסות לפי חנות לא שווה לסכום לפי הזמנה, בלי חנות יתומה מזוהה. צריך בדיקה ידנית.',
   };
 }

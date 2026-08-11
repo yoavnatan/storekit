@@ -2,6 +2,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { formatAgorot, fromAgorot } from '../../lib/money.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { showStatus } from './status.js';
+import { showActionFailedToast } from '../../lib/toast.js';
 import { initInfoTooltips } from '../tooltip.js';
 import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
@@ -337,9 +338,24 @@ export function initAdvertisingTab(): void {
   // '' → lifetime (no range param → server returns per-campaign lifetime totals).
   let rangeQuery = '';
 
+  /**
+   * Re-read the campaign list. Called on first reveal, on a range change, and after every save.
+   *
+   * It had no `try` at all and bailed on a non-2xx: a range switch or a save could leave the list
+   * showing the PREVIOUS numbers with nothing said, and a thrown fetch became an unhandled
+   * rejection — logged to the error reporter, invisible to the seller. The list on screen is the
+   * right thing to keep (blanking it would claim the campaigns are gone), so the notice is what
+   * was missing.
+   */
   async function refetch(): Promise<void> {
-    const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}${rangeQuery ? `&${rangeQuery}` : ''}`);
-    if (!res.ok) return;
+    let res: Response;
+    try {
+      res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}${rangeQuery ? `&${rangeQuery}` : ''}`);
+    } catch {
+      showActionFailedToast();
+      return;
+    }
+    if (!res.ok) { showActionFailedToast(); return; }
     const data = await res.json() as { ok?: boolean; campaigns?: Campaign[]; archived?: Campaign[] };
     if (data.campaigns) renderCampaigns(list, data.campaigns, i18n);
     // The history block is server-rendered too, so it only exists on the pages that show one.

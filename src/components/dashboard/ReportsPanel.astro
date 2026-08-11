@@ -1,0 +1,154 @@
+---
+/**
+ * The seller's reports tab: pick a report, pick a period, read the table, export the CSV.
+ *
+ * **Why this is its own tab and not a button on Performance.** Performance answers "how am I
+ * doing" — six figures and four charts, read at a glance. A report answers "give me the rows": the
+ * sheet a bookkeeper reconciles a month against, the list a stocktake is done from. Putting an
+ * export on the charts tab would have made both worse, because the two want opposite layouts — one
+ * wants everything visible at once, the other wants one long scrollable column.
+ *
+ * **Nothing is rendered server-side, deliberately.** Every row here comes from `/api/seller/reports`
+ * on first reveal, the same deferral Performance and Advertising already make (dashboard.astro's
+ * `perfIsInitial` note): this is rarely the tab a seller lands on, and a report is the heaviest
+ * thing the dashboard can build. The panel ships as its controls plus an empty table body, which is
+ * a few hundred bytes on the pages nobody opens it from — memory `project_dashboard_html_weight`.
+ *
+ * **Mobile is the default, not an adaptation.** Below 700px each row becomes a card whose cells
+ * carry their own label (`data-label`, drawn by `::before` in dashboard.css's report block). That
+ * is a new treatment here, not the products table's — that one fixes column widths and hides
+ * columns, which is right for a table you SCAN and wrong for one you reconcile against a bank
+ * statement, where losing a column loses the point of the export.
+ */
+import { PERIOD_PRESET_LABEL_KEY } from '../../lib/date-range.js';
+import { REPORT_IDS, ACCOUNT_WIDE_REPORTS, type ReportId } from '../../lib/seller-report-shapes.js';
+
+interface Props {
+  storeSlug: string;
+  /** The `dashboard` translation slice, already resolved by the page. */
+  d: Record<string, string>;
+}
+const { storeSlug, d } = Astro.props;
+
+const REPORT_META: Record<string, { titleKey: string; descKey: string; icon: 'receipt' | 'box' | 'layers' | 'bank' }> = {
+  sales:    { titleKey: 'repSalesTitle',    descKey: 'repSalesDesc',    icon: 'receipt' },
+  products: { titleKey: 'repProductsTitle', descKey: 'repProductsDesc', icon: 'box' },
+  stock:    { titleKey: 'repStockTitle',    descKey: 'repStockDesc',    icon: 'layers' },
+  // The accounting report (owner, סשן א׳ §6) — what the platform transferred, by period. It is the
+  // one report here that is account-wide rather than about the store in the switcher.
+  payouts:  { titleKey: 'repPayoutsTitle',  descKey: 'repPayoutsDesc',  icon: 'bank' },
+};
+
+/**
+ * Which reports are NOT about the store in the switcher, read from the declaration rather than
+ * remembered here.
+ *
+ * `ACCOUNT_WIDE_REPORTS` existed for one day as an exported constant that only comments referred
+ * to, which is the shape `reporting-invariants.test.ts` warns about in its own header: an export
+ * with no caller reads as one that is wired to something. It drives the badge below, so a report
+ * added to that list gets marked without anyone touching this file — and a scope that is declared
+ * in the shapes module and drawn from it cannot drift from what the route actually does.
+ */
+const isAccountWide = (id: string): boolean => ACCOUNT_WIDE_REPORTS.includes(id as ReportId);
+
+---
+
+<div id="reports-root" data-store-slug={storeSlug} data-report="sales" data-preset="thisMonth">
+  <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
+    <h2 class="m-0 text-base font-semibold">{d.repTitle}</h2>
+    <p class="muted text-[0.82rem] m-0 mt-1">{d.repSubtitle}</p>
+  </div>
+
+  {/* Which report. Three plain buttons carrying `aria-pressed`, NOT a `radiogroup`: a radiogroup
+      owes the keyboard a roving tabindex driven by arrow keys, and an arrow key on this RTL site
+      is its own problem (`lib/arrow-step.ts` — ArrowRight goes BACKWARD). The half-built version
+      of that pattern is worse than none: the seller tabs to the checked option and cannot reach
+      the other two at all. Plain buttons are each tabbable and each activate on Enter and Space,
+      which is the whole interaction, and `aria-pressed` is already this panel's idiom one row
+      down on the period chips. */}
+  {/* Four across on a wide screen, two on a tablet — a fourth report joined these in 2026-08 and a
+      3-column grid left it alone on a second row, which reads as a different KIND of thing. */}
+  <div class="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 mb-4" role="group" aria-label={d.repPickLabel}>
+    {REPORT_IDS.map((id) => (
+      <button
+        type="button"
+        class="report-pick text-start rounded-[var(--radius)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)] p-3 cursor-pointer font-[inherit] transition-colors duration-150 hover:[border-color:var(--color-primary)] aria-pressed:[border-color:var(--color-primary)] aria-pressed:[background:color-mix(in_srgb,var(--color-primary)_6%,var(--color-surface))]"
+        data-report={id}
+        aria-pressed={id === 'sales'}
+      >
+        <span class="flex items-center gap-2 font-semibold text-[0.9rem]">
+          {REPORT_META[id].icon === 'receipt' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 3 2V2l-3 2-3-2-3 2-3-2-3 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="14" x2="13" y2="14"/></svg>}
+          {REPORT_META[id].icon === 'box' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>}
+          {REPORT_META[id].icon === 'layers' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>}
+          {/* A bank building — the transfer, not a coin: this report is about money that LEFT us and
+              arrived somewhere, which a wallet or a shekel glyph would not say. */}
+          {REPORT_META[id].icon === 'bank' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="21" x2="21" y2="21"/><polyline points="12 3 21 8 3 8 12 3"/><line x1="6" y1="11" x2="6" y2="18"/><line x1="12" y1="11" x2="12" y2="18"/><line x1="18" y1="11" x2="18" y2="18"/></svg>}
+          {d[REPORT_META[id].titleKey]}
+          {/* The scope, ON the card that carries it, for the one report that is not about the store
+              in the switcher. The owner asked why that report is not per store (2026-08-11) — a
+              fair question to reach the description having read only the title, which is how a
+              picker is read. A chip answers it before the click. */}
+          {isAccountWide(id) && (
+            <span class="shrink-0 text-[0.68rem] font-medium rounded-full px-[0.45rem] py-[0.1rem] [color:var(--color-muted)] [background:var(--color-bg)]">{d.repAllStoresChip}</span>
+          )}
+        </span>
+        <span class="muted block text-[0.78rem] mt-1 leading-snug">{d[REPORT_META[id].descKey]}</span>
+      </button>
+    ))}
+  </div>
+
+  {/* The period — the SAME control the Performance and Advertising tabs carry: one trigger that
+      names the current window, opening a menu of presets plus an arbitrary from/to.
+
+      It started as a row of seven chips with the two date fields beside them, which broke onto a
+      second line and read as loose furniture (owner, on seeing it). The chips were the invented
+      thing here; the dropdown was already the site's answer to exactly this control, on two tabs,
+      and one trigger costs one line whatever the viewport. Design line, first test: prefer the
+      existing gesture over one invented for a single component.
+
+      `hidden` for the stock report — a stocktake is a statement about NOW, and offering it a date
+      range would promise a period the file's contents do not describe. */}
+  <div id="reports-range" class="flex items-center gap-2 flex-wrap mb-4">
+    <span class="muted text-[0.8rem] shrink-0">{d.repPeriodLabel}</span>
+    <div id="reports-range-picker" data-preset="thisMonth">
+      <button
+        type="button"
+        id="reports-range-trigger"
+        class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]"
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span id="reports-range-label">{d[PERIOD_PRESET_LABEL_KEY.thisMonth]}</span>
+        <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      {/* The resolved window, so the script has one place to read it from whether it came from a
+          preset or from the two date fields — the same shape #perf-range-picker uses. */}
+      <input type="hidden" id="reports-from" />
+      <input type="hidden" id="reports-to" />
+    </div>
+  </div>
+
+  <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+    <p id="reports-summary" class="m-0 text-[0.85rem] [color:var(--color-muted)]" aria-live="polite"></p>
+    {/* A real <a download>, not a fetch-and-blob: the browser's own download is what puts the file
+        where the seller expects it, and it survives this script failing to load. `href` is filled
+        in by reports.ts as the selection changes; without JS there is nothing to export yet, so it
+        starts disabled rather than pointing at a range nobody chose. */}
+    {/* No `role="button"`: this navigates to a URL and hands the response to the browser's own
+        download, which is exactly what a link is. */}
+    <a
+      id="reports-export"
+      class="btn btn--accent inline-flex items-center gap-2 text-[0.85rem] py-[.45rem] px-[.9rem]"
+      download
+      aria-disabled="true"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      {d.repExportCsv}
+    </a>
+  </div>
+
+  <div id="reports-table-wrap" class="report-table-wrap" aria-busy="true">
+    <p class="muted text-[0.85rem] m-0 py-6 text-center">{d.repLoading}</p>
+  </div>
+</div>

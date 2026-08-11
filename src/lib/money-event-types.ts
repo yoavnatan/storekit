@@ -49,6 +49,23 @@
  *                                needs the payment provider's refund call, and no provider is
  *                                chosen (GO_LIVE_CHECKLIST §3). Its absence is what keeps every
  *                                obligation visible instead of quietly closing itself.
+ *
+ * The four below arrived with the agent model (2026-08-10), where the platform holds the seller's
+ * money and later sends it. That direction — money leaving US, to a seller — had no vocabulary at
+ * all before, because under the sub-merchant model it never happened: the processor paid sellers
+ * directly and there was nothing for this journal to witness. A journal that records every shekel
+ * arriving and none leaving cannot be reconciled, which is the one thing it exists for.
+ *
+ *   payout_created             — a payout row was created for a seller and a period. NO money has
+ *                                moved yet; this is the obligation being named, the same split
+ *                                `refund_due`/`refund_settled` makes.
+ *   payout_sent                — the transfer was handed to the bank, or confirmed after it.
+ *   payout_failed              — the bank rejected it. The amount returns to payable (the row is
+ *                                kept and excluded from `paidOut`), so this is not a dead end —
+ *                                it is a seller who has not been paid and does not know why.
+ *   seller_debited             — a chargeback, a post-payout refund clawback or a correction moved
+ *                                against a seller's balance. The counterpart to `refund_due`: that
+ *                                one says the BUYER is owed, this one says who it comes out of.
  */
 export const MONEY_EVENT_TYPES = [
   'payment_attempted',
@@ -60,6 +77,10 @@ export const MONEY_EVENT_TYPES = [
   'order_discount_changed',
   'refund_due',
   'refund_settled',
+  'payout_created',
+  'payout_sent',
+  'payout_failed',
+  'seller_debited',
 ] as const;
 
 export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
@@ -83,9 +104,64 @@ export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
   order_discount_changed: 'סכום הזמנה שונה',
   refund_due: 'זיכוי מגיע לקונה',
   refund_settled: 'זיכוי בוצע',
+  payout_created: 'תשלום למוכר נוצר',
+  payout_sent: 'תשלום למוכר בוצע',
+  payout_failed: 'תשלום למוכר נכשל',
+  seller_debited: 'חיוב למוכר',
 };
 
 /** Type guard for a request-supplied value (`?mtype=`). */
 export function isMoneyEventType(value: string): value is MoneyEventType {
   return (MONEY_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+/**
+ * The three subjects the journal actually records, and the one place their membership is declared.
+ *
+ * It is a DISPLAY grouping — the admin's type menu renders a section per entry
+ * (AdminMoneyLogToolbar.astro) — but it lives here, beside the vocabulary, for the same reason the
+ * labels do: the failure it has to survive is a new type being added and appearing in no section,
+ * i.e. dropping out of the filter without anyone noticing. `tests/money-events-select.test.ts`
+ * fails on a type that belongs to no group, so the menu cannot silently go stale.
+ *
+ * Grouping earned its place when the list reached thirteen (owner, סשן ב׳: "so many filters that I
+ * no longer know what this journal does"). Named sections answer that question directly — the
+ * journal covers a purchase, what was given back, and what we owe sellers — where a flat list of
+ * thirteen only asks it again.
+ */
+export const MONEY_EVENT_GROUPS: readonly { label: string; types: readonly MoneyEventType[] }[] = [
+  {
+    label: 'קנייה ותשלום',
+    types: ['payment_attempted', 'order_created', 'duplicate_checkout_blocked',
+            'payment_status_changed', 'shipping_status_changed', 'order_discount_changed'],
+  },
+  {
+    label: 'ביטולים וזיכויים',
+    types: ['charge_voided', 'refund_due', 'refund_settled'],
+  },
+  {
+    label: 'תשלומים למוכרים',
+    types: ['payout_created', 'payout_sent', 'payout_failed', 'seller_debited'],
+  },
+];
+
+/**
+ * Who performed an event, in words.
+ *
+ * `actor` holds one of three things — the literal `'buyer'`, the literal `'system'` (a scheduled
+ * job), or a seller's uuid — and the journal row used to print the raw value with no label, on the
+ * same line and behind the same `·` as the order and checkout references. The owner read
+ * `אסמכתא 03BE8146 · buyer` as one phrase and asked what a "buyer reference" was, which is the
+ * right question to ask of that string: three unrelated fields separated by the same character,
+ * two of them labelled and the third not.
+ *
+ * A uuid is shortened rather than resolved to a name: this runs per row, a lookup per row is a
+ * query per row, and the id is a link the owner can already trace. It says WHICH KIND of actor,
+ * which is the part that was missing.
+ */
+export function moneyActorLabel(actor: string): string {
+  if (actor === 'buyer') return 'הקונה';
+  if (actor === 'system') return 'המערכת (ג׳וב מתוזמן)';
+  if (actor === 'admin') return 'אדמין';
+  return actor ? `מוכר/ת ${actor.slice(0, 8)}` : '—';
 }

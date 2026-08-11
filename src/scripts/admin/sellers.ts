@@ -36,6 +36,10 @@ function wireSellersToolbar(): void {
   let sortDir = (state.sortDir as 'asc' | 'desc') || 'desc';
   let blockedOnly = state.blockedOnly === '1';
   let newOnly = state.newOnly === '1';
+  // Read off the chip row rather than the toolbar: the chips are their own element (they carry a
+  // label and a count, so they do not fit beside the two toggles), and a panel with no sellers at
+  // all renders neither.
+  let payoutState = document.getElementById('admin-sellers-payout-chips')?.dataset.payoutState ?? 'all';
 
   function buildSellersNavUrl(): string {
     const searchInput = document.getElementById('admin-seller-search') as HTMLInputElement | null;
@@ -43,11 +47,15 @@ function wireSellersToolbar(): void {
       sq: searchInput?.value.trim() || undefined,
       ssort: (sortCol !== 'joined' || sortDir !== 'desc') ? `${sortCol}:${sortDir}` : undefined,
       sblocked: blockedOnly ? '1' : undefined,
+      spayout: payoutState !== 'all' ? payoutState : undefined,
       snew: newOnly ? '1' : undefined,
     });
   }
 
   function navigate(): void {
+    // Close the menu before the swap: it has been acted on, and the swap destroys the button it is
+    // anchored to (same reason as orders-filter.ts's own note).
+    sellersPortal.close();
     swapPanel(buildSellersNavUrl(), PANEL_ID, () => initAdminSellersPanel());
   }
 
@@ -72,6 +80,18 @@ function wireSellersToolbar(): void {
   blockedToggle?.addEventListener('click', () => {
     blockedOnly = !blockedOnly;
     navigate();
+  });
+
+  // The payout-state chips. Radio, not toggles: the four states are mutually exclusive and "הכל"
+  // is the way back out, so clicking the active one is a no-op rather than a clear — a click that
+  // changes no state must move nothing (memory `feedback_noop_interactions_invisible`).
+  document.querySelectorAll<HTMLButtonElement>('[data-payout-chip]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const next = chip.dataset.payoutChip ?? 'all';
+      if (next === payoutState) return;
+      payoutState = next;
+      navigate();
+    });
   });
 
   // "חדשים בלבד" — same mechanics as the blocked toggle; narrows the list to

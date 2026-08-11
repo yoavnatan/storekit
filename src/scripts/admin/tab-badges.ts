@@ -48,7 +48,7 @@ async function refresh(): Promise<void> {
     if (issuedAt !== generation) return;
     paint(counts);
   } catch {
-    // A failed poll is not worth telling anyone about: the previous numbers are still on screen and
+    // silent: a background poll. A failed one is not worth telling anyone about: the previous numbers are still on screen and
     // still the best answer available. The next tick tries again.
   }
 }

@@ -30,6 +30,12 @@ interface Seed {
   shipping: Order['shippingStatus'];
   at: string;
   stores: Array<{ slug: string; name: string }>;
+  /** SQL expressions, not literals: the payout classification is measured against TODAY, so a fixed
+   *  date would silently change meaning as the calendar moves. `null` leaves the column NULL. */
+  paidAt?: string;
+  deliveredAt?: string;
+  /** Set on every slice of the order — the pickup arm of the hold rule keys off it. */
+  deliveryMethod?: 'pickup' | 'courier';
 }
 
 const SEEDS: Seed[] = [
@@ -40,6 +46,19 @@ const SEEDS: Seed[] = [
   { ref: 'CR-5', buyer: 'שרה מור',  email: 'sara@example.com',  phone: '0505555555', total: 3300,  payment: 'paid',    shipping: 'shipped',    at: '2026-07-05T09:00:00.000Z', stores: [{ slug: 'tachshitim', name: 'תכשיטים' }] },
   // Same instant as CR-5 — the tie-break is what stops the two swapping places between loads.
   { ref: 'CR-6', buyer: 'שרה מור',  email: 'sara@example.com',  phone: '0505555555', total: 3300,  payment: 'paid',    shipping: 'ready',      at: '2026-07-05T09:00:00.000Z', stores: [{ slug: 'keramika', name: 'קרמיקה' }] },
+  // ── The payout-state cases (owner, 2026-08-11: the admin gained the seller's "שחרור הכסף"
+  // filter). The five values are a SECOND spelling of the hold rule — JS on the seller's screen,
+  // SQL in this query — so the fixture has to reach every one of them or the parity assertion is
+  // vacuous exactly where it matters. The six seeds above cover `none` (CR-4, cancelled) and
+  // `unshipped` (CR-2, CR-6: 'ready' with no pickup method is still the courier milestone).
+  { ref: 'CR-7', buyer: 'עדי בר',  email: 'adi@example.com',  phone: '0506666666', total: 4200, payment: 'paid', shipping: 'delivered', at: '2026-07-06T09:00:00.000Z', stores: [{ slug: 'keramika', name: 'קרמיקה' }],
+    paidAt: "now() - interval '120 days'", deliveredAt: "now() - interval '119 days'" },
+  { ref: 'CR-8', buyer: 'נועה שי', email: 'noa@example.com',  phone: '0507777777', total: 8100, payment: 'paid', shipping: 'shipped',   at: '2026-07-07T09:00:00.000Z', stores: [{ slug: 'tachshitim', name: 'תכשיטים' }],
+    paidAt: "now() - interval '1 day'" },
+  // Self-pickup: 'ready' IS the milestone here, so its clock runs while CR-6's does not — the one
+  // case where the two arms of the CASE disagree, and therefore the one worth a row of its own.
+  { ref: 'CR-9', buyer: 'גיל דור', email: 'gil@example.com',  phone: '0508888888', total: 2400, payment: 'paid', shipping: 'ready',     at: '2026-07-08T09:00:00.000Z', stores: [{ slug: 'keramika', name: 'קרמיקה' }],
+    paidAt: "now() - interval '1 day'", deliveryMethod: 'pickup' },
 ];
 
 beforeAll(async () => {
@@ -53,8 +72,8 @@ beforeAll(async () => {
     const id = crypto.randomUUID();
     await query(
       `INSERT INTO orders (id, checkout_ref, buyer_name, buyer_email, buyer_phone, total_agorot,
-                           payment_status, shipping_status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz)`,
+                           payment_status, shipping_status, created_at, paid_at, delivered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, ${s.paidAt ?? 'NULL'}, ${s.deliveredAt ?? 'NULL'})`,
       [id, s.ref, s.buyer, s.email, s.phone, s.total, s.payment, s.shipping, s.at],
     );
     for (const [i, store] of s.stores.entries()) {
@@ -64,9 +83,9 @@ beforeAll(async () => {
         [crypto.randomUUID(), id, store.slug, store.name, Math.round(s.total / s.stores.length), i],
       );
       await query(
-        `INSERT INTO order_stores (order_id, store_slug, store_name, subtotal_agorot)
-         VALUES ($1, $2, $3, $4)`,
-        [id, store.slug, store.name, Math.round(s.total / s.stores.length)],
+        `INSERT INTO order_stores (order_id, store_slug, store_name, subtotal_agorot, delivery_method)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, store.slug, store.name, Math.round(s.total / s.stores.length), s.deliveryMethod ?? null],
       );
     }
   }
@@ -95,9 +114,47 @@ describe('getAdminOrdersPage agrees with filterAndSortOrders', () => {
     }
   }
 
+  /**
+   * The payout filter, value by value — and every one of them asserted BY NAME rather than only
+   * through `bothAgree`. Parity alone would pass if both routes were wrong in the same direction
+   * (a `NOT` dropped on both sides classifies everything as one state and the two lists still
+   * match), so each case also names the order it must find.
+   */
+  describe('filtering by payout state', () => {
+    const CASES: Array<[string, string[]]> = [
+      ['unshipped',   ['CR-2', 'CR-6']],
+      ['undelivered', ['CR-8', 'CR-9']],
+      ['released',    ['CR-7']],
+      ['none',        ['CR-3', 'CR-4']],
+    ];
+    for (const [state, refs] of CASES) {
+      it(`${state} finds exactly the orders in that state`, async () => {
+        const rows = await bothAgree({ payout: [state] }, `payout=${state}`);
+        expect(rows.map((o) => o.checkoutRef).sort()).toEqual(refs);
+      });
+    }
+
+    it('the five states partition every order — none missing, none counted twice', async () => {
+      const all = await ALL();
+      const seen = new Map<string, number>();
+      for (const state of ['unshipped', 'undelivered', 'window', 'released', 'none']) {
+        for (const o of await bothAgree({ payout: [state] }, `partition:${state}`)) {
+          seen.set(o.id, (seen.get(o.id) ?? 0) + 1);
+        }
+      }
+      expect(seen.size, 'every order lands in some state').toBe(all.length);
+      expect([...seen.values()].filter((n) => n !== 1), 'no order in two states').toEqual([]);
+    });
+
+    it('several states at once are an OR, like every other filter here', async () => {
+      const rows = await bothAgree({ payout: ['released', 'none'] }, 'payout=released,none');
+      expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-3', 'CR-4', 'CR-7']);
+    });
+  });
+
   it('filtering by shipping status', async () => {
     const rows = await bothAgree({ shippingStatus: ['pending', 'shipped'] }, 'shipping filter');
-    expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-2', 'CR-5']);
+    expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-2', 'CR-5', 'CR-8']);
   });
 
   it('filtering by payment status', async () => {
@@ -107,7 +164,7 @@ describe('getAdminOrdersPage agrees with filterAndSortOrders', () => {
 
   it('filtering by store NAME, which is what the dropdown carries', async () => {
     const rows = await bothAgree({ store: ['תכשיטים'] }, 'store filter');
-    expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-2', 'CR-3', 'CR-5']);
+    expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-2', 'CR-3', 'CR-5', 'CR-8']);
   });
 
   for (const q of ['דנה', 'dana@example.com', '0503333333', 'CR-4', 'קרמיקה', 'לא קיים']) {
@@ -131,10 +188,13 @@ describe('paging', () => {
   it('slices without changing the order, and every page is disjoint', async () => {
     const all = (await bothAgree({ sortCol: 'date', sortDir: 'desc' }, 'paging base')).map((o) => o.id);
     const seen: string[] = [];
-    for (let page = 1; page <= 3; page += 1) {
+    // Derived from the fixture rather than written as a number: a seed added for another case must
+    // not turn a paging assertion red for a reason that has nothing to do with paging.
+    const pages = Math.ceil(SEEDS.length / 2);
+    for (let page = 1; page <= pages; page += 1) {
       const p = await getAdminOrdersPage({ sortCol: 'date', sortDir: 'desc' }, page, 2);
       expect(p.page).toBe(page);
-      expect(p.totalPages).toBe(3);
+      expect(p.totalPages).toBe(pages);
       expect(p.total).toBe(SEEDS.length);
       seen.push(...p.orders.map((o) => o.id));
     }
@@ -143,8 +203,8 @@ describe('paging', () => {
 
   it('clamps a page past the end rather than answering an empty list', async () => {
     const p = await getAdminOrdersPage({}, 99, 2);
-    expect(p.page).toBe(3);
-    expect(p.orders).toHaveLength(2);
+    expect(p.page).toBe(Math.ceil(SEEDS.length / 2));
+    expect(p.orders.length).toBeGreaterThan(0);
   });
 
   it('breaks a shared timestamp on a stable key, so two loads agree', async () => {
@@ -158,12 +218,12 @@ describe('paging', () => {
 describe('"new since you last opened the tab"', () => {
   it('keeps only orders after the boundary', async () => {
     const page = await getAdminOrdersPage({ newSince: '2026-07-03T12:00:00.000Z' }, 1, 50);
-    expect(page.orders.map((o) => o.checkoutRef).sort()).toEqual(['CR-4', 'CR-5', 'CR-6']);
+    expect(page.orders.map((o) => o.checkoutRef).sort()).toEqual(['CR-4', 'CR-5', 'CR-6', 'CR-7', 'CR-8', 'CR-9']);
   });
 
   it('composes with a filter rather than replacing it', async () => {
     const page = await getAdminOrdersPage({ newSince: '2026-07-03T12:00:00.000Z', paymentStatus: ['paid'] }, 1, 50);
-    expect(page.orders.map((o) => o.checkoutRef).sort()).toEqual(['CR-5', 'CR-6']);
+    expect(page.orders.map((o) => o.checkoutRef).sort()).toEqual(['CR-5', 'CR-6', 'CR-7', 'CR-8', 'CR-9']);
   });
 });
 

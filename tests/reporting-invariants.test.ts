@@ -19,8 +19,16 @@ import { daysInRangeInclusive } from '../src/lib/date-range.js';
 import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, getStoreRevenueBySlug } from '../src/lib/order-reporting.js';
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
-import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
+import { productShare } from '../src/lib/top-product-share.js';
+import { buildSalesReport, buildProductSalesReport, buildStockReport, buildPayoutsReport } from '../src/lib/seller-reports.js';
+import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
+import { getHeldBreakdown, getHeldBySeller, getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
+import { splitHeldByBasis } from '../src/lib/order-payout-line.js';
+import { planPayouts } from '../src/lib/payout-run.js';
+import { buildPlatformLedger } from '../src/lib/platform-ledger.js';
+import { buildPlatformStatement, monthPeriod, recentMonthKeys, statementPeriod } from '../src/lib/platform-statement.js';
+import { loadPlatformStatement } from '../src/lib/admin-statement-load.js';
 
 /** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
  *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
@@ -32,11 +40,11 @@ const platformTotals = (bs: readonly SellerBalance[]) => ({
 });
 import { commissionPercentForTier } from '../src/lib/pricing.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
-import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
+import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
 const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getOrderTotals, getStoreOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
-import { businessDayISO, businessMonthKey, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
+import { businessDayISO, businessMonthKey, businessTodayISO, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
 import { storeSliceTotalAgorot } from '../src/lib/order-totals.js';
 import { groupBuyerPurchases } from '../src/lib/buyer-purchases.js';
 
@@ -336,6 +344,42 @@ describe('the seller performance summary reconciles with itself', () => {
     expectSameMoney(gross, s.totalRevenueAgorot + discounts, 'gross product revenue vs net revenue + discounts');
   });
 
+  it('the share denominator is the WHOLE period, not the capped list on screen', () => {
+    // The percentage beside each leading product used to be a share of the five rows shown, so
+    // those five always added to 100% no matter how long the tail was (CURRENT_TASK.md → סשן ג׳:
+    // "ומה זה האחוז שמופיע שם?"). `productRevenueAgorot` is what it is a share of now, and the one
+    // property that makes it mean anything is that CAPPING THE LIST MUST NOT MOVE IT.
+    const all = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
+    expectSameMoney(
+      all.topProducts.reduce((a, p) => a + p.revenueAgorot, 0),
+      all.productRevenueAgorot,
+      'uncapped list vs its own denominator',
+    );
+    for (const cap of [1, 2, 3, 5, 50]) {
+      const capped = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, cap);
+      expectSameMoney(capped.productRevenueAgorot, all.productRevenueAgorot, `denominator at cap ${cap}`);
+      expect(capped.topProducts.length, `rows at cap ${cap}`).toBeLessThanOrEqual(cap);
+      for (const p of capped.topProducts) {
+        expect(p.revenueAgorot, `${p.productId} never exceeds the period`).toBeLessThanOrEqual(capped.productRevenueAgorot);
+        const share = productShare(p.revenueAgorot, capped.productRevenueAgorot);
+        expect(share.pct, `${p.productId} share is a percentage`).toBeGreaterThanOrEqual(0);
+        expect(share.pct, `${p.productId} share is a percentage`).toBeLessThanOrEqual(100);
+      }
+      // Parts sum to the whole: the shares of a capped list can never claim the whole period, and
+      // the uncapped one can never claim more than it (rounding gives it a row of slack).
+      const sum = capped.topProducts.reduce((a, p) => a + productShare(p.revenueAgorot, capped.productRevenueAgorot).pct, 0);
+      expect(sum, `shares at cap ${cap} do not exceed 100%`).toBeLessThanOrEqual(100 + capped.topProducts.length);
+    }
+  });
+
+  it('every leading product names the store that sold it', () => {
+    // The admin's list spans every store, so a bare product name has no owner on it ("לא רשום גם
+    // מאיזה חנות הם"). Carried by BOTH builders, or the platform panel renders a blank line.
+    const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
+    expect(s.topProducts.length).toBeGreaterThan(0);
+    for (const p of s.topProducts) expect(p.storeSlug, `${p.productId} store`).toBe(STORE);
+  });
+
   it('a single product drill-down reconciles with its own bars', () => {
     const p = buildProductPerformance(orders, EMPTY_PRODUCT_VIEW_STATS, STORE, 'p1', '2026-07-01', '2026-07-31', 'day');
     expectSameMoney(p.points.reduce((a, x) => a + x.revenueAgorot, 0), p.totalRevenueAgorot, 'product day buckets vs its total');
@@ -347,6 +391,70 @@ describe('the seller performance summary reconciles with itself', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. Two surfaces describing the same money must produce the same number.
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('the three seller reports reconcile with each other and with Performance', () => {
+  // One discounted multi-line order, one plain one, one cancelled. The discount is deliberately
+  // indivisible across its lines: that is where a per-line rounding loses or invents an agora, and
+  // where the sales and product exports would start disagreeing by amounts nobody can explain.
+  const orders = [
+    makeOrder('r1', {
+      items: [{ productId: 'p1', priceAgorot: 1999, qty: 1 }, { productId: 'p2', priceAgorot: 4001, qty: 1 }],
+      discount: { type: 'amount', value: 1, appliedAgorot: 100 },
+      createdAt: '2026-07-04T09:00:00.000Z',
+    }),
+    makeOrder('r2', { items: [{ productId: 'p1', priceAgorot: 1999, qty: 3 }], createdAt: '2026-07-09T09:00:00.000Z' }),
+    makeOrder('r3', {
+      items: [{ productId: 'p3', priceAgorot: 90000, qty: 1 }],
+      createdAt: '2026-07-15T09:00:00.000Z',
+      over: { shippingStatus: 'cancelled' },
+    }),
+  ];
+  const FROM = '2026-07-01';
+  const TO = '2026-07-31';
+  const RATE = 12;
+
+  const sales = buildSalesReport(orders, STORE, FROM, TO, RATE);
+  const byProduct = buildProductSalesReport(orders, [], STORE, FROM, TO);
+
+  it('the product report and the sales report agree to the agora', () => {
+    expect(byProduct.totals.grossAgorot).toBe(sales.totals.grossAgorot);
+    expect(byProduct.totals.discountAgorot).toBe(sales.totals.discountAgorot);
+    expect(byProduct.totals.netAgorot).toBe(sales.totals.netAgorot);
+  });
+
+  it('the sales report and the Performance tab agree about the same window', () => {
+    // The two are read side by side — a seller checks the tab's headline and then exports the rows
+    // behind it — so a difference here is the one that gets noticed and never explained.
+    const perf = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, FROM, TO, 'day', RATE);
+    expect(sales.totals.netAgorot).toBe(perf.totalRevenueAgorot);
+    expect(sales.totals.commissionAgorot).toBe(perf.platformCommissionAgorot);
+    expect(sales.totals.rows).toBeGreaterThan(perf.totalOrders); // the cancelled row is listed, not counted
+  });
+
+  it('a cancelled order is listed, contributes nothing, and is charged no commission', () => {
+    const row = sales.rows.find((r) => r.orderId === 'r3');
+    expect(row?.countsAsRevenue).toBe(false);
+    expect(row?.commissionAgorot).toBe(0);
+    expect(sales.totals.grossAgorot).toBe(1999 + 4001 + 1999 * 3);
+  });
+
+  it('every payout is net minus commission, and no figure is ever negative', () => {
+    for (const r of sales.rows) {
+      expect(r.payoutAgorot).toBe(r.netAgorot - r.commissionAgorot);
+      for (const v of [r.grossAgorot, r.netAgorot, r.commissionAgorot, r.payoutAgorot]) expect(v).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('the stock report values the shelf at the same agorot every money surface uses', () => {
+    const stock = buildStockReport([
+      { id: 'p1', storeId: 's', slug: 'p1', name: 'p1', description: '', price: 19.99, stock: 3 },
+      { id: 'p2', storeId: 's', slug: 'p2', name: 'p2', description: '', price: 0.145, stock: 1 },
+    ] as never);
+    // 19.99 → 1999 and not 1998: `toAgorot`'s EPSILON nudge, the same one product prices are
+    // stored with, so a stocktake and the catalogue cannot disagree about a shelf's worth.
+    expect(stock.totals.valueAgorot).toBe(1999 * 3 + 15);
+  });
+});
 
 describe('the admin surfaces reconcile with each other', () => {
   const orders = [
@@ -745,9 +853,54 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
           Object.fromEntries(buckets.map((x) => [x.key, [x.revenueAgorot, x.orders]]));
         expect(keyed(a.buckets), `${slug} buckets (${granularity})`).toEqual(keyed(b.buckets));
       }
-      expect(fromDb.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]),
-        `top products (${granularity})`).toEqual(fromJs.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]));
+      expect(fromDb.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units, p.storeSlug]),
+        `top products (${granularity})`).toEqual(fromJs.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units, p.storeSlug]));
+      // The denominator behind every percentage on that list, and the count under its heading.
+      // The query gets both from window functions and the JS twin from two reduces; nothing else
+      // would notice if the SQL's nesting stopped computing them before the LIMIT.
+      expectSameMoney(fromDb.productRevenueAgorot, fromJs.productRevenueAgorot, `product revenue (${granularity})`);
+      expect(fromDb.productsMatched, `products matched (${granularity})`).toBe(fromJs.productsMatched);
     }
+  });
+
+  it('a product search narrows the LIST and never the denominator', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const unfiltered = await getPlatformSales(slugs, from, to, 'month', 0);
+    expect(unfiltered.topProducts.length, 'fixture sells something').toBeGreaterThan(0);
+    // A fragment of a real product name, so the search matches at least itself but not everything.
+    const target = unfiltered.topProducts[0]!;
+    const needle = target.name.slice(0, Math.max(2, Math.ceil(target.name.length / 2)));
+
+    const fromDb = await getPlatformSales(slugs, from, to, 'month', 0, needle);
+    const fromJs = buildPlatformSales(stored, slugs, from, to, 'month', 0, needle);
+    expect(fromDb.topProducts.map((p) => p.productId)).toEqual(fromJs.topProducts.map((p) => p.productId));
+    expect(fromDb.productsMatched).toBe(fromJs.productsMatched);
+    expect(fromDb.topProducts.length, 'the searched-for product is in its own results').toBeGreaterThan(0);
+    for (const p of fromDb.topProducts) expect(p.name.toLowerCase()).toContain(needle.toLowerCase());
+    // The whole point: a row found by search still reports its share of the PERIOD. If the filter
+    // leaked into the window the denominator would collapse onto the matches and every search
+    // would print inflated percentages.
+    expectSameMoney(fromDb.productRevenueAgorot, unfiltered.productRevenueAgorot, 'searched denominator');
+
+    // A search that matches nothing is the one case where both windows have no row to ride on.
+    const none = await getPlatformSales(slugs, from, to, 'month', 0, 'zzz-no-such-product-zzz');
+    expect(none.topProducts).toEqual([]);
+    expect(none.productsMatched).toBe(0);
+    expect(none.productRevenueAgorot).toBe(0);
+    expect(buildPlatformSales(stored, slugs, from, to, 'month', 0, 'zzz-no-such-product-zzz')).toEqual(none);
+  });
+
+  it('a LIKE wildcard typed into the product search is searched for, not obeyed', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    // '%' matches everything if it reaches LIKE unescaped — which would make the search silently
+    // stop filtering exactly when someone searches for a product with a percentage in its name.
+    const fromDb = await getPlatformSales(slugs, from, to, 'month', 0, '%');
+    const fromJs = buildPlatformSales(stored, slugs, from, to, 'month', 0, '%');
+    expect(fromDb.topProducts.map((p) => p.productId)).toEqual(fromJs.topProducts.map((p) => p.productId));
+    const everything = await getPlatformSales(slugs, from, to, 'month', 0);
+    expect(fromDb.productsMatched, 'a literal % is not "match all"').toBeLessThan(everything.productsMatched);
   });
 
   it('the platform summary built from the query equals the one built from the orders', async () => {
@@ -761,6 +914,79 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     expectSameMoney(fromDb.summary.platformCommissionAgorot, fromJs.summary.platformCommissionAgorot, 'platform commission');
     expect(fromDb.summary.totalOrders).toBe(fromJs.summary.totalOrders);
     expect(fromDb.stores.map((r) => [r.slug, r.revenueAgorot, r.orders])).toEqual(fromJs.stores.map((r) => [r.slug, r.revenueAgorot, r.orders]));
+  });
+
+  it('a shopper who opened several stores is ONE platform visitor', async () => {
+    // The figure that used to be a sum of per-store uniques, so a mall working as intended — one
+    // shopper, several storefronts — reported several people and sank the conversion rate that
+    // divides by it. Three invariants, and the first two are what make the third believable:
+    // the platform count can never exceed the sum (that IS the double count it removes), can never
+    // be below the largest single store (those visitors are all platform visitors too), and views
+    // stay a plain sum because a load really did happen once per store opened.
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const stores = await getAllStores();
+    const ids = stores.map((s) => s.id);
+    const [perStore, platform] = await Promise.all([
+      getStoreViewStats(ids, from, to, 'month'),
+      getPlatformViewStats(ids, from, to, 'month'),
+    ]);
+    const summed = [...perStore.values()].reduce((a, v) => a + v.totalUniqueVisitors, 0);
+    const largest = Math.max(0, ...[...perStore.values()].map((v) => v.totalUniqueVisitors));
+    expect(platform.totalUniqueVisitors, 'never more than the double-counted sum').toBeLessThanOrEqual(summed);
+    expect(platform.totalUniqueVisitors, 'never fewer than one store already had').toBeGreaterThanOrEqual(largest);
+    expect(platform.totalViews, 'loads are summed, not de-duped')
+      .toBe([...perStore.values()].reduce((a, v) => a + v.totalViews, 0));
+
+    // Per BUCKET as well: the visitors chart and the KPI above it are read against each other, so
+    // a chart still summing while the headline de-dupes is worse than either alone.
+    const summedByKey = new Map<string, number>();
+    for (const v of perStore.values()) {
+      for (const b of v.buckets) summedByKey.set(b.key, (summedByKey.get(b.key) ?? 0) + b.uniqueVisitors);
+    }
+    for (const b of platform.buckets) {
+      expect(b.uniqueVisitors, `bucket ${b.key} vs its per-store sum`).toBeLessThanOrEqual(summedByKey.get(b.key) ?? 0);
+    }
+    // And a range total is never a sum of its buckets — a visitor returning in two months is one
+    // person. Stated here because it is the same trap one level up from the per-store version.
+    expect(platform.totalUniqueVisitors, 'range unique <= sum of bucket uniques')
+      .toBeLessThanOrEqual(platform.buckets.reduce((a, b) => a + b.uniqueVisitors, 0));
+
+    // And the assertions above must be able to FAIL — a `<=` between two numbers that are always
+    // equal passes for the wrong reason. `v1` browses both keramika and tachshitim in the fixture
+    // precisely so that this de-dup has something to do: 4 store-visits, 3 people.
+    expect(summed, 'the fixture really does contain a cross-store shopper').toBe(4);
+    expect(platform.totalUniqueVisitors, 'and the platform counts them once').toBe(3);
+  });
+
+  it('the platform summary reports the de-duped count, and falls back to the sum without it', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const inputs = buildPlatformStoreInputs(
+      (await getAllStores()).map((s) => ({ ...s, sellerId: s.sellerId })),
+      await getAllSellers(),
+    );
+    const [views, platformViews, sales] = await Promise.all([
+      getStoreViewStats(inputs.map((s) => s.id), from, to, 'month'),
+      getPlatformViewStats(inputs.map((s) => s.id), from, to, 'month'),
+      getPlatformSales(inputs.map((s) => s.slug), from, to, 'month'),
+    ]);
+    const deduped = buildPlatformPerformance(sales, inputs, views, from, to, 'month', platformViews);
+    const summedFallback = buildPlatformPerformance(sales, inputs, views, from, to, 'month');
+
+    expect(deduped.summary.totalUniqueVisitors).toBe(platformViews.totalUniqueVisitors);
+    expect(deduped.summary.totalUniqueVisitors).toBeLessThanOrEqual(summedFallback.summary.totalUniqueVisitors);
+    // Everything else is untouched by the de-dup — it is one figure, not a rescaling of the tab.
+    expect(deduped.summary.totalViews).toBe(summedFallback.summary.totalViews);
+    expect(deduped.summary.totalOrders).toBe(summedFallback.summary.totalOrders);
+    expectSameMoney(deduped.summary.totalRevenueAgorot, summedFallback.summary.totalRevenueAgorot, 'revenue is unaffected');
+    expect(deduped.stores.map((r) => [r.slug, r.views, r.conversionRate]),
+      'per-store rows stay per-store').toEqual(summedFallback.stores.map((r) => [r.slug, r.views, r.conversionRate]));
+    // Fewer visitors over the same orders can only move conversion UP — the direction is the point
+    // of the fix, so it is asserted rather than left to the reader.
+    if (deduped.summary.totalOrders > 0 && deduped.summary.totalUniqueVisitors > 0) {
+      expect(deduped.summary.conversionRate).toBeGreaterThanOrEqual(summedFallback.summary.conversionRate);
+    }
   });
 
   it('the live reconciliation reaches the same verdict as the one over the orders', async () => {
@@ -911,6 +1137,267 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
       .toBe(sellers.filter((s) => billable(s.createdAt) > 0).length);
     expect(tiers.reduce((a, t) => a + t.billableDays, 0), 'billable days')
       .toBe(sellers.reduce((a, s) => a + billable(s.createdAt), 0));
+  });
+
+  /**
+   * **Two surfaces, one figure.** The seller's payments tab builds a whole per-order account and
+   * reads `payableNowAgorot` off it; the site header cannot afford that on every page load, so
+   * `getPayableNowForSeller` asks the database for the same three sums instead. Both draw the same
+   * red dot (`needsBankDetails`), so a disagreement between them is a dot leading to a screen with
+   * nothing on it — or, worse, no dot on a seller whose money is stuck.
+   *
+   * They are deliberately different spellings of the hold rule (JS in `seller-account.ts`, SQL in
+   * `payout-hold.ts`), which is exactly the arrangement this file exists to police. The one known
+   * way they may legitimately diverge is a seller past `getSellerAccountRows`' 500-slice bound;
+   * no fixture is near it, so on this data they must agree exactly.
+   */
+  it('payable-now: the header\'s cheap figure equals the seller\'s own screen', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      const cheap = await getPayableNowForSeller(seller.id);
+      expect(cheap, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
+    }
+  });
+
+  /**
+   * And the third spelling: the payout RUN. Its plan is what actually creates transfers, so a seller
+   * shown one number and paid another is the worst of the three failures available here. `settled`
+   * rows carry a zero balance and are absent from the plan, which is why the lookup falls back to 0
+   * rather than skipping them — "not in the plan" is a claim about the money too.
+   */
+  /**
+   * The accounting report and the account agree about what has been transferred (owner, סשן א׳ §6).
+   *
+   * The Payments tab used to carry a lifetime "שולם בעבר" tile computed by `seller-account.ts`, and
+   * that figure moved to the Reports tab as a windowed, exportable report built by a different
+   * function. That is precisely the shape this file exists to police: one fact, two modules. Over a
+   * window wide enough to hold every transfer, `buildPayoutsReport`'s total must be `paidOutAgorot`
+   * to the agora — including the exclusion of `failed` rows, which both sides have to make the same
+   * way or the seller's books and their dashboard part company by exactly one bounced transfer.
+   */
+  /**
+   * The two "ממתינים" figures the payments tab prints ONE LINE APART (2026-08-11).
+   *
+   * The tile is this shop's share, from `splitHeldByBasis(slices, slug)`; the line under it is the
+   * account's, from `buildSellerAccount`. They are computed by different functions from different
+   * inputs and they sit close enough together that a seller will subtract one from the other — so
+   * "the shops add up to the account" is not a nice property here, it is the only thing that makes
+   * the pair readable. A drift shows up as a shop's held money belonging to no shop.
+   *
+   * Asserted over the FIXTURES rather than over a literal, so a seller who appears later with a
+   * shape nobody imagined is covered the day their rows exist.
+   */
+  it('held: every shop\'s share sums to the account-wide figure beside it', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      if (!account) continue;
+      const slices = account.account.slices;
+      const shops = [...new Set(slices.map((s) => s.storeSlug))];
+      const perShop = shops.reduce((total, slug) => {
+        const split = splitHeldByBasis(slices, slug);
+        return total + split.groups.reduce((t, g) => t + g.agorot, 0) + split.unknownAgorot;
+      }, 0);
+      expectSameMoney(perShop, account.account.heldAgorot, `seller ${seller.id}: shops vs account held`);
+    }
+  });
+
+  it('paid-out: the payouts report over all time equals the account\'s own figure', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      if (!account) continue;
+      const report = buildPayoutsReport(account.payouts, '1970-01-01', '2999-12-31');
+      // Every payout row reaches the report — the window cannot be the thing making them agree.
+      expect(report.rows.length, `seller ${seller.id}: rows`).toBe(account.payouts.length);
+      expect(report.totals.amountAgorot, `seller ${seller.id}: transferred`).toBe(account.account.paidOutAgorot);
+    }
+  });
+
+  it('payable-now: the payout run would send exactly what the screen promises', async () => {
+    const plan = await planPayouts();
+    const byId = new Map(plan.rows.map((r) => [r.sellerId, r.balanceAgorot]));
+    for (const seller of await getAllSellers()) {
+      const account = await getSellerAccountFor(seller.id);
+      expect(byId.get(seller.id) ?? 0, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
+    }
+  });
+
+  /**
+   * The platform ledger (admin overview, סשן ב׳ §3) — the first figure here that is nobody's
+   * balance. It states what the platform is holding that belongs to sellers, and it is read to run
+   * a business, so the danger is not that a tile is wrong in isolation but that three plausible
+   * tiles do not add up. Both halves are asserted: the aggregate against the per-seller rows it
+   * must agree with, and the card's own parts against its whole.
+   */
+  it('the platform accrual is the sum of the per-seller ones — one aggregate, N rows', async () => {
+    const [accrual, releasable] = await Promise.all([getPlatformAccrual(), getReleasableBySeller()]);
+    expectSameMoney(accrual.releasedNetAgorot, releasable.reduce((a, r) => a + r.netAgorot, 0), 'released net');
+    expectSameMoney(accrual.releasedGrossAgorot, releasable.reduce((a, r) => a + r.grossAgorot, 0), 'released gross');
+    expectSameMoney(accrual.releasedCommissionAgorot, releasable.reduce((a, r) => a + r.commissionAgorot, 0), 'released commission');
+    // The released half is a FILTER over the same rows, so it can never exceed the whole — and the
+    // whole closes on its own arithmetic.
+    expectSameMoney(accrual.grossAgorot - accrual.commissionAgorot, accrual.netAgorot, 'gross − commission = net');
+    expect(accrual.releasedNetAgorot).toBeLessThanOrEqual(accrual.netAgorot);
+    expect(accrual.releasedGrossAgorot).toBeLessThanOrEqual(accrual.grossAgorot);
+  });
+
+  /**
+   * "Why is that money stuck" — the breakdown behind the held figure (owner, 2026-08-11).
+   *
+   * It is a THIRD reading of the hold rule (the run's SQL, the seller screen's JS, and now this
+   * split), which is exactly the arrangement that goes wrong quietly: a reason list that does not
+   * add up to the total tells the admin to chase sellers over money that was never stuck. So both
+   * directions are pinned — the two reasons against the platform total, and the per-seller map
+   * against the same.
+   */
+  it('every held shekel has exactly one reason, and the reasons sum to the whole', async () => {
+    const [breakdown, bySeller, accrual] = await Promise.all([
+      getHeldBreakdown(), getHeldBySeller(), getPlatformAccrual(),
+    ]);
+    const heldTotal = accrual.netAgorot - accrual.releasedNetAgorot;
+    expectSameMoney(breakdown.unshippedAgorot + breakdown.clockRunningAgorot, heldTotal, 'reasons vs held total');
+    expectSameMoney([...bySeller.values()].reduce((a, b) => a + b, 0), heldTotal, 'per-seller vs held total');
+    // Neither reason may be negative — a `FILTER` that overlapped would show up as one of them
+    // borrowing from the other rather than as a wrong total.
+    expect(breakdown.unshippedAgorot).toBeGreaterThanOrEqual(0);
+    expect(breakdown.clockRunningAgorot).toBeGreaterThanOrEqual(0);
+  });
+
+  it('the ledger card\'s parts sum to its whole, on the real data and on a hostile one', async () => {
+    const [accrual, plan] = await Promise.all([getPlatformAccrual(), planPayouts()]);
+    const ledger = buildPlatformLedger(accrual, plan);
+    // The identity the card is drawn from: everything we hold is either out of hold or in it.
+    expectSameMoney(ledger.releasedAgorot + ledger.heldAgorot, ledger.sellerFundsAgorot, 'released + held = liability');
+    // What actually goes out cannot exceed what is released — the three payout states partition it.
+    expect(ledger.nextPayoutAgorot + ledger.stuckNoBankAgorot + ledger.belowMinimumAgorot)
+      .toBeLessThanOrEqual(Math.max(0, ledger.releasedAgorot));
+    // The income line is OUR money and the liability is not: commission earned but not yet taken
+    // at source, so the next payout's slice of it can never be more than the whole.
+    expect(ledger.incomeAtNextPayoutAgorot).toBeLessThanOrEqual(ledger.platformIncomeAgorot);
+
+    // And on numbers no fixture produces: a platform that has paid out most of what it accrued, with
+    // a clawback on top. The identity has to survive that, because the day it stops holding is the
+    // day the card silently reports a liability that is not the sum of its own two halves.
+    const hostile = buildPlatformLedger(
+      { grossAgorot: 1_000_000, commissionAgorot: 120_000, netAgorot: 880_000,
+        releasedGrossAgorot: 400_000, releasedCommissionAgorot: 48_000, releasedNetAgorot: 352_000 },
+      { ...plan, paidOutAgorot: 300_000, commissionSettledAgorot: 41_000, adjustmentsAgorot: -5_000 },
+    );
+    expectSameMoney(hostile.releasedAgorot + hostile.heldAgorot, hostile.sellerFundsAgorot, 'hostile: released + held');
+    expectSameMoney(hostile.sellerFundsAgorot, 880_000 - 300_000 - 5_000, 'hostile: liability');
+    expectSameMoney(hostile.releasedAgorot, 352_000 - 300_000 - 5_000, 'hostile: released');
+    // In hold is untouched by transfers: 880,000 − 352,000, whatever has been paid out of the rest.
+    expectSameMoney(hostile.heldAgorot, 880_000 - 352_000, 'hostile: held');
+    expectSameMoney(hostile.platformIncomeAgorot, 120_000 - 41_000, 'hostile: commission earned − collected');
+  });
+});
+
+/**
+ * The monthly accounting statement — the one artefact here that LEAVES the building.
+ *
+ * Everything else in this file protects a screen; this protects a document an accountant reads and
+ * acts on, where a figure that does not add up is not a bug report, it is a correction to a filing.
+ * So the four properties asserted are the four an accountant would check by hand:
+ *   1. the balance movement closes (opening + accrued − paid ± adjustments = closing);
+ *   2. periods CHAIN — one month's closing is the next month's opening, with no gap and no overlap;
+ *   3. periods ADD — two consecutive months' accruals sum to the range that spans them;
+ *   4. a statement running to today agrees with the live ledger card the owner reads on the
+ *      overview. That last one is the cross-surface statement: two independent routes to "what are
+ *      we holding that is not ours", which must not be able to differ.
+ */
+describe('the accounting statement closes, chains, and agrees with the live ledger', () => {
+  const PERIOD = { fromISO: '2026-08-01', toISO: '2026-08-31', monthKey: '2026-08' };
+  const nothing = { grossAgorot: 0, commissionAgorot: 0, netAgorot: 0, purchases: 0 };
+  const noMovement = { paidOutAgorot: 0, commissionSettledAgorot: 0, adjustmentsAgorot: 0, payouts: 0 };
+
+  it('the movement closes, including on numbers no fixture produces', () => {
+    const s = buildPlatformStatement({
+      period: PERIOD,
+      generatedAtISO: '2026-09-01',
+      accrued: { grossAgorot: 500_000, commissionAgorot: 60_000, netAgorot: 440_000, purchases: 37 },
+      movement: { paidOutAgorot: 300_000, commissionSettledAgorot: 41_000, adjustmentsAgorot: -5_000, payouts: 4 },
+      before: {
+        accrued: { grossAgorot: 900_000, commissionAgorot: 108_000, netAgorot: 792_000, purchases: 61 },
+        movement: { paidOutAgorot: 700_000, commissionSettledAgorot: 95_000, adjustmentsAgorot: -1_200, payouts: 9 },
+      },
+      revenue: { subscriptionsAgorot: 29_700, subscribers: 3 },
+    });
+    // Opening is the same expression as closing, evaluated over everything before the period.
+    expectSameMoney(s.openingBalanceAgorot, 792_000 - 700_000 - 1_200, 'opening');
+    expectSameMoney(
+      s.closingBalanceAgorot,
+      s.openingBalanceAgorot + s.sellerEarnedAgorot - s.paidOutAgorot + s.adjustmentsAgorot,
+      'closing = the four lines printed above it',
+    );
+    // The bridge figure really is one number in both sections, not two that happen to agree.
+    expectSameMoney(s.sellerEarnedAgorot, 440_000, 'seller earned appears in both sections');
+    // Income is commission + subscriptions, and ads are absent BY DESIGN — an accountant may not be
+    // handed the deterministic mock the ad tabs render (GO_LIVE §2).
+    expectSameMoney(s.incomeAccruedAgorot, 60_000 + 29_700, 'income = commission + subscriptions, no ads');
+  });
+
+  it('a period with nothing in it still states the balance it inherited', () => {
+    // The quiet month is the one a report is most likely to get wrong by rendering zeros: no sales
+    // and no transfers must still carry the opening balance forward untouched.
+    const s = buildPlatformStatement({
+      period: PERIOD, generatedAtISO: '2026-09-01', accrued: nothing, movement: noMovement,
+      before: { accrued: { ...nothing, netAgorot: 74_010, grossAgorot: 84_000, commissionAgorot: 9_990 }, movement: noMovement },
+      revenue: { subscriptionsAgorot: 0, subscribers: 0 },
+    });
+    expectSameMoney(s.openingBalanceAgorot, 74_010, 'opening carried');
+    expectSameMoney(s.closingBalanceAgorot, 74_010, 'closing unchanged');
+  });
+
+  it('the period helpers name real days — leap years, December, and the whole-month collapse', () => {
+    expect(monthPeriod('2026-08')).toEqual({ fromISO: '2026-08-01', toISO: '2026-08-31', monthKey: '2026-08' });
+    expect(monthPeriod('2026-02').toISO, 'ordinary February').toBe('2026-02-28');
+    expect(monthPeriod('2028-02').toISO, 'leap February').toBe('2028-02-29');
+    expect(monthPeriod('2027-04').toISO, '30-day month').toBe('2027-04-30');
+    // A free range that IS a month must produce the same period object as asking for the month —
+    // otherwise the two spellings title, chain and name their CSV file differently.
+    expect(statementPeriod('2026-08-01', '2026-08-31')).toEqual(monthPeriod('2026-08'));
+    expect(statementPeriod('2026-08-01', '2026-08-15').monthKey, 'a partial month is not a month').toBeNull();
+    // The picker walks backwards across a year boundary without producing a month 0.
+    expect(recentMonthKeys('2026-02-11', 3)).toEqual(['2026-02', '2026-01', '2025-12']);
+  });
+
+  it('months chain and add: July closes where August opens, and both sum to the span', async () => {
+    // Read from the real fixture database, over two adjacent months chosen from the data itself, so
+    // this is a statement about the QUERIES (the window clause, the date bucketing) and not only
+    // about the arithmetic above.
+    const july = await loadPlatformStatement(monthPeriod('2026-07'), '2026-09-01');
+    const august = await loadPlatformStatement(monthPeriod('2026-08'), '2026-09-01');
+    expectSameMoney(august.openingBalanceAgorot, july.closingBalanceAgorot, 'July closing → August opening');
+
+    const span = await loadPlatformStatement(statementPeriod('2026-07-01', '2026-08-31'), '2026-09-01');
+    expectSameMoney(july.grossAgorot + august.grossAgorot, span.grossAgorot, 'GMV adds');
+    expectSameMoney(july.sellerEarnedAgorot + august.sellerEarnedAgorot, span.sellerEarnedAgorot, 'seller accrual adds');
+    expectSameMoney(july.paidOutAgorot + august.paidOutAgorot, span.paidOutAgorot, 'payouts add');
+    expect(july.purchases + august.purchases, 'purchases add').toBe(span.purchases);
+    // The span inherits July's opening and reaches August's closing — no double-counted month.
+    expectSameMoney(span.openingBalanceAgorot, july.openingBalanceAgorot, 'span opens where July does');
+    expectSameMoney(span.closingBalanceAgorot, august.closingBalanceAgorot, 'span closes where August does');
+  });
+
+  it('a statement running to today closes on the same figure the overview card shows', async () => {
+    // Two independent routes to "what are we holding that is not ours": this one sums a window of
+    // orders and payouts, the card asks for the platform accrual and the payout plan. They are
+    // different queries over the same facts and are read side by side by the same person.
+    const today = businessTodayISO();
+    const [statement, accrual, plan] = await Promise.all([
+      loadPlatformStatement(statementPeriod('2020-01-01', today), today),
+      getPlatformAccrual(),
+      planPayouts(),
+    ]);
+    const ledger = buildPlatformLedger(accrual, plan);
+    expectSameMoney(statement.closingBalanceAgorot, ledger.sellerFundsAgorot, 'statement closing vs ledger liability');
+    // Non-vacuous: two surfaces agreeing on zero would prove nothing about either.
+    expect(statement.grossAgorot, 'fixtures must have sales or this proves nothing').toBeGreaterThan(0);
   });
 });
 

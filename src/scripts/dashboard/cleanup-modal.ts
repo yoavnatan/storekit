@@ -65,6 +65,8 @@ async function persistCustomColor(hex: string): Promise<void> {
       renderCustomSwatches();
       syncFinishControls();
     }
+      // silent: nothing was lost — this only persists a colour swatch the seller just picked. It
+      // stays usable for this session and the next pick re-tries the save.
   } catch { /* offline / failed — the optimistic swatch stays for this session */ }
 }
 

@@ -105,6 +105,60 @@ export function quickRange(id: QuickRangeId, today: Date = new Date()): { from: 
   return { from: addDaysISO(to, -29), to };
 }
 
+/**
+ * The seven-preset range used by the surfaces a seller reads a PERIOD off — the performance tab
+ * and the reports tab. A superset of `QuickRangeId` (it adds the three rolling windows and, the
+ * one that matters most to a bookkeeper, `lastMonth`).
+ *
+ * **Promoted here on 2026-08-10, and that is the point of the entry.** This was a private closure
+ * inside `scripts/dashboard/performance.ts`; the header of this file recorded the decision not to
+ * reuse it and to grow a second idea of "preset → bounds" here instead. Two was already one too
+ * many, and a third (the reports tab needs `lastMonth`, which `quickRange` has no name for) would
+ * have made the failure mode concrete: two tabs in the same dashboard, both saying "החודש שעבר",
+ * disagreeing about which days that is. So the fullest of them moved out and the caller it came
+ * from now imports it.
+ *
+ * Every bound is calendar arithmetic on ONE business-day string, never a fresh `Date` per bound —
+ * see `quickRange` above for what that mistake cost when the seller's laptop was on another
+ * timezone.
+ */
+export type PeriodPreset = 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth' | '7d' | '30d' | '90d';
+export const PERIOD_PRESETS: readonly PeriodPreset[] = ['today', 'thisWeek', 'thisMonth', 'lastMonth', '7d', '30d', '90d'];
+
+/** The i18n key each preset's label lives under. Here rather than in each picker, because there
+ *  are three of them now (the performance dropdown, the reports dropdown, and the reports panel's
+ *  server-rendered initial label) and a preset whose name differs between two tabs of the same
+ *  dashboard is the drift `periodRange` moved here to end. */
+export const PERIOD_PRESET_LABEL_KEY: Record<PeriodPreset, string> = {
+  today: 'perfPresetToday',
+  thisWeek: 'perfPresetThisWeek',
+  thisMonth: 'perfPresetThisMonth',
+  lastMonth: 'perfPresetLastMonth',
+  '7d': 'perfPreset7d',
+  '30d': 'perfPreset30d',
+  '90d': 'perfPreset90d',
+};
+
+export function periodRange(preset: string, today: Date = new Date()): { from: string; to: string } {
+  const to = businessDayISO(today);
+  if (preset === 'today') return { from: to, to };
+  if (preset === 'thisWeek') {
+    const weekday = new Date(`${to}T00:00:00Z`).getUTCDay();
+    return { from: addDaysISO(to, -weekday), to };
+  }
+  if (preset === '7d' || preset === '30d' || preset === '90d') {
+    const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
+    return { from: addDaysISO(to, -(days - 1)), to };
+  }
+  if (preset === 'thisMonth') return { from: businessMonthStartISO(to), to };
+  if (preset === 'lastMonth') {
+    // The day before this month's 1st is the last day of the previous one.
+    const end = addDaysISO(businessMonthStartISO(to), -1);
+    return { from: businessMonthStartISO(end), to: end };
+  }
+  return { from: to, to };
+}
+
 /** The equal-length window immediately before [from,to] — for period-over-period comparison. */
 export function previousPeriod(fromISO: string, toISO: string): { from: string; to: string } {
   const len = daysInRangeInclusive(fromISO, toISO);
@@ -134,6 +188,23 @@ export function coerceRange(fromRaw: unknown, toRaw: unknown, today: Date = new 
 }
 
 /** Compact day.month caption from an ISO date, e.g. "2026-07-08" → "8.7". */
+/**
+ * A day for a person to READ, in the Israeli order: `2026-08-03` → `03/08/2026`.
+ *
+ * String surgery, not `toLocaleDateString`: an ISO day has no time and no zone, and handing it to
+ * `new Date()` gives it both — parsed as UTC midnight and then rendered in the browser's zone,
+ * which in a negative offset prints the day before. The report's date column showed a raw ISO
+ * string until 2026-08-10, which is unambiguous and correct and reads as machine output to an
+ * Israeli seller.
+ *
+ * `shortDate` below stays as it is — `3.8` is the idiomatic compact form for a RANGE label in a
+ * button, and it is shared with the ad picker.
+ */
+export function displayDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+
 export function shortDate(iso: string): string {
   const [, m, d] = iso.split('-');
   return `${Number(d)}.${Number(m)}`;

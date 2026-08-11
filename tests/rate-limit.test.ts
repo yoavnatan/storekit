@@ -149,10 +149,16 @@ describe('registration', () => {
   });
 });
 
+// The cut-off is MAX_RATE_WINDOW_SEC — the LONGEST window any surface uses — and not this file's
+// own 15-minute auth window. It was the auth window until 2026-08-10, which was correct only while
+// this file was the only caller: lib/message-flood.ts buckets over an hour, and a 15-minute purge
+// would have deleted its rows at minute 16, silently switching the message limiter off. Hence
+// '2 hours' below rather than '16 minutes'. tests/message-flood.test.ts holds the other half — that
+// a still-live hour-long bucket survives a purge.
 describe('purge job', () => {
   it('drops lapsed rows and leaves live ones', async () => {
     await failLogin('old@example.com', IP, 3);
-    await query("UPDATE auth_attempts SET window_start = now() - interval '16 minutes'");
+    await query("UPDATE auth_attempts SET window_start = now() - interval '2 hours'");
     await failLogin('fresh@example.com', '198.51.100.7', 3);
 
     expect(await purgeExpiredAuthAttempts()).toBeGreaterThan(0);
@@ -163,7 +169,7 @@ describe('purge job', () => {
 
   it('is idempotent — a second pass finds nothing left', async () => {
     await failLogin('old@example.com', IP, 3);
-    await query("UPDATE auth_attempts SET window_start = now() - interval '16 minutes'");
+    await query("UPDATE auth_attempts SET window_start = now() - interval '2 hours'");
     await purgeExpiredAuthAttempts();
     expect(await purgeExpiredAuthAttempts()).toBe(0);
   });

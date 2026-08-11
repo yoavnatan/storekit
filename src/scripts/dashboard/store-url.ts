@@ -80,6 +80,7 @@ export function initStoreUrl(): void {
     form.set('slug', slug);
     let data: UrlResponse;
     try { const res = await fetch('/api/store', { method: 'POST', body: form }); data = await res.json() as UrlResponse; }
+  // silent: falls into the `!data.ok` branch below, which flashes the error beside the field.
     catch { data = { ok: false }; }
     saveBtn.disabled = false;
     if (!data.ok) { flash(errMsg(i, data.error), true); return; }

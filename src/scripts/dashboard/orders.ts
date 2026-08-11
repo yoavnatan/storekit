@@ -1,4 +1,5 @@
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
+import { showActionFailedToast } from '../../lib/toast.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { CANCELLABLE_FROM } from '../../lib/order-status-rules.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
@@ -6,6 +7,10 @@ import { applyStockAttentionFilter } from './products.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { orderPayoutLine, payoutWhyText, payoutFilterValue, PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
+import type { Order } from '../../lib/orders.js';
+import type { DeliveryMethod } from '../../lib/shipping.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
@@ -212,6 +217,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           body: JSON.stringify({ orderId, storeSlug, sellerNotes: notes }),
         });
         return res.ok;
+      // silent: `commitNote`/`deleteNote` own the answer — they revert the list and toast.
       } catch { return false; }
     }
     // ✓ — append the new note (or replace the one being edited), then persist.
@@ -227,13 +233,21 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       if (noteSaveBtn) noteSaveBtn.disabled = false;
       if (noteCancelBtn) noteCancelBtn.disabled = false;
       if (ok) { renderNotes(); closeNoteEditor(); }
-      else { notes = prev; } // revert; leave the editor open to retry
+      else {
+        // Revert, and leave the editor open holding the text so one more press re-sends it. The
+        // revert alone was the whole failure handling until 2026-08-10, which from the seller's
+        // side is a note that quietly refused to save.
+        notes = prev;
+        showActionFailedToast();
+      }
     }
     async function deleteNote(idx: number): Promise<void> {
       const prev = notes.slice();
       notes.splice(idx, 1);
       renderNotes(); // optimistic
-      if (!(await persistNotes())) { notes = prev; renderNotes(); }
+      // The row reappears where it was. Without the notice that reads as the delete not registering
+      // the click at all, and the seller presses it again.
+      if (!(await persistNotes())) { notes = prev; renderNotes(); showActionFailedToast(); }
     }
     noteAddBtn?.addEventListener('click', () => openNoteEditor(null));
     noteSaveBtn?.addEventListener('click', commitNote);
@@ -368,6 +382,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         // already known client-side, no need to re-fetch the whole page.
         if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
         return true;
+      // silent: both callers (the card's Save and the quick status menu) toast on `false`.
       } catch { return false; }
     }
 
@@ -378,6 +393,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       if (ok) {
         if (saveStatus) { saveStatus.hidden = false; setTimeout(() => { saveStatus.hidden = true; }, 2500); }
         setTimeout(closeCard, 700);
+      } else {
+        // The status did not save. `applyStatusSave` leaves every badge showing the OLD value, so
+        // the card is honest about the data — but silently, and a seller who pressed Save and saw
+        // the button come back reads that as done. A status is what tells the buyer their parcel
+        // is on its way, so believing a failed save is the expensive half of this.
+        showActionFailedToast();
       }
       saveBtn.disabled = false;
     });
@@ -412,7 +433,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           saveQuick.disabled = true;
           const ok = await applyStatusSave(pending);
           if (ok) orderStatusPortal.close();
-          else saveQuick.disabled = false;
+          // The menu stays open with its button live, which is the retry — but it looked identical
+          // to a menu nobody had pressed yet.
+          else { saveQuick.disabled = false; showActionFailedToast(); }
         });
       });
     });
@@ -430,7 +453,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, storeSlug, shippingStatus: 'cancelled' }),
       });
-      if (!res.ok) return;
+      // A cancellation is the one status change that also puts stock back and takes the order out
+      // of every revenue figure. Failing it silently leaves the seller believing all three
+      // happened.
+      if (!res.ok) { showActionFailedToast(); return; }
       const badge = card.querySelector<HTMLElement>('.order-card__status-badge');
       if (badge) {
         badge.style.background = `${colorMap.cancelled ?? '#6b7280'}1a`;
@@ -485,8 +511,44 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // cancellable — that's business logic, not the UI.)
   const ACTIVE_STATUSES = new Set(ORDER_ACTIVE_STATUSES);
   const ORDER_STATUSES = ORDER_FILTER_STATUSES;
-  const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
-  const ordersFilters = new Map<string, Set<string>>([['status', new Set(ACTIVE_STATUSES)]]);
+  // Two independent columns. 'payout' answers "where is the money on this order", which is a
+  // different question from "where is the parcel" and one a seller now reaches from the payments
+  // tab (owner, 2026-08-11 — it used to be faked by naming shipping statuses in the link).
+  const ORDER_FILTER_COLUMNS = ['status', 'payout'];
+  /**
+   * Seeded from what the SERVER rendered, not from this module's own default.
+   *
+   * The list on screen was filtered by `parseSellerOrderQuery`, and the toolbar has to start from
+   * the same answer or the two disagree the moment anything is clicked: a deep link carrying
+   * `?ostatus=pending,processing` (the payments tab builds those) rendered the right rows, and then
+   * the first sort or search re-filtered them with the "active" default and quietly widened the
+   * list back. `data-status` absent = no server opinion, so the default stands; present and empty =
+   * the seller cleared it, which is a different thing and must survive.
+   */
+  const ordersToolbarEl = document.getElementById('orders-toolbar');
+  const serverStatuses = ordersToolbarEl?.dataset.status;
+  const ordersFilters = new Map<string, Set<string>>();
+  {
+    const initial = serverStatuses === undefined
+      ? [...ACTIVE_STATUSES]
+      : serverStatuses.split(',').filter(Boolean);
+    if (initial.length) ordersFilters.set('status', new Set(initial));
+    // Same seeding for the payout column, so a link that arrives with `?opay=` shows as a checked
+    // box in the menu rather than as a narrowed list nobody can account for.
+    const initialPayout = (ordersToolbarEl?.dataset.payout ?? '').split(',').filter(Boolean);
+    if (initialPayout.length) ordersFilters.set('payout', new Set(initialPayout));
+  }
+
+  /**
+   * The seller-facing name of a payout filter value.
+   *
+   * Read off the shared `#i18n-data` island like every other string here — the values themselves
+   * come from `order-payout-line.ts`, and the names for them live with the rest of the copy so a
+   * wording pass reaches them (`project_client_renderer_i18n_drift`).
+   */
+  function payoutFilterLabel(value: string): string {
+    return tt(`payFilter_${value}`) || value;
+  }
   let ordersSortCol: 'date' | 'amount' | 'urgency' = 'date';
   let ordersSortDir: 'asc' | 'desc' = 'desc';
   let ordersCurrentPage = 1;
@@ -509,12 +571,53 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
    *  `fmtPrice` on one of them would print a figure a hundred times too large. */
   function fmtAgorot(agorot: number): string { return fmtPrice(agorot / 100); }
 
+  /**
+   * The payout line's three fields, from the SAME derivation the SSR card uses
+   * (`lib/order-payout-line.ts`). Rendering it here rather than leaving it to the server is not
+   * optional: this function draws the cards for AJAX pagination and for a polled new order, so a
+   * block that existed only in the `.astro` copy would vanish the moment a seller turned a page —
+   * the three-renderer drift this file's header already warns about.
+   */
+  /** This order's payout bucket, for the filter column. Same derivation the line below renders and
+   *  the same one the server filters by (`seller-orders-query.ts#orderPayoutFilterValue`), so a row
+   *  the toolbar hides is exactly a row the next page fetch would not have returned. */
+  function orderPayoutFilterValueOf(o: Parameters<typeof buildOrderCard>[0]): string {
+    return payoutFilterValue(orderPayoutLine({
+      paymentStatus: o.paymentStatus,
+      shippingStatus: o.shippingStatus as never,
+      paidAt: o.paidAt ?? null,
+      deliveredAt: o.deliveredAt ?? null,
+      deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
+    }));
+  }
+
+  function payoutLineHtml(o: Parameters<typeof buildOrderCard>[0]): string {
+    const line = orderPayoutLine({
+      paymentStatus: o.paymentStatus,
+      shippingStatus: o.shippingStatus as never,
+      paidAt: o.paidAt ?? null,
+      deliveredAt: o.deliveredAt ?? null,
+      deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
+    });
+    const state = line.state === 'not_payable' ? tt('orderPayoutNone')
+      : line.state === 'releasable' ? tt('orderPayoutReleasable')
+      : line.releaseDayISO ? tt('orderPayoutOn').replace('{date}', formatBusinessDayLabel(line.releaseDayISO))
+      : tt('orderPayoutPending');
+    const why = line.state === 'held' ? `<span class="[color:var(--color-muted)]">· ${esc(payoutWhyText(line, tt(line.whyKey)))}</span>` : '';
+    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}</div>`;
+  }
+
   function buildOrderCard(o: {
     id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
     buyerAddress: { city: string; street: string; zip?: string };
     shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
-    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } }>;
+    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; deliveryMethod?: DeliveryMethod; discount?: { type: string; value: number; appliedAgorot: number } }>;
     notes?: string[];
+    // The payout line's inputs. `/api/seller/orders` already returns the whole order
+    // (`scopeOrder`), so these arrive with no endpoint change — they were simply never named here.
+    paymentStatus: Order['paymentStatus'];
+    paidAt?: string;
+    deliveredAt?: string;
   }): string {
     const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
     const color    = colorMap[o.shippingStatus] ?? '#888';
@@ -546,7 +649,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // Header layout mirrors the SSR card in seller/dashboard.astro exactly — a
     // 3-column grid below 640px OF THE CARD (container query) and the desktop
     // row above it. Keep the two in sync; the comment there explains why.
-    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-payout="${esc(orderPayoutFilterValueOf(o))}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
         <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? `<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="${esc(tt('orderNewLabel'))}"></span>` : ''}</span>
@@ -599,6 +702,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             ${storeSub.discount?.appliedAgorot ? `<span class="text-[color:var(--color-success)]">${esc(tt('orderEditDiscount'))}: −${fmtAgorot(storeSub.discount.appliedAgorot)}</span>` : ''}
             <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtAgorot(total)}</strong>
           </div>
+          ${payoutLineHtml(o)}
         </div>
         <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
           <div class="order-note mb-3">
@@ -632,11 +736,15 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   function getOrderFilterValue(card: HTMLElement, col: string): string {
     if (col === 'status') return card.dataset.shippingStatus ?? '';
+    // Written onto the card by BOTH renderers from `order-payout-line.ts`, never recomputed here —
+    // a client-side copy of the hold rule is the drift this module's header already warns about.
+    if (col === 'payout') return card.dataset.payout ?? '';
     return '';
   }
 
   function orderFilterColumnLabel(col: string): string {
     if (col === 'status') return tt('filterColStatus');
+    if (col === 'payout') return tt('filterColPayout');
     return col;
   }
 
@@ -645,6 +753,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // distinct values, same as products'/messages' own getDistinctFilterValues.
   function getOrderDistinctValues(col: string): string[] {
     if (col === 'status') return ORDER_STATUSES;
+    // The full vocabulary, not what happens to be on THIS page — a value that vanishes from the
+    // menu because the current page has none of it is a filter that cannot be reached.
+    if (col === 'payout') return [...PAYOUT_FILTER_VALUES];
     const values = new Set<string>();
     document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => values.add(getOrderFilterValue(card, col)));
     return [...values].sort();
@@ -652,6 +763,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   function orderFilterValueHtml(col: string, value: string): string {
     if (col === 'status') return `<span class="order-status-dot" style="background:${colorMap[value] ?? '#888'}"></span>${labelMap[value] ?? value}`;
+    if (col === 'payout') return esc(payoutFilterLabel(value));
     return value;
   }
 
@@ -676,8 +788,35 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // already call, just server-driven now instead of a DOM show/hide pass).
   function applyOrdersFilter(): void {
     ordersCurrentPage = 1;
+    // The "you followed a link from the payments tab" banner explains a filter the SERVER applied.
+    // The moment the seller changes that filter themselves it is explaining something that is no
+    // longer true, so it comes down here — the one funnel every filter change goes through.
+    document.getElementById('orders-from-banner')?.remove();
     applyOrdersPagination();
   }
+
+  /**
+   * Put the tab back the way a seller expects to find it, when they LEAVE it (owner, 2026-08-11:
+   * "כשעוזבים את הלשונית היא אמורה לחזור למצב הרגיל שלה").
+   *
+   * Only a filter that arrived on a LINK is undone, and the banner is what says one did: it is
+   * removed by `applyOrdersFilter` the moment the seller touches the filter themselves, so its
+   * presence means "this narrowing is still the payments tab's doing, not theirs". A filter someone
+   * chose has to survive a tab switch; one they were handed should not outlive the errand.
+   */
+  document.getElementById('dash-panel-orders')?.addEventListener('dashtab:hide', () => {
+    if (!document.getElementById('orders-from-banner')) return;
+    ordersFilters.delete('payout');
+    ordersFilters.set('status', new Set(ACTIVE_STATUSES));
+    ordersSearchQuery = '';
+    const searchEl = document.getElementById('orders-search-input') as HTMLInputElement | null;
+    if (searchEl) searchEl.value = '';
+    // The URL carried `?opay=`/`?ofrom=`, so a reload would restore exactly what was just undone.
+    const url = new URL(window.location.href);
+    for (const p of ['opay', 'ofrom', 'ostatus']) url.searchParams.delete(p);
+    history.replaceState(null, '', url.toString());
+    applyOrdersFilter();
+  });
 
   function sortOrders(col: 'date' | 'amount' | 'urgency', dir: 'asc' | 'desc'): void {
     ordersSortCol = col;
@@ -838,13 +977,23 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     params.set('osort', `${ordersSortCol}:${ordersSortDir}`);
     const statusValues = ordersFilters.get('status');
     params.set('ostatus', encodeList(statusValues ? [...statusValues] : []));
+    // Absent when nothing is selected, unlike `ostatus` — an empty `ostatus` means "cleared" and an
+    // absent one means "use the default", while this column simply has no default to distinguish.
+    const payoutValues = ordersFilters.get('payout');
+    if (payoutValues?.size) params.set('opay', encodeList([...payoutValues]));
 
     let data: { ok: boolean; items?: Parameters<typeof buildOrderCard>[0][]; page?: number; totalPages?: number; total?: number };
     try {
+    // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
+    // the list would claim the filter matched nothing — but it is silent unless it says so, and
+    // "nothing moved" is indistinguishable from "the filter matched what was already here".
       const res = await fetch(`/api/seller/orders?${params.toString()}`);
       data = await res.json() as typeof data;
-    } catch { return; }
-    if (!data.ok) return;
+    } catch {
+      showActionFailedToast();
+      return;
+    }
+    if (!data.ok) { showActionFailedToast(); return; }
 
     ordersCurrentPage = data.page ?? 1;
     list.innerHTML = (data.items ?? []).map(buildOrderCard).join('');
@@ -907,20 +1056,47 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const ordersList = document.getElementById('orders-list');
   if (ordersList && storeSlugForOrders) {
     const knownIds = new Set<string>();
+    // The moment the poll last knew about. The server hands it back on every answer and it goes
+    // straight back out on the next question — the seller's browser never asks for the store's
+    // history again, which is what it used to do every fifteen seconds (lib/orders.ts#
+    // getSellerOrdersSince). `knownIds` stays because the window is inclusive of its own edge:
+    // orders written in the same microsecond as the watermark come back a second time by design,
+    // and this is what stops them being announced twice.
+    // Seeded from the page the SERVER rendered, when it said so. Everything already on screen was
+    // created before this instant, so nothing existing can come back through the `>=` window and be
+    // mistaken for new — and, the point of it, an order that landed while the page was still
+    // loading IS newer than it and gets announced, where the old load-time seed swallowed it
+    // (lib/orders.ts#getOrderPollWatermark). Absent — an older cached page, or a render that could
+    // not reach the database — it falls back to asking the server, which is the previous behaviour.
+    let ordersSince = ordersList.dataset.since ?? '';
 
-    async function fetchStoreOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
+    async function fetchNewOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
       try {
-        const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
+        const params = new URLSearchParams({ storeSlug: storeSlugForOrders });
+        if (ordersSince) params.set('since', ordersSince);
+        const res = await fetch(`/api/seller/orders?${params.toString()}`);
+        // silent: a background refresh of one card's data, not something anyone pressed — the card
+        // already on screen stays correct and the next poll retries.
         if (!res.ok) return null;
-        const { orders } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][] };
+        const { orders, since, seenIds } = await res.json() as {
+          orders: Parameters<typeof buildOrderCard>[0][]; since?: string; seenIds?: string[];
+        };
+        if (since) ordersSince = since;
+        // The seed's answer. The window is inclusive of its own edge, so the first real poll re-reads
+        // whatever sits exactly on the watermark; without these ids that order is unknown and gets
+        // announced as new. It is why a seller who had not sold anything for a month still got a
+        // "new order" toast fifteen seconds after opening the dashboard (owner, 2026-08-11).
+        for (const id of seenIds ?? []) knownIds.add(id);
         return orders;
+        // silent: a 15s background poll nobody pressed. The cards on screen stay correct, the
+        // watermark is not advanced, and the next tick asks the same question again.
       } catch { return null; }
     }
 
     async function pollOrders(): Promise<void> {
       if (!ordersList) return;
       try {
-        const orders = await fetchStoreOrders();
+        const orders = await fetchNewOrders();
         if (!orders) return;
         const newOrders = orders.filter(o => !knownIds.has(o.id));
         if (!newOrders.length) return;
@@ -931,7 +1107,14 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           // holds there once orders are paginated (same reasoning as the
           // admin dashboard's own Messages tab live-poll). Toast/badge still
           // fire regardless of which page the seller is looking at.
-          if (ordersCurrentPage === 1) {
+          // ...and never a second copy of a card already on screen. The watermark is taken BEFORE
+          // the page reads its orders (lib/orders.ts#getOrderPollWatermark), which closes the gap
+          // where an order arriving during page load was announced by nobody — at the cost of the
+          // opposite overlap: such an order is both rendered by the server and newer than the
+          // watermark, so the poll legitimately hands it back. The toast is right; a second card
+          // for the same order is not, and it is the duplicate the seller reported seeing.
+          const alreadyOnScreen = ordersList.querySelector(`.order-card[data-order-id="${CSS.escape(o.id)}"]`);
+          if (ordersCurrentPage === 1 && !alreadyOnScreen) {
             const tmp = document.createElement('div');
             tmp.innerHTML = buildOrderCard(o);
             const card = tmp.firstElementChild as HTMLElement | null;
@@ -961,15 +1144,16 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       } catch { /* ignore */ }
     }
 
-    // Seed knownIds from the *full* store order list (not just the DOM's
-    // rendered page-1 cards, which pagination caps at 15) before the poll
-    // loop starts — otherwise every order beyond page 1 looks "new" on the
-    // first tick after every page load, firing a toast for each one (real
-    // bug: was seeding from `.order-card` elements in the DOM).
-    fetchStoreOrders().then((orders) => {
-      (orders ?? []).forEach((o) => knownIds.add(o.id));
-      setInterval(pollOrders, 15000);
-    });
+    // With the watermark rendered into the page there is nothing left to seed: the server already
+    // said when it read this list, so the poll can start asking straight away.
+    //
+    // The fallback still seeds over the network, and the ordering there is the fix rather than a
+    // detail — `fetchNewOrders` is what fills `knownIds` from `seenIds`, so a poll running before
+    // it returned would ask with an empty watermark, get the seed answer, and then have to decide
+    // about rows it had no id set for yet. (The original bug before either of these seeded from
+    // `.order-card` elements in the DOM, so anything past page 1 fired a toast.)
+    if (ordersSince) setInterval(pollOrders, 15000);
+    else fetchNewOrders().then(() => setInterval(pollOrders, 15000));
   }
 
   // ── Edit Order Details Modal ─────────────────────────────────

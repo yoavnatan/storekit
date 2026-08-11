@@ -1,0 +1,172 @@
+---
+import { formatAgorot } from '../../lib/money.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
+import type { PlatformStatement } from '../../lib/platform-statement.js';
+
+/**
+ * **The month's closing statement, as a document rather than a dashboard.**
+ *
+ * The distinction is the request (owner, 2026-08-11) and it drives every layout choice here: this
+ * is meant to be READ TOP TO BOTTOM ONCE, printed, and handed on. So there are no tiles, no
+ * sparklines, no colour carrying meaning, and nothing is clickable inside the two tables — a figure
+ * that is a link is a figure someone has to decide about. Every line is `label … amount`, in the
+ * order an accountant reads them, and the two sections are visibly different documents' worth of
+ * information rather than one grid of numbers.
+ *
+ * **The section headings state their basis, in the heading.** "נצבר בתקופה" and "תנועה בפועל" with
+ * the dating rule under each — because the first question asked of any such page is "is this what I
+ * earned or what I received", and a page that makes someone ask is a page that gets checked by
+ * hand.
+ *
+ * **The closing balance is the one row with weight**, and it is the sum of the four rows above it
+ * (`platform-statement.ts` builds it that way on purpose), so a reader can add up what is printed
+ * and land on it.
+ *
+ * Printing is `window.print()` on the browser's own engine — no PDF library, no second layout
+ * surface. `admin.css`'s `@media print` block hides the dashboard chrome so the printed page is
+ * this section and nothing else.
+ */
+interface Props {
+  statement: PlatformStatement;
+  /** Month keys for the picker, newest first. */
+  monthKeys: readonly string[];
+  activeMonth: string | null;
+  fromISO: string;
+  toISO: string;
+  csvHref: string;
+}
+const { statement: s, monthKeys, activeMonth, fromISO, toISO, csvHref } = Astro.props;
+
+const MONTH_NAMES = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const monthLabel = (key: string): string => `${MONTH_NAMES[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+
+const title = s.period.monthKey
+  ? monthLabel(s.period.monthKey)
+  : `${formatBusinessDayLabel(s.period.fromISO)} — ${formatBusinessDayLabel(s.period.toISO)}`;
+
+const ROW = 'flex items-baseline justify-between gap-4 py-[0.4rem] border-b [border-color:var(--color-border)] last:border-b-0';
+const LABEL = 'text-[0.85rem] [color:var(--color-text)]';
+const AMOUNT = 'text-[0.9rem] tabular-nums whitespace-nowrap';
+const NOTE = 'text-[0.72rem] [color:var(--color-muted)]';
+const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border)] p-4';
+---
+
+{/* Not printed: the controls. Everything below `#admin-statement-doc` is the document. */}
+{/* No `.field` on these labels, deliberately: it is unlayered legacy CSS (forms.css) carrying
+    `margin-bottom:1rem`, so a Tailwind `m-0` on the same element LOSES to it regardless of order —
+    the documented trap, and here it would push the two buttons out of line with the inputs. The
+    label markup is three utilities; the `.input` treatment is kept, since that one is the site's
+    single field/focus rule and re-deriving it is how a seventh focus style gets born. */}
+<div class="flex flex-wrap items-end gap-2 mb-4 admin-statement-controls" id="admin-statement-controls" data-month={activeMonth ?? ''} data-from={fromISO} data-to={toISO}>
+  <label class="flex flex-col gap-1">
+    <span class="text-[0.76rem] [color:var(--color-muted)]">חודש</span>
+    <select id="admin-statement-month" class="input !py-[.4rem] !w-auto">
+      {monthKeys.map((key) => (
+        <option value={key} selected={key === activeMonth}>{monthLabel(key)}</option>
+      ))}
+      {/* The escape hatch out of month-mode, and it is an option rather than a second control so
+          the two ways of naming a period cannot both look active at once. */}
+      <option value="" selected={activeMonth === null}>טווח אחר…</option>
+    </select>
+  </label>
+  {/* `!hidden`, never the `hidden` ATTRIBUTE: this element is `display:flex`, and a utility beats
+      the UA stylesheet's `[hidden]{display:none}` — the row would stay visible in month mode. The
+      client toggles the same class for the same reason. */}
+  <div class:list={['flex items-end gap-2', activeMonth !== null && '!hidden']} id="admin-statement-range">
+    <label class="flex flex-col gap-1">
+      <span class="text-[0.76rem] [color:var(--color-muted)]">מתאריך</span>
+      <input type="date" id="admin-statement-from" class="input !py-[.4rem] !w-auto" value={fromISO} />
+    </label>
+    <label class="flex flex-col gap-1">
+      <span class="text-[0.76rem] [color:var(--color-muted)]">עד תאריך</span>
+      <input type="date" id="admin-statement-to" class="input !py-[.4rem] !w-auto" value={toISO} />
+    </label>
+  </div>
+  <a class="btn btn--ghost btn--sm" id="admin-statement-csv" href={csvHref} download>הורדת CSV</a>
+  <button type="button" class="btn btn--ghost btn--sm" id="admin-statement-print">הדפסה / PDF</button>
+</div>
+
+<section id="admin-statement-doc">
+  <header class="mb-4">
+    <h2 class="m-0 text-[1.05rem] font-semibold">דוח חשבונאי — {title}</h2>
+    <p class={`m-0 mt-1 ${NOTE}`}>
+      {formatBusinessDayLabel(s.period.fromISO)} — {formatBusinessDayLabel(s.period.toISO)} · הופק {formatBusinessDayLabel(s.generatedAtISO)}
+    </p>
+  </header>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class={SECTION}>
+      {/* ONLY the platform's own money (owner, 2026-08-11). "נצבר למוכרים" used to sit in this
+          table as the bridge to the one beside it, and it is the line that made the whole page
+          unreadable: it is not income, it is somebody else's money, and a reader who sees it under
+          a heading that ends in "סה"כ הכנסה" concludes that paying sellers out on the 10th reduces
+          his revenue. It does not — the seller's share was never ours (the agent model, terms
+          .astro). The figure still exists, on the right, where it is the `+` line of a LIABILITY. */}
+      <h3 class="m-0 text-[0.9rem] font-semibold">ההכנסה שלנו</h3>
+      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>לפי מועד ההזמנה — מה שהרווחנו בתקופה, גם אם הכסף עדיין בהמתנה.</p>
+      {/* Context, deliberately ABOVE the list and not a row in it: the mall's turnover is not the
+          platform's money either, and any line sitting inside a column that ends in a total reads
+          as part of that total. Here it is what the commission below is a percentage OF. */}
+      <p class={`m-0 mb-3 pb-3 border-b [border-color:var(--color-border)] ${NOTE}`}>
+        נמכר דרך הפלטפורמה: <span class="tabular-nums">{formatAgorot(s.grossAgorot)}</span> · {s.purchases} רכישות
+      </p>
+      <dl class="m-0">
+        <div class={ROW}>
+          <dt class={LABEL}>עמלת הפלטפורמה</dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.commissionAccruedAgorot)}</dd>
+        </div>
+        <div class={ROW}>
+          <dt class={LABEL}>דמי מנוי<span class={`block ${NOTE}`}>{s.subscribers} מנויים</span></dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.subscriptionsAccruedAgorot)}</dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-4 pt-2.5 mt-1 border-t-2 [border-color:var(--color-text)]">
+          <dt class="text-[0.9rem] font-semibold">סה"כ הכנסה שנצברה</dt>
+          <dd class="m-0 text-[1.05rem] font-bold tabular-nums whitespace-nowrap">{formatAgorot(s.incomeAccruedAgorot)}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class={SECTION}>
+      <h3 class="m-0 text-[0.9rem] font-semibold">תנועה בפועל — כספי מוכרים</h3>
+      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>לפי מועד התשלום — כמה כסף באמת זז, ומה נשאר אצלנו שאינו שלנו.</p>
+      <dl class="m-0">
+        <div class={ROW}>
+          <dt class={LABEL}>יתרת פתיחה</dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.openingBalanceAgorot)}</dd>
+        </div>
+        <div class={ROW}>
+          {/* The same figure as "נצבר למוכרים" on the left, and that is the bridge between the two
+              bases — the one line that appears in both sections, said so out loud. */}
+          <dt class={LABEL}>+ נצבר למוכרים בתקופה</dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.sellerEarnedAgorot)}</dd>
+        </div>
+        <div class={ROW}>
+          <dt class={LABEL}>− שולם למוכרים<span class={`block ${NOTE}`}>{s.payouts} תשלומים</span></dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.paidOutAgorot)}</dd>
+        </div>
+        <div class={ROW}>
+          <dt class={LABEL}>± התאמות<span class={`block ${NOTE}`}>זיכויים וחיובים חוזרים</span></dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.adjustmentsAgorot)}</dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-4 pt-2.5 mt-1 border-t-2 [border-color:var(--color-text)]">
+          <dt class="text-[0.9rem] font-semibold">יתרת סגירה<span class={`block font-normal ${NOTE}`}>כסף של מוכרים שאנחנו מחזיקים</span></dt>
+          <dd class="m-0 text-[1.05rem] font-bold tabular-nums whitespace-nowrap">{formatAgorot(s.closingBalanceAgorot)}</dd>
+        </div>
+        <div class={`${ROW} mt-3 border-t [border-color:var(--color-border)] pt-3`}>
+          <dt class={LABEL}>עמלה שנגבתה בפועל<span class={`block ${NOTE}`}>נוכתה מהתשלומים שיצאו</span></dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.commissionSettledAgorot)}</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+
+  {/* On the document, not under it. Each line is something an accountant would otherwise ASK, and
+      the answer to two of them is "this number is deliberately not here" — which is only honest if
+      the document says so itself. */}
+  <ul class={`mt-4 ps-4 flex flex-col gap-1 ${NOTE}`}>
+    <li>המספרים מחושבים מהנתונים החיים. ביטול הזמנה ישנה משנה גם תקופה שכבר הופקה.</li>
+    <li>"שולם למוכרים" כולל העברות שנוצרו וטרם אושרו על ידי הבנק, ואינו כולל העברות שנכשלו.</li>
+    <li>הכנסות פרסום אינן כלולות — החיבור לגוגל ולמטא טרם בוצע.</li>
+    <li>ללא מע"מ וללא מספרי חשבונית — טרם נקבעו.</li>
+  </ul>
+</section>

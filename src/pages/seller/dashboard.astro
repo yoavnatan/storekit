@@ -5,11 +5,14 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 // store id, so this is also what stops a crafted POST putting an arbitrary string in a header.
 import { machineUrl } from '../../lib/url-base.js';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
+import TopProductsList from '../../components/dashboard/TopProductsList.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
+import ReportsPanel from '../../components/dashboard/ReportsPanel.astro';
+import PayoutsPanel from '../../components/dashboard/PayoutsPanel.astro';
 import HeaderStyleCard from '../../components/dashboard/HeaderStyleCard.astro';
 import ImageActionIcon from '../../components/dashboard/ImageActionIcon.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
@@ -17,6 +20,7 @@ import CampaignHistory from '../../components/dashboard/CampaignHistory.astro';
 import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
 import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
+import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
@@ -24,7 +28,7 @@ import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-fie
 import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
-import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
@@ -33,12 +37,14 @@ import { cnameTarget, storeHomeHref } from '../../lib/custom-domain.js';
 import { DEFAULT_STORE_HOURS } from '../../lib/store-hours.js';
 import {
   getProductsByStoreId,
+  getProductCountsByStore,
   createProduct,
   updateProduct,
   deleteProduct,
   countStockAlerts,
   isProductVisible,
   type StoreProduct,
+  type StoreProductCounts,
 } from '../../lib/store-products.js';
 import { formatPrice, cdnSrc, cdnThumb, store as platformConfig } from '../../config/store.config.js';
 import { jsonForScript } from '../../lib/json-script.js';
@@ -47,13 +53,15 @@ import { storeMark, storeMarkGradient } from '../../lib/store-mark.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getWishlistCountsForStore, countFavoriteStores } from '../../lib/user-carts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
-import { getThreadRootsBySeller, getRepliesForMessages } from '../../lib/messages.js';
-import { getAdminThreadsForSeller } from '../../lib/admin-messages.js';
+import { getThreadRootsBySeller, getRepliesForMessages, getUnreadThreadIdsForSeller } from '../../lib/messages.js';
+import { getAdminThreadsForSeller, getUnreadAdminThreadIdsForSeller } from '../../lib/admin-messages.js';
 import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro';
-import { getOrdersByStoreSlug, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
+import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusCounts, getOrderPollWatermark, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
-import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { orderPayoutLine, payoutWhyText, payoutFilterValue, splitHeldByBasis, payableHeadlineAgorot } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
@@ -80,6 +88,8 @@ import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxono
 import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
+import { getSellerAccountFor } from '../../lib/payouts.js';
+import { needsBankDetails } from '../../lib/payout-details.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -121,15 +131,6 @@ function variantCombosData(variants: VariantDimension[], variantStock: Record<st
   return { hasAnyStock: combos.some((c) => !c.shared), combos };
 }
 
-const categoryUsage: Record<string, number> = {};
-for (const s of await getVisibleStores()) {
-  for (const c of s.categories ?? []) {
-    const key = c.trim();
-    if (key) categoryUsage[key] = (categoryUsage[key] ?? 0) + 1;
-  }
-}
-const categoryVocabulary = buildVocabulary(categoryUsage);
-
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 const d    = t.dashboard;
@@ -162,6 +163,60 @@ const cloudinaryPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
 
 let error = '';
 
+// Validated against the real panel list, never taken raw: `SellerPanelShell` renders
+// `hidden={!active}` and `active` is "is this the panel asked for", so an unknown value (a typo, a
+// stale bookmark, a link someone edited) hid ALL of them and served a dashboard with an empty body.
+// Fall back to the landing tab instead.
+const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
+const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
+const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
+
+// ── ONE PANEL PER REQUEST (2026-08-11, SELLER_LAZY_PANELS_PLAN.md) ──
+//
+// This page used to build all ten panels on every request — ~865KB of HTML, of which about 73% was
+// never seen, on the surface a seller opens on a phone and leaves open all day. `?panel=` chose
+// which one was not `hidden`; every other one was still queried, still rendered, and still sent.
+// It now chooses what the server BUILDS, exactly as `admin/index.astro` does, and a tab the seller
+// actually opens is fetched on the click (the loader at the bottom of this file).
+//
+// What is deliberately NOT gated is the tab strip's own signals — the stock badge, the new-orders
+// badge, the unread-mail dot and the payouts dot. A badge exists to report a tab you are NOT
+// looking at, so it has to be computed whether or not you are looking at it; each is a count or a
+// small indexed read, never the panel's full data (the same split `admin-tab-badges.ts` exists for).
+//
+// `only()` returns the fallback without touching the database when the panel is not the one asked
+// for. The fallback is always the empty value the pure code below already handles — an empty list,
+// an empty map — so nothing downstream needs to know a panel was skipped: it computes over nothing,
+// and the panel is not rendered at all (see `SellerPanelShell`).
+const only = <T,>(panels: readonly string[], load: () => Promise<T>, fallback: T): Promise<T> =>
+  (panels.includes(initialPanel) ? load() : Promise.resolve(fallback));
+
+/** Is this the panel being rendered? Gates the derivations whose inputs would be missing otherwise,
+ *  and every panel shell in the template below. */
+const shows = (panel: string): boolean => panel === initialPanel;
+
+// ── Which panels need which read ──
+// Named here rather than inline so the sharing is visible in one place: several panels want the
+// same list, and a panel quietly missing from one of these renders empty rather than throwing,
+// which is the failure mode this whole change has to be careful about.
+/** The store's catalogue. The products table, the overview's three catalogue stats, the "top
+ *  products" section under the charts, the boost picker's eligible list, and the sale scope picker. */
+const CATALOG_PANELS = ['overview', 'products', 'performance', 'advertising', 'promotions'] as const;
+
+/**
+ * `&panel=<current>` for a POST redirect, or nothing.
+ *
+ * "מעבר בין חנויות צריך להשאיר את היוזר על הלשונית שהוא נמצא בה" (owner, סשן ב׳) is the same
+ * complaint as this one, one step later: a native form POST lands back on the dashboard, and every
+ * redirect below used to drop the panel — so adding a product from the מוצרים tab answered on
+ * סקירה כללית. The tab strip keeps `?panel=` current (DashTabsBoot), these forms have no `action`
+ * and therefore post to that same URL, so the value is here to be carried back.
+ *
+ * Whitelisted through `initialPanel` rather than interpolated raw: this string ends up in a
+ * `Location` header, which is the one place a reflected query parameter must never be trusted.
+ */
+const panelParam = initialPanel === 'overview' ? '' : `&panel=${initialPanel}`;
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('_action') || 'save-settings');
@@ -182,7 +237,7 @@ if (Astro.request.method === 'POST') {
         error = d.notYours;
       } else {
         await updateStore(target.id, { name, tagline, description, colors: target.colors });
-        return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1`));
+        return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1${panelParam}`));
       }
     }
   } else if (action === 'create-store') {
@@ -223,7 +278,7 @@ if (Astro.request.method === 'POST') {
       error = d.notYours;
     } else {
       await createProduct(ownerStore.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
-      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1`));
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1${panelParam}`));
     }
   } else if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');
@@ -245,7 +300,7 @@ if (Astro.request.method === 'POST') {
     } else {
       await updateProduct(claim.product.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       const sid = Astro.url.searchParams.get('store') ?? '';
-      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}${panelParam}`) : `/seller/dashboard?panel=${initialPanel}`);
     }
   } else if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
@@ -255,19 +310,105 @@ if (Astro.request.method === 'POST') {
       error = d.notYours;
     } else {
       await deleteProduct(claim.product.id);
-      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}${panelParam}`) : `/seller/dashboard?panel=${initialPanel}`);
     }
   }
 }
 
 const allStores = await getStoresBySellerId(sellerId);
 const hasNoStore = allStores.length === 0;
+// **The one read on this page that is not about the store in the switcher.** A payout is per
+// registered business, so this covers every store the seller owns — three small indexed reads
+// assembled by one call (`payouts.ts#getSellerAccountFor`), issued on every load rather than only
+// when the tab is open, because what it decides is the tab's BADGE: money released with no bank
+// account to send it to is the one state a seller has to be told about from wherever they are
+// standing. It also carries the seller row, which the performance tab reads for the tier.
+const payoutAccount = await getSellerAccountFor(sellerId);
+const seller = payoutAccount?.seller ?? null;
+// The badge condition, and it is the banner's condition too — one predicate, so the strip and the
+// panel cannot disagree about whether there is anything to do (PayoutsPanel.astro).
+// Both tables on the Payments tab page through the URL, so each link has to carry the OTHER
+// table's page too — otherwise stepping through the history silently resets the held list under
+// the seller's cursor. Built here rather than in the component so the store id and the open tab
+// stay this page's business.
+/**
+ * From a hold reason on the Payments tab to the orders behind it, in the tab that manages orders.
+ *
+ * The half of the deleted held-orders table that was worth keeping (owner, סשן א׳ §4): a seller
+ * told "3 orders are waiting on you to ship" needs the three orders, and a link that lands them on
+ * an unfiltered list has sent them to look for something rather than at it. The statuses are
+ * derived from what each reason MEANS — `unshipped` is every status the payout clock does NOT run
+ * from — so a new shipping status is filtered correctly by `order-status-rules.ts` rather than by a
+ * list here going stale.
+ *
+ * It reads the courier column and not `pickupPayoutClockRuns`, which is a simplification and a safe
+ * one: the only status where the two differ is `ready`, which the seller's filter menu cannot
+ * express at all (`ORDER_FILTER_STATUSES`). This decides which rows a link shows, never which money
+ * moves — `payout-hold.ts` is the only thing that does that, and it reads the right column.
+ */
+function ordersForHoldBasisHref(basis: 'payment' | 'unshipped', storeSlug: string | null): string {
+  const params = new URLSearchParams({ panel: 'orders' });
+  // The row's OWN shop, not the one in the switcher. The payments tab is account-wide and the
+  // Orders tab shows one store, so a link that always used the current store sent a two-shop seller
+  // to the wrong list and showed them a subset as if it were the answer (owner, 2026-08-11).
+  const target = storeSlug ? allStores.find((s) => s.slug === storeSlug) : store;
+  if (target) params.set('store', target.id);
+  // `opay` — the Orders tab's own payout-status column, NOT a list of shipping statuses. The first
+  // version spelled the hold rule out as `?ostatus=pending,processing`, which is a restatement of
+  // `order-status-rules.ts` inside a link: it would have gone on filtering the old way the day a
+  // status's payout behaviour changed. The owner asked for the filter column instead, and it is
+  // also the version that cannot drift.
+  params.set('opay', basis === 'unshipped' ? 'unshipped' : 'undelivered');
+  // Says why the list is narrowed once it gets there, and offers the way out. Without it the seller
+  // lands on a filtered Orders tab with no idea what filtered it or how to leave (owner, same).
+  params.set('ofrom', basis);
+  return `/seller/dashboard?${params.toString()}`;
+}
+
+/** The reason the Orders tab is narrowed, when the seller arrived from the payments tab. Whitelisted
+ *  rather than echoed: it is printed on the page, and an unknown value simply means no banner. */
+const ordersFromBasis = ['payment', 'unshipped'].includes(Astro.url.searchParams.get('ofrom') ?? '')
+  ? Astro.url.searchParams.get('ofrom')! as 'payment' | 'unshipped'
+  : null;
+/** The way back: the same tab with no status filter at all. `ostatus=` (explicitly empty) is
+ *  "cleared" rather than "default" — `parseSellerOrderQuery` distinguishes them, and a seller
+ *  pressing "show everything" means everything, including delivered and cancelled.
+ *
+ *  A function and not a const, like the two hrefs above it: `store` is resolved further down this
+ *  frontmatter, so anything reading it at declaration time is a temporal-dead-zone error. */
+function ordersClearHref(): string {
+  const params = new URLSearchParams({ panel: 'orders' });
+  if (store) params.set('store', store.id);
+  params.set('ostatus', '');
+  return `/seller/dashboard?${params.toString()}`;
+}
+
+// The rule is `payout-details.ts#needsBankDetails` and it is shared with the site header, which
+// asks the same question without an account to hand (`payouts.ts#sellerNeedsBankDetails`). This
+// page passes the figure it is already showing in the tile, so the dot, the banner and the number
+// beside them can never be three different answers.
+const payoutNeedsBank = !!payoutAccount && needsBankDetails(payoutAccount.seller, payoutAccount.account.payableNowAgorot);
 // `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
 // for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
 // seller's stores bill through their one registered business, so extra stores are extra brands,
 // not extra legal entities — capped at MAX_STORES_PER_SELLER (see stores.ts for why).
 const atStoreLimit = allStores.length >= MAX_STORES_PER_SELLER;
 const showCreateStore = hasNoStore || (Astro.url.searchParams.get('new') === '1' && !atStoreLimit);
+
+// The store-category picker's suggestion list — "what are other shops on this platform called",
+// ranked by how many use each term. It is the ONE read on this page that is platform-wide, and it
+// used to run at the top of the file on every single dashboard load, for two surfaces that are
+// almost never on screen: the create-a-store card and the settings tab's picker. Gated on those two
+// (2026-08-11). `buildVocabulary` over an empty list is an empty vocabulary, and both pickers
+// already render with no suggestions.
+const categoryUsage: Record<string, number> = {};
+for (const s of (showCreateStore || shows('settings')) ? await getVisibleStores() : []) {
+  for (const c of s.categories ?? []) {
+    const key = c.trim();
+    if (key) categoryUsage[key] = (categoryUsage[key] ?? 0) + 1;
+  }
+}
+const categoryVocabulary = buildVocabulary(categoryUsage);
 
 // No ?store= in the URL (e.g. arriving fresh via the header's "seller
 // dashboard" link) falls back to whichever store the seller was last on,
@@ -297,45 +438,63 @@ const seoPreviewCtx = {
 };
 const settingsSuccess = !hasNoStore && Astro.url.searchParams.get('saved') === '1';
 const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1';
-// **Six reads that only ever needed `store`, issued together (2026-08-03).** They were awaited one
+// **Reads that only ever needed `store`, issued together (2026-08-03).** They were awaited one
 // after another, so opening the dashboard was six network round trips in series before any of the
 // dependent work could start — the same shape found on the homepage, the store page, the product
 // feed and the buyer's own area the same day (DB_MIGRATION_PLAN.md §8). Free while each was a file
 // read; a hop each as queries. Nothing here reads another's answer, so the grouping is safe by
 // inspection and the derived values below are unchanged.
 //
+// **Each is gated on the panel that displays it now** (2026-08-11) — the whole catalogue was being
+// read to render the payments tab. Two are NOT gated and both are the same rule: a signal about a
+// tab you are not looking at has to be computed whether or not you are looking at it.
+//   · `stockAlertCount` — the Products tab's badge. One COUNT, and the shared definition each
+//     mutating /api/product action also returns, so the badge stays live after an inline stock edit
+//     without a full reload; a deliberately hidden product is excluded so it never nags.
+//   · `productCounts` and `storeCategoryList` — the two counted inputs to the "first steps"
+//     checklist, which decides `showTabHints` and therefore renders on SEVEN tabs. The product one
+//     is a GROUP BY (`getProductCountsByStore`) rather than the catalogue it used to be counted
+//     from; the category one is the tree itself, because a store's categories are a handful of rows
+//     the seller types by hand and three panels want the list anyway — a COUNT beside it would be a
+//     second read to save nothing. Gating either would quietly drop the hints for a new seller on
+//     every tab but two.
+//
 // `wishlistCounts` is scoped to this store, not the whole platform: it used to be every wishlist
-// count that existed, read in order to label the products of one shop. `countStockAlerts` is the
-// shared definition each mutating /api/product action also returns, so the Products-tab badge stays
-// live after an inline stock edit without a full reload — a deliberately hidden product is excluded
-// so it never nags, which is the point of the hidden switch.
+// count that existed, read in order to label the products of one shop.
 const [
-  productsUnsorted, storeCategoryList, wishlistCounts, purchasedCounts, storeFavoriteCount, stockAlertCount,
+  productsUnsorted, storeCategoryList, wishlistCounts, purchasedCounts, storeFavoriteCount, stockAlertCount, productCounts,
 ] = store
   ? await Promise.all([
-      getProductsByStoreId(store.id),
+      only(CATALOG_PANELS, () => getProductsByStoreId(store.id), [] as StoreProduct[]),
       getCategoriesByStoreId(store.id),
-      getWishlistCountsForStore(store.id),
-      getPurchasedCountsByStoreSlug(store.slug),
-      countFavoriteStores(store.id),
+      only(['products'], () => getWishlistCountsForStore(store.id), {} as Record<string, number>),
+      only(['products'], () => getPurchasedCountsByStoreSlug(store.slug), {} as Record<string, number>),
+      only(['overview'], () => countFavoriteStores(store.id), 0),
       countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
+      getProductCountsByStore([store.id]),
     ])
   // The no-store fallback, typed the same as the resolved tuple so the readers below see arrays
   // rather than `readonly []` — a seller who has not opened a shop yet reaches this page too.
-  : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0];
+  : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0, new Map<string, StoreProductCounts>()];
 const products = [...productsUnsorted].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
-const productCount = products.length;
+const storeProductCounts = (store && productCounts.get(store.id)) || { total: 0, visible: 0, unblocked: 0 };
+const productCount = storeProductCounts.total;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 // "First steps" checklist (Overview tab) — derived live from the store's own data, never
 // stored (see lib/seller-onboarding.ts). Renders nothing once every step is satisfied.
+//
+// Its two counted inputs come from the ungated reads above rather than from the catalogue, because
+// what it decides (`showTabHints`) is rendered on tabs that do not load the catalogue at all. The
+// category one is `storeCategoryList` where that IS loaded and the checklist's own tab is one of
+// the three that load it, so no second read exists for it.
 const onboardingSteps = store
   ? buildOnboardingSteps({
       // Visible, not total — a catalog of hidden products leaves the store undiscoverable, so
       // the checklist must not call the step done (see lib/store-readiness.ts).
-      visibleProductCount: products.filter(isProductVisible).length,
+      visibleProductCount: storeProductCounts.visible,
       hasProfileImage: !!store.profileImage,
       tagline: store.tagline ?? '',
       description: store.description ?? '',
@@ -360,13 +519,8 @@ const requestedPageSize = parseInt(Astro.url.searchParams.get('psize') ?? '20', 
 const productsPageSize = PRODUCTS_PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 20;
 const filteredSortedProducts = filterAndSortSellerProducts(products, productCategoryPaths, wishlistCounts, purchasedCounts, sellerProductQuery);
 const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.searchParams, 'ppage'), productsPageSize);
-// Validated against the real panel list, never taken raw: every panel renders
-// `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
-// bookmark, a link someone edited) hid ALL of them and served a dashboard with
-// an empty body. Fall back to the landing tab instead.
-const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'advertising', 'messages', 'promotions', 'settings'] as const;
-const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
-const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
+// (`PANEL_NAMES` / `initialPanel` are resolved above the POST block — the redirects there carry
+// the panel back, see `panelParam`.)
 // Performance + Advertising are the two heaviest tabs to render server-side —
 // buildPerformanceSummary() reads the page-view buckets and aggregates every
 // order, and the ad cards each run a seeded mock-metrics pass. They're rarely
@@ -377,18 +531,27 @@ const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel)
 // cost while tab switches for the light tabs stay instant. (CURRENT_TASK item 1)
 const perfIsInitial = initialPanel === 'performance';
 const advIsInitial = initialPanel === 'advertising';
+// ── Messages ──
 // Roots narrowed to this store in SQL, then every root's replies in ONE more statement — this
 // used to read the seller's whole mailbox and then query per thread (DB_MIGRATION_PLAN.md §8).
-const storeMessages = store ? await getThreadRootsBySeller(sellerId, store.id) : [];
-// Admin<->seller "system" threads live in the SAME table as the buyer ones,
-// normalized to the same row shape (seller-messages-query.ts) — one thread
-// per subject, sorted/searched/paginated together with everything else, and
-// nothing at all rendered for a seller who never got one. They used to be a
-// single permanently pinned row outside this pipeline (CURRENT_TASK "סשן ד׳").
-const [messageReplies, adminThreads] = await Promise.all([
-  getRepliesForMessages(storeMessages.map((m) => m.id)),
-  sellerId ? getAdminThreadsForSeller(sellerId) : Promise.resolve([]),
+// Admin<->seller "system" threads live in the SAME table as the buyer ones, normalized to the same
+// row shape (seller-messages-query.ts) — one thread per subject, sorted/searched/paginated together
+// with everything else, and nothing at all rendered for a seller who never got one. They used to be
+// a single permanently pinned row outside this pipeline (CURRENT_TASK "סשן ד׳").
+//
+// **The rows are the panel's data and the DOT is a badge**, so they are read differently (2026-08-11):
+// the rows only when this is the panel asked for, the two unread-id lists on every request, because
+// a dot exists to report a tab the seller is NOT looking at. Neither list is a second definition of
+// "unread" — `getUnreadThreadIdsForSeller` and `getUnreadAdminThreadIdsForSeller` are where that
+// rule already lives (a buyer's follow-up inside an opened thread is new mail), and they are what
+// the store-switcher dots are counted from too.
+const [unreadBuyerThreads, unreadSystemThreads, storeMessages, adminThreads] = await Promise.all([
+  store ? getUnreadThreadIdsForSeller(sellerId, store.id) : Promise.resolve([] as string[]),
+  getUnreadAdminThreadIdsForSeller(sellerId),
+  only(['messages'], () => (store ? getThreadRootsBySeller(sellerId, store.id) : Promise.resolve([])), []),
+  only(['messages'], () => getAdminThreadsForSeller(sellerId), []),
 ]);
+const messageReplies = await getRepliesForMessages(storeMessages.map((m) => m.id));
 // Messages tab pagination — same server-paginated approach as Products/Orders
 // above (src/lib/seller-messages-query.ts).
 const sellerMessageQuery = parseSellerMessageQuery(Astro.url.searchParams);
@@ -398,12 +561,14 @@ const messageRows = [
 ];
 // A thread the seller already read can still have an unread follow-up reply,
 // so the tab dot counts rows with ANY unread entry, not just unread roots.
-const unreadMsgRows = messageRows.filter((r) => r.hasUnread).length;
+const unreadMsgRows = unreadBuyerThreads.length + unreadSystemThreads.length;
 // Sorting/filtering by read-status is only meaningful when the table actually
 // has a mix of both — with everything read (or everything unread) there's
 // nothing to sort or filter, so hide those controls entirely rather than
-// leave a dead, functionless option in the menu.
-const showMsgStatusControls = unreadMsgRows > 0 && unreadMsgRows < messageRows.length;
+// leave a dead, functionless option in the menu. Counted off the ROWS, not off the badge: it
+// describes the table it sits above, and that table only exists on this panel.
+const unreadMessageRowCount = messageRows.filter((r) => r.hasUnread).length;
+const showMsgStatusControls = unreadMessageRowCount > 0 && unreadMessageRowCount < messageRows.length;
 const filteredMessageRows = filterAndSortSellerMessages(messageRows, sellerMessageQuery);
 const messagesPage = paginate(filteredMessageRows, parsePage(Astro.url.searchParams, 'mpage'), 15);
 // Distinct filter-dropdown values must come from the full (unpaginated) set,
@@ -412,7 +577,6 @@ const messagesPage = paginate(filteredMessageRows, parsePage(Astro.url.searchPar
 // rows live in the DOM at a time.
 const msgDistinctProducts = [...new Set(messageRows.map((r) => r.productName))].sort((a, b) => a.localeCompare(b, 'he'));
 const msgDistinctFrom = [...new Set(messageRows.map((r) => r.fromName))].sort((a, b) => a.localeCompare(b, 'he'));
-const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : [];
 
 // Performance tab — SSR renders the default "this month" range so it's never
 // a blank flash before JS runs; range-picker changes re-fetch from
@@ -427,10 +591,18 @@ const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : []
 const perfToISO = businessTodayISO();
 const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfViews = (store && perfIsInitial)
-  ? await getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity)
-  : EMPTY_VIEW_STATS;
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier((await getSellerById(sellerId))?.tier)) : undefined;
+// The two reads this tab needs are independent, so one round trip (AI_INSTRUCTIONS → Scalability) —
+// and the orders read is bounded to the range being charted. It used to receive the store's ENTIRE
+// order history and throw away everything outside the month (owner, 2026-08-11: "at least stop
+// loading all of infinity every time"); `buildPerformanceSummary` re-applies the same business-day
+// membership rule, so bounding the read changed the cost and not the chart.
+const [perfViews, perfOrders] = (store && perfIsInitial)
+  ? await Promise.all([
+      getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity),
+      getOrdersByStoreSlugInRange(store.slug, perfFromISO, perfToISO),
+    ])
+  : [EMPTY_VIEW_STATS, [] as Order[]];
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(seller?.tier)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
@@ -441,18 +613,22 @@ const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrde
 const adCampaigns = (store && advIsInitial) ? (await getCampaignsForStore(store.id)).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) })) : [];
 // Baseline is the platform-funded free exposure the store has accrued to date —
 // a stable lifetime total, deliberately NOT windowed by the campaign picker.
+// `storeProductCounts.visible` and not a filter over the catalogue: the count is read on every
+// request for the checklist anyway, and taking it from there means this figure cannot be one
+// number while the "first steps" step beside it is another.
 const adBaseline = store
   ? storeBaselineStatus({
     storeId: store.id,
     discoverable: isStoreDiscoverable(store),
-    visibleProductCount: products.filter(isProductVisible).length,
+    visibleProductCount: storeProductCounts.visible,
   })
   : { active: false, impressions: 0 };
 // Store activity (lib/store-status.ts): what the seller may switch, and what the current state
 // costs them. Open orders are read once here so the "close" path can say up front how many
 // remain — the API re-reads them at the moment of the click, which is the count that decides.
+// Settings only: it is printed inside that panel's lifecycle card and nowhere else.
 const lifecycleState = store ? storeLifecycle(store) : 'active';
-const lifecycleOpenOrders = store ? await openOrderCount(store.slug) : 0;
+const lifecycleOpenOrders = store ? await only(['settings'], () => openOrderCount(store.slug), 0) : 0;
 const lifecycleStateLabel =
   lifecycleState === 'paused'  ? d.lcStatePaused
   : lifecycleState === 'closing' ? d.lcStateClosing
@@ -515,7 +691,7 @@ const perfIsRtl = getDir(lang) === 'rtl';
 // animates instead (performance.ts, paintedOnce).
 const perfChartOpts = { emptyMessage: d.perfNoData, rtl: perfIsRtl, animate: false };
 const perfRevenueChartSvg = perfSummary
-  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice })
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatAgorot })
   : '';
 // Orders over time — the same buckets as the revenue bars, in the OTHER unit. Revenue alone
 // cannot tell "five big baskets" from "fifty small ones", and that is the difference between a
@@ -560,27 +736,91 @@ const SKEL = {
   topRow:     'block w-full h-[2.4rem] rounded-[var(--radius)]',
 };
 const perfChartSkeleton = `<span class="skel-bar ${SKEL.chart}"></span>`;
-const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
+// Orders tab pagination — same server-paginated approach as Products above
+// (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
+// 15/page like the admin dashboard's own list tabs (no items-per-page
+// control here — that was only asked for on Products).
+//
+// **The page is a page in the QUERY now (2026-08-11).** The tab was already paginated, but the read
+// behind it was the store's entire order history, filtered and sorted in JavaScript so fifteen rows
+// could be kept — on the first paint of the page a seller opens all day. The three counts beside it
+// were three more passes over that same array and are one `GROUP BY` now. Both reads are
+// independent, so they go together.
+const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
+// Deliberately SEQUENTIAL, and the one place on this page where that is right (the standing rule is
+// that independent reads share a `Promise.all` — these are not independent). The new-order poll
+// starts from this instant, so it has to be older than the orders below it: taken alongside them,
+// an order committed in between would be both absent from the page and older than the watermark,
+// which is a new order nobody is ever told about. `getOrderPollWatermark` carries the reasoning.
+//
+// The PAGE of orders belongs to this tab and is read only for it. The status COUNTS are not: the
+// "(N)" badge on the tab strip is one of them, and a badge reports a tab the seller is not looking
+// at. One `GROUP BY` whatever the store's history, which is what makes it affordable everywhere.
+const ordersWatermark = store ? await only(['orders'], () => getOrderPollWatermark(), '') : '';
+const [ordersPage, orderStatusCounts] = store
+  ? await Promise.all([
+      only(['orders'], () => getSellerOrdersPage(store.slug, sellerOrderQuery, parsePage(Astro.url.searchParams, 'opage'), 15),
+        { orders: [] as Order[], total: 0, page: 1, totalPages: 1 }),
+      getSellerOrderStatusCounts(store.slug),
+    ])
+  : [{ orders: [] as Order[], total: 0, page: 1, totalPages: 1 }, {} as Record<string, number>];
+const newOrdersCount = orderStatusCounts.pending ?? 0;
 // Overview "orders needing attention" square (CURRENT_TASK item 4): 'processing'
 // (בטיפול) = started but not yet shipped, the second attention stage after the
 // new-orders ('pending') count above. 'ready' (ממתין לאיסוף) is omitted for the
 // same reason the Orders filter omits it — no seller can reach it today (carrier-
 // driven once shipping is wired). Clicking a square jumps to the Orders tab filtered
 // to exactly that status, so the count and the filtered list always agree.
-const unshippedOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'processing').length;
-// Orders tab pagination — same server-paginated approach as Products above
-// (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
-// 15/page like the admin dashboard's own list tabs (no items-per-page
-// control here — that was only asked for on Products).
-const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
-const filteredSortedOrders = filterAndSortSellerOrders(storeOrders, store?.slug ?? '', sellerOrderQuery);
-const ordersPage = paginate(filteredSortedOrders, parsePage(Astro.url.searchParams, 'opage'), 15);
+const unshippedOrdersCount = orderStatusCounts.processing ?? 0;
+/** Every order this store has ever taken — the "orders so far" stat, and the test the tab's
+ *  empty state asks ("no orders at all" is a different screen from "none match this filter"). */
+const storeOrdersTotal = Object.values(orderStatusCounts).reduce((sum, n) => sum + n, 0);
+
+/**
+ * The overview's money row (owner, סשן א׳ §4), scoped to THIS SHOP and nothing else.
+ *
+ * The first version carried a third tile with the account-wide held total beside the per-store one.
+ * The owner cut it, and gave the rule rather than the correction (2026-08-11): *"כמה שפחות לערבב
+ * בין חנויות יחד, זה אמור להיות מידע משני ולא מרכזי. הוא נמצא על חנות א׳ אז הוא צריך לקבל מידע על
+ * חנות א׳."* An overview is the most central surface in the dashboard, so it is the last place a
+ * cross-store figure belongs; the one number that genuinely cannot be split by shop — the transfer
+ * — is said once, on the Payments tab, under the tile it qualifies.
+ *
+ * So both tiles here are the store in the switcher, and neither needs a scope suffix: the whole
+ * panel is about that shop, which is what makes the plain labels honest.
+ *
+ * **Costing nothing extra, and agreeing by construction.** `payoutAccount` is already read on every
+ * dashboard load for the tab's badge, and both figures come from the same two functions the Payments
+ * tab calls (`payableHeadlineAgorot`, `splitHeldByBasis`) — so they are a reduce over rows already
+ * in memory, and the two screens cannot print different numbers for one shop.
+ */
+function heldTotalFor(slug: string): number {
+  if (!payoutAccount) return 0;
+  const split = splitHeldByBasis(payoutAccount.account.slices, slug);
+  return split.groups.reduce((t, g) => t + g.agorot, 0) + split.unknownAgorot;
+}
+// ⚠️ `splitHeldByBasis` with no slug is the WHOLE ACCOUNT, which is why `heldTotalFor` takes a
+// REQUIRED one and the no-store case is handled here instead. Passing `store?.slug` straight through
+// would have printed the account-wide figure under a label naming one shop — zero in practice (no
+// store, no orders), which is exactly what makes it the kind of mislabelling that ships.
+const ovHeldThisStore = store ? heldTotalFor(store.slug) : 0;
+// The SAME rule the Payments tab's headline tile uses, from the same function: this shop's released
+// money for a multi-store seller, the account figure for a seller who has only one shop for it to
+// come from. `order-payout-line.ts#payableHeadlineAgorot` carries why those differ.
+const ovPayableNow = payoutAccount
+  ? payableHeadlineAgorot(payoutAccount.account.slices, store?.slug ?? null, allStores.length > 1, payoutAccount.account.payableNowAgorot)
+  : 0;
 // The toolbar's filter badge is SSR-computed (same as AdminOrdersPanel.astro) because
 // the first paint ALREADY shows a filtered list — the default "active" preset. Leaving
 // it hidden until the client's refreshOrdersFilterBadge() first runs (only on a filter/
 // sort/page change) told the seller "no filter" while rows were in fact being hidden.
-// One entry per filter column, so a second column later just joins the array.
-const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus].filter((v) => v.length > 0).length;
+// One entry per filter column — and the second column ACTUALLY ARRIVED (payout status,
+// 2026-08-11) and was not added here, so a deep link that selected both showed "1" on the badge
+// while the client's own count said 2 the moment anything was clicked (owner). The comment
+// promised this would be a one-line change and then nobody made it; it is made now, and the
+// two counts are the same question asked on two sides of one request.
+const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus, sellerOrderQuery.payoutStatus]
+  .filter((v) => v.length > 0).length;
 
 // Alerts per store for store-switcher dots (pending orders or unread messages)
 const storeAlerts: Record<string, boolean> = allStores.length > 1 ? await getSellerStoreAlerts(sellerId) : {};
@@ -649,6 +889,7 @@ const orderStatusColors: Record<string, string> = {
                   <li>
                     <a
                       href={`/seller/dashboard?store=${s.id}&panel=${initialPanel}`}
+                      data-panel-link
                       role="option"
                       aria-selected={s.id === store.id}
                       class={s.id === store.id
@@ -763,6 +1004,17 @@ const orderStatusColors: Record<string, string> = {
           aria-selected={initialPanel === 'performance'}
           tabindex={initialPanel === 'performance' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>{d.tabPerformance}</button>
+        {/* Next to Performance and not next to Orders, deliberately: the two answer the same
+            question — "how did this period go" — and a seller who wants the rows behind a figure
+            looks beside the figure. */}
+        <button
+          class={`dash-tab${initialPanel === 'reports' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-reports"
+          data-panel="reports"
+          aria-selected={initialPanel === 'reports'}
+          tabindex={initialPanel === 'reports' ? 0 : -1}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>{d.tabReports}</button>
         <button
           class={`dash-tab${initialPanel === 'advertising' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -783,6 +1035,27 @@ const orderStatusColors: Record<string, string> = {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
           {unreadMsgRows > 0 && (
             <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
+          )}
+        </button>
+        {/* Between Messages and Settings, and the position is the argument: this is the seller's
+            own money rather than the store's operation, so it sits at the end of the working tabs
+            and beside the other account-shaped one. */}
+        <button
+          class={`dash-tab${initialPanel === 'payouts' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-payouts"
+          data-panel="payouts"
+          aria-selected={initialPanel === 'payouts'}
+          tabindex={initialPanel === 'payouts' ? 0 : -1}
+          style="position:relative"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>{d.tabPayouts}
+          {/* "danger", like the orders badge and unlike the stock one: this is not a wrong state
+              that can wait, it is the seller's own money sitting still because of a form nobody
+              has asked them to fill in. `data-tab-alert` is what lets the strip's edge flag it
+              while this tab is scrolled off screen (scripts/dashboard/tab-alert-edges.ts). */}
+          {payoutNeedsBank && (
+            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={d.payNoBankTitle}></span>
           )}
         </button>
         <button
@@ -839,7 +1112,7 @@ const orderStatusColors: Record<string, string> = {
       <UnsavedChangesBar goLabel={d.unsavedGo} />
 
       <!-- ── Panel: Overview ── -->
-      <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
+      <SellerPanelShell panel="overview" active={shows('overview')} hydrating={false}>
         <OnboardingChecklist steps={onboardingSteps} />
         {showTabHints && <TabHint text={d.tabHintOverview} />}
         {false && (<div class="mb-4 pb-[0.6rem] border-b [border-color:var(--color-border)]">
@@ -854,7 +1127,7 @@ const orderStatusColors: Record<string, string> = {
               something to act on, muted "all clear" otherwise. */}
           <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="orders">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.tabOrders}</dt>
-            <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrders.length}</dd>
+            <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrdersTotal}</dd>
           </button>
           <button type="button" id="ov-new-orders" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovNewOrders}</dt>
@@ -885,10 +1158,40 @@ const orderStatusColors: Record<string, string> = {
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeFavoriteCount}</dd>
           </div>
         </dl>
-      </div>
+
+        {/* ── The money row (owner, סשן א׳ §4) ────────────────────────────────────────────────
+            Its own `<dl>` under the counts rather than three more cells in that grid: these are
+            shekels and the ones above are quantities, and a row of five numbers where two are money
+            reads as one list of comparable things. A rule and a heading are cheaper than teaching
+            the seller to re-read the labels.
+
+            Both tiles jump to the Payments tab, where the same figures are broken down — the
+            overview's job is to say "there is something here", not to answer it.
+
+            **Neither label carries a scope, and that is the point** (owner, 2026-08-11: *"כמה שפחות
+            לערבב בין חנויות יחד… הוא נמצא על חנות א׳ אז הוא צריך לקבל מידע על חנות א׳"*). Both are
+            the store in the switcher, like every other number on this panel, so a suffix would be
+            answering a question the seller has not been given a reason to ask. The account-wide
+            held tile that stood here first is gone for the same reason. */}
+        {payoutAccount && (
+          <>
+            <h3 class="text-[0.95rem] font-semibold m-0 mt-6 mb-2">{d.tabPayouts}</h3>
+            <dl class="grid grid-cols-2 gap-3">
+              <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="payouts">
+                <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow}</dt>
+                <dd class={`m-0 text-[1.15rem] font-bold ${ovPayableNow > 0 ? '[color:var(--color-accent)]' : '[color:var(--color-muted)]'}`}>{formatAgorot(ovPayableNow)}</dd>
+              </button>
+              <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="payouts">
+                <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld}</dt>
+                <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{formatAgorot(ovHeldThisStore)}</dd>
+              </button>
+            </dl>
+          </>
+        )}
+      </SellerPanelShell>
 
       <!-- ── Panel: Products ── -->
-      <div id="dash-panel-products" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-products" hidden={initialPanel !== 'products'}>
+      <SellerPanelShell panel="products" active={shows('products')}>
         {showTabHints && <TabHint text={d.tabHintProducts} />}
 
         <div>
@@ -1737,20 +2040,30 @@ const orderStatusColors: Record<string, string> = {
 
           <nav id="products-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={d.productsTitle} data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
         </div>
-      </div>
+      </SellerPanelShell>
 
       <!-- ── Panel: Orders ── -->
-      <div id="dash-panel-orders" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
+      <SellerPanelShell panel="orders" active={shows('orders')}>
         {showTabHints && <TabHint text={d.tabHintOrders} />}
         <div class="dash-panel-head flex flex-col items-start mb-4 gap-[0.6rem] py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0">{d.ordersTitle}</h2>
           {/* Orders is cards-only at every screen size (no table/header to fall
               back to), so this toolbar is always visible — unlike
               .table-toolbar (products/messages), it's not display:none above
-              640px. Default filter selection = the old "active" preset
-              (pending/processing/ready/shipped), matching today's default. */}
-          {storeOrders.length > 0 && (
-            <div class="dash-toolbar w-full" id="orders-toolbar">
+              640px.
+
+              `data-status` hands the client the filter the SERVER just rendered this list with.
+              Without it the toolbar always started from its own "active" default, so arriving on a
+              deep link (`?ostatus=…`, which the payments tab now builds) showed the right rows and
+              then silently widened them back the first time anything touched the toolbar — the
+              funnel badge said "1 filter" while the list was unfiltered. Empty string means the
+              seller explicitly cleared it, which is not the same as absent.
+
+              (This comment is ABOVE the `{expr && (` and not inside it. Astro 7's compiler rejects
+              a comment as that expression's first child and fails with no file and no line —
+              scripts/verify.mjs's header carries the case.) */}
+          {storeOrdersTotal > 0 && (
+            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')} data-payout={sellerOrderQuery.payoutStatus.join(',')}>
               <div class="relative flex-1 min-w-[110px] max-w-[280px]">
                 <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="search" id="orders-search-input" value={sellerOrderQuery.q} placeholder={d.ordersSearchPlaceholder ?? 'חיפוש הזמנות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
@@ -1769,20 +2082,60 @@ const orderStatusColors: Record<string, string> = {
             </div>
           )}
         </div>
-        {storeOrders.length === 0 ? (
+        {storeOrdersTotal === 0 ? (
           <p class="seller-msg-empty">{d.noOrders}</p>
         ) : (
           <Fragment>
+          {/* "You are not looking at all your orders, here is why, and here is the way out."
+              A deep link from the payments tab narrows this list, and without this the seller
+              arrives at a shorter list with no explanation and no obvious undo — the filter menu's
+              own clear is two clicks inside a dropdown (owner, 2026-08-11). Server-rendered from
+              `?ofrom=`, so it is right at first paint and gone the moment the seller filters by
+              hand instead.
+
+              **NOT a `.card`, and that is the fix rather than a preference** (owner, 2026-08-11 —
+              it stayed misaligned through one attempt). `.card` is UNLAYERED css setting
+              `display:flex; flex-direction:column` (cards.css), so a `flex-row` utility from
+              `@layer utilities` loses to it regardless of source order — the documented trap (f) in
+              the CSS rule. The row never became a row; every other flex utility on it was then
+              arranging a COLUMN, which is how the link ended up parked in the middle of the line
+              instead of under the text. A plain block with `text-start` needs none of it: the two
+              lines follow the page's direction because that is what block layout does in RTL, and
+              there is no legacy rule left to fight.
+
+              (Comment ABOVE the `{expr && (`, never as its first child — that is the silent Astro
+              compile failure scripts/verify.mjs's header carries.) */}
+          {ordersFromBasis && (
+            <div id="orders-from-banner" class="p-3 mb-3 rounded-[var(--radius)] border [border-color:var(--color-border)] [background:var(--color-surface)] text-start text-[0.85rem]" role="status">
+              <p class="m-0">{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</p>
+              <a class="inline-block mt-1 underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
+            </div>
+          )}
           <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
-          <div class="flex flex-col gap-3" id="orders-list">
-            {ordersPage.items.map((order) => {
+          {/* The instant this list was read by — the new-order poll starts here instead of asking
+              the server what it has missed once its own JavaScript is running, which left every
+              order that arrived during page load announced by nobody (getOrderPollWatermark). */}
+          <div class="flex flex-col gap-3" id="orders-list" data-since={ordersWatermark}>
+            {ordersPage.orders.map((order) => {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
               const storeSub   = order.storeSubtotals[store!.slug];
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
+              /* When this order's money reaches the seller, and why then. The Payments tab used to
+                 carry this as a row in a table of its own; the owner asked for it here, where the
+                 order is managed (סשן א׳ §4). `order-payout-line.ts` is the shared derivation —
+                 `buildOrderCard` in scripts/dashboard/orders.ts renders the same three fields from
+                 the same function, which is what keeps the SSR card and the AJAX one one card. */
+              const payLine    = orderPayoutLine({
+                paymentStatus: order.paymentStatus,
+                shippingStatus: order.shippingStatus,
+                paidAt: order.paidAt ?? null,
+                deliveredAt: order.deliveredAt ?? null,
+                deliveryMethod: storeSub?.deliveryMethod ?? null,
+              });
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-payout={payoutFilterValue(payLine)} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the
@@ -1899,6 +2252,24 @@ const orderStatusColors: Record<string, string> = {
                           <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatAgorot(storeSliceTotalAgorot(storeSub))}</strong>
                         </div>
                       )}
+                      {/* When the money from THIS order reaches the seller, and why then.
+                          Deliberately no amount: the figure a seller acts on is the total on the
+                          Payments tab, and a per-order net would be a new seller-visible number
+                          (and therefore a new invariant) to say something the timing already says.
+                          Rendered for every order, including cancelled ones — "לא ייכלל בתשלום" is
+                          the answer a seller looking at a cancelled order came for. */}
+                      <div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]">
+                        <span class="[color:var(--color-muted)]">{d.orderPayoutLabel}</span>
+                        <strong class="text-[color:var(--color-text)]">
+                          {payLine.state === 'not_payable' ? d.orderPayoutNone
+                            : payLine.state === 'releasable' ? d.orderPayoutReleasable
+                            : payLine.releaseDayISO ? d.orderPayoutOn.replace('{date}', formatBusinessDayLabel(payLine.releaseDayISO))
+                            : d.orderPayoutPending}
+                        </strong>
+                        {payLine.state === 'held' && (
+                          <span class="[color:var(--color-muted)]">· {payoutWhyText(payLine, d[payLine.whyKey])}</span>
+                        )}
+                      </div>
                     </div>
                     <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
                       {/* Multi-note UI: a list of private notes (each an inline line with
@@ -1968,10 +2339,10 @@ const orderStatusColors: Record<string, string> = {
           <nav id="orders-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={d.ordersTitle} data-page={ordersPage.page} data-total-pages={ordersPage.totalPages} hidden></nav>
           </Fragment>
         )}
-      </div>
+      </SellerPanelShell>
 
       <!-- ── Panel: Performance ── -->
-      <div id="dash-panel-performance" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-performance" hidden={initialPanel !== 'performance'}>
+      <SellerPanelShell panel="performance" active={shows('performance')}>
         {showTabHints && <TabHint text={d.tabHintPerformance} />}
         <div class="dash-panel-head mb-5 py-[0.6rem] border-b [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -2101,30 +2472,22 @@ const orderStatusColors: Record<string, string> = {
                 a loading list must not look alike, and this is the surface where
                 "nothing sold" is the reading a seller would jump to. */}
             {!perfSummary && [0, 1, 2].map(() => <SkelBar class={SKEL.topRow} />)}
-            {perfSummary && perfSummary.topProducts.length === 0 && (
-              <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
+            {perfSummary && (
+              <TopProductsList products={perfSummary.topProducts} totalAgorot={perfSummary.productRevenueAgorot} d={d as unknown as Record<string, string>} />
             )}
-            {perfSummary?.topProducts.map((tp, tpIdx) => {
-              const totalRevenueAgorot = Math.max(perfSummary.topProducts.reduce((s, x) => s + x.revenueAgorot, 0), 1);
-              const pct = Math.round((tp.revenueAgorot / totalRevenueAgorot) * 100);
-              return (
-                <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
-                  <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(tpIdx * 60, 300)}ms`}></div>
-                  <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
-                    <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
-                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenueAgorot)}</span>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </div>
 
         {store && <PerfProductSection products={products} />}
-      </div>
+      </SellerPanelShell>
+
+      <!-- ── Panel: Reports ── -->
+      <SellerPanelShell panel="reports" active={shows('reports')}>
+        <ReportsPanel storeSlug={store.slug} d={d as unknown as Record<string, string>} />
+      </SellerPanelShell>
 
       <!-- ── Panel: Advertising ── -->
-      <div id="dash-panel-advertising" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
+      <SellerPanelShell panel="advertising" active={shows('advertising')}>
         {showTabHints && <TabHint text={d.tabHintAdvertising} />}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
@@ -2273,11 +2636,11 @@ const orderStatusColors: Record<string, string> = {
           <CampaignHistory d={d} />
           <p class="muted text-[0.76rem] mt-3">{d.adDemoDataNote}</p>
         </div>
-      </div>
+      </SellerPanelShell>
 
       <!-- ── Panel: Messages ── -->
       <!-- msg-cq: the table below collapses to cards by THIS element's width, not the viewport's (see utils.css) -->
-      <div id="dash-panel-messages" data-hydrating class="dash-panel msg-cq" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
+      <SellerPanelShell panel="messages" active={shows('messages')} class="msg-cq">
         {showTabHints && <TabHint text={d.tabHintMessages} />}
         {/* Sticky header carrying the search + sort/filter, matching Orders
             (CURRENT_TASK 2 — Messages previously had neither a sticky head nor
@@ -2353,7 +2716,7 @@ const orderStatusColors: Record<string, string> = {
           </div>
           <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>{messageRows.length === 0 ? d.messagesNoneYet : d.messagesFilterEmpty}</p>
           <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={t.dashboard.tabMessages} data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
-      </div>
+      </SellerPanelShell>
 
       {/* The running sale, for the client-side row renderer: a rebuilt row must show the same
           "-N%" chip the server rendered, and that answer depends on the sale, not only on the
@@ -2361,12 +2724,30 @@ const orderStatusColors: Record<string, string> = {
       <script is:inline type="application/json" id="dash-store-sale" set:html={jsonForScript(store?.sale ?? null)} />
 
       <!-- ── Panel: Promotions ── -->
-      <div id="dash-panel-promotions" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-promotions" hidden={initialPanel !== 'promotions'}>
+      <SellerPanelShell panel="promotions" active={shows('promotions')}>
         <PromotionsPanel store={store} products={products} categories={storeCategoryList} selectedScopeLabel={t.store.saleOnSelected} storeScopeLabel={t.store.saleOnWholeStore} andMoreLabel={t.store.saleAndMore} d={d} />
-      </div>
+      </SellerPanelShell>
+
+      <!-- ── Panel: Payments ── -->
+      {/* Server-rendered rather than deferred like Reports/Performance: its numbers ARE the reason
+          the tab is opened, and they cost three small indexed reads that the page has already made
+          for the badge above. `data-hydrating` only because the details form needs its handler. */}
+      <SellerPanelShell panel="payouts" active={shows('payouts')}>
+        {payoutAccount && (
+          <PayoutsPanel
+            account={payoutAccount.account}
+            seller={payoutAccount.seller}
+            multiStore={allStores.length > 1}
+            ordersHref={ordersForHoldBasisHref}
+            storeSlug={store?.slug ?? null}
+            storeName={store?.name ?? null}
+            d={d}
+          />
+        )}
+      </SellerPanelShell>
 
       <!-- ── Panel: Settings ── -->
-      <div id="dash-panel-settings" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
+      <SellerPanelShell panel="settings" active={shows('settings')}>
         {showTabHints && <TabHint text={d.tabHintSettings} />}
         {/* Head stays INSIDE the form on purpose: its sticky scope is the form, so the
             "save changes" bar rides only over the fields it actually saves and releases
@@ -2693,7 +3074,7 @@ const orderStatusColors: Record<string, string> = {
             <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" id="lc-close" hidden={lifecycleState !== 'active' && lifecycleState !== 'paused'}>{d.lcClose}</button>
           </div>
         </div>
-      </div>
+      </SellerPanelShell>
 
     </div>
   </section>
@@ -3078,7 +3459,10 @@ const orderStatusColors: Record<string, string> = {
   import { initInfoTooltips } from '../../scripts/tooltip.js';
   import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
   import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
-  import { initDiscountFields } from '../../scripts/dashboard/discount-field.js';
+  import { initDiscountFields, refreshDiscountFieldsIn } from '../../scripts/dashboard/discount-field.js';
+  // The panel filler. Stage 1 on purpose: a panel that has never been opened has no chunk of its
+  // own yet, so the thing that FETCHES one cannot live inside it.
+  import { swapPanel } from '../../lib/panel-swap.js';
   // Stage 1 on purpose, small as it is: it is what reports a STAGE 2 chunk that
   // never arrived, so it cannot be behind the same dynamic import that failed.
   import { showErrorToast } from '../../lib/toast.js';
@@ -3103,21 +3487,20 @@ const orderStatusColors: Record<string, string> = {
   // First: it observes fetch, so it should be in place before anything can save.
   initDashTabSync(uploadCfg?.dataset.storeId ?? '');
   initDashTabs();
-  initGotoPanelLinks();
+  // The document-level halves, which have nothing to do with which panel is on screen and must be
+  // registered exactly once.
   initDiscountFields();
-  initSettingsForm();
   initUnsavedGuard();
   initStorePreviewLink();
-  initStoreHours();
-  initFormToggles();
-  // The Products tab now carries its own "(i)" explanations (SKU / tags / variants / specs), and
-  // those are the terms a first-time seller does not know. Until now initInfoTooltips() only ran
-  // from the advertising and performance tabs' own lazy init, so a tooltip outside those two tabs
-  // was inert markup — the stock-alert badge's own data-tooltip included. It is idempotent
-  // (dataset.tooltipBound), so those later calls still work unchanged.
-  initInfoTooltips();
   initStoreSwitcher();
   initAutoHideStatus();
+  // And the panel-scoped ones, for whichever panel the server rendered into this response. The
+  // other nine get the same pass as each is filled — see `wireSharedControls`.
+  // (The Products tab carries its own "(i)" explanations — SKU / tags / variants / specs — and
+  // those are the terms a first-time seller does not know. `initInfoTooltips` used to run only from
+  // the advertising and performance tabs' own lazy init, so a tooltip outside those two was inert
+  // markup, the stock-alert badge's own included.)
+  wireSharedControls();
 
   // Keeps the store-switcher title dot (and this store's own row-dot in the
   // dropdown) in sync as orders get handled / messages get read — without a
@@ -3181,7 +3564,19 @@ const orderStatusColors: Record<string, string> = {
     return editorsPromise;
   }
 
-  const LOADERS: Record<string, () => Promise<void>> = {
+  /**
+   * A panel's client side, in TWO steps: fetch its chunk, then wire what arrived.
+   *
+   * It used to be one step, and one step stopped working the day the panel's HTML stopped being
+   * server-rendered (2026-08-11). Every `init*` below binds against elements that have to already
+   * exist, so wiring a panel that has not been filled yet wires nothing — and since the wiring runs
+   * once, nothing would ever wire it again. Splitting the two lets the fill and the chunk travel at
+   * the same time and the wiring happen after BOTH, which is the only order that works.
+   *
+   * The wiring step is deliberately NOT re-runnable: about thirty of these listeners are delegated
+   * at the document, so calling a panel's init twice would answer every click twice.
+   */
+  const LOADERS: Record<string, () => Promise<() => void>> = {
     products: async () => {
       const [p, gallery, csv, picker, select, seo] = await Promise.all([
         import('../../scripts/dashboard/products.js'),
@@ -3192,6 +3587,7 @@ const orderStatusColors: Record<string, string> = {
         import('../../scripts/dashboard/product-seo.js'),
         imageEditors(),
       ]);
+      return () => {
       // Delegated at the document, so it covers rows the table rebuilds later too. Registered
       // first because it only ever reads the form and rewrites a block of static text — it can
       // never interfere with an editor below, and every one of them writes fields it reads.
@@ -3235,26 +3631,32 @@ const orderStatusColors: Record<string, string> = {
       });
       p.initStickyOffsets();
       p.initViewProduct();
+      };
     },
 
     orders: async () => {
       const { initOrdersTab } = await import('../../scripts/dashboard/orders.js');
-      initOrdersTab(updateSwitcherAlertDot);
+      return () => initOrdersTab(updateSwitcherAlertDot);
     },
 
     messages: async () => {
       const { initMessagesTab } = await import('../../scripts/dashboard/messages.js');
-      initMessagesTab(updateSwitcherAlertDot);
+      return () => initMessagesTab(updateSwitcherAlertDot);
     },
 
     performance: async () => {
       const { initPerformanceTab } = await import('../../scripts/dashboard/performance.js');
-      initPerformanceTab();
+      return () => initPerformanceTab();
+    },
+
+    reports: async () => {
+      const { initReportsTab } = await import('../../scripts/dashboard/reports.js');
+      return () => initReportsTab();
     },
 
     advertising: async () => {
       const { initAdvertisingTab } = await import('../../scripts/dashboard/advertising.js');
-      initAdvertisingTab();
+      return () => initAdvertisingTab();
     },
 
     promotions: async () => {
@@ -3265,8 +3667,20 @@ const orderStatusColors: Record<string, string> = {
         import('../../scripts/dashboard/promotions.js'),
         import('../../scripts/dashboard/coupons.js'),
       ]);
-      promo.initPromotionsTab();
-      coupons.initCouponsCard();
+      return () => {
+        promo.initPromotionsTab();
+        coupons.initCouponsCard();
+      };
+    },
+
+    payouts: async () => {
+      const { initPayoutsTab, watchPayoutsFreshness } = await import('../../scripts/dashboard/payouts.js');
+      return () => {
+        initPayoutsTab();
+        // Once per page: it survives the panel being replaced by a refresh, which `initPayoutsTab`
+        // deliberately does not (it binds the form that was just swapped out).
+        watchPayoutsFreshness();
+      };
     },
 
     settings: async () => {
@@ -3281,6 +3695,7 @@ const orderStatusColors: Record<string, string> = {
         import('../../scripts/dashboard/header-logo.js'),
         imageEditors(),
       ]);
+      return () => {
       const i18n = dashI18n();
       const labels = {
         upload: i18n.uploadImage ?? 'Upload image',
@@ -3320,8 +3735,88 @@ const orderStatusColors: Record<string, string> = {
       url.initStoreUrl();
       feed.initFeedSync();
       storeCats.initAllStoreCategoryPickers();
+      };
     },
   };
+
+  // A panel's chunk, fetched at most once — separately from wiring it, so the idle prefetch below
+  // can warm a tab the seller has not opened without wiring an empty container.
+  // Object.hasOwn, not a bare lookup: `panel` comes from a DOM id, and a plain object literal
+  // answers "constructor"/"toString" from its prototype — calling one of those would throw where an
+  // unknown panel should simply do nothing.
+  const chunks = new Map<string, Promise<() => void>>();
+  function panelChunk(panel: string): Promise<() => void> {
+    let loading = chunks.get(panel);
+    if (!loading) {
+      const loader = Object.hasOwn(LOADERS, panel) ? LOADERS[panel] : undefined;
+      loading = loader?.() ?? Promise.resolve(() => { /* nothing to wire */ });
+      chunks.set(panel, loading);
+    }
+    return loading;
+  }
+
+  /**
+   * Ask the server for ONE panel and put its contents in the shell it left empty.
+   *
+   * The page renders one panel's data per request (`?panel=X`, SELLER_LAZY_PANELS_PLAN.md) — it
+   * used to build all ten and let the tab strip hide nine, which is ~865KB of HTML for one tab's
+   * worth of answer. The other nine arrive here, on the click that opens them.
+   *
+   * **The URL carries no params but the store and the panel.** A panel being opened for the first
+   * time has no filter state of its own — anything else in the address bar belongs to the tab being
+   * LEFT. A deep link like `?panel=orders&opay=unshipped` is a different case entirely: that panel
+   * is the one the server already rendered, so it is never lazy.
+   *
+   * `data-lazy` is removed BEFORE the fetch starts, so a double click cannot start two loads. On
+   * failure `swapPanel` falls back to a real navigation, which is the one thing guaranteed to
+   * produce a filled panel.
+   */
+  function fillPanel(panel: string): Promise<void> {
+    const el = document.getElementById(`dash-panel-${panel}`);
+    if (!el?.hasAttribute('data-lazy')) return Promise.resolve();
+    el.removeAttribute('data-lazy');
+    const params = new URLSearchParams({ panel });
+    const storeId = document.getElementById('upload-config')?.dataset.storeId;
+    if (storeId) params.set('store', storeId);
+    // `pushUrl: false` — <DashTabsBoot> already wrote `?panel=` into the address bar the moment the
+    // tab was activated, and a second entry for the same place is a back button that has to be
+    // pressed twice. `busy: false` — the shell is showing its placeholder, which already says
+    // "loading" without a chip on top of it.
+    return swapPanel(`/seller/dashboard?${params.toString()}`, el.id, () => {
+      wireSharedControls(el);
+      // Forms the draft guard has never seen. Without this a crash would lose work typed into any
+      // tab but the one the page was opened on, and nothing anywhere would report it.
+      //
+      // Only here, never from the load-time call above: this module is a DEFERRED script, so it
+      // runs BEFORE `DOMContentLoaded` — and the guard's own load scan, which fires there, resets
+      // its offer table without taking down any bar an earlier scan had already inserted. A scan
+      // from stage 1 would therefore leave the seller looking at two identical "restore your
+      // draft?" bars in one form.
+      window.__dashScanDrafts?.(el);
+    }, { busy: false, pushUrl: false });
+  }
+
+  /**
+   * The controls the SHELL script owns that happen to live inside a panel — the settings form, the
+   * add-product toggle, the opening-hours editor, the overview's jump-to-tab cards, the "(i)"
+   * tooltips and the discount readouts.
+   *
+   * They are wired once at load for the panel the server rendered, and again for each panel as it
+   * is filled, because none of those elements existed when the page loaded. Every one of them is
+   * safe to call twice: the `ui.ts` group mark the element they bound (`bindOnce`) and the tooltip
+   * and discount initialisers have always done so.
+   */
+  function wireSharedControls(root: ParentNode = document): void {
+    initSettingsForm();
+    initFormToggles();
+    initStoreHours();
+    initGotoPanelLinks();
+    initInfoTooltips(root);
+    // Paint the "-25% → ₪X" readout on the blocks that just arrived, and turn their <select> into
+    // the app dropdown — the document-level listener behind them was registered at load and covers
+    // them already, but nothing has drawn them yet.
+    refreshDiscountFieldsIn(root);
+  }
 
   const hydrated = new Map<string, Promise<void>>();
   function hydrate(panel: string): Promise<void> {
@@ -3329,13 +3824,13 @@ const orderStatusColors: Record<string, string> = {
     if (!running) {
       // A panel that fails to load must not block the others, and must not be
       // retried on every tab switch — the entry stays, rejected once, logged once.
-      // Object.hasOwn, not a bare lookup: `panel` comes from a DOM id, and a
-      // plain object literal answers "constructor"/"toString" from its
-      // prototype — calling one of those would throw where an unknown panel
-      // should simply do nothing.
-      const loader = Object.hasOwn(LOADERS, panel) ? LOADERS[panel] : undefined;
+      //
+      // The fill and the chunk travel TOGETHER and the wiring happens after both: every `init*` in
+      // this panel binds against elements that must already exist, so wiring before the fill lands
+      // wires nothing — and the wiring runs once, so nothing would ever come back for it.
       let failed = false;
-      running = (loader?.() ?? Promise.resolve())
+      running = Promise.all([fillPanel(panel), panelChunk(panel)])
+        .then(([, wire]) => { wire(); })
         .catch((err) => { failed = true; console.error(`panel "${panel}" failed to load`, err); })
         .then(() => {
           const el = document.getElementById(`dash-panel-${panel}`);
@@ -3390,10 +3885,12 @@ const orderStatusColors: Record<string, string> = {
       const bar = document.getElementById('dash-hydrating-bar');
       bar?.firstElementChild?.remove();
       bar?.removeAttribute('role');
-      // Everything else, once the browser is idle: a later tab switch then costs
-      // nothing, without any of it competing with the panel on screen.
+      // Every other panel's CHUNK, once the browser is idle: a later tab switch then pays only for
+      // its HTML, without any of this competing with the panel on screen. Deliberately the chunk
+      // and not `hydrate` — the other nine are empty shells until they are opened, and wiring an
+      // empty container binds nothing while spending the one wiring each panel gets.
       const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
-      idle(() => { Object.keys(LOADERS).forEach((id) => void hydrate(id)); });
+      idle(() => { Object.keys(LOADERS).forEach((id) => void panelChunk(id).catch(() => { /* reported when the tab is opened */ })); });
     });
   }
 

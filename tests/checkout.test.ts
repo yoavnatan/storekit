@@ -76,6 +76,11 @@ vi.mock('../src/lib/notifications.js', () => ({
 vi.mock('../src/lib/seller-auth.js', () => ({
   getSellerSession: () => getSellerSession(),
   getSellerByEmail: (email: string) => getSellerByEmail(email),
+  // The checkout looks the seller up after capture to plan the buyer's tax invoice, which is owed
+  // by the SELLER under the agent model. Stubbed rather than left out: an absent export throws a
+  // TypeError at the call site, and the point of the guard around that call is that the purchase
+  // survives it — a test that only ever exercises the throwing path never sees the working one.
+  getSellerById: async (id: string) => ({ id, name: 'S', email: 's@example.com', passwordHash: '', createdAt: '', businessType: 'licensed' }),
 }));
 // `async` for the same reason as the notifications mock above: checkout awaits this now, and a
 // mock that is not a promise tests a contract that does not exist.

@@ -49,8 +49,13 @@ const COUNTS_AS_REVENUE = 'o.payment_status = ANY($1::text[]) AND o.shipping_sta
 const REVENUE_PARAMS = [REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES] as const;
 
 /** One store's slice of one order, net of the seller's own discount and never below zero.
- *  The SQL twin of `admin-stats.ts#orderNetForStore`. */
+ *  The SQL twin of `admin-stats.ts#orderNetForStore`.
+ *
+ *  Exported as `NET_SQL` because `payouts.ts` aggregates the same slice for the payout run, and a
+ *  second copy of this expression is a second definition of what a seller earned on an order —
+ *  which is the one number the whole payout is computed from. */
 const NET = 'GREATEST(os.subtotal_agorot - os.discount_applied_agorot, 0)';
+export { NET as NET_SQL };
 
 /** The business day/month an order landed on, in SQL. The platform has ONE calendar
  *  (business-day.ts) and it is not the server's: UTC files every sale between local midnight and
@@ -204,6 +209,23 @@ export interface PlatformSales {
   /** The platform's leading products by revenue, ranked and capped IN THE QUERY. Not a merge of
    *  per-store top-Ns — that would be a top-N of each store's top-N, which is a different list. */
   topProducts: TopProduct[];
+  /** Gross revenue of every product that sold in range, INCLUDING the ones the cap and the name
+   *  filter dropped — the share denominator (seller-performance.ts#PerformanceSummary). */
+  productRevenueAgorot: number;
+  /** How many distinct products the name filter matched, before the top-N cap. With no filter this
+   *  is simply how many products sold in range, which is what makes "3 of 214" sayable on screen. */
+  productsMatched: number;
+}
+
+/** Longest product-name search we will run. A search box is not a place to hand the database an
+ *  unbounded string, and no product name on this platform is anywhere near this long. */
+export const PRODUCT_QUERY_MAX = 80;
+
+/** `%` and `_` are LIKE wildcards, so a shopper's product name containing one would quietly widen
+ *  its own search — typing "50%" must look for that text, not for "50" followed by anything. The
+ *  value is still a bound parameter; this is about meaning, not injection. */
+function likeLiteral(q: string): string {
+  return q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
 /**
@@ -218,6 +240,11 @@ export interface PlatformSales {
  *
  * `topLimit <= 0` returns every product that sold in range — what the revenue-breakdown modal
  * asks for when it wants the full composition rather than a leaderboard.
+ *
+ * `productQuery` narrows the leaderboard to products whose name contains it — the admin's
+ * "which product is this" search. It narrows the LIST only: `productRevenueAgorot` stays the
+ * period's full product revenue, so a searched row still reports its share of the platform rather
+ * than a share of the search.
  */
 export async function getPlatformSales(
   storeSlugs: readonly string[],
@@ -225,10 +252,12 @@ export async function getPlatformSales(
   toISO: string,
   granularity: PerformanceGranularity,
   topLimit = 5,
+  productQuery = '',
 ): Promise<PlatformSales> {
   const slugs = [...new Set(storeSlugs.filter(Boolean))];
   const byStore = new Map<string, StoreSales>(slugs.map((s) => [s, { buckets: [], totalRevenueAgorot: 0, totalOrders: 0 }]));
-  if (!slugs.length) return { byStore, topProducts: [] };
+  if (!slugs.length) return { byStore, topProducts: [], productRevenueAgorot: 0, productsMatched: 0 };
+  const q = productQuery.trim().slice(0, PRODUCT_QUERY_MAX);
 
   // Membership is decided on the BUSINESS day the order landed on, compared against the range's
   // own business-day bounds — the same rule `buildPerformanceSummary` applies in JS. The two views
@@ -248,7 +277,10 @@ export async function getPlatformSales(
         GROUP BY os.store_slug, bucket`,
       [...scope],
     ),
-    rows<{ product_id: string | null; name: string; revenue: string | number; units: string | number }>(
+    rows<{
+      product_id: string | null; name: string; store_slug: string | null; store_name: string | null;
+      revenue: string | number; units: string | number; grand_total: string | number; matched: string | number;
+    }>(
       // Gross, pre order-level discount — the discount is stored per store-subtotal and never per
       // line, so apportioning it across products would be an invention. Same basis as
       // `TopProduct.revenueAgorot` has always carried.
@@ -256,20 +288,35 @@ export async function getPlatformSales(
       // The join to `order_stores` is the SQL half of the JS filter it replaces: a line only counts
       // when its order actually carries a subtotal row for that store.
       //
-      // The NAME is the one from the most recent order that sold it — same answer the JS map gave,
-      // which kept whichever name it met first while walking newest-first.
-      `SELECT it.product_id,
-              (array_agg(it.product_name ORDER BY o.created_at DESC, o.id))[1] AS name,
-              SUM(it.price_agorot * it.qty) AS revenue,
-              SUM(it.qty)                   AS units
-         FROM order_items it
-         JOIN orders o       ON o.id = it.order_id
-         JOIN order_stores os ON os.order_id = o.id AND os.store_slug = it.store_slug
-        WHERE it.store_slug = ANY($4::text[]) AND ${COUNTS_AS_REVENUE} AND ${IN_RANGE}
-        GROUP BY it.product_id
-        ORDER BY revenue DESC
-        ${topLimit > 0 ? 'LIMIT $7' : ''}`,
-      topLimit > 0 ? [...scope, topLimit] : [...scope],
+      // The NAME (and the store behind it) is the one from the most recent order that sold it —
+      // same answer the JS map gave, which kept whichever name it met first while walking
+      // newest-first.
+      //
+      // Two levels, and the nesting is what carries the meaning of the percentage on screen:
+      // `grand_total` is a window over the INNER groups, so it is computed before the name filter
+      // and before the LIMIT — the share a row reports is its share of the period's whole product
+      // revenue, not of the five rows that happened to be shown or of the search that found it.
+      // `matched` is a window over the OUTER rows, i.e. after the filter and still before the
+      // LIMIT, which is the "N products match" the search line needs.
+      `SELECT p.*, COUNT(*) OVER () AS matched
+         FROM (
+           SELECT it.product_id,
+                  (array_agg(it.product_name ORDER BY o.created_at DESC, o.id))[1] AS name,
+                  (array_agg(it.store_slug   ORDER BY o.created_at DESC, o.id))[1] AS store_slug,
+                  (array_agg(it.store_name   ORDER BY o.created_at DESC, o.id))[1] AS store_name,
+                  SUM(it.price_agorot * it.qty) AS revenue,
+                  SUM(it.qty)                   AS units,
+                  SUM(SUM(it.price_agorot * it.qty)) OVER () AS grand_total
+             FROM order_items it
+             JOIN orders o       ON o.id = it.order_id
+             JOIN order_stores os ON os.order_id = o.id AND os.store_slug = it.store_slug
+            WHERE it.store_slug = ANY($4::text[]) AND ${COUNTS_AS_REVENUE} AND ${IN_RANGE}
+            GROUP BY it.product_id
+         ) p
+        WHERE $7::text = '' OR p.name ILIKE '%' || $7::text || '%' ESCAPE '\\'
+        ORDER BY p.revenue DESC
+        ${topLimit > 0 ? 'LIMIT $8' : ''}`,
+      topLimit > 0 ? [...scope, likeLiteral(q), topLimit] : [...scope, likeLiteral(q)],
     ),
   ]);
 
@@ -291,6 +338,13 @@ export async function getPlatformSales(
       name: r.name,
       revenueAgorot: num(r.revenue),
       units: num(r.units),
+      storeSlug: r.store_slug ?? '',
+      storeName: r.store_name ?? '',
     })),
+    // Both windows ride on the returned rows, so a search that matched nothing reports 0 for both.
+    // That is the honest answer for the only thing they are read for — there is no row on screen to
+    // take a share of, and "0 products match" is exactly what the search line has to say.
+    productRevenueAgorot: num(productRows[0]?.grand_total ?? 0),
+    productsMatched: num(productRows[0]?.matched ?? 0),
   };
 }
