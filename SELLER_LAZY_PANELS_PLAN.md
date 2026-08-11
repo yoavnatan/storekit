@@ -45,12 +45,27 @@ pins that contract.
 **A refresh must never replace a panel holding unsaved work.** The owner raised this twice and it is
 the thing to get right before anything else works nicely.
 
-Use **`hasUnsavedChanges()` from `src/scripts/dashboard/unsaved-guard.ts`**, not the generic
-`panelHoldsTypedText` written for the buyer and admin. That module is already the authority on this
-question here — it keeps per-form baselines, it is what `tab-sync.ts` asks before a cross-tab
-refresh, and its own comment says why: *"a live cross-tab refresh must never redraw over work in
-progress, and this is already the one place that knows what 'in progress' means."* A second
-definition of "in progress" on the same page is the bug.
+The authority is **`src/scripts/dashboard/unsaved-guard.ts`**, not the generic `panelHoldsTypedText`
+written for the buyer and admin. That module already answers this question here — it keeps per-form
+baselines, it is what `tab-sync.ts` asks before a cross-tab refresh, and its own comment says why:
+*"a live cross-tab refresh must never redraw over work in progress, and this is already the one
+place that knows what 'in progress' means."* A second definition of "in progress" on the same page
+is the bug.
+
+**But `hasUnsavedChanges()` as it stands is the wrong shape for this, and that has to be fixed
+first.** It asks the WHOLE PAGE — `document.querySelectorAll(GUARDED).some(isDirty)` — which is
+exactly right for its current caller, `beforeunload` and the cross-tab notice, where the question
+really is "does this document hold unsaved work". A per-panel refresh needs "does THIS panel", and
+using the global answer would let a half-finished product edit freeze the advertising tab, and every
+other tab, until it is saved. Guarded forms live in products (add + inline edit), advertising,
+settings, coupons, payouts and promotions, so in practice one open edit anywhere would block
+everything.
+
+Add a scoped variant **to that same module** — `hasUnsavedChangesIn(root: Element)`, sharing the one
+`baselines` WeakMap and the existing private `isDirty` — and let `hasUnsavedChanges()` become the
+document-scoped call of it. That keeps one definition of dirty, which is the whole point; a scoped
+check re-implemented at the call site is the second definition this section is warning about.
+`isDirty` is currently module-private, which is the right place for it to stay.
 
 Note the interaction with step 1: today's behaviour is that leaving a tab mid-edit and returning
 loses nothing, because panels are hidden and not destroyed. Lazy loading does not change that — it
@@ -74,5 +89,6 @@ rejected by the owner because it collided with the messages dot. Words, or nothi
 ## Done when
 
 `tests/admin-lazy-panels.test.ts` has a seller twin: a shell per declared panel, one panel's data
-per request, and a re-open that keeps its filter params. Plus a guard that the unsaved check is
-`hasUnsavedChanges()` and that no second definition of it appears on the page.
+per request, and a re-open that keeps its filter params. Plus two guards on the rule above — that
+the refresh asks `hasUnsavedChangesIn(panel)` rather than the document-wide call, and that no second
+definition of "dirty" exists outside `unsaved-guard.ts`.
