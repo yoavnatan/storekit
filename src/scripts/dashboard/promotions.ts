@@ -11,7 +11,7 @@ import { escapeHtml as esc } from '../../lib/html-escape.js';
 import { showToast, showErrorToast } from '../../lib/toast.js';
 import { resolvePrice, type ProductDiscount } from '../../lib/discounts.js';
 import { refreshDiscountFieldsIn } from './discount-field.js';
-import { dashStoreSale } from './products.js';
+import { dashStoreSale, syncPageProduct } from './products.js';
 import { selectedRowIds } from './bulk-selection.js';
 import { initSelectDropdown } from './select-dropdown.js';
 import { initProductMultiPicker, readProductOptions } from './product-multi-picker.js';
@@ -364,7 +364,12 @@ function initSaleForm(): void {
  *  leave the other stale. */
 export function syncProductRow(id: string, discount: ProductDiscount | null): void {
   const row = document.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(id)}"]`);
-  if (row) row.dataset.discount = discount ? JSON.stringify(discount) : '';
+  if (row) {
+    row.dataset.discount = discount ? JSON.stringify(discount) : '';
+    // …and the island the edit form is built from, for a row nobody has opened yet. Without it the
+    // form would open holding the discount this call just replaced, and saving would restore it.
+    syncPageProduct(row);
+  }
 
   const chip = document.querySelector<HTMLElement>(`[data-row-sale="${CSS.escape(id)}"]`);
   if (chip && row) {
