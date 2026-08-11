@@ -46,9 +46,9 @@
  * Both write through `parsePayoutDetails`, so neither can half-save a bank account.
  */
 import { formatAgorot } from '../../lib/money.js';
-import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/payout-schedule.js';
+import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT, STATUTORY_RETURN_DAYS } from '../../lib/payout-schedule.js';
 import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
-import { splitHeldByBasis, releasedForStore } from '../../lib/order-payout-line.js';
+import { splitHeldByBasis, payableHeadlineAgorot } from '../../lib/order-payout-line.js';
 import type { SellerAccount } from '../../lib/seller-account.js';
 import type { getT } from '../../i18n/index.js';
 
@@ -112,24 +112,11 @@ const held = splitHeldByBasis(account.slices, storeSlug ?? undefined);
  *  and printing it above a table that lists one shop's reasons is the mismatch this whole change is
  *  about — so the tile is computed from the same split the table renders. */
 const heldHereAgorot = held.groups.reduce((t, g) => t + g.agorot, 0) + held.unknownAgorot;
-/**
- * ── The headline figure is THIS shop's (owner, 2026-08-11) ──
- *
- * *"זה לא רלוונטי מכל החנויות, רק החנות שהוא עליה"* — a seller standing in one shop is asking what
- * that shop is earning them, and an account-wide total answers a question they did not ask.
- *
- * So the tile shows what this shop's own orders have RELEASED, and the account-wide transfer moves
- * to a line of its own that appears only for a seller who has more than one shop. The two are
- * genuinely different quantities and neither is a rounding of the other: the transfer is
- * `releasable − paidOut + adjustments` across the account, and neither of those last two belongs to
- * a shop. Showing the per-store number without the real transfer beside it would be the same
- * mistake in the other direction — a seller reading ₪4,200 and being paid ₪1,800.
- *
- * A single-store seller sees the account figure, because for them there is no second shop for the
- * difference to hide in and the transfer is the more useful of the two.
- */
-const payableHereAgorot = storeSlug ? releasedForStore(account.slices, storeSlug) : account.payableNowAgorot;
-const headlineAgorot = multiStore ? payableHereAgorot : account.payableNowAgorot;
+/** THIS shop's "תשלום קרוב", by the rule in `order-payout-line.ts#payableHeadlineAgorot` — which the
+ *  seller's OVERVIEW tab now asks as well, so the rule lives there rather than here. Its header
+ *  carries why a multi-store seller and a single-store one are shown different quantities, and why
+ *  the account-wide transfer has to appear somewhere on this screen too. */
+const headlineAgorot = payableHeadlineAgorot(account.slices, storeSlug, multiStore, account.payableNowAgorot);
 
 /**
  * The reason and the pending action, in the seller's language.
@@ -197,7 +184,11 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
     <h2 class="m-0 text-base font-semibold">{d.payTitle}</h2>
     {/* ONE line, and it says only when the money moves. Every rule it used to carry — the hold, the
         return window, the minimum — is in `#pay-how` at the bottom, once (owner, סשן א׳ §1). */}
-    <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle.replace('{day}', String(PAYOUT_DAY_OF_MONTH))}{multiStore ? ` · ${d.payAllStores}` : ''}</p>
+    {/* No "כולל את כל החנויות שלך" here any more (owner, 2026-08-11). Standing at the top of a
+        STORE's dashboard, that sentence made the whole screen read as somebody else's — and it was
+        only ever true of two things on it. It moved to the one place it is actually about, the bank
+        card, and the two figures that really are account-wide say so on themselves. */}
+    <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle.replace('{day}', String(PAYOUT_DAY_OF_MONTH))}</p>
   </div>
 
   {/* Two tiles, not four. "שולם בעבר" left for the Reports tab (§6) — it was the only backward-
@@ -210,7 +201,16 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow}{multiStore && storeName ? ` · ${storeName}` : ''}</dt>
       {/* The one figure a seller acts on, so it is the one that takes the accent. The others are
           context and stay in the ordinary text colour — three coloured numbers say nothing. */}
-      <dd class={`m-0 text-[1.1rem] font-bold ${headlineAgorot > 0 ? '[color:var(--color-accent)]' : ''}`} id="pay-kpi-now">{formatAgorot(headlineAgorot)}</dd>
+      {/* ── `data-skel`, and why a SERVER-rendered panel has one (owner, 2026-08-11) ──
+          Nothing here waits on first paint — the figures arrive with the page, which is exactly why
+          this tab has no loading screen and Performance does. There is one moment it DOES wait: a
+          status change on the Orders tab moves money between held and payable, and `payouts.ts`
+          re-reads the server's rendering of this panel. Until it lands, these tiles show the number
+          from before the change — a stale figure on a money screen, presented with the confidence of
+          a fresh one. So the shimmer stands in for the value while the refresh is in flight, on the
+          same rule Performance's KPIs follow (`SkelBar.astro`: a seller cannot tell a real zero from
+          "not here yet"). The attribute carries the SIZE so the swap causes no layout jump. */}
+      <dd class={`m-0 text-[1.1rem] font-bold ${headlineAgorot > 0 ? '[color:var(--color-accent)]' : ''}`} id="pay-kpi-now" data-skel="w-24 h-[1.1rem]">{formatAgorot(headlineAgorot)}</dd>
       <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payPayableNowHint}</p>
     </div>
     {/* THIS shop's share, like the tile beside it — both tiles are now the store in the switcher,
@@ -220,7 +220,7 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
         from the same split the table renders, so the tile and the rows under it are one number. */}
     <div class={TILE}>
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld}</dt>
-      <dd class="m-0 text-[1.1rem] font-bold">{formatAgorot(heldHereAgorot)}</dd>
+      <dd class="m-0 text-[1.1rem] font-bold" data-skel="w-24 h-[1.1rem]">{formatAgorot(heldHereAgorot)}</dd>
       <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payHeldHint}</p>
       {/* The tile's own way out, instead of a second explanatory sentence on it (owner, §3). A real
           `<a href="#pay-how">` so it works with no JS; `payouts.ts` intercepts it because an anchor
@@ -232,7 +232,7 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
     {account.carriedAgorot > 0 && (
       <div class={TILE}>
         <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payCarried}</dt>
-        <dd class="m-0 text-[1.1rem] font-bold [color:var(--color-danger)]">{formatAgorot(account.carriedAgorot)}</dd>
+        <dd class="m-0 text-[1.1rem] font-bold [color:var(--color-danger)]" data-skel="w-24 h-[1.1rem]">{formatAgorot(account.carriedAgorot)}</dd>
         <p class="muted m-0 mt-1 text-[0.72rem]">{d.payCarriedHint}</p>
       </div>
     )}
@@ -279,6 +279,12 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
           is the "I did the thing and it still says I didn't" state. */}
       {needsBank && <span id="pay-bank-dot" class={DOT} role="img" aria-label={d.payNoBankTitle}></span>}
     </h3>
+    {/* The one thing on this screen that genuinely is account-wide and could be MISTAKEN for the
+        store's, so it is said here and only here (owner, 2026-08-11: *"לא צריך להיות בכותרת, אלא
+        ליד הפרטי בנק… וזה צריך להופיע רק אם יש לו מעל חנות אחת"*). A seller with one shop has no
+        second shop for the sentence to be about, and telling them anyway invents a distinction they
+        do not have. The two account-wide FIGURES carry their own scope in their own labels. */}
+    {multiStore && <p class="muted m-0 mt-1 text-[0.8rem]">{d.payBankAllStores}</p>}
 
     {/* ── The closed summary (owner, סשן א׳ §2) ──────────────────────────────────────────────
         *"אם יש חשבון בנק לא צריך לשים שם את האינפוטים ככה פתוחים, הפרטים צריכים להופיע בתוך מסגרת
@@ -444,9 +450,12 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
       <dt class="font-semibold m-0">{d.payHowHeldQ}</dt>
       <dd class="muted m-0 mt-0.5">{d.payHowHeldA.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY)).replace('{payment}', String(FALLBACK_DAYS_AFTER_PAYMENT))}</dd>
     </div>
+    {/* Both the QUESTION and the answer carry the hold length, because the question the owner
+        actually asked was *"למה 21 ולא 15?"* — a heading that says only "למה?" is answering a
+        different one. The statutory 14 is what makes the 21 checkable rather than arbitrary. */}
     <div>
-      <dt class="font-semibold m-0">{d.payHowWhyQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowWhyA}</dd>
+      <dt class="font-semibold m-0">{d.payHowWhyQ.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY))}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowWhyA.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY)).replace('{statutory}', String(STATUTORY_RETURN_DAYS))}</dd>
     </div>
     <div>
       <dt class="font-semibold m-0">{d.payHowMinQ}</dt>

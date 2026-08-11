@@ -640,3 +640,30 @@ button.admin-store-row__count { padding: 0; text-align: start; }
   /* The chip alone still says "working", and it says it without moving. */
   [data-busy]::after { animation: none; opacity: 1; }
 }
+
+/* ── Printing the accounting statement ──
+   The owner hands this document to a רו״ח, so "print" has to produce the DOCUMENT and not a
+   screenshot of a dashboard. No PDF library and no second layout surface: the browser's own engine
+   renders what is left after this hides everything that is not the statement — the site header and
+   footer, the tab strip, the dashboard heading, the period controls, and every other panel (those
+   are in the DOM, merely `hidden`, and a print sheet is exactly where one would reappear).
+
+   Scoped to `body:has(#admin-statement-doc)` so it can only ever fire on the tab that owns it: the
+   condition is the panel's own presence in the DOM, not a class someone has to remember to add.
+   Left as CSS rather than converted to Tailwind — a `print:` utility cannot express `:has()` on the
+   body from inside a component, and these rules target elements this component does not own
+   (AI_INSTRUCTIONS → convert-on-contact, exceptions (a) and (e)). */
+@media print {
+  body:has(#admin-statement-doc) header,
+  body:has(#admin-statement-doc) footer,
+  body:has(#admin-statement-doc) .dash-tabs,
+  body:has(#admin-statement-doc) .dash-head,
+  body:has(#admin-statement-doc) .admin-statement-controls,
+  body:has(#admin-statement-doc) .dash-panel:not(#dash-panel-statement) { display: none !important; }
+  /* The card's own chrome is screen furniture — on paper the page IS the card. */
+  body:has(#admin-statement-doc) #dash-main-card,
+  body:has(#admin-statement-doc) .dash-section { border: 0; box-shadow: none; padding: 0; margin: 0; }
+  /* Keep each section whole rather than letting a total land alone on page two. */
+  #admin-statement-doc section,
+  #admin-statement-doc dl { break-inside: avoid; }
+}
