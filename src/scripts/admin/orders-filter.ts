@@ -23,7 +23,10 @@ const SHIPPING_LABELS: Record<string, string> = {
 const SHIPPING_COLORS: Record<string, string> = {
   pending: '#ef4444', processing: '#3b82f6', ready: '#f59e0b', shipped: '#8b5cf6', delivered: '#16a34a',
 };
-const PAYMENT_LABELS: Record<string, string> = { pending: 'ממתין', paid: 'שולם', failed: 'נכשל' };
+// The BUYER's charge, not the seller's payout — the two were both called "תשלום" and the owner
+// could not tell which one a filter meant (2026-08-11). Every value is spelled from the buyer's
+// side so the column cannot be read as the money going out to a seller.
+const PAYMENT_LABELS: Record<string, string> = { pending: 'החיוב טרם הושלם', paid: 'הכסף התקבל', failed: 'החיוב נכשל' };
 const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a34a', failed: '#ef4444' };
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
@@ -55,7 +58,7 @@ export function initAdminOrdersFilter(): void {
     // it returns as a carrier-driven state once shipping is wired (GO_LIVE §5). Keeping
     // it out keeps the admin filter in sync with the states orders actually reach.
     { col: 'shippingStatus', label: 'סטטוס הזמנה', values: ['pending', 'processing', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
-    { col: 'paymentStatus', label: 'סטטוס תשלום', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
+    { col: 'paymentStatus', label: 'חיוב הקונה', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
     { col: 'store', label: 'חנות', values: storeNames, labels: Object.fromEntries(storeNames.map((s) => [s, s])), colors: {} },
   ];
 

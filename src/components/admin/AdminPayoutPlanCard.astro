@@ -2,6 +2,8 @@
 import { formatAgorot } from '../../lib/money.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { PayoutPlan, PayoutState } from '../../lib/payout-run.js';
+import type { HeldBreakdown } from '../../lib/payouts.js';
+import { PAYOUT_CLOCK_SHIPPING_STATUSES, SHIPPING_PIPELINE_ORDER } from '../../lib/order-status-rules.js';
 
 /**
  * **What leaves the company's bank account on the next payout day, and who is stuck.**
@@ -39,8 +41,17 @@ interface Props {
   /** Deep link into the Sellers tab, filtered to one payout state. The tiles are counts; this is
    *  what turns each of them back into the names behind it. */
   sellersHref: (state: PayoutState) => string;
+  /** Why the held money is held (`payouts.ts#getHeldBreakdown`). */
+  held: HeldBreakdown;
+  /** Into the Orders tab, narrowed to the shipping statuses behind a reason. */
+  ordersHref: (statuses: readonly string[]) => string;
 }
-const { plan, sellersHref } = Astro.props;
+const { plan, sellersHref, held, ordersHref } = Astro.props;
+
+/** The statuses each reason is made of — taken from the status table, never listed by hand, so the
+ *  link lands on exactly the orders the figure was summed over. */
+const UNSHIPPED_STATUSES = SHIPPING_PIPELINE_ORDER.filter((s) => !PAYOUT_CLOCK_SHIPPING_STATUSES.includes(s));
+const CLOCK_STATUSES = SHIPPING_PIPELINE_ORDER.filter((s) => PAYOUT_CLOCK_SHIPPING_STATUSES.includes(s));
 
 const TILE = 'rounded-[var(--radius)] border [border-color:var(--color-border)] p-3';
 /** The counts under the tiles are links, and they look like links. Inheriting the muted colour
@@ -84,6 +95,34 @@ const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [c
   {plan.payableSellers + plan.noBankSellers + plan.belowMinimumSellers === 0 && (
     <p class="muted m-0 mt-3 text-[0.8rem]">אין כרגע יתרה משוחררת לאף מוכר.</p>
   )}
+</div>
+
+{/* ── Why the rest is not moving ──
+    The tiles above are money that is READY. This is the other half, and until now it existed only
+    as one number on the overview with no story behind it (owner, 2026-08-11: *"יש מידע על סכום גדול
+    שתקוע מסיבות שונות ואין לי דרך כאדמין להבין למה"*). Two reasons, and the order is deliberate:
+    the one somebody can act on comes first. Each is a link into the orders it was summed over —
+    the same statuses the figure was computed from, taken off the status table rather than typed. */}
+<div class="rounded-[var(--radius)] border [border-color:var(--color-border)] p-3.5 mb-5">
+  <strong class="text-[0.9rem]">כסף שעדיין מוחזק — ולמה</strong>
+  <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+    <div class={TILE}>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">המוכר/ת עדיין לא שלח/ה</dt>
+      <dd class={`m-0 text-[1.15rem] font-bold tabular-nums ${held.unshippedAgorot > 0 ? '[color:var(--color-warning)]' : ''}`}>{formatAgorot(held.unshippedAgorot)}</dd>
+      <a class={TILE_LINK} href={ordersHref(UNSHIPPED_STATUSES)}>{held.unshippedOrders} הזמנות</a>
+    </div>
+    <div class={TILE}>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">בתוך חלון ההחזרה של הקונה</dt>
+      <dd class="m-0 text-[1.15rem] font-bold tabular-nums">{formatAgorot(held.clockRunningAgorot)}</dd>
+      <a class={TILE_LINK} href={ordersHref(CLOCK_STATUSES)}>{held.clockRunningOrders} הזמנות</a>
+    </div>
+  </dl>
+  {/* Said once, here, and not on each tile: the first is a person to chase, the second is a date to
+      wait for. Without it the two numbers look like two flavours of the same problem. */}
+  <p class="muted m-0 mt-3 text-[0.76rem] leading-relaxed">
+    השורה הראשונה היא היחידה שאפשר לעשות עליה משהו — עד שההזמנה נשלחת, שעון השחרור בכלל לא מתחיל.
+    השנייה נפתרת מעצמה בתאריך.
+  </p>
   {/* No table under this, deliberately — see the header. The names are on the seller cards, and
       each tile's count is the link to them. */}
 </div>

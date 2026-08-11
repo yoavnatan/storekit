@@ -304,7 +304,10 @@ const purchases = groupBuyerPurchases(orders);
                       });
                       return (
                         <div class="mt-2 pt-2 border-t [border-color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.78rem]">
-                          <span class="[color:var(--color-muted)]">סטטוס תשלום:</span>
+                          {/* "התשלום למוכר", not "סטטוס תשלום": this card carries TWO payment
+                              facts — the buyer's charge and the seller's payout — and both were
+                              called תשלום, so neither could be read (owner, 2026-08-11). */}
+                          <span class="[color:var(--color-muted)]">התשלום למוכר/ת:</span>
                           <strong class="[color:var(--color-text)]">
                             {line.state === 'not_payable' ? 'לא ייכלל בתשלום'
                               : line.state === 'releasable' ? 'שוחרר — נכנס לתשלום הקרוב'
@@ -344,7 +347,7 @@ const purchases = groupBuyerPurchases(orders);
                 <div>
                   <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
                   <div class="flex gap-2 items-center flex-wrap">
-                    <span class={`admin-badge admin-badge--${o.paymentStatus}`}>תשלום: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
+                    <span class={`admin-badge admin-badge--${o.paymentStatus}`}>חיוב הקונה: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
                   </div>
                 </div>
               )}
