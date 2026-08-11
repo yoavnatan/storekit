@@ -3,7 +3,6 @@ import { formatAgorot } from '../../lib/money.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { PayoutPlan, PayoutState } from '../../lib/payout-run.js';
 import type { HeldBreakdown } from '../../lib/payouts.js';
-import { PAYOUT_CLOCK_SHIPPING_STATUSES, SHIPPING_PIPELINE_ORDER } from '../../lib/order-status-rules.js';
 
 /**
  * **What leaves the company's bank account on the next payout day, and who is stuck.**
@@ -43,15 +42,17 @@ interface Props {
   sellersHref: (state: PayoutState) => string;
   /** Why the held money is held (`payouts.ts#getHeldBreakdown`). */
   held: HeldBreakdown;
-  /** Into the Orders tab, narrowed to the shipping statuses behind a reason. */
-  ordersHref: (statuses: readonly string[]) => string;
+  /** Into the Orders tab, narrowed to the payout states behind a reason — the same five-value
+   *  vocabulary the tab itself filters by (order-payout-line.ts), so the link and the filter it
+   *  lands on are the same question rather than an approximation of it in shipping statuses. */
+  ordersHref: (payoutStates: readonly string[]) => string;
 }
 const { plan, sellersHref, held, ordersHref } = Astro.props;
 
-/** The statuses each reason is made of — taken from the status table, never listed by hand, so the
- *  link lands on exactly the orders the figure was summed over. */
-const UNSHIPPED_STATUSES = SHIPPING_PIPELINE_ORDER.filter((s) => !PAYOUT_CLOCK_SHIPPING_STATUSES.includes(s));
-const CLOCK_STATUSES = SHIPPING_PIPELINE_ORDER.filter((s) => PAYOUT_CLOCK_SHIPPING_STATUSES.includes(s));
+// Each tile links to the payout states it was summed over. `unshipped` is one state; "the clock is
+// running" is the two ways of waiting for it to finish.
+const UNSHIPPED_STATES = ['unshipped'] as const;
+const CLOCK_STATES = ['undelivered', 'window'] as const;
 
 const TILE = 'rounded-[var(--radius)] border [border-color:var(--color-border)] p-3';
 /** The counts under the tiles are links, and they look like links. Inheriting the muted colour
@@ -109,12 +110,12 @@ const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [c
     <div class={TILE}>
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">המוכר/ת עדיין לא שלח/ה</dt>
       <dd class={`m-0 text-[1.15rem] font-bold tabular-nums ${held.unshippedAgorot > 0 ? '[color:var(--color-warning)]' : ''}`}>{formatAgorot(held.unshippedAgorot)}</dd>
-      <a class={TILE_LINK} href={ordersHref(UNSHIPPED_STATUSES)}>{held.unshippedOrders} הזמנות</a>
+      <a class={TILE_LINK} href={ordersHref(UNSHIPPED_STATES)}>{held.unshippedOrders} הזמנות</a>
     </div>
     <div class={TILE}>
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">בתוך חלון ההחזרה של הקונה</dt>
       <dd class="m-0 text-[1.15rem] font-bold tabular-nums">{formatAgorot(held.clockRunningAgorot)}</dd>
-      <a class={TILE_LINK} href={ordersHref(CLOCK_STATUSES)}>{held.clockRunningOrders} הזמנות</a>
+      <a class={TILE_LINK} href={ordersHref(CLOCK_STATES)}>{held.clockRunningOrders} הזמנות</a>
     </div>
   </dl>
   {/* Said once, here, and not on each tile: the first is a person to chase, the second is a date to

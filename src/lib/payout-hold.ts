@@ -222,6 +222,38 @@ export const RELEASABLE_SQL = `
       )`;
 
 /**
+ * The five payout states as SQL — the twin of `order-payout-line.ts#payoutFilterValue`, and the
+ * reason it lives HERE rather than beside it: this is the second spelling of a rule, and every
+ * second spelling in this file sits directly under the one it must agree with.
+ *
+ * It is what lets the ADMIN orders tab offer the same filter the seller's already has (owner,
+ * 2026-08-11: *"יש פה אי-תאימות מסוימת ובלבול שלם"*). The seller's list is rendered client-side and
+ * classifies each card in JS; the admin's is paginated in the database, so the same question has to
+ * be askable in a `WHERE`. `tests/payout-hold.test.ts` runs both over every fixture order and fails
+ * on any disagreement — without that, this is exactly the drift the file's header warns about.
+ *
+ * **The branch ORDER is the rule, and it mirrors `orderHold` exactly.** Not payable first; then
+ * unshipped, which `orderHold` decides BEFORE any date arithmetic, so an unshipped order can never
+ * report as released; then released; and only then the two flavours of waiting. The `paid_at IS
+ * NOT NULL` guard on `undelivered` is not defensive — a captured order with no `paid_at` is held
+ * with no basis at all in the JS, which `payoutFilterValue` reports as `window`, and this has to
+ * land on the same word.
+ *
+ * Consumes `RELEASABLE_SQL`'s own parameters and nothing else, so a caller binds one list for both.
+ * `$1`/`$2` are the revenue lists: `moneyWasTaken` is not tested separately because the two lists
+ * are the same set today (both are exactly `paid`) — if a status ever counts as revenue without the
+ * money having been taken, this needs its own arm and the parity test is what will say so.
+ */
+export const PAYOUT_CLASS_SQL = `CASE
+  WHEN NOT (o.payment_status = ANY($1::text[]) AND o.shipping_status = ANY($2::text[])) THEN 'none'
+  WHEN o.shipping_status <> ALL(
+        CASE WHEN os.delivery_method = 'pickup' THEN $8::text[] ELSE $7::text[] END) THEN 'unshipped'
+  WHEN ${RELEASABLE_SQL} THEN 'released'
+  WHEN o.paid_at IS NOT NULL AND o.delivered_at IS NULL THEN 'undelivered'
+  ELSE 'window'
+END`;
+
+/**
  * How many parameters `RELEASABLE_SQL` consumes — so a caller appending its OWN parameters says
  * `$${RELEASABLE_PARAM_COUNT + 1}` instead of a literal.
  *

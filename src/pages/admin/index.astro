@@ -414,7 +414,7 @@ const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
 // Destructured for the panel below, which needs the query params back to rebuild its own URLs.
-const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = orderQuery;
+const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore, payout: oPayout } = orderQuery;
 
 // ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
 // Feed = the exact set the product feed exports: stores a platform surface may carry, holding at
@@ -666,6 +666,7 @@ const badgeFor: Record<string, number> = badgeCounts;
           shippingStatus={oShip}
           paymentStatus={oPay}
           store={oStore}
+          payout={oPayout}
           storeNames={orderStoreNames}
           newSince={newSince.orders}
           newOnly={newOnly.orders}
@@ -678,6 +679,7 @@ const badgeFor: Record<string, number> = badgeCounts;
             oship: oShip.length ? oShip.join(',') : undefined,
             opay: oPay.length ? oPay.join(',') : undefined,
             ostore: oStore.length ? encodeList(oStore) : undefined,
+            opayout: oPayout.length ? oPayout.join(',') : undefined,
             onew: newOnly.orders ? '1' : undefined,
             opage: p > 1 ? String(p) : undefined,
           })}
@@ -763,9 +765,9 @@ const badgeFor: Record<string, number> = badgeCounts;
       <AdminPanelShell panel="payouts" active={shows('payouts') && !!payoutPlan}>
         {payoutPlan && <AdminPayoutPlanCard
           plan={payoutPlan}
-          sellersHref={(state) => tabUrl('sellers', { spayout: state })}
+          sellersHref={(state: string) => tabUrl('sellers', { spayout: state })}
           held={heldBreakdown ?? { unshippedAgorot: 0, unshippedOrders: 0, clockRunningAgorot: 0, clockRunningOrders: 0 }}
-          ordersHref={(statuses) => tabUrl('orders', { oship: statuses.join(',') })}
+          ordersHref={(payoutStates: readonly string[]) => tabUrl('orders', { opayout: payoutStates.join(',') })}
         />}
       </AdminPanelShell>
 

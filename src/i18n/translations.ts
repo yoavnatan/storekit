@@ -915,7 +915,11 @@ export const translations = {
       // The Orders tab's payout-status filter column. Each value names the SITUATION rather than
       // the internal state — a seller looking for "מה תקוע אצלי" should find that sentence in the
       // menu, not a word like "unshipped".
-      filterColPayout: 'סטטוס תשלום',
+      // NOT "סטטוס תשלום" (owner, 2026-08-11). That name was already taken by the buyer's CHARGE on
+      // the admin's copy of this same screen, so one phrase meant two different things depending on
+      // which dashboard you were looking at. This column is about when the seller's money is
+      // released, and its own values already say so.
+      filterColPayout: 'שחרור הכסף',
       payFilter_unshipped: 'ממתין לשליחה שלך',
       payFilter_undelivered: 'נשלח, ממתין לסימון ״נמסר״',
       payFilter_window: 'בתוך חלון ההחזרה',
@@ -2528,7 +2532,7 @@ export const translations = {
       ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
       ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
       ordersShowAll: 'Show all orders',
-      filterColPayout: 'Payment status',
+      filterColPayout: 'Payout release',
       payFilter_unshipped: 'Waiting for you to ship',
       payFilter_undelivered: 'Shipped, awaiting "delivered"',
       payFilter_window: 'Inside the return window',

@@ -33,6 +33,8 @@ interface Props {
   shippingStatus: string[];
   paymentStatus: string[];
   store: string[];
+  /** Where each order's money stands — the filter the seller's tab always had (opayout). */
+  payout: string[];
   storeNames: string[]; // every store name across all orders, for the filter dropdown
   newSince: string;  // ISO — anything created after this is what the tab's "(N)" counted
   newOnly: boolean;
@@ -42,7 +44,7 @@ interface Props {
   buildUrl: (page: number) => string;
 }
 const {
-  orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, storeNames,
+  orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, payout, storeNames,
   newSince, newOnly, newCount, page, totalPages, buildUrl,
 } = Astro.props;
 
@@ -97,7 +99,7 @@ const sortLabels: Record<string, string> = {
   'amount:asc': 'סכום: נמוך — גבוה',
   'shippingStatus:asc': 'סטטוס משלוח: הזמנות חדשות קודם',
 };
-const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s.length > 0).length;
+const activeFilterCount = [shippingStatus, paymentStatus, store, payout].filter((s) => s.length > 0).length;
 
 // The page's rows, grouped back into the purchases they came from. `getAdminOrdersPage` already
 // paged BY purchase and returned the rows in that page order, so this only has to re-assemble them
@@ -123,6 +125,7 @@ const purchases = groupBuyerPurchases(orders);
         data-ship={shippingStatus.join(',')}
         data-pay={paymentStatus.join(',')}
         data-store={store.join(',')}
+        data-payout={payout.join(',')}
         data-store-names={JSON.stringify(storeNames)}
         data-new-only={newOnly ? '1' : ''}
       >

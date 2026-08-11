@@ -36,7 +36,9 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   // `stempty` is the retired "לתשומת לב" TAB (סשן ב׳ §1) — one thing that tab could say, said as a
   // filter on the list it was always about.
   stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stempty', 'stpage', 'stnew'],
-  orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opage', 'onew'],
+  // `opayout` is where each order's money stands — the filter the seller's own orders tab always
+  // had and this one did not (owner, 2026-08-11). Distinct from `opay`, which is the BUYER's charge.
+  orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opayout', 'opage', 'onew'],
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],
