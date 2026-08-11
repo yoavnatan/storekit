@@ -14,6 +14,8 @@ import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
+import { orderPayoutLine, payoutWhyText, type PayoutWhyKey } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
@@ -41,6 +43,24 @@ const {
   orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, storeNames,
   newSince, newOnly, newCount, page, totalPages, buildUrl,
 } = Astro.props;
+
+/**
+ * The hold reason, in the admin's language.
+ *
+ * Hebrew literals rather than `getT`, like every other string on this admin surface — the admin
+ * dashboard is Hebrew-only by construction (`i18n-hardcoded-strings.test.ts` treats a file with no
+ * `getT(` as exactly that).
+ *
+ * The `{n}` is NOT written out here: `payoutWhyText` fills it from the line's own `whyDays`, which
+ * come from `payout-schedule.ts`. Those constants are still owner decisions, and a sentence
+ * promising 21 days while the code waits 30 is a promise we break.
+ */
+const PAYOUT_WHY: Record<PayoutWhyKey, string> = {
+  payWhyDelivery: 'חלון ההחזרה של הקונה — {n} ימים מהמסירה',
+  payWhyPayment: 'ההזמנה לא סומנה כנמסרה — {n} ימים מיום התשלום',
+  payWhyUnshipped: 'ההזמנה עוד לא נשלחה',
+  payWhyUnknown: 'ההזמנה בבדיקה',
+};
 
 const shippingLabel: Record<string, string> = {
   pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
@@ -250,6 +270,38 @@ const purchases = groupBuyerPurchases(orders);
                         </li>
                       ))}
                     </ul>
+                    {/* When this slice's money reaches its seller, and why then — the same line the
+                        seller sees on their own copy of this order, from the same derivation
+                        (`order-payout-line.ts`). Asked for here on 2026-08-11, and it belongs PER
+                        SLICE rather than per purchase: each store's share runs its own hold clock
+                        off its own shipping status, so one purchase can have a seller paid next
+                        week and another blocked on a parcel that never went out. */}
+                    {(() => {
+                      const line = orderPayoutLine({
+                        paymentStatus: slice.order.paymentStatus,
+                        shippingStatus: slice.order.shippingStatus,
+                        paidAt: slice.order.paidAt ?? null,
+                        deliveredAt: slice.order.deliveredAt ?? null,
+                        deliveryMethod: slice.order.storeSubtotals[slice.storeSlug]?.deliveryMethod ?? null,
+                      });
+                      return (
+                        <div class="mt-2 pt-2 border-t [border-color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.78rem]">
+                          <span class="[color:var(--color-muted)]">סטטוס תשלום:</span>
+                          <strong class="[color:var(--color-text)]">
+                            {line.state === 'not_payable' ? 'לא ייכלל בתשלום'
+                              : line.state === 'releasable' ? 'שוחרר — נכנס לתשלום הקרוב'
+                              : line.releaseDayISO ? `משתחרר ב-${formatBusinessDayLabel(line.releaseDayISO)}`
+                              : 'הספירה עוד לא התחילה'}
+                          </strong>
+                          {line.state === 'held' && (
+                            <span class="[color:var(--color-muted)]">· {payoutWhyText(line, PAYOUT_WHY[line.whyKey])}</span>
+                          )}
+                          {line.blocking && (
+                            <span class="font-semibold [color:var(--color-warning)]">· המוכר/ת עוד לא שלח/ה</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
                 <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
