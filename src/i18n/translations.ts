@@ -364,6 +364,11 @@ export const translations = {
       storeUrlInvalidErr: 'כתובת לא תקינה (אותיות, מספרים ומקפים).',
       tagline: 'סלוגן',
       taglinePlaceholder: 'תיאור קצר',
+      // The optional bank block on the store-opening card (owner, 2026-08-11 — it used to be
+      // reachable only from the payments tab, weeks later). The heading says "לא חובה" before the
+      // first field, because that is the whole reason it is allowed to sit here at all.
+      createStoreBankTitle: 'פרטים לקבלת תשלום (לא חובה)',
+      createStoreBankHint: 'אפשר לדלג ולמלא בהמשך בלשונית התשלומים. הכסף שלכם נצבר בכל מקרה ומחכה עד שתזינו לאן להעביר אותו.',
       createStoreBtn: 'צור חנות',
       cancel: 'ביטול',
       settingsSaved: 'הגדרות החנות נשמרו.',
@@ -774,6 +779,9 @@ export const translations = {
       payTitle: 'התשלומים שלי',
       paySubtitle: 'כל הזמנה מקבלת אישור סופי אחרי שחלון ההחזרה של הקונה נסגר, והכסף עובר לחשבון שלכם ב-{day} לכל חודש.',
       payAllStores: 'כולל את כל החנויות שלך',
+      // The short form, for a tile label rather than a sentence. The two figures a payout cannot be
+      // split by wear it; everything else on the screen is this shop's (owner, 2026-08-11).
+      payAllStoresShort: 'מכל החנויות',
       // "תשלום קרוב" / "שולם בעבר" — the tile names an EVENT on a calendar, not a state of the
       // money (owner, סשן א׳ §1–2). "מוכן להעברה אליך" described a readiness the seller cannot act
       // on and made the tile sound like a button; the date is the thing they came to read.
@@ -2039,6 +2047,8 @@ export const translations = {
       storeUrlInvalidErr: 'Invalid URL (letters, numbers and hyphens).',
       tagline: 'Tagline',
       taglinePlaceholder: 'A short description',
+      createStoreBankTitle: 'Payment details (optional)',
+      createStoreBankHint: 'You can skip this and fill it in later on the Payments tab. Your money accrues either way and waits until you say where to send it.',
       createStoreBtn: 'Create store',
       cancel: 'Cancel',
       settingsSaved: 'Store settings saved.',
@@ -2389,6 +2399,7 @@ export const translations = {
       payTitle: 'My payments',
       paySubtitle: 'Each order is finally approved once the buyer\'s return window closes, and the money reaches your account on the {day} of each month.',
       payAllStores: 'Covers all of your stores',
+      payAllStoresShort: 'all stores',
       payPayableNow: 'Next payment',
       payPayableNowHint: 'What moves to your account in the next transfer.',
       payHeld: 'Awaiting final approval',
