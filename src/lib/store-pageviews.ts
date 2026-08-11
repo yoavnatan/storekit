@@ -172,6 +172,77 @@ export async function getStoreViewStats(
 }
 
 /**
+ * The same statistics for a SET of stores read as ONE audience — the admin's platform-wide tab.
+ *
+ * It exists because "unique visitors" is the one figure on that tab that cannot be assembled from
+ * per-store answers. The platform tab used to SUM each store's uniques, which counts one shopper
+ * once per store they opened; measured on this database for August 2026 that reported 60 visitors
+ * where 37 people had been. The error is not a rounding: it is the mall working. Cross-store
+ * browsing is the entire premise, so the figure inflates precisely as the platform starts
+ * succeeding — and it is the DENOMINATOR of the platform conversion rate, so the same event that
+ * inflated the traffic number deflated the one that says whether traffic buys anything.
+ *
+ * A per-store aggregator genuinely cannot fix this; it holds counts, not ids. So the distinct count
+ * is asked of the database a second time, without the `GROUP BY store_id` — which is the whole
+ * difference between this function and the one above, and why they are not one function with a
+ * flag: the shape of what comes back is a different thing, not a narrower one.
+ *
+ * `views` is still a plain sum: a page load is one load wherever it happened, and a shopper opening
+ * four stores really did load four pages.
+ */
+export async function getPlatformViewStats(
+  storeIds: readonly string[],
+  fromISO: string,
+  toISO: string,
+  granularity: ViewGranularity,
+): Promise<StoreViewStats> {
+  if (storeIds.length === 0 || !isDayISO(fromISO) || !isDayISO(toISO)) return { buckets: [], totalViews: 0, totalUniqueVisitors: 0 };
+  const window = [storeIds, fromISO, toISO];
+
+  const [bucketRows, totalRows] = await Promise.all([
+    // FULL JOIN for the same reason as the per-store query: a bucket with loads but no visitor ids
+    // (rows from before ids were captured) is still a real bucket.
+    rows<{ bucket: string; views: number | string; uniques: number | string }>(
+      `WITH loads AS (
+         SELECT to_char(day, $4::text) AS bucket, SUM(total) AS views
+           FROM store_page_views
+          WHERE store_id = ANY($1::uuid[]) AND day >= $2::date AND day <= $3::date
+          GROUP BY to_char(day, $4::text)
+       ), people AS (
+         SELECT to_char(day, $4::text) AS bucket, COUNT(DISTINCT visitor_id) AS uniques
+           FROM store_page_view_visitors
+          WHERE store_id = ANY($1::uuid[]) AND day >= $2::date AND day <= $3::date
+          GROUP BY to_char(day, $4::text)
+       )
+       SELECT COALESCE(l.bucket, p.bucket) AS bucket,
+              COALESCE(l.views, 0)         AS views,
+              COALESCE(p.uniques, 0)       AS uniques
+         FROM loads l
+         FULL JOIN people p ON p.bucket = l.bucket
+        ORDER BY 1`,
+      [...window, bucketFormat(granularity)],
+    ),
+    // Its own COUNT(DISTINCT …) over the whole range, for the reason on `totalUniqueVisitors`:
+    // per-bucket uniques cannot be summed into a range unique, and that is doubly true here where
+    // a visitor recurs across both days AND stores.
+    rows<{ uniques: number | string }>(
+      `SELECT COUNT(DISTINCT visitor_id) AS uniques
+         FROM store_page_view_visitors
+        WHERE store_id = ANY($1::uuid[]) AND day >= $2::date AND day <= $3::date`,
+      window,
+    ),
+  ]);
+
+  const stats: StoreViewStats = { buckets: [], totalViews: 0, totalUniqueVisitors: count(totalRows[0]?.uniques ?? 0) };
+  for (const row of bucketRows) {
+    const views = count(row.views);
+    stats.buckets.push({ key: row.bucket, views, uniqueVisitors: count(row.uniques) });
+    stats.totalViews += views;
+  }
+  return stats;
+}
+
+/**
  * Drop per-visitor rows older than the retention window (`visitor-retention.ts` holds the window and
  * the reasoning; GO_LIVE §6 holds the owner decision).
  *

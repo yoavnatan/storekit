@@ -21,7 +21,7 @@ import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, ge
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { productShare } from '../src/lib/top-product-share.js';
 import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
-import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
+import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
 import { getPayableNowForSeller, getSellerAccountFor } from '../src/lib/payouts.js';
 import { planPayouts } from '../src/lib/payout-run.js';
@@ -36,7 +36,7 @@ const platformTotals = (bs: readonly SellerBalance[]) => ({
 });
 import { commissionPercentForTier } from '../src/lib/pricing.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
-import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
+import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
 const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getOrderTotals, getStoreOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
@@ -910,6 +910,79 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     expectSameMoney(fromDb.summary.platformCommissionAgorot, fromJs.summary.platformCommissionAgorot, 'platform commission');
     expect(fromDb.summary.totalOrders).toBe(fromJs.summary.totalOrders);
     expect(fromDb.stores.map((r) => [r.slug, r.revenueAgorot, r.orders])).toEqual(fromJs.stores.map((r) => [r.slug, r.revenueAgorot, r.orders]));
+  });
+
+  it('a shopper who opened several stores is ONE platform visitor', async () => {
+    // The figure that used to be a sum of per-store uniques, so a mall working as intended — one
+    // shopper, several storefronts — reported several people and sank the conversion rate that
+    // divides by it. Three invariants, and the first two are what make the third believable:
+    // the platform count can never exceed the sum (that IS the double count it removes), can never
+    // be below the largest single store (those visitors are all platform visitors too), and views
+    // stay a plain sum because a load really did happen once per store opened.
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const stores = await getAllStores();
+    const ids = stores.map((s) => s.id);
+    const [perStore, platform] = await Promise.all([
+      getStoreViewStats(ids, from, to, 'month'),
+      getPlatformViewStats(ids, from, to, 'month'),
+    ]);
+    const summed = [...perStore.values()].reduce((a, v) => a + v.totalUniqueVisitors, 0);
+    const largest = Math.max(0, ...[...perStore.values()].map((v) => v.totalUniqueVisitors));
+    expect(platform.totalUniqueVisitors, 'never more than the double-counted sum').toBeLessThanOrEqual(summed);
+    expect(platform.totalUniqueVisitors, 'never fewer than one store already had').toBeGreaterThanOrEqual(largest);
+    expect(platform.totalViews, 'loads are summed, not de-duped')
+      .toBe([...perStore.values()].reduce((a, v) => a + v.totalViews, 0));
+
+    // Per BUCKET as well: the visitors chart and the KPI above it are read against each other, so
+    // a chart still summing while the headline de-dupes is worse than either alone.
+    const summedByKey = new Map<string, number>();
+    for (const v of perStore.values()) {
+      for (const b of v.buckets) summedByKey.set(b.key, (summedByKey.get(b.key) ?? 0) + b.uniqueVisitors);
+    }
+    for (const b of platform.buckets) {
+      expect(b.uniqueVisitors, `bucket ${b.key} vs its per-store sum`).toBeLessThanOrEqual(summedByKey.get(b.key) ?? 0);
+    }
+    // And a range total is never a sum of its buckets — a visitor returning in two months is one
+    // person. Stated here because it is the same trap one level up from the per-store version.
+    expect(platform.totalUniqueVisitors, 'range unique <= sum of bucket uniques')
+      .toBeLessThanOrEqual(platform.buckets.reduce((a, b) => a + b.uniqueVisitors, 0));
+
+    // And the assertions above must be able to FAIL — a `<=` between two numbers that are always
+    // equal passes for the wrong reason. `v1` browses both keramika and tachshitim in the fixture
+    // precisely so that this de-dup has something to do: 4 store-visits, 3 people.
+    expect(summed, 'the fixture really does contain a cross-store shopper').toBe(4);
+    expect(platform.totalUniqueVisitors, 'and the platform counts them once').toBe(3);
+  });
+
+  it('the platform summary reports the de-duped count, and falls back to the sum without it', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const inputs = buildPlatformStoreInputs(
+      (await getAllStores()).map((s) => ({ ...s, sellerId: s.sellerId })),
+      await getAllSellers(),
+    );
+    const [views, platformViews, sales] = await Promise.all([
+      getStoreViewStats(inputs.map((s) => s.id), from, to, 'month'),
+      getPlatformViewStats(inputs.map((s) => s.id), from, to, 'month'),
+      getPlatformSales(inputs.map((s) => s.slug), from, to, 'month'),
+    ]);
+    const deduped = buildPlatformPerformance(sales, inputs, views, from, to, 'month', platformViews);
+    const summedFallback = buildPlatformPerformance(sales, inputs, views, from, to, 'month');
+
+    expect(deduped.summary.totalUniqueVisitors).toBe(platformViews.totalUniqueVisitors);
+    expect(deduped.summary.totalUniqueVisitors).toBeLessThanOrEqual(summedFallback.summary.totalUniqueVisitors);
+    // Everything else is untouched by the de-dup — it is one figure, not a rescaling of the tab.
+    expect(deduped.summary.totalViews).toBe(summedFallback.summary.totalViews);
+    expect(deduped.summary.totalOrders).toBe(summedFallback.summary.totalOrders);
+    expectSameMoney(deduped.summary.totalRevenueAgorot, summedFallback.summary.totalRevenueAgorot, 'revenue is unaffected');
+    expect(deduped.stores.map((r) => [r.slug, r.views, r.conversionRate]),
+      'per-store rows stay per-store').toEqual(summedFallback.stores.map((r) => [r.slug, r.views, r.conversionRate]));
+    // Fewer visitors over the same orders can only move conversion UP — the direction is the point
+    // of the fix, so it is asserted rather than left to the reader.
+    if (deduped.summary.totalOrders > 0 && deduped.summary.totalUniqueVisitors > 0) {
+      expect(deduped.summary.conversionRate).toBeGreaterThanOrEqual(summedFallback.summary.conversionRate);
+    }
   });
 
   it('the live reconciliation reaches the same verdict as the one over the orders', async () => {

@@ -7,6 +7,21 @@
         "v1",
         "v2"
       ]
+    },
+    "2026-07-03": {
+      "total": 2,
+      "visitors": [
+        "v1"
+      ]
+    }
+  },
+  "tachshitim": {
+    "2026-07-02": {
+      "total": 4,
+      "visitors": [
+        "v1",
+        "v3"
+      ]
     }
   },
   "no-such-store": {

@@ -263,11 +263,15 @@ export function buildPlatformSales(
  * LIMIT n` in the query, which is a true platform top-N. Merging per-store top-5s here would have
  * produced a top-N of each store's top-5, a different and quietly wrong list.
  *
- * Note: unique visitors are SUMMED across stores (a browser visiting two stores
- * is counted once per store), so the platform figure is an upper bound. Exact
- * cross-store de-dup is one `COUNT(DISTINCT visitor_id)` without the store filter,
- * and is deliberately not attempted here: this function merges per-store results
- * and has none of the underlying ids, by design.
+ * **Unique visitors are the one figure that does NOT come from the merge (2026-08-11).** They used
+ * to: each store's uniques were summed, so one shopper who opened four stores was four visitors.
+ * That is not a small skew and it is not random — cross-store browsing is what a mall IS, so the
+ * number inflated exactly as the platform began to work, while the conversion rate that divides by
+ * it sank by the same factor. Measured on this database for August 2026: 60 reported, 37 people.
+ * This function merges per-store results and holds no visitor ids, so it genuinely cannot fix it —
+ * `platformViews` is the answer to the same question asked once, without the per-store `GROUP BY`
+ * (`store-pageviews.ts#getPlatformViewStats`). Omit it and the old sum is used, which is what an
+ * older caller and the pure test twins still do.
  */
 export function buildPlatformPerformance(
   sales: PlatformSales,
@@ -276,6 +280,7 @@ export function buildPlatformPerformance(
   fromISO: string,
   toISO: string,
   granularity: PerformanceGranularity,
+  platformViews?: StoreViewStats,
 ): PlatformPerformance {
   // Zero-filled point skeleton for the whole range, derived straight from the
   // dates — the exact x-axis keys/labels the seller math produces, so the merge
@@ -334,6 +339,18 @@ export function buildPlatformPerformance(
 
   const topProducts = sales.topProducts;
 
+  // ── People, counted once ──
+  // The loop above summed each store's uniques; where the caller supplied the platform-wide count,
+  // that sum is replaced rather than adjusted — there is no factor to divide by, only the real
+  // answer or an upper bound. Per bucket as well as for the range: the visitors chart and the KPI
+  // read against each other, and a chart still summing while the headline de-dupes is a worse
+  // state than either alone. Views stay summed (a load is a load, wherever it happened).
+  if (platformViews) {
+    totalUniqueVisitors = platformViews.totalUniqueVisitors;
+    const uniquesByKey = new Map(platformViews.buckets.map((b) => [b.key, b.uniqueVisitors]));
+    for (const p of points) p.uniqueVisitors = uniquesByKey.get(p.key) ?? 0;
+  }
+
   // Each store's commission was rounded to the agora against its OWN tier rate (that is why this
   // sums per-store figures rather than applying one blended rate to the platform total), so the
   // sum is already whole.
@@ -341,6 +358,8 @@ export function buildPlatformPerformance(
   const netProfitAgorot = totalRevenueAgorot - platformCommissionAgorot;
   // Conversion = orders / unique visitors (matches the seller tab's definition),
   // falling back to total views when no visitor ids exist (legacy/demo data).
+  // This is the reason the de-dup above is worth a second query: an inflated denominator here is a
+  // platform that reports itself converting worse than it does, on the number it is judged by.
   const conversionRate = totalUniqueVisitors > 0
     ? (totalOrders / totalUniqueVisitors) * 100
     : totalViews > 0 ? (totalOrders / totalViews) * 100 : 0;
