@@ -116,6 +116,36 @@ export function isMoneyEventType(value: string): value is MoneyEventType {
 }
 
 /**
+ * The three subjects the journal actually records, and the one place their membership is declared.
+ *
+ * It is a DISPLAY grouping — the admin's type menu renders a section per entry
+ * (AdminMoneyLogToolbar.astro) — but it lives here, beside the vocabulary, for the same reason the
+ * labels do: the failure it has to survive is a new type being added and appearing in no section,
+ * i.e. dropping out of the filter without anyone noticing. `tests/money-events-select.test.ts`
+ * fails on a type that belongs to no group, so the menu cannot silently go stale.
+ *
+ * Grouping earned its place when the list reached thirteen (owner, סשן ב׳: "so many filters that I
+ * no longer know what this journal does"). Named sections answer that question directly — the
+ * journal covers a purchase, what was given back, and what we owe sellers — where a flat list of
+ * thirteen only asks it again.
+ */
+export const MONEY_EVENT_GROUPS: readonly { label: string; types: readonly MoneyEventType[] }[] = [
+  {
+    label: 'קנייה ותשלום',
+    types: ['payment_attempted', 'order_created', 'duplicate_checkout_blocked',
+            'payment_status_changed', 'shipping_status_changed', 'order_discount_changed'],
+  },
+  {
+    label: 'ביטולים וזיכויים',
+    types: ['charge_voided', 'refund_due', 'refund_settled'],
+  },
+  {
+    label: 'תשלומים למוכרים',
+    types: ['payout_created', 'payout_sent', 'payout_failed', 'seller_debited'],
+  },
+];
+
+/**
  * Who performed an event, in words.
  *
  * `actor` holds one of three things — the literal `'buyer'`, the literal `'system'` (a scheduled

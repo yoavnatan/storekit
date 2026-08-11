@@ -1,6 +1,7 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
-import { createFloatingPortal, type FloatingPortal } from '../../lib/toolbar-portal.js';
+import { createFloatingPortal, toolbarMenuTitle, type FloatingPortal } from '../../lib/toolbar-portal.js';
 import { openRangePicker } from '../../lib/toolbar-range-picker.js';
+import { MONEY_EVENT_GROUPS, MONEY_EVENT_LABELS } from '../../lib/money-event-types.js';
 import { showToast, showErrorToast } from '../../lib/toast.js';
 
 // Money-journal tab. The panel is still SSR-filtered — every control here does the
@@ -8,13 +9,40 @@ import { showToast, showErrorToast } from '../../lib/toast.js';
 // (swapPanel). Nothing filters DOM rows, since only one page of rows is ever present.
 // Added סשן ג׳ (owner: the tab could be filtered but not navigated): free-text search,
 // a date window, a copyable per-row permalink, and the jump-to-row that permalink
-// implies.
+// implies. The type filter became a menu in סשן ב׳ — AdminMoneyLogToolbar.astro says why.
 const PANEL_ID = 'dash-panel-moneylog';
 
 // Module-level, not per-init: initAdminMoneyLogPanel() re-runs on every panel swap to
 // re-wire the fresh DOM, and createFloatingPortal registers document-level listeners
-// on each call — building one per swap would pile them up.
-let rangePortal: FloatingPortal | null = null;
+// on each call — building one per swap would pile them up. ONE portal for both menus:
+// they are mutually exclusive by definition (the portal closes whatever it was showing
+// before it opens the next), so a second instance would only add a second set of
+// document listeners for a menu that can never be open at the same time.
+let menuPortal: FloatingPortal | null = null;
+
+/** Vocabulary, labels and sections all imported from `money-event-types.ts`, none of them re-typed
+ *  here: the menu's labels are the SAME strings the free-text search matches against, and a copy in
+ *  this file would be the second definition that quietly stops matching the day one changes. */
+const MENU_ITEM_CLASS = 'product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+
+function typeItemHtml(id: string, label: string, active: string): string {
+  const selected = id === active;
+  return `<button type="button" class="${MENU_ITEM_CLASS}" data-money-type="${id}"${selected ? ' aria-current="true" style="font-weight:700;color:var(--color-primary)"' : ''}>${label}</button>`;
+}
+
+function sectionLabelHtml(text: string): string {
+  return `<div class="px-3 pt-[.5rem] pb-[.2rem] text-[.7rem] font-semibold [color:var(--color-muted)] select-none">${text}</div>`;
+}
+
+/** "everything" first, then one section per subject. A type that belongs to no section would
+ *  vanish from this menu, which is what the group guard test exists to prevent. */
+function buildTypeMenu(active: string): string {
+  return toolbarMenuTitle('סוג אירוע')
+    + typeItemHtml('', 'כל סוגי האירועים', active)
+    + MONEY_EVENT_GROUPS.map((g) =>
+        sectionLabelHtml(g.label) + g.types.map((t) => typeItemHtml(t, MONEY_EVENT_LABELS[t], active)).join(''),
+      ).join('');
+}
 
 /** Current narrowing, read back off the DOM the server just rendered — so no control
  *  can drop another one's state (searching must not clear the date window). */
@@ -47,12 +75,44 @@ function wireSearch(): void {
   }), 250));
 }
 
+/** The portal both menus share, built on first use. */
+function getPortal(): FloatingPortal {
+  if (!menuPortal) menuPortal = createFloatingPortal('admin-moneylog-menu-portal');
+  return menuPortal;
+}
+
+/** The event-type menu — one narrowing with ten answers, which is a menu rather than ten
+ *  chips (AdminMoneyLogToolbar.astro carries the reasoning). Picking one navigates
+ *  immediately: there is a single value to choose, so an "apply" step would only add a
+ *  click to every use. */
+function wireTypePicker(): void {
+  const toolbar = document.getElementById('admin-moneylog-toolbar');
+  const trigger = document.getElementById('admin-moneylog-type-trigger');
+  if (!toolbar || !trigger) return;
+  const portal = getPortal();
+
+  trigger.addEventListener('click', () => {
+    if (portal.currentTrigger() === trigger) { portal.close(); return; }
+    const active = toolbar.dataset.type ?? '';
+    portal.open(trigger, '15rem', () => buildTypeMenu(active), (p) => {
+      p.querySelectorAll<HTMLButtonElement>('[data-money-type]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          portal.close();
+          // `navigate` rebuilds the URL from the toolbar's own state, so the pager is dropped
+          // here for free — which is what it has to be: page 4 of "everything" is not page 4
+          // of one type, and landing past the end of the new result reads as an empty journal.
+          navigate({ mtype: btn.dataset.moneyType || undefined });
+        });
+      });
+    });
+  });
+}
+
 function wireRangePicker(): void {
   const toolbar = document.getElementById('admin-moneylog-toolbar');
   const trigger = document.getElementById('admin-moneylog-range-trigger');
   if (!toolbar || !trigger) return;
-  if (!rangePortal) rangePortal = createFloatingPortal('admin-moneylog-range-portal');
-  const portal = rangePortal;
+  const portal = getPortal();
 
   trigger.addEventListener('click', () => {
     if (portal.currentTrigger() === trigger) { portal.close(); return; }
@@ -102,6 +162,7 @@ function revealTarget(): void {
 
 export function initAdminMoneyLogPanel(): void {
   wireSearch();
+  wireTypePicker();
   wireRangePicker();
   wirePermalinks();
   revealTarget();
