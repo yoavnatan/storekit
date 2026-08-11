@@ -141,11 +141,15 @@ describe('both dashboards consult the rule before replacing a panel', () => {
     expect(src).toMatch(/stripForeignTabParams\(new URL\(location\.href\), panel\)/);
   });
 
-  it('every admin panel swap stamps itself fresh, from the one place they all funnel through', () => {
+  it('every panel swap stamps itself fresh, from the one place they all funnel through', () => {
     // Stamping at call sites instead would be a list to remember to update — the failure mode is a
     // panel that re-fetches on every single open because nothing ever marked it loaded.
-    const src = read('src/lib/admin-nav.ts');
+    // `lib/panel-swap.ts` since 2026-08-11, when the seller dashboard started filling panels the
+    // same way; `admin-nav.ts` re-exports it so the admin's ~dozen call sites are unchanged.
+    const src = read('src/lib/panel-swap.ts');
     expect(src).toMatch(/markPanelFresh\(panelId\)/);
+    expect(read('src/lib/admin-nav.ts'), 'the admin still gets swapPanel from where its tabs import it')
+      .toMatch(/export \{ swapPanel \}/);
   });
 
   it('the buyer dashboard checks the same rule before refreshing a tab', () => {

@@ -3,9 +3,15 @@
 // URLs from its current filter state) and client-side by the tab scripts
 // (sellers.ts/stores.ts/orders-filter.ts, to navigate on search/sort/filter
 // change). One implementation so the two never drift out of sync.
-// `panel-freshness` touches no DOM at import time, which is what lets this module keep being
-// imported by admin/index.astro's server-side frontmatter as well as by the browser scripts.
-import { markPanelFresh } from './panel-freshness.js';
+// `panel-swap` (and the `panel-freshness` it imports) touches no DOM at import time, which is what
+// lets this module keep being imported by admin/index.astro's server-side frontmatter as well as by
+// the browser scripts.
+import { swapPanel } from './panel-swap.js';
+
+// Re-exported rather than moved-and-updated at ~a dozen call sites: every admin tab script imports
+// it from here, and this module is still where "how does the admin dashboard navigate" is answered.
+// The mechanism itself moved to lib/panel-swap.ts when the seller dashboard needed it too.
+export { swapPanel };
 
 export function buildAdminUrl(panel: string, params: Record<string, string | undefined>): string {
   const qp = new URLSearchParams();
@@ -94,66 +100,7 @@ export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: numb
 // panel's innerHTML, and updates the address bar via pushState so the URL
 // still reflects real navigation state. Falls back to a real navigation on
 // any fetch/parse failure so the feature never silently does nothing.
-/**
- * The "something is happening" signal for every panel swap (owner, 2026-08-07: "add a loader so I
- * can feel the site moving").
- *
- * One indicator here rather than one per tab, because every filter, sort, chip and pager arrow on
- * this dashboard already funnels through `swapPanel` — a per-tab spinner would be nine copies of
- * one idea, and the tab that got missed would be the one that felt broken.
- *
- * It is a bar at the top of the panel plus a dimmed, non-interactive panel, NOT a spinner replacing
- * the content: the old rows are still the right answer to the previous question, and blanking them
- * makes a 1-second wait feel like a page that lost its data. The rule this follows is the project's
- * own — a shimmer goes UNDER the content it is loading, never over the top of it.
- *
- * **Nothing is shown for the first 180ms.** A swap that returns quickly should look instant; a
- * spinner that appears and vanishes inside a fifth of a second reads as a flicker, which is worse
- * than no feedback at all. Past that threshold the wait is real and saying so is the honest thing.
- */
-const BUSY_DELAY_MS = 180;
-
-function showBusy(panelId: string): () => void {
-  const panel = document.getElementById(panelId);
-  if (!panel) return () => { /* nothing to undo */ };
-  const timer = setTimeout(() => panel.setAttribute('data-busy', ''), BUSY_DELAY_MS);
-  return () => {
-    clearTimeout(timer);
-    panel.removeAttribute('data-busy');
-  };
-}
-
-export async function swapPanel(url: string, panelId: string, reinit: () => void): Promise<void> {
-  const doneBusy = showBusy(panelId);
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('bad response');
-    const html = await res.text();
-    const next = new DOMParser().parseFromString(html, 'text/html').getElementById(panelId);
-    const current = document.getElementById(panelId);
-    if (!next || !current) throw new Error('panel not found');
-    current.innerHTML = next.innerHTML;
-    // Only claim the address bar if this panel is still the one on screen. The
-    // fetch above re-renders the whole dashboard server-side and can take about a
-    // second, which is long enough for the admin to have switched tabs meanwhile —
-    // and pushing then put the LEFT tab's URL (`?panel=moneylog&mtype=…`) back over
-    // the tab they were now looking at, undoing the cleanup in tab-nav.ts. The
-    // content swap still happens either way: the panel is simply ready and correct
-    // for their return.
-    if (!current.hidden) history.pushState({}, '', url);
-    // Stamped HERE rather than at each of the ~dozen call sites that swap a panel — filters,
-    // sorts, chips, pagers and the lazy first open all funnel through this one function, and a
-    // list of places to remember to stamp is a rule that rots (the same reasoning tab-sync.ts
-    // gives for observing `fetch` once). After the swap, so a failed load is never marked fresh.
-    markPanelFresh(panelId);
-    doneBusy();
-    reinit();
-  } catch {
-    // Not cleared before the assignment: a full navigation is about to replace the document, and
-    // removing the busy state first would flash the old panel back to normal on the way out.
-    window.location.href = url;
-  }
-}
+// It lives in lib/panel-swap.ts now, re-exported above.
 
 // Back/forward through swapPanel-driven history entries isn't worth tracking
 // client-side (each panel would need its own popstate-restore logic) — a
