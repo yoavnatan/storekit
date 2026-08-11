@@ -358,12 +358,19 @@ export function buildMultiLineChartSvg(series: LineSeries[], opts: BarChartOptio
     const px = xOf(i);
     const rx = Math.max(geom.left, px - half);
     const rw = Math.min(geom.right, px + half) - rx;
-    // Combined tooltip value: "<label> <value> · <label> <value>" for every series.
+    // Combined tooltip value: "<label> <value> · <label> <value>" for every series. Kept as the
+    // FALLBACK only — the client builds one row per series from the dots below (a flat sentence in
+    // one colour was the reported confusion), and this is what an older deployed client, or a
+    // browser that somehow finds no dots, still reads.
     const combined = clean.map((s) => `${s.label ? s.label + ' ' : ''}${fmt(s.points[i]?.value ?? 0)}`).join(' · ');
     const showLabel = i === n - 1 || (i % labelEvery === 0 && n - 1 - i >= labelEvery);
     const label = showLabel ? xLabelSvg(primary.points[i].label, px, i, n, height) : '';
     // One dot per series; primary first so it's initChartTooltips' anchor.
-    const dots = clean.map((s) => `<circle class="line-dot" cx="${px.toFixed(1)}" cy="${yOf(s.points[i]?.value ?? 0).toFixed(1)}" r="2.4" fill="${s.color}"></circle>`).join('');
+    //
+    // Each dot carries its OWN series name, value and dash state. Not a second payload on the hit
+    // rect: the dot is already where the series' colour lives (`fill`), so a tooltip built from the
+    // dots cannot end up describing one line in another's colour — the failure this replaces.
+    const dots = clean.map((s) => `<circle class="line-dot" cx="${px.toFixed(1)}" cy="${yOf(s.points[i]?.value ?? 0).toFixed(1)}" r="2.4" fill="${s.color}" data-label="${escXml(s.label ?? '')}" data-value="${escXml(fmt(s.points[i]?.value ?? 0))}"${s.dashed ? ' data-dashed="1"' : ''}></circle>`).join('');
     return `<g class="chart-point"><rect class="chart-bar" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(primary.points[i].label)}" data-value="${escXml(combined)}"></rect>${dots}${label}</g>`;
   }).join('');
 
