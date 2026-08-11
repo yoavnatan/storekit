@@ -19,7 +19,7 @@ interface Window {
   /** Scrolls an overflowing `.dash-tabs` strip sideways so the given tab is visible —
    *  clear of the edge fades, and the strip only, never the page (a sticky strip makes
    *  scrollIntoView jump the document). Same file, same reason as __dashTabActivate. */
-  __dashTabReveal?: (tab: HTMLElement) => void;
+  __dashTabReveal?: (tab: HTMLElement, center?: boolean) => void;
   /** Places a strip (or every strip, with no argument) on its OPEN tab — the load-time
    *  half of the above, re-asserted until the browser's own scroll restoration and the
    *  font swap have settled, and switched off the moment the seller scrolls the strip

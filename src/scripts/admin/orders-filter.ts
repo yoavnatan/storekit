@@ -42,12 +42,21 @@ const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a
  * The set is a JOURNEY, and that is the fix (owner, 2026-08-11: "הניסוחים גרועים ולא
  * אינטואיטיביים"). Every label answers one question — when does this money arrive — in the order it
  * actually happens, so reading the list top to bottom explains the model without a tooltip.
+ *
+ * **`released` is "אושר לתשלום" and not "ישולם בתשלום הקרוב", and the difference is future work.**
+ * The owner asked for a word he could CONTINUE from — *"משהו שיהיה אפשר להמשיך איתו ולהגיד כן, זה
+ * תשלום שאושר"* — because the chain does not end here: once a transfer exists for this money the
+ * next states are "נשלח לבנק" and "הועבר", which `seller_payouts.status` already records. It cannot
+ * be said PER ORDER yet — nothing links an order to the payout that settled it — so an order that
+ * was paid out in March still reports as approved. Naming this one after a promise about timing
+ * ("the next payment") would have made that stale sentence a wrong one; naming it after the state
+ * it actually is leaves the two real states room to arrive above it.
  */
 const PAYOUT_LABELS: Record<string, string> = {
   unshipped: 'ממתין לשליחה',
   undelivered: 'בדרך ללקוח',
   window: 'ממתין לסיום ימי החזרה',
-  released: 'ישולם בתשלום הקרוב',
+  released: 'אושר לתשלום',
   none: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
 };
 

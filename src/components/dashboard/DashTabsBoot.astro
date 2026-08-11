@@ -74,7 +74,7 @@
       return rtl ? { left: max - sl, right: sl } : { left: sl, right: max - sl };
     }
 
-    window.__dashTabReveal = function (tab) {
+    window.__dashTabReveal = function (tab, center) {
       var strip = tab.closest('.dash-tabs');
       if (!strip || strip.scrollWidth <= strip.clientWidth + 1) return;
       var t = tab.getBoundingClientRect(), s = strip.getBoundingClientRect();
@@ -86,6 +86,16 @@
       // screen must not slide because something re-ran this (no-op interactions
       // are invisible).
       if (t.left >= left && t.right <= right) return;
+      // `center` — the answer to "which tab am I on", asked by a page that just
+      // loaded. The nudge below is the smallest move that makes the tab legal,
+      // and after a refresh from somewhere else in the strip that is a resting
+      // place with no meaning: the tab lands hard against whichever edge it came
+      // in from, in the middle of the scroll range, and the strip looks stuck
+      // wherever it stopped (owner, 2026-08-11 — "נתקעת איפשהו באמצע"). Aiming at
+      // the CENTRE gives one answer instead, and the browser's own clamp turns it
+      // into the natural one at either end: an active first or last tab cannot be
+      // centred, so the strip simply rests on that end.
+      if (center) { strip.scrollLeft += (t.left + t.right) / 2 - (s.left + s.right) / 2; return; }
       // A tab WIDER than the band (a long label on a narrow phone) can satisfy
       // neither edge. Pin its READING start — the side its label begins on — and
       // let the tail run under the far fade. Without this branch the two tests
@@ -113,13 +123,17 @@
      * strip themselves — a wheel, a drag, a tab click — their position is the
      * right one and a later re-assert would be the page yanking the strip out
      * from under them.
+     *
+     * Centred, unlike the reveal a click gets: a load has no gesture to stay out
+     * of the way of, and "the middle" is the one placement that reads as an
+     * answer rather than as wherever the strip happened to stop.
      */
     window.__dashTabRestore = function (strip) {
       var strips = strip ? [strip] : document.querySelectorAll('.dash-tabs');
       for (var i = 0; i < strips.length; i++) {
         if (strips[i].hasAttribute('data-tab-scrolled')) continue;
         var active = strips[i].querySelector('.dash-tab--active');
-        if (active) window.__dashTabReveal(active);
+        if (active) window.__dashTabReveal(active, true);
       }
     };
 

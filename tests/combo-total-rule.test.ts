@@ -73,10 +73,25 @@ describe('every renderer of the table computes its total', () => {
     expect(totals.length).toBeGreaterThan(builders.length);
   });
 
-  it('does not leave the SSR total as a bare sum of the buckets', () => {
-    // The bug: `reduce((s, c) => s + (c.value ?? 0), 0)` silently drops the pool, so a product
-    // whose combos are all pooled rendered a total of 0 on first paint.
-    expect(SSR).not.toMatch(/reduce\(\(s, c\) => s \+ \(c\.value \?\? 0\), 0\)/);
-    expect(SSR).toContain('pComboTotal');
+  it('has only ONE renderer of the combo table, and the page is not it', () => {
+    // This used to assert that the SSR edit row computed the total correctly, because it was the
+    // second renderer and the rule had drifted between the two twice. Since 2026-08-11 the page
+    // does not render the edit form at all — `products.ts#buildEditRow` builds it on the click that
+    // opens it — so the drift hazard is gone by construction, and what is worth pinning is that it
+    // stays gone. A combo table reappearing in the page means a second definition came back.
+    expect(SSR).not.toContain('data-combo-stock-input');
+    expect(SSR).not.toContain('pComboTotal');
+    // The bug the old assertion was written for, kept as a scan over the one renderer that is
+    // left: `reduce((s, c) => s + (c.value ?? 0), 0)` silently drops the shared pool, so a product
+    // whose combos are all pooled shows a total of 0.
+    expect(CLIENT).not.toMatch(/reduce\(\(s, c\) => s \+ \(c\.value \?\? 0\), 0\)/);
+  });
+
+  it('still renders the per-combo BREAKDOWN on the display row, which is not the edit table', () => {
+    // The stock cell's dropdown keeps its own rows — read-only, no inputs, no total. It is the one
+    // piece of variant machinery the page still needs, and deleting it with the edit form would
+    // have taken a feature with it.
+    expect(SSR).toContain('data-combo-stock-row');
+    expect(SSR).toContain('variantCombosData(');
   });
 });
