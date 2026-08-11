@@ -10,7 +10,7 @@ import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
-import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
+import { groupBuyerPurchases, countBuyerPurchases } from '../../lib/buyer-purchases.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 
@@ -44,8 +44,9 @@ const hasStore = storesOfSeller.length > 0;
 // One card per PURCHASE, not per store — a two-store basket was one click and one payment, so it
 // is one order here even though checkout writes a row per store (buyer-purchases.ts).
 const purchases = groupBuyerPurchases(orders);
-const activeOrdersCount = purchases.filter((p) => p.awaiting).length;
-const historyOrdersCount = purchases.length - activeOrdersCount;
+// The same function `/api/buyer/orders` answers with, so the figures this paints cannot disagree
+// with the ones a tab refresh writes over them (buyer-purchases.ts#countBuyerPurchases).
+const { active: activeOrdersCount, history: historyOrdersCount } = countBuyerPurchases(purchases);
 
 const buyerOrderQuery = parseBuyerOrderQuery(Astro.url.searchParams);
 const filteredOrders = filterBuyerPurchases(purchases, buyerOrderQuery);
@@ -756,10 +757,13 @@ const STORES_NAMED = 2;
               includes everything ever delivered, so a two-store basket read as 2 and a buyer with
               nothing open still saw a number beside an "אין הזמנות פעילות" list. This is the same
               unit as the cards below (a purchase) and the same semantic as the unread badge beside
-              it — what is waiting on you. */}
-          {activeOrdersCount > 0 && (
-            <span style="font-size:0.7rem;color:var(--color-muted)">{activeOrdersCount}</span>
-          )}
+              it — what is waiting on you.
+
+              Always rendered, `hidden` when zero, rather than rendered only when non-zero: the
+              panel refresh below writes into this element, and a count that has to CREATE its own
+              node is how the two counts on screen end up maintained by two different pieces of
+              code. */}
+          <span id="nav-orders-count" style="font-size:0.7rem;color:var(--color-muted)" hidden={activeOrdersCount === 0}>{activeOrdersCount || ''}</span>
         </button>
         <button class="my-nav-btn" data-tab="messages" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -792,11 +796,11 @@ const STORES_NAMED = 2;
             <div class="o-subtabs" role="tablist" aria-label={t.buyerDashboard.ordersTitle}>
               <button type="button" class="o-subtab-btn" id="o-subtab-active" data-hist="0" role="tab" aria-selected={!buyerOrderQuery.history} class:list={{ 'is-active': !buyerOrderQuery.history }}>
                 {t.buyerDashboard.ordersTabActive}
-                {activeOrdersCount > 0 && <span class="o-subtab-count">{activeOrdersCount}</span>}
+                <span class="o-subtab-count" id="o-count-active" hidden={activeOrdersCount === 0}>{activeOrdersCount || ''}</span>
               </button>
               <button type="button" class="o-subtab-btn" id="o-subtab-history" data-hist="1" role="tab" aria-selected={buyerOrderQuery.history} class:list={{ 'is-active': buyerOrderQuery.history }}>
                 {t.buyerDashboard.ordersTabHistory}
-                {historyOrdersCount > 0 && <span class="o-subtab-count">{historyOrdersCount}</span>}
+                <span class="o-subtab-count" id="o-count-history" hidden={historyOrdersCount === 0}>{historyOrdersCount || ''}</span>
               </button>
             </div>
             {/* Plain search field, nothing more. It starts `readonly` (see
@@ -811,7 +815,7 @@ const STORES_NAMED = 2;
                 no custom dropdown here to fight it with. */}
             <div class="o-search-wrap">
               <svg class="o-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="orders-search-input" value={buyerOrderQuery.q} placeholder={t.dashboard.ordersSearchPlaceholder} class="o-search-input" autocomplete="off" readonly />
+              <input type="text" id="orders-search-input" value={buyerOrderQuery.q} placeholder={t.dashboard.ordersSearchPlaceholder} class="o-search-input" autocomplete="off" readonly data-freshness-ignore />
               <button type="button" class="o-search-clear" id="orders-search-clear" aria-label={t.buyerDashboard.ordersClearSearch} tabindex="-1">
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
@@ -1221,6 +1225,7 @@ const STORES_NAMED = 2;
   import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
   import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
   import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
+  import { markPanelFresh, isPanelStale, panelHoldsTypedText } from '../../lib/panel-freshness.js';
 
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
@@ -1339,6 +1344,30 @@ const STORES_NAMED = 2;
     if (e.key === 'Escape' && sidebar.classList.contains('is-open')) closeDrawer();
   });
 
+  // Everything on screen right now came from the server a moment ago, so the first activation —
+  // the `?tab=` deep link below — must not re-fetch what it is already showing. Stamping here
+  // rather than letting the panels start unstamped is also what keeps that first call away from
+  // `applyBuyerOrdersPagination`, whose own state (`ordersCurrentPage`) is declared further down
+  // this module and would still be in its temporal dead zone.
+  markPanelFresh('buyer:orders');
+  markPanelFresh('buyer:messages');
+
+  /**
+   * Bring a tab's content up to date on opening it, unless it is already current.
+   *
+   * Carts and profile are absent on purpose and are not oversights: the carts panel renders from
+   * client-side cart state and already redraws on every `cart:change`, and profile shows the
+   * signed-in user's own details, which nothing but their own form on that same panel can alter.
+   * Refreshing either would be a request whose answer is guaranteed to equal what is on screen.
+   */
+  function refreshBuyerPanel(key: string): void {
+    const panel = panels[key];
+    // Never over typed text — a half-written search or message is worth more than a fresher list.
+    if (panelHoldsTypedText(panel) || !isPanelStale(`buyer:${key}`)) return;
+    if (key === 'orders')   void applyBuyerOrdersPagination();
+    if (key === 'messages') void pollBuyerUnread();
+  }
+
   function activateBuyerTab(key: string) {
     navBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.tab === key));
     Object.entries(panels).forEach(([k, el]) => {
@@ -1348,6 +1377,7 @@ const STORES_NAMED = 2;
     });
     if (topbarTab) topbarTab.textContent = panels[key]?.querySelector<HTMLElement>('.panel-head')?.textContent ?? key;
     history.replaceState(null, '', `?tab=${key}`);
+    refreshBuyerPanel(key);
   }
 
   navBtns.forEach((btn) => {
@@ -2217,7 +2247,7 @@ const STORES_NAMED = 2;
     if (ordersSearchQuery) params.set('oq', ordersSearchQuery);
     params.set('ohist', ordersHistory ? '1' : '0');
 
-    let data: { ok: boolean; purchases?: BuyerPurchaseJson[]; page?: number; totalPages?: number; total?: number };
+    let data: { ok: boolean; purchases?: BuyerPurchaseJson[]; page?: number; totalPages?: number; total?: number; counts?: { active: number; history: number } };
     try {
       const res = await fetch(`/api/buyer/orders?${params.toString()}`);
       data = await res.json() as typeof data;
@@ -2243,6 +2273,24 @@ const STORES_NAMED = 2;
         : (ordersHistory ? I.ordersEmptyHistory : I.ordersEmptyActive);
     }
     renderOrdersPaginationControls(data.totalPages ?? 1);
+    if (data.counts) applyOrderCounts(data.counts.active, data.counts.history);
+    markPanelFresh('buyer:orders');
+  }
+
+  /** The three places the same two numbers appear — sidebar, and the two sub-tabs — written from
+   *  ONE response. They were three server-rendered figures that could only be corrected by
+   *  reloading the page, which is precisely the staleness this refresh exists to remove; leaving
+   *  any of them out would have swapped "all three are old" for "they disagree", which is worse. */
+  function applyOrderCounts(active: number, history: number): void {
+    const write = (id: string, n: number) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = n > 0 ? String(n) : '';
+      el.hidden = n === 0;
+    };
+    write('nav-orders-count', active);
+    write('o-count-active', active);
+    write('o-count-history', history);
   }
 
   function renderOrdersPaginationControls(totalPages: number): void {
@@ -2348,6 +2396,9 @@ const STORES_NAMED = 2;
           }
         });
         applyBmsgFilter();
+        // Inside the `then`, so a failed poll leaves the panel stale and the next tab open
+        // retries it — the 15s timer below would otherwise be the only thing that ever recovered.
+        markPanelFresh('buyer:messages');
       }).catch(() => {});
   }
   setInterval(pollBuyerUnread, 15000);

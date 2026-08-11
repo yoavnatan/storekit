@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { getOrdersByBuyer } from '../../../lib/orders.js';
 import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../../lib/buyer-orders-query.js';
-import { groupBuyerPurchases } from '../../../lib/buyer-purchases.js';
+import { groupBuyerPurchases, countBuyerPurchases } from '../../../lib/buyer-purchases.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 
@@ -38,8 +38,14 @@ export const GET: APIRoute = async ({ request, cookies }) => {
 
   const query = parseBuyerOrderQuery(url.searchParams);
   // Grouped BEFORE filtering and paging: a page is five purchases (buyer-orders-query.ts).
-  const filtered = filterBuyerPurchases(groupBuyerPurchases(orders), query);
+  const allPurchases = groupBuyerPurchases(orders);
+  const filtered = filterBuyerPurchases(allPurchases, query);
   const page = paginate(filtered, parsePage(url.searchParams, 'page'), BUYER_ORDER_PAGE_SIZE);
+
+  // Both sub-tab totals, not just the one being asked for — `total` above counts the CURRENT
+  // filter, so a client refreshing the active list could never learn that history had grown. Free
+  // here: the grouping it counts is the same one the page above was cut from, no second read.
+  const counts = countBuyerPurchases(allPurchases);
 
   const purchases = page.items.map((p) => ({
     ...p,
@@ -51,5 +57,13 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   // that client shows one card per store for a few seconds, which is exactly what it did before,
   // rather than an empty list. Drop it in a later deploy, not in the same one.
   const items = purchases.flatMap((p) => p.slices.map((s) => s.order));
-  return json({ ok: true, purchases, items, page: page.page, totalPages: page.totalPages, total: page.total });
+  return json({
+    ok: true,
+    purchases,
+    items,
+    page: page.page,
+    totalPages: page.totalPages,
+    total: page.total,
+    counts,
+  });
 };
