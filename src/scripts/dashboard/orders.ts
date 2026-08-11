@@ -7,6 +7,10 @@ import { applyStockAttentionFilter } from './products.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { orderPayoutLine, payoutWhyText } from '../../lib/order-payout-line.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
+import type { Order } from '../../lib/orders.js';
+import type { DeliveryMethod } from '../../lib/shipping.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
@@ -531,12 +535,41 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
    *  `fmtPrice` on one of them would print a figure a hundred times too large. */
   function fmtAgorot(agorot: number): string { return fmtPrice(agorot / 100); }
 
+  /**
+   * The payout line's three fields, from the SAME derivation the SSR card uses
+   * (`lib/order-payout-line.ts`). Rendering it here rather than leaving it to the server is not
+   * optional: this function draws the cards for AJAX pagination and for a polled new order, so a
+   * block that existed only in the `.astro` copy would vanish the moment a seller turned a page —
+   * the three-renderer drift this file's header already warns about.
+   */
+  function payoutLineHtml(o: Parameters<typeof buildOrderCard>[0]): string {
+    const line = orderPayoutLine({
+      paymentStatus: o.paymentStatus,
+      shippingStatus: o.shippingStatus as never,
+      paidAt: o.paidAt ?? null,
+      deliveredAt: o.deliveredAt ?? null,
+      deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
+    });
+    const state = line.state === 'not_payable' ? tt('orderPayoutNone')
+      : line.state === 'releasable' ? tt('orderPayoutReleasable')
+      : line.releaseDayISO ? tt('orderPayoutOn').replace('{date}', formatBusinessDayLabel(line.releaseDayISO))
+      : tt('orderPayoutPending');
+    const why = line.state === 'held' ? `<span class="[color:var(--color-muted)]">· ${esc(payoutWhyText(line, tt(line.whyKey)))}</span>` : '';
+    const action = line.blocking ? `<span class="font-semibold [color:var(--color-warning)]">· ${esc(tt(line.actionKey))}</span>` : '';
+    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}${action}</div>`;
+  }
+
   function buildOrderCard(o: {
     id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
     buyerAddress: { city: string; street: string; zip?: string };
     shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
-    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } }>;
+    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; deliveryMethod?: DeliveryMethod; discount?: { type: string; value: number; appliedAgorot: number } }>;
     notes?: string[];
+    // The payout line's inputs. `/api/seller/orders` already returns the whole order
+    // (`scopeOrder`), so these arrive with no endpoint change — they were simply never named here.
+    paymentStatus: Order['paymentStatus'];
+    paidAt?: string;
+    deliveredAt?: string;
   }): string {
     const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
     const color    = colorMap[o.shippingStatus] ?? '#888';
@@ -621,6 +654,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             ${storeSub.discount?.appliedAgorot ? `<span class="text-[color:var(--color-success)]">${esc(tt('orderEditDiscount'))}: −${fmtAgorot(storeSub.discount.appliedAgorot)}</span>` : ''}
             <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtAgorot(total)}</strong>
           </div>
+          ${payoutLineHtml(o)}
         </div>
         <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
           <div class="order-note mb-3">
@@ -935,14 +969,24 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const ordersList = document.getElementById('orders-list');
   if (ordersList && storeSlugForOrders) {
     const knownIds = new Set<string>();
+    // The moment the poll last knew about. The server hands it back on every answer and it goes
+    // straight back out on the next question — the seller's browser never asks for the store's
+    // history again, which is what it used to do every fifteen seconds (lib/orders.ts#
+    // getSellerOrdersSince). `knownIds` stays because the window is inclusive of its own edge:
+    // orders written in the same microsecond as the watermark come back a second time by design,
+    // and this is what stops them being announced twice.
+    let ordersSince = '';
 
-    async function fetchStoreOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
+    async function fetchNewOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
       try {
-        const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
+        const params = new URLSearchParams({ storeSlug: storeSlugForOrders });
+        if (ordersSince) params.set('since', ordersSince);
+        const res = await fetch(`/api/seller/orders?${params.toString()}`);
         // silent: a background refresh of one card's data, not something anyone pressed — the card
         // already on screen stays correct and the next poll retries.
         if (!res.ok) return null;
-        const { orders } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][] };
+        const { orders, since } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][]; since?: string };
+        if (since) ordersSince = since;
         return orders;
       } catch { return null; }
     }
@@ -950,7 +994,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     async function pollOrders(): Promise<void> {
       if (!ordersList) return;
       try {
-        const orders = await fetchStoreOrders();
+        const orders = await fetchNewOrders();
         if (!orders) return;
         const newOrders = orders.filter(o => !knownIds.has(o.id));
         if (!newOrders.length) return;
@@ -991,12 +1035,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       } catch { /* ignore */ }
     }
 
-    // Seed knownIds from the *full* store order list (not just the DOM's
-    // rendered page-1 cards, which pagination caps at 15) before the poll
-    // loop starts — otherwise every order beyond page 1 looks "new" on the
-    // first tick after every page load, firing a toast for each one (real
-    // bug: was seeding from `.order-card` elements in the DOM).
-    fetchStoreOrders().then((orders) => {
+    // Seed the watermark before the poll loop starts — the first call carries no `since`, so the
+    // server answers with the newest order's moment and NO rows at all. That is what stops every
+    // existing order looking "new" on the first tick (the original bug seeded from `.order-card`
+    // elements in the DOM, so anything past page 1 fired a toast), and it now costs one timestamp
+    // instead of the store's entire order history.
+    fetchNewOrders().then((orders) => {
       (orders ?? []).forEach((o) => knownIds.add(o.id));
       setInterval(pollOrders, 15000);
     });

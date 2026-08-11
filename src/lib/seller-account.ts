@@ -89,11 +89,44 @@ export interface SellerAccount {
 
 /** Payouts that represent money gone or going. A `failed` transfer bounced, so its amount is owed
  *  again — counting it would silently withhold it forever, which is the worst direction to be
- *  wrong in and is invisible from every screen. */
-function sumPayouts(payouts: readonly AccountPayout[]): number {
+ *  wrong in and is invisible from every screen.
+ *
+ *  Exported because `payouts.ts#getPayableNowForSeller` answers the same question from the same
+ *  rows without building the whole per-slice account, and "which payouts count" is exactly the
+ *  rule that must not have a second spelling. */
+export function sumPayouts(payouts: readonly AccountPayout[]): number {
   let total = 0;
   for (const p of payouts) if (p.status !== 'failed') total += p.amountAgorot;
   return total;
+}
+
+/** The signed total of a seller's ledger adjustments. A plain sum today, and exported for the same
+ *  reason `sumPayouts` is: the moment a KIND has to be excluded (a set-off that is not settled
+ *  yet, say) the exclusion must land in one place rather than in whichever caller was remembered. */
+export function sumAdjustments(adjustments: readonly AccountAdjustment[]): number {
+  let total = 0;
+  for (const a of adjustments) total += a.amountAgorot;
+  return total;
+}
+
+/**
+ * The invariant in the header, as one function: `releasable − paidOut + adjustments`, SIGNED.
+ *
+ * Three callers compute this — this module (for the seller's own screen), `payout-run.ts#planPayouts`
+ * (for the transfer that actually leaves) and `payouts.ts#getPayableNowForSeller` (for the header's
+ * alert dot). They differ in where the three inputs come from, which is legitimate and documented;
+ * they must not differ in what is done with them. A sign error here is a seller paid twice or not
+ * at all, so it gets one home rather than three lines that happen to match today.
+ *
+ * Signed rather than floored: the caller decides whether a negative is a debt to carry
+ * (`carriedAgorot`) or simply nothing to send, and those are different screens.
+ */
+export function payoutBalanceAgorot(
+  releasableAgorot: number,
+  paidOutAgorot: number,
+  adjustmentsAgorot: number,
+): number {
+  return releasableAgorot - paidOutAgorot + adjustmentsAgorot;
 }
 
 export function buildSellerAccount(
@@ -134,10 +167,9 @@ export function buildSellerAccount(
   });
 
   const paidOutAgorot = sumPayouts(payouts);
-  let adjustmentsAgorot = 0;
-  for (const a of adjustments) adjustmentsAgorot += a.amountAgorot;
+  const adjustmentsAgorot = sumAdjustments(adjustments);
 
-  const balance = releasableAgorot - paidOutAgorot + adjustmentsAgorot;
+  const balance = payoutBalanceAgorot(releasableAgorot, paidOutAgorot, adjustmentsAgorot);
   const payableNowAgorot = Math.max(0, balance);
   const carriedAgorot = Math.max(0, -balance);
 

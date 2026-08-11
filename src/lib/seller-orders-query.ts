@@ -18,9 +18,38 @@ export type SellerOrderSortDir = 'asc' | 'desc';
 // by order-age.ts) sit above fresh new ones. Then shipped (out of the seller's
 // hands), then delivered (done — only present if the user explicitly filtered
 // them in), then cancelled. Mirrors the order-age escalation model.
-const URGENCY_GROUP: Record<string, number> = {
-  pending: 0, processing: 0, ready: 0, shipped: 1, delivered: 2, cancelled: 3,
-};
+/**
+ * The four urgency groups, in order, DERIVED from the status table rather than listed here —
+ * `tests/money-guards.test.ts` refuses a second copy of those statuses, and it is right to: a
+ * status added to `order-status-rules.ts` has to arrive in this sort on the same commit, not on
+ * the day someone notices it sorting last.
+ *
+ * The ranking is a reading of three columns, and each says whose turn it is:
+ *   0 — `sellerOwesAction`: the only rows the seller can act on. Top of the list.
+ *   1 — the courier has it (`buyerAwaiting`, nothing owed by the seller).
+ *   2 — done and not terminal: delivered.
+ *   3 — `terminal`: cancelled, nothing left to happen.
+ *
+ * It is the shape BOTH consumers need: the JS sort reads a rank out of the map below, and the SQL
+ * sort (`orders.ts#getSellerOrdersPage`) is handed the two flat arrays as query parameters.
+ */
+export const URGENCY_GROUPS: readonly (readonly string[])[] = (() => {
+  const statuses = Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[];
+  const rank = (s: ShippingStatus): number => {
+    const rule = SHIPPING_STATUS_RULES[s];
+    if (rule.terminal) return 3;
+    if (rule.sellerOwesAction) return 0;
+    return rule.buyerAwaiting ? 1 : 2;
+  };
+  return [0, 1, 2, 3].map((r) => statuses.filter((s) => rank(s) === r));
+})();
+/** `URGENCY_GROUPS` flattened into the two parallel arrays a query can take: status → its rank. */
+export const URGENCY_STATUSES: readonly string[] = URGENCY_GROUPS.flat();
+export const URGENCY_RANKS: readonly number[] = URGENCY_GROUPS.flatMap((g, i) => g.map(() => i));
+
+const URGENCY_GROUP: Record<string, number> = Object.fromEntries(
+  URGENCY_GROUPS.flatMap((group, rank) => group.map((status) => [status, rank])),
+);
 /** The statuses the seller's Orders filter menu can express, in workflow order — the one
  *  source both this module and the client toolbar (scripts/dashboard/orders.ts) read.
  *  'ready' (ממתין לאיסוף) is deliberately absent: no seller can set it today, and it returns
@@ -46,6 +75,10 @@ export interface SellerOrderQuery {
 
 const VALID_SORT_COLS = new Set<string>(['date', 'amount', 'urgency']);
 
+/** Matches the money journal's ceiling — one number, one reason, in two places that both take a
+ *  free-text term off a URL. */
+const MAX_SEARCH_LENGTH = 200;
+
 export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
   const [rawCol, rawDir] = (sp.get('osort') ?? 'date:desc').split(':');
   const sortCol = (VALID_SORT_COLS.has(rawCol ?? '') ? rawCol : 'date') as SellerOrderSortCol;
@@ -55,7 +88,10 @@ export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
   // explicit empty value (?ostatus=) means "cleared" — show every status.
   const hasStatusParam = sp.has('ostatus');
   return {
-    q: (sp.get('oq') ?? '').trim(),
+    // Capped for the same reason the money journal's box is (admin-moneylog-filter.ts): the term is
+    // request-supplied and now travels into a query, and a query string can carry ~16KB. No search
+    // anyone types is longer, so the cap costs nothing and removes the amplification.
+    q: (sp.get('oq') ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     sortCol,
     sortDir,
     shippingStatus: hasStatusParam ? decodeList(sp.get('ostatus') ?? '') : ORDER_ACTIVE_STATUSES,

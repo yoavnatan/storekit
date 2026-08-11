@@ -127,6 +127,20 @@ const purchases = groupBuyerPurchases(orders);
         const productsLabel = itemCount === 1 ? 'מוצר אחד' : `${itemCount} מוצרים`;
         const storesLabel = uniqueStores.length === 1 ? 'חנות אחת' : `${uniqueStores.length} חנויות`;
         const split = purchase.slices.length > 1;
+        /**
+         * Do the stores of this purchase actually DISAGREE about where it is up to?
+         *
+         * A multi-store purchase is several order rows, so it has several statuses — that is the
+         * model, not a display accident: each seller fulfils, ships and cancels on their own, and
+         * one status could only ever be the least advanced of them. But when they all say the same
+         * thing, printing it once per store repeats the badge in the card's header three times over
+         * and the card reads as "so many statuses" for a single purchase (owner, 2026-08-11).
+         *
+         * So the per-store badge is what it was always FOR: the mark of a disagreement. Agreeing
+         * slices show the store name and its share, and let the header's one badge speak for all of
+         * them. Nothing is hidden — a card with per-store badges is exactly a card where they differ.
+         */
+        const slicesDisagree = new Set(purchase.slices.map((s) => s.order.shippingStatus)).size > 1;
         // What the buyer paid for the whole cart. `purchase.totalAgorot` is the sum of the slices,
         // from the same function the buyer's card reads — never a re-derivation here.
         const totalAgorot = purchase.totalAgorot;
@@ -218,9 +232,11 @@ const purchases = groupBuyerPurchases(orders);
                     {split && (
                       <div class="flex items-center gap-2 flex-wrap mb-1.5">
                         <a href={`/${slice.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-[0.82rem] font-semibold [color:var(--color-text)] no-underline hover:underline">{slice.storeName}</a>
-                        <span class="order-card__status-badge text-[0.7rem] font-semibold px-[0.5rem] py-[0.15rem] rounded-[20px] whitespace-nowrap" style={`background:${shippingColor[slice.order.shippingStatus] ?? '#888'}1a;color:${shippingColor[slice.order.shippingStatus] ?? '#888'}`}>
-                          {shippingLabel[slice.order.shippingStatus] ?? slice.order.shippingStatus}
-                        </span>
+                        {slicesDisagree && (
+                          <span class="order-card__status-badge text-[0.7rem] font-semibold px-[0.5rem] py-[0.15rem] rounded-[20px] whitespace-nowrap" style={`background:${shippingColor[slice.order.shippingStatus] ?? '#888'}1a;color:${shippingColor[slice.order.shippingStatus] ?? '#888'}`}>
+                            {shippingLabel[slice.order.shippingStatus] ?? slice.order.shippingStatus}
+                          </span>
+                        )}
                         <span class="text-[0.75rem] [color:var(--color-muted)] ms-auto tabular-nums">{formatAgorot(slice.totalAgorot)}</span>
                       </div>
                     )}
@@ -241,19 +257,22 @@ const purchases = groupBuyerPurchases(orders);
                   <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatAgorot(totalAgorot)}</strong>
                 </div>
               </div>
-              <div>
-                <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
-                <div class="flex gap-2 items-center flex-wrap">
-                  <span class={`admin-badge admin-badge--shipping-${headlineStatus}`}>הזמנה: {shippingLabel[headlineStatus] ?? headlineStatus}</span>
-                  {/* Payment is 'paid' on every order today (stub — real split-payment
-                      not wired yet), so a "שולם" badge is pure noise. Surface it only
-                      when it actually needs attention — pending/failed — which becomes
-                      meaningful once the payment webhook lands (CURRENT_TASK #2). */}
-                  {o.paymentStatus !== 'paid' && (
+              {/* ── The shipping status is NOT repeated here ──
+                  It is in the card's header, on the row the admin clicked to open this, and once
+                  more beside every store that disagrees with it. A third copy under a heading
+                  called "סטטוס" was the third statement of one fact (owner, 2026-08-11).
+                  What is left is the one status the header does not carry — payment — and since
+                  that is 'paid' on every order today (stub; the real webhook is CURRENT_TASK א׳#2)
+                  the section renders only when it has something to say. An empty heading is the
+                  same clutter by another route. */}
+              {o.paymentStatus !== 'paid' && (
+                <div>
+                  <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
+                  <div class="flex gap-2 items-center flex-wrap">
                     <span class={`admin-badge admin-badge--${o.paymentStatus}`}>תשלום: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         );

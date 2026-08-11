@@ -272,7 +272,10 @@ const [
   // sellers are stuck with money we cannot send. Four queries whatever the platform's size
   // (payout-run.ts#planPayouts), and it is the SAME function the run then acts on, so this figure
   // and the transfers cannot be two answers. Money tab only, like the reconciliation beside it.
-  only(['payouts'], () => planPayouts(), null),
+  // Sellers too, since סשן א׳ §3: the per-seller half of this plan is rendered on the seller cards
+  // now, and the filter chips above them are counted from it. Four queries whatever the platform's
+  // size, so the Sellers tab pays a fixed cost rather than one per card.
+  only(['payouts', 'sellers'], () => planPayouts(), null),
   // Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
   // This used to read every order the platform has ever taken, to render fifteen rows.
   only(['orders'], () => getAdminOrdersPage(
@@ -317,9 +320,21 @@ function keepNewOnly<T>(items: T[], on: boolean, boundary: string, createdAt: (i
 const sellerQuery = parseSellerQuery(sp);
 const sellersTab = shows('sellers') ? await (async () => {
   const all = getSellerCards(sellers, stores, productCounts, revenueByStore);
-  const filtered = keepNewOnly(filterAndSortSellerCards(all, sellerQuery), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
+  // What the next run would do, keyed by seller — the payouts tab's deleted table, as a lookup.
+  // Only the rows with money behind them: `settled`/`already_paid` are most sellers most months,
+  // and a card that renders a payout tile for every one of them buries the few that matter.
+  const payoutRows = (payoutPlan?.rows ?? []).filter((r) => r.balanceAgorot > 0 && r.state !== 'settled' && r.state !== 'already_paid');
+  const payoutBySeller = new Map(payoutRows.map((r) => [r.sellerId, r]));
+  // Counted BEFORE the filter, so the chips keep reporting what exists while one of them is
+  // selected — the same rule the Stores tab's state chips follow.
+  const payoutStateCounts: Record<string, number> = {};
+  for (const r of payoutRows) payoutStateCounts[r.state] = (payoutStateCounts[r.state] ?? 0) + 1;
+  const stateBySeller = new Map([...payoutBySeller].map(([id, r]) => [id, r.state as string]));
+  const filtered = keepNewOnly(filterAndSortSellerCards(all, sellerQuery, stateBySeller), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
   const page = paginate(filtered, parsePage(sp, 'spage'));
   return {
+    payoutBySeller,
+    payoutStateCounts,
     cards: attachProducts(page.items, await getProductsByStoreIds(page.items.flatMap((c) => c.stores.map((s) => s.store.id)))),
     // Accrued balances (lib/seller-balance.ts) — reporting only: the processor pays each seller
     // directly, so nothing here is an instruction to do anything. Costs no query: derived from the
@@ -525,10 +540,13 @@ const badgeFor: Record<string, number> = badgeCounts;
         {sellersTab && <AdminSellersPanel
           sellerCards={sellersTab!.cards}
           balanceBySeller={sellersTab!.balanceBySeller}
+          payoutBySeller={sellersTab!.payoutBySeller}
+          payoutStateCounts={sellersTab!.payoutStateCounts}
           q={sellerQuery.q}
           sortCol={sellerQuery.sortCol}
           sortDir={sellerQuery.sortDir}
           blockedOnly={sellerQuery.blockedOnly}
+          payoutState={sellerQuery.payoutState}
           newSince={newSince.sellers}
           newOnly={newOnly.sellers}
           newCount={badgeCounts.sellers}
@@ -540,6 +558,7 @@ const badgeFor: Record<string, number> = badgeCounts;
             sq: sellerQuery.q || undefined,
             ssort: (sellerQuery.sortCol !== 'joined' || sellerQuery.sortDir !== 'desc') ? `${sellerQuery.sortCol}:${sellerQuery.sortDir}` : undefined,
             sblocked: sellerQuery.blockedOnly ? '1' : undefined,
+            spayout: sellerQuery.payoutState !== 'all' ? sellerQuery.payoutState : undefined,
             snew: newOnly.sellers ? '1' : undefined,
             spage: p > 1 ? String(p) : undefined,
           })}
@@ -678,11 +697,17 @@ const badgeFor: Record<string, number> = badgeCounts;
         />
       </AdminPanelShell>
 
-      <AdminPanelShell panel="payouts" active={!!payoutPlan}>
+      {/* `shows('payouts')` and not `!!payoutPlan`, and the difference became load-bearing on
+          2026-08-11: the plan is now fetched for the SELLERS tab too (its cards render the
+          per-seller half of it), so a truthiness test on the data would mark this panel `active`
+          while the admin is looking at Sellers — `AdminPanelShell` renders `hidden={!active}`, so
+          two panels would be open at once and this one would lose its `data-lazy` marker. Every
+          other shell here asks the same question; this is the one where the answer stopped being
+          the same. */}
+      <AdminPanelShell panel="payouts" active={shows('payouts') && !!payoutPlan}>
         {payoutPlan && <AdminPayoutPlanCard
           plan={payoutPlan}
-          page={parsePage(sp, 'paypage')}
-          buildUrl={(p) => tabUrl('payouts', { paypage: p > 1 ? String(p) : undefined })}
+          sellersHref={(state) => tabUrl('sellers', { spayout: state })}
         />}
       </AdminPanelShell>
 

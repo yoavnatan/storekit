@@ -23,6 +23,8 @@ import { productShare } from '../src/lib/top-product-share.js';
 import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
+import { getPayableNowForSeller, getSellerAccountFor } from '../src/lib/payouts.js';
+import { planPayouts } from '../src/lib/payout-run.js';
 
 /** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
  *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
@@ -1058,6 +1060,43 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
       .toBe(sellers.filter((s) => billable(s.createdAt) > 0).length);
     expect(tiers.reduce((a, t) => a + t.billableDays, 0), 'billable days')
       .toBe(sellers.reduce((a, s) => a + billable(s.createdAt), 0));
+  });
+
+  /**
+   * **Two surfaces, one figure.** The seller's payments tab builds a whole per-order account and
+   * reads `payableNowAgorot` off it; the site header cannot afford that on every page load, so
+   * `getPayableNowForSeller` asks the database for the same three sums instead. Both draw the same
+   * red dot (`needsBankDetails`), so a disagreement between them is a dot leading to a screen with
+   * nothing on it — or, worse, no dot on a seller whose money is stuck.
+   *
+   * They are deliberately different spellings of the hold rule (JS in `seller-account.ts`, SQL in
+   * `payout-hold.ts`), which is exactly the arrangement this file exists to police. The one known
+   * way they may legitimately diverge is a seller past `getSellerAccountRows`' 500-slice bound;
+   * no fixture is near it, so on this data they must agree exactly.
+   */
+  it('payable-now: the header\'s cheap figure equals the seller\'s own screen', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      const cheap = await getPayableNowForSeller(seller.id);
+      expect(cheap, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
+    }
+  });
+
+  /**
+   * And the third spelling: the payout RUN. Its plan is what actually creates transfers, so a seller
+   * shown one number and paid another is the worst of the three failures available here. `settled`
+   * rows carry a zero balance and are absent from the plan, which is why the lookup falls back to 0
+   * rather than skipping them — "not in the plan" is a claim about the money too.
+   */
+  it('payable-now: the payout run would send exactly what the screen promises', async () => {
+    const plan = await planPayouts();
+    const byId = new Map(plan.rows.map((r) => [r.sellerId, r.balanceAgorot]));
+    for (const seller of await getAllSellers()) {
+      const account = await getSellerAccountFor(seller.id);
+      expect(byId.get(seller.id) ?? 0, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
+    }
   });
 });
 

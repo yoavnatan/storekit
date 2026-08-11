@@ -2,11 +2,11 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
-import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes, orderBelongsToStore } from '../../../lib/orders.js';
+import { getSellerOrdersPage, getSellerOrdersSince, getOrderById, updateOrder, orderStoreNotes, orderBelongsToStore } from '../../../lib/orders.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
-import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../../lib/seller-orders-query.js';
-import { paginate, parsePage } from '../../../lib/pagination.js';
+import { parseSellerOrderQuery } from '../../../lib/seller-orders-query.js';
+import { parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 import { orderNetForStore } from '../../../lib/admin-stats.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
@@ -54,17 +54,19 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // Use the store's CURRENT slug for all order work — orders migrate to it on rename, and the client
   // may still send an old (cached) slug (resolved above). Keeps scoping correct across a URL change.
   const storeSlug = store.slug;
-  const orders = await getOrdersByStoreSlug(storeSlug);
 
-  // No ?page → the original unfiltered/unpaginated shape, used by the
-  // 15s new-order poll (it needs to see every order regardless of the
-  // seller's current page/filter/search to reliably detect brand-new ones).
-  if (!url.searchParams.has('page')) return json({ orders: orders.map((o) => scopeOrder(o, storeSlug)) });
+  // No ?page → the 15s new-order poll. It asks "anything since this moment?" and gets back the
+  // watermark to ask with next time; called with no `since` at all it gets the watermark alone,
+  // which is the seed. It used to be handed the store's ENTIRE order history, on load and then
+  // every fifteen seconds, to diff ids against (owner, 2026-08-11).
+  if (!url.searchParams.has('page')) {
+    const { orders, since } = await getSellerOrdersSince(storeSlug, url.searchParams.get('since') ?? '');
+    return json({ orders: orders.map((o) => scopeOrder(o, storeSlug)), since });
+  }
 
   const query = parseSellerOrderQuery(url.searchParams);
-  const filtered = filterAndSortSellerOrders(orders, storeSlug, query);
-  const page = paginate(filtered, parsePage(url.searchParams, 'page'), 15);
-  return json({ ok: true, items: page.items.map((o) => scopeOrder(o, storeSlug)), page: page.page, totalPages: page.totalPages, total: page.total });
+  const page = await getSellerOrdersPage(storeSlug, query, parsePage(url.searchParams, 'page'), 15);
+  return json({ ok: true, items: page.orders.map((o) => scopeOrder(o, storeSlug)), page: page.page, totalPages: page.totalPages, total: page.total });
 }
 
 export async function PATCH({ request, cookies }: APIContext): Promise<Response> {
