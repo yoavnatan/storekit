@@ -51,6 +51,10 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // ?products=all → uncap topProducts (the revenue-breakdown donut wants the
   // full per-period composition, not just the top-5 leaderboard).
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
+  // ?productQ= → the leaderboard's own name search. Deliberately separate from ?storeQ: it narrows
+  // the product LIST and nothing else — every KPI, chart and store row on the page still describes
+  // the whole platform, and each shown product still reports its share of the whole period.
+  const productQ = url.searchParams.get('productQ') ?? '';
 
   const sellers = await getAllSellers();
   const stores = buildPlatformStoreInputs(await getAllStores(), sellers);
@@ -59,7 +63,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // platform (DB_MIGRATION_PLAN.md §3/§5).
   const [views, sales, campaigns, tiers] = await Promise.all([
     getStoreViewStats(stores.map((s) => s.id), from, to, granularity),
-    getPlatformSales(stores.map((s) => s.slug), from, to, granularity, topLimit),
+    getPlatformSales(stores.map((s) => s.slug), from, to, granularity, topLimit, productQ),
     getCampaignsInRange(from, to),
     getSubscriptionAccrual(from, to),
   ]);
@@ -89,5 +93,8 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     storeMatched: page.matched,
     storePage: page.page,
     storeTotalPages: page.totalPages,
+    // How many products the name search matched before the top-N cap — the count line under the
+    // leaderboard heading. Additive, like everything else added here.
+    productsMatched: sales.productsMatched,
   });
 }

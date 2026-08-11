@@ -19,6 +19,7 @@ import { daysInRangeInclusive } from '../src/lib/date-range.js';
 import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, getStoreRevenueBySlug } from '../src/lib/order-reporting.js';
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
+import { productShare } from '../src/lib/top-product-share.js';
 import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
@@ -335,6 +336,42 @@ describe('the seller performance summary reconciles with itself', () => {
       .filter(countsAsRevenue)
       .reduce((a, o) => a + (o.storeSubtotals[STORE]?.discount?.appliedAgorot ?? 0), 0);
     expectSameMoney(gross, s.totalRevenueAgorot + discounts, 'gross product revenue vs net revenue + discounts');
+  });
+
+  it('the share denominator is the WHOLE period, not the capped list on screen', () => {
+    // The percentage beside each leading product used to be a share of the five rows shown, so
+    // those five always added to 100% no matter how long the tail was (CURRENT_TASK.md → סשן ג׳:
+    // "ומה זה האחוז שמופיע שם?"). `productRevenueAgorot` is what it is a share of now, and the one
+    // property that makes it mean anything is that CAPPING THE LIST MUST NOT MOVE IT.
+    const all = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
+    expectSameMoney(
+      all.topProducts.reduce((a, p) => a + p.revenueAgorot, 0),
+      all.productRevenueAgorot,
+      'uncapped list vs its own denominator',
+    );
+    for (const cap of [1, 2, 3, 5, 50]) {
+      const capped = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, cap);
+      expectSameMoney(capped.productRevenueAgorot, all.productRevenueAgorot, `denominator at cap ${cap}`);
+      expect(capped.topProducts.length, `rows at cap ${cap}`).toBeLessThanOrEqual(cap);
+      for (const p of capped.topProducts) {
+        expect(p.revenueAgorot, `${p.productId} never exceeds the period`).toBeLessThanOrEqual(capped.productRevenueAgorot);
+        const share = productShare(p.revenueAgorot, capped.productRevenueAgorot);
+        expect(share.pct, `${p.productId} share is a percentage`).toBeGreaterThanOrEqual(0);
+        expect(share.pct, `${p.productId} share is a percentage`).toBeLessThanOrEqual(100);
+      }
+      // Parts sum to the whole: the shares of a capped list can never claim the whole period, and
+      // the uncapped one can never claim more than it (rounding gives it a row of slack).
+      const sum = capped.topProducts.reduce((a, p) => a + productShare(p.revenueAgorot, capped.productRevenueAgorot).pct, 0);
+      expect(sum, `shares at cap ${cap} do not exceed 100%`).toBeLessThanOrEqual(100 + capped.topProducts.length);
+    }
+  });
+
+  it('every leading product names the store that sold it', () => {
+    // The admin's list spans every store, so a bare product name has no owner on it ("לא רשום גם
+    // מאיזה חנות הם"). Carried by BOTH builders, or the platform panel renders a blank line.
+    const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
+    expect(s.topProducts.length).toBeGreaterThan(0);
+    for (const p of s.topProducts) expect(p.storeSlug, `${p.productId} store`).toBe(STORE);
   });
 
   it('a single product drill-down reconciles with its own bars', () => {
@@ -810,9 +847,54 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
           Object.fromEntries(buckets.map((x) => [x.key, [x.revenueAgorot, x.orders]]));
         expect(keyed(a.buckets), `${slug} buckets (${granularity})`).toEqual(keyed(b.buckets));
       }
-      expect(fromDb.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]),
-        `top products (${granularity})`).toEqual(fromJs.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]));
+      expect(fromDb.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units, p.storeSlug]),
+        `top products (${granularity})`).toEqual(fromJs.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units, p.storeSlug]));
+      // The denominator behind every percentage on that list, and the count under its heading.
+      // The query gets both from window functions and the JS twin from two reduces; nothing else
+      // would notice if the SQL's nesting stopped computing them before the LIMIT.
+      expectSameMoney(fromDb.productRevenueAgorot, fromJs.productRevenueAgorot, `product revenue (${granularity})`);
+      expect(fromDb.productsMatched, `products matched (${granularity})`).toBe(fromJs.productsMatched);
     }
+  });
+
+  it('a product search narrows the LIST and never the denominator', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const unfiltered = await getPlatformSales(slugs, from, to, 'month', 0);
+    expect(unfiltered.topProducts.length, 'fixture sells something').toBeGreaterThan(0);
+    // A fragment of a real product name, so the search matches at least itself but not everything.
+    const target = unfiltered.topProducts[0]!;
+    const needle = target.name.slice(0, Math.max(2, Math.ceil(target.name.length / 2)));
+
+    const fromDb = await getPlatformSales(slugs, from, to, 'month', 0, needle);
+    const fromJs = buildPlatformSales(stored, slugs, from, to, 'month', 0, needle);
+    expect(fromDb.topProducts.map((p) => p.productId)).toEqual(fromJs.topProducts.map((p) => p.productId));
+    expect(fromDb.productsMatched).toBe(fromJs.productsMatched);
+    expect(fromDb.topProducts.length, 'the searched-for product is in its own results').toBeGreaterThan(0);
+    for (const p of fromDb.topProducts) expect(p.name.toLowerCase()).toContain(needle.toLowerCase());
+    // The whole point: a row found by search still reports its share of the PERIOD. If the filter
+    // leaked into the window the denominator would collapse onto the matches and every search
+    // would print inflated percentages.
+    expectSameMoney(fromDb.productRevenueAgorot, unfiltered.productRevenueAgorot, 'searched denominator');
+
+    // A search that matches nothing is the one case where both windows have no row to ride on.
+    const none = await getPlatformSales(slugs, from, to, 'month', 0, 'zzz-no-such-product-zzz');
+    expect(none.topProducts).toEqual([]);
+    expect(none.productsMatched).toBe(0);
+    expect(none.productRevenueAgorot).toBe(0);
+    expect(buildPlatformSales(stored, slugs, from, to, 'month', 0, 'zzz-no-such-product-zzz')).toEqual(none);
+  });
+
+  it('a LIKE wildcard typed into the product search is searched for, not obeyed', async () => {
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    // '%' matches everything if it reaches LIKE unescaped — which would make the search silently
+    // stop filtering exactly when someone searches for a product with a percentage in its name.
+    const fromDb = await getPlatformSales(slugs, from, to, 'month', 0, '%');
+    const fromJs = buildPlatformSales(stored, slugs, from, to, 'month', 0, '%');
+    expect(fromDb.topProducts.map((p) => p.productId)).toEqual(fromJs.topProducts.map((p) => p.productId));
+    const everything = await getPlatformSales(slugs, from, to, 'month', 0);
+    expect(fromDb.productsMatched, 'a literal % is not "match all"').toBeLessThan(everything.productsMatched);
   });
 
   it('the platform summary built from the query equals the one built from the orders', async () => {

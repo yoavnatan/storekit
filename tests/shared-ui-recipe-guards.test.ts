@@ -33,6 +33,11 @@ function walk(dir: string, out: string[] = []): string[] {
 const FILES = walk(SRC).map((path) => ({ path, text: readFileSync(path, 'utf8') }));
 const rel = (path: string): string => path.slice(SRC.length);
 
+/** Source with comments removed, for the scans where a rule QUOTED in a comment is documentation
+ *  rather than a violation. `{/* … *\/}` in an Astro template is a block comment too. */
+const stripComments = (text: string): string =>
+  text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
 describe('.img-badge is the only box a corner mark may have', () => {
   // Every place that renders one, wherever it renders it from — Astro markup or a client-side
   // template string. `sale-badge` is emitted by lib/price-html.ts for all ~8 price surfaces.
@@ -88,6 +93,79 @@ describe('.img-badge is the only box a corner mark may have', () => {
     const css = readFileSync(fileURLToPath(new URL('../src/styles/utilities/utils.css', import.meta.url)), 'utf8');
     const badgeRules = css.slice(css.indexOf('.img-badge {'), css.indexOf('/* ── Edge fade'));
     expect(badgeRules).not.toMatch(/infinite/);
+  });
+});
+
+describe('agorot never reach a shekel formatter', () => {
+  /**
+   * `formatPrice` (config/store.config.ts) takes SHEKELS; every money field on a performance
+   * summary, an order and a campaign is agorot. Passing one to the other prints a figure a hundred
+   * times too large, and it looks entirely plausible — `money.ts`'s own header names this class,
+   * and on 2026-08-11 seven live sites were doing it: every money number on the admin's per-store
+   * performance page, plus the seller's revenue chart and leading-products list.
+   *
+   * The replacement is `formatAgorot` (lib/money.ts) server-side, or the `fmtAgorot` wrapper the
+   * two client bundles already define. The scan covers `.astro` as well as `.ts`, which is where
+   * all seven lived — `money-guards.test.ts` walks lib/api/scripts only.
+   */
+  it('no formatPrice(...Agorot)', () => {
+    const offenders: string[] = [];
+    for (const { path, text } of FILES) {
+      // The WHOLE argument is an identifier or member chain whose last segment ends in `Agorot`,
+      // closing immediately. Requiring the close is what separates the bug from the two legitimate
+      // shapes: `formatPrice(fromAgorot(x))` and the `formatPrice(agorot / 100)` inside the client
+      // wrappers are both conversions, and both continue past the name. Comments are stripped first
+      // — this class is quoted in money.ts's header on purpose, and documentation is not a defect.
+      for (const m of stripComments(text).matchAll(/formatPrice\(\s*([A-Za-z0-9_.?[\]]*[Aa]gorot)\s*\)/g)) {
+        offenders.push(`${rel(path)}: formatPrice(${m[1]})`);
+      }
+    }
+    expect(offenders, 'use formatAgorot (lib/money.ts) — formatPrice takes shekels').toEqual([]);
+  });
+
+  it('no chart plots agorot through formatPrice', () => {
+    // The same bug one indirection further out: the formatter is handed over by reference, so the
+    // argument name never appears. Both live uses plotted `revenueAgorot`; there is no chart on
+    // this site whose values are shekels, so the pairing is simply always wrong.
+    const offenders = FILES
+      .filter(({ text }) => /valueFormatter:\s*formatPrice\b/.test(text))
+      .map(({ path }) => rel(path));
+    expect(offenders, 'a money chart plots agorot — pass formatAgorot / fmtAgorot').toEqual([]);
+    // The scan can see the shape it is looking for: the correct pairing exists and is not matched.
+    expect(FILES.some(({ text }) => /valueFormatter:\s*(formatAgorot|fmtAgorot)\b/.test(text))).toBe(true);
+  });
+});
+
+describe('the leading-products row has one Astro renderer and one client renderer', () => {
+  /**
+   * Three Astro copies of this row existed (the admin platform panel, the admin per-store page, the
+   * seller's own tab) plus the client re-render, and they had drifted: two formatted agorot as
+   * shekels, and all four divided by the sum of the FIVE rows shown rather than by the period's
+   * product revenue — so the top five always added to 100% however long the tail behind them was.
+   * They are now `components/dashboard/TopProductsList.astro` and `renderTopProducts` in
+   * `scripts/dashboard/performance.ts`. A third copy is how this comes back.
+   */
+  it('only two files build the row', () => {
+    // BUILDING one means emitting the class in a `class="…"` attribute — the two renderers do,
+    // in Astro markup and in a template literal. Naming it to a querySelector/classList (the admin
+    // module strips the entrance off a searched result) is not a third copy of the row.
+    const owners = FILES
+      .filter(({ text }) => /class="[^"]*animate-top-bar-grow/.test(text))
+      .map(({ path }) => rel(path).replace(/\\/g, '/'))
+      .sort();
+    expect(owners).toEqual([
+      'components/dashboard/TopProductsList.astro',
+      'scripts/dashboard/performance.ts',
+    ]);
+  });
+
+  it('neither of them re-derives the share denominator from the rows it was handed', () => {
+    // The bug was arithmetic, not markup: `products.reduce(...)` as the divisor. The share is
+    // `productShare(revenue, totalAgorot)` from lib/top-product-share.ts on both sides.
+    for (const name of ['components/dashboard/TopProductsList.astro', 'scripts/dashboard/performance.ts']) {
+      const file = FILES.find(({ path }) => rel(path).replace(/\\/g, '/') === name)!;
+      expect(file.text, `${name} uses the shared share helper`).toMatch(/productShare\(/);
+    }
   });
 });
 

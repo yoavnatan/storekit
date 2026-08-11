@@ -1,0 +1,51 @@
+---
+import { formatAgorot } from '../../lib/money.js';
+import type { TopProduct } from '../../lib/seller-performance.js';
+import { productShare } from '../../lib/top-product-share.js';
+
+// The leading-products rows — the INSIDE of `#perf-top-products`, not the box.
+//
+// One component because there were three copies of this row (the admin's platform panel, the
+// admin's per-store page, the seller's own tab) plus the client re-render in
+// scripts/dashboard/performance.ts, and they had already drifted: two of the three formatted
+// agorot through `formatPrice`, which is a shekel formatter, and printed every figure a hundred
+// times too large until the first client repaint corrected it. The container stays at each call
+// site — they differ in skeleton and aria-busy — and only the contents are shared.
+//
+// The client twin is `renderTopProducts` in scripts/dashboard/performance.ts. Change one, change
+// the other; tests/shared-ui-recipe-guards.test.ts fails if a third copy appears.
+interface Props {
+  products: TopProduct[];
+  /** Gross revenue of every product that sold in range — the share denominator, never the sum of
+   *  `products` (see lib/top-product-share.ts). */
+  totalAgorot: number;
+  /** Name the store each product belongs to. True only on the PLATFORM-wide list, where a row is
+   *  otherwise a product name with no owner; a store's own tab knows whose products these are. */
+  showStore?: boolean;
+  /** A product search is active — so an empty list means "nothing matched", not "nothing sold". */
+  searching?: boolean;
+  d: Record<string, string>;
+}
+const { products, totalAgorot, showStore = false, searching = false, d } = Astro.props;
+---
+
+{products.length === 0 && (
+  <p class="muted text-[0.85rem] m-0">{searching ? d.perfTopProductsNoMatch : d.perfTopProductsEmpty}</p>
+)}
+{products.map((tp, i) => {
+  const share = productShare(tp.revenueAgorot, totalAgorot);
+  return (
+    <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
+      <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${share.pct}%;--tw:${share.pct}%;animation-delay:${Math.min(i * 60, 300)}ms`}></div>
+      <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
+        <span class="min-w-0">
+          <span class="block font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
+          {showStore && tp.storeName && (
+            <a href={`/admin/store/${tp.storeSlug}/performance?from=performance`} class="admin-link block text-[0.72rem] [color:var(--color-muted)] overflow-hidden text-ellipsis whitespace-nowrap">{tp.storeName}</a>
+          )}
+        </span>
+        <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{share.label}</strong> · {tp.units} {d.perfUnitsSold} · {formatAgorot(tp.revenueAgorot)}</span>
+      </div>
+    </div>
+  );
+})}

@@ -287,7 +287,7 @@ const [
   // One query for every store's traffic and one for every store's sales, not a per-store pass over
   // either (DB_MIGRATION_PLAN.md §5 for the views, §3 for the sales).
   only(['performance'], () => getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity), new Map()),
-  only(['performance'], () => getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity), { byStore: new Map(), topProducts: [] }),
+  only(['performance'], () => getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity), { byStore: new Map(), topProducts: [], productRevenueAgorot: 0, productsMatched: 0 }),
   // Names for the handful of product ids the two top-lists actually name — a lookup by id, not a
   // pass over the whole catalogue (§3). A product that has since been deleted simply has no entry,
   // and the panel already falls back to rendering the id.
@@ -420,6 +420,9 @@ const performanceTab = shows('performance') ? (() => {
     // client-side afterwards (platform-performance.ts) — the URL params are still honoured here so
     // a deep-linked ?storeQ= renders server-side too.
     storePage: selectStoreRows(perf.stores, parseStoreRowsQuery(sp)),
+    // How many products sold at all in the range — the "top 5 of N" line over the leaderboard.
+    // With no product search running, `productsMatched` IS that count.
+    productsTotal: perfSales.productsMatched,
     // Where the platform's income actually comes from — commission is only one of three.
     revenue: buildPlatformRevenue(
       perf.summary.platformCommissionAgorot,
@@ -602,6 +605,7 @@ const badgeFor: Record<string, number> = badgeCounts;
           summary={performanceTab!.summary}
           revenue={performanceTab!.revenue}
           storePage={performanceTab!.storePage}
+          productsTotal={performanceTab!.productsTotal}
           fromISO={perfFromISO}
           toISO={perfToISO}
           lang={perfLang}
