@@ -55,7 +55,7 @@ describe('filterAndSortSellerCards', () => {
       makeSellerCard({ seller: makeSeller({ id: 's1', createdAt: '2026-01-01T00:00:00.000Z' }) }),
       makeSellerCard({ seller: makeSeller({ id: 's2', createdAt: '2026-01-05T00:00:00.000Z' }) }),
     ];
-    const result = filterAndSortSellerCards(cards, { q: '', sortCol: 'joined', sortDir: 'desc', blockedOnly: false });
+    const result = filterAndSortSellerCards(cards, { q: '', sortCol: 'joined', sortDir: 'desc', blockedOnly: false, payoutState: 'all' });
     expect(result.map((c) => c.seller.id)).toEqual(['s2', 's1']);
   });
 
@@ -64,7 +64,7 @@ describe('filterAndSortSellerCards', () => {
       makeSellerCard({ seller: makeSeller({ id: 's1' }), revenue: { totalRevenueAgorot: 50, monthRevenueAgorot: 0 } }),
       makeSellerCard({ seller: makeSeller({ id: 's2' }), revenue: { totalRevenueAgorot: 200, monthRevenueAgorot: 0 } }),
     ];
-    const result = filterAndSortSellerCards(cards, { q: '', sortCol: 'revenue', sortDir: 'desc', blockedOnly: false });
+    const result = filterAndSortSellerCards(cards, { q: '', sortCol: 'revenue', sortDir: 'desc', blockedOnly: false, payoutState: 'all' });
     expect(result.map((c) => c.seller.id)).toEqual(['s2', 's1']);
   });
 
@@ -73,8 +73,36 @@ describe('filterAndSortSellerCards', () => {
       makeSellerCard({ seller: makeSeller({ id: 's1' }) }, { blocked: true }),
       makeSellerCard({ seller: makeSeller({ id: 's2' }) }, { blocked: false }),
     ];
-    const result = filterAndSortSellerCards(cards, { q: '', sortCol: 'joined', sortDir: 'desc', blockedOnly: true });
+    const result = filterAndSortSellerCards(cards, { q: '', sortCol: 'joined', sortDir: 'desc', blockedOnly: true, payoutState: 'all' });
     expect(result.map((c) => c.seller.id)).toEqual(['s1']);
+  });
+
+  /**
+   * The payout filter replaced the admin's per-seller payout TABLE (owner, סשן א׳ §3), so it is
+   * the only way left to find the sellers whose money cannot be sent. Two things have to hold, and
+   * the second is the one that would rot quietly: a seller the plan says nothing about must not
+   * match a state filter. `planPayouts` drops the settled rows, so "absent" means "nothing is
+   * moving" — matching them into "תקוע — אין פרטי בנק" would report the whole platform as stuck.
+   */
+  it('narrows to one payout state, and never matches a seller the plan says nothing about', () => {
+    const cards = [
+      makeSellerCard({ seller: makeSeller({ id: 's1' }) }),
+      makeSellerCard({ seller: makeSeller({ id: 's2' }) }),
+      makeSellerCard({ seller: makeSeller({ id: 's3' }) }),
+    ];
+    const states = new Map([['s1', 'no_bank'], ['s2', 'payable']]);
+    const query = { q: '', sortCol: 'joined', sortDir: 'desc', blockedOnly: false } as const;
+    expect(filterAndSortSellerCards(cards, { ...query, payoutState: 'no_bank' }, states).map((c) => c.seller.id)).toEqual(['s1']);
+    expect(filterAndSortSellerCards(cards, { ...query, payoutState: 'payable' }, states).map((c) => c.seller.id)).toEqual(['s2']);
+    // s3 is in no state at all and must fall out of every one of them.
+    expect(filterAndSortSellerCards(cards, { ...query, payoutState: 'below_minimum' }, states)).toEqual([]);
+    // ...and 'all' still shows everybody, including s3.
+    expect(filterAndSortSellerCards(cards, { ...query, payoutState: 'all' }, states)).toHaveLength(3);
+  });
+
+  it('shows everybody when the map is missing entirely — the filter cannot hide a tab', () => {
+    const cards = [makeSellerCard({ seller: makeSeller({ id: 's1' }) })];
+    expect(filterAndSortSellerCards(cards, { q: '', sortCol: 'joined', sortDir: 'desc', blockedOnly: false, payoutState: 'all' })).toHaveLength(1);
   });
 });
 

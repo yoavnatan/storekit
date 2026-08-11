@@ -292,7 +292,23 @@ export interface AdminSellerQuery {
   sortCol: AdminSellerSortCol;
   sortDir: AdminSortDir;
   blockedOnly: boolean;
+  /**
+   * Narrow to sellers in one payout state, or `'all'`.
+   *
+   * It exists because the per-seller payout TABLE does not any more: the owner asked for those
+   * facts inside the seller cards rather than as a second roster of the same people (סשן א׳ §3),
+   * and the one thing that roster could do which a card cannot is answer "who is stuck". A card
+   * shows one seller; a filter finds them among a thousand. Without this, removing the table would
+   * have removed a real capability along with the duplication.
+   */
+  payoutState: PayoutStateFilter;
 }
+
+/** `payable` / `no_bank` / `below_minimum` from `payout-run.ts`, plus "don't filter". The two
+ *  states with nothing to act on (`settled`, `already_paid`) are deliberately not offered: they are
+ *  most sellers most months, so a chip for them is a chip that selects everybody. */
+export type PayoutStateFilter = 'all' | 'payable' | 'no_bank' | 'below_minimum';
+export const PAYOUT_STATE_FILTERS: readonly PayoutStateFilter[] = ['all', 'payable', 'no_bank', 'below_minimum'];
 
 export interface AdminStoreQuery {
   q: string;
@@ -316,11 +332,23 @@ export function countStoreStates(rows: StoreRow[]): Record<StoreStateFilter, num
   return counts;
 }
 
-export function filterAndSortSellerCards(cards: SellerCardData[], query: AdminSellerQuery): SellerCardData[] {
+/**
+ * @param payoutStateBySeller sellerId → the state `payout-run.ts#planPayouts` put them in. Passed
+ *   in rather than read here for the reason this whole module is pure: a GROUP BY belongs in the
+ *   database and everything else belongs in a function a test can call with three literals. A
+ *   seller absent from the map has no released balance at all, which is `settled` — so the three
+ *   offered filters correctly exclude them.
+ */
+export function filterAndSortSellerCards(
+  cards: SellerCardData[],
+  query: AdminSellerQuery,
+  payoutStateBySeller?: ReadonlyMap<string, string>,
+): SellerCardData[] {
   const nq = normSearch(query.q);
   const filtered = cards.filter((c) => {
     if (nq && !sellerSearchMatch(nq, c)) return false;
     if (query.blockedOnly && !c.stores.some((s) => s.store.blocked)) return false;
+    if (query.payoutState !== 'all' && payoutStateBySeller?.get(c.seller.id) !== query.payoutState) return false;
     return true;
   });
 
@@ -361,7 +389,11 @@ const VALID_SELLER_SORT_COMBOS = new Set(['joined:desc', 'joined:asc', 'revenue:
 export function parseSellerQuery(sp: URLSearchParams): AdminSellerQuery {
   const requested = sp.get('ssort') ?? 'joined:desc';
   const [sortCol, sortDir] = (VALID_SELLER_SORT_COMBOS.has(requested) ? requested : 'joined:desc').split(':') as [AdminSellerSortCol, AdminSortDir];
-  return { q: (sp.get('sq') ?? '').trim(), sortCol, sortDir, blockedOnly: sp.get('sblocked') === '1' };
+  // Whitelisted, like every other filter param here: a hand-edited `?spayout=nonsense` falls back
+  // to "no filter" rather than silently matching nothing and reading as "no sellers exist".
+  const rawPayout = sp.get('spayout') as PayoutStateFilter | null;
+  const payoutState: PayoutStateFilter = PAYOUT_STATE_FILTERS.includes(rawPayout as PayoutStateFilter) ? rawPayout! : 'all';
+  return { q: (sp.get('sq') ?? '').trim(), sortCol, sortDir, blockedOnly: sp.get('sblocked') === '1', payoutState };
 }
 
 const VALID_STORE_SORT_COMBOS = new Set(['name:asc', 'name:desc', 'revenue:desc', 'revenue:asc', 'products:desc']);
