@@ -27,7 +27,7 @@ const SHIPPING_COLORS: Record<string, string> = {
 // The BUYER's charge, not the seller's payout — the two were both called "תשלום" and the owner
 // could not tell which one a filter meant (2026-08-11). Every value is spelled from the buyer's
 // side so the column cannot be read as the money going out to a seller.
-const PAYMENT_LABELS: Record<string, string> = { pending: 'החיוב טרם הושלם', paid: 'הכסף התקבל', failed: 'החיוב נכשל' };
+const PAYMENT_LABELS: Record<string, string> = { pending: 'החיוב טרם עבר', paid: 'החיוב עבר', failed: 'החיוב נכשל' };
 const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a34a', failed: '#ef4444' };
 /**
  * The five payout states — WORD FOR WORD what the seller sees (translations.ts#payFilter_*).
@@ -47,7 +47,7 @@ const PAYOUT_LABELS: Record<string, string> = {
   undelivered: 'בדרך ללקוח',
   window: 'ממתין לסיום ימי החזרה',
   released: 'ישולם בתשלום הקרוב',
-  none: 'לא ישולם — ההזמנה בוטלה או שהכסף לא התקבל',
+  none: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
 };
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
