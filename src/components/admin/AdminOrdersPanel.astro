@@ -17,6 +17,8 @@ import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
 import { orderPayoutLine, payoutWhyText, type PayoutWhyKey } from '../../lib/order-payout-line.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
+import { buildAdminUrl } from '../../lib/admin-nav.js';
+import { businessDayISO } from '../../lib/business-day.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
 import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
@@ -43,6 +45,22 @@ const {
   orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, storeNames,
   newSince, newOnly, newCount, page, totalPages, buildUrl,
 } = Astro.props;
+
+/**
+ * This purchase's own money trail (`?panel=moneylog&mq=<ref>`).
+ *
+ * The window is named rather than left to the journal's 30-day default, and that is the whole
+ * difference between a link that works and one that answers "no events" for every order older than
+ * a month: nothing about this purchase can have happened before the purchase, so its own day is the
+ * correct `from` and there is no reason to hide anything after it.
+ *
+ * The ref matches either spelling — `buyer-purchases.ts` uses the checkout reference when there is
+ * one and the order id's first 8 characters otherwise, and the journal's search is `ILIKE` over both
+ * `checkout_ref` and `order_id` (moneylog-search.ts), so the uppercased fallback still finds its
+ * rows.
+ */
+const moneyLogHref = (ref: string, createdAt: string): string =>
+  buildAdminUrl('moneylog', { mq: ref, mfrom: businessDayISO(new Date(createdAt)) });
 
 /**
  * The hold reason, in the admin's language.
@@ -308,6 +326,14 @@ const purchases = groupBuyerPurchases(orders);
                   <span>משלוח: {shippingAgorot === 0 ? 'חינם' : formatAgorot(shippingAgorot)}</span>
                   <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatAgorot(totalAgorot)}</strong>
                 </div>
+                {/* Into the journal, filtered to this purchase — the answer to "what actually
+                    happened to this order's money", which is the one question the journal is FOR
+                    (owner, סשן ב׳ §4: *"מה בעצם נותן לי יומן כספי?"*). The journal already links
+                    out to an order; nothing linked in, so it could only be reached by opening a tab
+                    of every event on the platform and searching for a reference by hand. */}
+                <p class="m-0 mt-2 text-[0.75rem]">
+                  <a href={moneyLogHref(purchase.ref, purchase.createdAt)} class="[color:var(--color-primary)] no-underline hover:underline">כל האירועים הכספיים של הרכישה הזאת</a>
+                </p>
               </div>
               {/* ── The shipping status is NOT repeated here ──
                   It is in the card's header, on the row the admin clicked to open this, and once

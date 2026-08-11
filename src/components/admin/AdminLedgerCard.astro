@@ -1,0 +1,82 @@
+---
+import { formatAgorot } from '../../lib/money.js';
+import { formatBusinessDayLabel } from '../../lib/format-date.js';
+import type { PlatformLedger } from '../../lib/platform-ledger.js';
+
+/**
+ * **Where the money is, on the tab the owner actually opens.**
+ *
+ * סשן ב׳ §3 asked for the platform to be manageable as a business — *"מה ההכנסות הקרובות, מה אני
+ * מחזיק שהוא לא שלי אלא של המוכר"* — and the answer existed nowhere: the payouts tab looks one
+ * transfer ahead, the performance tab looks at a date range, and neither states a balance. Every
+ * figure here comes from `platform-ledger.ts`, whose header carries the identity they satisfy.
+ *
+ * **Two blocks, and the split is the accounting, not the layout.** The first is money that is not
+ * ours and will leave; the second is money that is ours and will stay. Reading them as one row of
+ * five equal tiles is exactly the confusion this card exists to end, so they do not look alike:
+ * the liability leads, the income sits under a rule with its own heading.
+ *
+ * **No standing paragraph** (`feedback_no_standing_screen_prose`): each figure says what it is on
+ * its own line, and the only sentence on the card appears when a number is genuinely stuck.
+ */
+interface Props {
+  ledger: PlatformLedger;
+  /** Deep link into the Sellers tab filtered to the sellers behind a stuck figure. */
+  noBankHref: string;
+  payoutsHref: string;
+}
+const { ledger, noBankHref, payoutsHref } = Astro.props;
+
+const TILE = 'rounded-[var(--radius)] border [border-color:var(--color-border)] p-3';
+const LABEL = 'text-[0.76rem] [color:var(--color-muted)] font-medium mb-1';
+const FIGURE = 'm-0 text-[1.15rem] font-bold tabular-nums';
+const SUB = 'muted m-0 mt-1 text-[0.72rem]';
+---
+
+<section class="rounded-[var(--radius)] border [border-color:var(--color-border)] p-3.5 mb-5">
+  <div class="flex items-baseline justify-between gap-3 flex-wrap">
+    <strong class="text-[0.9rem]">כספים</strong>
+    <a href={payoutsHref} class="text-[0.76rem] [color:var(--color-primary)] no-underline hover:underline">לשונית התשלומים</a>
+  </div>
+
+  <dl class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+    {/* The liability, first and largest — under the agent model this is somebody else's money in
+        our account from the moment the buyer paid (terms.astro), and it is the number that was
+        impossible to read anywhere before this card. */}
+    <div class={TILE}>
+      <dt class={LABEL}>כסף של מוכרים אצלנו</dt>
+      <dd class={FIGURE}>{formatAgorot(ledger.sellerFundsAgorot)}</dd>
+      <p class={SUB}>לא שלנו — יוצא למוכרים</p>
+    </div>
+    <div class={TILE}>
+      <dt class={LABEL}>מתוכו: מוכן לתשלום</dt>
+      <dd class={FIGURE}>{formatAgorot(ledger.releasedAgorot)}</dd>
+      <p class={SUB}>עבר את תקופת ההמתנה</p>
+    </div>
+    <div class={TILE}>
+      <dt class={LABEL}>מתוכו: בהמתנה</dt>
+      <dd class={FIGURE}>{formatAgorot(ledger.heldAgorot)}</dd>
+      <p class={SUB}>הזמנות שטרם נמסרו</p>
+    </div>
+  </dl>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t [border-color:var(--color-border)]">
+    <div class={TILE}>
+      <dt class={LABEL}>יוצא בתשלום הקרוב · {formatBusinessDayLabel(ledger.nextPayoutDayISO)}</dt>
+      <dd class={`${FIGURE} [color:var(--color-accent)]`}>{formatAgorot(ledger.nextPayoutAgorot)}</dd>
+      {/* Only when there is one. A permanent "0 ₪ תקוע" row is furniture, and it teaches the eye to
+          skip the spot where the real one will appear — the same reasoning the reconciliation card
+          records for its clean state. */}
+      {ledger.stuckNoBankAgorot > 0 && (
+        <p class="m-0 mt-1 text-[0.72rem] [color:var(--color-danger)]">
+          {formatAgorot(ledger.stuckNoBankAgorot)} תקוע — <a href={noBankHref} class="[color:inherit] underline underline-offset-2">מוכרים ללא פרטי בנק</a>
+        </p>
+      )}
+    </div>
+    <div class={TILE}>
+      <dt class={LABEL}>העמלה שלנו שטרם נגבתה</dt>
+      <dd class={FIGURE}>{formatAgorot(ledger.platformIncomeAgorot)}</dd>
+      <p class={SUB}>מזה {formatAgorot(ledger.incomeAtNextPayoutAgorot)} ייגבו בתשלום הקרוב</p>
+    </div>
+  </div>
+</section>

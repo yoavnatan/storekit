@@ -125,6 +125,23 @@ export interface PayoutPlan {
   noBankSellers: number;
   belowMinimumAgorot: number;
   belowMinimumSellers: number;
+  /** Commission the payable rows would settle — what the platform actually earns on the next run.
+   *  The INCREMENT, like `PayoutPlanRow.commissionAgorot` it is summed from. */
+  payableCommissionAgorot: number;
+  /**
+   * Platform-wide totals this run already has in hand, carried out rather than re-queried.
+   *
+   * They are not about the next payout at all — they are the two rows the platform's own balance
+   * sheet needs (`platform-ledger.ts`): everything ever transferred to sellers, and every manual
+   * ledger correction. The admin overview asks for them on every load, and asking the same two
+   * aggregates a second time to answer a question this function had already answered would be two
+   * reads of the same fact that can disagree by whatever lands between them.
+   */
+  paidOutAgorot: number;
+  /** Commission those transfers already took off at source — what the platform has collected, as
+   *  opposed to earned. Excludes failed payouts, like `paidOutAgorot` beside it. */
+  commissionSettledAgorot: number;
+  adjustmentsAgorot: number;
 }
 
 /**
@@ -227,6 +244,12 @@ export async function planPayouts(todayISO: string = businessTodayISO()): Promis
     noBankSellers: count('no_bank'),
     belowMinimumAgorot: sum('below_minimum'),
     belowMinimumSellers: count('below_minimum'),
+    payableCommissionAgorot: rows.reduce((t, r) => (r.state === 'payable' ? t + r.commissionAgorot : t), 0),
+    // Over EVERY seller, not only those with a row here: a seller whose balance is fully settled has
+    // no releasable money and so no row, and their past transfers are still money that has left.
+    paidOutAgorot: [...totals.values()].reduce((t, v) => t + v.paidOutAgorot, 0),
+    commissionSettledAgorot: [...totals.values()].reduce((t, v) => t + v.commissionSettledAgorot, 0),
+    adjustmentsAgorot: [...adjustments.values()].reduce((t, v) => t + v, 0),
   };
 }
 

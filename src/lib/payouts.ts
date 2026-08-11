@@ -293,6 +293,78 @@ export async function getReleasableBySeller(
   });
 }
 
+/** What every seller together has earned through the mall, and how much of it is out of hold.
+ *  Gross is what buyers paid for goods (net of seller discounts, never shipping); commission is our
+ *  cut of it; net is the difference — what we owe sellers before payouts and adjustments. */
+export interface PlatformAccrual {
+  grossAgorot: number;
+  commissionAgorot: number;
+  netAgorot: number;
+  /** The same three, restricted to slices past their hold (`payout-hold.ts`). */
+  releasedGrossAgorot: number;
+  releasedCommissionAgorot: number;
+  releasedNetAgorot: number;
+}
+
+/**
+ * The platform's whole accrual, released and unreleased, in ONE query.
+ *
+ * **What this exists for.** Every other money surface here is per seller: the payout plan lists who
+ * is owed what, the seller cards show one balance each. Nobody could answer the owner's question
+ * (סשן ב׳ §3) — *"מה אני מחזיק שהוא לא שלי אלא של המוכר"* — because the total liability is not any
+ * seller's number, and summing the plan's rows does not give it either: those rows exist only for
+ * sellers with money already OUT of hold, so everything still in hold — most of the balance on a
+ * normal week — is invisible there.
+ *
+ * **The released half is a `FILTER`, not a second query.** It is the same `RELEASABLE_SQL` the
+ * payout run and the seller's own screen are computed from, applied to the same rows in the same
+ * pass, so "held" and "released" are guaranteed to be two parts of one total rather than two reads
+ * that could be taken a second apart and fail to add up.
+ *
+ * **The commission is rounded per slice**, at the OWNING seller's tier rate, exactly as
+ * `getReleasableBySeller` and `seller-balance.ts` do it — applying a rate to the platform total
+ * instead would land a few agorot away from the sum of the screens it is supposed to reconcile with.
+ */
+export async function getPlatformAccrual(todayISO: string = businessTodayISO()): Promise<PlatformAccrual> {
+  const tiers = SELLER_TIERS.map((t) => t.id);
+  const percents = SELLER_TIERS.map((t) => t.commissionPercent);
+  // Derived, never literal — the same trap RELEASABLE_PARAM_COUNT exists for.
+  const A = RELEASABLE_PARAM_COUNT + 1, B = RELEASABLE_PARAM_COUNT + 2, C = RELEASABLE_PARAM_COUNT + 3;
+  const COMMISSION = `ROUND(${NET_SQL} * r.pct / 100.0)`;
+  const found = await firstRow<{
+    gross: string | number; commission: string | number;
+    released_gross: string | number; released_commission: string | number;
+  }>(
+    `SELECT COALESCE(SUM(${NET_SQL}), 0)                                     AS gross,
+            COALESCE(SUM(${COMMISSION}), 0)                                  AS commission,
+            COALESCE(SUM(${NET_SQL})    FILTER (WHERE ${RELEASABLE_SQL}), 0) AS released_gross,
+            COALESCE(SUM(${COMMISSION}) FILTER (WHERE ${RELEASABLE_SQL}), 0) AS released_commission
+       FROM order_stores os
+       JOIN orders  o   ON o.id = os.order_id
+       JOIN stores  st  ON st.slug = os.store_slug
+       JOIN sellers sel ON sel.id = st.seller_id
+       JOIN unnest($${A}::text[], $${B}::numeric[]) AS r(tier, pct)
+              ON r.tier = COALESCE(sel.tier, $${C}::text)
+      -- $1/$2 are the revenue lists, which RELEASABLE_SQL's parameters already carry: one order of
+      -- arguments for both, so the outer scope and the FILTER can never be asking about
+      -- different orders.
+      WHERE o.payment_status = ANY($1::text[]) AND o.shipping_status = ANY($2::text[])`,
+    [...releasableParams(todayISO), tiers, percents, DEFAULT_TIER],
+  );
+  const grossAgorot = big(found?.gross);
+  const commissionAgorot = big(found?.commission);
+  const releasedGrossAgorot = big(found?.released_gross);
+  const releasedCommissionAgorot = big(found?.released_commission);
+  return {
+    grossAgorot,
+    commissionAgorot,
+    netAgorot: grossAgorot - commissionAgorot,
+    releasedGrossAgorot,
+    releasedCommissionAgorot,
+    releasedNetAgorot: releasedGrossAgorot - releasedCommissionAgorot,
+  };
+}
+
 /**
  * One seller's account, ready for their screen — the slices, the holds, and every sum.
  *
