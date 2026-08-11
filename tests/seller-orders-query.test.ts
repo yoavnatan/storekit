@@ -15,7 +15,7 @@ function order(id: string, shippingStatus: string, createdAt: string): Order {
   } as unknown as Order;
 }
 
-const urgencyQuery: SellerOrderQuery = { q: '', sortCol: 'urgency', sortDir: 'asc', shippingStatus: [] };
+const urgencyQuery: SellerOrderQuery = { q: '', sortCol: 'urgency', sortDir: 'asc', shippingStatus: [], payoutStatus: [] };
 
 describe('filterAndSortSellerOrders — urgency sort', () => {
   it('floats owe-action orders (pending/processing/ready) above shipped, then delivered last', () => {

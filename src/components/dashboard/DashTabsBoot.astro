@@ -64,8 +64,16 @@
         tabs[i].setAttribute('aria-selected', 'false');
         tabs[i].setAttribute('tabindex', '-1');
       }
+      // `dashtab:hide` is the mirror of the `dashtab:show` below, and it is dispatched only for a
+      // panel that really WAS visible — a broadcast to nine already-hidden panels would make
+      // "your tab is being left" fire eight times for something that never happened. Same
+      // bubbling + inert-unless-listened-to contract: the Orders tab uses it to undo a filter it
+      // was handed by a link (scripts/dashboard/orders.ts).
       var panels = document.querySelectorAll('.dash-panel');
-      for (var j = 0; j < panels.length; j++) panels[j].hidden = true;
+      for (var j = 0; j < panels.length; j++) {
+        if (!panels[j].hidden) panels[j].dispatchEvent(new CustomEvent('dashtab:hide', { bubbles: true }));
+        panels[j].hidden = true;
+      }
 
       tab.classList.add('dash-tab--active');
       tab.setAttribute('aria-selected', 'true');

@@ -56,10 +56,8 @@ import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro'
 import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusCounts, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
-import { parseSellerOrderQuery, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
-import { SHIPPING_STATUS_RULES, type ShippingStatus } from '../../lib/order-status-rules.js';
-import { encodeList } from '../../lib/admin-nav.js';
-import { orderPayoutLine, payoutWhyText } from '../../lib/order-payout-line.js';
+import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { orderPayoutLine, payoutWhyText, payoutFilterValue } from '../../lib/order-payout-line.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
@@ -301,19 +299,18 @@ const seller = payoutAccount?.seller ?? null;
  * moves — `payout-hold.ts` is the only thing that does that, and it reads the right column.
  */
 function ordersForHoldBasisHref(basis: 'payment' | 'unshipped', storeSlug: string | null): string {
-  const statuses = basis === 'unshipped'
-    ? ORDER_FILTER_STATUSES.filter((s) => {
-        const rule = SHIPPING_STATUS_RULES[s as ShippingStatus];
-        return !rule.payoutClockRuns && !rule.terminal;
-      })
-    : ['shipped'];
   const params = new URLSearchParams({ panel: 'orders' });
   // The row's OWN shop, not the one in the switcher. The payments tab is account-wide and the
   // Orders tab shows one store, so a link that always used the current store sent a two-shop seller
   // to the wrong list and showed them a subset as if it were the answer (owner, 2026-08-11).
   const target = storeSlug ? allStores.find((s) => s.slug === storeSlug) : store;
   if (target) params.set('store', target.id);
-  params.set('ostatus', encodeList(statuses));
+  // `opay` — the Orders tab's own payout-status column, NOT a list of shipping statuses. The first
+  // version spelled the hold rule out as `?ostatus=pending,processing`, which is a restatement of
+  // `order-status-rules.ts` inside a link: it would have gone on filtering the old way the day a
+  // status's payout behaviour changed. The owner asked for the filter column instead, and it is
+  // also the version that cannot drift.
+  params.set('opay', basis === 'unshipped' ? 'unshipped' : 'undelivered');
   // Says why the list is narrowed once it gets there, and offers the way out. Without it the seller
   // lands on a filtered Orders tab with no idea what filtered it or how to leave (owner, same).
   params.set('ofrom', basis);
@@ -1899,7 +1896,7 @@ const orderStatusColors: Record<string, string> = {
               a comment as that expression's first child and fails with no file and no line —
               scripts/verify.mjs's header carries the case.) */}
           {storeOrdersTotal > 0 && (
-            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')}>
+            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')} data-payout={sellerOrderQuery.payoutStatus.join(',')}>
               <div class="relative flex-1 min-w-[110px] max-w-[280px]">
                 <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="search" id="orders-search-input" value={sellerOrderQuery.q} placeholder={d.ordersSearchPlaceholder ?? 'חיפוש הזמנות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
@@ -1927,9 +1924,18 @@ const orderStatusColors: Record<string, string> = {
               arrives at a shorter list with no explanation and no obvious undo — the filter menu's
               own clear is two clicks inside a dropdown (owner, 2026-08-11). Server-rendered from
               `?ofrom=`, so it is right at first paint and gone the moment the seller filters by
-              hand instead. */}
+              hand instead.
+
+              `justify-start` on the flex row is what makes it follow the page's direction: `.card`
+              is `display:flex; flex-direction:column` (cards.css), and overriding it to a row
+              without saying where the row starts left the content packed to the physical LEFT
+              inside a right-aligned page (owner, 2026-08-11). `text-start` covers the text for the
+              same reason — both are logical properties, so neither needs a `[dir]` rule.
+
+              (Comment ABOVE the `{expr && (`, never as its first child — that is the silent Astro
+              compile failure scripts/verify.mjs's header carries.) */}
           {ordersFromBasis && (
-            <div id="orders-from-banner" class="card card--flat p-3 mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.85rem]" role="status">
+            <div id="orders-from-banner" class="card card--flat p-3 mb-3 flex flex-row flex-wrap justify-start items-baseline text-start gap-x-2 gap-y-1 text-[0.85rem]" role="status">
               <span>{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</span>
               <a class="underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
             </div>
@@ -1955,7 +1961,7 @@ const orderStatusColors: Record<string, string> = {
                 deliveryMethod: storeSub?.deliveryMethod ?? null,
               });
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-payout={payoutFilterValue(payLine)} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the
