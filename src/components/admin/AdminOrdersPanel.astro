@@ -312,7 +312,7 @@ const purchases = groupBuyerPurchases(orders);
                               called תשלום, so neither could be read (owner, 2026-08-11). */}
                           <span class="[color:var(--color-muted)]">התשלום למוכר/ת:</span>
                           <strong class="[color:var(--color-text)]">
-                            {line.state === 'not_payable' ? 'לא ישולם — בוטל או לא שולם'
+                            {line.state === 'not_payable' ? 'לא ישולם — ההזמנה בוטלה או שהכסף לא התקבל'
                               : line.state === 'releasable' ? 'ישולם בתשלום הקרוב'
                               : line.releaseDayISO ? `ישולם אחרי ${formatBusinessDayLabel(line.releaseDayISO)}`
                               : 'הספירה מתחילה כשההזמנה נשלחת'}

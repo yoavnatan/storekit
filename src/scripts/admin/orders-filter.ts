@@ -47,7 +47,7 @@ const PAYOUT_LABELS: Record<string, string> = {
   undelivered: 'בדרך ללקוח',
   window: 'ממתין לסיום ימי החזרה',
   released: 'ישולם בתשלום הקרוב',
-  none: 'לא ישולם — בוטל או לא שולם',
+  none: 'לא ישולם — ההזמנה בוטלה או שהכסף לא התקבל',
 };
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
