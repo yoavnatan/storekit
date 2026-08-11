@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isStoreIncomplete, filterAndSortSellerCards, filterAndSortStoreRows, countStoreStates, parseStoreQuery, type SellerCardData, type StoreRow, type StoreStateFilter } from '../src/lib/admin-stats.js';
+import { filterAndSortSellerCards, filterAndSortStoreRows, countStoreStates, countEmptyStores, parseStoreQuery, type SellerCardData, type StoreRow, type StoreStateFilter } from '../src/lib/admin-stats.js';
 
 /** A fixed instant for the lifecycle timestamps — their value never matters, only their presence. */
 const NOW = '2026-07-31T10:00:00.000Z';
@@ -20,19 +20,6 @@ function makeStore(overrides: Partial<Store> = {}): Store {
   };
 }
 
-describe('isStoreIncomplete', () => {
-  // Shipping is now platform-provided (no per-store shipping config to be "missing"),
-  // so incompleteness is driven solely by whether the store has any products.
-  it('is complete when it has products', () => {
-    const store = makeStore();
-    expect(isStoreIncomplete(store, 5)).toBe(false);
-  });
-
-  it('is incomplete when it has zero products', () => {
-    const store = makeStore();
-    expect(isStoreIncomplete(store, 0)).toBe(true);
-  });
-});
 
 function makeSeller(overrides: Partial<Seller> = {}): Seller {
   return { id: 'seller1', name: 'Seller', email: 'seller@example.com', passwordHash: '', createdAt: '2026-01-01T00:00:00.000Z', ...overrides };
@@ -123,7 +110,7 @@ describe('filterAndSortStoreRows', () => {
       makeStoreRow({ store: makeStore({ name: 'ב חנות' }) }),
       makeStoreRow({ store: makeStore({ name: 'א חנות' }) }),
     ];
-    const result = filterAndSortStoreRows(rows, { q: '', sortCol: 'name', sortDir: 'asc', state: 'all' });
+    const result = filterAndSortStoreRows(rows, { q: '', sortCol: 'name', sortDir: 'asc', state: 'all', emptyOnly: false });
     expect(result.map((r) => r.store.name)).toEqual(['א חנות', 'ב חנות']);
   });
 
@@ -132,7 +119,7 @@ describe('filterAndSortStoreRows', () => {
       makeStoreRow({ store: makeStore({ id: 's1' }), productCount: 2 }),
       makeStoreRow({ store: makeStore({ id: 's2' }), productCount: 10 }),
     ];
-    const result = filterAndSortStoreRows(rows, { q: '', sortCol: 'products', sortDir: 'desc', state: 'all' });
+    const result = filterAndSortStoreRows(rows, { q: '', sortCol: 'products', sortDir: 'desc', state: 'all', emptyOnly: false });
     expect(result.map((r) => r.store.id)).toEqual(['s2', 's1']);
   });
 
@@ -145,7 +132,7 @@ describe('filterAndSortStoreRows', () => {
       makeStoreRow({ store: makeStore({ id: 'active' }) }),
     ];
     const only = (state: StoreStateFilter) =>
-      filterAndSortStoreRows(rows, { q: '', sortCol: 'name', sortDir: 'asc', state }).map((r) => r.store.id);
+      filterAndSortStoreRows(rows, { q: '', sortCol: 'name', sortDir: 'asc', state, emptyOnly: false }).map((r) => r.store.id);
     expect(only('blocked')).toEqual(['blocked']);
     expect(only('paused')).toEqual(['paused']);
     expect(only('closing')).toEqual(['closing']);
@@ -170,6 +157,39 @@ describe('countStoreStates', () => {
     // numbers on screen disagree with the rows behind them.
     const { all, ...states } = counts;
     expect(Object.values(states).reduce((a, b) => a + b, 0)).toBe(all);
+  });
+});
+
+/**
+ * The retired "לתשומת לב" tab (owner, סשן ב׳ §1). It listed exactly one thing — a store with no
+ * products — so it is a filter on the tab that already lists those stores. Two properties matter
+ * and neither held for the tab: it composes with the state filter (a store can be paused AND
+ * empty), and its count is over every store, so selecting the chip does not change what it says.
+ */
+describe('the empty-catalogue filter', () => {
+  const empty = makeStoreRow({ store: makeStore({ id: 'empty' }), productCount: 0 });
+  const stocked = makeStoreRow({ store: makeStore({ id: 'stocked' }), productCount: 4 });
+  const emptyPaused = makeStoreRow({ store: makeStore({ id: 'empty-paused', pausedAt: NOW }), productCount: 0 });
+  const rows = [empty, stocked, emptyPaused];
+  const query = { q: '', sortCol: 'name', sortDir: 'asc' } as const;
+
+  it('counts every store with an empty catalogue, whatever its lifecycle state', () => {
+    expect(countEmptyStores(rows)).toBe(2);
+    expect(countEmptyStores([stocked])).toBe(0);
+  });
+
+  it('narrows to the empty ones, and composes with the state filter instead of replacing it', () => {
+    const ids = (q: Parameters<typeof filterAndSortStoreRows>[1]) =>
+      filterAndSortStoreRows(rows, q).map((r) => r.store.id);
+    expect(ids({ ...query, state: 'all', emptyOnly: true })).toEqual(['empty', 'empty-paused']);
+    expect(ids({ ...query, state: 'paused', emptyOnly: true })).toEqual(['empty-paused']);
+    expect(ids({ ...query, state: 'all', emptyOnly: false })).toHaveLength(3);
+  });
+
+  it('is off unless the parameter says so — a hand-edited value cannot leave a filter on', () => {
+    expect(parseStoreQuery(new URLSearchParams('stempty=1')).emptyOnly).toBe(true);
+    expect(parseStoreQuery(new URLSearchParams('stempty=yes')).emptyOnly).toBe(false);
+    expect(parseStoreQuery(new URLSearchParams()).emptyOnly).toBe(false);
   });
 });
 

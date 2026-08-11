@@ -104,13 +104,14 @@ describe('the loader', () => {
 
   it('has a wiring entry for every tab that has client-side controls', () => {
     const wired = [...lazy.matchAll(/^ {2}(\w+):/gm)].map((m) => m[1]!);
-    // ⚠️ `overview` and `attention` are here because they have nothing to wire — and NOT, as an
-    // earlier version of this comment claimed, because some shared container handler covers their
-    // pagers. There is no such handler: `wirePanelLinks` is called BY each panel's own module, so a
-    // panel with no module has no interception and its links navigate for real. `attention`'s pager
-    // does reload the page today. That is a known cost, not a mechanism.
-    // A panel with a pager therefore needs an entry — `payouts` has one for exactly this reason.
-    const NOTHING_TO_WIRE = ['overview', 'attention'];
+    // ⚠️ `overview` is here because it has nothing to wire — and NOT, as an earlier version of this
+    // comment claimed, because some shared container handler covers a pager. There is no such
+    // handler: `wirePanelLinks` is called BY each panel's own module, so a panel with no module has
+    // no interception and its links navigate for real. That is why a panel WITH a pager needs an
+    // entry — `payouts` has one for exactly this reason. (`attention` used to be the second name
+    // here, and was the worked example of the cost: its pager reloaded the page. The tab is gone —
+    // סשן ב׳ §1 — and its one signal is a filter on the Stores tab, which is wired.)
+    const NOTHING_TO_WIRE = ['overview'];
     for (const panel of declaredPanels().filter((p) => !NOTHING_TO_WIRE.includes(p))) {
       expect(wired, panel).toContain(panel);
     }

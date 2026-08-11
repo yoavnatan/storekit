@@ -27,7 +27,7 @@ import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-fie
 import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
-import { getSellerSession, updateSellerPayoutDetails } from '../../lib/seller-auth.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
@@ -86,7 +86,7 @@ import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
 import { getSellerAccountFor } from '../../lib/payouts.js';
-import { needsBankDetails, parsePayoutDetails } from '../../lib/payout-details.js';
+import { needsBankDetails } from '../../lib/payout-details.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -169,6 +169,28 @@ const cloudinaryPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
 
 let error = '';
 
+// Validated against the real panel list, never taken raw: every panel renders
+// `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
+// bookmark, a link someone edited) hid ALL of them and served a dashboard with
+// an empty body. Fall back to the landing tab instead.
+const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
+const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
+const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
+
+/**
+ * `&panel=<current>` for a POST redirect, or nothing.
+ *
+ * "מעבר בין חנויות צריך להשאיר את היוזר על הלשונית שהוא נמצא בה" (owner, סשן ב׳) is the same
+ * complaint as this one, one step later: a native form POST lands back on the dashboard, and every
+ * redirect below used to drop the panel — so adding a product from the מוצרים tab answered on
+ * סקירה כללית. The tab strip keeps `?panel=` current (DashTabsBoot), these forms have no `action`
+ * and therefore post to that same URL, so the value is here to be carried back.
+ *
+ * Whitelisted through `initialPanel` rather than interpolated raw: this string ends up in a
+ * `Location` header, which is the one place a reflected query parameter must never be trusted.
+ */
+const panelParam = initialPanel === 'overview' ? '' : `&panel=${initialPanel}`;
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('_action') || 'save-settings');
@@ -189,7 +211,7 @@ if (Astro.request.method === 'POST') {
         error = d.notYours;
       } else {
         await updateStore(target.id, { name, tagline, description, colors: target.colors });
-        return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1`));
+        return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1${panelParam}`));
       }
     }
   } else if (action === 'create-store') {
@@ -205,28 +227,11 @@ if (Astro.request.method === 'POST') {
       // Server-side gate — the entry point is hidden at the cap, but a hidden link is not a guard.
       error = d.storeLimitReached;
     } else {
-      // ── The optional bank block, validated BEFORE the store is created ──
-      // Order matters: `parsePayoutDetails` refuses a half-filled bank block (all four fields or
-      // none — a transfer missing one cannot be made), and a refusal after `createStore` would
-      // leave the seller with a shop they did not know they had and an error saying otherwise.
-      // Every field empty parses clean and writes nothing, which is the skip path and the common one.
-      const payout = parsePayoutDetails({
-        bankCode: form.get('bankCode'), bankBranch: form.get('bankBranch'),
-        bankAccount: form.get('bankAccount'), bankAccountHolder: form.get('bankAccountHolder'),
-        businessId: form.get('businessId'), businessType: form.get('businessType'),
-      });
-      if (!payout.ok) {
-        error = payout.error;
-      } else {
-        const { id: newStoreId } = await createStore(sellerId, { name, slug, tagline, description });
-        // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
-        const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
-        if (initialCategories.length) await updateStore(newStoreId, { categories: initialCategories });
-        // Only when something was actually typed. An empty write would clear details an existing
-        // seller already has — this same card is how they open a SECOND store.
-        if (Object.keys(payout.details).length) await updateSellerPayoutDetails(sellerId, payout.details);
-        return Astro.redirect(machineUrl(`/seller/dashboard?store=${newStoreId}`));
-      }
+      const { id: newStoreId } = await createStore(sellerId, { name, slug, tagline, description });
+      // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
+      const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
+      if (initialCategories.length) await updateStore(newStoreId, { categories: initialCategories });
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${newStoreId}`));
     }
   } else if (action === 'add-product') {
     const storeId = String(form.get('storeId') || '');
@@ -247,7 +252,7 @@ if (Astro.request.method === 'POST') {
       error = d.notYours;
     } else {
       await createProduct(ownerStore.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
-      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1`));
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1${panelParam}`));
     }
   } else if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');
@@ -269,7 +274,7 @@ if (Astro.request.method === 'POST') {
     } else {
       await updateProduct(claim.product.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       const sid = Astro.url.searchParams.get('store') ?? '';
-      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}${panelParam}`) : `/seller/dashboard?panel=${initialPanel}`);
     }
   } else if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
@@ -279,7 +284,7 @@ if (Astro.request.method === 'POST') {
       error = d.notYours;
     } else {
       await deleteProduct(claim.product.id);
-      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}${panelParam}`) : `/seller/dashboard?panel=${initialPanel}`);
     }
   }
 }
@@ -455,13 +460,8 @@ const requestedPageSize = parseInt(Astro.url.searchParams.get('psize') ?? '20', 
 const productsPageSize = PRODUCTS_PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 20;
 const filteredSortedProducts = filterAndSortSellerProducts(products, productCategoryPaths, wishlistCounts, purchasedCounts, sellerProductQuery);
 const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.searchParams, 'ppage'), productsPageSize);
-// Validated against the real panel list, never taken raw: every panel renders
-// `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
-// bookmark, a link someone edited) hid ALL of them and served a dashboard with
-// an empty body. Fall back to the landing tab instead.
-const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
-const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
-const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
+// (`PANEL_NAMES` / `initialPanel` are resolved above the POST block — the redirects there carry
+// the panel back, see `panelParam`.)
 // Performance + Advertising are the two heaviest tabs to render server-side —
 // buildPerformanceSummary() reads the page-view buckets and aggregates every
 // order, and the ad cards each run a seeded mock-metrics pass. They're rarely
@@ -799,6 +799,7 @@ const orderStatusColors: Record<string, string> = {
                   <li>
                     <a
                       href={`/seller/dashboard?store=${s.id}&panel=${initialPanel}`}
+                      data-panel-link
                       role="option"
                       aria-selected={s.id === store.id}
                       class={s.id === store.id
@@ -2007,18 +2008,22 @@ const orderStatusColors: Record<string, string> = {
               `?ofrom=`, so it is right at first paint and gone the moment the seller filters by
               hand instead.
 
-              `justify-start` on the flex row is what makes it follow the page's direction: `.card`
-              is `display:flex; flex-direction:column` (cards.css), and overriding it to a row
-              without saying where the row starts left the content packed to the physical LEFT
-              inside a right-aligned page (owner, 2026-08-11). `text-start` covers the text for the
-              same reason — both are logical properties, so neither needs a `[dir]` rule.
+              **NOT a `.card`, and that is the fix rather than a preference** (owner, 2026-08-11 —
+              it stayed misaligned through one attempt). `.card` is UNLAYERED css setting
+              `display:flex; flex-direction:column` (cards.css), so a `flex-row` utility from
+              `@layer utilities` loses to it regardless of source order — the documented trap (f) in
+              the CSS rule. The row never became a row; every other flex utility on it was then
+              arranging a COLUMN, which is how the link ended up parked in the middle of the line
+              instead of under the text. A plain block with `text-start` needs none of it: the two
+              lines follow the page's direction because that is what block layout does in RTL, and
+              there is no legacy rule left to fight.
 
               (Comment ABOVE the `{expr && (`, never as its first child — that is the silent Astro
               compile failure scripts/verify.mjs's header carries.) */}
           {ordersFromBasis && (
-            <div id="orders-from-banner" class="card card--flat p-3 mb-3 flex flex-row flex-wrap justify-start items-baseline text-start gap-x-2 gap-y-1 text-[0.85rem]" role="status">
-              <span>{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</span>
-              <a class="underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
+            <div id="orders-from-banner" class="p-3 mb-3 rounded-[var(--radius)] border [border-color:var(--color-border)] [background:var(--color-surface)] text-start text-[0.85rem]" role="status">
+              <p class="m-0">{ordersFromBasis === 'unshipped' ? d.ordersFromUnshipped : d.ordersFromPayment}</p>
+              <a class="inline-block mt-1 underline underline-offset-2 [color:var(--color-accent)]" href={ordersClearHref()}>{d.ordersShowAll}</a>
             </div>
           )}
           <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
@@ -2175,12 +2180,6 @@ const orderStatusColors: Record<string, string> = {
                         </strong>
                         {payLine.state === 'held' && (
                           <span class="[color:var(--color-muted)]">· {payoutWhyText(payLine, d[payLine.whyKey])}</span>
-                        )}
-                        {/* The only line here that can be acted on takes the colour, and only when
-                            it is the seller who is holding it up — a date they cannot influence
-                            highlighted in warning teaches them to ignore the colour. */}
-                        {payLine.blocking && (
-                          <span class="font-semibold [color:var(--color-warning)]">· {d[payLine.actionKey]}</span>
                         )}
                       </div>
                     </div>

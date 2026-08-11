@@ -11,10 +11,11 @@ import { wirePanelLinks } from '../../lib/admin-nav.js';
  *
  * ⚠️ A correction worth recording, because the wrong version was written down first: this module
  * was going to be skipped on the grounds that a pager "goes through the delegated link handler
- * wired on the container itself", which is what `overview` and `attention` supposedly do. There is
- * no such shared handler. `wirePanelLinks` is called BY each panel's own module, so a panel without
- * a module has no interception at all and its pager navigates — which is what `attention`'s does
- * today. Registering here is what makes the claim true rather than assumed.
+ * wired on the container itself", which is what `overview` and the old `attention` tab supposedly
+ * did. There is no such shared handler. `wirePanelLinks` is called BY each panel's own module, so a
+ * panel without a module has no interception at all and its pager navigates — which is exactly what
+ * `attention`'s did, right up until that tab was removed (סשן ב׳ §1). Registering here is what makes
+ * the claim true rather than assumed.
  *
  * `wirePanelLinks` guards itself with `data-linksWired` on the container, so being called again
  * after a swap re-binds nothing.

@@ -220,15 +220,15 @@ describe('the route', () => {
 });
 
 /**
- * Bank details are now collected in TWO places — the payments tab's form and the optional block on
- * the store-opening card (owner, 2026-08-11). Two entry points to one bank account is exactly how a
- * half-validated write appears: the newer one is a page POST rather than an API route, so it does
- * not go through this file's handler and could have parsed the fields itself.
+ * There is ONE place bank details are collected — the payments tab — and this guard is what keeps
+ * it that way by construction rather than by memory.
  *
- * The guard scans the tree rather than naming the two call sites, so a third entry point is covered
- * the day it exists. `parsePayoutDetails` is what makes the four bank fields all-or-nothing; a
- * writer that skipped it could store three of them, and `hasPayableBank` would then read "not
- * ready" forever on a form the seller believes they completed.
+ * A second entry point was briefly added to the store-opening card and removed the same day (owner,
+ * 2026-08-11: *"בפתיחת חנות אין בלוקים מקופלים"*). The guard is kept because the risk it names is
+ * real whichever surface asks: `parsePayoutDetails` is what makes the four bank fields
+ * all-or-nothing, and a writer that skipped it could store three of them — after which
+ * `hasPayableBank` reads "not ready" forever, on a form the seller believes they completed.
+ * It scans the tree rather than naming call sites, so a new one is covered the day it exists.
  */
 describe('nothing writes bank details it did not validate', () => {
   it('every caller of updateSellerPayoutDetails also calls parsePayoutDetails', () => {
@@ -250,25 +250,6 @@ describe('nothing writes bank details it did not validate', () => {
     expect(offenders, 'validate through parsePayoutDetails before writing bank details').toEqual([]);
   });
 
-  it('and both known entry points are actually there — the guard must have something to guard', () => {
-    const root = path.resolve(__dirname, '../src');
-    const found: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) { walk(full); continue; }
-        if (!/\.(ts|astro)$/.test(entry.name)) continue;
-        if (full.endsWith(path.join('lib', 'seller-auth.ts'))) continue;
-        if (fs.readFileSync(full, 'utf8').includes('updateSellerPayoutDetails(')) {
-          found.push(path.relative(root, full));
-        }
-      }
-    };
-    walk(root);
-    // A guard over an empty set passes forever and proves nothing. If this shrinks to one, an entry
-    // point was deleted — check that on purpose before relaxing the number.
-    expect(found.length, `found: ${found.join(', ')}`).toBeGreaterThanOrEqual(2);
-  });
 });
 
 describe('the form and the payout run are joined up', () => {
