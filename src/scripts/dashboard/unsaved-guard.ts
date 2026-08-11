@@ -285,8 +285,13 @@ export function initUnsavedGuard(): void {
   // edited section nor clear on walking back into it.
   document.addEventListener('dashtab:show', refreshState);
 
-  document.querySelectorAll<HTMLButtonElement>('button[data-discard][form]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+  // Delegated at the document rather than bound per button, and that became load-bearing on
+  // 2026-08-11: a panel is filled on the click that opens it now, so a "discard" button inside one
+  // does not exist when this runs — and a per-button pass would have to be re-run after every fill,
+  // which is how a button ends up armed twice and asks twice.
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('button[data-discard][form]');
+    if (btn) {
       const form = document.getElementById(btn.getAttribute('form')!) as HTMLFormElement | null;
       if (!form || !isDirty(form)) return;
       // Confirmed, because this throws away work the seller typed — and through the site's own
@@ -299,7 +304,7 @@ export function initUnsavedGuard(): void {
           onConfirm: () => discardChanges(form),
         },
       }));
-    });
+    }
   });
 
   // Take the seller to the section, and to the button — but never press it for them. A floating

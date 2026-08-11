@@ -10,6 +10,26 @@ function getI18nDict(): Record<string, unknown> {
   catch { return {}; }
 }
 
+/**
+ * Bind `attach` to `el` once and only once, however many times the init around it runs.
+ *
+ * The seller dashboard fills a panel on the click that OPENS it now (SELLER_LAZY_PANELS_PLAN.md),
+ * so the controls these functions bind — the settings form, the add-product toggle, the opening
+ * hours editor — do not exist when the page's shell script runs, and each init has to run again
+ * once its panel arrives. Without a per-element mark that second run gives the settings form a
+ * second `submit` handler, and one press then saves twice.
+ *
+ * A mark on the ELEMENT rather than a module-level flag, because the two questions are different:
+ * "has this init ever run" is false the moment a panel is replaced by a fresh copy, while "is this
+ * particular element already wired" stays true for exactly as long as the element does.
+ */
+function bindOnce(el: Element | null | undefined, key: string, attach: () => void): void {
+  if (!(el instanceof HTMLElement)) return;
+  if (el.dataset[key]) return;
+  el.dataset[key] = '1';
+  attach();
+}
+
 export function initSettingsForm(): void {
   const settingsForm = document.getElementById('settings-form') as HTMLFormElement | null;
   // A single button pinned to the bottom of the whole Settings tab (below
@@ -20,6 +40,7 @@ export function initSettingsForm(): void {
   // getElementById.
   const saveBtn = document.getElementById('settings-save-btn') as HTMLButtonElement | null;
 
+  bindOnce(settingsForm, 'settingsBound', () => {
   settingsForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const origText = saveBtn?.textContent ?? '';
@@ -132,6 +153,7 @@ export function initSettingsForm(): void {
       }, 1500);
     }
   });
+  });
 }
 
 /**
@@ -152,9 +174,11 @@ export function initSettingsForm(): void {
  */
 export function initStorePreviewLink(): void {
   const link = document.getElementById('dash-view-store') as HTMLAnchorElement | null;
-  link?.addEventListener('click', (e) => {
-    const opened = window.open(link.href, '_blank');
-    if (opened) { e.preventDefault(); opened.focus(); }
+  bindOnce(link, 'previewBound', () => {
+    link?.addEventListener('click', (e) => {
+      const opened = window.open(link.href, '_blank');
+      if (opened) { e.preventDefault(); opened.focus(); }
+    });
   });
 }
 
@@ -163,24 +187,30 @@ export function initFormToggles(): void {
   const addFormWrap = document.getElementById('add-product-form');
   const cancelAdd  = document.getElementById('cancel-add');
 
-  toggleAdd?.addEventListener('click', () => {
-    addFormWrap?.removeAttribute('hidden');
-    toggleAdd.setAttribute('hidden', '');
-    document.getElementById('csv-panel')?.setAttribute('hidden', '');
+  bindOnce(toggleAdd, 'toggleBound', () => {
+    toggleAdd?.addEventListener('click', () => {
+      addFormWrap?.removeAttribute('hidden');
+      toggleAdd.setAttribute('hidden', '');
+      document.getElementById('csv-panel')?.setAttribute('hidden', '');
+    });
   });
-  cancelAdd?.addEventListener('click', () => {
-    addFormWrap?.setAttribute('hidden', '');
-    toggleAdd?.removeAttribute('hidden');
+  bindOnce(cancelAdd, 'toggleBound', () => {
+    cancelAdd?.addEventListener('click', () => {
+      addFormWrap?.setAttribute('hidden', '');
+      toggleAdd?.removeAttribute('hidden');
+    });
   });
 }
 
 export function initStoreHours(): void {
   const container = document.getElementById('hours-editor');
-  container?.addEventListener('change', (e) => {
-    const target = e.target as HTMLInputElement;
-    if (!target.matches('.hours-closed-toggle')) return;
-    target.closest('.hours-row')?.querySelectorAll<HTMLInputElement>('.hours-time')
-      .forEach((input) => { input.disabled = target.checked; });
+  bindOnce(container, 'hoursBound', () => {
+    container?.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement;
+      if (!target.matches('.hours-closed-toggle')) return;
+      target.closest('.hours-row')?.querySelectorAll<HTMLInputElement>('.hours-time')
+        .forEach((input) => { input.disabled = target.checked; });
+    });
   });
 
   const visibilityToggles: [string, string][] = [
@@ -190,8 +220,10 @@ export function initStoreHours(): void {
   for (const [toggleId, fieldsId] of visibilityToggles) {
     const toggle = document.getElementById(toggleId) as HTMLInputElement | null;
     const fieldsWrap = document.getElementById(fieldsId);
-    toggle?.addEventListener('change', () => {
-      fieldsWrap?.setAttribute('data-open', String(toggle.checked));
+    bindOnce(toggle, 'hoursBound', () => {
+      toggle?.addEventListener('change', () => {
+        fieldsWrap?.setAttribute('data-open', String(toggle.checked));
+      });
     });
   }
 }
@@ -237,7 +269,7 @@ export function initStoreSwitcher(): void {
 
 export function initAutoHideStatus(): void {
   document.querySelectorAll<HTMLElement>('.dash-success, .dash-error').forEach((el) => {
-    setTimeout(() => el.remove(), 3000);
+    bindOnce(el, 'autoHideArmed', () => { setTimeout(() => el.remove(), 3000); });
   });
 }
 
@@ -339,6 +371,7 @@ export function initDashTabs(): void {
 // a real navigation, which would flash a full page reload.
 export function initGotoPanelLinks(): void {
   document.querySelectorAll<HTMLElement>('[data-goto-panel]').forEach((el) => {
+    bindOnce(el, 'gotoBound', () => {
     el.addEventListener('click', () => {
       document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${el.dataset.gotoPanel}"]`)?.click();
       // A source that names a control (data-goto-open) also opens it. The onboarding checklist's
@@ -350,6 +383,7 @@ export function initGotoPanelLinks(): void {
       // two drift. Re-clicking an already-open form is a no-op.
       const openId = el.dataset.gotoOpen;
       if (openId) document.getElementById(openId)?.click();
+    });
     });
   });
 }

@@ -24,4 +24,9 @@ interface Window {
    *  already fully on screen. Published by initUnsavedGuard for the inline draft guard, which must
    *  still work on a load where no module arrived — see its comment there. */
   __dashScrollTo?: (el: HTMLElement) => void;
+  /** Takes the draft guard's baseline of any form under `root` it has not met yet, and offers back
+   *  whatever the last page left behind. Called by the seller dashboard after a panel is filled on
+   *  the click that opens it — those forms do not exist when the load scan runs. Defined by the
+   *  inline <FormFallbackGuard />, which is deliberately outside the module graph. */
+  __dashScanDrafts?: (root?: ParentNode) => void;
 }
