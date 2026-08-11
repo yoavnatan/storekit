@@ -23,7 +23,7 @@ import { productShare } from '../src/lib/top-product-share.js';
 import { buildSalesReport, buildProductSalesReport, buildStockReport, buildPayoutsReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
-import { getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
+import { getHeldBreakdown, getHeldBySeller, getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
 import { splitHeldByBasis } from '../src/lib/order-payout-line.js';
 import { planPayouts } from '../src/lib/payout-run.js';
 import { buildPlatformLedger } from '../src/lib/platform-ledger.js';
@@ -1244,6 +1244,28 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     expectSameMoney(accrual.grossAgorot - accrual.commissionAgorot, accrual.netAgorot, 'gross − commission = net');
     expect(accrual.releasedNetAgorot).toBeLessThanOrEqual(accrual.netAgorot);
     expect(accrual.releasedGrossAgorot).toBeLessThanOrEqual(accrual.grossAgorot);
+  });
+
+  /**
+   * "Why is that money stuck" — the breakdown behind the held figure (owner, 2026-08-11).
+   *
+   * It is a THIRD reading of the hold rule (the run's SQL, the seller screen's JS, and now this
+   * split), which is exactly the arrangement that goes wrong quietly: a reason list that does not
+   * add up to the total tells the admin to chase sellers over money that was never stuck. So both
+   * directions are pinned — the two reasons against the platform total, and the per-seller map
+   * against the same.
+   */
+  it('every held shekel has exactly one reason, and the reasons sum to the whole', async () => {
+    const [breakdown, bySeller, accrual] = await Promise.all([
+      getHeldBreakdown(), getHeldBySeller(), getPlatformAccrual(),
+    ]);
+    const heldTotal = accrual.netAgorot - accrual.releasedNetAgorot;
+    expectSameMoney(breakdown.unshippedAgorot + breakdown.clockRunningAgorot, heldTotal, 'reasons vs held total');
+    expectSameMoney([...bySeller.values()].reduce((a, b) => a + b, 0), heldTotal, 'per-seller vs held total');
+    // Neither reason may be negative — a `FILTER` that overlapped would show up as one of them
+    // borrowing from the other rather than as a wrong total.
+    expect(breakdown.unshippedAgorot).toBeGreaterThanOrEqual(0);
+    expect(breakdown.clockRunningAgorot).toBeGreaterThanOrEqual(0);
   });
 
   it('the ledger card\'s parts sum to its whole, on the real data and on a hostile one', async () => {

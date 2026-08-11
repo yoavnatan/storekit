@@ -410,6 +410,100 @@ export async function getLedgerMovement(w: LedgerWindow): Promise<LedgerMovement
   };
 }
 
+/**
+ * Per seller: everything they have earned that is still IN HOLD — not released, not transferred.
+ *
+ * The third of the three figures a seller's card needs, and the one that was missing (owner,
+ * 2026-08-11: *"איפה אני כאדמין יכול לראות יתרה ממתינה של מוכרים?"*). The card showed a LIFETIME
+ * total and an about-to-go-out figure, and the gap between them — money sitting inside buyers'
+ * return windows — was invisible, so the two numbers on screen looked like they disagreed.
+ *
+ * Held = accrued − releasable, per seller, in ONE query rather than two subtracted in JS: both
+ * halves come out of the same scan, so they cannot be taken a moment apart. `releasable` here is
+ * the same `RELEASABLE_SQL` the payout run uses; nothing new decides anything.
+ */
+export async function getHeldBySeller(todayISO: string = businessTodayISO()): Promise<Map<string, number>> {
+  const tiers = SELLER_TIERS.map((t) => t.id);
+  const percents = SELLER_TIERS.map((t) => t.commissionPercent);
+  const A = RELEASABLE_PARAM_COUNT + 1, B = RELEASABLE_PARAM_COUNT + 2, C = RELEASABLE_PARAM_COUNT + 3;
+  const NET_OF_COMMISSION = `(${NET_SQL} - ROUND(${NET_SQL} * r.pct / 100.0))`;
+  const found = await rows<{ seller_id: string; held: string | number }>(
+    `SELECT st.seller_id,
+            COALESCE(SUM(${NET_OF_COMMISSION}) FILTER (WHERE NOT (${RELEASABLE_SQL})), 0) AS held
+       FROM order_stores os
+       JOIN orders  o   ON o.id = os.order_id
+       JOIN stores  st  ON st.slug = os.store_slug
+       JOIN sellers sel ON sel.id = st.seller_id
+       JOIN unnest($${A}::text[], $${B}::numeric[]) AS r(tier, pct)
+              ON r.tier = COALESCE(sel.tier, $${C}::text)
+      WHERE o.payment_status = ANY($1::text[]) AND o.shipping_status = ANY($2::text[])
+      GROUP BY st.seller_id`,
+    [...releasableParams(todayISO), tiers, percents, DEFAULT_TIER],
+  );
+  return new Map(found.map((r) => [r.seller_id, big(r.held)]));
+}
+
+/**
+ * Money we are holding that no payout can touch yet, split by WHY — and the split is the point.
+ *
+ * The owner's question (2026-08-11): *"יש מידע על סכום גדול שתקוע מסיבות שונות ואין לי דרך כאדמין
+ * להבין למה."* The order card has always said it per order; nothing said it in aggregate, so a
+ * five-figure held balance was a number with no story and no way to find the orders behind it.
+ *
+ * **Two reasons, and only one of them is anybody's fault:**
+ *  · `unshippedAgorot` — the seller has not shipped, so no clock has even started. This is the
+ *    actionable one: every shekel here is waiting on a person, and it is the number that should make
+ *    someone pick up the phone.
+ *  · `clockRunningAgorot` — shipped or delivered, sitting inside the buyer's return window. Nothing
+ *    is wrong; it is the model working, and it resolves itself on a date.
+ *
+ * **No third spelling of the hold rule.** Held is `revenue-counting AND NOT releasable`, using the
+ * same `RELEASABLE_SQL` the payout run and every balance use, and the split is a `CASE` over
+ * `PAYOUT_CLOCK_SHIPPING_STATUSES` — the same list `payout-hold.ts` feeds that predicate. Adding
+ * predicates of its own here is how an aggregate starts disagreeing with the transfers.
+ */
+export interface HeldBreakdown {
+  unshippedAgorot: number;
+  unshippedOrders: number;
+  clockRunningAgorot: number;
+  clockRunningOrders: number;
+}
+
+export async function getHeldBreakdown(todayISO: string = businessTodayISO()): Promise<HeldBreakdown> {
+  const tiers = SELLER_TIERS.map((t) => t.id);
+  const percents = SELLER_TIERS.map((t) => t.commissionPercent);
+  const A = RELEASABLE_PARAM_COUNT + 1, B = RELEASABLE_PARAM_COUNT + 2, C = RELEASABLE_PARAM_COUNT + 3;
+  // Net of commission, like every "what we owe a seller" figure — the commission on a held slice is
+  // ours and was never part of the liability.
+  const NET_OF_COMMISSION = `(${NET_SQL} - ROUND(${NET_SQL} * r.pct / 100.0))`;
+  // The seller has shipped (or the buyer collected) — i.e. a clock is running and the wait is a date.
+  const CLOCK = `o.shipping_status = ANY(CASE WHEN os.delivery_method = 'pickup' THEN $8::text[] ELSE $7::text[] END)`;
+  const found = await firstRow<{
+    unshipped: string | number; unshipped_orders: string | number;
+    clock: string | number; clock_orders: string | number;
+  }>(
+    `SELECT COALESCE(SUM(${NET_OF_COMMISSION}) FILTER (WHERE NOT ${CLOCK}), 0) AS unshipped,
+            COUNT(DISTINCT o.id)               FILTER (WHERE NOT ${CLOCK})     AS unshipped_orders,
+            COALESCE(SUM(${NET_OF_COMMISSION}) FILTER (WHERE ${CLOCK}), 0)     AS clock,
+            COUNT(DISTINCT o.id)               FILTER (WHERE ${CLOCK})         AS clock_orders
+       FROM order_stores os
+       JOIN orders  o   ON o.id = os.order_id
+       JOIN stores  st  ON st.slug = os.store_slug
+       JOIN sellers sel ON sel.id = st.seller_id
+       JOIN unnest($${A}::text[], $${B}::numeric[]) AS r(tier, pct)
+              ON r.tier = COALESCE(sel.tier, $${C}::text)
+      WHERE o.payment_status = ANY($1::text[]) AND o.shipping_status = ANY($2::text[])
+        AND NOT (${RELEASABLE_SQL})`,
+    [...releasableParams(todayISO), tiers, percents, DEFAULT_TIER],
+  );
+  return {
+    unshippedAgorot: big(found?.unshipped),
+    unshippedOrders: big(found?.unshipped_orders),
+    clockRunningAgorot: big(found?.clock),
+    clockRunningOrders: big(found?.clock_orders),
+  };
+}
+
 /** What every seller together has earned through the mall, and how much of it is out of hold.
  *  Gross is what buyers paid for goods (net of seller discounts, never shipping); commission is our
  *  cut of it; net is the difference — what we owe sellers before payouts and adjustments. */

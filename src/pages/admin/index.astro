@@ -54,7 +54,7 @@ import AdminPanelShell from '../../components/admin/AdminPanelShell.astro';
 import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { planPayouts } from '../../lib/payout-run.js';
-import { getPlatformAccrual } from '../../lib/payouts.js';
+import { getPlatformAccrual, getHeldBreakdown, getHeldBySeller } from '../../lib/payouts.js';
 import { buildPlatformLedger } from '../../lib/platform-ledger.js';
 import AdminPayoutPlanCard from '../../components/admin/AdminPayoutPlanCard.astro';
 import AdminLedgerCard from '../../components/admin/AdminLedgerCard.astro';
@@ -289,7 +289,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
-  productCounts, reconciliation, payoutPlan, platformAccrual, ordersPage, badgeCounts,
+  productCounts, reconciliation, payoutPlan, heldBreakdown, heldBySeller, platformAccrual, ordersPage, badgeCounts,
   perfViews, perfPlatformViews, perfSales, productNames,
 ] = await Promise.all([
   only(COUNT_PANELS, () => getProductCountsByStore(storeIds), new Map()),
@@ -310,6 +310,11 @@ const [
   // Overview too, since סשן ב׳ §3: the platform ledger card is half this plan (what leaves, and
   // what has already left) and half the accrual below it.
   only(['payouts', 'sellers', 'overview'], () => planPayouts(), null),
+  // Why the held money is held — the payouts tab's other half (owner, 2026-08-11). One aggregate
+  // whatever the platform's size, like the plan beside it.
+  only(['payouts'], () => getHeldBreakdown(), null),
+  // The same question per seller, for the third money tile on each card.
+  only(['sellers'], () => getHeldBySeller(), new Map<string, number>()),
   // The other half — every seller's accrual at once, with the released/held split as a FILTER in
   // the same pass, so the card's three tiles are three parts of one read (payouts.ts).
   only(['overview'], () => getPlatformAccrual(), null),
@@ -409,7 +414,7 @@ const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
 // Destructured for the panel below, which needs the query params back to rebuild its own URLs.
-const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = orderQuery;
+const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore, payout: oPayout } = orderQuery;
 
 // ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
 // Feed = the exact set the product feed exports: stores a platform surface may carry, holding at
@@ -597,6 +602,7 @@ const badgeFor: Record<string, number> = badgeCounts;
           sellerCards={sellersTab!.cards}
           balanceBySeller={sellersTab!.balanceBySeller}
           payoutBySeller={sellersTab!.payoutBySeller}
+          heldBySeller={heldBySeller}
           payoutStateCounts={sellersTab!.payoutStateCounts}
           q={sellerQuery.q}
           sortCol={sellerQuery.sortCol}
@@ -660,6 +666,7 @@ const badgeFor: Record<string, number> = badgeCounts;
           shippingStatus={oShip}
           paymentStatus={oPay}
           store={oStore}
+          payout={oPayout}
           storeNames={orderStoreNames}
           newSince={newSince.orders}
           newOnly={newOnly.orders}
@@ -672,6 +679,7 @@ const badgeFor: Record<string, number> = badgeCounts;
             oship: oShip.length ? oShip.join(',') : undefined,
             opay: oPay.length ? oPay.join(',') : undefined,
             ostore: oStore.length ? encodeList(oStore) : undefined,
+            opayout: oPayout.length ? oPayout.join(',') : undefined,
             onew: newOnly.orders ? '1' : undefined,
             opage: p > 1 ? String(p) : undefined,
           })}
@@ -757,7 +765,9 @@ const badgeFor: Record<string, number> = badgeCounts;
       <AdminPanelShell panel="payouts" active={shows('payouts') && !!payoutPlan}>
         {payoutPlan && <AdminPayoutPlanCard
           plan={payoutPlan}
-          sellersHref={(state) => tabUrl('sellers', { spayout: state })}
+          sellersHref={(state: string) => tabUrl('sellers', { spayout: state })}
+          held={heldBreakdown ?? { unshippedAgorot: 0, unshippedOrders: 0, clockRunningAgorot: 0, clockRunningOrders: 0 }}
+          ordersHref={(payoutStates: readonly string[]) => tabUrl('orders', { opayout: payoutStates.join(',') })}
         />}
       </AdminPanelShell>
 

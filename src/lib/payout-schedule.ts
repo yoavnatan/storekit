@@ -45,22 +45,30 @@ export const STATUTORY_RETURN_DAYS = 14;
  *
  * **21, and the number is derived rather than chosen** — `STATUTORY_RETURN_DAYS` + a week.
  *
- * ── What the extra week is actually for (corrected 2026-08-11 by the owner) ──
- * It was first written as margin "for the notice to reach us", and the owner cut through that:
- * *"אם הוא מבטל זה בתנאי שהוא החזיר את המוצר!"* — a cancellation is not a loss, the goods come
- * back. So the exposure is narrower and more specific than the first version claimed, and naming it
- * correctly is what stops the number being argued from the wrong premise:
+ * ── ⚠️ THIS NUMBER IS A PROXY FOR A MECHANISM THAT DOES NOT EXIST (owner, 2026-08-11) ──
+ * Read this before defending, shortening or lengthening it, because two wrong arguments were made
+ * for it in one day and the owner corrected both.
  *
- *   The buyer may declare the cancellation on day 14. The parcel is then still in transit. A payout
- *   made on day 14 therefore leaves the platform CLAWING BACK from a seller who already has the
- *   money, while the goods are somewhere on a courier's van — which is `refund-owed.ts` writing a
- *   `refund_due` we have no automatic way to collect against.
+ * The first was "margin for the cancellation notice to reach us". The second — mine, after he
+ * pointed out that a cancellation is conditional on the goods going back — was that we are
+ * therefore never exposed. **Both are wrong, and his correction is the one to keep:**
+ * *"זה שלקוח ביטל ביום ה-14 לא אומר שהוא באמת החזיר את המוצר, גם לא ביום ה-8."*
  *
- * The margin buys the return journey, not the paperwork. That is also why it may not simply be
- * "14 + one day": one day does not get a parcel across the country.
+ * A DECLARED cancellation and a RETURNED product are two events at two different times, and neither
+ * is a fixed number of days from delivery. So a day counter cannot track the thing it is standing
+ * in for. What it actually does today is bound the window in which a cancellation can still cost us
+ * anything: pay out on day N and a cancellation declared on day N+1 is a `refund_due`
+ * (`refund-owed.ts`) against a seller who already has the money, with no automatic way to collect.
  *
- * ⚠️ Still an owner decision, and still tied to the returns policy — but it may not go BELOW the
- * statutory window whatever that policy says. `tests/payout-schedule.test.ts` pins that floor.
+ * **The right instrument is a STATE, not a clock** — money held while a cancellation is open,
+ * released when it resolves (goods back, or the window closed with none declared). That is the
+ * returns mechanism, which is not built (CURRENT_TASK, "מנגנון החזרות וביטולים"), and until it is
+ * there is nothing for a shorter hold to fall back on. Today no buyer can declare a cancellation at
+ * all — only a seller or an admin cancels, from the orders tab — so this protects against nothing
+ * that yet exists, and is sized for the world where it does.
+ *
+ * ⚠️ Owner decision, tied to the returns policy AND to that mechanism. It may not go BELOW the
+ * statutory window whatever either says. `tests/payout-schedule.test.ts` pins that floor.
  */
 export const HOLD_DAYS_AFTER_DELIVERY = 21;
 

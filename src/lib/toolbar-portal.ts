@@ -149,6 +149,14 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     const portal = document.getElementById(portalId);
     if (!portal || portal.hidden || !trigger) return;
     if (e.target instanceof Node && portal.contains(e.target)) return;
+    // **The trigger may no longer be in the document.** Every admin filter applies by re-fetching
+    // the panel and replacing its innerHTML (`swapPanel`), which destroys the button this portal is
+    // anchored to. A detached element measures as a zero-size rect at 0,0, so the next reposition
+    // threw the open menu into the top corner of the screen — and the panel swap changes the page
+    // height, which fires exactly such a scroll (owner, 2026-08-11: "הוא זז למעלה אחרי שבוחרים
+    // משהו והטבלה משתנה"). The menu's answer has already been given by then, so the right move is
+    // to close it rather than to re-anchor it to something that no longer exists.
+    if (!trigger.isConnected) { close(); return; }
     position(portal, trigger);
   }, true);
 

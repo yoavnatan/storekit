@@ -6,6 +6,7 @@
 // the server does the rest on the next SSR render.
 import { buildAdminUrl, debounce, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
 
 const PANEL_ID = 'dash-panel-orders';
 
@@ -23,11 +24,24 @@ const SHIPPING_LABELS: Record<string, string> = {
 const SHIPPING_COLORS: Record<string, string> = {
   pending: '#ef4444', processing: '#3b82f6', ready: '#f59e0b', shipped: '#8b5cf6', delivered: '#16a34a',
 };
-const PAYMENT_LABELS: Record<string, string> = { pending: 'ממתין', paid: 'שולם', failed: 'נכשל' };
+// The BUYER's charge, not the seller's payout — the two were both called "תשלום" and the owner
+// could not tell which one a filter meant (2026-08-11). Every value is spelled from the buyer's
+// side so the column cannot be read as the money going out to a seller.
+const PAYMENT_LABELS: Record<string, string> = { pending: 'החיוב טרם הושלם', paid: 'הכסף התקבל', failed: 'החיוב נכשל' };
 const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a34a', failed: '#ef4444' };
+// Admin-side wording of the seller's own payout vocabulary. Not read from `getT`: this dashboard is
+// Hebrew-only by construction (i18n-hardcoded-strings.test.ts), and the seller's copy is phrased in
+// the second person ("ממתין לשליחה שלך") which is wrong for someone looking at another person's shop.
+const PAYOUT_LABELS: Record<string, string> = {
+  unshipped: 'ממתין לשליחה של המוכר/ת',
+  undelivered: 'נשלח, טרם סומן "נמסר"',
+  window: 'בתוך חלון ההחזרה',
+  released: 'מוכן לתשלום',
+  none: 'לא ייכלל בתשלום',
+};
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
-type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store';
+type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store' | 'payout';
 type FilterColumnDef = { col: FilterCol; label: string; values: string[]; labels: Record<string, string>; colors: Record<string, string> };
 
 const SORT_OPTIONS: { col: SortCol; dir: 'asc' | 'desc'; label: string }[] = [
@@ -55,7 +69,15 @@ export function initAdminOrdersFilter(): void {
     // it returns as a carrier-driven state once shipping is wired (GO_LIVE §5). Keeping
     // it out keeps the admin filter in sync with the states orders actually reach.
     { col: 'shippingStatus', label: 'סטטוס הזמנה', values: ['pending', 'processing', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
-    { col: 'paymentStatus', label: 'סטטוס תשלום', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
+    { col: 'paymentStatus', label: 'חיוב הקונה', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
+    // The same five values, the same name and the same order as the seller's own orders tab
+    // (translations.ts#payFilter_*). One vocabulary for one question, on both dashboards — the two
+    // screens used to answer "where is this money" in different words, when they answered at all.
+    //
+    // NOT "שחרור הכסף" (owner, 2026-08-11: "שם ממש גרוע, כאילו הכסף מוחזק איפשהו, נשמע רע"). He is
+    // right about what it implied: money in hold is ordinary and temporary, and a name built on
+    // "release" describes it as confinement. "מצב התשלום" states the same fact and claims nothing.
+    { col: 'payout', label: 'מצב התשלום', values: [...PAYOUT_FILTER_VALUES], labels: PAYOUT_LABELS, colors: {} },
     { col: 'store', label: 'חנות', values: storeNames, labels: Object.fromEntries(storeNames.map((s) => [s, s])), colors: {} },
   ];
 
@@ -66,6 +88,8 @@ export function initAdminOrdersFilter(): void {
   if (ship0.size) activeFilters.set('shippingStatus', ship0);
   if (pay0.size) activeFilters.set('paymentStatus', pay0);
   if (store0.size) activeFilters.set('store', store0);
+  const payout0 = new Set((state.payout ?? '').split(',').filter(Boolean));
+  if (payout0.size) activeFilters.set('payout', payout0);
 
   const badge = document.getElementById('admin-orders-filter-count');
   if (badge) {
@@ -79,12 +103,14 @@ export function initAdminOrdersFilter(): void {
     const ship = activeFilters.get('shippingStatus');
     const pay = activeFilters.get('paymentStatus');
     const store = activeFilters.get('store');
+    const payout = activeFilters.get('payout');
     return buildAdminUrl('orders', {
       oq: searchInput?.value.trim() || undefined,
       osort: (sortCol !== 'date' || sortDir !== 'desc') ? `${sortCol}:${sortDir}` : undefined,
       oship: ship?.size ? [...ship].join(',') : undefined,
       opay: pay?.size ? [...pay].join(',') : undefined,
       ostore: store?.size ? encodeList([...store]) : undefined,
+      opayout: payout?.size ? [...payout].join(',') : undefined,
       onew: newOnly ? '1' : undefined,
     });
   }
@@ -159,9 +185,20 @@ export function initAdminOrdersFilter(): void {
   });
 
   function openFilterColumns(trigger: HTMLElement): void {
+    // The SELLER dashboard's filter menu, exactly (scripts/dashboard/orders.ts#
+    // ordersFilterColumnsHtml): a checkbox saying whether this column is narrowing anything, the
+    // name, and a chevron saying the row opens into more. This one used to mark an active column
+    // with a bullet, then briefly with a count — both invented for this one menu, and neither is
+    // how the same control behaves one dashboard over (owner, 2026-08-11). The chevron mirrors in
+    // RTL like the seller's does, off `dir` rather than a hardcoded rotation.
+    const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
     portal.open(trigger, '12rem', () => FILTER_COLUMNS.map((fc) => {
       const active = (activeFilters.get(fc.col)?.size ?? 0) > 0;
-      return `<button type="button" class="product-menu__item flex items-center justify-between gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${fc.col}" style="${active ? 'font-weight:700;color:var(--color-primary)' : ''}">${fc.label}${active ? ' ●' : ''}</button>`;
+      return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${fc.col}">
+        <input type="checkbox" class="cursor-pointer shrink-0" ${active ? 'checked' : ''} tabindex="-1" aria-hidden="true" />
+        <span style="flex:1">${fc.label}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-filter-col]').forEach((btn) => {
         btn.addEventListener('click', () => openFilterValues(trigger, btn.dataset.filterCol as FilterCol));
