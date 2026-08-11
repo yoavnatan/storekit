@@ -313,7 +313,7 @@ const purchases = groupBuyerPurchases(orders);
                           <span class="[color:var(--color-muted)]">התשלום למוכר/ת:</span>
                           <strong class="[color:var(--color-text)]">
                             {line.state === 'not_payable' ? 'לא ייכלל בתשלום'
-                              : line.state === 'releasable' ? 'שוחרר — נכנס לתשלום הקרוב'
+                              : line.state === 'releasable' ? 'מוכן — ייכנס לתשלום הקרוב'
                               : line.releaseDayISO ? `משתחרר ב-${formatBusinessDayLabel(line.releaseDayISO)}`
                               : 'הספירה עוד לא התחילה'}
                           </strong>

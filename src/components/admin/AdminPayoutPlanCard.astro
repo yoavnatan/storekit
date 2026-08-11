@@ -94,7 +94,7 @@ const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [c
   </dl>
 
   {plan.payableSellers + plan.noBankSellers + plan.belowMinimumSellers === 0 && (
-    <p class="muted m-0 mt-3 text-[0.8rem]">אין כרגע יתרה משוחררת לאף מוכר.</p>
+    <p class="muted m-0 mt-3 text-[0.8rem]">אין כרגע יתרה מוכנה לתשלום לאף מוכר.</p>
   )}
 </div>
 
@@ -105,10 +105,14 @@ const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [c
     the one somebody can act on comes first. Each is a link into the orders it was summed over —
     the same statuses the figure was computed from, taken off the status table rather than typed. */}
 <div class="rounded-[var(--radius)] border [border-color:var(--color-border)] p-3.5 mb-5">
-  <strong class="text-[0.9rem]">כסף שעדיין מוחזק — ולמה</strong>
+  {/* "בדרך", not "מוחזק" (owner, 2026-08-11). Both describe the same shekels; only one of them is
+      what is actually happening. This money is on a schedule that resolves itself, and calling it
+      held made an ordinary state sound like a problem — on the screen whose job is to tell the
+      owner which part of it IS a problem. */}
+  <strong class="text-[0.9rem]">כסף בדרך למוכרים</strong>
   <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
     <div class={TILE}>
-      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">המוכר/ת עדיין לא שלח/ה</dt>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">ממתין לשליחה</dt>
       <dd class={`m-0 text-[1.15rem] font-bold tabular-nums ${held.unshippedAgorot > 0 ? '[color:var(--color-warning)]' : ''}`}>{formatAgorot(held.unshippedAgorot)}</dd>
       <a class={TILE_LINK} href={ordersHref(UNSHIPPED_STATES)}>{held.unshippedOrders} הזמנות</a>
     </div>
@@ -121,8 +125,8 @@ const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [c
   {/* Said once, here, and not on each tile: the first is a person to chase, the second is a date to
       wait for. Without it the two numbers look like two flavours of the same problem. */}
   <p class="muted m-0 mt-3 text-[0.76rem] leading-relaxed">
-    השורה הראשונה היא היחידה שאפשר לעשות עליה משהו — עד שההזמנה נשלחת, שעון השחרור בכלל לא מתחיל.
-    השנייה נפתרת מעצמה בתאריך.
+    השורה הראשונה היא היחידה שאפשר לעשות עליה משהו — הספירה לתשלום מתחילה כשההזמנה נשלחת.
+    השנייה נסגרת מעצמה בתאריך.
   </p>
   {/* No table under this, deliberately — see the header. The names are on the seller cards, and
       each tile's count is the link to them. */}

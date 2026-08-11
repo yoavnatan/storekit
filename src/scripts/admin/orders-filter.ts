@@ -36,7 +36,7 @@ const PAYOUT_LABELS: Record<string, string> = {
   unshipped: 'ממתין לשליחה של המוכר/ת',
   undelivered: 'נשלח, טרם סומן "נמסר"',
   window: 'בתוך חלון ההחזרה',
-  released: 'שוחרר לתשלום',
+  released: 'מוכן לתשלום',
   none: 'לא ייכלל בתשלום',
 };
 
@@ -73,7 +73,11 @@ export function initAdminOrdersFilter(): void {
     // The same five values, the same name and the same order as the seller's own orders tab
     // (translations.ts#payFilter_*). One vocabulary for one question, on both dashboards — the two
     // screens used to answer "where is this money" in different words, when they answered at all.
-    { col: 'payout', label: 'שחרור הכסף', values: [...PAYOUT_FILTER_VALUES], labels: PAYOUT_LABELS, colors: {} },
+    //
+    // NOT "שחרור הכסף" (owner, 2026-08-11: "שם ממש גרוע, כאילו הכסף מוחזק איפשהו, נשמע רע"). He is
+    // right about what it implied: money in hold is ordinary and temporary, and a name built on
+    // "release" describes it as confinement. "מצב התשלום" states the same fact and claims nothing.
+    { col: 'payout', label: 'מצב התשלום', values: [...PAYOUT_FILTER_VALUES], labels: PAYOUT_LABELS, colors: {} },
     { col: 'store', label: 'חנות', values: storeNames, labels: Object.fromEntries(storeNames.map((s) => [s, s])), colors: {} },
   ];
 
@@ -181,12 +185,20 @@ export function initAdminOrdersFilter(): void {
   });
 
   function openFilterColumns(trigger: HTMLElement): void {
+    // The SELLER dashboard's filter menu, exactly (scripts/dashboard/orders.ts#
+    // ordersFilterColumnsHtml): a checkbox saying whether this column is narrowing anything, the
+    // name, and a chevron saying the row opens into more. This one used to mark an active column
+    // with a bullet, then briefly with a count — both invented for this one menu, and neither is
+    // how the same control behaves one dashboard over (owner, 2026-08-11). The chevron mirrors in
+    // RTL like the seller's does, off `dir` rather than a hardcoded rotation.
+    const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
     portal.open(trigger, '12rem', () => FILTER_COLUMNS.map((fc) => {
-      // How MANY values are selected, not a dot saying "some are" (owner, 2026-08-11: "מופיעות שם
-      // נקודות במקום מספרים"). The count is the only part that tells the reader whether opening the
-      // sub-menu will show them one narrowing or four.
-      const count = activeFilters.get(fc.col)?.size ?? 0;
-      return `<button type="button" class="product-menu__item flex items-center justify-between gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${fc.col}" style="${count ? 'font-weight:700;color:var(--color-primary)' : ''}"><span>${fc.label}</span>${count ? `<span class="tabular-nums opacity-70">${count}</span>` : ''}</button>`;
+      const active = (activeFilters.get(fc.col)?.size ?? 0) > 0;
+      return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${fc.col}">
+        <input type="checkbox" class="cursor-pointer shrink-0" ${active ? 'checked' : ''} tabindex="-1" aria-hidden="true" />
+        <span style="flex:1">${fc.label}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-filter-col]').forEach((btn) => {
         btn.addEventListener('click', () => openFilterValues(trigger, btn.dataset.filterCol as FilterCol));

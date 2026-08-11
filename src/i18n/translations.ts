@@ -833,7 +833,7 @@ export const translations = {
       // platform reviewing their order. One word says the only thing the tile has to say, and the
       // details it used to carry live one link away in `payHowTitle`.
       payHeld: 'ממתינים',
-      payHeldHint: 'כסף שלכם שעוד לא שוחרר להעברה.',
+      payHeldHint: 'כסף שלכם שעדיין בדרך — ייכנס לתשלום הקרוב שאחרי שהוא נסגר.',
       // The tile's own "read more" (owner, §3: *"ולמטה שיהיה כתוב ״פרטים נוספים״ לחיץ שמוביל למקום
       // עם הפרטים הנוספים במורד הדף"*). The rule this replaces was a second sentence on the tile.
       payHeldMore: 'פרטים נוספים',
@@ -874,7 +874,7 @@ export const translations = {
       // break.
       payHowTitle: 'איך זה עובד',
       payHowWhenQ: 'מתי הכסף מועבר?',
-      payHowWhenA: 'פעם בחודש, ב-{day} לחודש, בהעברה אחת לחשבון הבנק שלכם — על כל מה ששוחרר עד אז.',
+      payHowWhenA: 'פעם בחודש, ב-{day} לחודש, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז.',
       // ⚠️ The owner read the first version and asked *"לא הבנתי… למה 21 מרגע המסירה ולא 15 למשל?"*
       // — which is the right question, and the answer is that the number is DERIVED and the sentence
       // was hiding that. Israeli consumer law gives a distance-sale buyer 14 days FROM RECEIVING the
@@ -917,13 +917,14 @@ export const translations = {
       // menu, not a word like "unshipped".
       // NOT "סטטוס תשלום" (owner, 2026-08-11). That name was already taken by the buyer's CHARGE on
       // the admin's copy of this same screen, so one phrase meant two different things depending on
-      // which dashboard you were looking at. This column is about when the seller's money is
-      // released, and its own values already say so.
-      filterColPayout: 'שחרור הכסף',
+      // which dashboard you were looking at. Nor "שחרור הכסף", tried the same day and rejected in
+      // his words as sounding like the money is being held somewhere — hold is ordinary and
+      // temporary, and naming it after a release describes it as confinement.
+      filterColPayout: 'מצב התשלום',
       payFilter_unshipped: 'ממתין לשליחה שלך',
       payFilter_undelivered: 'נשלח, ממתין לסימון ״נמסר״',
       payFilter_window: 'בתוך חלון ההחזרה',
-      payFilter_released: 'שוחרר לתשלום',
+      payFilter_released: 'מוכן לתשלום',
       payFilter_none: 'לא ייכלל בתשלום',
       payColOrders: 'הזמנות',
       payColAmount: 'סכום',
@@ -1346,7 +1347,7 @@ export const translations = {
       // status, and naming it the same way is what makes the pair read as two statuses of one order
       // rather than as a sentence someone started.
       orderPayoutLabel: 'סטטוס תשלום:',
-      orderPayoutReleasable: 'שוחרר — נכנס לתשלום הקרוב',
+      orderPayoutReleasable: 'מוכן — ייכנס לתשלום הקרוב',
       orderPayoutOn: 'משתחרר ב-{date}',
       orderPayoutPending: 'הספירה עוד לא התחילה',
       orderPayoutNone: 'לא ייכלל בתשלום',
@@ -2532,11 +2533,11 @@ export const translations = {
       ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
       ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
       ordersShowAll: 'Show all orders',
-      filterColPayout: 'Payout release',
+      filterColPayout: 'Payment status',
       payFilter_unshipped: 'Waiting for you to ship',
       payFilter_undelivered: 'Shipped, awaiting "delivered"',
       payFilter_window: 'Inside the return window',
-      payFilter_released: 'Released for payment',
+      payFilter_released: 'Ready for payment',
       payFilter_none: 'Will not be paid out',
       payHeldEmpty: 'Nothing is waiting right now.',
       payColOrders: 'Orders',
