@@ -79,6 +79,26 @@ describe('DashTabsBoot', () => {
     expect(boot).not.toMatch(/addEventListener\('scroll'/);
   });
 
+  it('CENTRES the open tab on a load, rather than nudging it just inside', () => {
+    // The smallest legal move is the right one for a click (it stays out of the
+    // way of a gesture) and the wrong one for a page that just loaded: coming back
+    // from a refresh that started somewhere else in the strip, the tab lands hard
+    // against whichever edge it arrived from and the strip rests at an offset that
+    // means nothing — measured on the seller dashboard as scrollLeft -101 of 579,
+    // the open tab 64px from the rim (owner, 2026-08-11: "נתקעת איפשהו באמצע
+    // למרות שהייתי בקצה"). Centred, there is one answer to "which tab am I on",
+    // and the scroller's own clamp makes it the natural one at the ends — a first
+    // or last tab cannot be centred, so the strip simply rests on that end.
+    // Measured after the fix, same page, 390px wide: overview flush at the start,
+    // orders 151/150, messages 150/149, settings flush at the end.
+    const boot = readFileSync(join(process.cwd(), 'src/components/dashboard/DashTabsBoot.astro'), 'utf8');
+    expect(boot).toMatch(/if \(center\) \{ strip\.scrollLeft \+= \(t\.left \+ t\.right\) \/ 2 - \(s\.left \+ s\.right\) \/ 2; return; \}/);
+    expect(boot).toMatch(/__dashTabReveal\(active, true\)/); // the restore asks for it
+    // …and a CLICK does not: re-centring the strip under the finger that just
+    // tapped a tab is the page moving something the seller was already looking at.
+    expect(boot).toMatch(/window\.__dashTabReveal\(tab\);/);
+  });
+
   it('keeps the open tab clear of the edge fades, not merely inside the box', () => {
     // The fade dissolves whatever reaches the strip's edge, so a tab landed flush
     // there is the tab the seller is on, half washed out — "visible" by geometry
