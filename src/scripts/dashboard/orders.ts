@@ -604,8 +604,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       : line.releaseDayISO ? tt('orderPayoutOn').replace('{date}', formatBusinessDayLabel(line.releaseDayISO))
       : tt('orderPayoutPending');
     const why = line.state === 'held' ? `<span class="[color:var(--color-muted)]">· ${esc(payoutWhyText(line, tt(line.whyKey)))}</span>` : '';
-    const action = line.blocking ? `<span class="font-semibold [color:var(--color-warning)]">· ${esc(tt(line.actionKey))}</span>` : '';
-    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}${action}</div>`;
+    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}</div>`;
   }
 
   function buildOrderCard(o: {

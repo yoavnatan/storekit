@@ -6,7 +6,6 @@
 import { getLang, getT } from '../../i18n/index.js';
 import StoreCategoryPicker from '../StoreCategoryPicker.astro';
 import CsrfField from '../CsrfField.astro';
-import { BUSINESS_TYPES } from '../../lib/payout-details.js';
 import { store as platformConfig } from '../../config/store.config';
 
 interface Props {
@@ -20,12 +19,6 @@ const { first, error = '' , vocabulary = [] } = Astro.props;
 const lang = getLang(Astro.cookies);
 const d = getT(lang).dashboard;
 const host = new URL(platformConfig.url).hostname;
-/** Same three labels the payments tab's copy of this form uses — one wording for one field. */
-const TYPE_LABEL: Record<string, string> = {
-  exempt: d.payBusinessExempt,
-  licensed: d.payBusinessLicensed,
-  company: d.payBusinessCompany,
-};
 ---
 
 <section class="section container">
@@ -58,51 +51,6 @@ const TYPE_LABEL: Record<string, string> = {
         <span>{d.storeCategories}</span>
         <StoreCategoryPicker vocabulary={vocabulary} id="create-store-cats" />
       </div>
-
-      {/* ── Bank details, HERE, and skippable (owner, 2026-08-11) ──
-          This reverses the standing "never at store-opening" reading of `feedback_seller_form_burden`,
-          on his instruction: *"אני גם חושב שזה כן צריך להיות חלק מההרשמה… או שזה יהיה חלק שאפשר
-          לדלג עליו אבל שהוא כן יופיע"*. The rule's PURPOSE is intact and is what shapes this block —
-          nothing here is `required`, the form submits empty, and the heading says so before the
-          first field. What changes is that the seller now MEETS the question at the moment they are
-          thinking about getting paid, instead of discovering it weeks later behind a banner.
-          The four bank fields are still all-or-nothing as a UNIT (`parsePayoutDetails`), so a
-          half-filled block is refused rather than half-saved. */}
-      <details class="mt-2 border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
-        <summary class="cursor-pointer text-[0.9rem] font-semibold list-none">{d.createStoreBankTitle}</summary>
-        <p class="muted text-[0.78rem] mt-1 mb-2 leading-[1.5]">{d.createStoreBankHint}</p>
-        <div class="grid gap-3 sm:grid-cols-2">
-          {/* `dir="ltr"` + numeric: ASCII digits on an RTL page group the wrong way round if left
-              to inherit — the same reason the payments tab's copy of this form carries them. */}
-          <label class="field">
-            <span class="text-[0.85rem]">{d.payBankCode}</span>
-            <input class="input" name="bankCode" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="2" />
-          </label>
-          <label class="field">
-            <span class="text-[0.85rem]">{d.payBankBranch}</span>
-            <input class="input" name="bankBranch" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="3" />
-          </label>
-          <label class="field">
-            <span class="text-[0.85rem]">{d.payBankAccount}</span>
-            <input class="input" name="bankAccount" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="20" />
-          </label>
-          <label class="field">
-            <span class="text-[0.85rem]">{d.payBankHolder}</span>
-            <input class="input" name="bankAccountHolder" autocomplete="off" maxlength="120" />
-          </label>
-          <label class="field">
-            <span class="text-[0.85rem]">{d.payBusinessId}</span>
-            <input class="input" name="businessId" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" />
-          </label>
-          <label class="field">
-            <span class="text-[0.85rem]">{d.payBusinessType}</span>
-            <select class="input" name="businessType">
-              <option value="">{d.payBusinessNone}</option>
-              {BUSINESS_TYPES.map((t) => <option value={t}>{TYPE_LABEL[t]}</option>)}
-            </select>
-          </label>
-        </div>
-      </details>
 
       <button class="btn btn--accent" type="submit" style="width:100%;margin-top:0.25rem">{d.createStoreBtn}</button>
     </form>

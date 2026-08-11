@@ -36,7 +36,7 @@ import Pager from './PayoutsPager.astro';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/payout-schedule.js';
 import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, type PayoutDetails } from '../../lib/payout-details.js';
-import { splitHeldByBasis } from '../../lib/order-payout-line.js';
+import { splitHeldByBasis, releasedForStore } from '../../lib/order-payout-line.js';
 import type { SellerAccount } from '../../lib/seller-account.js';
 import type { SellerPayout } from '../../lib/payouts.js';
 import type { getT } from '../../i18n/index.js';
@@ -108,6 +108,24 @@ const held = splitHeldByBasis(account.slices, storeSlug ?? undefined);
  *  and printing it above a table that lists one shop's reasons is the mismatch this whole change is
  *  about — so the tile is computed from the same split the table renders. */
 const heldHereAgorot = held.groups.reduce((t, g) => t + g.agorot, 0) + held.unknownAgorot;
+/**
+ * ── The headline figure is THIS shop's (owner, 2026-08-11) ──
+ *
+ * *"זה לא רלוונטי מכל החנויות, רק החנות שהוא עליה"* — a seller standing in one shop is asking what
+ * that shop is earning them, and an account-wide total answers a question they did not ask.
+ *
+ * So the tile shows what this shop's own orders have RELEASED, and the account-wide transfer moves
+ * to a line of its own that appears only for a seller who has more than one shop. The two are
+ * genuinely different quantities and neither is a rounding of the other: the transfer is
+ * `releasable − paidOut + adjustments` across the account, and neither of those last two belongs to
+ * a shop. Showing the per-store number without the real transfer beside it would be the same
+ * mistake in the other direction — a seller reading ₪4,200 and being paid ₪1,800.
+ *
+ * A single-store seller sees the account figure, because for them there is no second shop for the
+ * difference to hide in and the transfer is the more useful of the two.
+ */
+const payableHereAgorot = storeSlug ? releasedForStore(account.slices, storeSlug) : account.payableNowAgorot;
+const headlineAgorot = multiStore ? payableHereAgorot : account.payableNowAgorot;
 
 /** Every payout this seller has ever had, so it grows for as long as they trade. A statement that
  *  is comfortable in month two and unreadable in year two is a table nobody scrolls. */
@@ -186,13 +204,12 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
 
   <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
     <div class={TILE}>
-      {/* The suffix is what stops this reading as the current shop's figure. One bank transfer
-          covers every shop, so this number genuinely is all of them — it is the one thing on this
-          screen that has to be account-wide, and the label is where that gets said. */}
-      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow}{multiStore ? ` · ${d.payAllStoresShort}` : ''}</dt>
+      {/* Named after the SHOP when there is more than one, because that is whose money it is. The
+          real transfer covers every shop and is stated on its own line below the tiles. */}
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow}{multiStore && storeName ? ` · ${storeName}` : ''}</dt>
       {/* The one figure a seller acts on, so it is the one that takes the accent. The others are
           context and stay in the ordinary text colour — three coloured numbers say nothing. */}
-      <dd class={`m-0 text-[1.1rem] font-bold ${account.payableNowAgorot > 0 ? '[color:var(--color-accent)]' : ''}`} id="pay-kpi-now">{formatAgorot(account.payableNowAgorot)}</dd>
+      <dd class={`m-0 text-[1.1rem] font-bold ${headlineAgorot > 0 ? '[color:var(--color-accent)]' : ''}`} id="pay-kpi-now">{formatAgorot(headlineAgorot)}</dd>
       <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payPayableNowHint}</p>
     </div>
     {/* THIS shop's share, unlike the two beside it. A payout is one transfer across every shop the
@@ -221,6 +238,15 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
     )}
   </dl>
 
+  {/* The REAL transfer, once, and only for a seller who has more than one shop. The tiles above are
+      this shop's; one bank transfer covers all of them, and a seller who read only the per-store
+      figure would expect the wrong amount to arrive. Stated as a sentence rather than a fourth
+      tile — it is context for the number above, not a number to act on separately. */}
+  {multiStore && (
+    <p class="m-0 mb-2 text-[0.82rem]">
+      {d.payAccountTotal.replace('{amount}', formatAgorot(account.payableNowAgorot))}
+    </p>
+  )}
   <p class="muted m-0 mb-4 text-[0.8rem]">{d.payMinNote.replace('{min}', formatAgorot(MIN_PAYOUT_AGOROT))}</p>
 
   {/* The banner. It appears on ONE condition — money is genuinely released and there is nowhere to
