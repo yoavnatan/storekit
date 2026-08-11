@@ -25,14 +25,28 @@
  */
 
 /**
+ * The buyer's statutory cancellation window — **not ours to choose.**
+ *
+ * Israeli consumer law gives a distance-sale buyer **14 days from RECEIVING the goods** to cancel
+ * (חוק הגנת הצרכן §14ג + תקנות ביטול עסקה תשע"א-2010; checked 2026-08-10 against kolzchut.org.il,
+ * not recalled). Everything else on this page is a policy we set; this one is the floor the policy
+ * has to clear, which is why it is a constant of its own rather than a number inside the comment
+ * below.
+ *
+ * **It is also the answer the SELLER asks for.** The owner read "ועוד 21 ימים אחריה" and asked
+ * *"למה 21 מרגע המסירה ולא 15 למשל?"* — a fair question that a bare number cannot answer. The
+ * payments tab's `#pay-how` block interpolates this alongside `HOLD_DAYS_AFTER_DELIVERY`, so the
+ * seller reads the law and the margin rather than a figure they have to take on trust.
+ */
+export const STATUTORY_RETURN_DAYS = 14;
+
+/**
  * How long a delivered order's money waits before it may be paid out.
  *
- * **21, and the number is derived rather than chosen.** Israeli consumer law gives a distance-sale
- * buyer **14 days from RECEIVING the goods** to cancel (חוק הגנת הצרכן §14ג + תקנות ביטול עסקה
- * תשע"א-2010; checked 2026-08-10 against kolzchut.org.il, not recalled). A 14-day hold therefore
- * released a seller's money on the very last day the buyer could still cancel — and a cancellation
- * that lands after the payout is a debt to chase instead of money we are holding. It has to clear
- * the statutory window with room for the notice to reach us, not land exactly on it.
+ * **21, and the number is derived rather than chosen** — `STATUTORY_RETURN_DAYS` + a week. A hold of
+ * exactly 14 released a seller's money on the very last day the buyer could still cancel, and a
+ * cancellation that lands after the payout is a debt to chase instead of money we are holding. It
+ * has to clear the statutory window with room for the notice to reach us, not land exactly on it.
  *
  * ⚠️ Still an owner decision, and still tied to the returns policy — but it may not go BELOW the
  * statutory window whatever that policy says. `tests/payout-schedule.test.ts` pins that floor.

@@ -219,6 +219,36 @@ export function releasedForStore(slices: readonly HeldSlice[], storeSlug: string
   return total;
 }
 
+/**
+ * The "תשלום קרוב" figure a screen should print while the seller is standing in ONE shop.
+ *
+ * ── Why it is a function and not two lines in a component (2026-08-11) ──
+ * Two surfaces ask it now — the Payments tab's headline tile and the seller overview's money row —
+ * and they must not be able to answer differently about the same shop on the same page load. It is
+ * also not a figure you can eyeball as correct: it deliberately returns two DIFFERENT quantities
+ * depending on `multiStore`, which is the kind of rule that gets copied to a second call site with
+ * the condition subtly rewritten.
+ *
+ * **A multi-store seller sees THIS shop's released money** (owner, 2026-08-11: *"זה לא רלוונטי מכל
+ * החנויות, רק החנות שהוא עליה"*, and again: *"הוא נמצא על חנות א׳ אז הוא צריך לקבל מידע על חנות
+ * א׳"*). **A single-store seller sees the account figure**, because for them there is no second shop
+ * for a difference to hide in, and the transfer is the more useful of the two.
+ *
+ * ⚠️ The two are genuinely different quantities and neither is a rounding of the other: the transfer
+ * is `releasable − paidOut + adjustments` across the ACCOUNT, and neither of those last two belongs
+ * to a shop. So a screen showing the per-store number owes the seller the account-wide transfer
+ * somewhere too, or they read ₪4,200 and are paid ₪1,800.
+ */
+export function payableHeadlineAgorot(
+  slices: readonly HeldSlice[],
+  storeSlug: string | null | undefined,
+  multiStore: boolean,
+  accountPayableNowAgorot: number,
+): number {
+  if (!multiStore || !storeSlug) return accountPayableNowAgorot;
+  return releasedForStore(slices, storeSlug);
+}
+
 /** Every store with money on hold, in the order the slices arrived (newest order first, so the shop
  *  that traded most recently leads). Derived from the slices rather than taken as a store list: a
  *  shop with nothing waiting has nothing to say on this screen. */

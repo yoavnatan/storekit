@@ -731,9 +731,18 @@ export const translations = {
       // transferred last March is a question a bookkeeper asks, with a period and an export.
       // "מכל החנויות" is in the DESCRIPTION and not a footnote: this is the one report on the tab
       // that is not about the store in the switcher, because a payout is one transfer per business.
-      repPayoutsTitle: 'תשלומים מהפלטפורמה',
-      repPayoutsDesc: 'כל העברה שיצאה אליכם, עם העמלה שנגבתה. מכל החנויות, לפי תקופה.',
-      repColCommissionTaken: 'עמלה שנגבתה',
+      // ⚠️ The first wording was *"כל העברה שיצאה אליכם, עם העמלה שנגבתה. מכל החנויות, לפי תקופה"*
+      // and the owner asked two questions about it (2026-08-11): why is it not per store, and what
+      // does "העמלה שנגבתה" mean. Both were the description's fault rather than the report's.
+      //  • **Not per store, and it CANNOT be:** one bank transfer covers every shop the seller owns
+      //    (`payouts.ts`, `pricing.ts`), so a per-store column here would be a figure no statement
+      //    ever matches. The title now says "העברות לבנק" so the row is obviously a transfer, and
+      //    the store scope is stated in the description instead of left to be discovered.
+      //  • **"עמלה שנגבתה" was ours-facing:** it is the platform's commission on the sales that
+      //    transfer covered, already deducted — so it says that, in the seller's terms.
+      repPayoutsTitle: 'העברות לבנק',
+      repPayoutsDesc: 'כל העברה שיצאה לחשבון שלכם, וכמה עמלת פלטפורמה נוכתה ממנה. העברה אחת מאחדת את כל החנויות שלכם.',
+      repColCommissionTaken: 'עמלת פלטפורמה',
       repColTransferred: 'הועבר אליך',
       repSumTransferred: 'הועבר:',
       repSumPayoutCount: 'העברות:',
@@ -791,13 +800,21 @@ export const translations = {
       // hold rule, the return window and the minimum are details a seller wants ONCE, in one place
       // they can be sent to, rather than three sentences standing between them and their money.
       paySubtitle: 'הכסף עובר אליכם בהעברה אחת ב-{day} לכל חודש.',
-      payAllStores: 'כולל את כל החנויות שלך',
+      // Sits UNDER "פרטי בנק ופרטי עסק" and only for a seller with more than one shop (owner,
+      // 2026-08-11). It replaced `payAllStores`, which said the same thing in the panel's SUBTITLE
+      // — where it described the whole screen instead of the one card it is true of, and made a
+      // store's dashboard read as somebody else's.
+      payBankAllStores: 'פרטים אלו מתייחסים לכל החנויות בבעלותך.',
       // The short form, for a tile label rather than a sentence. The two figures a payout cannot be
       // split by wear it; everything else on the screen is this shop's (owner, 2026-08-11).
       payAllStoresShort: 'מכל החנויות',
       // The one line that reconciles the per-store tiles with the transfer that actually leaves.
       // Only rendered for a multi-store seller — for everyone else the two are the same number.
-      payAccountTotal: 'התשלום שיצא בפועל מאחד את כל החנויות שלך: {amount}.',
+      // The owner's own wording (2026-08-11). It replaced "התשלום שיצא בפועל מאחד את כל החנויות
+      // שלך", which described a MECHANISM — what the transfer does to the shops — where the seller
+      // wanted the same LABEL as the tile above it with its scope on the end. The tile and this
+      // line are one question asked at two scopes, so they read best as one phrase apart.
+      payAccountTotal: 'תשלום קרוב מכל החנויות שלך: {amount}.',
       // "תשלום קרוב" / "שולם בעבר" — the tile names an EVENT on a calendar, not a state of the
       // money (owner, סשן א׳ §1–2). "מוכן להעברה אליך" described a readiness the seller cannot act
       // on and made the tile sound like a button; the date is the thing they came to read.
@@ -850,10 +867,18 @@ export const translations = {
       payHowTitle: 'איך זה עובד',
       payHowWhenQ: 'מתי הכסף מועבר?',
       payHowWhenA: 'פעם בחודש, ב-{day} לחודש, בהעברה אחת לחשבון הבנק שלכם — על כל מה ששוחרר עד אז.',
+      // ⚠️ The owner read the first version and asked *"לא הבנתי… למה 21 מרגע המסירה ולא 15 למשל?"*
+      // — which is the right question, and the answer is that the number is DERIVED and the sentence
+      // was hiding that. Israeli consumer law gives a distance-sale buyer 14 days FROM RECEIVING the
+      // goods to cancel; a hold of exactly 14 releases the money on the last day they can still do
+      // it. So the "why" now carries the 14 and the words "על פי חוק", and the day count is stated
+      // as "אותם 14 ימים ועוד כמה" rather than as a bare number nobody can check.
+      // The two constants stay interpolated from `payout-schedule.ts` — its header holds the full
+      // derivation and the ⚠️ that the final value is still the owner's.
       payHowHeldQ: 'מתי הוא מוחזק?',
-      payHowHeldA: 'מרגע התשלום ועד שההזמנה נמסרת, ועוד {delivery} ימים אחריה. אם לא סימנתם מסירה — {payment} ימים מיום התשלום.',
-      payHowWhyQ: 'למה?',
-      payHowWhyA: 'אלה הימים שבהם הקונה עדיין יכול להחזיר. אחרי שהם עוברים הכסף משתחרר לבד, בלי שתעשו כלום.',
+      payHowHeldA: 'מרגע התשלום ועד שההזמנה נמסרת, ועוד {delivery} ימים אחריה. לא סימנתם מסירה? {payment} ימים מיום התשלום.',
+      payHowWhyQ: 'ולמה {delivery} ימים?',
+      payHowWhyA: 'לקונה יש {statutory} ימים מקבלת המוצר לבטל את העסקה — זו זכות שבחוק. ההמתנה מכסה אותם ומוסיפה מרווח להודעת ביטול שמגיעה ברגע האחרון, כדי שלא נעביר לכם כסף שצריך לחזור. אחרי שהם עוברים הכסף משתחרר לבד.',
       payHowMinQ: 'ומה אם הסכום קטן?',
       payHowMinA: 'מתחת ל-{min} הכסף מחכה לחודש הבא. שום דבר לא נגרע.',
       // The held-orders TABLE became a three-line split by reason (owner, סשן א׳ §4 — a second
@@ -2401,9 +2426,9 @@ export const translations = {
       repProductsDesc: 'How much of each product sold, and what is left in stock.',
       repStockTitle: 'Stock',
       repStockDesc: 'A sheet for a stocktake or a supplier order. A snapshot of today.',
-      repPayoutsTitle: 'Platform payments',
-      repPayoutsDesc: 'Every transfer that went out to you, with the commission taken. All stores, by period.',
-      repColCommissionTaken: 'Commission taken',
+      repPayoutsTitle: 'Bank transfers',
+      repPayoutsDesc: 'Every transfer that reached your account, and how much platform commission was deducted from it. One transfer covers all of your stores.',
+      repColCommissionTaken: 'Platform commission',
       repColTransferred: 'Transferred to you',
       repSumTransferred: 'Transferred:',
       repSumPayoutCount: 'Transfers:',
@@ -2441,7 +2466,7 @@ export const translations = {
       tabPayouts: 'Payments',
       payTitle: 'My payments',
       paySubtitle: 'Your money reaches you in one transfer on the {day} of each month.',
-      payAllStores: 'Covers all of your stores',
+      payBankAllStores: 'These details apply to every store you own.',
       payAllStoresShort: 'all stores',
       payAccountTotal: 'The transfer that actually goes out pools all of your stores: {amount}.',
       payPayableNow: 'Next payment',
@@ -2478,9 +2503,9 @@ export const translations = {
       payHowWhenQ: 'When is the money transferred?',
       payHowWhenA: 'Once a month, on the {day}, in one transfer to your bank account — everything released by then.',
       payHowHeldQ: 'When is it held?',
-      payHowHeldA: 'From payment until the order is delivered, plus {delivery} days after that. If you never marked it delivered — {payment} days from the payment date.',
-      payHowWhyQ: 'Why?',
-      payHowWhyA: 'Those are the days the buyer can still return it. Once they pass the money releases on its own.',
+      payHowHeldA: 'From payment until the order is delivered, plus {delivery} days after that. Never marked it delivered? {payment} days from the payment date.',
+      payHowWhyQ: 'Why {delivery} days?',
+      payHowWhyA: 'The buyer has {statutory} days from receiving the goods to cancel — that is a right in law. The hold covers those and adds room for a cancellation that arrives on the last day, so we do not send you money that has to come back. Once they pass it releases on its own.',
       payHowMinQ: 'What if the amount is small?',
       payHowMinA: 'Below {min} it waits for next month. Nothing is deducted.',
       payHeldTitle: 'Payments waiting',

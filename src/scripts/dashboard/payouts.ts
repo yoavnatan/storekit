@@ -53,15 +53,63 @@ function i18n(): Record<string, string> {
  * waiting for, and refreshing the visible one under the seller's cursor is the thing `tab-sync.ts`
  * refuses to do everywhere else.
  */
+/**
+ * The tiles, while a refresh is in flight (owner, 2026-08-11: *"האם יש איזשהו פלייסהולדר/סקלטון
+ * יפה ומובן על לשונית תשלומים? כמו שיש בביצועים"*).
+ *
+ * **The panel is server-rendered, so it has no first-paint wait — and that is why this is the only
+ * place a skeleton belongs on it.** Performance shimmers because its numbers are fetched after the
+ * page; these arrive WITH the page. What they do not survive is a status change on the Orders tab:
+ * that moves money between held and payable, this panel re-reads itself, and until the answer lands
+ * the tiles show the figure from before the change — stale money wearing the confidence of fresh
+ * money. The rule is `SkelBar.astro`'s, one screen over: a seller cannot tell a value that is not
+ * here yet from one that is, so show neither a wrong number nor a blank.
+ *
+ * The originals are kept so a FAILED refresh puts them back. That matters more here than the
+ * shimmer does: `refreshPayoutsPanel` deliberately leaves the panel alone when the request does not
+ * arrive (an empty answer and no answer are different facts), and a skeleton left shimmering
+ * forever would turn a recoverable failure into a screen that never resolves.
+ */
+function setPayoutsBusy(root: HTMLElement, busy: boolean): void {
+  // The literal string, never `toggleAttribute` — that writes `aria-busy=""`, and an empty value is
+  // not one of the two ARIA accepts, so a screen reader is told nothing at all. Same spelling the
+  // reports panel already uses.
+  if (busy) root.setAttribute('aria-busy', 'true');
+  else root.removeAttribute('aria-busy');
+  for (const cell of Array.from(root.querySelectorAll<HTMLElement>('[data-skel]'))) {
+    if (busy) {
+      if (cell.dataset.skelWas === undefined) cell.dataset.skelWas = cell.textContent ?? '';
+      const bar = document.createElement('span');
+      // `.skel-bar` is the site's one shimmer (utilities/utils.css); the sizing utilities come from
+      // the attribute so the bar matches the value it stands in for and the swap does not jump.
+      bar.className = `skel-bar inline-block align-middle ${cell.dataset.skel ?? ''}`;
+      bar.setAttribute('aria-hidden', 'true');
+      cell.replaceChildren(bar);
+    } else if (cell.dataset.skelWas !== undefined) {
+      cell.textContent = cell.dataset.skelWas;
+      delete cell.dataset.skelWas;
+    }
+  }
+}
+
 async function refreshPayoutsPanel(): Promise<void> {
   const root = document.getElementById('payouts-root');
   if (!root) return;
+  setPayoutsBusy(root, true);
   const url = new URL(window.location.href);
   url.searchParams.set('panel', 'payouts');
-  const res = await fetch(url.toString(), { headers: { 'X-Requested-With': 'fetch' } });
-  if (!res.ok) throw new Error(`payouts refresh: ${res.status}`);
-  const fresh = new DOMParser().parseFromString(await res.text(), 'text/html').getElementById('payouts-root');
-  if (!fresh) throw new Error('payouts refresh: panel missing from the response');
+  let fresh: HTMLElement | null;
+  try {
+    const res = await fetch(url.toString(), { headers: { 'X-Requested-With': 'fetch' } });
+    if (!res.ok) throw new Error(`payouts refresh: ${res.status}`);
+    fresh = new DOMParser().parseFromString(await res.text(), 'text/html').getElementById('payouts-root');
+    if (!fresh) throw new Error('payouts refresh: panel missing from the response');
+  } catch (err) {
+    // Put the numbers back before rethrowing: every caller treats a rejection as "leave the panel as
+    // it was and try again later", and a panel left in its busy state is not as it was.
+    setPayoutsBusy(root, false);
+    throw err;
+  }
   root.replaceWith(fresh);
   // The form is new markup, so its handler has to be attached again. Idempotent by construction —
   // the old element is gone, and with it every listener that was on it.

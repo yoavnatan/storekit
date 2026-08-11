@@ -16,7 +16,7 @@
  *      dropped, unattributable slices reported rather than swallowed).
  */
 import { describe, it, expect } from 'vitest';
-import { orderPayoutLine, payoutWhyText, splitHeldByBasis, storesWithHeldMoney, HELD_BASES, type HeldSlice } from '../src/lib/order-payout-line.js';
+import { orderPayoutLine, payoutWhyText, splitHeldByBasis, storesWithHeldMoney, payableHeadlineAgorot, HELD_BASES, type HeldSlice } from '../src/lib/order-payout-line.js';
 import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../src/lib/payout-schedule.js';
 import { addDaysISO } from '../src/lib/date-range.js';
 
@@ -169,6 +169,29 @@ describe('the held split on the payments tab', () => {
     const perStore = [a, b].reduce((t, s) => t + s.groups.reduce((x, g) => x + g.agorot, 0) + s.unknownAgorot, 0);
     expect(perStore, 'the sections must add up to the tile above them')
       .toBe(whole.groups.reduce((t, g) => t + g.agorot, 0) + whole.unknownAgorot);
+  });
+
+  /**
+   * The "תשלום קרוב" headline, which two surfaces now print — the Payments tab's tile and the
+   * seller overview's money row. It deliberately returns two DIFFERENT quantities depending on
+   * `multiStore`, which is exactly the kind of rule that gets copied to a second call site with the
+   * condition subtly rewritten, so it is asserted here rather than trusted to two components.
+   */
+  it('the headline is this shop\'s released money — but the ACCOUNT figure for a single-store seller', () => {
+    const slices = [
+      slice('delivery', 100, 'releasable', 'shop-a'),
+      slice('delivery', 900, 'releasable', 'shop-b'),
+      slice('unshipped', 500, 'held', 'shop-a'),
+    ];
+    // Two shops: shop-a's own released money, and nothing of shop-b's. The held slice is not
+    // released and must not be in it.
+    expect(payableHeadlineAgorot(slices, 'shop-a', true, 12_345)).toBe(100);
+    // One shop: the account figure, which is `releasable − paidOut + adjustments` and is NOT the
+    // same as the sum of that shop's released slices — that is the whole reason the branch exists.
+    expect(payableHeadlineAgorot(slices, 'shop-a', false, 12_345)).toBe(12_345);
+    // No shop resolved (a seller with none): the account figure, never a silent all-stores sum
+    // dressed up as one shop's.
+    expect(payableHeadlineAgorot(slices, null, true, 12_345)).toBe(12_345);
   });
 
   it('lists the shops that actually have money waiting, and only those', () => {
