@@ -169,6 +169,28 @@ const cloudinaryPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
 
 let error = '';
 
+// Validated against the real panel list, never taken raw: every panel renders
+// `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
+// bookmark, a link someone edited) hid ALL of them and served a dashboard with
+// an empty body. Fall back to the landing tab instead.
+const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
+const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
+const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
+
+/**
+ * `&panel=<current>` for a POST redirect, or nothing.
+ *
+ * "מעבר בין חנויות צריך להשאיר את היוזר על הלשונית שהוא נמצא בה" (owner, סשן ב׳) is the same
+ * complaint as this one, one step later: a native form POST lands back on the dashboard, and every
+ * redirect below used to drop the panel — so adding a product from the מוצרים tab answered on
+ * סקירה כללית. The tab strip keeps `?panel=` current (DashTabsBoot), these forms have no `action`
+ * and therefore post to that same URL, so the value is here to be carried back.
+ *
+ * Whitelisted through `initialPanel` rather than interpolated raw: this string ends up in a
+ * `Location` header, which is the one place a reflected query parameter must never be trusted.
+ */
+const panelParam = initialPanel === 'overview' ? '' : `&panel=${initialPanel}`;
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('_action') || 'save-settings');
@@ -189,7 +211,7 @@ if (Astro.request.method === 'POST') {
         error = d.notYours;
       } else {
         await updateStore(target.id, { name, tagline, description, colors: target.colors });
-        return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1`));
+        return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1${panelParam}`));
       }
     }
   } else if (action === 'create-store') {
@@ -247,7 +269,7 @@ if (Astro.request.method === 'POST') {
       error = d.notYours;
     } else {
       await createProduct(ownerStore.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
-      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1`));
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1${panelParam}`));
     }
   } else if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');
@@ -269,7 +291,7 @@ if (Astro.request.method === 'POST') {
     } else {
       await updateProduct(claim.product.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       const sid = Astro.url.searchParams.get('store') ?? '';
-      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}${panelParam}`) : `/seller/dashboard?panel=${initialPanel}`);
     }
   } else if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
@@ -279,7 +301,7 @@ if (Astro.request.method === 'POST') {
       error = d.notYours;
     } else {
       await deleteProduct(claim.product.id);
-      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}${panelParam}`) : `/seller/dashboard?panel=${initialPanel}`);
     }
   }
 }
@@ -461,13 +483,8 @@ const requestedPageSize = parseInt(Astro.url.searchParams.get('psize') ?? '20', 
 const productsPageSize = PRODUCTS_PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 20;
 const filteredSortedProducts = filterAndSortSellerProducts(products, productCategoryPaths, wishlistCounts, purchasedCounts, sellerProductQuery);
 const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.searchParams, 'ppage'), productsPageSize);
-// Validated against the real panel list, never taken raw: every panel renders
-// `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
-// bookmark, a link someone edited) hid ALL of them and served a dashboard with
-// an empty body. Fall back to the landing tab instead.
-const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
-const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
-const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
+// (`PANEL_NAMES` / `initialPanel` are resolved above the POST block — the redirects there carry
+// the panel back, see `panelParam`.)
 // Performance + Advertising are the two heaviest tabs to render server-side —
 // buildPerformanceSummary() reads the page-view buckets and aggregates every
 // order, and the ad cards each run a seeded mock-metrics pass. They're rarely
@@ -775,6 +792,7 @@ const orderStatusColors: Record<string, string> = {
                   <li>
                     <a
                       href={`/seller/dashboard?store=${s.id}&panel=${initialPanel}`}
+                      data-panel-link
                       role="option"
                       aria-selected={s.id === store.id}
                       class={s.id === store.id
