@@ -556,7 +556,8 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // holding the amount and has not been told to take it. Writing 'paid' here is the lie the old
     // flow told, and every revenue sum, seller balance and payout would have been computed from it
     // for an order whose capture had not been attempted.
-    for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
+    const storeSlices = Object.entries(storeSubtotals);
+    for (const [sliceIndex, [storeSlug, sub]] of storeSlices.entries()) {
       const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
       const storeTotalAgorot = storeSliceTotalAgorot(sub);
       const storeOrder = await createOrder({
@@ -580,7 +581,13 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         amountAgorot: storeTotalAgorot,
         to: 'pending',
         actor: 'buyer',
-        detail: `${storeItems.length} פריטים · אסמכתת סליקה ${payment.paymentRef ?? '—'}`,
+        // The slice is NAMED when there is more than one, and it is the row's own answer to the
+        // question the journal's shape provokes (owner, סשן ב׳: "why is one purchase several
+        // rows here?"). One cart across three stores is one charge and three orders, so the
+        // journal shows three of these — and a reader scrolled away from the panel's explanation
+        // has nothing on the row itself saying they are the same purchase. Omitted at one store,
+        // where "חנות 1 מתוך 1" would be noise on the overwhelmingly common case.
+        detail: `${storeSlices.length > 1 ? `חנות ${sliceIndex + 1} מתוך ${storeSlices.length} בקנייה זו · ` : ''}${storeItems.length} פריטים · אסמכתת סליקה ${payment.paymentRef ?? '—'}`,
       });
     }
 

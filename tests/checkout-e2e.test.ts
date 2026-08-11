@@ -123,6 +123,22 @@ describe('a cart spanning two stores can actually be bought', () => {
     expect(types[types.length - 1]).toBe('payment_status_changed');
     expect(rows[rows.length - 1]!.to_value).toBe('paid');
   });
+
+  // One charge and one order per store is the model, and the journal is where a reader meets it as
+  // several rows for one purchase. Each `order_created` therefore says which slice it is (owner,
+  // סשן ב׳ asked exactly this question of this screen) — asserted here, on a real two-store
+  // checkout, because the numbering is derived from the cart and cannot be checked anywhere the
+  // cart is imaginary.
+  it('names each store slice in its journal row, so one purchase reads as one purchase', async () => {
+    await POST(ctx(twoStoreCart()));
+    const { rows } = await query<{ detail: string; checkout_ref: string }>(
+      `SELECT detail, checkout_ref FROM money_events WHERE type = 'order_created' ORDER BY at, id`,
+    );
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((r) => r.checkout_ref)).size).toBe(1);
+    expect(rows[0]!.detail).toContain('חנות 1 מתוך 2');
+    expect(rows[1]!.detail).toContain('חנות 2 מתוך 2');
+  });
 });
 
 describe('a declined card leaves nothing behind', () => {

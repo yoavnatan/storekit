@@ -1,16 +1,24 @@
 ---
-import { MONEY_EVENT_TYPES, MONEY_EVENT_LABELS } from '../../lib/money-events.js';
+import { MONEY_EVENT_LABELS } from '../../lib/money-events.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 import { hasActiveMoneyLogFilters, MONEY_LOG_DEFAULT_DAYS, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 
 /**
- * Search + date-window + type chips for the money journal (owner, סשן ג׳: the tab
+ * Search + event-type + date-window for the money journal (owner, סשן ג׳: the tab
  * could be filtered but not navigated — no way to reach one specific row).
+ *
+ * **Three controls, and the type one is a MENU rather than a chip row (owner, סשן ב׳:
+ * "so many filters that it is no longer clear what this journal does").** The nine
+ * types were nine always-visible chips plus "הכל", which is more filter than journal
+ * on a phone — and the toolbar next door (Orders) had already settled the question:
+ * a narrowing with many values collapses into one trigger that NAMES the current
+ * answer. Nothing about what can be filtered changed, only how much of it is on
+ * screen when nobody is filtering.
  *
  * Every control writes to the ONE `/admin?` URL and the server re-renders; nothing
  * here filters DOM rows, because only one page of rows is ever in the DOM. The
- * client half (debounced search, the date dropdown) is src/scripts/admin/moneylog.ts,
+ * client half (debounced search, both dropdowns) is src/scripts/admin/moneylog.ts,
  * which reads its initial state from the data-* attributes below.
  */
 interface Props {
@@ -19,20 +27,6 @@ interface Props {
   total: number;
 }
 const { query, total } = Astro.props;
-
-// Driven by the vocabulary, not by the loaded rows — a type with nothing in the
-// journal still gets a chip, and clicking it says so instead of quietly showing
-// everything. Every chip keeps the search + date window and drops the page.
-const FILTERS = [{ id: '', label: 'הכל' }, ...MONEY_EVENT_TYPES.map((t) => ({ id: t, label: MONEY_EVENT_LABELS[t] }))];
-// The default window is deliberately NOT written into these links. Freezing it into the URL would
-// turn "this is the default" into "the admin chose this", and the clear affordance would then
-// offer to remove a window that always applies.
-const chipUrl = (typeId: string) => buildAdminUrl('moneylog', {
-  mtype: typeId || undefined,
-  mq: query.q || undefined,
-  mfrom: query.defaultWindow ? undefined : (query.from || undefined),
-  mto: query.defaultWindow ? undefined : (query.to || undefined),
-});
 
 const dayLabel = (iso: string) => formatBusinessDateShort(`${iso}T12:00:00Z`);
 // The DEFAULT window is named rather than shown as two dates: it is not something the admin
@@ -45,8 +39,19 @@ const rangeLabel = query.defaultWindow
     : query.from ? `מ־${dayLabel(query.from)}`
     : query.to ? `עד ${dayLabel(query.to)}`
     : 'כל התאריכים';
-const rangeActive = !query.defaultWindow;
+// The trigger says the ANSWER, never the question: an unfiltered journal reads "כל סוגי
+// האירועים" rather than "סוג אירוע", so the toolbar states what is on screen instead of
+// leaving the admin to infer it from an unlit control.
+const typeLabel = query.type ? MONEY_EVENT_LABELS[query.type] : 'כל סוגי האירועים';
 const anyFilter = hasActiveMoneyLogFilters(query);
+
+// The admin toolbar's one trigger recipe (Orders/Sellers/Messages carry it inline). Split into
+// base + tone here because this toolbar has two of them and they differ ONLY by whether their
+// narrowing is active — a second inline copy is how two buttons in one row drift apart.
+const TRIGGER_BASE = 'table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] bg-[color:var(--color-surface)] border rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]';
+const triggerTone = (active: boolean) => active
+  ? 'border-[color:var(--color-primary)] [color:var(--color-primary)]'
+  : 'border-[color:var(--color-border)] [color:var(--color-text)]';
 ---
 
 <div class="flex flex-wrap items-center gap-2 mb-3" id="admin-moneylog-toolbar" data-type={query.type ?? ''} data-from={query.from} data-to={query.to}>
@@ -63,33 +68,27 @@ const anyFilter = hasActiveMoneyLogFilters(query);
 
   <button
     type="button"
+    id="admin-moneylog-type-trigger"
+    class:list={[TRIGGER_BASE, triggerTone(Boolean(query.type))]}
+    aria-haspopup="true"
+    aria-expanded="false"
+  >
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+    {typeLabel}
+    <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+
+  <button
+    type="button"
     id="admin-moneylog-range-trigger"
-    class:list={[
-      'table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] bg-[color:var(--color-surface)] border rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)]',
-      rangeActive
-        ? 'border-[color:var(--color-primary)] [color:var(--color-primary)]'
-        : 'border-[color:var(--color-border)] [color:var(--color-text)]',
-    ]}
+    class:list={[TRIGGER_BASE, triggerTone(!query.defaultWindow)]}
     aria-haspopup="dialog"
     aria-expanded="false"
   >
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
     {rangeLabel}
+    <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
   </button>
-</div>
-
-<div class="flex flex-wrap gap-1.5 mb-3">
-  {FILTERS.map((f) => (
-    <a
-      href={chipUrl(f.id)}
-      class:list={[
-        'text-[0.78rem] px-2.5 py-1 rounded-full border no-underline transition-colors',
-        (query.type ?? '') === f.id
-          ? 'border-[color:var(--color-primary)] bg-[color:var(--color-primary)] text-white'
-          : 'border-[color:var(--color-border)] [color:var(--color-muted)] hover:border-[color:var(--color-text)]',
-      ]}
-    >{f.label}</a>
-  ))}
 </div>
 
 {/* One line that always answers "what am I looking at, and how do I get back to

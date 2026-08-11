@@ -11,6 +11,7 @@ import {
   deleteNotification,
   deleteAllNotificationsForUser,
 } from '../../lib/notifications.js';
+import { notificationHref } from '../../lib/notification-link.js';
 
 export const GET: APIRoute = async ({ request, cookies }) => {
   const userId = getSellerSession(cookies);
@@ -23,7 +24,11 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     getUnreadCountForUser(userId),
   ]);
 
-  return new Response(JSON.stringify({ notifications, unreadCount }), {
+  // `href` is derived, never stored: it is where clicking this row should land, computed once here
+  // so the dropdown and the toast poller cannot disagree about it (notification-link.ts).
+  const withHref = notifications.map((n) => ({ ...n, href: notificationHref(n) }));
+
+  return new Response(JSON.stringify({ notifications: withHref, unreadCount }), {
     headers: { 'Content-Type': 'application/json' },
   });
 };

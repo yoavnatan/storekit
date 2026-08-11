@@ -56,7 +56,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     await createNotification({
       userId: sellerId,
       role: 'seller',
-      type: 'order_update',
+      // Not 'order_update' (what it used to be): this is about the payout account, and the type is
+      // what decides where clicking it lands — the payouts tab, not the orders one.
+      type: 'payout_status',
       title: 'פרטי חשבון הבנק עודכנו',
       body: hasPayableBank(seller)
         ? `התשלומים הבאים יועברו לחשבון ${maskedBankLine(seller)}. אם לא אתם עשיתם את זה — פנו אלינו מיד.`

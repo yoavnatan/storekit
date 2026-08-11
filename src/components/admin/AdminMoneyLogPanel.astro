@@ -93,13 +93,15 @@ const highlightId = targetMissing ? '' : query.eventId;
 ---
 
 <section>
+  {/* NO standing explanation above the table (owner, סשן ב׳: "everything up top is unnecessary
+      and heavy" — said of prose that had grown to five lines). Everything it used to say is now
+      said where it applies and only when it applies: each row names its own store slice, so a
+      multi-store purchase explains itself; the אסמכתא link's tooltip says it opens the whole
+      purchase; and the append-only nature of the journal is a property of the data, not something
+      a reader has to be told before every reading of it. A paragraph nobody re-reads after the
+      first visit is a permanent tax on the ones who do. */}
   <header class="mb-4">
-    <h2 class="m-0 mb-1 text-[1.05rem] font-semibold">יומן אירועים כספיים</h2>
-    <p class="m-0 text-[0.82rem] [color:var(--color-muted)] leading-relaxed">
-      רישום בלבד־הוספה של כל אירוע שמזיז כסף: חיוב, יצירת הזמנה, ביטול, שינוי סכום, וחיוב כפול שנמנע.
-      שורות לא נערכות ולא נמחקות — תיקון נרשם כשורה חדשה. לחיצה על מספר הזמנה או אסמכתא מציגה את כל
-      האירועים שלה, וכפתור הקישור שבסוף כל שורה מעתיק קישור ישיר אליה.
-    </p>
+    <h2 class="m-0 text-[1.05rem] font-semibold">יומן אירועים כספיים</h2>
   </header>
 
   <AdminReconciliationCard reconciliation={reconciliation} />
@@ -190,7 +192,7 @@ const highlightId = targetMissing ? '' : query.eventId;
                           <a href={traceUrl(e.orderId)} title="כל האירועים של הזמנה זו" class="[color:var(--color-primary)] no-underline hover:underline">הזמנה {e.orderId.slice(0, 8)}</a>
                         )}
                         {e.checkoutRef && (
-                          <Fragment> · <a href={traceUrl(e.checkoutRef)} title="כל האירועים של אסמכתא זו" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא {e.checkoutRef}</a></Fragment>
+                          <Fragment> · <a href={traceUrl(e.checkoutRef)} title="כל הקנייה — כל החנויות שנקנו יחד באסמכתא הזאת" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא {e.checkoutRef}</a></Fragment>
                         )}
                         {/* Labelled, and it is not decoration. Unlabelled behind the same `·` as
                             the two links above it, the raw value read as part of the reference

@@ -344,7 +344,10 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
         : notifs;
       if(toToast.length>0){
         toToast.slice(0,3).forEach(function(n){
-          var href=n.type==='new_message'?'/seller/dashboard?panel=messages':(n.type==='new_order'||n.type==='order_update')?'/seller/dashboard?panel=orders':'/buyer/dashboard?tab=messages';
+          // Where the toast leads is decided server-side, per row, by notification-link.ts — the
+          // same value the bell dropdown uses. This block is is:inline plain JS and can import
+          // nothing, which is exactly why the rule is on the API response instead of in a helper.
+          var href=n.href||(n.role==='buyer'?'/buyer/dashboard':'/seller/dashboard');
           var body=n.storeName?(n.body?n.storeName+' — '+n.body:n.storeName):n.body;
           window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:body,key:n.relatedId||n.id,href:href}}));
         });
