@@ -1365,7 +1365,10 @@ const STORES_NAMED = 2;
     // Never over typed text — a half-written search or message is worth more than a fresher list.
     if (panelHoldsTypedText(panel) || !isPanelStale(`buyer:${key}`)) return;
     if (key === 'orders')   void applyBuyerOrdersPagination();
-    if (key === 'messages') void pollBuyerUnread();
+    // The whole panel, not `pollBuyerUnread`: the poll walks `[data-bmsg-id]` and can only update
+    // rows that already exist, so a conversation a seller opened since page load had nothing for
+    // it to update and never appeared at all.
+    if (key === 'messages') void refreshBuyerMessages();
   }
 
   function activateBuyerTab(key: string) {
@@ -1552,10 +1555,16 @@ const STORES_NAMED = 2;
   // by" toolbar dropdown (table-toolbar is display:none above 640px).
   // Duplicated rather than shared since these are separate pages with their
   // own row shape (data-bmsg-id vs data-msg-id, store vs sender/status). ──
-  const bmsgTbody = document.querySelector<HTMLTableSectionElement>('.msg-table tbody');
+  // Looked up on each use rather than captured once, and that is not a style preference: this
+  // panel's contents are REPLACED when the tab is reopened (refreshBuyerMessages below), so a
+  // reference taken at load points at a detached node afterwards — sorting would silently move
+  // rows inside a table nobody can see. Same reason the three values under it are functions: a
+  // refresh that brings in the buyer's first unread message flips `mixedStatus`, and a `const`
+  // captured before it would keep the status column's sort and filter permanently hidden.
+  const bmsgTbodyEl = () => document.querySelector<HTMLTableSectionElement>('.msg-table tbody');
   const bmsgFilters = new Map<string, Set<string>>();
-  const bmsgMixedStatus = document.querySelector<HTMLElement>('#panel-messages .table-toolbar')?.dataset.mixedStatus === 'true';
-  const BMSG_FILTER_COLUMNS: string[] = [...(bmsgMixedStatus ? ['status'] : []), 'product', 'store'];
+  const bmsgMixedStatus = () => document.querySelector<HTMLElement>('#panel-messages .table-toolbar')?.dataset.mixedStatus === 'true';
+  const bmsgFilterColumns = (): string[] => [...(bmsgMixedStatus() ? ['status'] : []), 'product', 'store'];
   let bmsgSortCol: 'date' | 'unread' | 'product' = 'date';
   let bmsgSortDir: 'asc' | 'desc' = 'desc';
   let bmsgDashI18n: Record<string, string> = {};
@@ -1577,10 +1586,10 @@ const STORES_NAMED = 2;
     msgSortOptProductDesc: bmsgDashI18n.msgSortOptProductDesc ?? 'מוצר: ת — א',
   };
 
-  const BMSG_SORT_OPTIONS: { col: 'date' | 'unread' | 'product'; dir: 'asc' | 'desc'; label: () => string }[] = [
+  const bmsgSortOptions = (): { col: 'date' | 'unread' | 'product'; dir: 'asc' | 'desc'; label: () => string }[] => [
     { col: 'date', dir: 'desc', label: () => bI.msgSortOptDateDesc },
     { col: 'date', dir: 'asc', label: () => bI.msgSortOptDateAsc },
-    ...(bmsgMixedStatus ? [{ col: 'unread' as const, dir: 'desc' as const, label: () => bI.msgSortOptUnreadFirst }] : []),
+    ...(bmsgMixedStatus() ? [{ col: 'unread' as const, dir: 'desc' as const, label: () => bI.msgSortOptUnreadFirst }] : []),
     { col: 'product', dir: 'asc', label: () => bI.msgSortOptProductAsc },
     { col: 'product', dir: 'desc', label: () => bI.msgSortOptProductDesc },
   ];
@@ -1642,7 +1651,8 @@ const STORES_NAMED = 2;
     });
     const label = document.getElementById('bmsg-sort-label');
     if (label) {
-      const opt = BMSG_SORT_OPTIONS.find((o) => o.col === bmsgSortCol && o.dir === bmsgSortDir) ?? BMSG_SORT_OPTIONS[0]!;
+      const opts = bmsgSortOptions();
+      const opt = opts.find((o) => o.col === bmsgSortCol && o.dir === bmsgSortDir) ?? opts[0]!;
       label.textContent = opt.label();
     }
   }
@@ -1650,8 +1660,9 @@ const STORES_NAMED = 2;
   function sortBmsg(col: 'date' | 'unread' | 'product', dir: 'asc' | 'desc') {
     bmsgSortCol = col;
     bmsgSortDir = dir;
-    if (!bmsgTbody) { refreshBmsgSortUI(); return; }
-    const rows = Array.from(bmsgTbody.querySelectorAll<HTMLElement>('[data-bmsg-id]'));
+    const tbody = bmsgTbodyEl();
+    if (!tbody) { refreshBmsgSortUI(); return; }
+    const rows = Array.from(tbody.querySelectorAll<HTMLElement>('[data-bmsg-id]'));
     rows.sort((a, b) => {
       const va = getBmsgSortValue(a, col);
       const vb = getBmsgSortValue(b, col);
@@ -1659,9 +1670,9 @@ const STORES_NAMED = 2;
       return dir === 'asc' ? cmp : -cmp;
     });
     rows.forEach((row) => {
-      bmsgTbody.append(row);
+      tbody.append(row);
       const detail = document.getElementById(`bmsg-detail-${row.dataset.bmsgId}`);
-      if (detail) bmsgTbody.append(detail);
+      if (detail) tbody.append(detail);
     });
     refreshBmsgSortUI();
   }
@@ -1731,10 +1742,26 @@ const STORES_NAMED = 2;
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBmsgPortal(); });
 
+  /**
+   * Everything in this panel that binds to an element the panel itself OWNS — the sort and funnel
+   * buttons in the table header, the mobile toolbar's two triggers, every thread row and every
+   * delete button.
+   *
+   * It is a function because `refreshBuyerMessages` replaces the panel's contents, and a listener
+   * is attached to an ELEMENT, not to a selector: after the swap those elements are gone and their
+   * replacements are inert. Rows would stop opening, and nothing would say so.
+   *
+   * The dividing line, which is the whole reason this boundary sits exactly here: the portal's two
+   * `document`-level listeners above are NOT in here. They are bound to the document, which no swap
+   * replaces, so re-running them would add a second copy on every refresh — the classic re-init
+   * bug, and on the reply button it would mean one click sending the message twice.
+   */
+  function bindBuyerMessagesPanel(): void {
+
   // ── Sort ──
   function openMobileBmsgSort(trigger: HTMLElement): void {
     openBmsgPortal(trigger, '13rem', () => {
-      return BMSG_SORT_OPTIONS.map((o) => {
+      return bmsgSortOptions().map((o) => {
         const selected = o.col === bmsgSortCol && o.dir === bmsgSortDir;
         return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escB(o.label())}</button>`;
       }).join('');
@@ -1814,7 +1841,7 @@ const STORES_NAMED = 2;
   function bmsgFilterColumnsHtml(): string {
     const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
     return [
-      ...BMSG_FILTER_COLUMNS.map((col) => {
+      ...bmsgFilterColumns().map((col) => {
         const active = (bmsgFilters.get(col)?.size ?? 0) > 0;
         return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
           <input type="checkbox" class="cursor-pointer shrink-0" data-filter-col-toggle="${col}" ${active ? 'checked' : ''}>
@@ -2065,6 +2092,77 @@ const STORES_NAMED = 2;
       }));
     });
   });
+
+  } // end bindBuyerMessagesPanel
+
+  bindBuyerMessagesPanel();
+
+  /**
+   * Re-render the messages panel from the server.
+   *
+   * The 15s poll can only update rows that already exist — it walks `[data-bmsg-id]` and marks them
+   * read or unread. A conversation a seller started since the page loaded has no row to walk, so it
+   * simply did not appear until the buyer reloaded (owner, 2026-08-11: this needs fixing).
+   *
+   * **The panel's HTML comes from the server, not from a builder here.** A row carries a store
+   * avatar, a thread panel, a reply form and eight translated strings; rebuilt in JavaScript it
+   * would be a second renderer of the same thing, which is a bug class this project has already
+   * paid for — the client copy keeps its Hebrew literals while the server copy moves on to the
+   * dictionary. Fetching the page and lifting one panel out of it is what the admin dashboard does
+   * for exactly this reason (`swapPanel`), so the markup can only ever have one author.
+   *
+   * What survives the swap is what the buyer chose: their filters, their sort, and any thread they
+   * had expanded. What does not survive is anything they typed — which is why this is never reached
+   * with unsaved text in the panel (`refreshBuyerPanel` asks `panelHoldsTypedText` first).
+   */
+  let bmsgRefreshInFlight = false;
+  async function refreshBuyerMessages(): Promise<void> {
+    const panel = document.getElementById('panel-messages');
+    if (!panel || bmsgRefreshInFlight) return;
+    bmsgRefreshInFlight = true;
+    try {
+      const openIds = new Set(
+        Array.from(panel.querySelectorAll<HTMLElement>('.msg-table__row--open'))
+          .map((r) => r.dataset.bmsgId ?? '')
+          .filter(Boolean),
+      );
+
+      const res = await fetch('/buyer/dashboard?tab=messages');
+      if (!res.ok) return;
+      const next = new DOMParser()
+        .parseFromString(await res.text(), 'text/html')
+        .getElementById('panel-messages');
+      // No panel in the response means the session ended or the route changed shape. Leaving the
+      // old contents up is the safe answer: they are stale, not wrong, and blanking the tab would
+      // look like the buyer's conversations had been deleted.
+      if (!next) return;
+
+      panel.innerHTML = next.innerHTML;
+      // The loaders map is keyed by thread id and closes over rows that no longer exist. Cleared
+      // rather than left to be overwritten, so a thread deleted on another device cannot leave a
+      // loader behind that the unread poll would still call.
+      buyerThreadLoaders.clear();
+      bindBuyerMessagesPanel();
+
+      // The buyer's own view of the list, put back: sort first (it reorders rows), then filters,
+      // then whatever they had open. A thread that no longer exists is simply not reopened.
+      sortBmsg(bmsgSortCol, bmsgSortDir);
+      refreshBmsgFilterUI();
+      applyBmsgFilter();
+      for (const id of openIds) {
+        panel.querySelector<HTMLElement>(`[data-bmsg-id="${CSS.escape(id)}"]`)?.click();
+      }
+
+      markPanelFresh('buyer:messages');
+    } catch {
+      // silent: the buyer did not press anything — this fires from opening a tab, and its failure
+      // costs them nothing they can see. The panel keeps the conversations it already had, which
+      // are stale rather than wrong, and nothing marked it fresh, so the next open simply tries
+      // again. A toast here would report a problem about an action the buyer never took.
+    } finally {
+      bmsgRefreshInFlight = false;
+    }
+  }
 
   /* ── Order card accordion (bindOrderCard is reused after every AJAX rebuild) ── */
   function bindOrderCard(card: HTMLElement): void {
@@ -2396,9 +2494,12 @@ const STORES_NAMED = 2;
           }
         });
         applyBmsgFilter();
-        // Inside the `then`, so a failed poll leaves the panel stale and the next tab open
-        // retries it — the 15s timer below would otherwise be the only thing that ever recovered.
-        markPanelFresh('buyer:messages');
+        // Deliberately does NOT mark the panel fresh, and that is load-bearing rather than an
+        // omission. This poll updates rows that already exist; it cannot bring in a conversation
+        // that has none. Stamping here would have it claim, every 15 seconds, that the panel is
+        // current — and since the staleness window is 30s the panel would never be stale, so the
+        // full refresh on tab open could never run and a new conversation would still be invisible.
+        // The freshness stamp belongs only to whatever can actually make the panel current.
       }).catch(() => {});
   }
   setInterval(pollBuyerUnread, 15000);
