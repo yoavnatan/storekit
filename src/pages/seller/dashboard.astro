@@ -53,7 +53,7 @@ import { thumbUrl } from '../../lib/cloudinary.js';
 import { getThreadRootsBySeller, getRepliesForMessages } from '../../lib/messages.js';
 import { getAdminThreadsForSeller } from '../../lib/admin-messages.js';
 import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro';
-import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusCounts, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
+import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusCounts, getOrderPollWatermark, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
 import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
@@ -673,6 +673,12 @@ const perfChartSkeleton = `<span class="skel-bar ${SKEL.chart}"></span>`;
 // were three more passes over that same array and are one `GROUP BY` now. Both reads are
 // independent, so they go together.
 const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
+// Deliberately SEQUENTIAL, and the one place on this page where that is right (the standing rule is
+// that independent reads share a `Promise.all` — these are not independent). The new-order poll
+// starts from this instant, so it has to be older than the orders below it: taken alongside them,
+// an order committed in between would be both absent from the page and older than the watermark,
+// which is a new order nobody is ever told about. `getOrderPollWatermark` carries the reasoning.
+const ordersWatermark = store ? await getOrderPollWatermark() : '';
 const [ordersPage, orderStatusCounts] = store
   ? await Promise.all([
       getSellerOrdersPage(store.slug, sellerOrderQuery, parsePage(Astro.url.searchParams, 'opage'), 15),
@@ -2027,7 +2033,10 @@ const orderStatusColors: Record<string, string> = {
             </div>
           )}
           <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
-          <div class="flex flex-col gap-3" id="orders-list">
+          {/* The instant this list was read by — the new-order poll starts here instead of asking
+              the server what it has missed once its own JavaScript is running, which left every
+              order that arrived during page load announced by nobody (getOrderPollWatermark). */}
+          <div class="flex flex-col gap-3" id="orders-list" data-since={ordersWatermark}>
             {ordersPage.orders.map((order) => {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
               const storeSub   = order.storeSubtotals[store!.slug];

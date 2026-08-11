@@ -1062,7 +1062,13 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // getSellerOrdersSince). `knownIds` stays because the window is inclusive of its own edge:
     // orders written in the same microsecond as the watermark come back a second time by design,
     // and this is what stops them being announced twice.
-    let ordersSince = '';
+    // Seeded from the page the SERVER rendered, when it said so. Everything already on screen was
+    // created before this instant, so nothing existing can come back through the `>=` window and be
+    // mistaken for new — and, the point of it, an order that landed while the page was still
+    // loading IS newer than it and gets announced, where the old load-time seed swallowed it
+    // (lib/orders.ts#getOrderPollWatermark). Absent — an older cached page, or a render that could
+    // not reach the database — it falls back to asking the server, which is the previous behaviour.
+    let ordersSince = ordersList.dataset.since ?? '';
 
     async function fetchNewOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
       try {
@@ -1101,7 +1107,14 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           // holds there once orders are paginated (same reasoning as the
           // admin dashboard's own Messages tab live-poll). Toast/badge still
           // fire regardless of which page the seller is looking at.
-          if (ordersCurrentPage === 1) {
+          // ...and never a second copy of a card already on screen. The watermark is taken BEFORE
+          // the page reads its orders (lib/orders.ts#getOrderPollWatermark), which closes the gap
+          // where an order arriving during page load was announced by nobody — at the cost of the
+          // opposite overlap: such an order is both rendered by the server and newer than the
+          // watermark, so the poll legitimately hands it back. The toast is right; a second card
+          // for the same order is not, and it is the duplicate the seller reported seeing.
+          const alreadyOnScreen = ordersList.querySelector(`.order-card[data-order-id="${CSS.escape(o.id)}"]`);
+          if (ordersCurrentPage === 1 && !alreadyOnScreen) {
             const tmp = document.createElement('div');
             tmp.innerHTML = buildOrderCard(o);
             const card = tmp.firstElementChild as HTMLElement | null;
@@ -1131,17 +1144,16 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       } catch { /* ignore */ }
     }
 
-    // Seed the watermark before the poll loop starts — the first call carries no `since`, so the
-    // server answers with the newest order's moment, the ids sitting on it, and NO rows at all.
-    // That is what stops every existing order looking "new" on the first tick (the original bug
-    // seeded from `.order-card` elements in the DOM, so anything past page 1 fired a toast), and it
-    // costs a timestamp and a handful of ids instead of the store's entire order history.
+    // With the watermark rendered into the page there is nothing left to seed: the server already
+    // said when it read this list, so the poll can start asking straight away.
     //
-    // **The interval starts only after the seed lands, and that ordering is the fix, not a detail.**
-    // `fetchNewOrders` is what fills `knownIds` from `seenIds`; a poll that ran before it returned
-    // would ask with an empty watermark, get the seed answer, and then have to decide about rows it
-    // had no id set for yet.
-    fetchNewOrders().then(() => setInterval(pollOrders, 15000));
+    // The fallback still seeds over the network, and the ordering there is the fix rather than a
+    // detail — `fetchNewOrders` is what fills `knownIds` from `seenIds`, so a poll running before
+    // it returned would ask with an empty watermark, get the seed answer, and then have to decide
+    // about rows it had no id set for yet. (The original bug before either of these seeded from
+    // `.order-card` elements in the DOM, so anything past page 1 fired a toast.)
+    if (ordersSince) setInterval(pollOrders, 15000);
+    else fetchNewOrders().then(() => setInterval(pollOrders, 15000));
   }
 
   // ── Edit Order Details Modal ─────────────────────────────────

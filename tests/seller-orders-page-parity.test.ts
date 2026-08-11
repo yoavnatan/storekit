@@ -15,8 +15,10 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { query } from '../src/lib/db.js';
-import { getSellerOrdersPage, getSellerOrderStatusCounts, getSellerOrdersSince, type Order } from '../src/lib/orders.js';
+import { getSellerOrdersPage, getSellerOrderStatusCounts, getSellerOrdersSince, getOrderPollWatermark, type Order } from '../src/lib/orders.js';
 import {
   filterAndSortSellerOrders, parseSellerOrderQuery, URGENCY_GROUPS, URGENCY_STATUSES, URGENCY_RANKS,
   type SellerOrderQuery,
@@ -351,6 +353,87 @@ describe('the new-order poll asks for a watermark, not for the history', () => {
 
     await query('DELETE FROM order_items WHERE order_id = $1', [id]);
     await query('DELETE FROM orders WHERE id = $1', [id]);
+  });
+
+  /**
+   * **The other direction, and the one nobody would have reported** (owner, 2026-08-11, after the
+   * phantom toast was fixed: "אין מצב שמוכר יראה … הזמנה שכבר קיבל עליה טוסט?").
+   *
+   * The phantom toast was loud and got fixed the day it was seen. Its mirror image is silent: the
+   * poll used to seed itself from the newest order at the moment its own JavaScript ran, some
+   * hundreds of milliseconds after the server had rendered the page. An order landing inside that
+   * window BECAME that seed — recorded as already seen while appearing on no screen at all. No
+   * toast, and not in the list until the seller happened to reload. A seller who is not told has no
+   * way to discover the miss, which is why this direction is worth a test and the loud one arguably
+   * was not.
+   *
+   * The watermark now comes from the page render (`getOrderPollWatermark`) and from POSTGRES's
+   * clock, not the app server's — every `created_at` is written by that clock, so a watermark from
+   * any other one is a comparison across two clocks, and a second of skew silently swallows a
+   * second of orders.
+   */
+  it('an order that lands after the page was rendered is still announced', async () => {
+    const late = 'meucheret';
+    const watermark = await getOrderPollWatermark();
+    expect(Date.parse(watermark), 'the watermark is a real instant').toBeGreaterThan(0);
+
+    // Arrives AFTER the render — the window that used to swallow it whole.
+    const id = crypto.randomUUID();
+    await query(
+      `INSERT INTO orders (id, checkout_ref, buyer_name, buyer_email, buyer_phone, total_agorot,
+                           payment_status, shipping_status, created_at)
+       VALUES ($1, 'SO-LATE', 'מאוחרת', 'late@example.com', '0508888888', 1000, 'paid', 'pending', now())`,
+      [id],
+    );
+    await query(
+      `INSERT INTO order_items (id, order_id, product_name, store_slug, store_name, price_agorot, qty, position)
+       VALUES ($1, $2, 'פריט', $3, 'מאוחרת', 1000, 1, 0)`,
+      [crypto.randomUUID(), id, late],
+    );
+
+    const poll = await getSellerOrdersSince(late, watermark);
+    expect(
+      poll.orders.map((o) => o.checkoutRef),
+      'an order created after the watermark must reach the seller',
+    ).toEqual(['SO-LATE']);
+
+    // And the watermark still excludes what came before it, or it would announce the whole history.
+    const laterWatermark = await getOrderPollWatermark();
+    const quiet = await getSellerOrdersSince(late, laterWatermark);
+    expect(quiet.orders, 'nothing older than the watermark comes back').toEqual([]);
+
+    await query('DELETE FROM order_items WHERE order_id = $1', [id]);
+    await query('DELETE FROM orders WHERE id = $1', [id]);
+  });
+});
+
+/**
+ * **The join between the two halves of the watermark, which nothing else can see.**
+ *
+ * The server renders the instant onto `#orders-list`; the poll reads it back off the same element.
+ * Both sides are ordinary code and each is correct on its own, so a rename on either — the
+ * attribute, the element id — leaves two files that still compile, still pass their own tests, and
+ * no longer speak to each other. What the seller sees then is nothing at all: the poll silently
+ * falls back to seeding over the network, which is exactly the behaviour whose gap this replaced.
+ * A miss that restores an older bug, with no error anywhere, is the shape worth pinning.
+ */
+describe('the rendered watermark reaches the poll that consumes it', () => {
+  const read = (rel: string): string => fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+
+  it('the dashboard renders data-since on the orders list', () => {
+    const astro = read('src/pages/seller/dashboard.astro');
+    expect(astro, 'the orders list must carry the render-time watermark')
+      .toMatch(/id="orders-list"[^>]*data-since=\{ordersWatermark\}/);
+    expect(astro, 'and it must be read BEFORE the page queries its orders — see getOrderPollWatermark')
+      .toMatch(/getOrderPollWatermark\(\)[\s\S]{0,400}getSellerOrdersPage\(/);
+  });
+
+  it('the poll reads it instead of seeding over the network', () => {
+    const client = read('src/scripts/dashboard/orders.ts');
+    expect(client, 'the poll must start from the rendered watermark')
+      .toMatch(/ordersSince\s*=\s*ordersList\.dataset\.since/);
+    expect(client, 'a card already on screen must never be inserted twice')
+      .toMatch(/order-card\[data-order-id="\$\{CSS\.escape/);
   });
 });
 

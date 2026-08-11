@@ -781,6 +781,39 @@ export interface OrdersSincePage {
   seenIds?: string[];
 }
 
+/**
+ * The moment the dashboard is about to read its orders by — handed to the browser in the rendered
+ * page so the new-order poll can start from **when the page was built** rather than from when its
+ * JavaScript woke up.
+ *
+ * ── The gap this closes (owner, 2026-08-11, after the phantom-toast fix) ──
+ * The poll used to seed itself on load: its first request asked "what is the newest order?" and
+ * took that as its starting point. But that request happens some hundreds of milliseconds AFTER the
+ * server rendered the page — parse, hydrate, first fetch — and an order landing inside that window
+ * became the seed's own watermark. It was therefore recorded as already seen while appearing on no
+ * screen at all: no toast, and not in the list until the seller reloaded. A silent miss, and the
+ * one direction that matters, because a seller who is not told has no way to find out.
+ *
+ * Reading the clock from POSTGRES rather than from `new Date()` is the whole reliability of this.
+ * Every `created_at` is written by the database's clock, so a watermark from the app server's clock
+ * is being compared against a different clock: run a second ahead and every order in that second is
+ * skipped forever. There is no skew to reason about when both values come from the same machine.
+ *
+ * **Must be awaited BEFORE the page's own order query**, not beside it — that ordering is the fix,
+ * not an implementation detail. Taken afterwards, an order committed between the two would be older
+ * than the watermark and absent from the page, which is precisely the miss above. Taken first, the
+ * worst case inverts: an order can be both on the page and newer than the watermark, so it is
+ * announced while its card is already on screen. That is a true statement about a real new order,
+ * and the poll drops the duplicate card by id — a toast a moment early costs nothing, a toast that
+ * never comes costs an order.
+ */
+export async function getOrderPollWatermark(): Promise<string> {
+  const row = await firstRow<{ at: Date | string }>('SELECT now() AS at');
+  // No row is not a case Postgres can produce here, but a watermark that silently became '' would
+  // make the client re-seed and reopen the gap, so it falls back to a real instant.
+  return row?.at ? isoOf(row.at) : new Date().toISOString();
+}
+
 export async function getSellerOrdersSince(storeSlug: string, sinceISO: string, limit = 50): Promise<OrdersSincePage> {
   const now = new Date().toISOString();
   if (!storeSlug) return { orders: [], since: now };
