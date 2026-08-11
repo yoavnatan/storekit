@@ -1,7 +1,22 @@
 ---
 /**
- * The seller's money: what is payable now, what is still on hold and why, where it goes, and what
- * has already been sent.
+ * The seller's money: what is payable now, what is still on hold and why, and where it goes.
+ *
+ * ── Rewritten for SIMPLICITY, 2026-08-11 (owner, סשן א׳) ──
+ * *"מאז שהתחלנו עם התשלומים הכל התבלגן לי ומרגיש לי שהלכנו לאיבוד. לכן מרגיש לי שגם המוכר ילך
+ * לאיבוד. זה החלק הכי רגיש בפלטפורמה והוא צריך להיות מאוד פשוט למשתמש."* Four things changed and
+ * each is a deletion rather than an addition, which is the point:
+ *   1. **Every rule is stated once**, at the bottom, in `#pay-how` — four questions with four short
+ *      answers. The subtitle, the tile hints and the per-row reasons used to each carry a copy of
+ *      the hold rule, so it was restated five times on one screen and read nowhere.
+ *   2. **A filled-in bank account is a closed summary with an "ערוך" button**, not six open inputs.
+ *      An open form reads as unfinished work every time the tab is opened.
+ *   3. **"שולם בעבר" and the payout history are gone from here** — they moved to the Reports tab as
+ *      the `payouts` report, with a period picker and a CSV export (§6: *"זה מידע שהוא מרגיש יותר
+ *      חשבונאי"*). This tab answers "when do I get paid"; what was transferred last March is a
+ *      bookkeeping question, and it was the only thing on this screen that looked backwards.
+ *   4. The footnote pointing at the Orders tab is deleted (§5) — the link in the action column of
+ *      the table above it already goes there.
  *
  * **Two scopes on one screen, and each says which it is.** A payout is one bank transfer per seller
  * ACCOUNT — one subscription, one commission rate, one ח״פ, one bank account, however many stores
@@ -31,26 +46,17 @@
  * Both write through `parsePayoutDetails`, so neither can half-save a bank account.
  */
 import { formatAgorot } from '../../lib/money.js';
-import { paginate } from '../../lib/pagination.js';
-import Pager from './PayoutsPager.astro';
-import { formatBusinessDateShort } from '../../lib/format-date.js';
 import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/payout-schedule.js';
-import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, type PayoutDetails } from '../../lib/payout-details.js';
+import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
 import { splitHeldByBasis } from '../../lib/order-payout-line.js';
 import type { SellerAccount } from '../../lib/seller-account.js';
-import type { SellerPayout } from '../../lib/payouts.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
   account: SellerAccount;
-  payouts: SellerPayout[];
   seller: PayoutDetails;
   /** More than one store, so the "all your stores" line is worth saying. */
   multiStore: boolean;
-  /** 1-based page of the history table, from `?payhist=`. */
-  payoutPage: number;
-  /** Build a history page href, preserving the open tab. */
-  payoutPageHref: (page: number) => string;
   /** Deep link into ONE store's Orders tab, filtered to the statuses one hold reason describes.
    *  Built by the page, because the store id and the tab are its business and not this component's.
    *  A null slug means the seller's only store — the page resolves it to the one in the switcher. */
@@ -62,7 +68,7 @@ interface Props {
   storeName: string | null;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { account, payouts, seller, multiStore, payoutPage, payoutPageHref, ordersHref, storeSlug, storeName, d } = Astro.props;
+const { account, seller, multiStore, ordersHref, storeSlug, storeName, d } = Astro.props;
 
 /**
  * ── What used to be here, and why it is not ──
@@ -79,12 +85,10 @@ const { account, payouts, seller, multiStore, payoutPage, payoutPageHref, orders
  * on the seller.** That is a money question, it is three lines instead of a hundred rows, and it
  * links to the Orders tab for the rows rather than reprinting them.
  *
- * A consequence worth naming: the held section no longer pages, so `?paypage=` is gone and only
- * `?payhist=` is left. The two-parameter dance existed so that paging one table could not reset the
- * other under the seller's cursor; with one table it is a parameter that answers nothing. An old
- * bookmark carrying `paypage` still opens the tab — an unknown query parameter is ignored, not an
- * error — it simply lands on the first page of the history, which is where it would have landed
- * anyway.
+ * A consequence worth naming: nothing on this panel pages any more. `?paypage=` went with the
+ * held-orders table and `?payhist=` went with the payout history (now the Reports tab's `payouts`
+ * report). An old bookmark carrying either still opens the tab — an unknown query parameter is
+ * ignored, not an error — it simply lands on the panel, which is where it was going.
  */
 /** The split, and every figure in it, comes from `order-payout-line.ts#splitHeldByBasis` — nothing
  *  on this screen is computed in this file, which is the rule the panel's header already states and
@@ -109,29 +113,26 @@ const held = splitHeldByBasis(account.slices, storeSlug ?? undefined);
  *  about — so the tile is computed from the same split the table renders. */
 const heldHereAgorot = held.groups.reduce((t, g) => t + g.agorot, 0) + held.unknownAgorot;
 
-/** Every payout this seller has ever had, so it grows for as long as they trade. A statement that
- *  is comfortable in month two and unreadable in year two is a table nobody scrolls. */
-const PAGE_SIZE = 10;
-const payoutPageResult = paginate(payouts, payoutPage, PAGE_SIZE);
-
 /**
  * The reason and the pending action, in the seller's language.
  *
  * The mapping from a hold basis to these two keys lives in `order-payout-line.ts` and is shared
- * with the order card, so the sentence a seller reads beside an order and the sentence they read
- * beside its group here cannot disagree. Only the lookup is local.
+ * with the order card, so what a seller reads beside an order and what they read beside its group
+ * here cannot disagree. Only the lookup is local.
  *
- * The action reads as a NOUN — "שליחת הזמנה", not "שלחו את ההזמנה — עד אז אין ספירה" (owner,
- * 2026-08-11). A label in a scanned column is a label, and the explanation it was carrying is
- * already in the reason beside it.
+ * **Both columns are LABELS now, not sentences (owner, סשן א׳ §1).** The reason used to spell the
+ * whole hold rule out per row — "הכסף משתחרר 14 ימים אחרי המסירה, זה חלון ההחזרה של הקונה" — which
+ * is the rule restated once per row and read nowhere. It says "טרם נמסר" and the rule is stated once,
+ * in `#pay-how` at the bottom of this panel. The action was already a noun for the same reason.
  *
- * The day counts are interpolated from `payout-schedule.ts` rather than written into the sentence:
- * those constants are still owner decisions, and a line promising 21 days while the code waits 30
- * is a promise we break.
+ * No `{n}` reaches these strings any more, which is why the day constants are no longer interpolated
+ * here. They are still imported — `#pay-how` interpolates them, from `payout-schedule.ts`, because
+ * those are owner decisions and a sentence promising 21 days while the code waits 30 is a promise we
+ * break.
  */
 const WHY: Record<string, string> = {
-  delivery: d.payWhyDelivery.replace('{n}', String(HOLD_DAYS_AFTER_DELIVERY)),
-  payment: d.payWhyPayment.replace('{n}', String(FALLBACK_DAYS_AFTER_PAYMENT)),
+  delivery: d.payWhyDelivery,
+  payment: d.payWhyPayment,
   unshipped: d.payWhyUnshipped,
 };
 const ACTION: Record<string, string> = {
@@ -143,12 +144,6 @@ const ACTION: Record<string, string> = {
  *  the only action here that changes an outcome rather than a date, so it is the only one that
  *  takes a colour — three highlighted rows would highlight nothing. */
 const BLOCKING = 'unshipped';
-const STATUS: Record<SellerPayout['status'], string> = {
-  pending: d.payStatusPending,
-  sent: d.payStatusSent,
-  paid: d.payStatusPaid,
-  failed: d.payStatusFailed,
-};
 const TYPE_LABEL: Record<string, string> = {
   exempt: d.payBusinessExempt,
   licensed: d.payBusinessLicensed,
@@ -156,6 +151,10 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const bankLine = maskedBankLine(seller);
+/** The business line of the closed summary. Assembled by `payout-details.ts#businessSummaryLine`,
+ *  which `scripts/dashboard/payouts.ts` also calls after a save — one composition rule, two
+ *  renderers, no drift. */
+const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMissing);
 /**
  * The same predicate the tab's red dot is drawn from (`payout-details.ts#needsBankDetails`), asked
  * again here so the dot on the strip has a dot UNDER it, on the form it is actually about (owner,
@@ -178,13 +177,15 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
 <div id="payouts-root">
   <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
     <h2 class="m-0 text-base font-semibold">{d.payTitle}</h2>
-    {/* The whole arrangement in one sentence, before any number. A seller meeting this screen has
-        never heard of a hold period, and three figures with no explanation above them is what makes
-        a payments page feel like something being done TO them. */}
+    {/* ONE line, and it says only when the money moves. Every rule it used to carry — the hold, the
+        return window, the minimum — is in `#pay-how` at the bottom, once (owner, סשן א׳ §1). */}
     <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle.replace('{day}', String(PAYOUT_DAY_OF_MONTH))}{multiStore ? ` · ${d.payAllStores}` : ''}</p>
   </div>
 
-  <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+  {/* Two tiles, not four. "שולם בעבר" left for the Reports tab (§6) — it was the only backward-
+      looking figure on a screen about what happens next, and it is the one a bookkeeper wants with
+      a period and an export rather than as a lifetime total nobody can reconcile against. */}
+  <dl class="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
     <div class={TILE}>
       {/* The suffix is what stops this reading as the current shop's figure. One bank transfer
           covers every shop, so this number genuinely is all of them — it is the one thing on this
@@ -195,20 +196,19 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
       <dd class={`m-0 text-[1.1rem] font-bold ${account.payableNowAgorot > 0 ? '[color:var(--color-accent)]' : ''}`} id="pay-kpi-now">{formatAgorot(account.payableNowAgorot)}</dd>
       <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payPayableNowHint}</p>
     </div>
-    {/* THIS shop's share, unlike the two beside it. A payout is one transfer across every shop the
-        seller owns, so "תשלום קרוב" and "שולם בעבר" cannot be scoped and say so in their labels;
-        what is on hold CAN be, and printing the account-wide figure above a table that lists one
-        shop's reasons was the mismatch the owner objected to (2026-08-11). Computed from the same
-        split the table renders, so the tile and the rows under it are one number. */}
+    {/* THIS shop's share, unlike the tile beside it. A payout is one transfer across every shop the
+        seller owns, so "תשלום קרוב" cannot be scoped and says so in its label; what is on hold CAN
+        be, and printing the account-wide figure above a table that lists one shop's reasons was the
+        mismatch the owner objected to (2026-08-11). Computed from the same split the table renders,
+        so the tile and the rows under it are one number. */}
     <div class={TILE}>
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld}</dt>
       <dd class="m-0 text-[1.1rem] font-bold">{formatAgorot(heldHereAgorot)}</dd>
       <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payHeldHint}</p>
-    </div>
-    <div class={TILE}>
-      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payPaidOut}{multiStore ? ` · ${d.payAllStoresShort}` : ''}</dt>
-      <dd class="m-0 text-[1.1rem] font-bold">{formatAgorot(account.paidOutAgorot)}</dd>
-      <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payPaidOutHint}</p>
+      {/* The tile's own way out, instead of a second explanatory sentence on it (owner, §3). A real
+          `<a href="#pay-how">` so it works with no JS; `payouts.ts` intercepts it because an anchor
+          jump on this site lands the target under the fixed header. */}
+      <a class="inline-block mt-1 text-[0.72rem] underline underline-offset-2 [color:var(--color-muted)] hover:[color:var(--color-accent)]" href="#pay-how" id="pay-how-link">{d.payHeldMore}</a>
     </div>
     {/* Rendered only when it exists. A permanent "0 ₪ debt" tile teaches a seller to expect a debt
         column, which is the wrong thing for a screen most of them will never see one on. */}
@@ -220,8 +220,6 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
       </div>
     )}
   </dl>
-
-  <p class="muted m-0 mb-4 text-[0.8rem]">{d.payMinNote.replace('{min}', formatAgorot(MIN_PAYOUT_AGOROT))}</p>
 
   {/* The banner. It appears on ONE condition — money is genuinely released and there is nowhere to
       send it — because a standing "complete your profile" prompt is the entry barrier this project
@@ -251,50 +249,92 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
           is the "I did the thing and it still says I didn't" state. */}
       {needsBank && <span id="pay-bank-dot" class={DOT} role="img" aria-label={d.payNoBankTitle}></span>}
     </h3>
-    <p class="muted m-0 mt-1 text-[0.82rem]">{d.payBankHint}</p>
-    {bankLine && <p class="m-0 mt-2 text-[0.82rem]">{d.payCurrentBank} <code dir="ltr">{bankLine}</code></p>}
 
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
-      {/* `inputmode="numeric"` + `dir="ltr"`: these are ASCII numbers on an RTL page, and left to
-          inherit they render with their digits grouped the wrong way round. */}
-      <label class="field">
-        <span class="text-[0.85rem]">{d.payBankCode}</span>
-        <input class="input" name="bankCode" id="pay-bank-code" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="2" value={seller.bankCode ?? ''} />
-      </label>
-      <label class="field">
-        <span class="text-[0.85rem]">{d.payBankBranch}</span>
-        <input class="input" name="bankBranch" id="pay-bank-branch" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="3" value={seller.bankBranch ?? ''} />
-      </label>
-      <label class="field">
-        <span class="text-[0.85rem]">{d.payBankAccount}</span>
-        <input class="input" name="bankAccount" id="pay-bank-account" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="20" value={seller.bankAccount ?? ''} />
-      </label>
-      <label class="field">
-        <span class="text-[0.85rem]">{d.payBankHolder}</span>
-        <input class="input" name="bankAccountHolder" id="pay-bank-holder" autocomplete="off" maxlength="120" value={seller.bankAccountHolder ?? ''} />
-        <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBankHolderHint}</p>
-      </label>
+    {/* ── The closed summary (owner, סשן א׳ §2) ──────────────────────────────────────────────
+        *"אם יש חשבון בנק לא צריך לשים שם את האינפוטים ככה פתוחים, הפרטים צריכים להופיע בתוך מסגרת
+        קטנה סגורה, עם כפתור ״ערוך״"*. Six open inputs on a saved account read as unfinished work
+        on the one screen a seller opens to reassure themselves that nothing is.
+
+        **Both halves are SERVER-rendered with `hidden` on the one that does not apply**, never
+        revealed by a script on load: a JS-gated visibility is the flash class this project already
+        has a memory for (`project_injected_overlay_flash`). The server knows which state this is —
+        `bankLine` is non-null exactly when all four fields make a payable account — so there is
+        nothing for the client to decide before first paint.
+
+        The account is MASKED here, as it is everywhere: `maskedBankLine` shows the last four digits
+        so a seller recognises their own account and a screen-share does not carry the whole number.
+        Its header carries the reasoning. */}
+    <div
+      id="pay-bank-summary"
+      class="flex items-center justify-between gap-3 flex-wrap mt-3 p-3 border [border-color:var(--color-border)] rounded-[var(--radius)]"
+      hidden={!bankLine}
+    >
+      <div class="min-w-0">
+        <p class="muted m-0 text-[0.76rem] font-medium">{d.payBankOnFile}</p>
+        <p class="m-0 mt-0.5 text-[0.9rem] font-semibold"><code dir="ltr" id="pay-bank-summary-line">{bankLine}</code></p>
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessOnFile} <span id="pay-business-summary">{businessSummary}</span></p>
+      </div>
+      <button type="button" class="btn btn--ghost btn--sm shrink-0" id="pay-bank-edit">{d.payBankEdit}</button>
     </div>
 
-    <div class="grid gap-4 sm:grid-cols-2 mt-1">
-      <label class="field">
-        <span class="text-[0.85rem]">{d.payBusinessId}</span>
-        <input class="input" name="businessId" id="pay-business-id" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={seller.businessId ?? ''} />
-      </label>
-      <label class="field">
-        <span class="text-[0.85rem]">{d.payBusinessType}</span>
-        <select class="input" name="businessType" id="pay-business-type">
-          <option value="">{d.payBusinessNone}</option>
-          {BUSINESS_TYPES.map((t) => (
-            <option value={t} selected={seller.businessType === t}>{TYPE_LABEL[t]}</option>
-          ))}
-        </select>
-        <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessHint}</p>
-      </label>
-    </div>
+    {/* The fields. `hidden` while a saved account is being summarised — and they stay INSIDE the
+        form rather than being rendered only on demand, so "ערוך" is a class toggle instead of a
+        second renderer for a money form (`project_client_renderer_i18n_drift`). A hidden input is
+        still submitted, which is correct here: pressing Save from the summary state would post the
+        account exactly as it stands. */}
+    <div id="pay-bank-fields" hidden={!!bankLine}>
+      <p class="muted m-0 mt-1 text-[0.82rem]">{d.payBankHint}</p>
 
-    <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="pay-details-error" role="alert"></p>
-    <button type="submit" class="btn btn--sm mt-3 self-start" id="pay-details-save">{d.payDetailsSave}</button>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
+        {/* `inputmode="numeric"` + `dir="ltr"`: these are ASCII numbers on an RTL page, and left to
+            inherit they render with their digits grouped the wrong way round. */}
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBankCode}</span>
+          <input class="input" name="bankCode" id="pay-bank-code" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="2" value={seller.bankCode ?? ''} />
+        </label>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBankBranch}</span>
+          <input class="input" name="bankBranch" id="pay-bank-branch" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="3" value={seller.bankBranch ?? ''} />
+        </label>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBankAccount}</span>
+          <input class="input" name="bankAccount" id="pay-bank-account" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="20" value={seller.bankAccount ?? ''} />
+        </label>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBankHolder}</span>
+          <input class="input" name="bankAccountHolder" id="pay-bank-holder" autocomplete="off" maxlength="120" value={seller.bankAccountHolder ?? ''} />
+          <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBankHolderHint}</p>
+        </label>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2 mt-1">
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBusinessId}</span>
+          <input class="input" name="businessId" id="pay-business-id" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={seller.businessId ?? ''} />
+        </label>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBusinessType}</span>
+          <select class="input" name="businessType" id="pay-business-type">
+            <option value="">{d.payBusinessNone}</option>
+            {BUSINESS_TYPES.map((t) => (
+              <option value={t} selected={seller.businessType === t}>{TYPE_LABEL[t]}</option>
+            ))}
+          </select>
+          <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessHint}</p>
+        </label>
+      </div>
+
+      <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="pay-details-error" role="alert"></p>
+      <div class="flex items-center gap-2 mt-3">
+        <button type="submit" class="btn btn--sm" id="pay-details-save">{d.payDetailsSave}</button>
+        {/* Rendered always, HIDDEN until there is a saved account to go back to. It has to exist in
+            the markup because a seller filling this in for the first time collapses into the
+            summary the moment they save, without a reload — so `payouts.ts` un-hides it there.
+            Cancelling with nothing saved would close the fields over an EMPTY summary card, which
+            is why it is not simply always visible. */}
+        <button type="button" class="btn btn--ghost btn--sm" id="pay-bank-cancel" hidden={!bankLine}>{d.payBankCancel}</button>
+      </div>
+    </div>
   </form>
 
   {/* Three lines, for THIS shop. What the seller cannot get from the Orders tab is the SPLIT — how
@@ -346,36 +386,41 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
           )}
         </tbody>
       </table>
-      <p class="muted m-0 mt-2 text-[0.78rem]">{d.payHeldFootnote}</p>
+      {/* The footnote that pointed at the Orders tab is deleted (owner, סשן א׳ §5: *"משפט מיותר"*).
+          The action column above it is already a link into exactly the orders it describes, so the
+          sentence was telling a seller where to find something they were being handed. */}
     </div>
   )}
 
-  <h3 class="text-[1.05rem] font-bold m-0 mt-6 mb-2">{d.payHistoryTitle}</h3>
-  {payoutPageResult.total === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHistoryEmpty}</p> : (
-    <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-start">
-        <thead>
-          <tr class="[color:var(--color-muted)] text-[0.76rem]">
-            <th class={`${CELL} text-start font-medium`}>{d.payColPeriod}</th>
-            <th class={`${CELL} text-start font-medium`}>{d.payColAmount}</th>
-            <th class={`${CELL} text-start font-medium`}>{d.payColStatus}</th>
-            <th class={`${CELL} text-start font-medium`}>{d.payColSent}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {payoutPageResult.items.map((p) => (
-            <tr class="border-t [border-color:var(--color-border)]">
-              <td class={CELL}><code dir="ltr" class="text-[0.76rem]">{p.periodKey}</code></td>
-              <td class={CELL}>{formatAgorot(p.amountAgorot)}</td>
-              {/* A failed transfer is the one row in this table a seller has to act on — it is
-                  money that came back and is payable again — so it is the only one that colours. */}
-              <td class={`${CELL} ${p.status === 'failed' ? '[color:var(--color-danger)]' : ''}`}>{STATUS[p.status]}</td>
-              <td class={`${CELL} [color:var(--color-muted)]`}>{p.sentAt ? formatBusinessDateShort(p.sentAt) : '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <Pager page={payoutPageResult.page} totalPages={payoutPageResult.totalPages} buildUrl={payoutPageHref} label={d.payHistoryTitle} d={d} />
+  {/* ── The rules, once, at the end (owner, סשן א׳ §1) ────────────────────────────────────────
+      Four questions in the order a seller asks them, each with one short answer. This is the ONLY
+      place on the screen where the hold rule is spelled out; the subtitle, the tile hints and the
+      table's reason column all used to carry a copy of it, which is what made a payments page feel
+      like a document rather than a statement.
+
+      A `<dl>` and not prose: a seller scanning for one of the four finds it by its question, which
+      is not true of a paragraph that contains the same words.
+
+      Every number is interpolated from `payout-schedule.ts`. Those are still owner decisions and
+      `terms.astro` interpolates the same four constants — a page here promising 21 days while the
+      terms promise 30 is the contradiction that matters most on this particular screen. */}
+  <h3 class="text-[1.05rem] font-bold m-0 mt-8 mb-2" id="pay-how">{d.payHowTitle}</h3>
+  <dl class="card card--flat p-4 md:p-5 gap-3 text-[0.85rem]">
+    <div>
+      <dt class="font-semibold m-0">{d.payHowWhenQ}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowWhenA.replace('{day}', String(PAYOUT_DAY_OF_MONTH))}</dd>
     </div>
-  )}
+    <div>
+      <dt class="font-semibold m-0">{d.payHowHeldQ}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowHeldA.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY)).replace('{payment}', String(FALLBACK_DAYS_AFTER_PAYMENT))}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold m-0">{d.payHowWhyQ}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowWhyA}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold m-0">{d.payHowMinQ}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowMinA.replace('{min}', formatAgorot(MIN_PAYOUT_AGOROT))}</dd>
+    </div>
+  </dl>
 </div>

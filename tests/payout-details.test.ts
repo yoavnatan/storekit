@@ -193,7 +193,29 @@ describe('the route', () => {
     await POST(ctx(FULL));
     const { rows } = await query<{ title: string }>(
       'SELECT title FROM notifications WHERE user_id = $1', [SELLER_ID]);
-    expect(rows.map((r) => r.title)).toContain('פרטי חשבון הבנק עודכנו');
+    expect(rows.map((r) => r.title)).toContain('עודכן חשבון בנק');
+  });
+
+  /**
+   * The announcement carries NO account details (owner, סשן א׳ §2, 2026-08-11).
+   *
+   * A guard and not a wording preference. A notification is the surface most likely to be read
+   * where the seller's own dashboard is not — a phone on a desk, a shared screen, and an EMAIL
+   * once GO_LIVE §4 wires one — so the digits that are fine on the dashboard are not fine here.
+   * The regression this stops is somebody restoring the masked line "so the seller can tell which
+   * account it went to", which is what the previous version said and reads as helpful.
+   *
+   * It asserts on the account's own digits rather than on the exact sentence: the copy may be
+   * rewritten, and what must not come back is the NUMBER.
+   */
+  it('names no part of the account in the notification it sends', async () => {
+    await POST(ctx(FULL));
+    const { rows } = await query<{ body: string }>(
+      'SELECT body FROM notifications WHERE user_id = $1', [SELLER_ID]);
+    const bodies = rows.map((r) => r.body).join('\n');
+    for (const secret of [FULL.bankAccount, FULL.bankAccount.slice(-4), FULL.bankAccountHolder, FULL.bankBranch]) {
+      expect(bodies, `the payout-account notification must not carry "${secret}"`).not.toContain(secret);
+    }
   });
 });
 
