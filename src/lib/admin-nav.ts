@@ -33,9 +33,10 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   // `stblocked` is the retired yes/no form of `ststate` — still parsed (parseStoreQuery) so an
   // older bookmark keeps filtering to blocked stores, so it still has to be owned here or it
   // would be stripped out of the URL before the parser ever saw it.
-  stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stpage', 'stnew'],
+  // `stempty` is the retired "לתשומת לב" TAB (סשן ב׳ §1) — one thing that tab could say, said as a
+  // filter on the list it was always about.
+  stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stempty', 'stpage', 'stnew'],
   orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opage', 'onew'],
-  attention: ['apage'],
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],

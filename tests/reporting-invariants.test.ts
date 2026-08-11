@@ -20,11 +20,12 @@ import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, ge
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { productShare } from '../src/lib/top-product-share.js';
-import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
+import { buildSalesReport, buildProductSalesReport, buildStockReport, buildPayoutsReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
-import { getPayableNowForSeller, getSellerAccountFor } from '../src/lib/payouts.js';
+import { getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
 import { planPayouts } from '../src/lib/payout-run.js';
+import { buildPlatformLedger } from '../src/lib/platform-ledger.js';
 
 /** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
  *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
@@ -1163,6 +1164,29 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
    * rows carry a zero balance and are absent from the plan, which is why the lookup falls back to 0
    * rather than skipping them — "not in the plan" is a claim about the money too.
    */
+  /**
+   * The accounting report and the account agree about what has been transferred (owner, סשן א׳ §6).
+   *
+   * The Payments tab used to carry a lifetime "שולם בעבר" tile computed by `seller-account.ts`, and
+   * that figure moved to the Reports tab as a windowed, exportable report built by a different
+   * function. That is precisely the shape this file exists to police: one fact, two modules. Over a
+   * window wide enough to hold every transfer, `buildPayoutsReport`'s total must be `paidOutAgorot`
+   * to the agora — including the exclusion of `failed` rows, which both sides have to make the same
+   * way or the seller's books and their dashboard part company by exactly one bounced transfer.
+   */
+  it('paid-out: the payouts report over all time equals the account\'s own figure', async () => {
+    const sellers = await getAllSellers();
+    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
+    for (const seller of sellers) {
+      const account = await getSellerAccountFor(seller.id);
+      if (!account) continue;
+      const report = buildPayoutsReport(account.payouts, '1970-01-01', '2999-12-31');
+      // Every payout row reaches the report — the window cannot be the thing making them agree.
+      expect(report.rows.length, `seller ${seller.id}: rows`).toBe(account.payouts.length);
+      expect(report.totals.amountAgorot, `seller ${seller.id}: transferred`).toBe(account.account.paidOutAgorot);
+    }
+  });
+
   it('payable-now: the payout run would send exactly what the screen promises', async () => {
     const plan = await planPayouts();
     const byId = new Map(plan.rows.map((r) => [r.sellerId, r.balanceAgorot]));
@@ -1170,6 +1194,53 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
       const account = await getSellerAccountFor(seller.id);
       expect(byId.get(seller.id) ?? 0, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
     }
+  });
+
+  /**
+   * The platform ledger (admin overview, סשן ב׳ §3) — the first figure here that is nobody's
+   * balance. It states what the platform is holding that belongs to sellers, and it is read to run
+   * a business, so the danger is not that a tile is wrong in isolation but that three plausible
+   * tiles do not add up. Both halves are asserted: the aggregate against the per-seller rows it
+   * must agree with, and the card's own parts against its whole.
+   */
+  it('the platform accrual is the sum of the per-seller ones — one aggregate, N rows', async () => {
+    const [accrual, releasable] = await Promise.all([getPlatformAccrual(), getReleasableBySeller()]);
+    expectSameMoney(accrual.releasedNetAgorot, releasable.reduce((a, r) => a + r.netAgorot, 0), 'released net');
+    expectSameMoney(accrual.releasedGrossAgorot, releasable.reduce((a, r) => a + r.grossAgorot, 0), 'released gross');
+    expectSameMoney(accrual.releasedCommissionAgorot, releasable.reduce((a, r) => a + r.commissionAgorot, 0), 'released commission');
+    // The released half is a FILTER over the same rows, so it can never exceed the whole — and the
+    // whole closes on its own arithmetic.
+    expectSameMoney(accrual.grossAgorot - accrual.commissionAgorot, accrual.netAgorot, 'gross − commission = net');
+    expect(accrual.releasedNetAgorot).toBeLessThanOrEqual(accrual.netAgorot);
+    expect(accrual.releasedGrossAgorot).toBeLessThanOrEqual(accrual.grossAgorot);
+  });
+
+  it('the ledger card\'s parts sum to its whole, on the real data and on a hostile one', async () => {
+    const [accrual, plan] = await Promise.all([getPlatformAccrual(), planPayouts()]);
+    const ledger = buildPlatformLedger(accrual, plan);
+    // The identity the card is drawn from: everything we hold is either out of hold or in it.
+    expectSameMoney(ledger.releasedAgorot + ledger.heldAgorot, ledger.sellerFundsAgorot, 'released + held = liability');
+    // What actually goes out cannot exceed what is released — the three payout states partition it.
+    expect(ledger.nextPayoutAgorot + ledger.stuckNoBankAgorot + ledger.belowMinimumAgorot)
+      .toBeLessThanOrEqual(Math.max(0, ledger.releasedAgorot));
+    // The income line is OUR money and the liability is not: commission earned but not yet taken
+    // at source, so the next payout's slice of it can never be more than the whole.
+    expect(ledger.incomeAtNextPayoutAgorot).toBeLessThanOrEqual(ledger.platformIncomeAgorot);
+
+    // And on numbers no fixture produces: a platform that has paid out most of what it accrued, with
+    // a clawback on top. The identity has to survive that, because the day it stops holding is the
+    // day the card silently reports a liability that is not the sum of its own two halves.
+    const hostile = buildPlatformLedger(
+      { grossAgorot: 1_000_000, commissionAgorot: 120_000, netAgorot: 880_000,
+        releasedGrossAgorot: 400_000, releasedCommissionAgorot: 48_000, releasedNetAgorot: 352_000 },
+      { ...plan, paidOutAgorot: 300_000, commissionSettledAgorot: 41_000, adjustmentsAgorot: -5_000 },
+    );
+    expectSameMoney(hostile.releasedAgorot + hostile.heldAgorot, hostile.sellerFundsAgorot, 'hostile: released + held');
+    expectSameMoney(hostile.sellerFundsAgorot, 880_000 - 300_000 - 5_000, 'hostile: liability');
+    expectSameMoney(hostile.releasedAgorot, 352_000 - 300_000 - 5_000, 'hostile: released');
+    // In hold is untouched by transfers: 880,000 − 352,000, whatever has been paid out of the rest.
+    expectSameMoney(hostile.heldAgorot, 880_000 - 352_000, 'hostile: held');
+    expectSameMoney(hostile.platformIncomeAgorot, 120_000 - 41_000, 'hostile: commission earned − collected');
   });
 });
 

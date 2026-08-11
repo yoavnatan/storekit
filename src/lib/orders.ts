@@ -788,25 +788,45 @@ export async function getSellerOrdersSince(storeSlug: string, sinceISO: string, 
   // parse rather than matching nothing — a 500 on the dashboard's background poll.
   const since = sinceISO && Number.isFinite(Date.parse(sinceISO)) ? new Date(sinceISO).toISOString() : '';
   if (!since) {
-    const newest = await firstRow<{ at: Date | string | null }>(
-      `SELECT MAX(o.created_at) AS at FROM orders o WHERE ${BELONGS_TO_SLUGS}`, [[storeSlug]],
-    );
-    // A store with no orders at all: the watermark is now, and there is nothing to have seen.
-    if (!newest?.at) return { orders: [], since: now, seenIds: [] };
-    const at = isoOf(newest.at);
-    // The ids AT that instant, so the caller starts knowing about exactly what the first `>=` poll
-    // is about to hand back.
+    // ── Why this is ONE query, and why it truncates to milliseconds ──────────────────────────
+    // `timestamptz` keeps MICROseconds; a JS `Date` keeps milliseconds, and node-postgres parses
+    // the column into one. So reading `MAX(created_at)` out to JS and asking for the rows AT that
+    // value asked for `…:46.001Z` when the row says `…:46.001380+00` — **matching nothing**. The
+    // seed reported no ids, the first `>=` poll handed back that very order, and the browser,
+    // knowing no ids, announced the store's newest existing order as new. Reproduced on 6 of the
+    // 38 seeded stores — exactly the ones whose newest order came from a real checkout (`now()`,
+    // microseconds) rather than the demo seeder (whole milliseconds). Owner, 2026-08-11: a toast
+    // on EVERY refresh, plus a duplicate card that a reload erased, and nothing in the bell —
+    // because nothing was ever written; the toast was the whole event.
     //
-    // `= at` and not `>= at`, and the difference is what makes the two-statement gap safe rather
-    // than merely unlikely: an order written between these two queries carries a `created_at`
-    // strictly LATER than the MAX just read, so it cannot match `= at`, is not reported as seen,
-    // and is announced by the first poll — which is exactly right, because it really is new.
-    // `>= at` would have swallowed it.
-    const atIds = await rows<{ id: string }>(
-      `SELECT o.id FROM orders o WHERE ${BELONGS_TO_SLUGS} AND o.created_at = $2::timestamptz`,
-      [[storeSlug], at],
+    // The watermark is therefore truncated to the precision it can survive the round trip in, and
+    // the seed answers with the ids the first poll will ACTUALLY see at that boundary — `>=`, the
+    // same window, not `=`. Truncating rounds DOWN, so the window can never skip past an order.
+    //
+    // `>=` is safe here only because both halves now read one snapshot. The previous `=` existed
+    // to keep an order written BETWEEN two statements from being wrongly marked as already seen;
+    // with a single statement there is no between.
+    //
+    // `notifications.ts#normalizeCursor` hit the same wall and went the other way — it reads
+    // `created_at` as text (`to_char(… 'US')`) so the microseconds survive the round trip. That is
+    // the right answer THERE, where the cursor is strict `>` and a lost digit makes a row
+    // permanently newer than its own cursor. Here the window is `>=` and the caller de-duplicates
+    // by id, so the cheaper direction is to discard the precision the trip cannot carry rather than
+    // to carry it. Two deliberate siblings, not drift.
+    const seed = await rows<{ id: string; at: Date | string }>(
+      `WITH newest AS (
+         SELECT date_trunc('milliseconds', MAX(o.created_at)) AS at
+           FROM orders o WHERE ${BELONGS_TO_SLUGS}
+       )
+       SELECT o.id, newest.at AS at
+         FROM orders o, newest
+        WHERE ${BELONGS_TO_SLUGS} AND o.created_at >= newest.at`,
+      [[storeSlug]],
     );
-    return { orders: [], since: at, seenIds: atIds.map((r) => r.id) };
+    // No rows means no orders at all — if the store had any, the newest one matches its own max.
+    // The watermark is then now, and there is nothing to have seen.
+    if (!seed.length) return { orders: [], since: now, seenIds: [] };
+    return { orders: [], since: isoOf(seed[0]!.at), seenIds: seed.map((r) => r.id) };
   }
   const found = await selectOrders(
     `${BELONGS_TO_SLUGS} AND o.created_at >= $2::timestamptz`,

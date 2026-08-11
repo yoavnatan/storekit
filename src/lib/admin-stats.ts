@@ -206,24 +206,6 @@ export function attachProducts(cards: SellerCardData[], productsByStore: Readonl
   }));
 }
 
-// Informational only — never written back to the Store record and never
-// read by any registration/checkout path. Purely a heads-up for the owner.
-function attentionReasons(_store: Store, productCount: number): string[] {
-  const reasons: string[] = [];
-  if (productCount === 0) reasons.push('0 מוצרים');
-  return reasons;
-}
-
-export function isStoreIncomplete(store: Store, productCount: number): boolean {
-  return attentionReasons(store, productCount).length > 0;
-}
-
-export interface AttentionEntry {
-  store: Store;
-  seller: Seller | undefined;
-  reasons: string[];
-}
-
 export interface StoreRow {
   store: Store;
   seller: Seller | undefined;
@@ -318,6 +300,17 @@ export interface AdminStoreQuery {
    *  states (lib/store-status.ts) a yes/no switch could no longer answer "which stores did their
    *  sellers pause, and which are waiting to close". */
   state: StoreStateFilter;
+  /**
+   * Only stores with an empty catalogue — what the "לתשומת לב" TAB used to be (owner, סשן ב׳ §1:
+   * *"נראית לי מיותרת. מה היא בעצם אומרת לנו?"*). The honest answer was: one thing, "0 מוצרים",
+   * about the same stores this tab already lists, with the count already printed on every row. So
+   * it is a filter here instead of a tab of its own, and it composes with the state chips and the
+   * search — which the tab could not do, because it was a separate list with no filters at all.
+   *
+   * Orthogonal to `state` on purpose: a paused store can also be empty, and folding "empty" into
+   * the lifecycle enum would have made those two facts unable to be true at once.
+   */
+  emptyOnly: boolean;
 }
 
 export type StoreStateFilter = StoreLifecycle | 'all';
@@ -330,6 +323,13 @@ export function countStoreStates(rows: StoreRow[]): Record<StoreStateFilter, num
   const counts = { all: rows.length, active: 0, paused: 0, closing: 0, closed: 0, blocked: 0 };
   for (const r of rows) counts[storeLifecycle(r.store)]++;
   return counts;
+}
+
+/** Stores with nothing in the catalogue — the count behind the "ללא מוצרים" chip, and the number
+ *  the overview card shows. Counted over every store like the state counts beside it, so selecting
+ *  the chip does not change what it says. */
+export function countEmptyStores(rows: StoreRow[]): number {
+  return rows.reduce((n, r) => (r.productCount === 0 ? n + 1 : n), 0);
 }
 
 /**
@@ -365,6 +365,7 @@ export function filterAndSortStoreRows(rows: StoreRow[], query: AdminStoreQuery)
   const filtered = rows.filter((r) => {
     if (nq && !storeSearchMatch(nq, r)) return false;
     if (query.state !== 'all' && storeLifecycle(r.store) !== query.state) return false;
+    if (query.emptyOnly && r.productCount > 0) return false;
     return true;
   });
 
@@ -412,17 +413,6 @@ export function parseStoreQuery(sp: URLSearchParams): AdminStoreQuery {
   const state = (STORE_STATE_FILTERS as readonly string[]).includes(requestedState)
     ? requestedState as StoreStateFilter
     : 'all';
-  return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, state };
+  return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, state, emptyOnly: sp.get('stempty') === '1' };
 }
 
-export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], countsByStore: ReadonlyMap<string, StoreProductCounts>): AttentionEntry[] {
-  const sellerById = new Map(sellers.map((s) => [s.id, s]));
-  return stores
-    .map((store) => {
-      const productCount = countsByStore.get(store.id)?.total ?? 0;
-      const reasons = attentionReasons(store, productCount);
-      if (reasons.length === 0) return null;
-      return { store, seller: sellerById.get(store.sellerId), reasons };
-    })
-    .filter((entry): entry is AttentionEntry => entry !== null);
-}

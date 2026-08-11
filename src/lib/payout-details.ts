@@ -165,6 +165,25 @@ export function needsBankDetails(details: PayoutDetails, payableNowAgorot: numbe
   return payableNowAgorot > 0 && !hasPayableBank(details);
 }
 
+/**
+ * The business half of the closed summary card: `512345678 · עוסק מורשה`, or the "not set" label.
+ *
+ * **A composition rule with the WORDS passed in**, which is the shape this repo's client-renderer
+ * rule asks for (`project_client_renderer_i18n_drift`). Two renderers draw this line — the panel's
+ * `.astro` and the post-save patch in `scripts/dashboard/payouts.ts` — and if each assembled it
+ * itself, the day a separator or the empty case changed one of them would stop matching. The
+ * strings still come from `getT` on both sides; only the assembly is here.
+ */
+export function businessSummaryLine(
+  details: PayoutDetails,
+  typeLabels: Record<string, string>,
+  missingLabel: string,
+): string {
+  if (!details.businessId) return missingLabel;
+  const type = details.businessType ? typeLabels[details.businessType] : '';
+  return type ? `${details.businessId} · ${type}` : details.businessId;
+}
+
 /** `12 · 345 · ****6789` — enough for a seller to recognise their own account, never the whole
  *  number. It is rendered inside their own dashboard, so this is not a secrecy boundary; it is so
  *  a screen-share or a support screenshot does not carry a full account number for no reason. */

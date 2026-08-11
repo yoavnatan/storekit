@@ -4,7 +4,7 @@ import '../../styles/pages/admin.css';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import { isAdminRequest } from '../../lib/admin-auth.js';
-import { getStoreOverview, getSellerCards, attachProducts, getStoresNeedingAttention, getStoreRows, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery, countStoreStates } from '../../lib/admin-stats.js';
+import { getStoreOverview, getSellerCards, attachProducts, getStoreRows, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery, countStoreStates, countEmptyStores } from '../../lib/admin-stats.js';
 import { getAllSellers, getSubscriptionAccrual } from '../../lib/seller-auth.js';
 import { getAllStores, isStoreDiscoverable } from '../../lib/stores.js';
 import { getProductCountsByStore, getProductNames, getProductsByStoreIds } from '../../lib/store-products.js';
@@ -41,7 +41,6 @@ import AdminSellersPanel from '../../components/admin/AdminSellersPanel.astro';
 import { buildSellerBalances } from '../../lib/seller-balance.js';
 import AdminStoresPanel from '../../components/admin/AdminStoresPanel.astro';
 import AdminOrdersPanel from '../../components/admin/AdminOrdersPanel.astro';
-import AdminAttentionPanel from '../../components/admin/AdminAttentionPanel.astro';
 import AdminMessagesPanel from '../../components/admin/AdminMessagesPanel.astro';
 import AdminAlertsPanel from '../../components/admin/AdminAlertsPanel.astro';
 import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.astro';
@@ -52,7 +51,10 @@ import AdminPanelShell from '../../components/admin/AdminPanelShell.astro';
 import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { planPayouts } from '../../lib/payout-run.js';
+import { getPlatformAccrual } from '../../lib/payouts.js';
+import { buildPlatformLedger } from '../../lib/platform-ledger.js';
 import AdminPayoutPlanCard from '../../components/admin/AdminPayoutPlanCard.astro';
+import AdminLedgerCard from '../../components/admin/AdminLedgerCard.astro';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
 
@@ -66,7 +68,10 @@ const tabs = [
   { id: 'sellers', label: 'מוכרים' },
   { id: 'stores', label: 'חנויות' },
   { id: 'orders', label: 'הזמנות' },
-  { id: 'attention', label: 'לתשומת לב' },
+  // No 'attention' tab since סשן ב׳ §1. Everything it listed was "this store has 0 products",
+  // about stores the Stores tab already lists with that very count on every row — so it is a chip
+  // there (`?stempty=1`), which also lets it compose with the state filters and the search it
+  // never had. The overview's warning card links straight to it.
   { id: 'performance', label: 'ביצועים' },
   { id: 'advertising', label: 'פרסום' },
   { id: 'messages', label: 'הודעות' },
@@ -155,11 +160,11 @@ const shows = (panel: string): boolean => panel === initialPanel;
 // it is still read whole for those and not read at all for the rest. The two halves have different
 // readers and are gated separately: the Messages tab names sellers and never touches stores, while
 // the Advertising tab and the money journal's reconciliation are the other way round.
-const SELLER_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'attention', 'performance', 'messages'] as const;
-const STORE_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'attention', 'advertising', 'performance', 'moneylog'] as const;
-/** Products per store: the counts behind the seller cards, the store rows, the attention list and
- *  the feed figures on the advertising tab. */
-const COUNT_PANELS = ['overview', 'sellers', 'stores', 'attention', 'advertising'] as const;
+const SELLER_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'performance', 'messages'] as const;
+const STORE_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'advertising', 'performance', 'moneylog'] as const;
+/** Products per store: the counts behind the seller cards, the store rows, the overview's
+ *  empty-catalogue figure and the feed figures on the advertising tab. */
+const COUNT_PANELS = ['overview', 'sellers', 'stores', 'advertising'] as const;
 
 // Every query parameter this page reads, parsed up front: all of it is pure, and wave 1 needs
 // some of it. Nothing below re-reads `sp` for these.
@@ -257,7 +262,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
-  productCounts, reconciliation, payoutPlan, ordersPage, badgeCounts,
+  productCounts, reconciliation, payoutPlan, platformAccrual, ordersPage, badgeCounts,
   perfViews, perfPlatformViews, perfSales, productNames,
 ] = await Promise.all([
   only(COUNT_PANELS, () => getProductCountsByStore(storeIds), new Map()),
@@ -275,7 +280,12 @@ const [
   // Sellers too, since סשן א׳ §3: the per-seller half of this plan is rendered on the seller cards
   // now, and the filter chips above them are counted from it. Four queries whatever the platform's
   // size, so the Sellers tab pays a fixed cost rather than one per card.
-  only(['payouts', 'sellers'], () => planPayouts(), null),
+  // Overview too, since סשן ב׳ §3: the platform ledger card is half this plan (what leaves, and
+  // what has already left) and half the accrual below it.
+  only(['payouts', 'sellers', 'overview'], () => planPayouts(), null),
+  // The other half — every seller's accrual at once, with the released/held split as a FILTER in
+  // the same pass, so the card's three tiles are three parts of one read (payouts.ts).
+  only(['overview'], () => getPlatformAccrual(), null),
   // Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
   // This used to read every order the platform has ever taken, to render fifteen rows.
   only(['orders'], () => getAdminOrdersPage(
@@ -304,6 +314,9 @@ const [
 ]);
 
 const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
+
+// The platform's balance sheet — pure arithmetic over the two reads above (lib/platform-ledger.ts).
+const ledger = payoutPlan && platformAccrual ? buildPlatformLedger(platformAccrual, payoutPlan) : null;
 
 // Applied AFTER each tab's own filter+sort so it composes with them instead of
 // replacing them (search "דני" + חדשים בלבד = new sellers named דני).
@@ -363,16 +376,13 @@ const storeQuery = parseStoreQuery(sp);
 // can be built from the same list.
 const storeRowsAll = getStoreRows(stores, sellers, productCounts, revenueByStore, openOrdersByStore);
 const storeStateCounts = countStoreStates(storeRowsAll);
+const storeEmptyCount = countEmptyStores(storeRowsAll);
 const storeRowsFiltered = keepNewOnly(filterAndSortStoreRows(storeRowsAll, storeQuery), newOnly.stores, newSince.stores, (r) => r.store.createdAt);
 const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
 // Destructured for the panel below, which needs the query params back to rebuild its own URLs.
 const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = orderQuery;
-
-// ── Attention tab (no filters — pagination only, see CURRENT_TASK.md → סשן ב׳: already a filtered subset) ──
-const attentionAll = getStoresNeedingAttention(stores, sellers, productCounts);
-const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 
 // ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
 // Feed = the exact set the product feed exports: stores a platform surface may carry, holding at
@@ -530,7 +540,18 @@ const badgeFor: Record<string, number> = badgeCounts;
       <DashTabsBoot />
 
       <AdminPanelShell panel="overview" active={shows('overview')}>
-        <AdminOverviewPanel overview={overview} attentionCount={attentionAll.length} />
+        {/* Where the money is, above the counting stats: the accounting question comes first for
+            someone opening this dashboard to run a business (סשן ב׳ §3). */}
+        {ledger && <AdminLedgerCard
+          ledger={ledger!}
+          noBankHref={tabUrl('sellers', { spayout: 'no_bank' })}
+          payoutsHref={tabUrl('payouts', {})}
+        />}
+        <AdminOverviewPanel
+          overview={overview}
+          emptyStoreCount={storeEmptyCount}
+          emptyStoresHref={tabUrl('stores', { stempty: '1' })}
+        />
       </AdminPanelShell>
 
       <AdminPanelShell panel="data" active={shows('data') && !!analyticsOverview && !!sellerFunnel}>
@@ -581,6 +602,8 @@ const badgeFor: Record<string, number> = badgeCounts;
           sortDir={storeQuery.sortDir}
           state={storeQuery.state}
           stateCounts={storeStateCounts}
+          emptyOnly={storeQuery.emptyOnly}
+          emptyCount={storeEmptyCount}
           newSince={newSince.stores}
           newOnly={newOnly.stores}
           newCount={badgeCounts.stores}
@@ -592,6 +615,7 @@ const badgeFor: Record<string, number> = badgeCounts;
             stq: storeQuery.q || undefined,
             stsort: (storeQuery.sortCol !== 'name' || storeQuery.sortDir !== 'asc') ? `${storeQuery.sortCol}:${storeQuery.sortDir}` : undefined,
             ststate: storeQuery.state !== 'all' ? storeQuery.state : undefined,
+            stempty: storeQuery.emptyOnly ? '1' : undefined,
             stnew: newOnly.stores ? '1' : undefined,
             stpage: p > 1 ? String(p) : undefined,
           })}
@@ -638,15 +662,6 @@ const badgeFor: Record<string, number> = badgeCounts;
           lang={perfLang}
           dir={perfDir}
         />}
-      </AdminPanelShell>
-
-      <AdminPanelShell panel="attention" active={shows('attention')}>
-        <AdminAttentionPanel
-          entries={attentionPageResult.items}
-          page={attentionPageResult.page}
-          totalPages={attentionPageResult.totalPages}
-          buildUrl={(p) => tabUrl('attention', { apage: p > 1 ? String(p) : undefined })}
-        />
       </AdminPanelShell>
 
       <AdminPanelShell panel="advertising" active={!!advertisingTab}>
