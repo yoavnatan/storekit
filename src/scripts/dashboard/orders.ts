@@ -935,14 +935,24 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const ordersList = document.getElementById('orders-list');
   if (ordersList && storeSlugForOrders) {
     const knownIds = new Set<string>();
+    // The moment the poll last knew about. The server hands it back on every answer and it goes
+    // straight back out on the next question — the seller's browser never asks for the store's
+    // history again, which is what it used to do every fifteen seconds (lib/orders.ts#
+    // getSellerOrdersSince). `knownIds` stays because the window is inclusive of its own edge:
+    // orders written in the same microsecond as the watermark come back a second time by design,
+    // and this is what stops them being announced twice.
+    let ordersSince = '';
 
-    async function fetchStoreOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
+    async function fetchNewOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
       try {
-        const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
+        const params = new URLSearchParams({ storeSlug: storeSlugForOrders });
+        if (ordersSince) params.set('since', ordersSince);
+        const res = await fetch(`/api/seller/orders?${params.toString()}`);
         // silent: a background refresh of one card's data, not something anyone pressed — the card
         // already on screen stays correct and the next poll retries.
         if (!res.ok) return null;
-        const { orders } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][] };
+        const { orders, since } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][]; since?: string };
+        if (since) ordersSince = since;
         return orders;
       } catch { return null; }
     }
@@ -950,7 +960,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     async function pollOrders(): Promise<void> {
       if (!ordersList) return;
       try {
-        const orders = await fetchStoreOrders();
+        const orders = await fetchNewOrders();
         if (!orders) return;
         const newOrders = orders.filter(o => !knownIds.has(o.id));
         if (!newOrders.length) return;
@@ -991,12 +1001,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       } catch { /* ignore */ }
     }
 
-    // Seed knownIds from the *full* store order list (not just the DOM's
-    // rendered page-1 cards, which pagination caps at 15) before the poll
-    // loop starts — otherwise every order beyond page 1 looks "new" on the
-    // first tick after every page load, firing a toast for each one (real
-    // bug: was seeding from `.order-card` elements in the DOM).
-    fetchStoreOrders().then((orders) => {
+    // Seed the watermark before the poll loop starts — the first call carries no `since`, so the
+    // server answers with the newest order's moment and NO rows at all. That is what stops every
+    // existing order looking "new" on the first tick (the original bug seeded from `.order-card`
+    // elements in the DOM, so anything past page 1 fired a toast), and it now costs one timestamp
+    // instead of the store's entire order history.
+    fetchNewOrders().then((orders) => {
       (orders ?? []).forEach((o) => knownIds.add(o.id));
       setInterval(pollOrders, 15000);
     });

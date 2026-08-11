@@ -3,7 +3,7 @@ import type { APIContext } from 'astro';
 import { getSellerById, getSellerSession } from '../../../lib/seller-auth.js';
 import { commissionPercentForTier } from '../../../lib/pricing.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
-import { getOrdersByStoreSlug } from '../../../lib/orders.js';
+import { getOrdersByStoreSlugInRange } from '../../../lib/orders.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import { isDayISO } from '../../../lib/business-day.js';
 import { getLang } from '../../../i18n/index.js';
@@ -33,13 +33,13 @@ const MAX_DAYS = 731;
  * `stock` deliberately ignores `from`/`to`: a stocktake is a statement about now, and accepting a
  * range there would produce a file whose name promises a period its contents do not describe.
  *
- * **Known shape, deliberately not fixed here.** `getOrdersByStoreSlug` reads one store's whole
- * order history into memory and the range filter is applied in JavaScript — the same thing the
- * Performance tab has always done, bounded per store rather than per platform, so this adds a
- * consumer and not a class. It becomes wrong at the scale area-audit row 9 is about. TRIGGER: a
- * single store past ~50k orders, or this endpoint appearing in a slow-request log. The fix is a
- * `WHERE created_at BETWEEN` in `order-reporting.ts` (the `GROUP BY`-written-as-a-`for`-loop half
- * of that module's split), and it moves the Performance tab with it — they should not diverge.
+ * **The range is now a `WHERE`, not a `filter` (2026-08-11, owner: "at least stop loading all of
+ * infinity every time").** This used to read the store's WHOLE order history and drop everything
+ * outside `from`/`to` in JavaScript. Both range reports validate their bounds as real business days
+ * before reaching here, and both builders re-apply the same membership rule, so moving the window
+ * into `getOrdersByStoreSlugInRange` changed no output — only how much of the table it took to
+ * produce it. The Performance tab moved in the same change, deliberately: they read the same data
+ * for the same window and must not diverge.
  */
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
@@ -88,14 +88,14 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   if (report === 'products') {
     // Independent reads, so one round trip rather than two (AI_INSTRUCTIONS → Scalability).
     const [orders, products] = await Promise.all([
-      getOrdersByStoreSlug(storeSlug),
+      getOrdersByStoreSlugInRange(storeSlug, from, to),
       getProductsByStoreId(store.id),
     ]);
     const { rows, totals } = buildProductSalesReport(orders, products, storeSlug, from, to);
     return wantsCsv ? csv(productSalesReportCsv(rows, lang)) : json({ ok: true, rows, totals });
   }
 
-  const [orders, seller] = await Promise.all([getOrdersByStoreSlug(storeSlug), getSellerById(sellerId)]);
+  const [orders, seller] = await Promise.all([getOrdersByStoreSlugInRange(storeSlug, from, to), getSellerById(sellerId)]);
   const { rows, totals } = buildSalesReport(orders, storeSlug, from, to, commissionPercentForTier(seller?.tier));
   return wantsCsv ? csv(salesReportCsv(rows, lang)) : json({ ok: true, rows, totals });
 }

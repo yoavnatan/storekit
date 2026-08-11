@@ -105,15 +105,32 @@ export interface ShippingStatusRule {
    * silent non-delivery discovered weeks later. The fallback hold still has to elapse on top.
    */
   pickupPayoutClockRuns: boolean;
+  /**
+   * Is the next move the SELLER's?
+   *
+   * The "by urgency" sort on the seller's Orders tab floats these to the top, oldest first, because
+   * they are the only rows on that screen the seller can do anything about. It used to be a hand-
+   * written list of three statuses in `seller-orders-query.ts`, which is precisely the second copy
+   * of this table that `tests/money-guards.test.ts` exists to refuse — and it had to become a
+   * column rather than a derivation the day the sort also had to be written in SQL
+   * (`orders.ts#getSellerOrdersPage`), because a rule spelled twice in two languages is the one
+   * that drifts.
+   *
+   * Deliberately NOT `!payoutClockRuns`, which happens to select the same three rows today: that
+   * column is about evidence that a parcel left, and this one is about whose turn it is. They
+   * answer differently the moment a status arrives that the courier owns while the seller still
+   * has something to do — and reading one for the other would silently mis-sort that day.
+   */
+  sellerOwesAction: boolean;
 }
 
 export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> = {
-  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false },
-  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false },
-  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: true  },
-  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true , pickupPayoutClockRuns: true  },
-  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true , pickupPayoutClockRuns: true  },
-  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false },
+  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true  },
+  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true  },
+  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: true , sellerOwesAction: true  },
+  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
+  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
+  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: false },
 };
 
 export interface PaymentStatusRule {

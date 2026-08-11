@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getStoreBySlug } from '../../../lib/stores.js';
-import { getOrdersByStoreSlug } from '../../../lib/orders.js';
+import { getOrdersByStoreSlugInRange } from '../../../lib/orders.js';
 import { getProductById } from '../../../lib/store-products.js';
 import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
 import { getViewStatsForStore } from '../../../lib/store-pageviews.js';
@@ -64,7 +64,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     const product = await getProductById(productId);
     if (!product || product.storeId !== store.id) return json({ error: 'Product not found' }, 404);
     const [orders, productViews] = await Promise.all([
-      getOrdersByStoreSlug(storeSlug),
+      getOrdersByStoreSlugInRange(storeSlug, from, to),
       getProductViewStats(productId, from, to, granularity),
     ]);
     const productSummary = buildProductPerformance(orders, productViews, storeSlug, productId, from, to, granularity);
@@ -72,7 +72,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   }
 
   const [orders, views, seller] = await Promise.all([
-    getOrdersByStoreSlug(storeSlug),
+    getOrdersByStoreSlugInRange(storeSlug, from, to),
     getViewStatsForStore(store.id, from, to, granularity),
     getSellerById(store.sellerId),
   ]);

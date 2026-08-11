@@ -82,6 +82,29 @@ describe('no public route builds an unbounded document', () => {
     }
   });
 
+  /**
+   * The same shape one level down: a route may not read a STORE's whole order history either.
+   *
+   * `getOrdersByStoreSlug(slug)` returns every order that store has ever taken, with its lines and
+   * its per-store slices, and five routes used it to render fifteen rows, one month's chart, or a
+   * fifteen-second poll (owner, 2026-08-11: "at least stop loading all of infinity every time").
+   * It is bounded per store rather than per platform, which is why it survived the §3 sweep — and
+   * it is still a read that grows for the life of the shop, on the page a seller opens all day.
+   *
+   * The accessor stays for tests and for anything that genuinely wants the lot; what may not
+   * happen is a REQUEST reaching for it. The bounded three are the whole vocabulary a route needs:
+   * a window (`…InRange`), a page (`getSellerOrdersPage`), or a watermark (`getSellerOrdersSince`).
+   */
+  it('no route reads one store\'s entire order history', () => {
+    const offenders = routeFiles(PAGES)
+      .filter((file) => /\bgetOrdersByStoreSlug\s*\(/.test(fs.readFileSync(file, 'utf8')))
+      .map((file) => path.relative(ROOT, file));
+    expect(
+      offenders,
+      'use getOrdersByStoreSlugInRange / getSellerOrdersPage / getSellerOrdersSince — lib/orders.ts says which',
+    ).toEqual([]);
+  });
+
   it('both documents are on the schedule, so "pre-built" is a fact and not an intention', async () => {
     // A builder nothing calls is the state this whole change replaced: correct code, never run.
     const { JOBS } = await import('../src/lib/jobs/registry.js');

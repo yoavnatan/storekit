@@ -52,10 +52,10 @@ import { thumbUrl } from '../../lib/cloudinary.js';
 import { getThreadRootsBySeller, getRepliesForMessages } from '../../lib/messages.js';
 import { getAdminThreadsForSeller } from '../../lib/admin-messages.js';
 import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro';
-import { getOrdersByStoreSlug, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
+import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusCounts, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
-import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
@@ -438,7 +438,6 @@ const messagesPage = paginate(filteredMessageRows, parsePage(Astro.url.searchPar
 // rows live in the DOM at a time.
 const msgDistinctProducts = [...new Set(messageRows.map((r) => r.productName))].sort((a, b) => a.localeCompare(b, 'he'));
 const msgDistinctFrom = [...new Set(messageRows.map((r) => r.fromName))].sort((a, b) => a.localeCompare(b, 'he'));
-const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : [];
 
 // Performance tab — SSR renders the default "this month" range so it's never
 // a blank flash before JS runs; range-picker changes re-fetch from
@@ -453,10 +452,18 @@ const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : []
 const perfToISO = businessTodayISO();
 const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfViews = (store && perfIsInitial)
-  ? await getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity)
-  : EMPTY_VIEW_STATS;
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(seller?.tier)) : undefined;
+// The two reads this tab needs are independent, so one round trip (AI_INSTRUCTIONS → Scalability) —
+// and the orders read is bounded to the range being charted. It used to receive the store's ENTIRE
+// order history and throw away everything outside the month (owner, 2026-08-11: "at least stop
+// loading all of infinity every time"); `buildPerformanceSummary` re-applies the same business-day
+// membership rule, so bounding the read changed the cost and not the chart.
+const [perfViews, perfOrders] = (store && perfIsInitial)
+  ? await Promise.all([
+      getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity),
+      getOrdersByStoreSlugInRange(store.slug, perfFromISO, perfToISO),
+    ])
+  : [EMPTY_VIEW_STATS, [] as Order[]];
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(seller?.tier)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
@@ -586,21 +593,34 @@ const SKEL = {
   topRow:     'block w-full h-[2.4rem] rounded-[var(--radius)]',
 };
 const perfChartSkeleton = `<span class="skel-bar ${SKEL.chart}"></span>`;
-const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
+// Orders tab pagination — same server-paginated approach as Products above
+// (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
+// 15/page like the admin dashboard's own list tabs (no items-per-page
+// control here — that was only asked for on Products).
+//
+// **The page is a page in the QUERY now (2026-08-11).** The tab was already paginated, but the read
+// behind it was the store's entire order history, filtered and sorted in JavaScript so fifteen rows
+// could be kept — on the first paint of the page a seller opens all day. The three counts beside it
+// were three more passes over that same array and are one `GROUP BY` now. Both reads are
+// independent, so they go together.
+const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
+const [ordersPage, orderStatusCounts] = store
+  ? await Promise.all([
+      getSellerOrdersPage(store.slug, sellerOrderQuery, parsePage(Astro.url.searchParams, 'opage'), 15),
+      getSellerOrderStatusCounts(store.slug),
+    ])
+  : [{ orders: [] as Order[], total: 0, page: 1, totalPages: 1 }, {} as Record<string, number>];
+const newOrdersCount = orderStatusCounts.pending ?? 0;
 // Overview "orders needing attention" square (CURRENT_TASK item 4): 'processing'
 // (בטיפול) = started but not yet shipped, the second attention stage after the
 // new-orders ('pending') count above. 'ready' (ממתין לאיסוף) is omitted for the
 // same reason the Orders filter omits it — no seller can reach it today (carrier-
 // driven once shipping is wired). Clicking a square jumps to the Orders tab filtered
 // to exactly that status, so the count and the filtered list always agree.
-const unshippedOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'processing').length;
-// Orders tab pagination — same server-paginated approach as Products above
-// (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
-// 15/page like the admin dashboard's own list tabs (no items-per-page
-// control here — that was only asked for on Products).
-const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
-const filteredSortedOrders = filterAndSortSellerOrders(storeOrders, store?.slug ?? '', sellerOrderQuery);
-const ordersPage = paginate(filteredSortedOrders, parsePage(Astro.url.searchParams, 'opage'), 15);
+const unshippedOrdersCount = orderStatusCounts.processing ?? 0;
+/** Every order this store has ever taken — the "orders so far" stat, and the test the tab's
+ *  empty state asks ("no orders at all" is a different screen from "none match this filter"). */
+const storeOrdersTotal = Object.values(orderStatusCounts).reduce((sum, n) => sum + n, 0);
 // The toolbar's filter badge is SSR-computed (same as AdminOrdersPanel.astro) because
 // the first paint ALREADY shows a filtered list — the default "active" preset. Leaving
 // it hidden until the client's refreshOrdersFilterBadge() first runs (only on a filter/
@@ -912,7 +932,7 @@ const orderStatusColors: Record<string, string> = {
               something to act on, muted "all clear" otherwise. */}
           <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="orders">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.tabOrders}</dt>
-            <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrders.length}</dd>
+            <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrdersTotal}</dd>
           </button>
           <button type="button" id="ov-new-orders" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovNewOrders}</dt>
@@ -1807,7 +1827,7 @@ const orderStatusColors: Record<string, string> = {
               .table-toolbar (products/messages), it's not display:none above
               640px. Default filter selection = the old "active" preset
               (pending/processing/ready/shipped), matching today's default. */}
-          {storeOrders.length > 0 && (
+          {storeOrdersTotal > 0 && (
             <div class="dash-toolbar w-full" id="orders-toolbar">
               <div class="relative flex-1 min-w-[110px] max-w-[280px]">
                 <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1827,13 +1847,13 @@ const orderStatusColors: Record<string, string> = {
             </div>
           )}
         </div>
-        {storeOrders.length === 0 ? (
+        {storeOrdersTotal === 0 ? (
           <p class="seller-msg-empty">{d.noOrders}</p>
         ) : (
           <Fragment>
           <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
           <div class="flex flex-col gap-3" id="orders-list">
-            {ordersPage.items.map((order) => {
+            {ordersPage.orders.map((order) => {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
               const storeSub   = order.storeSubtotals[store!.slug];
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });

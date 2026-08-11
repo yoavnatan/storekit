@@ -48,7 +48,9 @@ import {
 } from './order-status-rules.js';
 import { sanitizeAttribution, type OrderAttribution } from './attribution.js';
 import { firstRow, isUuid, rows, withTransaction, type Queryable } from './db.js';
+import { BUSINESS_TIMEZONE, isDayISO } from './business-day.js';
 import { SHIPPING_SORT_ORDER, type AdminOrderQuery } from './admin-orders-filter.js';
+import { URGENCY_STATUSES, URGENCY_RANKS, type SellerOrderQuery } from './seller-orders-query.js';
 import { CHECKOUT_GROUP_KEY_SQL } from './checkout-group.js';
 
 export interface OrderItem {
@@ -367,8 +369,11 @@ const SELECT_ORDERS = `
  *  `created_at` to the microsecond, and without the tie-break they swap places between loads. */
 const ORDER = 'ORDER BY o.created_at DESC, o.id';
 
-async function selectOrders(where: string, params: readonly unknown[] = [], tx?: Queryable): Promise<Order[]> {
-  const text = `${SELECT_ORDERS} WHERE ${where} ${ORDER}`;
+async function selectOrders(where: string, params: readonly unknown[] = [], tx?: Queryable, limit?: number): Promise<Order[]> {
+  // A LIMIT is spelled into the text rather than bound, because it is never request-supplied — every
+  // caller passes a constant. A bound parameter would have to be counted into `params`, which is
+  // exactly the bind-arity trap this file has already paid for once.
+  const text = `${SELECT_ORDERS} WHERE ${where} ${ORDER}${limit ? ` LIMIT ${Math.floor(limit)}` : ''}`;
   const result = tx ? (await tx.query<OrderRow>(text, params)).rows : await rows<OrderRow>(text, params);
   return result.map(toOrder);
 }
@@ -544,9 +549,222 @@ const BELONGS_TO_SLUGS = `(
   OR EXISTS (SELECT 1 FROM order_stores os WHERE os.order_id = o.id AND os.store_slug = ANY($1::text[]))
 )`;
 
+/**
+ * One store's ENTIRE order history.
+ *
+ * **No route may call this** — `tests/public-route-unbounded-build.test.ts` scans `src/pages/` and
+ * fails on one that does. Five of them used to (the dashboard's first paint, its Orders tab, both
+ * Performance tabs and the reports export), each reading everything the shop had ever sold to show
+ * fifteen rows or one month. The three bounded readers below are the vocabulary a request has: a
+ * window, a page, a watermark.
+ *
+ * It stays because a whole-history read is a legitimate thing to want — a test fixture, a one-off
+ * script, a future migration — and because deleting it would only push the next caller into writing
+ * the same query by hand, where no guard can see it.
+ */
 export async function getOrdersByStoreSlug(storeSlug: string): Promise<Order[]> {
   if (!storeSlug) return [];
   return selectOrders(BELONGS_TO_SLUGS, [[storeSlug]]);
+}
+
+/**
+ * One store's orders **inside a business-day range** — every caller that already knows the window
+ * it is going to report on.
+ *
+ * `getOrdersByStoreSlug` above reads a store's ENTIRE history, and the performance tab then threw
+ * away everything outside the picked range (`seller-performance.ts` filters by `dayInRange`). That
+ * is unbounded work that grows for the life of the store and is repeated on every date-picker
+ * change, to answer a question about thirty days. The filter did not move — it moved EARLIER.
+ *
+ * **Half-open on the raw column, deliberately** — the same shape and the same reason as the money
+ * journal's window (`money-events.ts#windowClauses`): `(created_at AT TIME ZONE tz)::date BETWEEN`
+ * means the same thing and cannot use an index, because a function applied to the indexed column
+ * takes it out of the plan. Each BOUND is converted once instead of every ROW. It is still the
+ * platform's business calendar, so a row here lands on the day the seller's chart puts it on.
+ *
+ * A bound that is not a real day is dropped rather than cast: Postgres RAISES on `2026-02-30`
+ * instead of matching nothing, and these bounds arrive from a query string.
+ */
+export async function getOrdersByStoreSlugInRange(storeSlug: string, fromDay: string, toDay: string): Promise<Order[]> {
+  if (!storeSlug) return [];
+  const from = isDayISO(fromDay) ? fromDay : null;
+  const to = isDayISO(toDay) ? toDay : null;
+  return selectOrders(
+    `${BELONGS_TO_SLUGS}
+       AND ($2::date IS NULL OR o.created_at >= ($2::date)::timestamp AT TIME ZONE $4::text)
+       AND ($3::date IS NULL OR o.created_at <  ($3::date + 1)::timestamp AT TIME ZONE $4::text)`,
+    [[storeSlug], from, to, BUSINESS_TIMEZONE],
+  );
+}
+
+/**
+ * One page of ONE store's orders, narrowed/sorted/counted in the query — the seller dashboard's
+ * Orders tab.
+ *
+ * **The tab was already paginated; the READ was not.** It loaded every order the store has ever
+ * taken, filtered and sorted the array in JavaScript, and kept fifteen (owner, 2026-08-11: "at
+ * least stop loading all of infinity every time"). The admin's own Orders tab stopped doing this in
+ * §3 (`getAdminOrdersPage`); this is the same move for the seller's, and it is the read that
+ * mattered most because it is on the FIRST paint of the page a seller opens all day.
+ *
+ * `seller-orders-query.ts#filterAndSortSellerOrders` stays, and not as a leftover: it is the
+ * readable statement of what the toolbar means, and `tests/seller-orders-page-parity.test.ts` runs
+ * this query against it over a corpus and fails on any disagreement. Two implementations only pay
+ * for themselves when something forces them to agree.
+ *
+ * **One row per ORDER here, unlike the admin's page**, which groups a multi-store checkout into one
+ * card: a seller sees only their own slice, so there is nothing to group — the other stores' rows
+ * are not theirs to see (`scopeOrder`).
+ */
+export interface SellerOrdersPage {
+  orders: Order[];
+  /** Matching the current narrowing, across all pages. */
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+/** The seller-visible amount of one store's slice, as SQL. The JS twin is
+ *  `order-totals.ts#storeSliceTotalAgorot` and the two must agree to the agora, because this is
+ *  the "sort by amount" key for the number printed on the card. */
+const SLICE_TOTAL_SQL = '(os.subtotal_agorot + os.shipping_agorot - os.discount_applied_agorot)';
+
+export async function getSellerOrdersPage(
+  storeSlug: string,
+  query: SellerOrderQuery,
+  page: number,
+  pageSize: number,
+): Promise<SellerOrdersPage> {
+  if (!storeSlug) return { orders: [], total: 0, page: 1, totalPages: 1 };
+
+  // Same five fields the JS haystack joins, in the same order, lower-cased on both sides.
+  const HAYSTACK = `lower(
+      o.id::text || ' ' || COALESCE(o.checkout_ref, '') || ' ' || o.buyer_name || ' ' ||
+      o.buyer_email || ' ' || o.buyer_phone
+    )`;
+  // An EMPTY status list means "every status" (the toolbar's cleared state), which is why this is
+  // a NULL check and not `= ANY('{}')` — the latter matches nothing and would blank the tab.
+  const statuses = query.shippingStatus.length ? query.shippingStatus : null;
+  const q = query.q ? query.q.toLowerCase() : null;
+  // Exactly the three the WHERE names. A parameter the statement does not mention is a bind error,
+  // not spare capacity — `bind message supplies 4 parameters, but prepared statement requires 3`,
+  // which is how the admin Orders tab once 500'd on every load (DB_MIGRATION_PLAN §3).
+  const scope: unknown[] = [[storeSlug], statuses, q];
+  const where = `${BELONGS_TO_SLUGS}
+     AND ($2::text[] IS NULL OR o.shipping_status = ANY($2::text[]))
+     AND ($3::text   IS NULL OR position($3::text in ${HAYSTACK}) > 0)`;
+
+  const total = bigIntOf((await firstRow<{ n: string | number }>(
+    `SELECT COUNT(*) AS n FROM orders o WHERE ${where}`, scope,
+  ))?.n);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  if (total === 0) return { orders: [], total, page: safePage, totalPages };
+
+  // Each sort brings its OWN parameters and nothing else — see the bind-error note above; a `$4`
+  // that only the amount sort mentions must not be sent when the date sort is running.
+  const asc = query.sortDir === 'asc';
+  const dir = asc ? 'ASC' : 'DESC';
+  const sortParams: unknown[] = [];
+  let orderBy: string;
+  if (query.sortCol === 'amount') {
+    // The slice this SELLER is paid for, not the order's total — a multi-store checkout's other
+    // slices are not theirs and must not move their sort.
+    sortParams.push(storeSlug);
+    // COALESCE, and it is not defensive noise: `BELONGS_TO_SLUGS` matches on EITHER an items row or
+    // a slices row, so an order can legitimately be this store's with no `order_stores` row behind
+    // it. The subquery is then NULL — and Postgres sorts NULLs FIRST in DESC, so that order would
+    // head the list while `storeSliceTotalAgorot(undefined)` puts it last at 0. The two routes have
+    // to agree on the row nobody thought about, which is the whole point of the parity test.
+    orderBy = `COALESCE((SELECT ${SLICE_TOTAL_SQL} FROM order_stores os
+                 WHERE os.order_id = o.id AND os.store_slug = $4::text), 0) ${dir}, o.created_at DESC, o.id`;
+  } else if (query.sortCol === 'urgency') {
+    // Group first; inside the owes-an-action group the OLDEST is the most urgent, inside every
+    // other group the newest is the most interesting; and the direction flips the whole
+    // comparison, group included — which is what the JS `cmp * dir` does. The grouping arrives as
+    // DATA (`seller-orders-query.ts#URGENCY_GROUPS`): a `CASE WHEN 'pending' THEN 0 …` written
+    // here would be a second copy of that table in a language no guard test can read.
+    sortParams.push(URGENCY_STATUSES, URGENCY_RANKS);
+    const rank = `COALESCE(($5::int[])[array_position($4::text[], o.shipping_status)], 9)`;
+    orderBy = `${rank} ${dir},
+               CASE WHEN ${rank} = 0 THEN o.created_at END ${asc ? 'ASC' : 'DESC'},
+               CASE WHEN ${rank} > 0 THEN o.created_at END ${asc ? 'DESC' : 'ASC'},
+               o.id`;
+  } else {
+    orderBy = `o.created_at ${dir}, o.id`;
+  }
+
+  const limitAt = scope.length + sortParams.length + 1;
+  const found = await rows<OrderRow>(
+    `${SELECT_ORDERS} WHERE ${where} ORDER BY ${orderBy} LIMIT $${limitAt} OFFSET $${limitAt + 1}`,
+    [...scope, ...sortParams, pageSize, (safePage - 1) * pageSize],
+  );
+  return { orders: found.map(toOrder), total, page: safePage, totalPages };
+}
+
+/**
+ * What arrived since a moment — the seller dashboard's 15-second new-order poll, and the only
+ * question that poll ever had.
+ *
+ * **It used to download the store's whole order history, twice over.** Once on page load to learn
+ * which ids it already knew about, and then again every fifteen seconds to diff against them, for
+ * as long as the tab stayed open. At a hundred orders that is invisible; at ten thousand it is a
+ * seller's dashboard re-reading ten thousand rows four times a minute to discover that nothing
+ * happened. The poll's actual question is "anything newer than this?", and that is a watermark.
+ *
+ * Called with no `sinceISO` it answers with the watermark ALONE and no rows — the seed. From then
+ * on the caller passes back what it was given and gets only what arrived after.
+ *
+ * `>=`, not `>`, and the caller de-duplicates by id: two orders written in the same transaction
+ * share a `created_at` to the microsecond, so a strict `>` on the newest one silently drops its
+ * twin — a real order that would never appear until the page was reloaded.
+ *
+ * The cap is a real limit and not a formality: it means more than `limit` orders inside one
+ * 15-second tick will not all be announced. They are not LOST — they are on the page the next load
+ * renders — and the alternative is letting a burst decide how much this endpoint reads.
+ */
+export interface OrdersSincePage {
+  orders: Order[];
+  /** Pass this back on the next call. Never empty — with no orders at all it is the moment asked
+   *  about, so a store's first order is still newer than it. */
+  since: string;
+}
+
+export async function getSellerOrdersSince(storeSlug: string, sinceISO: string, limit = 50): Promise<OrdersSincePage> {
+  const now = new Date().toISOString();
+  if (!storeSlug) return { orders: [], since: now };
+  // A hand-edited `?since=` reaches a `timestamptz` cast, and Postgres RAISES on a value it cannot
+  // parse rather than matching nothing — a 500 on the dashboard's background poll.
+  const since = sinceISO && Number.isFinite(Date.parse(sinceISO)) ? new Date(sinceISO).toISOString() : '';
+  if (!since) {
+    const newest = await firstRow<{ at: Date | string | null }>(
+      `SELECT MAX(o.created_at) AS at FROM orders o WHERE ${BELONGS_TO_SLUGS}`, [[storeSlug]],
+    );
+    return { orders: [], since: newest?.at ? isoOf(newest.at) : now };
+  }
+  const found = await selectOrders(
+    `${BELONGS_TO_SLUGS} AND o.created_at >= $2::timestamptz`,
+    [[storeSlug], since],
+    undefined,
+    limit,
+  );
+  // The newest row seen becomes the next watermark; with nothing new it stays where it was, so a
+  // quiet hour cannot drag the window forward past an order that is still being written.
+  const newest = found.reduce((max, o) => (o.createdAt > max ? o.createdAt : max), since);
+  return { orders: found, since: newest };
+}
+
+/** How many of this store's orders sit at each shipping status — the two dashboard badges ("new",
+ *  "unshipped") and the "orders so far" stat, which were `storeOrders.filter(...).length` over the
+ *  whole history. One `GROUP BY` instead of three passes over an array that no longer exists. */
+export async function getSellerOrderStatusCounts(storeSlug: string): Promise<Record<string, number>> {
+  if (!storeSlug) return {};
+  const found = await rows<{ shipping_status: string; n: string | number }>(
+    `SELECT o.shipping_status, COUNT(*) AS n FROM orders o WHERE ${BELONGS_TO_SLUGS}
+      GROUP BY o.shipping_status`,
+    [[storeSlug]],
+  );
+  return Object.fromEntries(found.map((r) => [r.shipping_status, bigIntOf(r.n)]));
 }
 
 export async function getOrdersBySellerStores(storeSlugs: string[]): Promise<Order[]> {
