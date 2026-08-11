@@ -833,7 +833,7 @@ export const translations = {
       // platform reviewing their order. One word says the only thing the tile has to say, and the
       // details it used to carry live one link away in `payHowTitle`.
       payHeld: 'ממתינים',
-      payHeldHint: 'כסף שלכם שעדיין בדרך — ייכנס לתשלום הקרוב שאחרי שהוא נסגר.',
+      payHeldHint: 'תשלומים הממתינים לפעולות מצדכם או לאישור סופי.',
       // The tile's own "read more" (owner, §3: *"ולמטה שיהיה כתוב ״פרטים נוספים״ לחיץ שמוביל למקום
       // עם הפרטים הנוספים במורד הדף"*). The rule this replaces was a second sentence on the tile.
       payHeldMore: 'פרטים נוספים',
@@ -925,7 +925,7 @@ export const translations = {
       payFilter_undelivered: 'בדרך ללקוח',
       payFilter_window: 'ממתין לסיום ימי החזרה',
       payFilter_released: 'ישולם בתשלום הקרוב',
-      payFilter_none: 'לא ישולם — ההזמנה בוטלה או שהכסף לא התקבל',
+      payFilter_none: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
       payColOrders: 'הזמנות',
       payColAmount: 'סכום',
       payColWhy: 'סיבה',
@@ -1350,7 +1350,7 @@ export const translations = {
       orderPayoutReleasable: 'ישולם בתשלום הקרוב',
       orderPayoutOn: 'ישולם אחרי {date}',
       orderPayoutPending: 'הספירה מתחילה כשההזמנה נשלחת',
-      orderPayoutNone: 'לא ישולם — ההזמנה בוטלה או שהכסף לא התקבל',
+      orderPayoutNone: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
       orderShipping: 'משלוח',
       orderPaymentStatus: 'תשלום',
       orderShippingStatus: 'סטטוס הזמנה',
@@ -2493,7 +2493,7 @@ export const translations = {
       payPayableNow: 'Next payment',
       payPayableNowHint: 'What moves to your account in the next transfer.',
       payHeld: 'Waiting',
-      payHeldHint: 'Your money, still on its way.',
+      payHeldHint: 'Payments waiting on something from you, or on final approval.',
       payHeldMore: 'More details',
       payCarried: 'Carried debt',
       payCarriedHint: 'An offset larger than the balance it came out of. It comes off your next payment.',
