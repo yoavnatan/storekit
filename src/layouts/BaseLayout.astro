@@ -11,6 +11,7 @@ import StoreProductModal from '../components/StoreProductModal.astro';
 import ToastContainer from '../components/ToastContainer.astro';
 import MessageCompose from '../components/MessageCompose.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
+import { needsDashboardI18n } from '../lib/i18n-island.js';
 import { store as platform } from '../config/store.config.js';
 import { jsonForScript } from '../lib/json-script.js';
 import { getSellerSession } from '../lib/seller-auth.js';
@@ -71,9 +72,12 @@ const storeIcon =
  * as English fallback strings appearing in a Hebrew UI. Every consumer already
  * lives under one of these three prefixes and `tests/i18n-island-scope.test.ts`
  * fails the build if a new one appears outside them.
+ *
+ * The MATCH itself lives in `lib/i18n-island.ts` — it was written inline here as a `'/admin/'`
+ * prefix, which the admin dashboard's own `/admin` does not match under `trailingSlash: 'never'`,
+ * and the English strings that produced went unnoticed for weeks. Its header carries the case.
  */
-const DASHBOARD_ROUTES = ['/seller/', '/admin/', '/buyer/'];
-const needsDashboardStrings = DASHBOARD_ROUTES.some((p) => Astro.url.pathname.startsWith(p));
+const needsDashboardStrings = needsDashboardI18n(Astro.url.pathname);
 const i18nJson = jsonForScript({
   cart: t.cart,
   confirm: t.confirm,
