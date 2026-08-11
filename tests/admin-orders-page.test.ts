@@ -16,7 +16,21 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import crypto from 'node:crypto';
 import { query } from '../src/lib/db.js';
 import { getAdminOrdersPage, type Order } from '../src/lib/orders.js';
-import { filterAndSortOrders, parseOrderQuery, type AdminOrderQuery } from '../src/lib/admin-orders-filter.js';
+import {
+  filterAndSortOrders, parseOrderQuery, resolveOrderQuery, sortSellerOptions,
+  type AdminOrderQuery,
+} from '../src/lib/admin-orders-filter.js';
+import { getOrderSellerOptions } from '../src/lib/order-reporting.js';
+
+// The repo's own fixture (tests/fixtures/db-data): 'keramika' belongs to Dana, 'tachshitim' to
+// Yossi. Two sellers with one store each is exactly the case the store filter could already
+// answer — which is why the seller cases below lean on the two things it cannot: a retired slug,
+// and one seller's whole history in a single tick.
+const DANA = '11111111-1111-4111-8111-000000000001';
+const YOSSI = '11111111-1111-4111-8111-000000000002';
+const KERAMIKA_STORE = '22222222-2222-4222-8222-000000000001';
+/** A slug 'keramika' used to answer to. Only CR-10 was filed under it. */
+const RENAMED_SLUG = 'keramika-was';
 
 const ALL = async (): Promise<Order[]> => (await getAdminOrdersPage({}, 1, 10_000)).orders;
 
@@ -59,6 +73,13 @@ const SEEDS: Seed[] = [
   // case where the two arms of the CASE disagree, and therefore the one worth a row of its own.
   { ref: 'CR-9', buyer: 'גיל דור', email: 'gil@example.com',  phone: '0508888888', total: 2400, payment: 'paid', shipping: 'ready',     at: '2026-07-08T09:00:00.000Z', stores: [{ slug: 'keramika', name: 'קרמיקה' }],
     paidAt: "now() - interval '1 day'", deliveryMethod: 'pickup' },
+  // Filed under a slug the store no longer answers to — `order_items.store_slug` is a SNAPSHOT, so
+  // this is what every order placed before a rename looks like forever. It exists for the "מוכר/ת"
+  // filter: resolving a seller through `stores.slug` alone would find CR-1 and lose this one, and
+  // an admin would see a seller's history silently begin on the day they renamed a shop. Same
+  // shape as CR-1 in every other respect so it lands in the same payout state and dated before the
+  // "new since" boundary, so no assertion above has to move to make room for it.
+  { ref: 'CR-10', buyer: 'תמר אור', email: 'tamar@example.com', phone: '0509999999', total: 1500, payment: 'paid', shipping: 'delivered', at: '2026-07-02T10:00:00.000Z', stores: [{ slug: RENAMED_SLUG, name: 'קרמיקה' }] },
 ];
 
 beforeAll(async () => {
@@ -68,6 +89,14 @@ beforeAll(async () => {
   await query('DELETE FROM order_stores');
   await query('DELETE FROM money_events');
   await query('DELETE FROM orders');
+  // The rename CR-10 was placed before. Written here rather than through `renameStoreSlug` on
+  // purpose: what is under test is the READ, and it must work off the row the rename leaves behind
+  // whoever wrote it.
+  await query(
+    `INSERT INTO store_previous_slugs (slug, store_id) VALUES ($1, $2)
+     ON CONFLICT (slug) DO UPDATE SET store_id = EXCLUDED.store_id`,
+    [RENAMED_SLUG, KERAMIKA_STORE],
+  );
   for (const s of SEEDS) {
     const id = crypto.randomUUID();
     await query(
@@ -167,6 +196,31 @@ describe('getAdminOrdersPage agrees with filterAndSortOrders', () => {
     expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-2', 'CR-3', 'CR-5', 'CR-8']);
   });
 
+  it('filtering by store SLUG, which is what the seller filter resolves to', async () => {
+    const rows = await bothAgree({ storeSlug: ['tachshitim'] }, 'slug filter');
+    expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-2', 'CR-3', 'CR-5', 'CR-8']);
+  });
+
+  it('several slugs are an OR, and a purchase spanning two of them is shown whole', async () => {
+    // CR-3 is one checkout across both stores. It appears once, not twice, and with both of its
+    // lines — the "ANY line matches, then show the whole purchase" rule the payout filter states.
+    const rows = await bothAgree({ storeSlug: ['keramika', 'tachshitim'] }, 'both slugs');
+    expect(rows.filter((o) => o.checkoutRef === 'CR-3')).toHaveLength(1);
+    expect(rows.map((o) => o.checkoutRef).sort()).toEqual(
+      ['CR-1', 'CR-2', 'CR-3', 'CR-4', 'CR-5', 'CR-6', 'CR-7', 'CR-8', 'CR-9'],
+    );
+  });
+
+  it('combines the slug filter with a status filter rather than replacing it', async () => {
+    const rows = await bothAgree({ storeSlug: ['keramika'], paymentStatus: ['failed'] }, 'slug + payment');
+    expect(rows.map((o) => o.checkoutRef)).toEqual(['CR-4']);
+  });
+
+  it('a slug nobody sold under finds nothing — it does not fall back to everything', async () => {
+    const rows = await bothAgree({ storeSlug: ['no-such-store'] }, 'unknown slug');
+    expect(rows).toEqual([]);
+  });
+
   for (const q of ['דנה', 'dana@example.com', '0503333333', 'CR-4', 'קרמיקה', 'לא קיים']) {
     it(`free-text search for "${q}"`, async () => {
       await bothAgree({ q }, `search ${q}`);
@@ -235,5 +289,64 @@ describe('the query params still mean what they meant', () => {
     expect(parsed.sortDir).toBe('desc');
     expect(parsed.shippingStatus).toEqual(['pending', 'shipped']);
     expect(parsed.paymentStatus).toEqual(['paid']);
+  });
+
+  it('reads oseller, and leaves it as ids for the page to resolve', () => {
+    const parsed = parseOrderQuery(new URLSearchParams(`oseller=${DANA},${YOSSI}`));
+    expect(parsed.seller).toEqual([DANA, YOSSI]);
+    // The engines never see `seller`; `resolveOrderQuery` is what produces what they do see.
+    expect('storeSlug' in parsed).toBe(false);
+  });
+});
+
+/**
+ * "Show me this seller's orders" — the question the store filter beside it cannot answer, because a
+ * seller is an ACCOUNT and may run several shops under several names (owner, 2026-08-11).
+ *
+ * The two halves are tested apart because they fail apart: the option list is a query about who
+ * owns which slug, and the filter is the same slug predicate the cases above already pin.
+ */
+describe('the "מוכר/ת" filter', () => {
+  it('lists only sellers who have actually sold, with every slug their orders were filed under', async () => {
+    const options = await getOrderSellerOptions();
+    expect(options.map((o) => o.id).sort()).toEqual([DANA, YOSSI].sort());
+    const dana = options.find((o) => o.id === DANA)!;
+    // The retired slug is IN the list. Without it, CR-10 — an order Dana really took — would be
+    // unreachable by her name for the rest of the platform's life.
+    expect([...dana.storeSlugs].sort()).toEqual(['keramika', RENAMED_SLUG].sort());
+    expect(options.find((o) => o.id === YOSSI)!.storeSlugs).toEqual(['tachshitim']);
+  });
+
+  it('resolves a seller to their slugs, and finds the orders filed under a slug they retired', async () => {
+    const options = await getOrderSellerOptions();
+    const query = resolveOrderQuery(parseOrderQuery(new URLSearchParams(`oseller=${DANA}`)), options);
+    const rows = await bothAgree(query, 'seller=dana');
+    expect(rows.map((o) => o.checkoutRef).sort())
+      .toEqual(['CR-1', 'CR-10', 'CR-3', 'CR-4', 'CR-6', 'CR-7', 'CR-9']);
+  });
+
+  it('two sellers are an OR over the union of their slugs', async () => {
+    const options = await getOrderSellerOptions();
+    const query = resolveOrderQuery(parseOrderQuery(new URLSearchParams(`oseller=${DANA},${YOSSI}`)), options);
+    expect((await bothAgree(query, 'seller=both')).length).toBe(SEEDS.length);
+  });
+
+  it('an id naming no seller narrows nothing, rather than emptying the tab', () => {
+    // The same call a stale link makes. `payout` already whitelists for this reason: a value that
+    // means nothing must read as "no filter", never as "the platform has no orders".
+    const parsed = parseOrderQuery(new URLSearchParams('oseller=00000000-0000-4000-8000-000000000000'));
+    expect(resolveOrderQuery(parsed, [])).not.toHaveProperty('storeSlug');
+  });
+
+  it('keeps two sellers apart when only their ids differ', () => {
+    const twins = [
+      { id: DANA, name: 'דנה', email: 'a@example.com', storeSlugs: ['a'] },
+      { id: YOSSI, name: 'דנה', email: 'b@example.com', storeSlugs: ['b'] },
+    ];
+    const parsed = parseOrderQuery(new URLSearchParams(`oseller=${YOSSI}`));
+    expect(resolveOrderQuery(parsed, twins).storeSlug).toEqual(['b']);
+    // And they sort on the email, so the menu draws them in a stable order rather than whichever
+    // one the database happened to return first.
+    expect(sortSellerOptions(twins).map((s) => s.email)).toEqual(['a@example.com', 'b@example.com']);
   });
 });

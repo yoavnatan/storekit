@@ -6,6 +6,7 @@
 // the server does the rest on the next SSR render.
 import { buildAdminUrl, debounce, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { escapeHtml } from '../../lib/html-escape.js';
 import { PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
 
 const PANEL_ID = 'dash-panel-orders';
@@ -51,7 +52,7 @@ const PAYOUT_LABELS: Record<string, string> = {
 };
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
-type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store' | 'payout';
+type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store' | 'payout' | 'seller';
 type FilterColumnDef = { col: FilterCol; label: string; values: string[]; labels: Record<string, string>; colors: Record<string, string> };
 
 const SORT_OPTIONS: { col: SortCol; dir: 'asc' | 'desc'; label: string }[] = [
@@ -73,8 +74,12 @@ export function initAdminOrdersFilter(): void {
   // property of an order, it's "what arrived since I last left this tab".
   let newOnly = state.newOnly === '1';
   const storeNames: string[] = JSON.parse(state.storeNames ?? '[]');
+  // `{ id, label }` and not a bare name: the value that travels in the URL is the seller's ID, so
+  // two accounts that registered under one name stay two options here (AdminOrdersPanel.astro
+  // decides when the email has to be shown to tell them apart).
+  const sellerOptions: { id: string; label: string }[] = JSON.parse(state.sellers ?? '[]');
 
-  const FILTER_COLUMNS: FilterColumnDef[] = [
+  const ALL_FILTER_COLUMNS: FilterColumnDef[] = [
     // 'ready' (ממתין לאיסוף) is intentionally omitted — no seller can set it today;
     // it returns as a carrier-driven state once shipping is wired (GO_LIVE §5). Keeping
     // it out keeps the admin filter in sync with the states orders actually reach.
@@ -88,8 +93,18 @@ export function initAdminOrdersFilter(): void {
     // right about what it implied: money in hold is ordinary and temporary, and a name built on
     // "release" describes it as confinement. "מצב התשלום" states the same fact and claims nothing.
     { col: 'payout', label: 'מצב התשלום', values: [...PAYOUT_FILTER_VALUES], labels: PAYOUT_LABELS, colors: {} },
+    // Seller before store, in that order deliberately: the account owns the shops, and an admin who
+    // wants "everything this person sold" was previously made to know which store names to tick —
+    // the wrong question the moment one seller runs two of them (owner, 2026-08-11). The value is
+    // the seller ID, so the label may repeat without two accounts merging into one option.
+    { col: 'seller', label: 'מוכר/ת', values: sellerOptions.map((s) => s.id), labels: Object.fromEntries(sellerOptions.map((s) => [s.id, s.label])), colors: {} },
     { col: 'store', label: 'חנות', values: storeNames, labels: Object.fromEntries(storeNames.map((s) => [s, s])), colors: {} },
+    // A column with nothing in it is a row that opens onto an empty menu — a click that cannot
+    // change the list, which is the one thing an interaction must never be
+    // (memory `feedback_noop_interactions_invisible`). Only the two data-driven columns can be
+    // empty; the status vocabularies are fixed and always have values.
   ];
+  const FILTER_COLUMNS = ALL_FILTER_COLUMNS.filter((fc) => fc.values.length > 0);
 
   const activeFilters = new Map<FilterCol, Set<string>>();
   const ship0 = new Set((state.ship ?? '').split(',').filter(Boolean));
@@ -100,6 +115,8 @@ export function initAdminOrdersFilter(): void {
   if (store0.size) activeFilters.set('store', store0);
   const payout0 = new Set((state.payout ?? '').split(',').filter(Boolean));
   if (payout0.size) activeFilters.set('payout', payout0);
+  const seller0 = new Set((state.seller ?? '').split(',').filter(Boolean)); // ids — no commas to escape
+  if (seller0.size) activeFilters.set('seller', seller0);
 
   const badge = document.getElementById('admin-orders-filter-count');
   if (badge) {
@@ -114,6 +131,7 @@ export function initAdminOrdersFilter(): void {
     const pay = activeFilters.get('paymentStatus');
     const store = activeFilters.get('store');
     const payout = activeFilters.get('payout');
+    const seller = activeFilters.get('seller');
     return buildAdminUrl('orders', {
       oq: searchInput?.value.trim() || undefined,
       osort: (sortCol !== 'date' || sortDir !== 'desc') ? `${sortCol}:${sortDir}` : undefined,
@@ -121,6 +139,7 @@ export function initAdminOrdersFilter(): void {
       opay: pay?.size ? [...pay].join(',') : undefined,
       ostore: store?.size ? encodeList([...store]) : undefined,
       opayout: payout?.size ? [...payout].join(',') : undefined,
+      oseller: seller?.size ? [...seller].join(',') : undefined,
       onew: newOnly ? '1' : undefined,
     });
   }
@@ -233,11 +252,18 @@ export function initAdminOrdersFilter(): void {
     portal.open(trigger, '13rem', () => [
       `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back>‹ ${fc.label}</button>`,
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      // ── Both the value and the label are ESCAPED, and neither is a fixed vocabulary ──
+      // Two of these columns are filled with text a SELLER typed — their store's name, and now
+      // their own — and this menu is built with innerHTML on the ADMIN's screen. Unescaped, a
+      // store called `"><img onerror=…>` runs script in the one session that can do anything on
+      // this platform. Same escaper as everywhere else, for the reason its header gives: the
+      // hand-rolled copies are how this exact bug got fixed three times on three surfaces
+      // (memory `project_attribute_escaping_xss`).
       ...fc.values.map((v) => `
         <label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]">
-          <input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${v}" ${selected.has(v) ? 'checked' : ''} />
+          <input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${escapeHtml(v)}" ${selected.has(v) ? 'checked' : ''} />
           ${fc.colors[v] ? `<span class="order-status-dot" style="background:${fc.colors[v]}"></span>` : ''}
-          ${fc.labels[v]}
+          ${escapeHtml(fc.labels[v])}
         </label>`).join(''),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
       `<div style="display:flex;gap:0.4rem;padding:0.3rem 0.6rem">

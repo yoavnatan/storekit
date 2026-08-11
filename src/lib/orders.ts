@@ -424,7 +424,7 @@ export async function getAdminOrdersPage(
   pageSize: number,
 ): Promise<AdminOrdersPage> {
   const q = query.q?.trim().toLowerCase() || null;
-  // Exactly the five the predicate names. A parameter a statement does not reference is a bind
+  // Exactly the ones the predicate names. A parameter a statement does not reference is a bind
   // error, not a spare — which is why the sort order and the page bounds are appended per query
   // rather than carried in one list.
   // ── `RELEASABLE_SQL`'s eight parameters come FIRST, and that is not cosmetic ──
@@ -440,6 +440,7 @@ export async function getAdminOrdersPage(
     q,
     query.newSince ?? null,
     query.payout?.length ? query.payout : null,
+    query.storeSlug?.length ? query.storeSlug : null,
   ];
   const P = RELEASABLE_PARAM_COUNT;
   // The haystack `orderSearchHaystack` builds, as one expression. `position(… in …) > 0` is
@@ -462,7 +463,13 @@ export async function getAdminOrdersPage(
    -- purchase matches if ANY of its slices does, and then the whole purchase is shown.
    AND ($${P + 6}::text[] IS NULL OR EXISTS (
          SELECT 1 FROM order_stores os
-          WHERE os.order_id = o.id AND (${PAYOUT_CLASS_SQL}) = ANY($${P + 6}::text[])))`;
+          WHERE os.order_id = o.id AND (${PAYOUT_CLASS_SQL}) = ANY($${P + 6}::text[])))
+   -- The "מוכר/ת" filter, already resolved to slugs by the page (admin-orders-filter.ts#
+   -- resolveOrderQuery) — a seller is an account, and this statement has no business knowing which
+   -- stores an account owns. Same EXISTS as the store-name filter above it and the same rule: a
+   -- purchase matches if ANY of its lines does, and then the whole purchase is shown.
+   AND ($${P + 7}::text[] IS NULL OR EXISTS (
+         SELECT 1 FROM order_items it WHERE it.order_id = o.id AND it.store_slug = ANY($${P + 7}::text[])))`;
 
   // ── The page is a page of PURCHASES, not of order rows (owner, 2026-08-07) ──
   //

@@ -44,7 +44,9 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stempty', 'stpage', 'stnew'],
   // `opayout` is where each order's money stands — the filter the seller's own orders tab always
   // had and this one did not (owner, 2026-08-11). Distinct from `opay`, which is the BUYER's charge.
-  orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opayout', 'opage', 'onew'],
+  // `oseller` is WHOSE orders these are — seller ids, because one account can run several stores
+  // and `ostore` beside it can then only ask half the question (owner, 2026-08-11).
+  orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opayout', 'oseller', 'opage', 'onew'],
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],

@@ -12,11 +12,12 @@ import { getAdminOrdersPage } from '../../lib/orders.js';
 import {
   getAllOrderStoreNames,
   getOpenOrderCountsByStore,
+  getOrderSellerOptions,
   getPlatformOrderTotals,
   getPlatformSales,
   getStoreRevenueBySlug,
 } from '../../lib/order-reporting.js';
-import { sortOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
+import { sortOrderStoreNames, sortSellerOptions, parseOrderQuery, resolveOrderQuery } from '../../lib/admin-orders-filter.js';
 import { getAdminThreadsPage } from '../../lib/admin-messages.js';
 import { parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames, MAX_ENTRIES as MAX_ERROR_ENTRIES } from '../../lib/error-log.js';
@@ -228,7 +229,7 @@ const dataRange = presetRange(dataPreset)!;
 // ── WAVE 1: needs nothing but the URL ──
 const [
   sellers, stores, newSince, openOrdersByStore, orderTotals, revenueByStore,
-  orderStoreNamesRaw, threadsPage, errorsAll,
+  orderStoreNamesRaw, orderSellersRaw, threadsPage, errorsAll,
   brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings,
   perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog, statement,
 ] = await Promise.all([
@@ -247,6 +248,10 @@ const [
   only(['overview'], getPlatformOrderTotals, { totalOrders: 0, paidOrders: 0, gmvAgorot: 0 }),
   only(['sellers', 'stores'], () => getStoreRevenueBySlug(currentMonthKey), new Map()),
   only(['orders'], getAllOrderStoreNames, []),
+  // The Orders tab's "מוכר/ת" filter. Its own query rather than the seller roster above, for the
+  // same reason the store names are: it is bounded by who has actually SOLD, and it carries the
+  // slugs the filter is applied by (order-reporting.ts#getOrderSellerOptions).
+  only(['orders'], getOrderSellerOptions, []),
   // One page of threads, narrowed and sorted in the query (§3) — this used to read every system
   // message on the platform, group them all in JS, and keep fifteen.
   only(['messages'], () => getAdminThreadsPage(threadQuery, parsePage(sp, 'mpage'), ADMIN_PAGE_SIZE), null),
@@ -279,6 +284,10 @@ const [
 const storeIds = stores.map((s) => s.id);
 const storeSlugs = stores.map((s) => s.slug);
 const orderStoreNames = sortOrderStoreNames(orderStoreNamesRaw);
+const orderSellers = sortSellerOptions(orderSellersRaw);
+// `oseller` names accounts; both engines filter by store slug. This is the ONE place the two are
+// joined up (admin-orders-filter.ts#resolveOrderQuery), and what wave 2's page query is given.
+const resolvedOrderQuery = resolveOrderQuery(orderQuery, orderSellers);
 const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
 const newOnly: Record<TrackedAdminTab, boolean> = {
   sellers: sp.get('snew') === '1',
@@ -321,7 +330,7 @@ const [
   // Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
   // This used to read every order the platform has ever taken, to render fifteen rows.
   only(['orders'], () => getAdminOrdersPage(
-    { ...orderQuery, ...(newOnly.orders ? { newSince: newSince.orders } : {}) },
+    { ...resolvedOrderQuery, ...(newOnly.orders ? { newSince: newSince.orders } : {}) },
     parsePage(sp, 'opage'),
     ADMIN_PAGE_SIZE,
   ), null),
@@ -414,7 +423,7 @@ const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
 // Destructured for the panel below, which needs the query params back to rebuild its own URLs.
-const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore, payout: oPayout } = orderQuery;
+const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore, payout: oPayout, seller: oSeller } = orderQuery;
 
 // ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
 // Feed = the exact set the product feed exports: stores a platform surface may carry, holding at
@@ -667,7 +676,9 @@ const badgeFor: Record<string, number> = badgeCounts;
           paymentStatus={oPay}
           store={oStore}
           payout={oPayout}
+          seller={oSeller}
           storeNames={orderStoreNames}
+          sellers={orderSellers}
           newSince={newSince.orders}
           newOnly={newOnly.orders}
           newCount={badgeCounts.orders}
@@ -680,6 +691,7 @@ const badgeFor: Record<string, number> = badgeCounts;
             opay: oPay.length ? oPay.join(',') : undefined,
             ostore: oStore.length ? encodeList(oStore) : undefined,
             opayout: oPayout.length ? oPayout.join(',') : undefined,
+            oseller: oSeller.length ? oSeller.join(',') : undefined,
             onew: newOnly.orders ? '1' : undefined,
             opage: p > 1 ? String(p) : undefined,
           })}

@@ -186,6 +186,58 @@ export async function getAllOrderStoreNames(): Promise<string[]> {
   return found.map((r) => r.store_name);
 }
 
+/** One seller who has actually sold something, plus every store slug their orders were filed
+ *  under — the Orders tab's "מוכר/ת" filter. */
+export interface OrderSellerOption {
+  id: string;
+  name: string;
+  /** Only ever shown to separate two sellers who registered under the same name. */
+  email: string;
+  /** What the filter is applied BY. Not "this seller's stores": the slugs a seller's stores use
+   *  TODAY plus every slug they have retired, because `order_items.store_slug` is a snapshot taken
+   *  at purchase time and a store that renamed itself would otherwise lose its own history to the
+   *  filter — the orders would still be on the tab, and the seller's name would just stop finding
+   *  them. */
+  storeSlugs: string[];
+}
+
+/**
+ * Every seller who appears on an order, with the slugs to filter by.
+ *
+ * The admin could reach a seller's orders only by knowing which store names to tick, which is the
+ * wrong question the moment one seller runs two stores (owner, 2026-08-11).
+ *
+ * Bounded by how many stores have ever sold — same shape and same reasoning as
+ * `getAllOrderStoreNames` above, one query rather than a roster read per render.
+ *
+ * A soft-deleted store is deliberately NOT excluded: its orders were still taken, its money is
+ * still owed, and a seller whose only store is closed must still be findable here.
+ */
+export async function getOrderSellerOptions(): Promise<OrderSellerOption[]> {
+  // `slug_owner` maps EVERY slug an order line can carry — live and retired — back to the account
+  // that owns it. Joining `stores.slug` alone would silently drop every order placed before a
+  // rename (stores.ts#renameStoreSlug keeps the old ones in `store_previous_slugs`).
+  const found = await rows<{ seller_id: string; seller_name: string; seller_email: string; store_slug: string }>(
+    `WITH slug_owner AS (
+       SELECT st.slug AS slug, st.seller_id AS seller_id FROM stores st
+       UNION ALL
+       SELECT p.slug, st.seller_id FROM store_previous_slugs p JOIN stores st ON st.id = p.store_id
+     )
+     SELECT DISTINCT se.id AS seller_id, se.name AS seller_name, se.email AS seller_email, so.slug AS store_slug
+       FROM order_items it
+       JOIN slug_owner so ON so.slug = it.store_slug
+       JOIN sellers se ON se.id = so.seller_id`,
+  );
+  const bySeller = new Map<string, OrderSellerOption>();
+  for (const r of found) {
+    const option = bySeller.get(r.seller_id)
+      ?? { id: r.seller_id, name: r.seller_name, email: r.seller_email, storeSlugs: [] };
+    option.storeSlugs.push(r.store_slug);
+    bySeller.set(r.seller_id, option);
+  }
+  return [...bySeller.values()];
+}
+
 // ── Platform performance: sales, bucketed, for every store at once ───────────
 
 /** One bucket of one store's sales, at the granularity the caller asked for. */

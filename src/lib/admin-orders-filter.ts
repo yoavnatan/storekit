@@ -1,4 +1,5 @@
 import type { Order } from './orders.js';
+import type { OrderSellerOption } from './order-reporting.js';
 import { PAYOUT_FILTER_VALUES, orderPayoutLine, payoutFilterValue } from './order-payout-line.js';
 import { decodeList } from './admin-nav.js';
 import { SHIPPING_PIPELINE_ORDER } from './order-status-rules.js';
@@ -47,6 +48,20 @@ export interface AdminOrderQuery {
   paymentStatus?: string[];
   store?: string[];
   /**
+   * Store SLUGS, and the only form the "מוכר/ת" filter ever reaches an engine in.
+   *
+   * The admin picks a seller; a seller is an account, and neither this function nor the SQL can see
+   * which stores an account owns without a roster read. So the resolution happens once, at the page
+   * (`resolveOrderQuery` below, over `getOrderSellerOptions`), and both engines filter on the same
+   * flat list of slugs — which is a rule each of them can state in full, and therefore one the twin
+   * test can hold them to.
+   *
+   * Slugs and not names: two stores may share a name, `order_items.store_slug` is what the seller
+   * dashboard is keyed by, and the seller's retired slugs are in this list too (see
+   * `OrderSellerOption.storeSlugs`).
+   */
+  storeSlug?: string[];
+  /**
    * Where each slice's money stands (`payout-hold.ts#PAYOUT_CLASS_SQL`) — the same five values the
    * seller's own orders tab filters by.
    *
@@ -92,6 +107,7 @@ export function filterAndSortOrders(orders: Order[], query: AdminOrderQuery): Or
   const shipSet = query.shippingStatus?.length ? new Set(query.shippingStatus) : null;
   const paySet = query.paymentStatus?.length ? new Set(query.paymentStatus) : null;
   const storeSet = query.store?.length ? new Set(query.store) : null;
+  const slugSet = query.storeSlug?.length ? new Set(query.storeSlug) : null;
   const payoutSet = query.payout?.length ? new Set(query.payout) : null;
 
   const filtered = orders.filter((o) => {
@@ -100,6 +116,9 @@ export function filterAndSortOrders(orders: Order[], query: AdminOrderQuery): Or
     // ANY slice, matching the `EXISTS` in the query and the rule it states: a purchase matches if
     // part of it does, and then the whole purchase is shown.
     if (payoutSet && ![...orderPayoutStates(o)].some((s) => payoutSet.has(s))) return false;
+    // ANY line, for the same reason the payout filter is an ANY: a purchase spanning two sellers
+    // belongs to both of them, and picking one must show the whole purchase rather than half of it.
+    if (slugSet && !o.items.some((i) => slugSet.has(i.storeSlug))) return false;
     const stores = orderStoreNames(o);
     if (q && !orderSearchHaystack(o, stores).includes(q)) return false;
     if (storeSet && !stores.some((s) => storeSet.has(s))) return false;
@@ -122,11 +141,24 @@ export function filterAndSortOrders(orders: Order[], query: AdminOrderQuery): Or
 // (see AdminOrdersPanel.astro's sortLabels).
 const VALID_SORT_COMBOS = new Set(['date:desc', 'date:asc', 'amount:desc', 'amount:asc', 'shippingStatus:asc']);
 
-// Parses the Orders tab's own query params (oq/osort/oship/opay/ostore) into
+/**
+ * What the URL says, before anything that needs the database.
+ *
+ * It is `AdminOrderQuery` minus `storeSlug` plus `seller`, and the swap is the point: `oseller`
+ * names ACCOUNTS and the engines filter by SLUG, so the parsed shape deliberately cannot be handed
+ * to a query — `resolveOrderQuery` is the one step that turns one into the other, and a caller that
+ * skips it gets a type error rather than a screen that quietly ignores the filter.
+ */
+export interface ParsedOrderQuery extends Required<Omit<AdminOrderQuery, 'storeSlug'>> {
+  /** Seller ids, as ticked in the filter menu. */
+  seller: string[];
+}
+
+// Parses the Orders tab's own query params (oq/osort/oship/opay/ostore/oseller) into
 // an AdminOrderQuery — kept next to filterAndSortOrders so the two things
 // that must agree on shape (what a param means, what the filter expects)
 // live in one place.
-export function parseOrderQuery(sp: URLSearchParams): Required<AdminOrderQuery> {
+export function parseOrderQuery(sp: URLSearchParams): ParsedOrderQuery {
   const requestedSort = sp.get('osort') ?? 'date:desc';
   const [sortCol, sortDir] = (VALID_SORT_COMBOS.has(requestedSort) ? requestedSort : 'date:desc').split(':') as [AdminOrderSortCol, AdminOrderSortDir];
   return {
@@ -140,7 +172,34 @@ export function parseOrderQuery(sp: URLSearchParams): Required<AdminOrderQuery> 
     // fall back to "no filter" rather than reach the query and match nothing, which on this screen
     // would read as "there are no orders" instead of "that word means nothing".
     payout: (sp.get('opayout') ?? '').split(',').filter((v) => (PAYOUT_FILTER_VALUES as readonly string[]).includes(v)),
+    // Ids, so no `encodeList` — a uuid has no commas to escape. Whether each one names a real
+    // seller is settled by `resolveOrderQuery`, which has the roster; here they are just words.
+    seller: (sp.get('oseller') ?? '').split(',').filter(Boolean),
   };
+}
+
+/**
+ * The parsed URL, as the two engines take it: `seller` resolved to the slugs to filter by.
+ *
+ * Unknown ids contribute nothing, exactly like a hand-edited `opayout` value — so a stale link
+ * degrades to "no seller filter" rather than to a screen that says the platform has no orders. A
+ * seller who reached the option list has sold something and therefore always has at least one slug,
+ * which is why "resolved to nothing" cannot happen for a real selection.
+ */
+export function resolveOrderQuery(parsed: ParsedOrderQuery, sellers: readonly OrderSellerOption[]): AdminOrderQuery {
+  const { seller, ...query } = parsed;
+  if (!seller.length) return query;
+  const wanted = new Set(seller);
+  const slugs = new Set(sellers.filter((s) => wanted.has(s.id)).flatMap((s) => s.storeSlugs));
+  // No key at all rather than an empty one: both engines read an empty list as "no filter" anyway,
+  // and leaving the key out is the version of that which cannot be misread at a call site.
+  return slugs.size ? { ...query, storeSlug: [...slugs] } : query;
+}
+
+/** The filter menu's seller list, in the order it is drawn: by name, Hebrew-aware, same call
+ *  `sortOrderStoreNames` makes for the store column beside it. */
+export function sortSellerOptions(sellers: readonly OrderSellerOption[]): OrderSellerOption[] {
+  return [...sellers].sort((a, b) => a.name.localeCompare(b.name, 'he') || a.email.localeCompare(b.email));
 }
 
 // Every store name across the whole (unfiltered) order set — the filter

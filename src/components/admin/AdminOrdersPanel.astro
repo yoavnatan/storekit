@@ -17,6 +17,7 @@ import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
 import { orderPayoutLine, payoutWhyText, type PayoutWhyKey } from '../../lib/order-payout-line.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
+import type { OrderSellerOption } from '../../lib/order-reporting.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 import { businessDayISO } from '../../lib/business-day.js';
 import AdminPager from './AdminPager.astro';
@@ -35,7 +36,12 @@ interface Props {
   store: string[];
   /** Where each order's money stands — the filter the seller's tab always had (opayout). */
   payout: string[];
+  /** Seller ids the admin ticked (oseller). Whose ORDERS these are, which is not answerable by the
+   *  store column beside it the moment one seller runs two stores. */
+  seller: string[];
   storeNames: string[]; // every store name across all orders, for the filter dropdown
+  /** Every seller who has ever sold, with the slugs their orders are filed under. */
+  sellers: OrderSellerOption[];
   newSince: string;  // ISO — anything created after this is what the tab's "(N)" counted
   newOnly: boolean;
   newCount: number;
@@ -44,9 +50,24 @@ interface Props {
   buildUrl: (page: number) => string;
 }
 const {
-  orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, payout, storeNames,
-  newSince, newOnly, newCount, page, totalPages, buildUrl,
+  orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, payout, seller,
+  storeNames, sellers, newSince, newOnly, newCount, page, totalPages, buildUrl,
 } = Astro.props;
+
+/**
+ * The seller filter's options, as the menu draws them.
+ *
+ * The email rides along only where it has to: two sellers registered under one name are two
+ * indistinguishable rows otherwise, and that ambiguity is worse on this menu than anywhere else —
+ * ticking the wrong one silently shows the wrong account's money. Everyone else is just their name
+ * (memory `feedback_seller_copy_brevity`).
+ */
+const sellerNameCounts = new Map<string, number>();
+for (const s of sellers) sellerNameCounts.set(s.name, (sellerNameCounts.get(s.name) ?? 0) + 1);
+const sellerOptions = sellers.map((s) => ({
+  id: s.id,
+  label: (sellerNameCounts.get(s.name) ?? 0) > 1 || !s.name ? `${s.name || 'ללא שם'} · ${s.email}` : s.name,
+}));
 
 /**
  * This purchase's own money trail (`?panel=moneylog&mq=<ref>`).
@@ -99,7 +120,7 @@ const sortLabels: Record<string, string> = {
   'amount:asc': 'סכום: נמוך — גבוה',
   'shippingStatus:asc': 'סטטוס משלוח: הזמנות חדשות קודם',
 };
-const activeFilterCount = [shippingStatus, paymentStatus, store, payout].filter((s) => s.length > 0).length;
+const activeFilterCount = [shippingStatus, paymentStatus, store, payout, seller].filter((s) => s.length > 0).length;
 
 // The page's rows, grouped back into the purchases they came from. `getAdminOrdersPage` already
 // paged BY purchase and returned the rows in that page order, so this only has to re-assemble them
@@ -126,7 +147,9 @@ const purchases = groupBuyerPurchases(orders);
         data-pay={paymentStatus.join(',')}
         data-store={store.join(',')}
         data-payout={payout.join(',')}
+        data-seller={seller.join(',')}
         data-store-names={JSON.stringify(storeNames)}
+        data-sellers={JSON.stringify(sellerOptions)}
         data-new-only={newOnly ? '1' : ''}
       >
         <button type="button" id="admin-orders-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
