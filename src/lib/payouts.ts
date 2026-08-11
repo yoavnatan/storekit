@@ -5,7 +5,8 @@ import { NET_SQL } from './order-reporting.js';
 import { REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES } from './order-status-rules.js';
 import { SELLER_TIERS, DEFAULT_TIER } from './pricing.js';
 import { businessTodayISO } from './business-day.js';
-import { buildSellerAccount, type AccountSlice, type SellerAccount } from './seller-account.js';
+import { buildSellerAccount, payoutBalanceAgorot, sumPayouts, type AccountSlice, type SellerAccount } from './seller-account.js';
+import { hasPayableBank, needsBankDetails, type PayoutDetails } from './payout-details.js';
 import { getSellerById, type Seller } from './seller-auth.js';
 import type { Order } from './orders.js';
 import type { DeliveryMethod } from './shipping.js';
@@ -249,16 +250,24 @@ export interface ReleasableForSeller {
  *
  * The tier→percent table is passed in from `lib/pricing.ts` as two parallel arrays rather than
  * written into the SQL, so pricing stays the single source and no rate is ever spelled in a query.
+ *
+ * `onlySellerId` narrows the same statement to one seller instead of being a second query that
+ * would have to be kept in step with this one. It is what the header's alert dot asks
+ * (`getPayableNowForSeller`), and it is a filter on an indexed column — the GROUP BY then has at
+ * most one group.
  */
 export async function getReleasableBySeller(
   todayISO: string = businessTodayISO(),
+  onlySellerId?: string,
 ): Promise<ReleasableForSeller[]> {
+  if (onlySellerId !== undefined && !isUuid(onlySellerId)) return [];
   const tiers = SELLER_TIERS.map((t) => t.id);
   const percents = SELLER_TIERS.map((t) => t.commissionPercent);
   // Positions derived, never written as literals: RELEASABLE_SQL's own parameter count has already
   // changed once, and the two call sites that had hardcoded the next index silently started
   // comparing a uuid array against a list of shipping statuses.
   const A = RELEASABLE_PARAM_COUNT + 1, B = RELEASABLE_PARAM_COUNT + 2, C = RELEASABLE_PARAM_COUNT + 3;
+  const D = RELEASABLE_PARAM_COUNT + 4;
   const found = await rows<{ seller_id: string; gross: string | number; commission: string | number }>(
     `SELECT st.seller_id,
             SUM(${NET_SQL})                              AS gross,
@@ -270,8 +279,12 @@ export async function getReleasableBySeller(
        JOIN unnest($${A}::text[], $${B}::numeric[]) AS r(tier, pct)
               ON r.tier = COALESCE(sel.tier, $${C}::text)
       WHERE ${RELEASABLE_SQL}
+        ${onlySellerId ? `AND st.seller_id = $${D}::uuid` : ''}
       GROUP BY st.seller_id`,
-    [...releasableParams(todayISO), tiers, percents, DEFAULT_TIER],
+    [
+      ...releasableParams(todayISO), tiers, percents, DEFAULT_TIER,
+      ...(onlySellerId ? [onlySellerId] : []),
+    ],
   );
   return found.map((r) => {
     const grossAgorot = big(r.gross);
@@ -330,6 +343,70 @@ export async function getSellerAccountRows(sellerId: string, limit = 500): Promi
       deliveryMethod: r.delivery_method,
     },
   }));
+}
+
+/**
+ * What a payout run would send this seller today — WITHOUT building their per-order account.
+ *
+ * The seller's own screen needs the slices, so it pays for them (`getSellerAccountFor`). Two
+ * surfaces need only the number: the dashboard's "you have money and nowhere to send it" banner,
+ * and the same alert as a dot in the site HEADER, which renders on every page a signed-in seller
+ * loads. Reading 500 order rows there is the cost of the whole site, so this asks the database for
+ * the three sums instead and composes them with `payoutBalanceAgorot` — the same arithmetic, not a
+ * second copy of it.
+ *
+ * It takes its releasable figure from `getReleasableBySeller`, i.e. from the SQL spelling of the
+ * hold rule that the payout RUN uses, rather than from the JS one. That is deliberate: a dot that
+ * says "money is waiting" must agree with the transfer that will actually leave, and where the two
+ * spellings can differ at all (a seller past `getSellerAccountRows`' 500-slice bound) the run is
+ * the one that is right.
+ */
+export async function getPayableNowForSeller(
+  sellerId: string,
+  todayISO: string = businessTodayISO(),
+): Promise<number> {
+  if (!isUuid(sellerId)) return 0;
+  const [releasable, payouts, adjustments] = await Promise.all([
+    getReleasableBySeller(todayISO, sellerId),
+    getPayoutsForSeller(sellerId),
+    getAdjustmentsForSeller(sellerId),
+  ]);
+  let adjusted = 0;
+  for (const a of adjustments) adjusted += a.amountAgorot;
+  const balance = payoutBalanceAgorot(
+    releasable[0]?.netAgorot ?? 0,
+    sumPayouts(payouts),
+    adjusted,
+  );
+  // Floored, like every other "what may be sent" figure: a negative balance is a carried debt and
+  // `seller-account.ts` is the surface that reports it as one. A negative here would read as a
+  // transfer in the wrong direction at every call site.
+  return Math.max(0, balance);
+}
+
+/**
+ * Does this seller have money released and nowhere to send it?
+ *
+ * The DB-backed half of `payout-details.ts#needsBankDetails`, for callers that do not already hold
+ * the seller's account — the site header above all. The rule itself stays there; this only supplies
+ * the amount and the row.
+ *
+ * **The bank test comes first, and that is the performance argument.** Any seller who has ever been
+ * paid has these four fields, so the common case costs one primary-key read (or zero, when the
+ * caller already holds the row and passes it in) and asks the database nothing further. Only a
+ * seller who has NOT filled the form pays for the three sums — which is exactly the seller this
+ * question is being asked about.
+ */
+export async function sellerNeedsBankDetails(
+  sellerId: string,
+  known?: PayoutDetails | null,
+  todayISO: string = businessTodayISO(),
+): Promise<boolean> {
+  if (!isUuid(sellerId)) return false;
+  const details = known ?? await getSellerById(sellerId);
+  if (!details) return false;
+  if (hasPayableBank(details)) return false;
+  return needsBankDetails(details, await getPayableNowForSeller(sellerId, todayISO));
 }
 
 /**
