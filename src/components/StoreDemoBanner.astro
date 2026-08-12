@@ -26,12 +26,17 @@
 import { cdnBand, cdnCropSrcSet, BANNER_RATIO, BANNER_WIDTHS } from '../lib/cdn.js';
 
 interface Props {
+  /** Only the SCRIM needs this: a CSS gradient has no logical direction keyword, so which side to
+   *  darken has to be resolved here. Everything else uses logical properties and needs no branch. */
+  dir?: 'rtl' | 'ltr';
+  name: string;
+  tagline?: string;
   bannerImage?: string;
   /** The store's own two colours — only used for the no-picture fallback. */
   colors?: { primary?: string; accent?: string };
 }
 
-const { bannerImage, colors } = Astro.props;
+const { name, tagline, bannerImage, colors, dir = 'rtl' } = Astro.props;
 
 // Same geometry as a real seller's banner, so the two are the same box and the curtain-scroll on
 // the store page is untouched. 2048 is the top width because the source is generated at 2K+ and a
@@ -64,4 +69,33 @@ const accent = colors?.accent ?? '#c4622d';
     <div class="absolute inset-0" style={`background:linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`} />
   )}
 
+  {/* A scrim on the READING side only, so the type has something to sit on without flattening the
+      photograph. The generated banners are composed with their visual weight to one side and the
+      opposite third left open, which is the side this darkens. */}
+  <div
+    class="absolute inset-0 pointer-events-none"
+    style={`background:linear-gradient(to ${dir === 'rtl' ? 'left' : 'right'}, rgba(16,18,22,0.66) 0%, rgba(16,18,22,0.34) 38%, rgba(16,18,22,0) 68%)`}
+  ></div>
+
+  {/* LOGICAL properties only, and that is the whole fix. The previous version branched on `dir` and
+      used `align-items:flex-end` for RTL — which in an RTL box is the LEFT edge, so the Hebrew
+      ended up on the wrong side. `inset-inline-start` is the reading-start edge by definition:
+      RIGHT in Hebrew, LEFT in English, with no conditional to get backwards. */}
+  <div
+    class="absolute inset-block-0 flex flex-col justify-center pointer-events-none"
+    style="inset-inline-start:clamp(1rem, 5%, 3.5rem);inset-inline-end:auto;max-inline-size:min(46%, 26rem);text-align:start"
+    aria-hidden="true"
+  >
+    <span
+      class="block text-white font-semibold leading-[1.15]"
+      style="font-size:clamp(1.35rem, 3.4vw, 2.6rem);letter-spacing:0.01em;text-shadow:0 2px 14px rgba(0,0,0,0.45)"
+    >{name}</span>
+
+    {tagline && (
+      <span
+        class="block mt-[0.55em] text-white/90 font-normal leading-snug"
+        style="font-size:clamp(0.78rem, 1.2vw, 1rem);text-shadow:0 1px 10px rgba(0,0,0,0.45)"
+      >{tagline}</span>
+    )}
+  </div>
 </div>

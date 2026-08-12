@@ -189,19 +189,21 @@ export const SHOWCASE_STORES = [
     // stealing products out of the real ones and leaving them half empty.
     categories: ['נשים', 'גברים', 'הנעלה', 'תיקים', 'תכשיטים ואביזרים'],
     bannerSubject:
-      'the corner of a sunlit fashion studio — a rail of clothes in soft focus, a linen curtain '
-      + 'lifting in the light, a woven bag and a pair of sandals on a bentwood chair, warm plaster '
-      + 'wall behind, one long shaft of afternoon sun across the floor',
+      'a cool, quiet fashion studio in pale stone — a marble ledge, a rail of clothes softly out of '
+      + 'focus, one hard shaft of daylight across a limestone wall, greys and bone whites',
     logoSubject: 'a single smooth arch form in terracotta on a warm cream ground',
     /** Warm sand studio. Not white — the owner asked for at least one store off
      *  plain white, and this is the softer of the two that are. */
     artDirection:
-      'editorial fashion photograph in a sunlit Tel Aviv apartment — a warm sand-plaster wall, a '
-      + 'linen curtain moving in the light, a corner of oak floor. Clothing is WORN by a cropped '
-      + 'figure (never a face) so the cut and the drape read; bags and accessories are carried, '
-      + 'held, or spilling their contents on a chair. Late-afternoon sun rakes across the frame and '
-      + 'throws a shaped shadow. Styled with a couple of lived-in props — sunglasses, an open book, '
-      + 'a coffee cup, a straw hat — chosen so their material contrasts with the fabric',
+      // Owner, 2026-08-12: he wanted this store off the warm room entirely — "רקע ניטרלי או על רקע
+      // של שיש או אבן". It is also the correction that breaks the beige: pale stone is cool and
+      // clean where plaster was warm, so סהר stops reading as the same room as שקמה.
+      'editorial fashion photograph against a NEUTRAL stone backdrop — pale marble, honed limestone '
+      + 'or smooth grey concrete, cool and clean, with the veining visible but quiet. Clothing is '
+      + 'WORN by a cropped figure (never a face) so the cut and the drape read; bags and accessories '
+      + 'are carried or held. One hard shaft of daylight crosses the stone and throws a crisp shadow. '
+      + 'At most one prop, in a material that contrasts with the stone. No wood, no plaster, no '
+      + 'terracotta, no beige linen',
   },
   {
     slug: 'showcase-home',

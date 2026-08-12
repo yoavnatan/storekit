@@ -119,8 +119,8 @@ export const translations = {
     demo: {
       badge: 'חנות לדוגמה',
       badgeTitle: 'חנות הדגמה של הפלטפורמה — ניתן לעיין ולהוסיף לסל, אבל לא לרכוש',
-      noticeTitle: 'זו חנות לדוגמה',
-      noticeText: 'הקמנו אותה כדי להראות איך נראית חנות מלאה כאן. המוצרים הינם לצורך התרשמות בלבד ולא ניתן לרכוש אותם.',
+      noticeTitle: 'זוהי חנות לדוגמה בלבד,',
+      noticeText: 'לא ניתן לרכוש את המוצרים.',
       checkoutBlocked: 'לא ניתן להשלים רכישה מחנות לדוגמה. הסירו את המוצרים שלה מהסל, או פתחו חנות משלכם והתחילו למכור.',
       // Checkout-page wording for the per-item rule (lib/demo-stores.ts →
       // splitDemoCarts): a showcase item stays in the cart, marked, and simply
@@ -131,7 +131,7 @@ export const translations = {
       sellerLink: 'צפו בחנות לדוגמה',
       productBadge: 'מוצר לדוגמה',
       openYours: 'פתחו חנות משלכם',
-      noticeCta: 'רוצים חנות משלכם?',
+      noticeCta: 'לפתיחת חנות ←',
     },
     search: {
       pageTitle: 'תוצאות חיפוש',
@@ -1962,8 +1962,8 @@ export const translations = {
     demo: {
       badge: 'Example store',
       badgeTitle: 'A platform demo store — you can browse and add to cart, but not buy',
-      noticeTitle: 'This is an example store',
-      noticeText: 'We set it up to show what a fully stocked store looks like here. The products are for illustration only and cannot be purchased.',
+      noticeTitle: 'This is an example store only,',
+      noticeText: 'the products cannot be purchased.',
       checkoutBlocked: 'An example store cannot be checked out. Remove its items from your cart, or open your own store and start selling.',
       cartExcluded: 'Not included in payment',
       cartNotice: 'Items from an example store stay in your cart to browse and are left out of the order. Everything else checks out as usual.',
@@ -1971,7 +1971,7 @@ export const translations = {
       sellerLink: 'See an example store',
       productBadge: 'Example product',
       openYours: 'Open your own store',
-      noticeCta: 'Want a store of your own?',
+      noticeCta: 'Open a store →',
     },
     search: {
       pageTitle: 'Search results',
