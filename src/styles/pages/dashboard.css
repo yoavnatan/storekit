@@ -170,8 +170,12 @@ textarea.input { resize: none; }
      that shrinks below ~55px (thumb + cell padding) let the image overflow into the name cell and
      ride over the product title. A fixed width sized to the thumb keeps it in its own lane. */
   .products-table .thumb-col     { width: 3.6rem; }
-  .products-table .name-col      { width: 13%; }
-  .products-table .cat-col       { width: 13.5%; }
+  /* Name 13% / category 13.5% put the CATEGORY column wider than the product's own name through
+     this whole range, which is the wrong way round on the one column a seller scans by. The chip
+     ellipsizes (.product-cat-chip) where a name cannot say less and still identify the row, so
+     the 3.5% moves. Budget unchanged. */
+  .products-table .name-col      { width: 16.5%; }
+  .products-table .cat-col       { width: 10%; }
   .products-table .sku-col       { width: 9%; }
   /* Price and stock are both `.num` (nowrap) and start-aligned, so in RTL a price
      too wide for its column bleeds LEFT, over the stock number sitting flush
@@ -237,9 +241,11 @@ textarea.input { resize: none; }
      slack that buys `name` its extra room comes from `stock` and `cat`, whose content is a short
      number and a chip that wraps; `date` and `purchased` keep the width their headings already
      needed ("נוסף בתאריך" ellipsizes below ~113px). */
-  .products-table .name-col      { width: 22%; }
+  .products-table .name-col      { width: 23%; }
   .products-table .sku-col       { width: 6.5%; }
-  .products-table .cat-col       { width: 10.5%; }
+  /* 1% to the name, same reasoning as the block above. Kept small here: at this width the chip
+     is close to its content's own size, and past that it starts ellipsizing real category paths. */
+  .products-table .cat-col       { width: 9.5%; }
   /* Price and stock are `.num` (nowrap) and start-aligned, so in RTL an overlong value
      bleeds LEFT over its neighbour instead of wrapping. Both are sized for the widest
      realistic string ("1,234.50 ₪"), not the demo catalogue's two-digit prices. */
@@ -1073,12 +1079,13 @@ textarea.input { resize: none; }
     display: flex; align-items: center; justify-content: center;
     width: auto; /* the desktop column's fixed width would be dead space on a card */
     height: 100%;
-    /* Start side only, on top of the grid's own 0.6rem: the gauge is a different KIND of thing
-       from the numbers beside it, and at card density a single gap read as "one more stat". The
-       end side stays tight so the gauge keeps reading as belonging with the actions button rather
-       than floating between the two. Logical, so LTR gets the same separation mirrored. */
-    padding-inline-start: 0.75rem;
-    padding-inline-end: 0;
+    /* Tighter than the grid's own 0.6rem on BOTH sides — close to its neighbours but not touching
+       them. The card has one scarce column (the name, `minmax(0, 1fr)`) and every gap around this
+       one comes straight out of it, so the gauge takes the least room that still reads as its own
+       thing. Negative margin rather than a smaller `column-gap`: the gap is set once for the whole
+       grid and the other columns want the full 0.6rem. */
+    margin-inline: -0.3rem;
+    padding-inline: 0;
   }
   .products-table tr[data-product-display] .name-col {
     grid-area: name;
@@ -1196,10 +1203,16 @@ textarea.input { resize: none; }
      header to lean on once thead disappears at this width — a plain number
      reads as ambiguous, so every row spells its own label out. */
   .product-stock-label,
-  .cat-col-label,
   .sku-col-label,
   .purchased-col-label,
   .date-col-label { display: inline; color: var(--color-muted); }
+  /* Every field above spells its own label out because a bare number or date reads as ambiguous
+     with no column header. The category is the one that does NOT need it: it is a coloured chip,
+     which says "category" by looking like one. And the label was not free — "קטגוריה: " is wider
+     than the whole name column on a card that has a thumbnail, so it pushed the chip onto a
+     second line and made the card taller for nothing (owner, 2026-08-12: categories are taking
+     too much room). */
+  .cat-col-label { display: none; }
 
   /* The variant-combo grid is a real nested <table> — the blanket "td → block"
      reset above is a descendant selector, so it was also flattening this one,
