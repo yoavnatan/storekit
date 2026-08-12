@@ -28,8 +28,26 @@ interface Props {
 
 const { slug, size = 56, colors, class: className = '' } = Astro.props;
 
-const accent = colors?.accent ?? '#c4622d';
-const primary = colors?.primary ?? '#2b2118';
+/**
+ * The palette lives HERE, keyed by slug, rather than being passed in.
+ *
+ * It was a prop, and the header called the component without it — so שקמה's mark was its green on
+ * its own page and the default terracotta in the header: one shop, two colours, which is the bug
+ * the owner reported. These four stores are already named in MARKS below; a caller that knows the
+ * slug should not also have to know the colours, and every caller that forgets them is a drift.
+ * Same values as `SHOWCASE_STORES[].colors` in scripts/lib/showcase/identity.mjs, which is what the
+ * seeder writes onto the store row — kept in step by tests/showcase-mark-palette.test.ts.
+ */
+const PALETTE: Record<string, { primary: string; accent: string }> = {
+  'showcase-fashion': { primary: '#2b2118', accent: '#c4622d' },
+  'showcase-home':    { primary: '#1f2d28', accent: '#6f8f5f' },
+  'showcase-tech':    { primary: '#141a24', accent: '#2f6fe4' },
+  'showcase-plants':  { primary: '#243024', accent: '#4f9a52' },
+};
+
+const pal = PALETTE[slug] ?? PALETTE['showcase-fashion']!;
+const accent = colors?.accent ?? pal.accent;
+const primary = colors?.primary ?? pal.primary;
 
 /**
  * One mark per store, each a single closed form on a 48×48 grid so they share a weight and read as
