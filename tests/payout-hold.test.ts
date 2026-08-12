@@ -194,4 +194,39 @@ describe('the SQL twin agrees with the JS rule', () => {
       expect(fromSql.has(id), `${c.note}: SQL says ${fromSql.has(id)}, JS says ${js}`).toBe(js);
     }
   });
+
+  /**
+   * **The predicate is two-valued, so its NEGATION is its complement.**
+   *
+   * The test above reads it positively, which is what the payout run and every released figure do —
+   * and a positive read cannot see this bug at all, because `WHERE` and `FILTER` both drop a NULL
+   * exactly as they drop a FALSE. Everything that asks the OPPOSITE question is where it bit:
+   * `NOT NULL` is NULL, so `getHeldBreakdown` and `getHeldBySeller` silently dropped rows that are
+   * unambiguously held rather than counting them, while the admin overview — which computes held as
+   * (total − released) and never negates anything — counted them. Two screens, two held totals, no
+   * error (owner, 2026-08-12).
+   *
+   * The shape that produced NULL is already in `CASES`: shipped, never marked delivered, past the
+   * delivery hold but short of the fallback — the delivered arm is NULL and the undelivered arm is
+   * FALSE. Asserted per row rather than as a count so a failure names the case.
+   */
+  it('is never NULL, so reading it negated returns the exact complement', async () => {
+    const found = await rows<{ id: string; releasable: boolean | null; negated: boolean | null }>(
+      `SELECT o.id,
+              (${RELEASABLE_SQL}
+              ) AS releasable,
+              NOT (${RELEASABLE_SQL}
+              ) AS negated
+         FROM orders o
+         JOIN order_stores os ON os.order_id = o.id
+        WHERE o.id = ANY($${RELEASABLE_PARAM_COUNT + 1}::uuid[])`,
+      [...releasableParams(TODAY), [...ids.keys()]],
+    );
+    expect(found.length).toBe(ids.size);
+    for (const r of found) {
+      const note = ids.get(r.id)?.note ?? r.id;
+      expect(r.releasable, `${note}: the predicate evaluated to NULL`).not.toBeNull();
+      expect(r.negated, `${note}: NOT(predicate) evaluated to NULL — this row falls out of BOTH halves of every split`).toBe(!r.releasable);
+    }
+  });
 });

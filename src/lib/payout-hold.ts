@@ -216,8 +216,26 @@ export const RELEASABLE_SQL = `
   -- rule. Without it the date expression below is a function applied to the indexed column, which
   -- is the exact mistake order-reporting.ts's header documents having made and measured.
   AND o.paid_at <= now() - make_interval(days => LEAST($4::int, $5::int))
+  -- ⚠️ THE FIRST ARM IS GUARDED BY ITS OWN NOT-NULL TEST, and that is a correctness requirement
+  -- rather than a belt-and-braces habit. Without it, an order that has SHIPPED, has not been marked
+  -- delivered, and is past the delivery hold but not yet past the fallback evaluates to
+  -- NULL OR FALSE = NULL, and the whole predicate is NULL rather than FALSE.
+  --
+  -- Read positively that costs nothing: a FILTER (WHERE ...) and a WHERE both drop a NULL, so
+  -- "released" was always right. It is the NEGATED readings that broke, and silently: NOT NULL is
+  -- NULL, so getHeldBreakdown and getHeldBySeller dropped those rows from BOTH sides of their
+  -- split — money that is unambiguously held, missing from the reason it is held for. The admin
+  -- overview computes held as (total − released) and therefore still counted it, so the two screens
+  -- reported different held totals with no error anywhere (owner, 2026-08-12: 239.36 apart).
+  --
+  -- The fix is here rather than a COALESCE at the two call sites on purpose. A predicate that
+  -- decides whether money may move must be two-valued at its source; leaving it three-valued means
+  -- every future negation is a fresh chance to lose a row, and there is nothing at a call site to
+  -- suggest the guard is needed. Nothing else in the chain can produce NULL: a NULL paid_at is
+  -- already FALSE by the conjunct above, and AND with a FALSE is FALSE whatever else is NULL.
+  -- Pinned by "the predicate is never NULL" in tests/payout-hold.test.ts.
   AND (
-        (o.delivered_at AT TIME ZONE $3)::date + $4::int <= ($6::date)
+        (o.delivered_at IS NOT NULL AND (o.delivered_at AT TIME ZONE $3)::date + $4::int <= ($6::date))
      OR (o.delivered_at IS NULL AND (o.paid_at AT TIME ZONE $3)::date + $5::int <= ($6::date))
       )`;
 
