@@ -278,18 +278,19 @@ body:has(.site-header.is-stuck) .store-banner {
 .store-details { position: relative; margin-top: 0.65rem; }
 
 /* THE FOOT — "פרטים נוספים" and the save/contact buttons on ONE row (owner, 2026-08-12).
-   ONE CLUSTER AT THE READING START. `space-between` was tried first and was wrong, and the reason
-   was already written down elsewhere in this codebase: the sale strip's own note in utils.css says
-   that pinning an element to the far edge made it "read as unrelated to the words it describes".
-   The same thing happened here — in a box running ~1150px the two controls sat alone in the far
-   corner with a wide empty gap, and the owner asked why. It also does not survive growth: a third
-   control ("שתף") makes the far corner a cluster of its own rather than part of the row.
-   The two groups are still legible as different things without the width doing the work: the
-   disclosure is plain text with a chevron, the buttons are outlined pills, and the 1.5rem gap
-   between the two groups is six times the 0.25rem the pills use among themselves — so the pills
-   read as one group and the disclosure as a separate thing, which is what the width used to say.
-   `flex-wrap` so a narrow phone stacks them instead of squeezing the labels — at 375 they wrap to
-   two lines, which is correct; a longer translation must not overflow the box.
+   `space-between`, and the owner's reason for it beats mine for the alternative: the box runs the
+   full width of the page, and content at BOTH ENDS is what earns that width. A single cluster at
+   the reading start left the other two thirds empty, which makes a full-bleed box look like a
+   full-bleed box with nothing in it.
+   That was tried — one cluster, 1.5rem between the disclosure and the pills — on the grounds that
+   the sale strip's own note in utils.css warns a far-edge element "read as unrelated to the words
+   it describes". It does not carry here: that note is about a strip's INTERNAL figure drifting off
+   from its own copy, and this row's two halves are not describing each other. They are the box's
+   footer rail, and a rail is supposed to span.
+   It also holds when "שתף" arrives (owner): a third pill grows the far-end group inward, which
+   narrows the empty middle rather than stranding anything.
+   `flex-wrap` so a narrow phone stacks instead of squeezing the labels — at 375 the row wraps to
+   two lines; a longer translation must not overflow the box.
    `:not(:first-child)` on the divider because a store with no tagline, no description and no sale
    has the foot as the box's only content, and a rule drawn above nothing is a line hanging off the
    top padding.
@@ -299,8 +300,9 @@ body:has(.site-header.is-stuck) .store-banner {
 .store-info__foot {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
+  gap: 0.5rem 0.75rem;
 }
 
 .store-info__foot:not(:first-child) {
