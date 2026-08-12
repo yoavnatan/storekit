@@ -170,12 +170,15 @@ textarea.input { resize: none; }
      that shrinks below ~55px (thumb + cell padding) let the image overflow into the name cell and
      ride over the product title. A fixed width sized to the thumb keeps it in its own lane. */
   .products-table .thumb-col     { width: 3.6rem; }
-  /* Name 13% / category 13.5% put the CATEGORY column wider than the product's own name through
-     this whole range, which is the wrong way round on the one column a seller scans by. The chip
-     ellipsizes (.product-cat-chip) where a name cannot say less and still identify the row, so
-     the 3.5% moves. Budget unchanged. */
-  .products-table .name-col      { width: 16.5%; }
-  .products-table .cat-col       { width: 10%; }
+  /* The name/category balance is NOT fixed by moving percent between them — tried on 2026-08-12
+     (name 16.5 / cat 10) and reverted the same day: the chip went to "ד…", and a category that
+     cannot be read is not a narrower column, it is a missing one. The room comes from .seo-col
+     below instead, which is sized to its gauge rather than to its heading. */
+  .products-table .name-col      { width: 13%; }
+  /* +1% over the long-standing 13.5, taken from date-col below (12% still clears "01/08/26" and
+     the heading was already ellipsizing). The gauge column costs this range ~54px, and at 13.5 the
+     category chip had gone from just-fitting to clipped — which is a category you cannot read. */
+  .products-table .cat-col       { width: 14.5%; }
   .products-table .sku-col       { width: 9%; }
   /* Price and stock are both `.num` (nowrap) and start-aligned, so in RTL a price
      too wide for its column bleeds LEFT, over the stock number sitting flush
@@ -188,7 +191,7 @@ textarea.input { resize: none; }
   .products-table .stock-col     { width: 9.5%; }
   .products-table .wishlist-col  { width: 6%; }
   .products-table .purchased-col { width: 8%; }
-  .products-table .date-col      { width: 13%; }
+  .products-table .date-col      { width: 12%; }
   /* Fixed width, not a %, for the third time in this block and the same reason as .check-col and
      .thumb-col above: the kebab button is a fixed 1.75rem, and its hover state paints a FULL
      circle of that size. Under `table-layout: fixed` a 4% column drops to ~15rem*0.04 at the
@@ -196,7 +199,7 @@ textarea.input { resize: none; }
      over the neighbouring column and the table's own edge, visible only on hover, which is when
      the background appears. Sized to the button plus this block's 0.4rem cell padding on both
      sides (1.75 + 0.8 = 2.55). The 4% it gives back is absorbed by the percentage columns. */
-  .products-table .seo-col       { width: 5.4rem; }
+  .products-table .seo-col       { width: 3.4rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 2.6rem; }
   .products-table .name-col .product-name {
     white-space: nowrap;
@@ -241,11 +244,9 @@ textarea.input { resize: none; }
      slack that buys `name` its extra room comes from `stock` and `cat`, whose content is a short
      number and a chip that wraps; `date` and `purchased` keep the width their headings already
      needed ("נוסף בתאריך" ellipsizes below ~113px). */
-  .products-table .name-col      { width: 23%; }
+  .products-table .name-col      { width: 22%; }
   .products-table .sku-col       { width: 6.5%; }
-  /* 1% to the name, same reasoning as the block above. Kept small here: at this width the chip
-     is close to its content's own size, and past that it starts ellipsizing real category paths. */
-  .products-table .cat-col       { width: 9.5%; }
+  .products-table .cat-col       { width: 10.5%; }
   /* Price and stock are `.num` (nowrap) and start-aligned, so in RTL an overlong value
      bleeds LEFT over its neighbour instead of wrapping. Both are sized for the widest
      realistic string ("1,234.50 ₪"), not the demo catalogue's two-digit prices. */
@@ -254,9 +255,7 @@ textarea.input { resize: none; }
   .products-table .wishlist-col  { width: 4.5%; }
   .products-table .purchased-col { width: 7%; }
   .products-table .date-col      { width: 10.5%; }
-  /* 1.75rem kebab + 0.75rem padding each side. Its hover state paints a full circle of
-     that size, so a narrower column spills the circle over the table's own edge. */
-  .products-table .seo-col       { width: 5.5rem; }
+  .products-table .seo-col       { width: 3.6rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 3.4rem; }
   /* One line + "…", not a wrap: rows stay a uniform height, and the full name is one click
      away — the cell is click-to-edit and opens an input carrying the whole string. */
@@ -825,9 +824,18 @@ textarea.input { resize: none; }
    product happens to have a description or a sale — and sat behind the image on rows that had one.
    In its own column it needs no positioning at all: the cell is the placement. */
 .seo-col {
-  width: 5.5rem;
-  text-align: center;
+  width: 3.6rem;
   vertical-align: middle;
+  /* Both the gauge and the heading sit against the END edge, hard against the actions column, and
+     the cell keeps almost no padding on that side. The column has to be wide enough for "SEO" plus
+     its filter funnel, but the gauge is 21px — centring it spent the difference as a gap between
+     the dial and the kebab it belongs beside (owner, 2026-08-12: "look how much space there is").
+     Pushed to the end, that slack falls on the date side instead, where it reads as ordinary
+     column spacing. */
+  text-align: end;
+  /* Restated inside each breakpoint block below: `.products-table td` / `th` set the cell padding
+     there at a specificity this rule cannot reach, and that 0.75rem was the whole gap. */
+  padding-inline: 0.15rem;
 }
 .product-seo-gauge {
   display: inline-flex;
