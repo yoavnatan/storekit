@@ -221,6 +221,7 @@ body:has(.site-header.is-stuck) .store-banner {
      any value that fixes Latin moves Hebrew off by the same amount, and Hebrew is the common case
      on this site. Recorded so the next session measures before assuming, instead of adding a nudge
      that makes the ordinary case worse. */
+}
 
 .store-tagline {
   margin: 0.5rem 0 0;
