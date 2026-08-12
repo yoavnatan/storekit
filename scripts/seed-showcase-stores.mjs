@@ -179,9 +179,30 @@ async function seed(db, clean) {
     const storeId = uuid();
     const createdAt = iso(NOW - int(20, 60) * DAY);
 
+    // ── Categories, two levels deep ────────────────────────────────────────
+    // Top level comes from the store's own list. The second level is DERIVED from the catalog: a
+    // row may name a `sub`, and the distinct subs under each parent become child categories in the
+    // order they first appear. Deriving beats declaring here — a subcategory with no products in it
+    // is an empty shelf a shopper can click into, and that is exactly what a hand-written second
+    // list drifts into the moment a product moves.
+    //
+    // Not every category is subdivided, on purpose (owner: "לפחות בחלק מהקטגוריות"). A real shop
+    // splits the categories that are big enough to need it and leaves the rest flat; subdividing
+    // everything is what makes a catalogue feel like a filing cabinet.
     const storeCategories = spec.categories.map((name, order) => (
       { id: uuid(), storeId, name, parentId: null, order, createdAt }
     ));
+    const subIdByParent = new Map();
+    for (const row of CATALOGS[spec.slug]) {
+      if (!row.sub) continue;
+      const parent = storeCategories[row.c];
+      if (!subIdByParent.has(parent.id)) subIdByParent.set(parent.id, new Map());
+      const subs = subIdByParent.get(parent.id);
+      if (subs.has(row.sub)) continue;
+      const child = { id: uuid(), storeId, name: row.sub, parentId: parent.id, order: subs.size, createdAt };
+      subs.set(row.sub, child.id);
+      storeCategories.push(child);
+    }
 
     const storeProducts = rows.map((row, n) => {
       const image = manifest[`${spec.slug}:${row.n}`];
@@ -198,7 +219,11 @@ async function seed(db, clean) {
         // storefront card read "אזל מהמלאי" while the combo picker shows plenty in stock.
         stock: rnd() < 0.06 ? 0 : int(4, 40),
         images: image ? [image] : [],
-        categoryId: storeCategories[row.c].id,
+        // The LEAF, when there is one: a product filed on the parent as well as the child would be
+        // counted twice by countProductsPerCategory and would show up under both shelves.
+        categoryId: row.sub
+          ? subIdByParent.get(storeCategories[row.c].id).get(row.sub)
+          : storeCategories[row.c].id,
         weightGrams: row.w,
         createdAt: iso(NOW - int(1, 45) * DAY),
       };

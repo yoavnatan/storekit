@@ -211,6 +211,23 @@ body:has(.site-header.is-stuck) .store-banner {
   margin: 0;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  /* Optically centre the NAME against the avatar circle beside it (owner, reported twice).
+     `.store-banner__identity` is `align-items:center`, which centres the LINE BOX — and a line box
+     reserves the font's full descender depth, which almost no Hebrew letter uses (only ך ן ף ץ ק
+     reach below the baseline). So the visible mass of "סהר" sits above the box's middle and the
+     word reads a hair high next to a circle that is centred exactly.
+     `text-box-trim` is the fix that needs no magic number: it trims the box to the real typographic
+     edges, so the flex centring then centres what you can actually SEE. Guarded by @supports
+     because the fallback — today's behaviour — is merely slightly off, not broken, and this is the
+     one correction the header rule warns is easy to overshoot by guessing (see header.css, where
+     the equivalent value had to be solved from two endpoints on a real build). */
+}
+
+@supports (text-box-trim: trim-both) {
+  .store-name {
+    text-box-trim: trim-both;
+    text-box-edge: cap alphabetic;
+  }
 }
 
 .store-tagline {

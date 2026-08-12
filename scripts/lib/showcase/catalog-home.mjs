@@ -1,5 +1,5 @@
 /**
- * לופט — the home & design showcase catalog (100 products).
+ * שקמה — the home & design showcase catalog (100 products).
  *
  * Row shape is identical to `catalog-fashion.mjs`; read that header for it.
  *
@@ -17,26 +17,26 @@
 
 export const HOME_PRODUCTS = [
   // ── ריהוט (c:0) ────────────────────────────────────────────────────────────
-  { n: 'כורסת בד מרופדת', d: 'מושב עמוק עם ריפוד בד עמיד ורגלי עץ אלון מלא. נוחה לשעה של קריאה ולא רק להיראות טוב.', c: 0, p: 1_490, w: 18_000, v: 'colorHome', s: 'an upholstered lounge armchair in warm oatmeal fabric with solid oak legs' },
-  { n: 'ספה תלת מושבית', d: 'שלושה מושבים עם ריפוד עמיד לשפשוף וכריות גב נשלפות לכביסה.', c: 0, p: 4_290, w: 48_000, v: 'colorHome', s: 'a three-seat sofa in soft clay-coloured fabric with removable back cushions' },
-  { n: 'ספת דו מושבית קומפקטית', d: 'רוחב 150 ס״מ שנכנס גם לסלון קטן, בלי לוותר על עומק מושב אמיתי.', c: 0, p: 2_890, w: 32_000, v: 'colorHome', s: 'a compact two-seat sofa in sage green fabric' },
-  { n: 'שולחן אוכל עץ מלא', d: 'אלון מלא באורך 180 ס״מ שמושיב שישה בנוח. גימור שמן שמתחדש בעצמך.', c: 0, p: 3_490, w: 42_000, v: null, s: 'a solid oak dining table with a natural oil finish, clean tapered legs' },
-  { n: 'שולחן אוכל מתארך', d: 'נפתח מארבעה לשישה סועדים בתנועה אחת. פתרון לדירה שמארחת יותר ממה שיש בה מקום.', c: 0, p: 2_990, w: 38_000, v: null, s: 'an extendable dining table in pale ash wood' },
-  { n: 'כיסא אוכל מרופד', d: 'מושב מרופד עם מסעד גב מעוקל שתומך בגב התחתון, ורגלי עץ יציבות.', c: 0, p: 449, w: 6_500, v: 'colorHome', s: 'an upholstered dining chair in bouclé cream fabric with wooden legs' },
-  { n: 'כיסא אוכל עץ', d: 'עץ מלא בעיצוב נקי, נערם בקלות ולא חורק אחרי שנה.', c: 0, p: 379, w: 5_200, v: null, s: 'a solid wood dining chair with a curved backrest, minimal design' },
-  { n: 'שרפרף בר מתכוונן', d: 'גובה מתכוונן עם משענת רגליים וסיבוב 360 מעלות. מתאים לאי במטבח.', c: 0, p: 549, w: 8_400, v: 'colorHome', s: 'an adjustable-height bar stool with a leather seat and black metal base' },
-  { n: 'שולחן קפה עגול', d: 'משטח עגול בקוטר 80 ס״מ עם מדף תחתון נוסף. לא תופס את כל הסלון.', c: 0, p: 890, w: 14_000, v: null, s: 'a round coffee table in light oak with a lower shelf' },
-  { n: 'שולחן צד קטן', d: 'שולחן צד צר שנכנס ליד הכורסה או ליד המיטה, משטח שיש מלאכותי עמיד.', c: 0, p: 429, w: 6_800, v: 'colorHome', s: 'a small side table with a marble-look top and a slim metal frame' },
-  { n: 'שידת מגירות', d: 'ארבע מגירות על מסילות שקטות עם סוגר עצירה. גימור שלא מראה טביעות אצבע.', c: 0, p: 1_290, w: 26_000, v: 'colorHome', s: 'a four-drawer wooden dresser in warm walnut with soft-close runners' },
-  { n: 'שידת לילה', d: 'מגירה אחת ומדף פתוח, בגובה שמתאים למיטה סטנדרטית.', c: 0, p: 499, w: 9_000, v: 'colorHome', s: 'a bedside nightstand in pale oak with one drawer and an open shelf' },
-  { n: 'כוננית ספרים פתוחה', d: 'חמישה מדפים בגובה 180 ס״מ, כולל רצועת קיר לייצוב. מדפים שנושאים ספרים אמיתיים.', c: 0, p: 1_190, w: 24_000, v: null, s: 'an open five-shelf bookcase in light wood against a plaster wall' },
-  { n: 'מדף קיר צף', d: 'מדף עץ מלא עם תושבת נסתרת, מגיע עם דיבלים לקיר בטון.', c: 0, p: 189, w: 2_400, v: 'sizeHome', s: 'a floating wooden wall shelf with a hidden bracket' },
-  { n: 'ספסל כניסה עם אחסון', d: 'מושב מרופד עם תא אחסון מתחת לנעליים. פותר את הכניסה לדירה.', c: 0, p: 749, w: 12_000, v: 'colorHome', s: 'an entryway storage bench with a padded seat and a shoe compartment underneath' },
-  { n: 'עגלת הגשה על גלגלים', d: 'שתי קומות עם ידית ונעילת גלגלים, עוברת מהמטבח למרפסת.', c: 0, p: 389, w: 5_600, v: 'colorHome', s: 'a two-tier rolling serving cart in matte black metal' },
-  { n: 'שולחן מרפסת מתקפל', d: 'עץ אקציה מטופל לחוץ, מתקפל ונשען על הקיר בחורף.', c: 0, p: 590, w: 9_800, v: null, s: 'a folding acacia wood balcony table, treated for outdoor use' },
-  { n: 'כיסא מרפסת נערם', d: 'נערם בערימה של ארבעה, עמיד לשמש ולא דוהה אחרי קיץ.', c: 0, p: 279, w: 4_200, v: 'colorHome', s: 'a stackable outdoor balcony chair in sand-coloured weather-resistant material' },
-  { n: 'ספסל מרפסת דו מושבי', d: 'שני מושבים בבד חוץ שמתייבש מהר, עם מסגרת מתכת מגולוונת.', c: 0, p: 1_190, w: 16_000, v: 'colorHome', s: 'a two-seat outdoor balcony bench with quick-dry cushions and a galvanised frame' },
-  { n: 'שולחן עבודה צר', d: 'עומק 50 ס״מ שנכנס לפינה, עם מעבר כבלים אחורי ומדף תחתון.', c: 0, p: 899, w: 15_000, v: null, s: 'a narrow home office desk in oak with a cable pass-through' },
+  { n: 'כורסת בד מרופדת', d: 'מושב עמוק עם ריפוד בד עמיד ורגלי עץ אלון מלא. נוחה לשעה של קריאה ולא רק להיראות טוב.', c: 0, sub: 'ישיבה', p: 1_490, w: 18_000, v: 'colorHome', s: 'an upholstered lounge armchair in warm oatmeal fabric with solid oak legs' },
+  { n: 'ספה תלת מושבית', d: 'שלושה מושבים עם ריפוד עמיד לשפשוף וכריות גב נשלפות לכביסה.', c: 0, sub: 'ישיבה', p: 4_290, w: 48_000, v: 'colorHome', s: 'a three-seat sofa in soft clay-coloured fabric with removable back cushions' },
+  { n: 'ספת דו מושבית קומפקטית', d: 'רוחב 150 ס״מ שנכנס גם לסלון קטן, בלי לוותר על עומק מושב אמיתי.', c: 0, sub: 'ישיבה', p: 2_890, w: 32_000, v: 'colorHome', s: 'a compact two-seat sofa in sage green fabric' },
+  { n: 'שולחן אוכל עץ מלא', d: 'אלון מלא באורך 180 ס״מ שמושיב שישה בנוח. גימור שמן שמתחדש בעצמך.', c: 0, sub: 'שולחנות', p: 3_490, w: 42_000, v: null, s: 'a solid oak dining table with a natural oil finish, clean tapered legs' },
+  { n: 'שולחן אוכל מתארך', d: 'נפתח מארבעה לשישה סועדים בתנועה אחת. פתרון לדירה שמארחת יותר ממה שיש בה מקום.', c: 0, sub: 'שולחנות', p: 2_990, w: 38_000, v: null, s: 'an extendable dining table in pale ash wood' },
+  { n: 'כיסא אוכל מרופד', d: 'מושב מרופד עם מסעד גב מעוקל שתומך בגב התחתון, ורגלי עץ יציבות.', c: 0, sub: 'ישיבה', p: 449, w: 6_500, v: 'colorHome', s: 'an upholstered dining chair in bouclé cream fabric with wooden legs' },
+  { n: 'כיסא אוכל עץ', d: 'עץ מלא בעיצוב נקי, נערם בקלות ולא חורק אחרי שנה.', c: 0, sub: 'ישיבה', p: 379, w: 5_200, v: null, s: 'a solid wood dining chair with a curved backrest, minimal design' },
+  { n: 'שרפרף בר מתכוונן', d: 'גובה מתכוונן עם משענת רגליים וסיבוב 360 מעלות. מתאים לאי במטבח.', c: 0, sub: 'ישיבה', p: 549, w: 8_400, v: 'colorHome', s: 'an adjustable-height bar stool with a leather seat and black metal base' },
+  { n: 'שולחן קפה עגול', d: 'משטח עגול בקוטר 80 ס״מ עם מדף תחתון נוסף. לא תופס את כל הסלון.', c: 0, sub: 'שולחנות', p: 890, w: 14_000, v: null, s: 'a round coffee table in light oak with a lower shelf' },
+  { n: 'שולחן צד קטן', d: 'שולחן צד צר שנכנס ליד הכורסה או ליד המיטה, משטח שיש מלאכותי עמיד.', c: 0, sub: 'שולחנות', p: 429, w: 6_800, v: 'colorHome', s: 'a small side table with a marble-look top and a slim metal frame' },
+  { n: 'שידת מגירות', d: 'ארבע מגירות על מסילות שקטות עם סוגר עצירה. גימור שלא מראה טביעות אצבע.', c: 0, sub: 'אחסון ומדפים', p: 1_290, w: 26_000, v: 'colorHome', s: 'a four-drawer wooden dresser in warm walnut with soft-close runners' },
+  { n: 'שידת לילה', d: 'מגירה אחת ומדף פתוח, בגובה שמתאים למיטה סטנדרטית.', c: 0, sub: 'אחסון ומדפים', p: 499, w: 9_000, v: 'colorHome', s: 'a bedside nightstand in pale oak with one drawer and an open shelf' },
+  { n: 'כוננית ספרים פתוחה', d: 'חמישה מדפים בגובה 180 ס״מ, כולל רצועת קיר לייצוב. מדפים שנושאים ספרים אמיתיים.', c: 0, sub: 'אחסון ומדפים', p: 1_190, w: 24_000, v: null, s: 'an open five-shelf bookcase in light wood against a plaster wall' },
+  { n: 'מדף קיר צף', d: 'מדף עץ מלא עם תושבת נסתרת, מגיע עם דיבלים לקיר בטון.', c: 0, sub: 'אחסון ומדפים', p: 189, w: 2_400, v: 'sizeHome', s: 'a floating wooden wall shelf with a hidden bracket' },
+  { n: 'ספסל כניסה עם אחסון', d: 'מושב מרופד עם תא אחסון מתחת לנעליים. פותר את הכניסה לדירה.', c: 0, sub: 'אחסון ומדפים', p: 749, w: 12_000, v: 'colorHome', s: 'an entryway storage bench with a padded seat and a shoe compartment underneath' },
+  { n: 'עגלת הגשה על גלגלים', d: 'שתי קומות עם ידית ונעילת גלגלים, עוברת מהמטבח למרפסת.', c: 0, sub: 'אחסון ומדפים', p: 389, w: 5_600, v: 'colorHome', s: 'a two-tier rolling serving cart in matte black metal' },
+  { n: 'שולחן מרפסת מתקפל', d: 'עץ אקציה מטופל לחוץ, מתקפל ונשען על הקיר בחורף.', c: 0, sub: 'ריהוט מרפסת', p: 590, w: 9_800, v: null, s: 'a folding acacia wood balcony table, treated for outdoor use' },
+  { n: 'כיסא מרפסת נערם', d: 'נערם בערימה של ארבעה, עמיד לשמש ולא דוהה אחרי קיץ.', c: 0, sub: 'ריהוט מרפסת', p: 279, w: 4_200, v: 'colorHome', s: 'a stackable outdoor balcony chair in sand-coloured weather-resistant material' },
+  { n: 'ספסל מרפסת דו מושבי', d: 'שני מושבים בבד חוץ שמתייבש מהר, עם מסגרת מתכת מגולוונת.', c: 0, sub: 'ריהוט מרפסת', p: 1_190, w: 16_000, v: 'colorHome', s: 'a two-seat outdoor balcony bench with quick-dry cushions and a galvanised frame' },
+  { n: 'שולחן עבודה צר', d: 'עומק 50 ס״מ שנכנס לפינה, עם מעבר כבלים אחורי ומדף תחתון.', c: 0, sub: 'שולחנות', p: 899, w: 15_000, v: null, s: 'a narrow home office desk in oak with a cable pass-through' },
 
   // ── תאורה (c:1) ────────────────────────────────────────────────────────────
   { n: 'מנורת רצפה קשת', d: 'זרוע מעוקלת שמביאה אור אל מעל הספה בלי לקדוח בתקרה.', c: 1, p: 890, w: 8_200, v: 'colorHome', s: 'an arc floor lamp with a brushed brass stem and a linen shade' },
