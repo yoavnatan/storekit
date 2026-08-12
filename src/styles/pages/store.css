@@ -59,18 +59,29 @@ body:has(.store-page) { background: var(--color-surface); }
    Upward only (--shadow-bar-up): the banner it covers is the thing above it, and
    nothing bleeds down onto .store-below, which sits flush beneath.
 
-   And ONLY once the page has actually scrolled. At rest the curtain is not
-   covering anything — it is simply the next block under the banner in normal
-   flow, and a shadow there is the same false gap as the header's used to be
-   (user, 2026-08-01). `.site-header.is-stuck` is exactly "the page has moved"
-   (lib/sticky-bar.ts#initHeaderScrolled), so it is the flag rather than a second
-   mechanism measuring the same scroll.
+   And ONLY while it is actually covering something. Until then it is simply the next
+   block under the banner in normal flow, and a shadow there is the same false gap as
+   the header's used to be (user, 2026-08-01).
+
+   The flag is `.store-banner-pin.is-stuck` — the pinned image reaching its own `top`,
+   which is the exact frame this layer begins travelling over it. It used to be
+   `.site-header.is-stuck`, i.e. "the page has moved by one pixel", and that was only
+   the same moment by coincidence: it holds when the pinned banner is the first thing
+   on the page, and breaks the instant anything sits above it. Both the owner bar and
+   the showcase-store bar do (both in normal flow, both scrolling away first), so on
+   his own store, on a showcase store, and doubly on a showcase store he owns, the
+   shadow appeared while the first ~3rem of scroll was still just retiring that bar
+   and the curtain had not begun — a seam under a layer that was covering nothing
+   (user, 2026-08-12). Anchoring to the pin makes it true by construction whatever
+   ends up above it, and it also answers the case with no banner at all: no
+   .store-banner-pin element, so the shadow never appears, which is right — with
+   nothing pinned there is no curtain and nothing to cover.
 
    Not a competing signal either — and since 2026-08-02 that needs no arrangement at all:
    the header carries no shadow in any state, so this is now the ONLY depth on screen
    during the whole phase. (It used to be a hand-off, with two rules in header.css turning
    the header's own shadow off and back on around this crossing; they went with it.) */
-body:has(.site-header.is-stuck) .store-banner {
+body:has(.store-banner-pin.is-stuck) .store-banner {
   box-shadow: var(--shadow-bar-up);
 }
 

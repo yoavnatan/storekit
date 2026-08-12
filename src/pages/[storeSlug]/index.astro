@@ -1378,11 +1378,14 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   // to the header (see lib/sticky-bar.ts; shared with the /stores directory).
   const controlsBar = document.querySelector<HTMLElement>('.store-controls');
   initStickyBar(controlsBar);
-  // Not a sticky bar — the curtain's own top edge. Marks the moment .store-banner
-  // rises past the header line, i.e. the moment real moving content is finally
-  // under the header rather than the pinned banner, which is what lets the
-  // header's shadow appear (header.css → "Store page: the curtain").
-  initStickyBar(document.querySelector<HTMLElement>('.store-banner'), 3.4);
+  // Not a sticky bar — the PINNED banner, and `.is-stuck` here means "the curtain
+  // has started to cover me": .store-banner-pin reaching its own `top` is the exact
+  // frame the details layer begins travelling over it. That is the only moment the
+  // curtain's shadow is true, so it is what drives it (styles/pages/store.css).
+  // The 3.4 matches .store-banner-pin's `top` — one number, two places, so keep them
+  // together. And a store with no banner at all renders no .store-banner-pin: the
+  // querySelector is null, initStickyBar bails, and the shadow correctly never fires.
+  initStickyBar(document.querySelector<HTMLElement>('.store-banner-pin'), 3.4);
 
   // ── Search + Sort ─────────────────────────────────────────────
   const searchInput = document.getElementById('product-search') as HTMLInputElement | null;

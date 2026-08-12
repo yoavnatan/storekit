@@ -49,7 +49,7 @@ const FLOATING = new Map<string, string>([
   ['.home-carousel-btn', 'absolute arrow over the carousel it scrolls'],
   ['.category-filters-arrow', 'absolute arrow over the filter row it scrolls'],
   ['.overflow-shadow', 'only ever added while content is really scrolled behind the footer'],
-  ['.store-banner', 'the curtain: it travels over the pinned banner for the whole scroll'],
+  ['.store-banner', 'the curtain: it travels over the pinned banner, and carries the shadow only while it is doing so (see tests/curtain-shadow-trigger.test.ts)'],
   // Added 2026-08-02, when every overlay's hand-rolled rgba(0,0,0,…) was replaced by the
   // tokens (18 of them, pure black, blurs 14→60px). They were invisible to this guard only
   // because they were hand-rolled; each one floats, and now says so here.
