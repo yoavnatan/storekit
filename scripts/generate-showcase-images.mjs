@@ -35,7 +35,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, PRODUCT_VIEWS } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, imagePrompt, bannerPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, viewsForProduct } from './lib/showcase/identity.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
 import { TECH_PRODUCTS } from './lib/showcase/catalog-tech.mjs';
@@ -51,7 +51,6 @@ const CATALOGS = {
   'showcase-plants': PLANT_PRODUCTS,
 };
 
-const MODEL = 'gemini-3.1-flash-image';
 
 // ── Args ────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -61,6 +60,20 @@ const CHECK = has('--check');
 const FORCE = has('--force');
 const ONLY_STORE = val('store');
 const LIMIT = Number(val('limit') || 0) || (CHECK ? 1 : 0);
+
+/**
+ * The model. `--fast` switches to the cheaper Flash tier.
+ *
+ * Default is the PRO image model, chosen after the owner asked whether we were even using the right
+ * tool ("התמונות מרגישות לי ירודות"). Flash is a good model and most of what he was reacting to was
+ * the art direction rather than the renderer — but Pro is measurably stronger on the things this
+ * catalog is full of: fabric weave, glazed ceramic, brushed metal, reflections and skin on a hand.
+ * Against Google's published prices that is $0.134 an image versus $0.101, so across the ~724
+ * images this run needs it is roughly $97 against $73 — $24 for the whole catalogue, once. At that
+ * ratio the quality is worth more than the money, which is why this is the default rather than a
+ * flag you have to know about.
+ */
+const MODEL = has('--fast') ? 'gemini-3.1-flash-image' : 'gemini-3-pro-image';
 
 // ── Manifest ────────────────────────────────────────────────────────────────
 const loadManifest = () => (existsSync(MANIFEST_PATH) ? JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) : {});
@@ -82,7 +95,7 @@ function saveManifest(m) {
  * the image from whichever envelope came back. When the fallback is what worked, it says so, so
  * this comment can eventually be deleted rather than left to rot.
  */
-async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT) {
+async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT, size = IMAGE_SIZE) {
   const attempts = [
     {
       name: 'generateContent',
@@ -91,7 +104,7 @@ async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT) {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseModalities: ['IMAGE'],
-          imageConfig: { aspectRatio: aspect, imageSize: IMAGE_SIZE },
+          imageConfig: { aspectRatio: aspect, imageSize: size },
         },
       },
     },
@@ -103,7 +116,7 @@ async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT) {
         input: [{ type: 'text', text: prompt }],
         response_format: {
           type: 'image', mime_type: 'image/jpeg',
-          aspect_ratio: aspect, image_size: IMAGE_SIZE,
+          aspect_ratio: aspect, image_size: size,
         },
       },
     },
@@ -164,11 +177,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * the retry is generous (up to ~2 minutes across four attempts) and only ever applied to errors
  * that time can actually fix.
  */
-async function generateImageWithRetry(prompt, apiKey, aspect, label) {
+async function generateImageWithRetry(prompt, apiKey, aspect, size) {
   const WAITS = [8_000, 20_000, 45_000, 90_000];
   for (let i = 0; ; i++) {
     try {
-      return await generateImage(prompt, apiKey, aspect);
+      return await generateImage(prompt, apiKey, aspect, size);
     } catch (e) {
       const canRetry = (e.retryable || /HTTP 429|fetch failed|no image in the response/.test(e.message)) && i < WAITS.length;
       if (!canRetry) throw e;
@@ -211,15 +224,21 @@ function buildJobs() {
   const jobs = [];
   for (const store of SHOWCASE_STORES) {
     if (ONLY_STORE && store.slug !== ONLY_STORE) continue;
-    jobs.push({ key: `${store.slug}:__banner`, prompt: bannerPrompt(store), label: `${store.name} — באנר`, aspect: BANNER_ASPECT });
-    jobs.push({ key: `${store.slug}:__logo`, prompt: logoPrompt(store), label: `${store.name} — לוגו` });
+    // Banner only. The logo is no longer generated: a "minimal emblem" comes back as a PHOTOGRAPH
+    // of an object, and the avatar renders in a circle, so it arrived as a cropped photo of a
+    // terracotta arch — soft at 56px and not reading as a mark at all. StoreAvatar's own monogram is
+    // vector, exact at every size, and unmistakably a logo. See the seeder for the full reasoning.
+    jobs.push({
+      key: `${store.slug}:__banner`, prompt: bannerPrompt(store), label: `${store.name} — באנר`,
+      aspect: BANNER_ASPECT, size: BANNER_IMAGE_SIZE,
+    });
   }
   for (const store of SHOWCASE_STORES) {
     if (ONLY_STORE && store.slug !== ONLY_STORE) continue;
     for (const p of CATALOGS[store.slug]) {
       // One job per VIEW. `main` keeps the bare key so every URL already generated under the old
       // one-image-per-product scheme is still found and not paid for twice.
-      for (const [i, view] of PRODUCT_VIEWS.entries()) {
+      for (const [i, view] of viewsForProduct(p.n).entries()) {
         jobs.push({
           key: i === 0 ? `${store.slug}:${p.n}` : `${store.slug}:${p.n}#${view.key}`,
           prompt: imagePrompt(store, p.s, view),
@@ -259,7 +278,7 @@ async function main() {
   if (CHECK) {
     console.log('\n🔎 Check mode — one image, to prove the key and the billing tier are live.\n');
   } else {
-    console.log(`\n🎨 ${jobs.length} image(s) to generate at ${IMAGE_SIZE}. Already done: ${Object.keys(manifest).length}.`);
+    console.log(`\n🎨 ${jobs.length} image(s) to generate. Already done: ${Object.keys(manifest).length}.`);
     console.log('   Interrupt any time — finished images are saved as they go and a re-run resumes.\n');
   }
 
@@ -268,7 +287,7 @@ async function main() {
   for (const job of jobs) {
     process.stdout.write(`   ${job.label} … `);
     try {
-      const bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, job.label);
+      const bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, job.size);
       const url = await uploadToCloudinary(bytes, cloud, preset);
       manifest[job.key] = url;
       saveManifest(manifest);   // after EVERY image: a crash must not discard what was paid for

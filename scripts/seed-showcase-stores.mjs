@@ -246,7 +246,14 @@ async function seed(db, clean) {
     categories.push(...storeCategories);
 
     const banner = manifest[`${spec.slug}:__banner`];
-    const logo = manifest[`${spec.slug}:__logo`];
+    // NO generated logo, deliberately (owner, 2026-08-12, with a screenshot). A generated "minimal
+    // emblem" comes back as a PHOTOGRAPH of an object — a terracotta arch, a leaf — and the avatar
+    // renders in a circle, so it arrived as a cropped photo of a thing rather than a mark, soft at
+    // 56px and softer at 32. `StoreAvatar` already draws a proper monogram when `profileImage` is
+    // absent: a letter on the store's own gradient, vector, exact at every size and on every DPR,
+    // and unmistakably a logo. That is strictly better here and it costs nothing to generate.
+    // A real seller still uploads their own; this is only what a platform-owned store defaults to.
+    const logo = undefined;
 
     stores.push({
       id: storeId,

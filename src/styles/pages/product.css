@@ -108,6 +108,15 @@
    size pressed "הוסף לעגלה" and the site simply ignored them.
    Both page sheets are imported into main.css, so scoping never controlled loading; it only
    controlled which ancestors matched. One definition, no ancestor. */
+/* Breathing room under the group when the "pick a size" nudge scrolls to it (owner, 2026-08-12,
+   once the shake was actually visible in the modal and he could see where it stopped).
+   Both callers use `scrollIntoView({ block: 'nearest' })`, which by definition scrolls the LEAST
+   it can — so the group's bottom edge ends up flush against the viewport edge, with the buy button
+   it is telling you about sitting just out of sight below. `scroll-margin-block-end` is the
+   property for exactly this: it pads the rectangle the browser scrolls to without adding any real
+   space to the layout, so nothing moves for anyone who never triggers it. */
+.variant-group { scroll-margin-block-end: 5rem; }
+
 .variant-group--invalid { animation: variant-shake 0.4s ease; }
 .variant-group--invalid .variant-opt,
 .variant-group--invalid .pm-variant-opt {

@@ -131,9 +131,14 @@ const isDemo = isDemoStore(shopStore);
    dots own bottom centre. Opaque white rather than a blurred glass chip, matching the heart's own
    treatment (memory `feedback_wishlist_heart_no_glass`) — and `pointer-events:none` so it can never
    swallow a click meant for the card behind it. */
-const DEMO_PRODUCT_BADGE_CLASS = 'absolute bottom-[0.45rem] inset-inline-start-[0.45rem] z-[2] pointer-events-none '
+/* `start-*`, NOT `inset-inline-start-*` — the latter is not a Tailwind utility at all, so it
+   compiled to nothing and the chip sat flush against the edge with no inset, which is exactly what
+   the owner reported. `start-` is the logical-property utility and it mirrors under `dir=rtl` for
+   free. And more transparent, at his request: this is a disclosure, not a price tag. */
+const DEMO_PRODUCT_BADGE_CLASS = 'absolute bottom-2 start-2 z-[2] pointer-events-none '
   + 'inline-flex items-center gap-1 py-[0.15rem] px-[0.4rem] rounded-[var(--radius-sm)] '
-  + 'bg-white/92 text-[0.6rem] font-medium leading-[1.4] whitespace-nowrap [color:var(--color-muted)]';
+  + 'bg-white/70 [backdrop-filter:blur(4px)] text-[0.6rem] font-medium leading-[1.4] '
+  + 'whitespace-nowrap [color:var(--color-muted)]';
 const DEMO_PRODUCT_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>';
 const categoryTree = buildCategoryTree(storeCategories);
 // A store's own categories are free text, so they get no icons (see

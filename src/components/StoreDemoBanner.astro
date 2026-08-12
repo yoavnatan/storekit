@@ -1,43 +1,25 @@
 ---
 /**
- * Banner for a showcase store (lib/demo-stores.ts): the store's generated
- * background photograph, with the store's NAME drawn over it as vector text.
+ * Banner for a showcase store (lib/demo-stores.ts): the store's generated photograph, with the
+ * store's name set over it.
  *
- * ── What this replaced, and why (owner, 2026-08-12) ─────────────────────────
- * A flat two-stop gradient, four ghosted line-art icons scattered over it, and
- * the words "חנות לדוגמה" set at 112px on a 400px-tall canvas — 28% of the
- * banner's height in a single word. The brief for the rewrite was the useful
- * part: "לא ערומים מדי, מעוצבים יפה ונכונים, לא חובבני ולא מוגזם", and the test
- * to hold it to — would a designer call this beautiful, or amateurish.
+ * ── The bug this file was rewritten to fix (owner sent a screenshot, 2026-08-12) ──
+ * The name rendered as "הר" instead of "סהר", and the tagline as "ף ללבוש". The overlay was an
+ * `<svg viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid slice">`, and `slice` means COVER: in
+ * any box not exactly 3/1 the viewBox is scaled up until it fills, and whatever falls outside is
+ * cut. The text was anchored near the edge, so the edge is precisely what got cut. It looked
+ * correct at one width and was broken at every other — including his.
  *
- * Three things were making it the latter, and each is fixed here:
- *   1. **Nothing behind the type.** A colour field is a placeholder; a photograph
- *      is a banner. The picture now comes from `bannerImage` like any real
- *      seller's, generated for this store by `generate-showcase-images.mjs`.
- *   2. **The type was enormous and centred.** Huge centred text over the middle
- *      of a frame is the shape of a stock template. This sets the name at 62px
- *      (~15% of the height), off to the reading-side edge with a generous inset,
- *      and lets the picture hold the rest of the frame.
- *   3. **The icons.** Decorative glyphs scattered behind type read as clip art.
- *      They are gone and nothing replaced them.
+ * It is plain HTML now. There is no viewBox to mismatch, the type reflows instead of being sliced,
+ * it uses the same font stack and rendering as the rest of the site, and it can be read by a screen
+ * reader and selected with a cursor. SVG bought nothing here: it was chosen for "scales for free",
+ * which is exactly the property that broke it.
  *
- * ── Why the name is drawn here and not baked into the picture ───────────────
- * An image model renders lettering unreliably — Hebrew especially — so asking
- * for "a banner with the shop's name on it" is how a showcase store ends up with
- * a misspelt sign in its own header. As vector text it is crisp at every width,
- * it re-flows if the store is renamed, and it costs nothing to change. The name
- * is `aria-hidden` because the `<h1>` immediately below already carries it: this
- * is the same words a second time, for the eye only.
- *
- * ── The scrim is doing real work ────────────────────────────────────────────
- * The four backgrounds are not one brightness — three are pale (plaster, stone,
- * concrete) and Teklar's is dark graphite. White type survives both ONLY over a
- * gradient that darkens the reading-side edge. It is deliberately soft and
- * one-sided: a flat overlay across the whole picture would mute the photograph
- * that is the point of the change.
- *
- * Falls back to the store's own palette when no picture exists yet — the manifest
- * is empty until the image run has been paid for, and a store must still render.
+ * ── Why the name is not baked into the picture ──────────────────────────────
+ * An image model renders Hebrew lettering unreliably, so asking for "a banner with the shop's name"
+ * is how a store ends up with a misspelt sign in its own header. Set as text it is crisp at every
+ * width, survives a rename, and costs nothing to change. It is `aria-hidden` because the `<h1>`
+ * directly below already carries the name — this is the same words again, for the eye.
  */
 import { cdnBand, cdnCropSrcSet, BANNER_RATIO, BANNER_WIDTHS } from '../lib/cdn.js';
 
@@ -47,41 +29,18 @@ interface Props {
   bannerImage?: string;
   /** The store's own two colours — only used for the no-picture fallback. */
   colors?: { primary?: string; accent?: string };
-  /** Reading direction of the PAGE, which is what decides the side the name sits on. */
   dir?: 'rtl' | 'ltr';
-  /** Unique per banner: gradient/filter ids are document-global. */
   slug: string;
 }
 
-const { name, tagline, bannerImage, colors, dir = 'rtl', slug } = Astro.props;
+const { name, tagline, bannerImage, colors, dir = 'rtl' } = Astro.props;
 
-// Percent-encoded rather than stripped: a slug can be Hebrew (url-base.ts#toSlug), and the old
-// `[^a-z0-9-]` strip reduced every Hebrew slug to the same token — so two banners on one page would
-// fill from each other's gradient. Encoding maps each slug to its own ASCII id instead.
-const uid = `sdb-${encodeURIComponent(slug).replace(/[^a-zA-Z0-9-]/g, '')}`;
-
-// Same geometry as a real seller's banner, so the two are byte-for-byte the same box and the
-// curtain-scroll on the store page is untouched.
-const W = 1600;
+// Same geometry as a real seller's banner, so the two are the same box and the curtain-scroll on
+// the store page is untouched. 2048 is the top width because the source is generated at 2K+ and a
+// 1128px slot on a 2× display asks for 2256 — the widest rung has to be able to answer that.
+const W = 2048;
 const H = Math.round(W / BANNER_RATIO);
 const SIZES = '(min-width: 1160px) 1128px, calc(100vw - 2rem)';
-
-// The type sits on the reading-side edge. 1200×400 is the overlay's own coordinate space; it
-// scales with the box, so these are proportions rather than pixels.
-const INSET = 72;
-const anchorX = dir === 'rtl' ? 1200 - INSET : INSET;
-const anchor = dir === 'rtl' ? 'end' : 'start';
-// Baselines, not a centred block: the name sits just above the optical middle and the tagline hangs
-// under it, which is where a reader expects a masthead rather than a caption.
-const NAME_Y = 196;
-const TAGLINE_Y = 240;
-// The rule is a short mark, not a divider — it gives the two lines something to sit against without
-// drawing a box. Length is fixed rather than measured: SVG cannot measure text server-side, and a
-// JS measurement would relayout after hydration on the store page's LCP element.
-const RULE_Y = 226;
-const RULE_LEN = 46;
-const ruleX1 = dir === 'rtl' ? anchorX - RULE_LEN : anchorX;
-const ruleX2 = dir === 'rtl' ? anchorX : anchorX + RULE_LEN;
 
 const primary = colors?.primary ?? '#2b2118';
 const accent = colors?.accent ?? '#c4622d';
@@ -102,51 +61,44 @@ const accent = colors?.accent ?? '#c4622d';
       class="absolute inset-0 w-full h-full object-cover"
     />
   ) : (
-    /* No picture yet. A two-stop wash of the store's OWN palette, so an unseeded
-       environment still reads as four different shops rather than four grey boxes. */
-    <div
-      class="absolute inset-0"
-      style={`background:linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`}
-    />
+    /* No picture yet — a wash of the store's OWN palette, so an unseeded environment still reads as
+       four different shops rather than four grey boxes. */
+    <div class="absolute inset-0" style={`background:linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`} />
   )}
 
-  <svg
-    viewBox="0 0 1200 400"
-    preserveAspectRatio="xMidYMid slice"
-    class="absolute inset-0 w-full h-full"
+  {/* The scrim is doing real work: three of the four generated backgrounds are pale plaster and one
+      is dark graphite, and white type survives both only over a gradient that darkens the reading
+      edge. One-sided and soft on purpose — a flat wash over the whole picture would mute the
+      photograph that is the point of having one. */}
+  <div
+    class="absolute inset-0 pointer-events-none"
+    style={`background:linear-gradient(to ${dir === 'rtl' ? 'left' : 'right'}, rgba(18,21,26,0.62) 0%, rgba(18,21,26,0.30) 42%, rgba(18,21,26,0) 72%)`}
+  />
+
+  {/* Percentage padding, not a fixed inset: the box is a 3/1 band whose height changes with the
+      viewport, so the type has to stay in proportion to it rather than to the page. `clamp` keeps
+      the name readable on a 375px phone without it becoming a billboard on a desktop. */}
+  <div
+    class="absolute inset-0 flex flex-col justify-center pointer-events-none"
+    style={`padding-inline:clamp(1rem, 5%, 4rem); align-items:${dir === 'rtl' ? 'flex-end' : 'flex-start'};text-align:${dir === 'rtl' ? 'right' : 'left'}`}
     aria-hidden="true"
   >
-    <defs>
-      <linearGradient id={`${uid}-scrim`} x1={dir === 'rtl' ? '1' : '0'} y1="0" x2={dir === 'rtl' ? '0' : '1'} y2="0">
-        <stop offset="0%" stop-color="#12151a" stop-opacity="0.58" />
-        <stop offset="45%" stop-color="#12151a" stop-opacity="0.28" />
-        <stop offset="100%" stop-color="#12151a" stop-opacity="0" />
-      </linearGradient>
-    </defs>
-
-    <rect width="1200" height="400" fill={`url(#${uid}-scrim)`} />
-
-    <line
-      x1={ruleX1} y1={RULE_Y} x2={ruleX2} y2={RULE_Y}
-      stroke="#ffffff" stroke-opacity="0.75" stroke-width="2" stroke-linecap="round"
-    />
-
-    <!-- 600, not 800. The old banner's 800 read as shouting; a masthead at this size wants weight
-         enough to hold against a photograph and no more. Positive tracking rather than the old
-         `letter-spacing:-1`: tight tracking is for headlines at display sizes, and it makes a short
-         Hebrew word look cramped. -->
-    <text
-      x={anchorX} y={NAME_Y} text-anchor={anchor}
-      font-family="Heebo, system-ui, sans-serif" font-size="62" font-weight="600"
-      letter-spacing="0.5" fill="#ffffff"
-    >{name}</text>
+    <span
+      class="block text-white font-semibold leading-[1.15]"
+      style="font-size:clamp(1.5rem, 4.2vw, 3.25rem);letter-spacing:0.01em;text-shadow:0 1px 12px rgba(0,0,0,0.28)"
+    >{name}</span>
 
     {tagline && (
-      <text
-        x={anchorX} y={TAGLINE_Y} text-anchor={anchor}
-        font-family="Heebo, system-ui, sans-serif" font-size="21" font-weight="400"
-        fill="#ffffff" fill-opacity="0.88"
-      >{tagline}</text>
+      <>
+        <span
+          class="block mt-[0.6em] mb-[0.5em]"
+          style="width:2.6em;height:2px;background:rgba(255,255,255,0.8);border-radius:1px"
+        ></span>
+        <span
+          class="block text-white/90 font-normal leading-snug"
+          style="font-size:clamp(0.8rem, 1.35vw, 1.05rem);max-width:22ch;text-shadow:0 1px 10px rgba(0,0,0,0.3)"
+        >{tagline}</span>
+      </>
     )}
-  </svg>
+  </div>
 </div>

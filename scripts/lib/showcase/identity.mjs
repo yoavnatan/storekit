@@ -147,7 +147,21 @@ export const NEGATIVE_PROMPT = [
  *  crops per surface. 2K rather than 1K because the banner and the product-page
  *  hero both render far larger than a grid cell, and upscaling is the pixelation
  *  the owner explicitly ruled out. */
+/**
+ * 2K everywhere, and this was MEASURED after getting it wrong once.
+ *
+ * Asked for a cheaper route, the first answer was to drop products to 1K on the reasoning that the
+ * grid delivers at `w_400` and the product page at `w_600`–`w_800`. That reasoning stopped one
+ * request short: the product page also asks for **`w_1600`** for the lightbox, and `lib/cdn.ts`
+ * uses `c_limit`, which deliberately never upscales. A 1024px source therefore gets delivered into
+ * a 1600px slot at its own size and the browser stretches it — soft, exactly the "low quality" the
+ * owner reported. Saving $0.034 an image by making the biggest view the worst one is not a saving.
+ *
+ * The real saving is COUNT, not size: only some products carry a full gallery (`viewsForProduct`),
+ * which took the run from ~1,600 images to ~724.
+ */
 export const IMAGE_SIZE = '2K';
+export const BANNER_IMAGE_SIZE = '2K';
 /** Products and logos: square. `lib/cdn.ts` crops per surface and every product surface is either
  *  square or close to it, so a square source is never mostly discarded. */
 export const IMAGE_ASPECT = '1:1';
@@ -370,6 +384,27 @@ const RESTRAINED_LIFE_DIRECTION = [
   'off-centre at a natural three-quarter angle, shot from a human viewpoint',
   'clean and uncluttered — at most one secondary object, no styling props, no set dressing',
 ].join('; ');
+
+/**
+ * How many pictures THIS product gets (owner, 2026-08-12: "לא לכל ה-100 צריך להיות עוד תמונות, רק
+ * מדגמי, לכמה מהמוצרים").
+ *
+ * Right on both counts. It is most of the cost — four views on every row is 1,600 images — and a
+ * real shop does not have four photographs of every single item either: the hero pieces are shot
+ * properly and the basics get one frame. Varying it is more convincing than uniformity, not less.
+ *
+ * Deterministic from the name, so a re-run asks for exactly the same set and never re-buys a
+ * picture it already has. Roughly one in six gets the full gallery, one in three gets two, the rest
+ * get one — which lands at about 1.7 pictures per product.
+ */
+export function viewsForProduct(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const bucket = h % 6;
+  if (bucket === 0) return PRODUCT_VIEWS;              // full gallery
+  if (bucket === 1 || bucket === 2) return PRODUCT_VIEWS.slice(0, 2);  // hero + one
+  return PRODUCT_VIEWS.slice(0, 1);                    // just the hero
+}
 
 export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0]) {
   const life = store.restrained ? RESTRAINED_LIFE_DIRECTION : LIFE_DIRECTION;
