@@ -836,47 +836,14 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
    The figure sits inside the copy cluster at the reading start; pinned to the far edge it read as
    unrelated to the words it describes. */
 .store-sale {
-  position: relative;
-  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 0.85rem;
   padding: 0.8rem 1rem;
-  padding-inline-start: 1.25rem;
   background: var(--color-surface);
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius);
-  /* The two corners the rule runs into are squared, and that is the whole point rather than a
-     detail. Measured at ×4: with all four corners at 10px the rule's ends taper visibly, because
-     `overflow:hidden` clips them to the curve — which is the "בלי בורדר רדיוס" he ruled out. The
-     other two corners keep the site's radius, so the strip still belongs to the page. */
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
   color: var(--color-text);
-}
-
-/* THE GREEN RULE (owner, 2026-08-12, and his wording is the spec: "קו ירוק ישר, בלי בורדר רדיוס
-   ובלי כלום, שצמוד לצד, בתוך הקונטיינר").
-   So it is a bar INSIDE the box, not a coloured side border. The difference is not cosmetic:
-   `border-inline-start` is part of the box's own edge and therefore follows `border-radius`,
-   which curves the line at both ends and is the one thing he ruled out. A ::before bar is a
-   straight rectangle that happens to sit at the edge.
-   `overflow:hidden` on the strip is what keeps its 10px corners from being poked through by the
-   bar's square ends — and it is safe here, unlike on the store page's own boxes, because this
-   element contains no absolutely-positioned child that needs to escape it.
-   4px, and `padding-inline-start` widened 1rem → 1.25rem so the figure beside it is not crowded
-   by a mark it has nothing to do with.
-   This does NOT reopen the "no coloured frame" finding in the note above — that one is about a
-   border RINGING the perimeter, which reads seasonal and dilutes the one green a shopper is
-   supposed to learn. A single rule down one side is a mark, in the same green as the figure, and
-   is the second and last place that hue appears on the strip. */
-.store-sale::before {
-  content: '';
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  width: 4px;
-  background: var(--color-sale);
 }
 
 /* The hairline divides the figure from the copy, and it lives HERE and not on the figure. The figure
