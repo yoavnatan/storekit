@@ -104,6 +104,29 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   text-align: center;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
+/* ── Aligned variant: every card's FIGURE starts on the same line ──
+   The labels are not the same length, so at narrow widths some wrap to two lines and some to one,
+   and the numbers then sit at different heights across the row — what the owner saw on the overview
+   (2026-08-12). `subgrid` makes every card share the grid's own two rows, so the label band is as
+   tall as the tallest label in that row and every figure starts level. Card HEIGHT was never the
+   problem: grid items already stretch. It is where the split between the two lines falls inside
+   them.
+
+   The alternative — a min-height of two lines on the label — hardcodes how many lines a label takes
+   and is wrong the first time one takes three (this grid reflows from five columns to one). Subgrid
+   measures instead of assuming, and needs no number.
+
+   ⚠️ **Opt-in, and it has to stay opt-in.** A subgrid spanning two rows fits a card of exactly two
+   children. The advertising tab's cards have a third — the `.admin-delta` comparison chip — and it
+   would be laid into an implicit row the parent does not have, i.e. outside the card's own box. So
+   the modifier goes on the grid that holds two-child cards, and a new grid gets it only after
+   someone has counted. `span 2` is what puts each card across a label row and a figure row of the
+   parent; without it the card occupies one row and `subgrid` has nothing to inherit. */
+.admin-stat-grid--aligned > .admin-stat-card {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 2;
+}
 /* Cards are <button data-goto-panel> — except the empty-stores one, which is an <a> because it
    carries a FILTER into the Stores tab and a panel jump cannot (AdminOverviewPanel.astro). Both are
    grid items, so both are blockified and this rule needs no display of its own. The hover

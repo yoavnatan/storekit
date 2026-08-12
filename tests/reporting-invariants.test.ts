@@ -1269,8 +1269,14 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
   });
 
   it('the ledger card\'s parts sum to its whole, on the real data and on a hostile one', async () => {
-    const [accrual, plan] = await Promise.all([getPlatformAccrual(), planPayouts()]);
+    const [accrual, plan, breakdown] = await Promise.all([getPlatformAccrual(), planPayouts(), getHeldBreakdown()]);
     const ledger = buildPlatformLedger(accrual, plan);
+    // TWO SCREENS, ONE FIGURE. The overview card states "ממתינים" as a total; the payouts tab states
+    // the same shekels split into its two reasons. The owner read them as a discrepancy (2026-08-12)
+    // when the split had no sum on it, so both surfaces now show the whole — and this is what says
+    // they are still the same whole. Algebraically the ledger's paid-out and adjustment terms cancel
+    // out of the held half; that is easy to break in a refactor and invisible on either screen.
+    expectSameMoney(breakdown.unshippedAgorot + breakdown.clockRunningAgorot, ledger.heldAgorot, 'payouts tab reasons vs overview held');
     // The identity the card is drawn from: everything we hold is either out of hold or in it.
     expectSameMoney(ledger.releasedAgorot + ledger.heldAgorot, ledger.sellerFundsAgorot, 'released + held = liability');
     // What actually goes out cannot exceed what is released — the three payout states partition it.
@@ -1326,6 +1332,8 @@ describe('the accounting statement closes, chains, and agrees with the live ledg
         movement: { paidOutAgorot: 700_000, commissionSettledAgorot: 95_000, adjustmentsAgorot: -1_200, payouts: 9 },
       },
       revenue: { subscriptionsAgorot: 29_700, subscribers: 3 },
+      adMarginAgorot: null,
+      upcoming: null,
     });
     // Opening is the same expression as closing, evaluated over everything before the period.
     expectSameMoney(s.openingBalanceAgorot, 792_000 - 700_000 - 1_200, 'opening');
@@ -1336,9 +1344,35 @@ describe('the accounting statement closes, chains, and agrees with the live ledg
     );
     // The bridge figure really is one number in both sections, not two that happen to agree.
     expectSameMoney(s.sellerEarnedAgorot, 440_000, 'seller earned appears in both sections');
-    // Income is commission + subscriptions, and ads are absent BY DESIGN — an accountant may not be
-    // handed the deterministic mock the ad tabs render (GO_LIVE §2).
+    // Income is commission + subscriptions, and the ad margin is a NAMED line with no figure — an
+    // accountant may not be handed the deterministic mock the ad tabs render (GO_LIVE §2), and a 0
+    // would be a claim that nothing was earned rather than "not connected".
     expectSameMoney(s.incomeAccruedAgorot, 60_000 + 29_700, 'income = commission + subscriptions, no ads');
+    expect(s.adMarginAgorot, 'pending, not zero').toBeNull();
+  });
+
+  /**
+   * The day ads connect, the total has to move — and that is the half a `null` cannot prove.
+   *
+   * The line is pending today, so every assertion above is about its ABSENCE; nothing would fail if
+   * `buildPlatformStatement` dropped the field from the sum entirely, and the defect would surface
+   * as under-reported income on a document that goes to a רו״ח. Asserted here on the connected
+   * shape, which no fixture produces because `AD_METRICS_ARE_MOCK` is still true.
+   */
+  it('an ad margin, once real, is part of the income total', () => {
+    const s = buildPlatformStatement({
+      period: PERIOD, generatedAtISO: '2026-09-01',
+      accrued: { grossAgorot: 500_000, commissionAgorot: 60_000, netAgorot: 440_000, purchases: 37 },
+      movement: noMovement,
+      before: { accrued: nothing, movement: noMovement },
+      revenue: { subscriptionsAgorot: 29_700, subscribers: 3 },
+      adMarginAgorot: 12_500,
+      upcoming: null,
+    });
+    expectSameMoney(s.incomeAccruedAgorot, 60_000 + 29_700 + 12_500, 'income includes the ad margin');
+    // And it is income only: the sellers' balance is untouched by it, since ad money never entered
+    // the liability the cash section closes on.
+    expectSameMoney(s.closingBalanceAgorot, 440_000, 'the ad margin is not seller money');
   });
 
   it('a period with nothing in it still states the balance it inherited', () => {
@@ -1348,9 +1382,35 @@ describe('the accounting statement closes, chains, and agrees with the live ledg
       period: PERIOD, generatedAtISO: '2026-09-01', accrued: nothing, movement: noMovement,
       before: { accrued: { ...nothing, netAgorot: 74_010, grossAgorot: 84_000, commissionAgorot: 9_990 }, movement: noMovement },
       revenue: { subscriptionsAgorot: 0, subscribers: 0 },
+      adMarginAgorot: null,
+      upcoming: null,
     });
     expectSameMoney(s.openingBalanceAgorot, 74_010, 'opening carried');
     expectSameMoney(s.closingBalanceAgorot, 74_010, 'closing unchanged');
+  });
+
+  /**
+   * The forecast line appears only where a forecast makes sense.
+   *
+   * "What will come in on the 10th" is a live, lifetime figure — commission on every sale whose
+   * money has left hold, mostly from earlier months. On a statement for a month that has already
+   * closed it would read as that month's, which is precisely the misreading it was added to end
+   * (owner, 2026-08-12). A `null` here is not a missing number; it is the document declining to
+   * date something that has no date.
+   */
+  it('the next-payout forecast appears on a live period and never on a closed one', async () => {
+    const closed = await loadPlatformStatement(monthPeriod('2026-07'), '2026-09-01');
+    expect(closed.upcomingCommissionAgorot, 'a closed month carries no forecast').toBeNull();
+    expect(closed.upcomingPayoutDayISO).toBeNull();
+
+    // Same month, read from inside it: the run really is ahead of this reader.
+    const live = await loadPlatformStatement(monthPeriod('2026-07'), '2026-07-15');
+    expect(live.upcomingCommissionAgorot, 'a period containing "today" carries one').not.toBeNull();
+    expect(live.upcomingPayoutDayISO).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // It is a forecast, so it must stay OUT of every total the document closes on — those two are
+    // the same period read two ways, and only the forecast field may differ.
+    expectSameMoney(live.incomeAccruedAgorot, closed.incomeAccruedAgorot, 'the forecast is not income');
+    expectSameMoney(live.closingBalanceAgorot, closed.closingBalanceAgorot, 'the forecast is not a balance');
   });
 
   it('the period helpers name real days — leap years, December, and the whole-month collapse', () => {

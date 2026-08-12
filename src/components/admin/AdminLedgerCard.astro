@@ -52,19 +52,10 @@ const SUB = 'muted m-0 mt-1 text-[0.72rem]';
       <dt class={LABEL}>מתוכו: מוכן לתשלום</dt>
       <dd class={FIGURE}>{formatAgorot(ledger.releasedAgorot)}</dd>
       <p class={SUB}>עבר את תקופת ההמתנה</p>
-    </div>
-    <div class={TILE}>
-      <dt class={LABEL}>מתוכו: בהמתנה</dt>
-      <dd class={FIGURE}>{formatAgorot(ledger.heldAgorot)}</dd>
-      <p class={SUB}>הזמנות שטרם נמסרו</p>
-    </div>
-  </dl>
-
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t [border-color:var(--color-border)]">
-    <div class={TILE}>
-      <dt class={LABEL}>יוצא בתשלום הקרוב · {formatBusinessDayLabel(ledger.nextPayoutDayISO)}</dt>
-      <dd class={`${FIGURE} [color:var(--color-accent)]`}>{formatAgorot(ledger.nextPayoutAgorot)}</dd>
-      {/* Only when there is one. A permanent "0 ₪ תקוע" row is furniture, and it teaches the eye to
+      {/* It sits HERE and not under the next payout (owner, 2026-08-12): stuck money is a slice of
+          what is READY, not of what is going out — those are two disjoint slices of this tile, and
+          hanging one under the other read as a number inside a number it is not part of.
+          Only when there is one. A permanent "0 ₪ תקוע" row is furniture, and it teaches the eye to
           skip the spot where the real one will appear — the same reasoning the reconciliation card
           records for its clean state. */}
       {ledger.stuckNoBankAgorot > 0 && (
@@ -74,9 +65,29 @@ const SUB = 'muted m-0 mt-1 text-[0.72rem]';
       )}
     </div>
     <div class={TILE}>
+      {/* "ממתינים", the seller's own word for the same shekels and the payouts tab's heading — one
+          name for one figure, on all three screens (owner, 2026-08-12). The subtitle used to say
+          only "הזמנות שטרם נמסרו", which is one of the TWO reasons money sits here; naming both is
+          what makes this number and the payouts tab's split legible as the same thing. */}
+      <dt class={LABEL}>מתוכו: ממתינים</dt>
+      <dd class={FIGURE}>{formatAgorot(ledger.heldAgorot)}</dd>
+      <p class={SUB}>טרם נשלחו, או בתוך חלון ההחזרה</p>
+    </div>
+  </dl>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t [border-color:var(--color-border)]">
+    <div class={TILE}>
+      <dt class={LABEL}>יוצא בתשלום הקרוב · {formatBusinessDayLabel(ledger.nextPayoutDayISO)}</dt>
+      <dd class={`${FIGURE} [color:var(--color-accent)]`}>{formatAgorot(ledger.nextPayoutAgorot)}</dd>
+    </div>
+    <div class={TILE}>
       <dt class={LABEL}>העמלה שלנו שטרם נגבתה</dt>
       <dd class={FIGURE}>{formatAgorot(ledger.platformIncomeAgorot)}</dd>
-      <p class={SUB}>מזה {formatAgorot(ledger.incomeAtNextPayoutAgorot)} ייגבו בתשלום הקרוב</p>
+      {/* "מכל התקופות" earns its words: this tile is a lifetime balance and the accounting report is
+          per period, so the owner compared the two and read the gap as a contradiction (2026-08-12).
+          The next payout settles commission on every sale whose money came out of hold — most of it
+          from earlier months — which is a different question from what a given month earned. */}
+      <p class={SUB}>מזה {formatAgorot(ledger.incomeAtNextPayoutAgorot)} ייגבו בתשלום הקרוב · מכל התקופות, לא רק החודש</p>
     </div>
   </div>
 </section>

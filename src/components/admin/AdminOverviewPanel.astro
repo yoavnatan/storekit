@@ -20,7 +20,7 @@ const { overview, emptyStoreCount, emptyStoresHref } = Astro.props;
     admin.css's own unlayered rules). Revenue links to Orders since that's
     the only tab revenue is actually derived from — there's no dedicated
     revenue tab. */}
-<div class="admin-stat-grid">
+<div class="admin-stat-grid admin-stat-grid--aligned">
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="sellers">
     <dt>מוכרים</dt>
     <dd>{overview.totalSellers}</dd>
@@ -48,7 +48,11 @@ const { overview, emptyStoreCount, emptyStoresHref } = Astro.props;
       discounts, so it could never be reconciled against the per-store rows in the
       Stores tab either. */}
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="orders">
-    <dt>מחזור מכירות (GMV)</dt>
+    {/* "מאז ומתמיד" is on the label because this is the ONE figure here with a same-named twin that
+        is NOT all-time: the Performance tab shows GMV over a chosen range, so the two disagree by
+        design and nothing said so (owner asked, 2026-08-12). Every other card on this grid — sellers,
+        stores, orders — is a lifetime count that nobody would read as a period. */}
+    <dt title="כל המכירות מאז ומתמיד. לפילוח לפי תקופה — לשונית הביצועים">מחזור מכירות (GMV) · מאז ומתמיד</dt>
     <dd>{formatAgorot(overview.gmvAgorot)}</dd>
   </button>
   {emptyStoreCount > 0 && (

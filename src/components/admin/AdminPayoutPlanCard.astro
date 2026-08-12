@@ -105,11 +105,21 @@ const TILE_LINK = 'muted m-0 mt-1 text-[0.72rem] underline underline-offset-2 [c
     the one somebody can act on comes first. Each is a link into the orders it was summed over —
     the same statuses the figure was computed from, taken off the status table rather than typed. */}
 <div class="rounded-[var(--radius)] border [border-color:var(--color-border)] p-3.5 mb-5">
-  {/* "בדרך", not "מוחזק" (owner, 2026-08-11). Both describe the same shekels; only one of them is
-      what is actually happening. This money is on a schedule that resolves itself, and calling it
-      held made an ordinary state sound like a problem — on the screen whose job is to tell the
-      owner which part of it IS a problem. */}
-  <strong class="text-[0.9rem]">כסף בדרך למוכרים</strong>
+  {/* "ממתינים" (owner, 2026-08-12), and the name is not a preference — it is the word the SELLER
+      already reads on their own payouts panel (`translations.ts#payHeld`) for exactly these
+      shekels. Two names for one figure is what sent the owner looking for a discrepancy between
+      this tab and the overview. The earlier "כסף בדרך" was chosen over "מוחזק" (2026-08-11) for the
+      right reason — this money is on a schedule that resolves itself, and "held" made an ordinary
+      state sound like a problem — and "ממתינים" keeps that reading while matching the seller's.
+
+      **The total is stated, not left to be added up.** The two tiles are one figure split by
+      reason, and the overview's "מתוכו: ממתינים" shows that whole (`platform-ledger.ts`) — with no
+      sum on this side, neither tile matched it and the split read as a contradiction. Same
+      arithmetic on both screens, pinned by `reporting-invariants.test.ts`. */}
+  <div class="flex items-baseline justify-between gap-3 flex-wrap">
+    <strong class="text-[0.9rem]">ממתינים</strong>
+    <span class="text-[0.82rem] font-bold tabular-nums">{formatAgorot(held.unshippedAgorot + held.clockRunningAgorot)}</span>
+  </div>
   <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
     <div class={TILE}>
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">ממתין לשליחה</dt>
