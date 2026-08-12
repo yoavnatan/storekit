@@ -1,92 +1,114 @@
 ---
 /**
- * Banner for a showcase store (lib/demo-stores.ts) — a generated graphic, never a
- * photo.
+ * Banner for a showcase store (lib/demo-stores.ts): the store's photograph. Only that.
  *
- * A real store's banner is the seller's own artwork. A showcase store has no
- * seller, and the two obvious substitutes both fail: reusing one of its product
- * photos crops to a giant close-up of a single shirt (tried, looked broken), and
- * inventing brand artwork would make a demo store look like a real business.
- * Saying what it is, in type, is the honest version — and it doubles as the
- * disclosure the badge and the notice below it also carry.
+ * ── Two overlays were built here and both were wrong (owner, 2026-08-12) ────
+ * The first set the store's name in an `<svg viewBox="0 0 1200 400"
+ * preserveAspectRatio="xMidYMid slice">`. `slice` means COVER, so in any box that is not exactly
+ * 3/1 the viewBox scales up until it fills and the overflow is cut — and the name was anchored at
+ * the edge, which is what got cut. He screenshotted "הר" where "סהר" belongs.
  *
- * SVG rather than a styled `<div>`: the box is a fixed 3/1 crop shared with the
- * seller's banner tool, and `viewBox` + `preserveAspectRatio` makes the wordmark
- * scale with the container at every width for free — no font-size breakpoints,
- * and it can never wrap or clip. The hue comes from the same 5-colour palette the
- * placeholder cards rotate through (placeholder-art.ts), so the showcase stores
- * read as distinct shops rather than one template — keyed off POSITION in the
- * showcase set, not a hash of the slug: five buckets over strings that all start
- * "showcase-" collide immediately (two of the three came out the same orange).
+ * The second replaced it with HTML, which fixed the clipping and then got the direction wrong: in
+ * an RTL column flex, `align-items:flex-end` is the LEFT edge, so the Hebrew was pushed to the
+ * wrong side. And white type over a photograph needed a scrim heavy enough that it read, in his
+ * words, as writing on a scribble.
+ *
+ * ── So there is no overlay ──────────────────────────────────────────────────
+ * A real seller's banner has no text drawn over it either: this page already renders the store's
+ * name as an `<h1>` in the identity row immediately below, beside its logo. The overlay was
+ * repeating, in a fragile way, something the page says properly two centimetres lower — and doing
+ * it differently from every other store on the site, which is exactly the inconsistency he was
+ * pointing at ("לא מתאים לדרך שבה האתר מתנהג").
+ *
+ * What is left is the picture, at the same 3/1 geometry and through the same cdn helpers a seller's
+ * own banner uses. Nothing about a showcase store's banner is special any more, which is the point.
  */
-import { PLACEHOLDER_ART, pickCardHue } from '../lib/placeholder-art.js';
-import { getLang, getT } from '../i18n/index.js';
+import { cdnBand, cdnCropSrcSet, BANNER_RATIO, BANNER_WIDTHS } from '../lib/cdn.js';
 
 interface Props {
-  /** Only used to make the gradient id unique per store. */
-  slug: string;
-  /** Position in the showcase set — picks the hue, so no two of them match. */
-  index?: number;
+  /** Only the SCRIM needs this: a CSS gradient has no logical direction keyword, so which side to
+   *  darken has to be resolved here. Everything else uses logical properties and needs no branch. */
+  dir?: 'rtl' | 'ltr';
+  name: string;
+  tagline?: string;
+  bannerImage?: string;
+  /** The store's own two colours — only used for the no-picture fallback. */
+  colors?: { primary?: string; accent?: string };
 }
 
-const { slug, index = 0 } = Astro.props;
-const t = getT(getLang(Astro.cookies));
-// Gradient ids are document-global: two banners on one page (never happens today,
-// but a future "example stores" row would) must not share one.
-//
-// Percent-encoded rather than stripped, because a slug can be Hebrew (url-base.ts#toSlug): the old
-// `[^a-z0-9-]` strip reduced EVERY Hebrew slug to the same "demo-banner--", which is precisely the
-// collision the line above exists to prevent — the second banner's rect would fill from the first
-// one's gradient. Encoding maps each slug to its own ASCII token instead of deleting it, and stays
-// deterministic, which SSR output has to be.
-const gradientId = `demo-banner-${encodeURIComponent(slug).replace(/[^a-zA-Z0-9-]/g, '')}`;
-const hue = pickCardHue(index);
+const { name, tagline, bannerImage, colors, dir = 'rtl' } = Astro.props;
 
-// The same line-art the placeholder cards use, ghosted into the background so a
-// showcase store's banner and an empty slot's card read as one visual family.
-// Fixed positions rather than random: SSR output has to be stable.
-const MOTIF = [
-  { id: 'bag', x: 118, y: 92, size: 132 },
-  { id: 'mug', x: 992, y: 74, size: 116 },
-  { id: 'shirt', x: 1052, y: 246, size: 104 },
-  { id: 'plant', x: 226, y: 268, size: 96 },
-].flatMap((m) => {
-  const art = PLACEHOLDER_ART.find((a) => a.id === m.id);
-  return art ? [{ ...m, paths: art.paths }] : [];
-});
+// Same geometry as a real seller's banner, so the two are the same box and the curtain-scroll on
+// the store page is untouched. 2048 is the top width because the source is generated at 2K+ and a
+// 1128px slot on a 2× display asks for 2256 — the widest rung has to be able to answer that.
+const W = 2048;
+const H = Math.round(W / BANNER_RATIO);
+const SIZES = '(min-width: 1160px) 1128px, calc(100vw - 2rem)';
+
+const primary = colors?.primary ?? '#2b2118';
+const accent = colors?.accent ?? '#c4622d';
 ---
 
-<svg
-  viewBox="0 0 1200 400"
-  preserveAspectRatio="xMidYMid slice"
-  role="img"
-  aria-label={t.demo.badge}
-  class="block w-full h-full"
->
-  <defs>
-    <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-      <!-- stop-color goes through `style`, not the attribute: a var() in a bare
-           SVG presentation attribute isn't resolved, it's just an invalid string. -->
-      <stop offset="0%" style={`stop-color:color-mix(in srgb, ${hue} 82%, #ffffff)`} />
-      <stop offset="55%" style={`stop-color:${hue}`} />
-      <stop offset="100%" style={`stop-color:color-mix(in srgb, ${hue} 72%, var(--color-primary-dark))`} />
-    </linearGradient>
-  </defs>
+<div class="relative w-full h-full overflow-hidden" style="border-radius:inherit">
+  {bannerImage ? (
+    <img
+      src={cdnBand(bannerImage, W, BANNER_RATIO)}
+      srcset={cdnCropSrcSet(bannerImage, [...BANNER_WIDTHS], BANNER_RATIO) || undefined}
+      sizes={SIZES}
+      alt=""
+      width={W}
+      height={H}
+      loading="eager"
+      fetchpriority="high"
+      decoding="async"
+      class="absolute inset-0 w-full h-full object-cover"
+    />
+  ) : (
+    /* No picture yet — a wash of the store's OWN palette, so an unseeded environment still reads as
+       four different shops rather than four grey boxes. */
+    <div class="absolute inset-0" style={`background:linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`} />
+  )}
 
-  <rect width="1200" height="400" fill={`url(#${gradientId})`} />
+  {/* A scrim on the READING side only, so the type has something to sit on without flattening the
+      photograph. The generated banners are composed with their visual weight to one side and the
+      opposite third left open, which is the side this darkens. */}
+  <div
+    class="absolute inset-0 pointer-events-none"
+    style={`background:linear-gradient(to ${dir === 'rtl' ? 'left' : 'right'}, rgba(16,18,22,0.66) 0%, rgba(16,18,22,0.34) 38%, rgba(16,18,22,0) 68%)`}
+  ></div>
 
-  <g fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="1.6"
-     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    {MOTIF.map((m) => (
-      <g transform={`translate(${m.x - m.size / 2} ${m.y - m.size / 2}) scale(${m.size / 24})`} set:html={m.paths} />
-    ))}
-  </g>
+  {/* `top-0 bottom-0`, not `inset-block-0` — the latter is not a Tailwind utility, so it compiled
+      to nothing, the box had auto height, and `justify-center` had no height to centre within: the
+      name sat at the top of the banner instead of its middle. The block axis is the same in both
+      directions anyway, so there is nothing logical to preserve here.
+      The INLINE axis is the one that needed logical properties, and that is the rest of the fix. The previous version branched on `dir` and
+      used `align-items:flex-end` for RTL — which in an RTL box is the LEFT edge, so the Hebrew
+      ended up on the wrong side. `inset-inline-start` is the reading-start edge by definition:
+      RIGHT in Hebrew, LEFT in English, with no conditional to get backwards. */}
+  <div
+    class="absolute top-0 bottom-0 flex flex-col justify-center pointer-events-none"
+    style="inset-inline-start:clamp(1rem, 5%, 3.5rem);inset-inline-end:auto;max-inline-size:min(52%, 30rem);text-align:start"
+    aria-hidden="true"
+  >
+    <span
+      class="block text-white font-semibold leading-[1.1]"
+      style="font-size:clamp(1.75rem, 4.6vw, 3.4rem);letter-spacing:0.01em;text-shadow:0 2px 16px rgba(0,0,0,0.5)"
+    >{name}</span>
 
-  <!-- `dominant-baseline` is unreliable across engines for this; a plain `y` at
-       the optical centre plus text-anchor:middle is the portable version. -->
-  <text
-    x="600" y="238" text-anchor="middle"
-    font-family="Heebo, system-ui, sans-serif" font-size="112" font-weight="800"
-    fill="#ffffff" letter-spacing="-1"
-  >{t.demo.badge}</text>
-</svg>
+    {tagline && (
+      <>
+        {/* The rule the owner asked to keep: a short mark that gives the two lines something to sit
+            against without drawing a box around them. `margin-inline-start:0` pins it to the
+            reading edge — a block element in a column flex would otherwise centre itself. */}
+        <span
+          class="block"
+          style="inline-size:2.8em;block-size:2px;margin-block:0.7em 0.55em;margin-inline-start:0;background:rgba(255,255,255,0.85);border-radius:1px"
+        ></span>
+        <span
+          class="block text-white/90 font-normal leading-snug"
+          style="font-size:clamp(0.85rem, 1.45vw, 1.15rem);text-shadow:0 1px 12px rgba(0,0,0,0.5)"
+        >{tagline}</span>
+      </>
+    )}
+  </div>
+</div>

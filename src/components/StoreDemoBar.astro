@@ -1,0 +1,41 @@
+---
+/**
+ * The "חנות לדוגמה" disclosure, as a strip above the banner (owner, 2026-08-12).
+ *
+ * It used to be three separate things inside the store's identity block: a badge beside the `<h1>`,
+ * a "פתחו חנות משלכם" link beside that, and a tinted paragraph card under it. Together they pushed
+ * the store's own name, tagline and description down the page and were the loudest thing in the
+ * header — "כרגע זה יותר מדי משתלט על הפרטים". The disclosure is honest and has to stay; it just
+ * has no business being the headline of a shop.
+ *
+ * Deliberately the SAME shape as `OwnerStoreBar` — the strip a seller sees over their own store —
+ * because it is the same kind of statement: a note about the CONTEXT you are viewing this store in,
+ * not a fact about the shop. It sits in normal flow above whatever the page pins, so it scrolls away
+ * on the first gesture and the curtain-scroll geometry underneath is untouched.
+ *
+ * Disclosure survives the move, and that mattered before making it: the per-product badge is still
+ * on every card, the badge next to the cart line still says the item is excluded, and
+ * `/api/checkout` still refuses server-side. Nothing here was load-bearing for the rule — only for
+ * telling a visitor once, at the top, which this still does.
+ */
+interface Props {
+  /** Copy from `t.demo`, passed in so the component needs no lang of its own — same as OwnerStoreBar. */
+  title: string;
+  text: string;
+  cta: string;
+}
+
+const { title, text, cta } = Astro.props;
+---
+
+<div class="bg-[color:var(--color-bg)] border-b border-[color:var(--color-border)]">
+  <div class="container flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-[.82rem]">
+    <span class="[color:var(--color-muted)]">
+      <strong class="font-semibold [color:var(--color-text)]">{title}</strong>{' '}{text}
+    </span>
+    <a
+      href="/seller/register"
+      class="font-semibold [color:var(--color-accent)] no-underline hover:underline whitespace-nowrap"
+    >{cta}</a>
+  </div>
+</div>

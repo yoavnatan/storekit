@@ -291,6 +291,32 @@ export async function getStoreIdsWithLiveCampaigns(): Promise<string[]> {
   return found.map((r) => r.store_id);
 }
 
+/**
+ * Which of these stores has a boost STOPPED and waiting on its seller — the store switcher's row
+ * dots (`seller-alerts.ts`).
+ *
+ * The reasons are the half of `ad-campaign-health.ts` that does NOT undo itself: `unavailable`
+ * (what the campaign named left the storefront — a human took it off, so only a human puts it
+ * back) and `no-image` (a photo has to be uploaded before the catalogue will carry it at all).
+ * `out-of-stock` is deliberately absent: the sweep resumes that one by itself the moment stock
+ * returns, and the seller is already told about the stock through the Products badge, which would
+ * make it two dots for one fact.
+ *
+ * One statement for every store, same rule as `getStoreSlugsWithPendingOrders`. Archived campaigns
+ * are excluded — a cancelled campaign is a financial record, not something to act on.
+ */
+export async function getStoreIdsWithStalledCampaigns(storeIds: string[]): Promise<Set<string>> {
+  const ids = storeIds.filter(isUuid);
+  if (!ids.length) return new Set();
+  const found = await rows<{ store_id: string }>(
+    `SELECT DISTINCT store_id FROM ad_campaigns
+      WHERE store_id = ANY($1::uuid[]) AND archived_at IS NULL
+        AND status = 'paused' AND paused_reason IN ('unavailable', 'no-image')`,
+    [ids],
+  );
+  return new Set(found.map((r) => r.store_id));
+}
+
 /** The cancelled ones, newest first. Read-only everywhere: nothing may be resumed or re-budgeted
  *  out of here, it exists to answer "what did I run, and what did it cost". */
 export async function getArchivedByStoreId(storeId: string): Promise<AdCampaign[]> {

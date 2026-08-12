@@ -175,7 +175,11 @@ const strHalted    = t.store.haltedTitle;
     if (!product) return;
     const p = product;
     const selectedVariants: Record<string, string> = {};
-    p.variants.forEach(v => { selectedVariants[v.name] = v.options[0] ?? ''; });
+    // Same "a dimension with no name or no options is not a dimension" rule as `generateCombos`
+    // and `resolveSelection`. It used to default such a rubric to `''`, which reads as a chosen
+    // option and is not one — and since the checkout now resolves the selection against the
+    // product, that phantom key would be an extra dimension and refuse the whole purchase.
+    p.variants.forEach(v => { if (v.name && v.options.length) selectedVariants[v.name] = v.options[0]!; });
 
     function renderDialog(): void {
       // Set once the slide carousel is wired below (only exists with >1

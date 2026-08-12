@@ -24,6 +24,7 @@
 import { store, cdnContain } from '../config/store.config.js';
 import CsrfField from './CsrfField.astro';
 import StoreAvatar from './StoreAvatar.astro';
+import StoreDemoMark from './StoreDemoMark.astro';
 import BrandLogo from './BrandLogo.astro';
 import { getLang, getT } from '../i18n/index.js';
 import { MARK_PATH, MARK_VIEW_BOX, STROKE_WIDTH } from '../lib/brand-lockup.js';
@@ -35,6 +36,8 @@ interface Props {
   hasStore?: boolean;
   storeMode?: boolean;
   storeName?: string;
+  /** A platform showcase store draws its own mark instead of an uploaded logo or an initial. */
+  storeDemo?: boolean;
   storeSlug?: string;
   /** The store's uploaded logo, when the page is one store's own. Optional on
    *  purpose: a storeMode page that doesn't have the store record (checkout,
@@ -50,7 +53,7 @@ interface Props {
   initialUnreadCount?: number;
 }
 
-const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug, storeLogo, storeHeaderLogo, initialUnreadCount = 0 } = Astro.props;
+const { storeDemo = false, isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug, storeLogo, storeHeaderLogo, initialUnreadCount = 0 } = Astro.props;
 const initialUnreadLabel = initialUnreadCount > 99 ? '99+' : String(initialUnreadCount);
 
 // Same SSR-not-async-fetch fix as the notif badge above, for the other
@@ -153,7 +156,12 @@ const strEmpty   = t.store.noProductsFound;
                 Round, like every other store avatar on the site; a square plate was
                 tried on the store card the same day and reverted — StoreAvatar.astro
                 carries that reasoning. */}
-            <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} class="store-header__logo" />
+            {/* Same mark the store page shows. Before this the header fell through to StoreAvatar's
+                initial, so a showcase store had a drawn logo on its own page and a letter in the
+                header — two identities for one shop, which is what the owner spotted. */}
+            {storeDemo && !storeLogo
+              ? <StoreDemoMark slug={storeSlug} size={32} class="store-header__logo" />
+              : <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} class="store-header__logo" />}
             <span class="store-name-text">{storeName}</span>
           </a>
         : <a href="/" class="logo" aria-label={store.name} data-astro-prefetch>

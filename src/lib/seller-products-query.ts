@@ -5,6 +5,8 @@ import { decodeList } from './admin-nav.js';
 // toolbar imports NO_CATEGORY_TOKEN from here, and going through store-products.ts would
 // drag node:fs/node:crypto into the browser bundle.
 import { LOW_STOCK_THRESHOLD } from './variant-combo.js';
+// Pure/isomorphic, like everything else imported here — the toolbar runs this module in the browser.
+import { productSeoInputFrom, productSeoScore, type ProductSeoLevel } from './product-seo-hints.js';
 
 // Server-side counterpart of the seller dashboard's Products tab toolbar
 // (src/scripts/dashboard/products.ts) — pagination means the toolbar can no
@@ -22,6 +24,11 @@ const VALID_STOCK_STATUSES = new Set<string>(['out', 'low', 'ok']);
 export function stockBucket(stock: number): StockStatus {
   return stock <= 0 ? 'out' : stock <= LOW_STOCK_THRESHOLD ? 'low' : 'ok';
 }
+
+// Search-visibility bands (product-seo-hints.ts#productSeoScore) as a filter column. The band, not
+// a fresh rule: the row gauge, the product panel's meter and this filter are then three views of
+// one verdict, and "weak" here selects exactly the rows that carry a gauge.
+const VALID_SEO_LEVELS = new Set<string>(['weak', 'partial', 'strong']);
 
 // Wire token for the "ללא קטגוריה" row of the category filter. The natural value
 // for "has no category" is the empty string (that IS an uncategorized product's
@@ -41,6 +48,9 @@ export interface SellerProductQuery {
   // Selected stock buckets (out/low/ok). Empty = no stock restriction; multiple
   // = OR (same semantics as the category filter).
   stockStatuses: StockStatus[];
+  // Selected search-visibility bands (weak/partial/strong). Same OR semantics again — this is
+  // what turns the row gauge from a mark into something a seller can act on across 300 products.
+  seoLevels: ProductSeoLevel[];
 }
 
 const VALID_SORT_COLS = new Set<string>(['createdAt', 'name', 'price', 'stock', 'wishlist', 'category', 'purchased']);
@@ -61,6 +71,7 @@ export function parseSellerProductQuery(sp: URLSearchParams): SellerProductQuery
     // empty path that uncategorized products carry
     categoryPaths: decodeList(sp.get('pcat') ?? '').map((v) => (v === NO_CATEGORY_TOKEN ? '' : v)),
     stockStatuses: (sp.get('pstock') ?? '').split(',').map((s) => s.trim()).filter((s): s is StockStatus => VALID_STOCK_STATUSES.has(s)),
+    seoLevels: (sp.get('pseo') ?? '').split(',').map((s) => s.trim()).filter((s): s is ProductSeoLevel => VALID_SEO_LEVELS.has(s)),
   };
 }
 
@@ -73,9 +84,13 @@ export function filterAndSortSellerProducts(
 ): StoreProduct[] {
   const catSet = query.categoryPaths.length ? new Set(query.categoryPaths) : null;
   const stockSet = query.stockStatuses.length ? new Set<string>(query.stockStatuses) : null;
+  const seoSet = query.seoLevels.length ? new Set<string>(query.seoLevels) : null;
   const filtered = products.filter((p) => {
     if (catSet && !catSet.has(categoryPaths.get(p.id) ?? '')) return false;
     if (stockSet && !stockSet.has(stockBucket(p.stock))) return false;
+    // Scored last of the three: it reads five fields and the cheap set lookups above have already
+    // dropped most of the catalog by the time a row gets here.
+    if (seoSet && !seoSet.has(productSeoScore(productSeoInputFrom(p)).level)) return false;
     return matchesQueryWords(query.q, `${p.name} ${p.sku ?? ''} ${categoryPaths.get(p.id) ?? ''}`);
   });
 
