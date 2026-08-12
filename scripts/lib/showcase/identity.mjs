@@ -164,7 +164,15 @@ export const SHOWCASE_STORES = [
       + 'travertine stone, pale oak or raw linen, soft directional window daylight from the side, '
       + 'a long gentle shadow, muted palette of sage green, cream and warm clay, styled but '
       + 'uncluttered with plenty of empty space, calm modern Mediterranean interior, sharp focus, '
-      + 'the product clearly the single subject and fully in frame',
+      + 'the product clearly the single subject and fully in frame, '
+      // The owner floated a separate handmade-ceramics store and it was argued down — שקמה's
+      // "קרמיקה וכלי הגשה" is already its largest category (22 rows), and a fifth store selling the
+      // same goods makes the mall read thin rather than full. The LOOK he wanted is right, though,
+      // so it lands here instead, at no cost: anything ceramic in this store is studio pottery, not
+      // factory tableware. Uneven glaze and a hand-thrown lip are the whole difference.
+      + 'any ceramic or stoneware item is hand-thrown studio pottery — a slightly irregular rim, '
+      + 'visible throwing rings, an uneven reactive glaze that pools and breaks over the edges, '
+      + 'quietly imperfect and clearly made by hand rather than mass produced',
   },
   {
     slug: 'showcase-tech',
