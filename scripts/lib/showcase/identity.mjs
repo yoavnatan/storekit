@@ -191,7 +191,6 @@ export const SHOWCASE_STORES = [
     bannerSubject:
       'a cool, quiet fashion studio in pale stone — a marble ledge, a rail of clothes softly out of '
       + 'focus, one hard shaft of daylight across a limestone wall, greys and bone whites',
-    logoSubject: 'a single smooth arch form in terracotta on a warm cream ground',
     /** Warm sand studio. Not white — the owner asked for at least one store off
      *  plain white, and this is the softer of the two that are. */
     artDirection:
@@ -221,7 +220,6 @@ export const SHOWCASE_STORES = [
       'a lived-in Mediterranean living room — an oak table with a half-drunk coffee and an open '
       + 'book, hand-thrown ceramics catching the light, a linen throw over a chair arm, an olive '
       + 'branch in a clay vase, deep window light and long shadows across travertine',
-    logoSubject: 'a single stylised olive leaf shape in muted sage green on a warm off-white ground',
     /** The explicitly non-white store. Objects sit in a real room on a real
      *  surface, which is also the only honest way to shoot furniture — a sofa on
      *  a white sweep has no scale. */
@@ -260,7 +258,6 @@ export const SHOWCASE_STORES = [
       'a working desk at blue hour — a monitor glow on graphite and brushed steel, a coiled cable, '
       + 'headphones resting on a notebook, one small warm lamp and a single green indicator light, '
       + 'crisp specular highlights along the metal edges',
-    logoSubject: 'a single precise geometric mark of three stacked bars in deep blue on a light grey ground',
     /** The solid one. Cool grey rather than pure white: a true #fff sweep blows
      *  out a white product's own edge, which is exactly the case this store is
      *  full of. The grey keeps the silhouette. */
@@ -292,7 +289,6 @@ export const SHOWCASE_STORES = [
       'a Tel Aviv balcony full of plants in hard morning sun — terracotta pots at several heights, '
       + 'a watering can and secateurs on a concrete ledge, soil on the surface, monstera and olive '
       + 'leaves cutting sharp graphic shadows across a pale wall',
-    logoSubject: 'a single stylised sprout with two leaves in fresh green on a pale concrete ground',
     /** URBAN, and that word is doing the work. שקמה is already the warm-interior store, so a
      *  nursery shot on travertine and oak would read as the same shop with plants in it. Concrete,
      *  hard graphic daylight and sharp leaf shadows are a different world, and they are also the
@@ -446,11 +442,12 @@ export function bannerPrompt(store) {
     + `${REGION_DIRECTION}. ${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
 }
 
-export function logoPrompt(store) {
-  return `A minimal abstract emblem for a shop: ${store.logoSubject}. Flat, geometric, a single `
-    + `simple form, centred on a plain background, generous margin, vector-like and clean, `
-    + `${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
-}
+/* `logoPrompt()` stood here and is gone (2026-08-12). Asking an image model for "a minimal abstract
+   emblem" reliably returns a PHOTOGRAPH of an object — a terracotta arch, a leaf — and the avatar
+   renders in a circle, so what arrived was a cropped photo of a thing, soft at 56px and reading as
+   a picture rather than a mark. The showcase stores draw their logos instead:
+   `src/components/StoreDemoMark.astro`. Removed rather than left unused, so nobody re-wires it and
+   re-learns this. */
 
 export function storeBySlug(slug) {
   const store = SHOWCASE_STORES.find((s) => s.slug === slug);
