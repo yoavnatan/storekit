@@ -69,3 +69,4 @@ pics/
 
 # Claude Code internal memory mirror (never source)
 .claude-memory/
+showcase-prompts.csv
