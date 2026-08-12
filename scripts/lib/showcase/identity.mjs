@@ -101,7 +101,15 @@ export const NEGATIVE_PROMPT = [
  *  hero both render far larger than a grid cell, and upscaling is the pixelation
  *  the owner explicitly ruled out. */
 export const IMAGE_SIZE = '2K';
+/** Products and logos: square. `lib/cdn.ts` crops per surface and every product surface is either
+ *  square or close to it, so a square source is never mostly discarded. */
 export const IMAGE_ASPECT = '1:1';
+/** The banner is NOT square, and generating it square wastes most of the frame — the store header
+ *  is a 3/1 band (`BANNER_RATIO`), so a 1:1 source loses two thirds of its height to the crop and,
+ *  worse, the composition the model actually balanced. 16:9 is the widest ratio the image API
+ *  offers; cropping 16:9 to 3:1 trims a little top and bottom off a picture that was composed
+ *  wide, which is a different thing from salvaging a band out of a square. */
+export const BANNER_ASPECT = '16:9';
 
 export const SHOWCASE_STORES = [
   {
@@ -183,14 +191,58 @@ export const SHOWCASE_STORES = [
       + 'product, restrained and technical, product-forward framing straight on or at a slight '
       + 'three-quarter angle, immaculately clean, sharp focus edge to edge, generous margin',
   },
+  {
+    slug: 'showcase-plants',
+    name: 'אדנית',
+    tag: 'משתלה',
+    tagline: 'ירוק לבית ולמרפסת',
+    description:
+      'חנות לדוגמה של Dezabin — כך נראית משתלה אורבנית בפלטפורמה: צמחים חיים לפי גודל עציץ, '
+      + 'הוראות טיפול לכל מוצר, איסוף עצמי מהחממה לצד משלוח, ומלאי שמשתנה עם העונה.',
+    colors: { primary: '#243024', accent: '#4f9a52' },
+    address: 'המלאכה 12, תל אביב',
+    // The second self-pickup store, and for a different reason than שקמה's: a large plant is
+    // awkward to ship rather than merely heavy, and "come and collect it" is what a real urban
+    // nursery actually offers. Two stores using the same feature for two different reasons is a
+    // better demonstration than one.
+    selfPickup: true,
+    categories: ['צמחי פנים', 'מרפסת וגינה', 'עציצים ומצעים', 'טיפול והזנה', 'כלי גינון'],
+    bannerSubject:
+      'a bright city balcony corner in raw concrete and pale microcement, several potted green '
+      + 'plants at the edges casting crisp graphic leaf shadows across the empty middle',
+    logoSubject: 'a single stylised sprout with two leaves in fresh green on a pale concrete ground',
+    /** URBAN, and that word is doing the work. שקמה is already the warm-interior store, so a
+     *  nursery shot on travertine and oak would read as the same shop with plants in it. Concrete,
+     *  hard graphic daylight and sharp leaf shadows are a different world, and they are also the
+     *  honest setting for a משתלה אורבנית — the customer's balcony, not a farmhouse. Living green
+     *  is the only saturated colour anywhere in the four catalogs, which is what makes this store
+     *  read instantly as a different kind of business. */
+    artDirection:
+      'a living plant or gardening object photographed in a bright modern urban setting, resting on '
+      + 'raw concrete, pale microcement or a simple painted balcony ledge, strong directional '
+      + 'daylight throwing crisp graphic leaf shadows, terracotta and stoneware pots, fresh living '
+      + 'green as the only saturated colour in an otherwise muted concrete and clay palette, '
+      + 'sharp focus, the plant clearly the single subject and fully in frame with generous margin',
+  },
 ];
 
 /** The full prompt for one product image. Composed here rather than at either
  *  call site so the two never drift, and so the negative clause can never be
  *  forgotten on a new caller — that omission is what puts a brand logo into a
  *  picture nobody looks at again before it ships. */
+/** The clause that makes the picture answerable to the COPY.
+ *
+ *  Found on the first real batch: the subject said "a midi A-line dress" and the model returned a
+ *  floor-length maxi — beautiful, and wrong next to a Hebrew description that says the hem falls
+ *  below the knee. On a demo store nobody measures a hem, but a listing whose photograph
+ *  contradicts its own text is exactly the amateurish tell this catalog exists to avoid, and it
+ *  costs one sentence to ask for. Applies to products only; a banner has nothing to contradict. */
+const FIDELITY = 'render exactly what is described — the stated length, cut, material and colour, '
+  + 'no substitutions and no embellishments beyond the description';
+
 export function imagePrompt(store, subject) {
-  return `${subject}. ${store.artDirection}. ${REGION_DIRECTION}. ${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
+  return `${subject}. ${FIDELITY}. ${store.artDirection}. ${REGION_DIRECTION}. `
+    + `${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
 }
 
 /** The store's own two brand images. Same art direction as its products — that is

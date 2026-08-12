@@ -32,7 +32,12 @@ const COLOR_TECH = { name: 'צבע', options: ['שחור', 'לבן', 'גרפיט
 const STORAGE = { name: 'נפח', options: ['512GB', '1TB', '2TB'] };
 const SIZE_TECH = { name: 'גודל', options: ['13-14 אינץ׳', '15-16 אינץ׳'] };
 
+/** A nursery sizes a live plant by the pot it ships in, not by S/M/L — that diameter is the actual
+ *  trade convention here and it is what decides both the price and the shipping box. */
+const SIZE_POT = { name: 'קוטר עציץ', options: ['12 ס״מ', '17 ס״מ', '22 ס״מ'] };
+
 export const VARIANT_PRESETS = {
+  potSize: [SIZE_POT],
   apparel: [SIZE_APPAREL, COLOR_WARM],
   shoes: [SIZE_SHOES, COLOR_SHOES],
   colorOnly: [COLOR_BAGS],
