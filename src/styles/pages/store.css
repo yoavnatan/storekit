@@ -223,43 +223,6 @@ body:has(.site-header.is-stuck) .store-banner {
      that makes the ordinary case worse. */
 }
 
-/* ONE MEASURE FOR THE WHOLE IDENTITY COLUMN, and it lives on the column rather than on any of the
-   things inside it. The container runs ~1150px at desktop, which is not a reading width for a
-   paragraph of the seller's prose — unbounded, the description printed as a single 1100px line —
-   and a card that wide reads as a full-bleed strip rather than as an object.
-   Capping the COLUMN and not the card is what keeps the store name, the card, the sale strip and
-   the actions row on one edge — a cap on the card alone leaves everything around it running to the
-   full container, which is the same loose page the card was added to fix, one element out. */
-.store-banner__info { max-width: 48rem; }
-
-/* THE STORE-INFO CARD — the store's own words, and the sale strip's twin.
-   The two are deliberately one family (the markup comment in [storeSlug]/index.astro carries the
-   reasoning); the ONLY thing that differs between them is the hue of the inline-start edge.
-
-   `--color-bg` on `--color-surface`, not the other way round: the banner section is white, so the
-   card has to be the page grey to be a card at all — a white fill would be invisible and a shadow
-   would make it float, which it does not (elevation rule, memory `project_tactile_depth_expansion`:
-   in-flow gets a border, depth is for hover).
-
-   The edge is a BORDER, not a `::before` bar, and that is load-bearing rather than shorthand: the
-   details dropdown inside is `position:absolute` and escapes the card, so the `overflow:hidden` a
-   pseudo-element would need in order to be clipped to the radius would also clip the open dropdown
-   to a few px tall. A border follows the radius for free and clips nothing. */
-.store-info {
-  margin-top: 0.25rem;
-  padding: 0.9rem 1.15rem;
-  border: 1px solid var(--color-border);
-  border-inline-start: 3px solid var(--color-primary);
-  border-radius: var(--radius);
-  background: var(--color-bg);
-}
-
-/* The tagline's own 0.5rem top margin is the gap under the store NAME, which it no longer sits
-   under — inside the card that margin would print as uneven padding at the top edge. Written as
-   :first-child rather than on `.store-tagline` because the card's first child is whichever of the
-   three parts the store happens to have. */
-.store-info > :first-child { margin-top: 0; }
-
 .store-tagline {
   margin: 0.5rem 0 0;
   font-size: clamp(1rem, 2.2vw, 1.15rem);
@@ -287,20 +250,6 @@ body:has(.site-header.is-stuck) .store-banner {
    it floating over the page instead of pushing the product grid down when
    opened. */
 .store-details { position: relative; margin-top: 0.65rem; }
-
-/* Inside the card the disclosure is a FOOTER ROW, so it gets the hairline that separates it from
-   the prose above — the same separator the sale strip already draws between its figure and its
-   copy, in the same `--color-border`.
-   `:not(:first-child)` because address/hours can be the only thing a store filled in: a rule
-   drawn above nothing is a line hanging off the top padding.
-   The dropdown it opens stays `position:absolute` — see .store-details__content. It still floats
-   over the page rather than pushing the product grid down, and now it is anchored to the card's
-   text edge instead of to the raw container. */
-.store-info .store-details:not(:first-child) {
-  margin-top: 0.8rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--color-border);
-}
 
 .store-details__summary {
   display: inline-flex;
