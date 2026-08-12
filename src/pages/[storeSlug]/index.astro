@@ -268,8 +268,13 @@ const onCustomDomain = shopStore.customDomain?.status === 'active';
 const dashboardHref = onCustomDomain ? `${platform.url}/seller/dashboard` : '/seller/dashboard';
 
 const showAddress = !!shopStore.addressVisible && !!shopStore.address;
+// The description is suppressed when it merely repeats the tagline. Hoisted out of the markup
+// because `.store-info` must render NOTHING when all three of its parts are absent — a box with
+// only its own padding in it is worse than no box.
+const showDesc = !!shopStore.description && shopStore.description !== shopStore.tagline;
 const showHours = !!shopStore.hoursVisible && !!shopStore.hours;
 const showDetails = showAddress || showHours;
+const hasStoreInfo = !!shopStore.tagline || showDesc || showDetails;
 const hoursRows = showHours && shopStore.hours ? formatStoreHours(shopStore.hours, t.store.hoursDay, t.store.hoursClosed) : null;
 const mapsUrl = showAddress && shopStore.address ? googleMapsSearchUrl(shopStore.address) : null;
 
@@ -535,10 +540,61 @@ const bannerPreload = !isDemo && shopStore.bannerImage
               : <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />}
             <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
           </div>
-          {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
-            {shopStore.description && shopStore.description !== shopStore.tagline && (
-              <p class="store-desc" dir={dir}>{shopStore.description}</p>
-            )}
+          {/* EVERYTHING THE STORE SAYS ABOUT ITSELF, IN ONE BOX (owner, 2026-08-12).
+              Tagline, description and the address/hours disclosure are one object, so they get one
+              container: white, the site's hairline, the site's radius — `.card`'s own language, not
+              a new one. It sits on the banner's white ground, so the bounding line IS the container;
+              there is no fill to see and none is wanted.
+              It spans the full container width. A capped measure was tried first and rejected by the
+              owner in the same breath as the box itself: narrower than everything around it, the
+              block read as unrelated to the page rather than as part of it.
+              The green rule belongs to the SALE alone (utils.css `.store-sale::before`). This box
+              carries no colour at all — two boxes in one language, and the one with something to
+              announce is the only one that is marked.
+              The identity row (avatar + h1) stays out: the name is the page's heading, not one of
+              the store's remarks about itself. */}
+          {hasStoreInfo && (
+            <div class="store-info" dir={dir}>
+              {shopStore.tagline && <p class="store-tagline">{shopStore.tagline}</p>}
+              {showDesc && <p class="store-desc">{shopStore.description}</p>}
+              {showDetails && (
+                <details class="store-details">
+                  <summary class="store-details__summary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {t.store.moreDetails}
+                    <svg class="store-details__chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </summary>
+                  <div class="store-details__content">
+                    {showAddress && (
+                      <a
+                        class:list={['store-details__item', { 'store-details__item--link': !!mapsUrl }]}
+                        href={mapsUrl || undefined}
+                        target={mapsUrl ? '_blank' : undefined}
+                        rel={mapsUrl ? 'noopener noreferrer' : undefined}
+                        aria-label={mapsUrl ? t.store.viewOnMap : undefined}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        {shopStore.address}
+                      </a>
+                    )}
+                    {hoursRows && (
+                      <div class="store-details__item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:0.15rem"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <ul class="store-details__hours-list min-w-[11rem]">
+                          {hoursRows.map((row) => (
+                            <li class="flex items-baseline justify-between gap-5">
+                              <span class="whitespace-nowrap">{row.label}</span>
+                              <span class="whitespace-nowrap tabular-nums text-[var(--color-text)]" dir="ltr">{row.value}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
 
             {/* AFTER the store's own words, never between them. It sat between the name and the
                 tagline, which split the one thing this block exists to say — a store's name and its
@@ -556,48 +612,10 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 while browsing; nothing downstream may assume it is still visible. Making it present
                 during browsing would need a real addition (a sticky bar, or a second mark at the head
                 of the catalog), not a tweak. */}
-            {/* `mt-4` (1rem) because the measured gap was 0px — `.store-desc`'s margin-bottom is 0 and
-                the strip carries no margin of its own, so they were touching. 1rem matches
-                `.store-banner__actions` below rather than the 0.5rem the two paragraphs use: those
-                are lines of one text block, this is a separate object and has to read as one. */}
-            <StoreSaleBanner sale={shopStore.sale} dir={dir} scopeLabel={saleScopeLabel} class="mt-4" />
-
-            {showDetails && (
-              <details class="store-details" dir={dir}>
-                <summary class="store-details__summary">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  {t.store.moreDetails}
-                  <svg class="store-details__chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-                </summary>
-                <div class="store-details__content">
-                  {showAddress && (
-                    <a
-                      class:list={['store-details__item', { 'store-details__item--link': !!mapsUrl }]}
-                      href={mapsUrl || undefined}
-                      target={mapsUrl ? '_blank' : undefined}
-                      rel={mapsUrl ? 'noopener noreferrer' : undefined}
-                      aria-label={mapsUrl ? t.store.viewOnMap : undefined}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      {shopStore.address}
-                    </a>
-                  )}
-                  {hoursRows && (
-                    <div class="store-details__item">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:0.15rem"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                      <ul class="store-details__hours-list min-w-[11rem]">
-                        {hoursRows.map((row) => (
-                          <li class="flex items-baseline justify-between gap-5">
-                            <span class="whitespace-nowrap">{row.label}</span>
-                            <span class="whitespace-nowrap tabular-nums text-[var(--color-text)]" dir="ltr">{row.value}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </details>
-            )}
+            {/* `mt-3` (0.75rem) is the gap between two BOXES now, not between running text and a
+                box. The old 1rem was sized against a loose paragraph above with a 0 bottom margin;
+                between two containers of the same family it read as two unrelated blocks. */}
+            <StoreSaleBanner sale={shopStore.sale} dir={dir} scopeLabel={saleScopeLabel} class="mt-3" />
 
             <!-- Actions row -->
             <div class="store-banner__actions">

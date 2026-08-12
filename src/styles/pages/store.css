@@ -223,6 +223,31 @@ body:has(.site-header.is-stuck) .store-banner {
      that makes the ordinary case worse. */
 }
 
+/* THE STORE-INFO BOX — the store's own words, bounded.
+   Same box as `.store-sale` (utils.css) down to the border weight and the radius, because the two
+   are read one under the other and a 1px/1.5px disagreement between them is visible. The ONE
+   difference is that the sale carries a green rule and this does not: the mark belongs to the thing
+   with something to announce, and a second coloured edge here would spend the sale's green on a
+   box that is only telling you where the shop is.
+   White on the banner's white, so the bounding line is the whole container — that is deliberate and
+   is what "קו תוחם בשפה של האתר" asked for. A grey fill was tried first and rejected.
+   No shadow: it is in flow, not floating (elevation rule, base/tokens.css). No max-width: capped
+   narrower than the page it sits in, it read as unrelated to the page — also rejected, same round.
+   Not converted to utilities: `.store-info > :first-child` selects whichever of the three parts a
+   store happens to have, which has no utility form, and keeping the box's other declarations here
+   is what lets the pair above be stated in one place. */
+.store-info {
+  margin-top: 0.25rem;
+  padding: 0.9rem 1.1rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+/* The tagline's 0.5rem top margin is the gap under the store NAME, which it no longer sits under —
+   inside the box that margin prints as uneven top padding. */
+.store-info > :first-child { margin-top: 0; }
+
 .store-tagline {
   margin: 0.5rem 0 0;
   font-size: clamp(1rem, 2.2vw, 1.15rem);
@@ -250,6 +275,18 @@ body:has(.site-header.is-stuck) .store-banner {
    it floating over the page instead of pushing the product grid down when
    opened. */
 .store-details { position: relative; margin-top: 0.65rem; }
+
+/* Inside the box the disclosure is a FOOTER ROW, so a hairline separates it from the prose above.
+   `:not(:first-child)` because address/hours can be the only thing a store filled in, and a rule
+   drawn above nothing is a line hanging off the top padding.
+   The dropdown stays `position:absolute` (see .store-details__content) — it still floats over the
+   page instead of pushing the product grid down, and the box deliberately has NO `overflow:hidden`
+   so it is not clipped to a few px. */
+.store-info .store-details:not(:first-child) {
+  margin-top: 0.8rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--color-border);
+}
 
 .store-details__summary {
   display: inline-flex;
