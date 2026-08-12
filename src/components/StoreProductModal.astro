@@ -755,7 +755,13 @@ const i18n = {
     const pmWishBtn  = pmFooter?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
     const pmWishLbl  = pmFooter?.querySelector<HTMLElement>('.pm-wish-label');
     pmWishBtn?.addEventListener('click', () => {
-      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl ? cdnSrc(mainImgUrl) : '', storeSlug, storeName, stock });
+      const nowActive = toggleWishlist({
+        slug, name, price, image: mainImgUrl ? cdnSrc(mainImgUrl) : '', storeSlug, storeName, stock,
+        // The modal is looking at the product's own dimensions right now, so this is free — and it
+        // is the surface most likely to be where someone hearts a garment, which is exactly the
+        // case the drawer must not offer a bare "add to cart" for.
+        hasVariants: pmVariants.length > 0,
+      });
       const svg = pmWishBtn.querySelector<SVGElement>('svg');
       if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
       pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';

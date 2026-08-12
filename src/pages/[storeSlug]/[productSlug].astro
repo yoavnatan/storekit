@@ -1630,6 +1630,9 @@ const pmI18n = {
         storeSlug: wishlistBtn.dataset.wishlistStoreSlug ?? '',
         storeName: wishlistBtn.dataset.wishlistStoreName ?? '',
         stock: wishlistBtn.dataset.wishlistStock !== undefined ? Number(wishlistBtn.dataset.wishlistStock) : undefined,
+        // This page already knows the product's dimensions, so the flag is free here. The drawer
+        // uses it to offer "choose options" instead of an add that the checkout would refuse.
+        hasVariants: pageVariants.length > 0,
       };
       const nowActive = toggleWishlist(item);
       wishlistBtn.dataset.wishlisted = String(nowActive);

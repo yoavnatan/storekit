@@ -9,7 +9,6 @@ import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice, storeHeaderLogo } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
-import { getDemoStores } from '../../lib/stores.js';
 import { isStoreReady } from '../../lib/store-readiness.js';
 import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
@@ -117,9 +116,10 @@ const storeReady = isStoreReady({ visibleProductCount: allProducts.length });
 // real SEO. It's also out of the sitemap and the product feed (see
 // getIndexableStores), so this is the last surface that could leak it.
 const isDemo = isDemoStore(shopStore);
-// Position in the showcase set, which is what picks the banner's colour — so the
-// three of them never come out the same shade (see StoreDemoBanner).
-const demoIndex = isDemo ? Math.max(0, (await getDemoStores()).findIndex((s) => s.id === shopStore.id)) : 0;
+// `demoIndex` used to live here: it read EVERY demo store out of the database on every showcase
+// page load, purely to pick which of five palette hues the old generated banner should use. The
+// banner now shows the store's own photograph and its own colours, so the query bought nothing and
+// is gone — along with the getDemoStores import that existed only to serve it (2026-08-12).
 // Quiet per-product label for a showcase store. Every product in such a store is
 // one, so this is a muted line, not the pill the STORE gets — the same markup has
 // to exist in the JS card renderer further down (SSR/AJAX parity).
@@ -465,16 +465,24 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         contiguous opaque flow (white details → grey products, no gap), so the
         image is the single thing the curtain covers — the details are never
         covered, they just scroll past. */}
-    <!-- A showcase store never uses a photo banner (see StoreDemoBanner) — the
-         generated wordmark takes the identical 3/1 wrap, so the curtain-scroll
-         geometry above is unchanged. The comment sits OUTSIDE the expression on
-         purpose: Astro's compiler rejects an HTML comment as the first child
-         right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
+    <!-- A showcase store DOES use a photo banner now (2026-08-12) — its own generated background,
+         with the store name drawn over it as vector text. It goes through StoreDemoBanner rather
+         than the branch below only because of that overlay; the picture, the 3/1 wrap and the cdn
+         helpers are identical, so the curtain-scroll geometry above is unchanged either way. The
+         comment sits OUTSIDE the expression on purpose: Astro's compiler rejects an HTML comment as
+         the first child right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
     {isDemo ? (
       <div class="store-banner-pin">
         <div class="container">
           <div class="store-banner__image-wrap">
-            <StoreDemoBanner slug={shopStore.slug} index={demoIndex} />
+            <StoreDemoBanner
+              slug={shopStore.slug}
+              name={shopStore.name}
+              tagline={shopStore.tagline}
+              bannerImage={shopStore.bannerImage}
+              colors={shopStore.colors}
+              dir={dir}
+            />
           </div>
         </div>
       </div>
@@ -1181,6 +1189,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         storeSlug: btn.dataset.wishlistStoreSlug ?? '',
         storeName: btn.dataset.wishlistStoreName ?? '',
         stock: btn.dataset.wishlistStock !== undefined ? Number(btn.dataset.wishlistStock) : undefined,
+        // Read off the CARD rather than duplicated onto the heart: the card already carries
+        // `data-variants` for the quick-view, and a second copy of the same JSON on a sibling
+        // element is the kind of duplication that goes stale on one side only. Works for both the
+        // server-rendered cards and the ones "טען עוד" injects, since both emit the attribute.
+        hasVariants: !!btn.closest<HTMLElement>('[data-variants]'),
       };
       const nowActive = toggleWishlist(item);
       btn.dataset.wishlisted = String(nowActive);
