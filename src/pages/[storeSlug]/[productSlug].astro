@@ -657,7 +657,13 @@ const pmI18n = {
               <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
                 {lang === 'he' ? 'תיאור המוצר' : 'Description'}
               </p>
-              <p dir="auto" id="product-desc" class="text-base leading-relaxed" style="color:var(--color-muted);text-align:justify;overflow-wrap:break-word">{product.description}</p>
+              {/* `whitespace-pre-line`: the description is a plain textarea, so a seller who
+                  types paragraphs gets `\n\n` in the field. ProductQuickView has always
+                  honoured that and this page did not — the same value rendered as paragraphs
+                  in the modal and as one run-on block on the product page itself, which is the
+                  more important of the two. Same renderer-drift class as
+                  memory `project_client_renderer_i18n_drift`. */}
+              <p dir="auto" id="product-desc" class="text-base leading-relaxed whitespace-pre-line" style="color:var(--color-muted);text-align:justify;overflow-wrap:break-word">{product.description}</p>
             </div>
           )}
 
