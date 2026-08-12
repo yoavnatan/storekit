@@ -808,7 +808,34 @@ textarea.input { resize: none; }
   padding-block: 0.75rem;
   vertical-align: middle;
   cursor: pointer;
+  /* Anchors .product-seo-gauge below. This cell is the only place in the row that can hold a
+     marker for free: it is fixed-width at every breakpoint (46px here, a whole card-height grid
+     area on the ≤640px card), so an absolutely-positioned badge inside it changes no column
+     width, no row height, and cannot push the mobile card to a new line. */
+  position: relative;
 }
+
+/* The row's search-visibility gauge (lib/product-seo-field.ts#productSeoRowGaugeHtml) — shown
+   only on listings that need attention, pinned to the thumbnail's bottom-start corner. It sits
+   ON the photo rather than beside it because "beside" means width this table does not have; the
+   surface pill keeps it legible over any image, and it lands in empty space anyway on the case
+   it flags most often (no photo at all). No pointer rules: the whole cell is one click target
+   (select the row) and the gauge deliberately does not carve a second behaviour out of it. */
+.product-seo-gauge {
+  position: absolute;
+  inset-inline-start: 0.1rem;
+  bottom: 0.35rem;
+  display: inline-flex;
+  padding: 1px 2px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  line-height: 0;
+}
+/* A meter fills from the reading edge, so the arc mirrors with the page — same direction the
+   panel's linear bar gets for free from being a flow-relative width. */
+[dir="rtl"] .product-seo-gauge > svg { transform: scaleX(-1); }
+
 .thumb-wrap {
   position: relative;
   width: 42px;
@@ -1041,6 +1068,17 @@ textarea.input { resize: none; }
     display: flex; align-items: center; justify-content: center;
     height: 100%;
   }
+  /* In the table this cell is a fixed 46px, but here it is a grid area sized from its own content,
+     and a product with no photo puts NOTHING in it — so it collapses to zero and the absolutely
+     positioned gauge inside it hangs over the checkbox beside it (measured at 375px: cell width 0).
+     Reserve the badge's own width, and ONLY when a badge is there, so an unmarked image-less row
+     keeps collapsing exactly as it does today and the card gains no width for a row with nothing to
+     say. Specificity has to clear the `min-width: 0` this same block puts on every cell below —
+     that rule is what stops nowrap cells handing the grid an unshrinkable floor, and it is right;
+     this is the one cell that has a real minimum. 29px = the badge's own 27 (21px arc + 2px padding
+     + 1px border each side) plus the 0.1rem it is inset by, so it lands fully inside the cell
+     instead of 1.6px over the far edge. */
+  .products-table tr[data-product-display] .thumb-col:has(.product-seo-gauge) { min-width: 29px; }
   .products-table tr[data-product-display] .name-col {
     grid-area: name;
     align-self: center;

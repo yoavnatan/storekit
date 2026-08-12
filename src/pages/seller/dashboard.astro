@@ -24,10 +24,12 @@ import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro'
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
-import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-field.js';
-// `productSeoInputFrom` went with the edit rows — the only panel this page still renders is the
-// ADD form's, which starts from a product that does not exist yet (`EMPTY_PRODUCT_SEO` below).
-import type { ProductSeoInput } from '../../lib/product-seo-hints.js';
+import { productSeoPanelHtml, productSeoLabels, productSeoRowGaugeHtml } from '../../lib/product-seo-field.js';
+// The only PANEL this page renders is the ADD form's, which starts from a product that does not
+// exist yet (`EMPTY_PRODUCT_SEO` below) — the edit rows build their own. `productSeoInputFrom` is
+// back for the per-row gauge in the table's thumbnail cell, which is rendered for every listed
+// product on first paint (products.ts#buildDisplayRow renders the same thing for AJAX pages).
+import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
@@ -1667,7 +1669,16 @@ const orderStatusColors: Record<string, string> = {
                     declared width is the column's REAL width rather than a minimum, and an
                     inline 2rem (narrower than a 4-digit row number) beats any stylesheet. */}
                 <th class="num row-num pe-[0.2rem]">#</th>
-                <th class="thumb-col"></th>
+                {/* The gauge column's header. It carries no label — the column shows a photo, not a
+                    field — but it is where the search-visibility filter belongs: directly above the
+                    marks it selects. On desktop the toolbar's own filter pill is hidden (filtering
+                    lives in these headers), so without this funnel the column would be markable and
+                    unfindable. Costs no width: thumb-col is a fixed 46px and the button is 16px. */}
+                <th class="thumb-col">
+                  <button type="button" class="combo-filter-btn" data-filter-funnel-col="seo" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.filterColSeo ?? 'נראות בחיפוש'}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  </button>
+                </th>
                 <th class="name-col">
                   <button type="button" class="sort-btn" data-sort-col="name" aria-label={`${d.sortByLabel} ${d.colName}`}><span class="sort-btn__label">{d.colName}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
@@ -1721,6 +1732,9 @@ const orderStatusColors: Record<string, string> = {
                     <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
                       {p.images?.[0] && <span class="thumb-wrap" data-skeleton><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" /></span>}
+                      {/* Search-visibility gauge — renders nothing unless this listing needs attention.
+                          Inside the thumbnail cell on purpose: see productSeoRowGaugeHtml's note. */}
+                      <Fragment set:html={productSeoRowGaugeHtml(productSeoInputFrom(p), seoLabels)} />
                     </td>
                     <td class="name-col">
                       <span class="product-name cursor-text">{p.name}</span>

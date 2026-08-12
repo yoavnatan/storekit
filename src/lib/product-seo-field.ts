@@ -19,6 +19,8 @@ import { toSlug } from './url-base.js';
 import {
   productSeoHints,
   productSeoScore,
+  needsSeoAttention,
+  openProductSeoHints,
   type ProductSeoHintId,
   type ProductSeoInput,
   type ProductSeoLevel,
@@ -34,6 +36,8 @@ export interface ProductSeoLabels {
   previewLabel: string;
   /** Shown in the preview when the seller hasn't written a description yet. */
   previewEmptyDesc: string;
+  /** Prefix for the row gauge's tooltip, which then lists the open items: "Missing: Photo · …". */
+  missing: string;
   /** Each tip is a short LABEL plus the explanation. One line of bare prose per item read as a
    *  nag; naming the field first tells the seller what it is about before why it matters. */
   hint: Record<ProductSeoHintId, { label: string; text: string }>;
@@ -45,6 +49,7 @@ const FALLBACK: ProductSeoLabels = {
   level: { weak: 'Basic', partial: 'Good', strong: 'Excellent' },
   previewLabel: 'How it looks in search',
   previewEmptyDesc: 'No description yet',
+  missing: 'Missing',
   hint: {
     image: { label: 'Photo (required)', text: 'Without one it cannot be advertised' },
     name: { label: 'A specific name', text: 'What it is and who it suits — briefly' },
@@ -70,6 +75,7 @@ export function productSeoLabels(d: Readonly<Record<string, unknown>>): ProductS
     },
     previewLabel: str(d.seoPreviewLabel, FALLBACK.previewLabel),
     previewEmptyDesc: str(d.seoPreviewEmptyDesc, FALLBACK.previewEmptyDesc),
+    missing: str(d.seoMissingLabel, FALLBACK.missing),
     hint: {
       image: { label: str(d.seoLabelImage, FALLBACK.hint.image.label), text: str(d.seoHintImage, FALLBACK.hint.image.text) },
       name: { label: str(d.seoLabelName, FALLBACK.hint.name.label), text: str(d.seoHintName, FALLBACK.hint.name.text) },
@@ -205,6 +211,54 @@ function productSeoMeterHtml(view: ProductSeoMeterView, l: ProductSeoLabels): st
     <div aria-hidden="true" style="margin-top:0.45rem;height:4px;border-radius:999px;background:var(--color-bg);overflow:hidden">
       <div data-seo-meter style="height:100%;border-radius:999px;width:${view.percent}%;background-color:${view.color};transition:width 0.3s ease-out,background-color 0.3s ease-out"></div>
     </div>`;
+}
+
+/** Length of the semicircle below (π × r, r = 9), pinned as a constant so the dash maths can't
+ *  drift from the path if the arc is ever resized. */
+const GAUGE_ARC = (Math.PI * 9).toFixed(3);
+const GAUGE_PATH = 'M3 13A9 9 0 0 1 21 13';
+
+/**
+ * The products-table row marker: a small gauge, filled to the listing's score and coloured by its
+ * band — the same score and the same three colours as the panel's meter, because it is the same
+ * fact seen from the list.
+ *
+ * **It renders for `weak` rows ONLY, and that is the whole design.** A marker on every row is
+ * decoration (see needsSeoAttention's own note: a catalog sitting at 4-of-5 would light up
+ * completely and stop being read), so presence is the signal and the fill is the detail. It also
+ * means a nearly-full amber gauge is a real state, not a bug: a listing that has everything except
+ * the photo scores 4-of-5 and is still weak, because without an image it cannot be advertised at
+ * all. The tooltip names what is open, so the fill is never the only thing that speaks.
+ *
+ * **Where it goes matters as much as what it is.** It belongs in the THUMBNAIL cell — the one
+ * fixed-width column in the table, empty exactly when the commonest fault (no photo) is present,
+ * and on mobile a cell that already spans the card's full height. Rendered there it adds no
+ * column, no row, and no height at any width. The previous attempt at this marker lived in
+ * `.name-col` (13% under `table-layout: fixed`) and was removed on 2026-08-04 because a text pill
+ * wrapped to a second line and read as a fault; do not move it back there.
+ *
+ * No click handler of its own: the thumbnail cell already toggles the row's checkbox, and a
+ * marker that quietly changed what a click does in half a cell is worse than one that doesn't.
+ * The full hint list is one row-open away, in the panel this gauge summarises.
+ */
+export function productSeoRowGaugeHtml(input: ProductSeoInput, l: ProductSeoLabels): string {
+  if (!needsSeoAttention(input)) return '';
+  const score = productSeoScore(input);
+  const open = openProductSeoHints(input).map((h) => l.hint[h.id].label).join(' · ');
+  const label = `${l.missing}: ${open}`;
+  // Dash offset, not a shortened path: one geometry for track and fill means they can never
+  // disagree about where the arc runs.
+  const offset = ((Number(GAUGE_ARC) * (100 - score.percent)) / 100).toFixed(3);
+  return `<span class="product-seo-gauge" role="img" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-seo-level="${score.level}">`
+    // Size pinned INLINE, all three properties, against reset.css's `img, picture, svg, video`
+    // rule: `height: auto` beats a bare height attribute and flattens the arc to a hairline, and
+    // `max-width: 100%` resolves against this badge's containing block — which on the ≤640px card
+    // is a thumbnail cell that collapses to ZERO width when the product has no photo, i.e. exactly
+    // the case the gauge is most often marking. Measured at 375px before the fix: svg width 0.
+    + `<svg viewBox="0 0 24 16" width="21" height="14" style="width:21px;height:14px;max-width:none;display:block" fill="none" aria-hidden="true">`
+    + `<path d="${GAUGE_PATH}" stroke="var(--color-border)" stroke-width="3" stroke-linecap="round"/>`
+    + `<path d="${GAUGE_PATH}" stroke="${LEVEL_COLOR[score.level]}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC}" stroke-dashoffset="${offset}"/>`
+    + `</svg></span>`;
 }
 
 /**

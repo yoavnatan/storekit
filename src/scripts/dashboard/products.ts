@@ -18,7 +18,7 @@ import { initCategoryPicker } from './category-picker.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { suggestTags } from '../../lib/tag-suggest.js';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
-import { productSeoPanelHtml, productSeoLabels, type ProductSeoPreview } from '../../lib/product-seo-field.js';
+import { productSeoPanelHtml, productSeoLabels, productSeoRowGaugeHtml, type ProductSeoPreview } from '../../lib/product-seo-field.js';
 import { productSeoInputFrom } from '../../lib/product-seo-hints.js';
 import { refreshProductSeoPanels } from './product-seo.js';
 import { resolvePrice, type ProductDiscount, type StoreSale } from '../../lib/discounts.js';
@@ -1561,7 +1561,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.innerHTML = `
     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
     <td class="num row-num pe-[0.2rem]"></td>
-    <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap" data-skeleton><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}</td>
+    <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap" data-skeleton><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}${productSeoRowGaugeHtml(productSeoInputFrom(p), productSeoLabels(i))}</td>
     <td class="name-col">
       <span class="product-name cursor-text">${esc(p.name)}</span>
       <span class="sale-chip ms-1.5 align-middle" data-row-sale="${esc(p.id)}" dir="ltr"${rowSaleLabel(p) ? '' : ' hidden'}>${rowSaleLabel(p)}</span>
@@ -2414,6 +2414,11 @@ export async function applyPagination(): Promise<void> {
     const i = getDashI18n();
     params.set('pstock', [...stockValues].map((v) => stockKeyFromLabel(v, i)).join(','));
   }
+  const seoValues = productsFilters.get('seo');
+  if (seoValues?.size) {
+    const i = getDashI18n();
+    params.set('pseo', [...seoValues].map((v) => seoKeyFromLabel(v, i)).join(','));
+  }
 
   let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number; stockAlerts?: number };
   try {
@@ -2554,7 +2559,7 @@ export function initStickyOffsets(): void {
 // funnel, its continuous stock column only gets sort). Add more column keys
 // here (and a matching case in getDistinctFilterValues + filterAndSortSellerProducts
 // in seller-products-query.ts) if a future column turns out to warrant it.
-const PRODUCT_FILTER_COLUMNS = ['category', 'stock'] as const;
+const PRODUCT_FILTER_COLUMNS = ['category', 'stock', 'seo'] as const;
 
 // Stock-status filter (CURRENT_TASK.md item 3): three synthetic buckets over the
 // numeric stock column so a seller can isolate just the problem inventory.
@@ -2573,9 +2578,26 @@ function stockKeyFromLabel(label: string, i: Record<string, string>): string {
   return 'ok';
 }
 
+// Search-visibility filter — the discovery half of the row gauge: the gauge marks a thin listing,
+// this finds all of them across every page. Values are the meter's OWN band words (seoLevelWeak/
+// Partial/Strong), not a second vocabulary, so "בסיסי" means the same thing in the filter, on the
+// gauge and in the product panel.
+const SEO_FILTER_KEYS = ['weak', 'partial', 'strong'] as const;
+function seoFilterLabel(key: string, i: Record<string, string>): string {
+  return key === 'weak' ? (i.seoLevelWeak ?? 'בסיסי')
+    : key === 'partial' ? (i.seoLevelPartial ?? 'טוב')
+    : (i.seoLevelStrong ?? 'מצוין');
+}
+function seoKeyFromLabel(label: string, i: Record<string, string>): string {
+  if (label === seoFilterLabel('weak', i)) return 'weak';
+  if (label === seoFilterLabel('partial', i)) return 'partial';
+  return 'strong';
+}
+
 function productFilterColumnLabel(col: string, i: Record<string, string>): string {
   if (col === 'category') return i.categoryLabel ?? 'קטגוריה';
   if (col === 'stock') return i.colStock ?? 'מלאי';
+  if (col === 'seo') return i.filterColSeo ?? 'נראות בחיפוש';
   return col;
 }
 
@@ -2770,6 +2792,7 @@ function getDistinctFilterValues(col: string): string[] {
   const i = getDashI18n();
   if (col === 'category') return [...allCategoryPaths().sort(), i.filterNoCategory ?? 'ללא קטגוריה'];
   if (col === 'stock') return STOCK_FILTER_KEYS.map((k) => stockFilterLabel(k, i));
+  if (col === 'seo') return SEO_FILTER_KEYS.map((k) => seoFilterLabel(k, i));
   return [];
 }
 

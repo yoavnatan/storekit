@@ -5,7 +5,7 @@ import { applyPagination, type ProductData } from './products.js';
 import { templateCsv } from '../../lib/csv-bulk.js';
 import type { MergedRowResult } from '../../lib/variant-csv.js';
 import type { ImportSeoAdvisory } from '../../lib/csv-import-advisory.js';
-import { csvErrorMessage, buildPreviewHtml } from './csv-preview.js';
+import { csvErrorMessage, csvDoneMessage, buildPreviewHtml } from './csv-preview.js';
 
 function getDashI18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
@@ -110,13 +110,14 @@ export function initCsvImport(): void {
       const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult & { product?: ProductData }> };
       if (!data.ok) { showStatus(i.csvImportFailed ?? 'Import failed.', true); return; }
 
-      applyResults(data.results ?? []);
+      const results = data.results ?? [];
+      applyResults(results);
       previewEl!.hidden = true;
       previewEl!.innerHTML = '';
       panelEl.hidden = true;
       pendingCsv = '';
       if (fileNameEl) fileNameEl.textContent = '';
-      showStatus(i.csvImportDone ?? 'Import complete.');
+      showStatus(csvDoneMessage(results, i.csvImportDone ?? 'Import complete.', i.csvImportSkipped ?? '{n} rows were skipped because of errors.'));
     } catch {
       showStatus(i.csvImportFailed ?? 'Import failed.', true);
     } finally {

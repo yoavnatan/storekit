@@ -9,6 +9,7 @@ import {
   MIN_SPECS,
   type ProductSeoInput,
 } from '../src/lib/product-seo-hints.js';
+import { productSeoRowGaugeHtml, productSeoLabels } from '../src/lib/product-seo-field.js';
 
 /** A listing with nothing open — every other case is this minus one thing. */
 const COMPLETE: ProductSeoInput = {
@@ -112,5 +113,49 @@ describe('productSeoScore — the editor meter', () => {
     // ad feed entirely, so a green-ish meter there would be a lie the seller acts on.
     const noImage = { ...COMPLETE, imageCount: 0 };
     expect(productSeoScore(noImage)).toMatchObject({ done: 4, percent: 80, level: 'weak' });
+  });
+});
+
+// The products-table row gauge (lib/product-seo-field.ts). It is the same verdict as the panel's
+// meter seen from the list, so what is pinned here is that it cannot say something different: it
+// appears on exactly the rows needsSeoAttention marks, and its fill is the score.
+describe('productSeoRowGaugeHtml — the table marker', () => {
+  const l = productSeoLabels({});
+  const gauge = (input: ProductSeoInput) => productSeoRowGaugeHtml(input, l);
+
+  it('renders nothing for a listing that does not need attention', () => {
+    expect(gauge(COMPLETE)).toBe('');
+    // A 4-of-5 listing is `partial`, not weak — no mark, which is the rule that keeps the whole
+    // catalogue from lighting up and the mark from becoming decoration.
+    expect(gauge({ ...COMPLETE, specCount: 0 })).toBe('');
+  });
+
+  it('marks exactly what the table filter selects as weak', () => {
+    for (const input of [
+      { ...COMPLETE, imageCount: 0 },                                    // 4 of 5, still weak
+      { ...COMPLETE, imageCount: 0, description: '', specCount: 0 },     // the CSV-import shape
+    ]) {
+      expect(needsSeoAttention(input)).toBe(true);
+      expect(gauge(input)).toContain('data-seo-level="weak"');
+    }
+  });
+
+  it('fills the arc to the score, so 4-of-5-but-no-photo does not read as empty', () => {
+    const full = Math.PI * 9;
+    const offsetOf = (html: string) => Number(/stroke-dashoffset="([\d.]+)"/.exec(html)![1]);
+    // 4 of 5 done → one fifth of the arc left unfilled.
+    expect(offsetOf(gauge({ ...COMPLETE, imageCount: 0 }))).toBeCloseTo(full * 0.2, 2);
+    // Nothing done → nothing drawn.
+    expect(offsetOf(gauge({ name: '', description: '', imageCount: 0, hasCategory: false, specCount: 0 }))).toBeCloseTo(full, 2);
+  });
+
+  it('names what is open in words — the colour is never the only signal', () => {
+    const html = gauge({ ...COMPLETE, imageCount: 0 });
+    expect(html).toContain('aria-label="Missing: Photo (required)"');
+    expect(html).toContain('title="Missing: Photo (required)"');
+  });
+
+  it('pins the svg size inline — reset.css\'s height:auto would otherwise flatten the arc', () => {
+    expect(gauge({ ...COMPLETE, imageCount: 0 })).toContain('style="width:21px;height:14px');
   });
 });

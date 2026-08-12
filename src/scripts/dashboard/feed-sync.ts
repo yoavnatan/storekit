@@ -3,7 +3,7 @@ import { showStatus } from './status.js';
 import { applyPagination } from './products.js';
 import { CSV_FIELDS, parseCsv } from '../../lib/csv-bulk.js';
 import { guessMapping, buildCanonicalCsv, mappingStatus, mappingToRecord, type MappingEntry, type MappableKey } from '../../lib/feed-mapping.js';
-import { buildPreviewHtml, csvErrorMessage } from './csv-preview.js';
+import { buildPreviewHtml, csvErrorMessage, csvDoneMessage } from './csv-preview.js';
 import { scrollProductsPanelIntoView } from './scroll-utils.js';
 import type { MergedRowResult } from '../../lib/variant-csv.js';
 import type { ImportSeoAdvisory } from '../../lib/csv-import-advisory.js';
@@ -246,14 +246,14 @@ export function initFeedSync(): void {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, csv, commit: true }),
       });
-      const data = await res.json() as { ok: boolean };
+      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult> };
       if (!data.ok) { showStatus(i.feedSyncFailed ?? 'Failed.', true); return; }
       await saveFeedConfig(mappingToRecord(entries)); // remember this mapping for the URL pull
       applyPagination();
       previewEl!.hidden = true; previewEl!.innerHTML = '';
       mappingEl!.hidden = true; mappingEl!.innerHTML = '';
       if (fileNameEl) fileNameEl.textContent = '';
-      showStatus(i.feedSyncDone ?? 'Sync complete.');
+      showStatus(csvDoneMessage(data.results ?? [], i.feedSyncDone ?? 'Sync complete.', i.csvImportSkipped ?? '{n} rows were skipped because of errors.'));
     } catch { showStatus(i.feedSyncFailed ?? 'Failed.', true); }
     finally { btn.disabled = false; }
   }
@@ -286,12 +286,12 @@ export function initFeedSync(): void {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, commit: true }),
       });
-      const data = await res.json() as { ok: boolean; lastSyncAt?: string };
+      const data = await res.json() as { ok: boolean; lastSyncAt?: string; results?: Array<MergedRowResult> };
       if (!data.ok) { showStatus(i.feedSyncFailed ?? 'Failed.', true); return; }
       if (data.lastSyncAt) { panelEl.dataset.lastSync = data.lastSyncAt; renderLastSync(); }
       applyPagination();
       previewEl!.hidden = true; previewEl!.innerHTML = '';
-      showStatus(i.feedSyncDone ?? 'Sync complete.');
+      showStatus(csvDoneMessage(data.results ?? [], i.feedSyncDone ?? 'Sync complete.', i.csvImportSkipped ?? '{n} rows were skipped because of errors.'));
     } catch { showStatus(i.feedSyncFailed ?? 'Failed.', true); }
     finally { btn.disabled = false; }
   }
