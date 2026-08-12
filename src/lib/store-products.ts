@@ -863,6 +863,30 @@ export async function countStockAlerts(storeId: string, threshold: number): Prom
 }
 
 /**
+ * The same question as `countStockAlerts`, asked about several stores at once and answered
+ * "which of them", not "how many" — the store switcher's row dots (`seller-alerts.ts`).
+ *
+ * One statement whatever the number of stores, for the reason `getStoreSlugsWithPendingOrders`
+ * spells out beside it: a per-store loop was free while a store was a file read and is a round
+ * trip each as a query. The count itself is never wanted here — a dot does not say how many — so
+ * this is a DISTINCT rather than a GROUP BY, and it uses the same `VISIBLE` predicate and the same
+ * `p.stock <= threshold` test as the badge, so a store cannot show a dot with no badge under it.
+ */
+export async function getStoreIdsWithStockAlerts(
+  storeIds: string[],
+  threshold: number,
+): Promise<Set<string>> {
+  const ids = storeIds.filter(isUuid);
+  if (!ids.length) return new Set();
+  const found = await rows<{ store_id: string }>(
+    `SELECT DISTINCT p.store_id FROM store_products p
+      WHERE p.store_id = ANY($1::uuid[]) AND ${VISIBLE} AND p.stock <= $2`,
+    [ids, threshold],
+  );
+  return new Set(found.map((r) => r.store_id));
+}
+
+/**
  * The columns an update may touch, keyed by the field name a caller passes.
  *
  * **Built from `Object.keys(updates)`, never from the values** — the same rule `updateStore`

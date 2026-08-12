@@ -68,7 +68,7 @@ import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMess
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { formatAgorot, fromAgorot } from '../../lib/money.js';
-import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
+import { getSellerStoreAlerts, type StoreAlertLevel } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath, type StoreCategory } from '../../lib/store-categories.js';
@@ -78,6 +78,7 @@ import { getViewStatsForStore, EMPTY_VIEW_STATS } from '../../lib/store-pageview
 import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.js';
 import { storeBaselineStatus } from '../../lib/ad-baseline.js';
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
+import { getStoreIdsWithStalledCampaigns } from '../../lib/ad-campaigns.js';
 import { boostFeePercent, commissionPercentForTier } from '../../lib/pricing.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote } from '../../lib/ad-scope-label.js';
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
@@ -465,7 +466,7 @@ const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1
 // `wishlistCounts` is scoped to this store, not the whole platform: it used to be every wishlist
 // count that existed, read in order to label the products of one shop.
 const [
-  productsUnsorted, storeCategoryList, wishlistCounts, purchasedCounts, storeFavoriteCount, stockAlertCount, productCounts,
+  productsUnsorted, storeCategoryList, wishlistCounts, purchasedCounts, storeFavoriteCount, stockAlertCount, productCounts, stalledAdStoreIds,
 ] = store
   ? await Promise.all([
       only(CATALOG_PANELS, () => getProductsByStoreId(store.id), [] as StoreProduct[]),
@@ -475,10 +476,16 @@ const [
       only(['overview'], () => countFavoriteStores(store.id), 0),
       countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
       getProductCountsByStore([store.id]),
+      // Ungated for the same reason as the two above: it is the Advertising tab's dot, and a tab
+      // announces itself while you are looking at another one. It is the current store's slice of
+      // exactly the query the store switcher runs across every store (`seller-alerts.ts`), so the
+      // tab dot and the switcher row dot can never claim different things about the same shop.
+      getStoreIdsWithStalledCampaigns([store.id]),
     ])
   // The no-store fallback, typed the same as the resolved tuple so the readers below see arrays
   // rather than `readonly []` — a seller who has not opened a shop yet reaches this page too.
-  : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0, new Map<string, StoreProductCounts>()];
+  : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0, new Map<string, StoreProductCounts>(), new Set<string>()];
+const adNeedsAttention = !!store && stalledAdStoreIds.has(store.id);
 const products = [...productsUnsorted].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
@@ -825,15 +832,21 @@ const ovPayableNow = payoutAccount
 const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus, sellerOrderQuery.payoutStatus]
   .filter((v) => v.length > 0).length;
 
-// Alerts per store for store-switcher dots (pending orders or unread messages)
-const storeAlerts: Record<string, boolean> = allStores.length > 1 ? await getSellerStoreAlerts(sellerId) : {};
+// Alerts per store for store-switcher dots — EVERYTHING that shop is waiting on, at the severity
+// `seller-alerts.ts` assigns it (a person waiting = danger, a wrong state = warning). It used to be
+// orders and mail only, so a stock-out or a stopped boost in another shop was invisible until the
+// seller happened to switch to it (owner, 2026-08-12).
+const storeAlerts: Record<string, StoreAlertLevel> = allStores.length > 1 ? await getSellerStoreAlerts(sellerId) : {};
 // The header dot should point the seller TO the alert — so it only fires when
 // a store OTHER than the one currently open has something unhandled. If the
 // seller is already looking at the store with the alert, they can already
 // see it there (tab badge / order dot), so the header dot would be redundant.
-const hasAnyNonCurrentAlert = store
-  ? Object.entries(storeAlerts).some(([id, v]) => v && id !== store.id)
-  : false;
+// It carries the LOUDEST of those stores' levels, because it stands for all of them at once.
+const otherStoreLevels = store
+  ? Object.entries(storeAlerts).filter(([id]) => id !== store.id).map(([, v]) => v)
+  : [];
+const otherStoresLevel: StoreAlertLevel | null =
+  otherStoreLevels.includes('danger') ? 'danger' : otherStoreLevels.length > 0 ? 'warning' : null;
 
 const orderShippingLabels: Record<string, string> = {
   pending: d.shippingPending,
@@ -883,11 +896,11 @@ const orderStatusColors: Record<string, string> = {
                 <svg class="store-switcher__chevron text-[color:var(--color-muted)] shrink-0 mt-px [transition:transform_.2s_ease,color_.15s] group-hover:text-[color:var(--color-accent)] group-aria-expanded:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
-                {hasAnyNonCurrentAlert && (
-                  <span class="store-switcher__alert-dot" aria-label={t.dashboard.alertsDotOtherStores}></span>
+                {otherStoresLevel && (
+                  <span class="store-switcher__alert-dot" data-level={otherStoresLevel} aria-label={otherStoresLevel === 'danger' ? t.dashboard.alertsDotOtherStores : t.dashboard.alertsDotOtherStoresWarning}></span>
                 )}
               </button>
-              <ul class="absolute top-[calc(100%+0.5rem)] start-0 min-w-[200px] bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.1)] z-20 list-none m-0 p-[.35rem] [&:not([hidden])]:animate-[user-dropdown-open_130ms_cubic-bezier(0.34,1.56,0.64,1)]" id="store-switcher-menu" role="listbox" data-str-alert-dot={t.dashboard.alertsDot} data-str-alert-dot-other={t.dashboard.alertsDotOtherStores} hidden>
+              <ul class="absolute top-[calc(100%+0.5rem)] start-0 min-w-[200px] bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.1)] z-20 list-none m-0 p-[.35rem] [&:not([hidden])]:animate-[user-dropdown-open_130ms_cubic-bezier(0.34,1.56,0.64,1)]" id="store-switcher-menu" role="listbox" data-str-alert-dot={t.dashboard.alertsDot} data-str-alert-dot-other={t.dashboard.alertsDotOtherStores} data-str-alert-dot-warning={t.dashboard.alertsDotWarning} data-str-alert-dot-other-warning={t.dashboard.alertsDotOtherStoresWarning} hidden>
                 {allStores.map((s) => (
                   <li>
                     <a
@@ -903,7 +916,7 @@ const orderStatusColors: Record<string, string> = {
                       <span>{s.name}</span>
                       <span class="store-switcher__item-actions" style="display:flex;align-items:center;gap:0.35rem;flex-shrink:0">
                         {storeAlerts[s.id] && (
-                          <span class="store-switcher__item-dot" aria-label={t.dashboard.alertsDot}></span>
+                          <span class="store-switcher__item-dot" data-level={storeAlerts[s.id]} aria-label={storeAlerts[s.id] === 'danger' ? t.dashboard.alertsDot : t.dashboard.alertsDotWarning}></span>
                         )}
                         {s.id === store.id && (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
@@ -1025,7 +1038,17 @@ const orderStatusColors: Record<string, string> = {
           data-panel="advertising"
           aria-selected={initialPanel === 'advertising'}
           tabindex={initialPanel === 'advertising' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>{d.tabAdvertising}</button>
+          style="position:relative"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>{d.tabAdvertising}
+          {/* "warning", like the stock badge: the campaign has already STOPPED, so nothing is
+              being spent while it waits — but it stays stopped until the seller puts the products
+              back or uploads a photo, which is why it is a dot at all. The self-healing pause
+              (sold out) is excluded at the source, `ad-campaigns.ts#getStoreIdsWithStalledCampaigns`. */}
+          {adNeedsAttention && (
+            <span data-tab-alert="warning" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-warning);border-radius:50%" aria-label={d.adTabAttention}></span>
+          )}
+        </button>
         <button
           class={`dash-tab${initialPanel === 'messages' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -3002,22 +3025,25 @@ const orderStatusColors: Record<string, string> = {
     vertical-align: middle;
   }
 
-  /* ── Store-switcher alert dots ── */
-  .store-switcher__alert-dot {
-    display: inline-block;
-    width: 7px; height: 7px;
-    background: #ef4444;
-    border-radius: 50%;
-    flex-shrink: 0;
-    margin-inline-start: 0.15rem;
-    align-self: center;
-  }
+  /* ── Store-switcher alert dots ──
+     `data-level` is the same vocabulary the tab strip's markers use (`data-tab-alert`), set from
+     one place (lib/seller-alerts.ts): red = a person is waiting, amber = a wrong state that can
+     wait. Default red, so a dot built by JS without the attribute can never come out invisible. */
+  .store-switcher__alert-dot,
   .store-switcher__item-dot {
     display: inline-block;
     width: 7px; height: 7px;
-    background: #ef4444;
+    background: var(--color-danger);
     border-radius: 50%;
     flex-shrink: 0;
+  }
+  .store-switcher__alert-dot {
+    margin-inline-start: 0.15rem;
+    align-self: center;
+  }
+  .store-switcher__alert-dot[data-level='warning'],
+  .store-switcher__item-dot[data-level='warning'] {
+    background: var(--color-warning);
   }
 
 </style>
@@ -3296,49 +3322,119 @@ const orderStatusColors: Record<string, string> = {
   // markup, the stock-alert badge's own included.)
   wireSharedControls();
 
-  // Keeps the store-switcher title dot (and this store's own row-dot in the
-  // dropdown) in sync as orders get handled / messages get read — without a
-  // page reload. Re-derives "does the current store still have an alert"
-  // from what's actually left in the DOM (.order-new-dot / .msg-table__row--unread),
-  // since those are already kept accurate by the order/message handlers.
+  // Keeps the store-switcher title dot (and this store's own row-dot in the dropdown) in sync as
+  // orders get handled, messages get read and stock gets restocked — without a page reload.
+  //
+  // **The current store's level is read off its own TAB STRIP, and that is the whole design.** It
+  // used to count `.order-new-dot` / `.msg-table__row--unread` in the document, which are rows
+  // inside PANELS — and nine of the ten panels only arrive on the click that opens them
+  // (`fillPanel`; until then the shell carries `data-lazy`). So on any other tab those selectors
+  // match nothing whether or not the shop has pending orders, and the old code read that silence as
+  // "nothing waiting": handling an order on the Orders tab already cleared a dot that unread MAIL
+  // was holding up, and adding stock to the dot would have made the same mistake routine, since an
+  // inline stock edit re-runs this from a panel that can see neither.
+  //
+  // The strip is rendered whichever panel is open, and `orders.ts` / `messages.ts` / `products.ts`
+  // all already maintain their marker there — so it is the one surface that is both always present
+  // and always current, and each marker declares its own severity in the same vocabulary the server
+  // uses (`data-tab-alert`, lib/seller-alerts.ts). A dot in the switcher now means exactly what the
+  // seller would see on that shop's tabs, which is also what makes it impossible for the two to
+  // disagree.
+  const PER_STORE_TABS = ['tab-orders', 'tab-messages', 'tab-products', 'tab-advertising'];
+  const TAB_RANK: Record<string, number> = { danger: 2, warning: 1 };
+
+  /** The loudest live marker on this store's tabs, or null. */
+  function currentStoreTabLevel(): string | null {
+    let level: string | null = null;
+    for (const tabId of PER_STORE_TABS) {
+      // Named tabs, never the whole strip: the Payments tab's dot is the missing BANK DETAILS,
+      // which is account-wide and covers every shop at once. `seller-alerts.ts` keeps it out of the
+      // per-store map for that reason — the same flag on every row says "all of your stores" when
+      // the truth is "none of them" — and reading the strip wholesale would put it back.
+      document.querySelectorAll<HTMLElement>(`#${tabId} [data-tab-alert]`).forEach((marker) => {
+        if (marker.hidden) return;
+        const sev = marker.getAttribute('data-tab-alert');
+        if (!sev || !(sev in TAB_RANK)) return;
+        if (!level || TAB_RANK[sev] > TAB_RANK[level]) level = sev;
+      });
+    }
+    return level;
+  }
+
   function updateSwitcherAlertDot(): void {
     const switcherBtn = document.getElementById('store-switcher-btn');
     const menu        = document.getElementById('store-switcher-menu');
     if (!switcherBtn || !menu) return;
 
+    const label = (level: string, other: boolean): string => {
+      const key = other
+        ? (level === 'danger' ? menu.dataset.strAlertDotOther : menu.dataset.strAlertDotOtherWarning)
+        : (level === 'danger' ? menu.dataset.strAlertDot : menu.dataset.strAlertDotWarning);
+      return key ?? 'יש התראות';
+    };
+    // A dot that exists but declares nothing is red, matching the CSS default.
+    const levelOf = (dot: HTMLElement): string => dot.dataset.level || 'danger';
+
     const currentLink = menu.querySelector<HTMLElement>('a.store-option--current');
     if (currentLink) {
       const dotHost = currentLink.querySelector<HTMLElement>('.store-switcher__item-actions');
       const dot     = currentLink.querySelector<HTMLElement>('.store-switcher__item-dot');
-      const currentHasAlert =
-        document.querySelectorAll('.order-new-dot').length > 0 ||
-        document.querySelectorAll('.msg-table__row--unread').length > 0;
-      if (currentHasAlert && !dot && dotHost) {
+      const currentLevel = currentStoreTabLevel();
+      if (currentLevel && !dot && dotHost) {
         const newDot = document.createElement('span');
         newDot.className = 'store-switcher__item-dot';
-        // t.dashboard.alertsDot — off the menu's own data attribute, so this
-        // rebuild and the server-rendered dot above it can never disagree.
-        newDot.setAttribute('aria-label', menu.dataset.strAlertDot ?? 'יש התראות');
+        newDot.dataset.level = currentLevel;
+        // Wording off the menu's own data attributes, so this rebuild and the
+        // server-rendered dot above it can never disagree.
+        newDot.setAttribute('aria-label', label(currentLevel, false));
         dotHost.prepend(newDot);
-      } else if (!currentHasAlert && dot) {
+      } else if (currentLevel && dot && levelOf(dot) !== currentLevel) {
+        // The last pending order handled on a shop that is also low on stock demotes the dot
+        // rather than removing it — without this it would stay red over an amber fact.
+        dot.dataset.level = currentLevel;
+        dot.setAttribute('aria-label', label(currentLevel, false));
+      } else if (!currentLevel && dot) {
         dot.remove();
       }
     }
 
     // Button dot only reflects OTHER stores — the whole point is to send the
     // seller there. If it's the current store's own alert, they're already
-    // looking at it, so it's excluded here (see hasAnyNonCurrentAlert above).
-    const anyOtherAlert = Array.from(menu.querySelectorAll<HTMLElement>('.store-switcher__item-dot'))
-      .some((dot) => !dot.closest('a')?.classList.contains('store-option--current'));
+    // looking at it, so it's excluded here (see otherStoresLevel above).
+    const otherDots = Array.from(menu.querySelectorAll<HTMLElement>('.store-switcher__item-dot'))
+      .filter((dot) => !dot.closest('a')?.classList.contains('store-option--current'));
+    const otherLevel = otherDots.some((dot) => levelOf(dot) === 'danger')
+      ? 'danger'
+      : otherDots.length > 0 ? 'warning' : null;
     let btnDot = switcherBtn.querySelector<HTMLElement>('.store-switcher__alert-dot');
-    if (anyOtherAlert && !btnDot) {
+    if (otherLevel && !btnDot) {
       btnDot = document.createElement('span');
       btnDot.className = 'store-switcher__alert-dot';
-      btnDot.setAttribute('aria-label', menu.dataset.strAlertDotOther ?? 'יש התראות בחנויות אחרות');
+      btnDot.dataset.level = otherLevel;
+      btnDot.setAttribute('aria-label', label(otherLevel, true));
       switcherBtn.querySelector('.store-switcher__chevron')?.after(btnDot);
-    } else if (!anyOtherAlert && btnDot) {
+    } else if (otherLevel && btnDot && levelOf(btnDot) !== otherLevel) {
+      btnDot.dataset.level = otherLevel;
+      btnDot.setAttribute('aria-label', label(otherLevel, true));
+    } else if (!otherLevel && btnDot) {
       btnDot.remove();
     }
+  }
+
+  // The warning half of the current store's dot is read off the TAB STRIP's own markers, and the
+  // strip is written to by code that knows nothing about the switcher — `updateStockBadge` in
+  // products.ts flips the badge's `hidden` after an inline stock edit. Watching the strip instead
+  // of threading a callback through every one of those writers is what keeps the two in step, and
+  // it is the same observation `tab-alert-edges.ts` already makes for the off-screen beacon. The
+  // danger half stays on its explicit callbacks: those markers live inside the panels, not here.
+  const alertStrip = document.querySelector<HTMLElement>('.dash-tabs');
+  if (alertStrip && 'MutationObserver' in window) {
+    new MutationObserver(updateSwitcherAlertDot).observe(alertStrip, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'data-tab-alert'],
+    });
   }
 
   // ── Stage 2: one chunk per panel ─────────────────────────────────────────
