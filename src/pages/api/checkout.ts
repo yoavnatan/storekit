@@ -14,6 +14,7 @@ import { getSellerByEmail, getSellerSession } from '../../lib/seller-auth.js';
 import { removeCartLines, type CartLineRef } from '../../lib/user-carts.js';
 import { isValidEmail } from '../../lib/email-address.js';
 import { makeCartKey } from '../../lib/cart.js';
+import { resolveSelection } from '../../lib/variant-combo.js';
 import { logError } from '../../lib/error-log.js';
 import { recordAnalyticsEvent } from '../../lib/analytics.js';
 import { effectivePrice } from '../../lib/discounts.js';
@@ -344,10 +345,22 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     if (!product) return abort({ error: `Product not found: ${productSlug}` }, 400);
     if (!isProductVisible(product)) return abort({ error: `Product not found: ${productSlug}` }, 400);
 
-    const selectedVariants =
-      item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
-        ? (item.selectedVariants as Record<string, string>)
-        : undefined;
+    // The variant selection is re-derived from the PRODUCT, exactly like the price two blocks
+    // down, and for the same reason: it decides which stock bucket the sale comes out of, so a
+    // selection nobody checked is a selection the buyer chose. Refusing an unrecognised one is
+    // what keeps "no bucket matched" meaning "this combo sells from the shared pool" instead of
+    // also meaning "this combo does not exist" — the ambiguity that let a hand-posted checkout
+    // buy against a fully-counted product's total. `lib/variant-combo.ts#resolveSelection` has
+    // the whole finding; `tests/variant-selection-guard.test.ts` keeps this call site honest.
+    const resolved = resolveSelection(product.variants, item.selectedVariants);
+    if (!resolved.ok) {
+      // A machine code rather than prose, because the ONE way a real buyer reaches this is a cart
+      // line that predates the seller editing the product's variants — and "Invalid variant
+      // selection" in English, in the error line, is a dead end for them. The page turns this into
+      // a sentence naming the product and asking them to pick it again.
+      return abort({ error: 'variant-mismatch', productName: product.name }, 400);
+    }
+    const selectedVariants = resolved.selection;
 
     // Reserve stock as each item is validated, not after every order is built — an
     // insufficient-stock item rolls back everything reserved before it and fails the
@@ -732,6 +745,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     if (userId) {
       const purchased: CartLineRef[] = items.map((raw) => {
         const item = raw as CartItemInput;
+        // Deliberately the RAW selection, not the one `resolveSelection` canonicalised above: this
+        // key has to match a row the CLIENT wrote into the cart, so re-spelling it in the
+        // product's vocabulary would leave the purchased line sitting in the buyer's cart. The
+        // loop above has already refused anything that does not name a real combo, so the two
+        // differ only in whitespace, and only the cart's own spelling can delete the cart's row.
         const selectedVariants =
           item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
             ? (item.selectedVariants as Record<string, string>)

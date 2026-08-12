@@ -552,6 +552,11 @@ export const translations = {
         'מאקסל (xlsx): שמור קודם כ-CSV (קובץ ← שמור בשם ← CSV) ואז ייבא.',
         'איך מזוהה מוצר קיים: לפי עמודת "מזהה", ואם היא ריקה — לפי מק"ט זהה שכבר קיים בחנות. אין התאמה = מוצר חדש.',
         'תא ריק בשורת עדכון = הערך הקיים נשמר (לא נמחק).',
+        // The one thing the format cannot do, said where the seller decides to use it. A file-created
+        // product is image-less by construction, which is invisible in the storefront and fatal in
+        // the ad feed (product-feed.ts#isProductAdvertisable) — so it is named before the upload, not
+        // discovered when a campaign comes back paused.
+        'הקובץ לא נושא תמונות: מוצר חדש שנוצר ממנו ייווצר ללא תמונה, ומוצר ללא תמונה לא מוצג בפרסום בגוגל ובמטא. תמונות מוסיפים בכרטיס המוצר.',
         {
           text: 'גרסאות:',
           sub: [
@@ -570,6 +575,9 @@ export const translations = {
       csvConfirmUpdates: 'ודאו שאלה המוצרים הנכונים לפני הייבוא:',
       csvRowsError: 'שורות עם שגיאה',
       csvPreviewTitle: 'בדיקה לפני ייבוא',
+      csvAdvisoryTitle: 'כדאי להשלים — לא חוסם את הייבוא',
+      csvAdvisoryNoImage: 'מוצרים ללא תמונה — מוצר בלי תמונה לא מוצג בפרסום בגוגל ובמטא.',
+      csvAdvisoryThinDescription: 'מוצרים ללא תיאור (או עם תיאור קצר) — התיאור הוא מה שגוגל מציג בתוצאת החיפוש.',
       csvRowsUnchanged: 'ללא שינוי',
       csvUnchangedNote: 'שורות זהות למוצר הקיים — ידולגו בייבוא.',
       csvNothingToImport: 'אין מה לייבא — כל השורות כבר מעודכנות.',
@@ -1421,6 +1429,9 @@ export const translations = {
       msgUnreadCount: '{n} הודעות שלא נקראו',
       alertsDot: 'יש התראות',
       alertsDotOtherStores: 'יש התראות בחנויות אחרות',
+      alertsDotWarning: 'יש דברים לטיפול',
+      alertsDotOtherStoresWarning: 'יש דברים לטיפול בחנויות אחרות',
+      adTabAttention: 'קמפיין מושהה שממתין לך',
       categoryLabel: 'קטגוריה',
       categoryNone: 'ללא קטגוריה',
       categoryEditHint: 'גם דרך לשונית ההגדרות',
@@ -1695,6 +1706,10 @@ export const translations = {
       // message that must NOT say "try again" — pressing again is exactly what would
       // risk a second charge, which is what the server just refused to allow.
       checkoutInProgress: 'ההזמנה כבר בעיבוד. אל תלחצו שוב — כמה רגעים ותקבלו אישור.',
+      // The seller changed the product's options while this cart sat open, so the choice stored
+      // in it names something the product no longer has. "Try again" is wrong advice — pressing
+      // again changes nothing — so this names the product and sends them back to choose.
+      variantMismatch: 'האפשרויות של "{name}" השתנו מאז שהוספתם אותו לעגלה. היכנסו לדף המוצר ובחרו שוב.',
       // A sale started or ended while this page sat open, so the summary was corrected instead
       // of charging. Says what happened and what to do — it is not an error the buyer caused.
       pricesChanged: 'המחירים בעגלה התעדכנו מאז שנכנסתם. בדקו את הסכום ולחצו שוב לתשלום.',
@@ -2288,6 +2303,7 @@ export const translations = {
         'From Excel (xlsx): save as CSV first (File → Save As → CSV), then import.',
         'How an existing product is matched: by the "ID" column, or — if it\'s blank — by a matching SKU already in the store. No match = a new product.',
         'A blank cell on an update row = the current value is kept (not cleared).',
+        'The file carries no images: a product it creates starts with no photo, and a product with no photo is not shown in Google/Meta ads. Photos are added in the product card.',
         {
           text: 'Variants:',
           sub: [
@@ -2306,6 +2322,9 @@ export const translations = {
       csvConfirmUpdates: 'Confirm these are the right products before importing:',
       csvRowsError: 'Rows with errors',
       csvPreviewTitle: 'Review before import',
+      csvAdvisoryTitle: 'Worth completing — does not block the import',
+      csvAdvisoryNoImage: 'products with no image — a product without a photo is not shown in Google/Meta ads.',
+      csvAdvisoryThinDescription: 'products with no description (or a very short one) — the description is what Google shows in the search result.',
       csvRowsUnchanged: 'Unchanged',
       csvUnchangedNote: 'Rows identical to the existing product are skipped on import.',
       csvNothingToImport: 'Nothing to import — everything is already up to date.',
@@ -2988,6 +3007,9 @@ export const translations = {
       msgUnreadCount: '{n} unread messages',
       alertsDot: 'You have alerts',
       alertsDotOtherStores: 'You have alerts in other stores',
+      alertsDotWarning: 'Something needs your attention',
+      alertsDotOtherStoresWarning: 'Something needs your attention in other stores',
+      adTabAttention: 'A paused campaign is waiting for you',
       categoryLabel: 'Category',
       categoryNone: 'No category',
       categoryEditHint: 'Also possible from the Settings tab',
@@ -3239,6 +3261,7 @@ export const translations = {
       orderError: 'Error creating order. Please try again.',
       ownStoreBlocked: 'You cannot buy from a store you own. Remove those items from your cart.',
       checkoutInProgress: 'Your order is already being processed. Do not press again — your confirmation is on its way.',
+      variantMismatch: 'The options for "{name}" changed since you added it to your cart. Open the product page and choose again.',
       pricesChanged: 'Prices in your cart changed since you arrived. Check the total and press pay again.',
       soldOutDuringCheckout: '"{name}" sold out while you were filling in your details. We took it out of this payment — you can continue with the rest.',
       stockReducedDuringCheckout: 'Only {n} left of "{name}", so the quantity in your cart was updated. Check the total and press pay again.',
