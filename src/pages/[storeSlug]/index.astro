@@ -252,8 +252,14 @@ const onCustomDomain = shopStore.customDomain?.status === 'active';
 const dashboardHref = onCustomDomain ? `${platform.url}/seller/dashboard` : '/seller/dashboard';
 
 const showAddress = !!shopStore.addressVisible && !!shopStore.address;
+// The description is suppressed when it merely repeats the tagline — computed here rather than
+// inline because `.store-info` must not render at all when it would be empty, and "empty" means
+// all three of its parts are absent. A card that paid layout for a store with no words would be
+// the same bug the sale banner's own doc comment guards against.
+const showDesc = !!shopStore.description && shopStore.description !== shopStore.tagline;
 const showHours = !!shopStore.hoursVisible && !!shopStore.hours;
 const showDetails = showAddress || showHours;
+const hasStoreInfo = !!shopStore.tagline || showDesc || showDetails;
 const hoursRows = showHours && shopStore.hours ? formatStoreHours(shopStore.hours, t.store.hoursDay, t.store.hoursClosed) : null;
 const mapsUrl = showAddress && shopStore.address ? googleMapsSearchUrl(shopStore.address) : null;
 
@@ -535,10 +541,62 @@ const bannerPreload = !isDemo && shopStore.bannerImage
               </a>
             </p>
           )}
-          {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
-            {shopStore.description && shopStore.description !== shopStore.tagline && (
-              <p class="store-desc" dir={dir}>{shopStore.description}</p>
-            )}
+          {/* THE STORE'S OWN WORDS, IN ONE CONTAINER (owner, 2026-08-12: "כרגע זה סתם זרוק שם",
+              and the sale strip below reads "יתום").
+              Everything the STORE says about itself — tagline, description, address, hours — is one
+              object and now looks like one: a quiet card (page-grey fill on the banner's white, a
+              hairline, and one coloured edge). It is not a new visual language; it is the sale
+              strip's, which already had exactly this shape. The two are now a family of two whose
+              ONLY difference is the hue of that edge — the store's card takes --color-primary, the
+              sale takes --color-sale — the same "one formula, one hue variable" that keeps the badge
+              row on a store card from reading as three unrelated pills (utils.css, .store-card__tags).
+              That is what un-orphans the sale: it stopped being the single boxed thing on a page of
+              loose text.
+              The identity row (avatar + h1) stays OUT of it. The name is the page's heading, not one
+              of the store's remarks about itself, and boxing it would put a border around the one
+              element that is already the biggest thing on the page. */}
+          {hasStoreInfo && (
+            <div class="store-info" dir={dir}>
+              {shopStore.tagline && <p class="store-tagline">{shopStore.tagline}</p>}
+              {showDesc && <p class="store-desc">{shopStore.description}</p>}
+              {showDetails && (
+                <details class="store-details">
+                  <summary class="store-details__summary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {t.store.moreDetails}
+                    <svg class="store-details__chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </summary>
+                  <div class="store-details__content">
+                    {showAddress && (
+                      <a
+                        class:list={['store-details__item', { 'store-details__item--link': !!mapsUrl }]}
+                        href={mapsUrl || undefined}
+                        target={mapsUrl ? '_blank' : undefined}
+                        rel={mapsUrl ? 'noopener noreferrer' : undefined}
+                        aria-label={mapsUrl ? t.store.viewOnMap : undefined}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        {shopStore.address}
+                      </a>
+                    )}
+                    {hoursRows && (
+                      <div class="store-details__item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:0.15rem"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <ul class="store-details__hours-list min-w-[11rem]">
+                          {hoursRows.map((row) => (
+                            <li class="flex items-baseline justify-between gap-5">
+                              <span class="whitespace-nowrap">{row.label}</span>
+                              <span class="whitespace-nowrap tabular-nums text-[var(--color-text)]" dir="ltr">{row.value}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
 
             {/* AFTER the store's own words, never between them. It sat between the name and the
                 tagline, which split the one thing this block exists to say — a store's name and its
@@ -556,48 +614,12 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 while browsing; nothing downstream may assume it is still visible. Making it present
                 during browsing would need a real addition (a sticky bar, or a second mark at the head
                 of the catalog), not a tweak. */}
-            {/* `mt-4` (1rem) because the measured gap was 0px — `.store-desc`'s margin-bottom is 0 and
-                the strip carries no margin of its own, so they were touching. 1rem matches
-                `.store-banner__actions` below rather than the 0.5rem the two paragraphs use: those
-                are lines of one text block, this is a separate object and has to read as one. */}
-            <StoreSaleBanner sale={shopStore.sale} dir={dir} scopeLabel={saleScopeLabel} class="mt-4" />
-
-            {showDetails && (
-              <details class="store-details" dir={dir}>
-                <summary class="store-details__summary">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  {t.store.moreDetails}
-                  <svg class="store-details__chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-                </summary>
-                <div class="store-details__content">
-                  {showAddress && (
-                    <a
-                      class:list={['store-details__item', { 'store-details__item--link': !!mapsUrl }]}
-                      href={mapsUrl || undefined}
-                      target={mapsUrl ? '_blank' : undefined}
-                      rel={mapsUrl ? 'noopener noreferrer' : undefined}
-                      aria-label={mapsUrl ? t.store.viewOnMap : undefined}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      {shopStore.address}
-                    </a>
-                  )}
-                  {hoursRows && (
-                    <div class="store-details__item">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:0.15rem"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                      <ul class="store-details__hours-list min-w-[11rem]">
-                        {hoursRows.map((row) => (
-                          <li class="flex items-baseline justify-between gap-5">
-                            <span class="whitespace-nowrap">{row.label}</span>
-                            <span class="whitespace-nowrap tabular-nums text-[var(--color-text)]" dir="ltr">{row.value}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </details>
-            )}
+            {/* `mt-3` (0.75rem) is now a gap between two CARDS, not between a paragraph and a box —
+                so it is the tighter of the two values that were considered. The old `mt-4` existed
+                because `.store-desc` sat loose above with a 0 bottom margin and the strip needed
+                visible separation from running text; with the words boxed, 1rem read as a gap
+                between two unrelated blocks rather than as two parts of one identity. */}
+            <StoreSaleBanner sale={shopStore.sale} dir={dir} scopeLabel={saleScopeLabel} class="mt-3" />
 
             <!-- Actions row -->
             <div class="store-banner__actions">

@@ -835,13 +835,24 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
    No hover state: this is a page SECTION, not a clickable object — same reason `.card--flat` exists.
    The figure sits inside the copy cluster at the reading start; pinned to the far edge it read as
    unrelated to the words it describes. */
+/* One of a FAMILY OF TWO since 2026-08-12 (owner: the strip read as "יתום" — orphaned — while it
+   was the only boxed thing on a page of loose text). Its twin is `.store-info` on the store page,
+   which carries the store's own words in the same box; the two differ in exactly one property, the
+   hue of the inline-start edge, and store.css owns the shared measure. Change the fill, the border
+   weight or the radius here and the pair stops reading as a pair — change both or neither.
+   `--color-bg` rather than `--color-surface`: every surface this renders on is white (the store
+   banner section, the product page's info column, the dashboard's `.card` preview), so the page
+   grey is what makes it a box at all. The old white-on-white version was a border and nothing else.
+   The green edge is the same `--color-sale` as the figure, which makes this the second and last
+   place the sale hue appears on the strip — everything between them stays neutral. */
 .store-sale {
   display: flex;
   align-items: center;
   gap: 0.85rem;
   padding: 0.8rem 1rem;
-  background: var(--color-surface);
-  border: 1.5px solid var(--color-border);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-inline-start: 3px solid var(--color-sale);
   border-radius: var(--radius);
   color: var(--color-text);
 }
