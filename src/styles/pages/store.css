@@ -252,7 +252,22 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    Not converted to utilities: `.store-info > :first-child` selects whichever of the parts a store
    happens to have, which has no utility form. */
 .store-info {
-  margin-top: 0.25rem;
+  /* 1rem, and it is the gap the owner asked about (2026-08-12): measured on the running site, the
+     name+avatar row sat 34.4px under the banner picture and 8px above this box, so the heading read
+     as glued to the box it is deliberately NOT part of (see the markup note: the name is the page's
+     heading, not one of the store's remarks about itself). 8px was also exactly the box's own
+     INTERNAL rhythm — tagline and description are 0.5rem apart — so the separator between heading
+     and box was the same size as the gaps inside it, which is the whole reason it disappeared.
+     Doubling the unit is the smallest step that clears that rhythm and still lands on the 0.5rem
+     grid this block is built on.
+     He offered the other half of the choice too — tightening the 34.4px above instead — and it is
+     the wrong one. That gap is not free: 1.25rem of it is `.store-banner-pin`'s padding-bottom,
+     which exists so the picture's bottom edge survives the first bit of the curtain scroll, and the
+     rest is `.store-banner`'s padding-top, deliberately placed there rather than on the pin so it
+     travels with the title instead of being eaten by the rising details. Tightening it would also
+     pull the heading toward the picture, making heading+box read as one slab under the photo —
+     the opposite of the structure. So the loose end is this one, and this is the number that moves. */
+  margin-top: 1rem;
   padding: 0.9rem 1.1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
