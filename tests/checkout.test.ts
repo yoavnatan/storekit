@@ -2,8 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext } from 'astro';
 
 type TestDiscount = { type: 'percent' | 'amount'; value: number; startsAt?: string; endsAt?: string };
-const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean; hidden?: boolean; discount?: TestDiscount }> = {
+// `variants` is part of the fixture because the route now RESOLVES a buyer's selection against it
+// (lib/variant-combo.ts#resolveSelection): a selection is only valid if the product declares those
+// dimensions and options, so a test that sends one has to be a product that has them. `widget`
+// deliberately keeps none — it is the plain-product path that most tests here exercise.
+const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean; hidden?: boolean; discount?: TestDiscount; variants?: { name: string; options: string[] }[] }> = {
   widget: { id: 'p1', slug: 'widget', name: 'Widget', price: 50, images: ['w.png'], stock: 100 },
+  tee:    { id: 'p3', slug: 'tee', name: 'Tee', price: 50, images: ['t.png'], stock: 100,
+            variants: [{ name: 'color', options: ['red', 'blue'] }] },
+  hoodie: { id: 'p4', slug: 'hoodie', name: 'Hoodie', price: 50, images: ['h.png'], stock: 100,
+            variants: [{ name: 'Size', options: ['S', 'L'] }, { name: 'Color', options: ['Red', 'Blue'] }] },
 };
 
 type StockAdjustResult = { ok: boolean; before: number; after: number };
@@ -643,11 +651,48 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     decrementStock.mockResolvedValueOnce({ ok: false, before: 0, after: 0 });
     const res = await POST(makeContext({
       ...validBuyer,
-      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1, selectedVariants: { color: 'red' } }],
+      items: [{ storeSlug: 'test-store', productSlug: 'tee', qty: 1, selectedVariants: { color: 'red' } }],
     }));
     const body = await res.json() as { outOfStock: { available: number; selectedVariants?: Record<string, string> } };
     expect(body.outOfStock.selectedVariants).toEqual({ color: 'red' });
     expect(body.outOfStock.available).toBe(0);
+  });
+
+  /**
+   * The route half of the 2026-08-12 area-audit finding. A selection the product does not declare
+   * used to reach `decrementStock`, where "no bucket matched" legitimately means "sell from the
+   * shared pool" — and on a product whose combos are all counted, that pool is the SUM of every
+   * bucket. So the invented selection bought against the total. **Nothing may be decremented on
+   * the way to finding that out**, which is why each case asserts the mock was never called.
+   */
+  describe('a variant selection the product does not declare', () => {
+    const cases: [string, unknown, string][] = [
+      ['an option that does not exist',        { color: 'purple' }, 'tee'],
+      ['a dimension that does not exist',      { material: 'wool' }, 'tee'],
+      ['only some of the dimensions',          { Size: 'L' }, 'hoodie'],
+      ['no selection at all on a variant product', undefined, 'tee'],
+      ['a selection on a product with none',   { color: 'red' }, 'widget'],
+      ['a value that is not a string',         { color: ['red'] }, 'tee'],
+    ];
+    for (const [name, selectedVariants, productSlug] of cases) {
+      it(`is refused, and nothing is decremented: ${name}`, async () => {
+        const res = await POST(makeContext({
+          ...validBuyer,
+          items: [{ storeSlug: 'test-store', productSlug, qty: 1, ...(selectedVariants ? { selectedVariants } : {}) }],
+        }));
+        expect(res.status).toBe(400);
+        expect(await res.json() as Record<string, unknown>).toMatchObject({ error: 'variant-mismatch' });
+        expect(decrementStock).not.toHaveBeenCalled();
+      });
+    }
+
+    it('the buyer\'s spelling is replaced by the product\'s, so one combo cannot mint two keys', async () => {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'tee', qty: 1, selectedVariants: { color: ' red ' } }],
+      }));
+      expect(decrementStock).toHaveBeenCalledWith('p3', 1, { color: 'red' });
+    });
   });
 
   it('notifies the seller once stock crosses the low-stock threshold', async () => {
@@ -681,17 +726,17 @@ describe('POST /api/checkout — server-side price re-validation', () => {
   });
 
   it('names the specific variant combo in the alert body, not just the product', async () => {
-    PRODUCTS.widget!.stock = 5;
+    PRODUCTS.hoodie!.stock = 5;
     try {
       await POST(makeContext({
         ...validBuyer,
-        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 3, selectedVariants: { Size: 'L', Color: 'Red' } }],
+        items: [{ storeSlug: 'test-store', productSlug: 'hoodie', qty: 3, selectedVariants: { Size: 'L', Color: 'Red' } }],
       }));
       expect(createNotification).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'low_stock', body: expect.stringContaining('Size: L, Color: Red') })
       );
     } finally {
-      PRODUCTS.widget!.stock = 100;
+      PRODUCTS.hoodie!.stock = 100;
     }
   });
 
@@ -823,12 +868,12 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     getSellerSession.mockReturnValue('buyer-1');
     await POST(makeContext({
       ...validBuyer,
-      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1, selectedVariants: { color: 'red' } }],
+      items: [{ storeSlug: 'test-store', productSlug: 'tee', qty: 1, selectedVariants: { color: 'red' } }],
     }));
     const [, lines] = removeCartLines.mock.calls.at(-1)!;
     // makeCartKey's format — a delete keyed by the bare slug would leave the bought line in the
     // cart and, worse, would match a DIFFERENT line of the same product in another variant.
-    expect((lines as { cartKey: string }[])[0]!.cartKey).toBe('widget__color=red');
+    expect((lines as { cartKey: string }[])[0]!.cartKey).toBe('tee__color=red');
   });
 
   it('does not touch the cart for a guest', async () => {

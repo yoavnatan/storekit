@@ -1698,6 +1698,10 @@ export const translations = {
       // message that must NOT say "try again" — pressing again is exactly what would
       // risk a second charge, which is what the server just refused to allow.
       checkoutInProgress: 'ההזמנה כבר בעיבוד. אל תלחצו שוב — כמה רגעים ותקבלו אישור.',
+      // The seller changed the product's options while this cart sat open, so the choice stored
+      // in it names something the product no longer has. "Try again" is wrong advice — pressing
+      // again changes nothing — so this names the product and sends them back to choose.
+      variantMismatch: 'האפשרויות של "{name}" השתנו מאז שהוספתם אותו לעגלה. היכנסו לדף המוצר ובחרו שוב.',
       // A sale started or ended while this page sat open, so the summary was corrected instead
       // of charging. Says what happened and what to do — it is not an error the buyer caused.
       pricesChanged: 'המחירים בעגלה התעדכנו מאז שנכנסתם. בדקו את הסכום ולחצו שוב לתשלום.',
@@ -3245,6 +3249,7 @@ export const translations = {
       orderError: 'Error creating order. Please try again.',
       ownStoreBlocked: 'You cannot buy from a store you own. Remove those items from your cart.',
       checkoutInProgress: 'Your order is already being processed. Do not press again — your confirmation is on its way.',
+      variantMismatch: 'The options for "{name}" changed since you added it to your cart. Open the product page and choose again.',
       pricesChanged: 'Prices in your cart changed since you arrived. Check the total and press pay again.',
       soldOutDuringCheckout: '"{name}" sold out while you were filling in your details. We took it out of this payment — you can continue with the rest.',
       stockReducedDuringCheckout: 'Only {n} left of "{name}", so the quantity in your cart was updated. Check the total and press pay again.',

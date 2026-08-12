@@ -37,6 +37,60 @@ export function comboKey(selection: VariantSelection): string {
     .join(',');
 }
 
+/**
+ * Turn a BUYER-SUPPLIED variant selection into one this product actually declares — or refuse.
+ *
+ * **Found in the 2026-08-12 inventory+checkout area audit, and it is an oversell.** Every other
+ * field of a cart line is re-derived or re-checked on the server: the price comes from the product
+ * row, the quantity is floored, the slug is resolved, visibility and store status are gates. The
+ * variant selection was the one exception — `api/checkout.ts` passed the request body's object
+ * straight into `decrementStock`, which turns it into a `comboKey` and looks for a bucket.
+ *
+ * A key that matches no bucket is not an error down there, and MUST NOT BE: that is exactly how a
+ * combo the seller never counted separately sells from the shared pool (see `ComboStock`). So an
+ * invented selection — or, worse, none at all — silently took the same path. On a product whose
+ * combos are ALL counted, `p.stock` is the SUM of the buckets (`syncPooledStock`), so a hand-posted
+ * checkout with no selection bought against the total: the sale succeeded, not one real bucket
+ * moved, and the seller got an order for stock they did not have. The next per-combo sale then
+ * re-derived `p.stock` from the buckets and erased the evidence.
+ *
+ * The rule is the one `generateCombos` already uses, so a selection is valid exactly when it names
+ * a combo that expansion would produce: every declared dimension present, exactly once, with a
+ * value that dimension declares. Dimensions with no name or no options are skipped in both places —
+ * they are not dimensions.
+ *
+ * Returns the DECLARED strings rather than the buyer's, so `comboKey` is computed from the
+ * product's own vocabulary and stray whitespace cannot mint a second key for one combo. Refusing
+ * (`null`) is the right answer even when the product simply changed under an open cart: the
+ * alternative is an order recording a variant the product no longer has.
+ */
+export function resolveSelection(
+  variants: VariantDimension[] | undefined,
+  selection: unknown,
+): { ok: true; selection: VariantSelection | undefined } | { ok: false } {
+  const dims = realDimensions(variants);
+  const raw = selection && typeof selection === 'object' && !Array.isArray(selection)
+    ? (selection as Record<string, unknown>)
+    : undefined;
+  const keys = raw ? Object.keys(raw) : [];
+
+  // No dimensions: the only valid selection is no selection. A product without variants that is
+  // sent one is not a tolerable mismatch — it is a payload describing a different product.
+  if (!dims.length) return keys.length ? { ok: false } : { ok: true, selection: undefined };
+
+  if (keys.length !== dims.length) return { ok: false };
+
+  const resolved: VariantSelection = {};
+  for (const dim of dims) {
+    const value = raw![dim.name];
+    if (typeof value !== 'string') return { ok: false };
+    const option = dim.options.find((o) => o.trim() === value.trim());
+    if (option === undefined) return { ok: false };
+    resolved[dim.name] = option;
+  }
+  return { ok: true, selection: resolved };
+}
+
 /** True if at least one purchasable combo has stock — the shared `stock` pool for a combo with no `variantStock` override, that combo's own entry otherwise. Plain `stock > 0` alone is wrong for a variant product: the shared pool can read 0 while an overridden combo still has stock (or vice versa). */
 export function isProductInStock(stock: number, variants: VariantDimension[] | undefined, variantStock: Record<string, number> | undefined): boolean {
   if (!variants?.length) return stock > 0;
@@ -104,8 +158,7 @@ export function sumComboOverrides(variantStock: Record<string, number> | undefin
  */
 export function comboCount(dimensions: VariantDimension[]): number {
   let n = 1;
-  for (const dim of dimensions) {
-    if (!dim.name || !dim.options.length) continue;
+  for (const dim of realDimensions(dimensions)) {
     n *= dim.options.length;
     // A seller cannot type enough options to overflow a float, but a hand-posted payload can, and
     // `Infinity > MAX` is the answer this exists to give — bail rather than keep multiplying.
@@ -140,10 +193,24 @@ export function exceedsComboLimit(dimensions: VariantDimension[]): boolean {
   return comboCount(dimensions) > MAX_VARIANT_COMBOS;
 }
 
+/**
+ * The dimensions that actually describe a choice — a rubric with no name or no options describes
+ * none. One definition because three things now depend on agreeing about it: the expansion below,
+ * `comboCount`'s bound, and `resolveSelection`, which refuses a selection whose key count does not
+ * match. Two spellings of this rule and a product could be sellable by one and unbuyable by the other.
+ */
+export function realDimensions(dimensions: VariantDimension[] | undefined): VariantDimension[] {
+  // `Array.isArray` and not just a truthy check, even though the type promises `string[]`: these
+  // objects come out of a JSONB column, so the type is a claim about what we wrote and not about
+  // what is stored. Reading `.length` off a malformed row would throw — and now that the checkout
+  // resolves a buyer's selection through here, that throw would be a 500 in the middle of a
+  // purchase rather than a broken dashboard row.
+  return (dimensions ?? []).filter((dim) => dim?.name && Array.isArray(dim.options) && dim.options.length > 0);
+}
+
 export function generateCombos(dimensions: VariantDimension[]): VariantSelection[] {
-  return dimensions.reduce<VariantSelection[]>(
+  return realDimensions(dimensions).reduce<VariantSelection[]>(
     (combos, dim) => {
-      if (!dim.name || !dim.options.length) return combos;
       const next: VariantSelection[] = [];
       for (const combo of combos) {
         for (const opt of dim.options) next.push({ ...combo, [dim.name]: opt });

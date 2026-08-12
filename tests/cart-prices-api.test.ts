@@ -7,14 +7,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 const PRODUCTS: Record<string, {
   id: string; slug: string; name: string; price: number; stock: number;
-  variants?: Array<{ name: string; values: string[] }>;
+  // `options`, not `values` — the field `VariantDimension` actually declares. The fixture said
+  // `values` and nothing noticed, because until the route resolved a selection against the product
+  // nothing here read the option list at all; it only ever counted the dimensions.
+  variants?: Array<{ name: string; options: string[] }>;
   variantStock?: Record<string, number>;
   hidden?: boolean;
 }> = {
   widget: { id: 'p1', slug: 'widget', name: 'Widget', price: 50, stock: 7 },
   shirt: {
     id: 'p2', slug: 'shirt', name: 'Shirt', price: 80, stock: 99,
-    variants: [{ name: 'Color', values: ['Red', 'Blue'] }],
+    variants: [{ name: 'Color', options: ['Red', 'Blue'] }],
     variantStock: { 'Color=Red': 2, 'Color=Blue': 0 }, // comboKey's format (variant-combo.ts)
   },
 };

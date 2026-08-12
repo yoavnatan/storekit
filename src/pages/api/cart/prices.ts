@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { getStoreBySlugOrPrevious, canStoreSell } from '../../../lib/stores.js';
 import { getProductBySlug, isProductVisible, getEffectiveStock } from '../../../lib/store-products.js';
 import { resolvePrice } from '../../../lib/discounts.js';
+import { resolveSelection } from '../../../lib/variant-combo.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { storesWithLiveCoupons } from '../../../lib/store-coupons.js';
 
@@ -98,6 +99,17 @@ export const POST: APIRoute = async ({ request }) => {
     // renamed store's old slug must still light up its own block.
     if (store && canStoreSell(store)) storeIdBySlug.set(storeSlug, store.id);
     if (!product || !isProductVisible(product)) {
+      items.push({ storeSlug, slug, price: 0, gone: true });
+      continue;
+    }
+
+    // The read side of the same rule `/api/checkout` enforces on the write side: a selection the
+    // product does not declare is not a combo, and answering it from the shared pool hands the
+    // drawer a ceiling that belongs to nothing. `gone` is already exactly the right word for it —
+    // this line cannot be bought, and checkout says why in a sentence — and it is what stops the
+    // cart quoting an available quantity a moment before the purchase is refused. The withholding
+    // rule below still covers the other half: a variant line that named no combo at all.
+    if (selectedVariants && !resolveSelection(product.variants, selectedVariants).ok) {
       items.push({ storeSlug, slug, price: 0, gone: true });
       continue;
     }
