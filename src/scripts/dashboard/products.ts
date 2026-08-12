@@ -2713,6 +2713,11 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeToolb
 
 function refreshSortUI(): void {
   document.querySelectorAll<HTMLButtonElement>('#products-table thead .sort-btn').forEach((btn) => {
+    // The SEO column's heading wears .sort-btn for the shared heading look but is a FILTER trigger,
+    // not a sort control — and `data-active` is the flag refreshFilterUI uses to light it when a
+    // filter is on. Without this guard, sorting any other column cleared that light, because this
+    // pass deletes the attribute on every heading whose sort column isn't the current one.
+    if (!btn.dataset.sortCol) return;
     if (btn.dataset.sortCol === productsSortCol) { btn.dataset.active = 'true'; btn.dataset.dir = productsSortDir; }
     else { delete btn.dataset.active; delete btn.dataset.dir; }
   });

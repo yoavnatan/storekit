@@ -1729,22 +1729,18 @@ const orderStatusColors: Record<string, string> = {
                 <th class="date-col">
                   <button type="button" class="sort-btn" data-sort-col="createdAt" aria-label={`${d.sortByLabel} ${d.colDateAdded}`}><span class="sort-btn__label">{d.colDateAdded}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
-                {/* The gauge column. It carries a label — a column of small coloured dials with a
-                    blank header is a column nobody can name, which is exactly how the seller met it
-                    (2026-08-12). "SEO" and not "נראות": the column is sized to the 21px gauge so it
-                    can sit close to the actions button, and a word that needs three times the
-                    column's width buys its heading by taking the room back off the category chip,
-                    which is what the first attempt did. The full name is on the hover title and on
-                    the funnel's aria-label, and the filter menu spells it out in Hebrew. The funnel
-                    lives here rather than in the toolbar because on desktop the toolbar's filter
-                    pill is hidden and filtering runs from these headers. */}
+                {/* The gauge column's header. Two things had to be true at once and they pull
+                    against each other: the heading has to sit directly ABOVE the dials, and the dials
+                    have to sit close to the actions button. That is only possible if the heading is no
+                    wider than the dial's own column — so the label IS the filter trigger here, rather
+                    than a word with a separate 16px funnel beside it the way the wider columns do it.
+                    A funnel and a label needed ~48px against the gauge's 21px, and whichever of the
+                    two was aligned to the column, the other one read as offset (owner, 2026-08-12:
+                    the heading sits too far to the right of the marks).
+                    "SEO" and not "נראות" for the same reason — the full name is on the title, the
+                    aria-label and the filter menu. */}
                 <th class="seo-col">
-                  <div style="display:flex;align-items:center;justify-content:flex-end;gap:0.15rem;min-width:0">
-                    <span class="sort-btn__label" dir="ltr" title={d.filterColSeo ?? 'נראות בחיפוש'}>{d.colSeo ?? 'SEO'}</span>
-                    <button type="button" class="combo-filter-btn" data-filter-funnel-col="seo" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.filterColSeo ?? 'נראות בחיפוש'}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                    </button>
-                  </div>
+                  <button type="button" class="sort-btn seo-col__filter" data-filter-funnel-col="seo" dir="ltr" aria-expanded="false" aria-haspopup="true" title={d.filterColSeo ?? 'נראות בחיפוש'} aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.filterColSeo ?? 'נראות בחיפוש'}`}>{d.colSeo ?? 'SEO'}</button>
                 </th>
                 <th class="actions-col" />
               </tr>

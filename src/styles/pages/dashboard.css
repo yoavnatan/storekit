@@ -199,7 +199,7 @@ textarea.input { resize: none; }
      over the neighbouring column and the table's own edge, visible only on hover, which is when
      the background appears. Sized to the button plus this block's 0.4rem cell padding on both
      sides (1.75 + 0.8 = 2.55). The 4% it gives back is absorbed by the percentage columns. */
-  .products-table .seo-col       { width: 3.4rem; padding-inline: 0.15rem; }
+  .products-table .seo-col       { width: 2.3rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 2.6rem; }
   .products-table .name-col .product-name {
     white-space: nowrap;
@@ -255,7 +255,7 @@ textarea.input { resize: none; }
   .products-table .wishlist-col  { width: 4.5%; }
   .products-table .purchased-col { width: 7%; }
   .products-table .date-col      { width: 10.5%; }
-  .products-table .seo-col       { width: 3.6rem; padding-inline: 0.15rem; }
+  .products-table .seo-col       { width: 2.5rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 3.4rem; }
   /* One line + "…", not a wrap: rows stay a uniform height, and the full name is one click
      away — the cell is click-to-edit and opens an input carrying the whole string. */
@@ -823,20 +823,22 @@ textarea.input { resize: none; }
    photo — and the photo's position moves with the card's height, which moves with whether the
    product happens to have a description or a sale — and sat behind the image on rows that had one.
    In its own column it needs no positioning at all: the cell is the placement. */
+/* Sized to the gauge, not to a heading: the column is barely wider than the 21px dial, so the dial
+   sits close to the actions button it belongs beside AND the heading lands squarely on top of it.
+   Both are simply centred — nothing is pushed to an edge, which is what left the two misaligned
+   when the column was wide enough for a word plus a funnel. */
 .seo-col {
-  width: 3.6rem;
+  width: 2.5rem;
   vertical-align: middle;
-  /* Both the gauge and the heading sit against the END edge, hard against the actions column, and
-     the cell keeps almost no padding on that side. The column has to be wide enough for "SEO" plus
-     its filter funnel, but the gauge is 21px — centring it spent the difference as a gap between
-     the dial and the kebab it belongs beside (owner, 2026-08-12: "look how much space there is").
-     Pushed to the end, that slack falls on the date side instead, where it reads as ordinary
-     column spacing. */
-  text-align: end;
+  text-align: center;
   /* Restated inside each breakpoint block below: `.products-table td` / `th` set the cell padding
-     there at a specificity this rule cannot reach, and that 0.75rem was the whole gap. */
+     there at a specificity this rule cannot reach, and that 0.75rem was most of the column. */
   padding-inline: 0.15rem;
 }
+/* The heading is the filter trigger — see the note in dashboard.astro. Sized off .sort-btn (which
+   it shares) so it reads as one of the column headings, with the muted-to-text hover every other
+   heading has; `cursor` and the active colour come from .sort-btn too. */
+.seo-col__filter { justify-content: center; width: 100%; }
 .product-seo-gauge {
   display: inline-flex;
   line-height: 0;
@@ -1087,13 +1089,17 @@ textarea.input { resize: none; }
     display: flex; align-items: center; justify-content: center;
     width: auto; /* the desktop column's fixed width would be dead space on a card */
     height: 100%;
-    /* Tighter than the grid's own 0.6rem on BOTH sides — close to its neighbours but not touching
-       them. The card has one scarce column (the name, `minmax(0, 1fr)`) and every gap around this
-       one comes straight out of it, so the gauge takes the least room that still reads as its own
-       thing. Negative margin rather than a smaller `column-gap`: the gap is set once for the whole
-       grid and the other columns want the full 0.6rem. */
-    margin-inline: -0.3rem;
-    padding-inline: 0;
+    /* Asymmetric, and deliberately so. Toward the ACTIONS button it is tight (0.6rem grid gap less
+       0.3rem = 4.8px) because the dial and the kebab are the card's one non-data corner and read as
+       a pair. Toward the DETAILS it needs real air: those are numbers in rows, and at 4.8px the
+       dial joined the column of them instead of standing apart (owner, 2026-08-12, twice — first
+       that the gap was too big, then that this side had gone too tight). 16px is the settled
+       distance. Negative margin rather than a smaller `column-gap`: the gap is set once for the
+       whole grid and every other column wants the full 0.6rem. */
+    margin-inline-start: 0;
+    margin-inline-end: -0.3rem;
+    padding-inline-start: 0.4rem;
+    padding-inline-end: 0;
   }
   .products-table tr[data-product-display] .name-col {
     grid-area: name;
