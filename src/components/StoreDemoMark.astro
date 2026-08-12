@@ -1,0 +1,69 @@
+---
+/**
+ * The showcase stores' logos — drawn, in the store's own two colours.
+ *
+ * ── Two attempts before this one, both rejected by the owner ────────────────
+ * 1. GENERATED. Asking an image model for "a minimal emblem" returns a photograph of an object — a
+ *    terracotta arch, a leaf — and the avatar is a circle, so it arrived as a cropped photo of a
+ *    thing, soft at 56px and not reading as a mark at all.
+ * 2. THE MONOGRAM. Falling back to `StoreAvatar`'s built-in initial gave "ס on a green circle",
+ *    and his answer was the right one: a letter on a colour is not a logo, and the colour came from
+ *    `store-mark.ts`'s own five-hue palette, so it had nothing to do with the store OR with this
+ *    site's design.
+ *
+ * So they are drawn here, one per store, from the same geometry the rest of the site is built out
+ * of: a single form, flat, in the store's `colors.accent` on a tint of its `colors.primary`. No
+ * gradient, no bevel, no letter. It is vector, so it is exact at 32px in the header and at 56px on
+ * the store page and on any DPR, which was the other half of the complaint.
+ *
+ * Only the four platform-owned stores use this. A real seller uploads their own logo, and this
+ * component never renders for them — it is not a fallback, it is these four shops' identity.
+ */
+interface Props {
+  slug: string;
+  size?: number;
+  colors?: { primary?: string; accent?: string };
+  class?: string;
+}
+
+const { slug, size = 56, colors, class: className = '' } = Astro.props;
+
+const accent = colors?.accent ?? '#c4622d';
+const primary = colors?.primary ?? '#2b2118';
+
+/**
+ * One mark per store, each a single closed form on a 48×48 grid so they share a weight and read as
+ * a family rather than four unrelated drawings.
+ *   סהר    a crescent — the name means the crescent moon
+ *   שקמה   a broad canopy on a trunk — the sycamore
+ *   Teklar three stacked bars, shortest last — the only mark that is not organic, for the only
+ *          store that is not
+ *   אדנית  a sprout breaking the line of its planter
+ */
+const MARKS: Record<string, string> = {
+  'showcase-fashion':
+    '<path d="M30.5 10a14 14 0 1 0 0 28 17 17 0 0 1 0-28z" fill="currentColor"/>',
+  'showcase-home':
+    '<path d="M24 14c7 0 12 4.6 12 10.2S31 34 24 34s-12-4.2-12-9.8S17 14 24 14z" fill="currentColor"/>'
+    + '<rect x="22.2" y="30" width="3.6" height="9" rx="1.8" fill="currentColor"/>',
+  'showcase-tech':
+    '<rect x="12" y="15" width="24" height="4.2" rx="2.1" fill="currentColor"/>'
+    + '<rect x="12" y="22" width="18" height="4.2" rx="2.1" fill="currentColor"/>'
+    + '<rect x="12" y="29" width="10" height="4.2" rx="2.1" fill="currentColor"/>',
+  'showcase-plants':
+    '<path d="M24 36V20" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" fill="none"/>'
+    + '<path d="M24 24c0-5 3.6-9 8.4-9 0 5-3.6 9-8.4 9z" fill="currentColor"/>'
+    + '<path d="M24 27c0-4.2-3-7.6-7.2-7.6 0 4.2 3 7.6 7.2 7.6z" fill="currentColor"/>',
+};
+
+const mark = MARKS[slug] ?? MARKS['showcase-fashion']!;
+---
+
+<span
+  class={`rounded-full flex-shrink-0 inline-flex items-center justify-center ${className}`}
+  style={`width:${size}px;height:${size}px;border:1px solid var(--color-border);` +
+    `background:color-mix(in srgb, ${primary} 8%, var(--color-surface));color:${accent}`}
+  aria-hidden="true"
+>
+  <svg width={Math.round(size * 0.62)} height={Math.round(size * 0.62)} viewBox="0 0 48 48" set:html={mark} />
+</span>

@@ -4,6 +4,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import LoadingSweep from '../../components/LoadingSweep.astro';
 import StoreDemoBar from '../../components/StoreDemoBar.astro';
+import StoreDemoMark from '../../components/StoreDemoMark.astro';
 import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
@@ -497,14 +498,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       <div class="store-banner-pin">
         <div class="container">
           <div class="store-banner__image-wrap">
-            <StoreDemoBanner
-              slug={shopStore.slug}
-              name={shopStore.name}
-              tagline={shopStore.tagline}
-              bannerImage={shopStore.bannerImage}
-              colors={shopStore.colors}
-              dir={dir}
-            />
+            <StoreDemoBanner bannerImage={shopStore.bannerImage} colors={shopStore.colors} />
           </div>
         </div>
       </div>
@@ -533,7 +527,12 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       <div class="container">
         <div class="store-banner__info">
           <div class="store-banner__identity">
-            <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />
+            {/* A showcase store has a DRAWN mark rather than an uploaded picture or an initial —
+                see StoreDemoMark for the two versions that were rejected before it. A real seller
+                still gets StoreAvatar and their own logo. */}
+            {isDemo && !shopStore.profileImage
+              ? <StoreDemoMark slug={shopStore.slug} colors={shopStore.colors} size={56} />
+              : <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />}
             <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
           </div>
           {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}

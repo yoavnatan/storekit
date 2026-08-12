@@ -1,39 +1,37 @@
 ---
 /**
- * Banner for a showcase store (lib/demo-stores.ts): the store's generated photograph, with the
- * store's name set over it.
+ * Banner for a showcase store (lib/demo-stores.ts): the store's photograph. Only that.
  *
- * ── The bug this file was rewritten to fix (owner sent a screenshot, 2026-08-12) ──
- * The name rendered as "הר" instead of "סהר", and the tagline as "ף ללבוש". The overlay was an
- * `<svg viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid slice">`, and `slice` means COVER: in
- * any box not exactly 3/1 the viewBox is scaled up until it fills, and whatever falls outside is
- * cut. The text was anchored near the edge, so the edge is precisely what got cut. It looked
- * correct at one width and was broken at every other — including his.
+ * ── Two overlays were built here and both were wrong (owner, 2026-08-12) ────
+ * The first set the store's name in an `<svg viewBox="0 0 1200 400"
+ * preserveAspectRatio="xMidYMid slice">`. `slice` means COVER, so in any box that is not exactly
+ * 3/1 the viewBox scales up until it fills and the overflow is cut — and the name was anchored at
+ * the edge, which is what got cut. He screenshotted "הר" where "סהר" belongs.
  *
- * It is plain HTML now. There is no viewBox to mismatch, the type reflows instead of being sliced,
- * it uses the same font stack and rendering as the rest of the site, and it can be read by a screen
- * reader and selected with a cursor. SVG bought nothing here: it was chosen for "scales for free",
- * which is exactly the property that broke it.
+ * The second replaced it with HTML, which fixed the clipping and then got the direction wrong: in
+ * an RTL column flex, `align-items:flex-end` is the LEFT edge, so the Hebrew was pushed to the
+ * wrong side. And white type over a photograph needed a scrim heavy enough that it read, in his
+ * words, as writing on a scribble.
  *
- * ── Why the name is not baked into the picture ──────────────────────────────
- * An image model renders Hebrew lettering unreliably, so asking for "a banner with the shop's name"
- * is how a store ends up with a misspelt sign in its own header. Set as text it is crisp at every
- * width, survives a rename, and costs nothing to change. It is `aria-hidden` because the `<h1>`
- * directly below already carries the name — this is the same words again, for the eye.
+ * ── So there is no overlay ──────────────────────────────────────────────────
+ * A real seller's banner has no text drawn over it either: this page already renders the store's
+ * name as an `<h1>` in the identity row immediately below, beside its logo. The overlay was
+ * repeating, in a fragile way, something the page says properly two centimetres lower — and doing
+ * it differently from every other store on the site, which is exactly the inconsistency he was
+ * pointing at ("לא מתאים לדרך שבה האתר מתנהג").
+ *
+ * What is left is the picture, at the same 3/1 geometry and through the same cdn helpers a seller's
+ * own banner uses. Nothing about a showcase store's banner is special any more, which is the point.
  */
 import { cdnBand, cdnCropSrcSet, BANNER_RATIO, BANNER_WIDTHS } from '../lib/cdn.js';
 
 interface Props {
-  name: string;
-  tagline?: string;
   bannerImage?: string;
   /** The store's own two colours — only used for the no-picture fallback. */
   colors?: { primary?: string; accent?: string };
-  dir?: 'rtl' | 'ltr';
-  slug: string;
 }
 
-const { name, tagline, bannerImage, colors, dir = 'rtl' } = Astro.props;
+const { bannerImage, colors } = Astro.props;
 
 // Same geometry as a real seller's banner, so the two are the same box and the curtain-scroll on
 // the store page is untouched. 2048 is the top width because the source is generated at 2K+ and a
@@ -66,39 +64,4 @@ const accent = colors?.accent ?? '#c4622d';
     <div class="absolute inset-0" style={`background:linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`} />
   )}
 
-  {/* The scrim is doing real work: three of the four generated backgrounds are pale plaster and one
-      is dark graphite, and white type survives both only over a gradient that darkens the reading
-      edge. One-sided and soft on purpose — a flat wash over the whole picture would mute the
-      photograph that is the point of having one. */}
-  <div
-    class="absolute inset-0 pointer-events-none"
-    style={`background:linear-gradient(to ${dir === 'rtl' ? 'left' : 'right'}, rgba(18,21,26,0.62) 0%, rgba(18,21,26,0.30) 42%, rgba(18,21,26,0) 72%)`}
-  />
-
-  {/* Percentage padding, not a fixed inset: the box is a 3/1 band whose height changes with the
-      viewport, so the type has to stay in proportion to it rather than to the page. `clamp` keeps
-      the name readable on a 375px phone without it becoming a billboard on a desktop. */}
-  <div
-    class="absolute inset-0 flex flex-col justify-center pointer-events-none"
-    style={`padding-inline:clamp(1rem, 5%, 4rem); align-items:${dir === 'rtl' ? 'flex-end' : 'flex-start'};text-align:${dir === 'rtl' ? 'right' : 'left'}`}
-    aria-hidden="true"
-  >
-    <span
-      class="block text-white font-semibold leading-[1.15]"
-      style="font-size:clamp(1.5rem, 4.2vw, 3.25rem);letter-spacing:0.01em;text-shadow:0 1px 12px rgba(0,0,0,0.28)"
-    >{name}</span>
-
-    {tagline && (
-      <>
-        <span
-          class="block mt-[0.6em] mb-[0.5em]"
-          style="width:2.6em;height:2px;background:rgba(255,255,255,0.8);border-radius:1px"
-        ></span>
-        <span
-          class="block text-white/90 font-normal leading-snug"
-          style="font-size:clamp(0.8rem, 1.35vw, 1.05rem);max-width:22ch;text-shadow:0 1px 10px rgba(0,0,0,0.3)"
-        >{tagline}</span>
-      </>
-    )}
-  </div>
 </div>
