@@ -148,11 +148,12 @@ body:has(.site-header.is-stuck) .store-banner {
   margin-bottom: 0.5rem;
 }
 
+/* No top margin any more: this row is no longer a block stacked under the banner text — it is one
+   half of `.store-info__foot`, which owns the spacing between the two. */
 .store-banner__actions {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  margin-top: 1rem;
 }
 
 .store-banner-action-btn {
@@ -276,15 +277,51 @@ body:has(.site-header.is-stuck) .store-banner {
    opened. */
 .store-details { position: relative; margin-top: 0.65rem; }
 
-/* Inside the box the disclosure is a FOOTER ROW, so a hairline separates it from the prose above.
-   `:not(:first-child)` because address/hours can be the only thing a store filled in, and a rule
-   drawn above nothing is a line hanging off the top padding.
-   The dropdown stays `position:absolute` (see .store-details__content) — it still floats over the
-   page instead of pushing the product grid down, and the box deliberately has NO `overflow:hidden`
-   so it is not clipped to a few px. */
-.store-info .store-details:not(:first-child) {
+/* THE FOOT — "פרטים נוספים" and the save/contact buttons on ONE row (owner, 2026-08-12).
+   `justify-content: space-between` rather than a gap: the disclosure is a link-like thing and the
+   buttons are controls, and pushing them to opposite ends is what stops the row reading as four
+   equal chips. `flex-wrap` so a narrow phone stacks them instead of squeezing the labels — at 375
+   they still fit on one line, but a longer translation must not overflow the box.
+   `:not(:first-child)` on the divider because a store with no tagline, no description and no sale
+   has the foot as the box's only content, and a rule drawn above nothing is a line hanging off the
+   top padding.
+   The details dropdown stays `position:absolute` (see .store-details__content) — it floats over the
+   page instead of pushing the product grid down, and the box deliberately takes NO `overflow:hidden`
+   so it is not clipped to a few px tall. */
+.store-info__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+
+.store-info__foot:not(:first-child) {
   margin-top: 0.8rem;
   padding-top: 0.65rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* `.store-details` keeps a 0.65rem top margin for when it stands alone; in the row that is a
+   vertical offset against the buttons beside it. (`.store-banner__actions` needed no such override
+   — its own margin was removed above, since the foot is now its only home.) */
+.store-info__foot > .store-details { margin-top: 0; }
+
+/* THE SALE SHEDS ITS BOX IN HERE, and that is the point of moving it in. `.store-sale` is a bordered
+   card everywhere else it renders (product page, dashboard preview) and has to stay one — but a card
+   inside a card is two frames saying the same thing, so in this container it becomes a plain section
+   divided by the same hairline as the foot below it. Only the box is dropped; the figure, the copy
+   and their own divider are untouched, so it is still recognisably the same strip.
+   A descendant selector on purpose (Tailwind rule, case (a)): `.store-sale` belongs to a component
+   this page does not own, and these declarations must not follow it to its other two homes.
+   Specificity 0,2,0 beats the unlayered 0,1,0 in utils.css regardless of source order. */
+.store-info .store-sale {
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
   border-top: 1px solid var(--color-border);
 }
 
