@@ -1561,7 +1561,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.innerHTML = `
     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
     <td class="num row-num pe-[0.2rem]"></td>
-    <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap" data-skeleton><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}${productSeoRowGaugeHtml(productSeoInputFrom(p), productSeoLabels(i))}</td>
+    <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap" data-skeleton><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}</td>
     <td class="name-col">
       <span class="product-name cursor-text">${esc(p.name)}</span>
       <span class="sale-chip ms-1.5 align-middle" data-row-sale="${esc(p.id)}" dir="ltr"${rowSaleLabel(p) ? '' : ' hidden'}>${rowSaleLabel(p)}</span>
@@ -1578,6 +1578,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem"><span class="purchased-col-label">${esc(i.colPurchased ?? 'Purchased')}: </span>${(p.purchasedCount ?? 0) > 0 ? String(p.purchasedCount) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="date-col"><span class="date-col-label">${esc(i.colDateAddedShort ?? 'Added')}: </span>${esc(fmtDateAdded(p.createdAt))}</td>
+    <td class="seo-col">${productSeoRowGaugeHtml(productSeoInputFrom(p), productSeoLabels(i))}</td>
     <td class="actions actions-col">
       <div class="product-menu relative inline-block">
         <button class="product-menu__btn inline-flex items-center justify-center w-7 h-7 bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] opacity-50 transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] hover:opacity-100 aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:opacity-100 active:scale-90" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
@@ -2344,7 +2345,7 @@ function thumbIsResolved(wrap: HTMLElement): boolean {
 }
 
 // Number of <th>s in the products table — the empty-state row spans all of them.
-const PRODUCTS_TABLE_COLS = 12;
+const PRODUCTS_TABLE_COLS = 13;
 
 /** The "nothing matches" row. Lives INSIDE the table on purpose: the table header carries
  *  the very filter funnels the seller needs to undo the filter, so hiding the table strands

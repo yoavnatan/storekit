@@ -19,7 +19,6 @@ import { toSlug } from './url-base.js';
 import {
   productSeoHints,
   productSeoScore,
-  needsSeoAttention,
   openProductSeoHints,
   type ProductSeoHintId,
   type ProductSeoInput,
@@ -38,6 +37,9 @@ export interface ProductSeoLabels {
   previewEmptyDesc: string;
   /** Prefix for the row gauge's tooltip, which then lists the open items: "Missing: Photo · …". */
   missing: string;
+  /** What the gauge IS — the products-table column's own name, so the tooltip, the column header
+   *  and the filter menu all call it the same thing. */
+  columnLabel: string;
   /** Each tip is a short LABEL plus the explanation. One line of bare prose per item read as a
    *  nag; naming the field first tells the seller what it is about before why it matters. */
   hint: Record<ProductSeoHintId, { label: string; text: string }>;
@@ -50,6 +52,7 @@ const FALLBACK: ProductSeoLabels = {
   previewLabel: 'How it looks in search',
   previewEmptyDesc: 'No description yet',
   missing: 'Missing',
+  columnLabel: 'Search visibility',
   hint: {
     image: { label: 'Photo (required)', text: 'Without one it cannot be advertised' },
     name: { label: 'A specific name', text: 'What it is and who it suits — briefly' },
@@ -76,6 +79,7 @@ export function productSeoLabels(d: Readonly<Record<string, unknown>>): ProductS
     previewLabel: str(d.seoPreviewLabel, FALLBACK.previewLabel),
     previewEmptyDesc: str(d.seoPreviewEmptyDesc, FALLBACK.previewEmptyDesc),
     missing: str(d.seoMissingLabel, FALLBACK.missing),
+    columnLabel: str(d.filterColSeo, FALLBACK.columnLabel),
     hint: {
       image: { label: str(d.seoLabelImage, FALLBACK.hint.image.label), text: str(d.seoHintImage, FALLBACK.hint.image.text) },
       name: { label: str(d.seoLabelName, FALLBACK.hint.name.label), text: str(d.seoHintName, FALLBACK.hint.name.text) },
@@ -219,33 +223,39 @@ const GAUGE_ARC = (Math.PI * 9).toFixed(3);
 const GAUGE_PATH = 'M3 13A9 9 0 0 1 21 13';
 
 /**
- * The products-table row marker: a small gauge, filled to the listing's score and coloured by its
- * band — the same score and the same three colours as the panel's meter, because it is the same
- * fact seen from the list.
+ * The products-table row gauge: a small dial, filled to the listing's score and coloured by its
+ * band — the same score, the same three colours and the same band words as the panel's meter,
+ * because it is the same fact seen from the list.
  *
- * **It renders for `weak` rows ONLY, and that is the whole design.** A marker on every row is
- * decoration (see needsSeoAttention's own note: a catalog sitting at 4-of-5 would light up
- * completely and stop being read), so presence is the signal and the fill is the detail. It also
- * means a nearly-full amber gauge is a real state, not a bug: a listing that has everything except
- * the photo scores 4-of-5 and is still weak, because without an image it cannot be advertised at
- * all. The tooltip names what is open, so the fill is never the only thing that speaks.
+ * **It renders on every row, in all three bands.** The first version marked only `weak` rows, on
+ * the reasoning that a mark on every row is decoration — true when the mark is squeezed in beside
+ * a product's name, which is how the 2026-08-04 attempt failed. It is not true of a column: a
+ * column of dials reads as a column, one glance down it sorts the catalogue into done / getting
+ * there / thin, and the two good bands are the half a seller actually wants to see (owner,
+ * 2026-08-12: "it doesn't support certain scores, blue and green"). What stays from that reasoning
+ * is that the amber is the only one that carries a consequence.
  *
- * **Where it goes matters as much as what it is.** It belongs in the THUMBNAIL cell — the one
- * fixed-width column in the table, empty exactly when the commonest fault (no photo) is present,
- * and on mobile a cell that already spans the card's full height. Rendered there it adds no
- * column, no row, and no height at any width. The previous attempt at this marker lived in
- * `.name-col` (13% under `table-layout: fixed`) and was removed on 2026-08-04 because a text pill
- * wrapped to a second line and read as a fault; do not move it back there.
+ * A nearly-full amber dial is a real state, not a bug: a listing with everything except the photo
+ * scores 4-of-5 and is still weak, because without an image it cannot be advertised at all. The
+ * tooltip carries the band in words and then what is open, so the colour never speaks alone.
  *
- * No click handler of its own: the thumbnail cell already toggles the row's checkbox, and a
- * marker that quietly changed what a click does in half a cell is worse than one that doesn't.
- * The full hint list is one row-open away, in the panel this gauge summarises.
+ * **Where it goes.** Its own narrow column, immediately before the row's actions button, at both
+ * widths — a fixed table column on desktop, its own full-height grid area on the mobile card. It
+ * was briefly overlaid on the thumbnail, which put it in a different place on every row (the
+ * thumbnail's position moves with the card's height, which moves with whether the product has a
+ * description or a sale) and behind the photo on rows that had one. A gauge you have to look for
+ * is not a gauge. Same coordinates in every row is the whole point of the column.
+ *
+ * No click handler of its own — the full hint list is one row-open away, in the panel this gauge
+ * summarises.
  */
 export function productSeoRowGaugeHtml(input: ProductSeoInput, l: ProductSeoLabels): string {
-  if (!needsSeoAttention(input)) return '';
   const score = productSeoScore(input);
   const open = openProductSeoHints(input).map((h) => l.hint[h.id].label).join(' · ');
-  const label = `${l.missing}: ${open}`;
+  // Names itself first ("Search visibility"), then the band in words, then what is open — a small
+  // coloured arc means nothing to a seller meeting it for the first time, and this is the only
+  // place that tells them.
+  const label = `${l.columnLabel} · ${l.level[score.level]}${open ? ` — ${l.missing}: ${open}` : ''}`;
   // Dash offset, not a shortened path: one geometry for track and fill means they can never
   // disagree about where the arc runs.
   const offset = ((Number(GAUGE_ARC) * (100 - score.percent)) / 100).toFixed(3);
