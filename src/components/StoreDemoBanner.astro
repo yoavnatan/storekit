@@ -77,25 +77,38 @@ const accent = colors?.accent ?? '#c4622d';
     style={`background:linear-gradient(to ${dir === 'rtl' ? 'left' : 'right'}, rgba(16,18,22,0.66) 0%, rgba(16,18,22,0.34) 38%, rgba(16,18,22,0) 68%)`}
   ></div>
 
-  {/* LOGICAL properties only, and that is the whole fix. The previous version branched on `dir` and
+  {/* `top-0 bottom-0`, not `inset-block-0` — the latter is not a Tailwind utility, so it compiled
+      to nothing, the box had auto height, and `justify-center` had no height to centre within: the
+      name sat at the top of the banner instead of its middle. The block axis is the same in both
+      directions anyway, so there is nothing logical to preserve here.
+      The INLINE axis is the one that needed logical properties, and that is the rest of the fix. The previous version branched on `dir` and
       used `align-items:flex-end` for RTL — which in an RTL box is the LEFT edge, so the Hebrew
       ended up on the wrong side. `inset-inline-start` is the reading-start edge by definition:
       RIGHT in Hebrew, LEFT in English, with no conditional to get backwards. */}
   <div
-    class="absolute inset-block-0 flex flex-col justify-center pointer-events-none"
-    style="inset-inline-start:clamp(1rem, 5%, 3.5rem);inset-inline-end:auto;max-inline-size:min(46%, 26rem);text-align:start"
+    class="absolute top-0 bottom-0 flex flex-col justify-center pointer-events-none"
+    style="inset-inline-start:clamp(1rem, 5%, 3.5rem);inset-inline-end:auto;max-inline-size:min(52%, 30rem);text-align:start"
     aria-hidden="true"
   >
     <span
-      class="block text-white font-semibold leading-[1.15]"
-      style="font-size:clamp(1.35rem, 3.4vw, 2.6rem);letter-spacing:0.01em;text-shadow:0 2px 14px rgba(0,0,0,0.45)"
+      class="block text-white font-semibold leading-[1.1]"
+      style="font-size:clamp(1.75rem, 4.6vw, 3.4rem);letter-spacing:0.01em;text-shadow:0 2px 16px rgba(0,0,0,0.5)"
     >{name}</span>
 
     {tagline && (
-      <span
-        class="block mt-[0.55em] text-white/90 font-normal leading-snug"
-        style="font-size:clamp(0.78rem, 1.2vw, 1rem);text-shadow:0 1px 10px rgba(0,0,0,0.45)"
-      >{tagline}</span>
+      <>
+        {/* The rule the owner asked to keep: a short mark that gives the two lines something to sit
+            against without drawing a box around them. `margin-inline-start:0` pins it to the
+            reading edge — a block element in a column flex would otherwise centre itself. */}
+        <span
+          class="block"
+          style="inline-size:2.8em;block-size:2px;margin-block:0.7em 0.55em;margin-inline-start:0;background:rgba(255,255,255,0.85);border-radius:1px"
+        ></span>
+        <span
+          class="block text-white/90 font-normal leading-snug"
+          style="font-size:clamp(0.85rem, 1.45vw, 1.15rem);text-shadow:0 1px 12px rgba(0,0,0,0.5)"
+        >{tagline}</span>
+      </>
     )}
   </div>
 </div>
