@@ -278,10 +278,18 @@ body:has(.site-header.is-stuck) .store-banner {
 .store-details { position: relative; margin-top: 0.65rem; }
 
 /* THE FOOT — "פרטים נוספים" and the save/contact buttons on ONE row (owner, 2026-08-12).
-   `justify-content: space-between` rather than a gap: the disclosure is a link-like thing and the
-   buttons are controls, and pushing them to opposite ends is what stops the row reading as four
-   equal chips. `flex-wrap` so a narrow phone stacks them instead of squeezing the labels — at 375
-   they still fit on one line, but a longer translation must not overflow the box.
+   ONE CLUSTER AT THE READING START. `space-between` was tried first and was wrong, and the reason
+   was already written down elsewhere in this codebase: the sale strip's own note in utils.css says
+   that pinning an element to the far edge made it "read as unrelated to the words it describes".
+   The same thing happened here — in a box running ~1150px the two controls sat alone in the far
+   corner with a wide empty gap, and the owner asked why. It also does not survive growth: a third
+   control ("שתף") makes the far corner a cluster of its own rather than part of the row.
+   The two groups are still legible as different things without the width doing the work: the
+   disclosure is plain text with a chevron, the buttons are outlined pills, and the 1.5rem gap
+   between the two groups is six times the 0.25rem the pills use among themselves — so the pills
+   read as one group and the disclosure as a separate thing, which is what the width used to say.
+   `flex-wrap` so a narrow phone stacks them instead of squeezing the labels — at 375 they wrap to
+   two lines, which is correct; a longer translation must not overflow the box.
    `:not(:first-child)` on the divider because a store with no tagline, no description and no sale
    has the foot as the box's only content, and a rule drawn above nothing is a line hanging off the
    top padding.
@@ -291,9 +299,8 @@ body:has(.site-header.is-stuck) .store-banner {
 .store-info__foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
+  gap: 0.5rem 1.5rem;
 }
 
 .store-info__foot:not(:first-child) {
