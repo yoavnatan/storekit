@@ -4,6 +4,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { ownedStore } from '../../lib/store-ownership.js';
 import { createCategory, renameCategory, deleteCategory, moveCategory, getCategoryById, buildCategoryTree, getCategoriesByStoreId } from '../../lib/store-categories.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
+import { FIELD_LIMIT, findFieldOverLimit, fieldLimitRejectionMessage } from '../../lib/field-limits.js';
 import { refreshStoreSaleScope } from '../../lib/store-sale-scope.js';
 
 function json(data: unknown, status = 200) {
@@ -35,6 +36,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const name = String(form.get('name') || '');
     const parentIdRaw = String(form.get('parentId') || '');
     if (parentIdRaw && !await ownsCategory(sellerId, parentIdRaw)) return json({ ok: false, error: 'Not authorized' }, 403);
+    const tooLong = findFieldOverLimit([{ value: name, limit: FIELD_LIMIT.categoryName, label: 'שם קטגוריה' }]);
+    if (tooLong) return json({ ok: false, error: fieldLimitRejectionMessage(tooLong) }, 400);
     const spamHit = findSpamKeyword(name);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
     const stuffingHit = findKeywordStuffing(name);
@@ -53,6 +56,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const categoryId = String(form.get('categoryId') || '');
     if (!await ownsCategory(sellerId, categoryId)) return json({ ok: false, error: 'Not authorized' }, 403);
     const name = String(form.get('name') || '');
+    const tooLong = findFieldOverLimit([{ value: name, limit: FIELD_LIMIT.categoryName, label: 'שם קטגוריה' }]);
+    if (tooLong) return json({ ok: false, error: fieldLimitRejectionMessage(tooLong) }, 400);
     const spamHit = findSpamKeyword(name);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
     const stuffingHit = findKeywordStuffing(name);

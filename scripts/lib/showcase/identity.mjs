@@ -13,9 +13,9 @@
  * The brief was "the three that best demonstrate the site works for EVERY kind of
  * product", so the trio is chosen by what each one STRESSES, not by what it sells:
  *
- *   Almara   apparel — the variant matrix (size × colour), the hardest catalog
+ *   סהר      apparel — the variant matrix (size × colour), the hardest catalog
  *                      shape the platform has to render, plus galleries.
- *   Olivar   home    — bulk and weight: furniture and lighting are what exercise
+ *   שקמה     home    — bulk and weight: furniture and lighting are what exercise
  *                      shipping weight, self-pickup and a high per-item price.
  *   Teklar   tech    — precision: spec-led copy, exact stock, no decoration.
  *                      This is deliberately the SOLID one (owner asked for one).
@@ -26,10 +26,16 @@
  * The rule that came out of it is the useful part — a showcase store's name must
  * not evoke a business that already exists, because the store sits on a live
  * commercial domain and a borrowed name is a trademark problem before it is a
- * taste problem. All three are therefore invented rather than chosen from the
- * dictionary, and Latin script keeps them consistent and current for 2026; an
- * Israeli small brand reads either way. They are still worth 30 seconds of the
- * owner's eyes before launch, which is the row in GO_LIVE §6.2.
+ * taste problem.
+ *
+ * Two of the three are Hebrew, at the owner's correction the same day —
+ * "אנחנו בישראל". סהר (crescent moon) and שקמה (sycamore) are ordinary Hebrew
+ * words used as brands rather than as descriptions, which is how a good Israeli
+ * small brand is actually named; neither says what the shop sells, and that is
+ * the point. Teklar stays Latin so the trio is not uniform, and it is the tech
+ * store because that is the one category where a coined Latin name reads native
+ * here. All three are still worth 30 seconds of the owner's eyes before launch,
+ * which is the row in GO_LIVE §6.2.
  *
  * ── The two style constraints, also the owner's, also 2026-08-12 ─────────────
  * 1. "אווירה של משהו כיפי, שמושך לקנות — לא חולצת משבצות משנות ה-90." The old
@@ -100,7 +106,7 @@ export const IMAGE_ASPECT = '1:1';
 export const SHOWCASE_STORES = [
   {
     slug: 'showcase-fashion',
-    name: 'Almara',
+    name: 'סהר',
     tag: 'אופנה',
     tagline: 'אופנה יומיומית שכיף ללבוש',
     description:
@@ -128,7 +134,7 @@ export const SHOWCASE_STORES = [
   },
   {
     slug: 'showcase-home',
-    name: 'Olivar',
+    name: 'שקמה',
     tag: 'לבית',
     tagline: 'דברים יפים לבית, בלי להתאמץ',
     description:
