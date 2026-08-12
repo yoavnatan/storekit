@@ -3,7 +3,7 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import LoadingSweep from '../../components/LoadingSweep.astro';
-import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
+import StoreDemoBar from '../../components/StoreDemoBar.astro';
 import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
@@ -470,6 +470,13 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       <OwnerStoreBar label={t.store.ownerPreview} backLabel={t.store.ownerPreviewBack} dashboardHref={dashboardHref} />
     )}
 
+    {/* Same slot and the same reasoning: a note about the CONTEXT you are viewing this store in,
+        which scrolls away on the first gesture. See StoreDemoBar for why the disclosure moved out
+        of the store's identity block, and for why doing so does not weaken it. */}
+    {isDemo && (
+      <StoreDemoBar title={t.demo.noticeTitle} text={t.demo.noticeText} cta={t.demo.noticeCta} />
+    )}
+
     {/* Curtain scroll (CURRENT_TASK 2): ONLY the banner image is pinned; the
         store details and the products both scroll up and over it as one
         contiguous opaque flow (white details → grey products, no gap), so the
@@ -523,36 +530,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           <div class="store-banner__identity">
             <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />
             <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
-            <StoreDemoBadge demo={isDemo} />
-            {isDemo && (
-              <a
-                href="/seller/register"
-                class="inline-flex items-center gap-1 text-[0.78rem] font-medium
-                       [color:var(--color-accent-dark)] hover:underline"
-              >
-                {t.demo.openYours}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-                     style="flex-shrink:0">
-                  {lang === 'he' ? <polyline points="15 18 9 12 15 6"/> : <polyline points="9 18 15 12 9 6"/>}
-                </svg>
-              </a>
-            )}
           </div>
-          {isDemo && (
-            <p
-              class="mt-2 rounded-[var(--radius)] border px-3 py-2 text-[0.82rem] leading-relaxed
-                     [border-color:color-mix(in_srgb,var(--color-accent)_28%,transparent)]
-                     [background:color-mix(in_srgb,var(--color-accent)_7%,var(--color-surface))]
-                     [color:var(--color-text)]"
-              dir={dir}
-            >
-              <strong class="font-semibold">{t.demo.noticeTitle}</strong>{' '}{t.demo.noticeText}{' '}
-              <a href="/seller/register" class="font-semibold [color:var(--color-accent-dark)] hover:underline whitespace-nowrap">
-                {t.demo.noticeCta}
-              </a>
-            </p>
-          )}
           {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
             {shopStore.description && shopStore.description !== shopStore.tagline && (
               <p class="store-desc" dir={dir}>{shopStore.description}</p>

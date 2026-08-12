@@ -39,7 +39,7 @@ import {
   SEED_SCOPES, SHOWCASE_OWNER_EMAIL,
   openSeedClient, purge, writeCatalog,
 } from './lib/seed-db.mjs';
-import { SHOWCASE_STORES } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, PRODUCT_VIEWS } from './lib/showcase/identity.mjs';
 import { variantsFor } from './lib/showcase/variants.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
@@ -205,8 +205,14 @@ async function seed(db, clean) {
     }
 
     const storeProducts = rows.map((row, n) => {
-      const image = manifest[`${spec.slug}:${row.n}`];
-      if (!image) missingImages++;
+      // The whole gallery, in view order, skipping any that has not been generated yet. `main`
+      // carries the bare key and must stay FIRST: it is what the grid cell, the cart line, the
+      // order row and the ad feed all use, so it is the one that has to be legible on its own.
+      const gallery = [
+        manifest[`${spec.slug}:${row.n}`],
+        ...PRODUCT_VIEWS.slice(1).map((v) => manifest[`${spec.slug}:${row.n}#${v.key}`]),
+      ].filter(Boolean);
+      if (!gallery.length) missingImages++;
       const p = {
         id: uuid(),
         storeId,
@@ -218,7 +224,7 @@ async function seed(db, clean) {
         // SUM of variantStock (see /api/product.ts patch-variant-stock). Leaving it at 0 makes every
         // storefront card read "אזל מהמלאי" while the combo picker shows plenty in stock.
         stock: rnd() < 0.06 ? 0 : int(4, 40),
-        images: image ? [image] : [],
+        images: gallery,
         // The LEAF, when there is one: a product filed on the parent as well as the child would be
         // counted twice by countProductsPerCategory and would show up under both shelves.
         categoryId: row.sub
@@ -268,7 +274,9 @@ async function seed(db, clean) {
     taken.add(spec.slug);
 
     const withImages = storeProducts.filter((p) => p.images.length).length;
-    console.log(`   ✓ ${spec.name} (/${spec.slug}) — ${storeProducts.length} products, ${withImages} with a picture`
+    const totalShots = storeProducts.reduce((n, p) => n + p.images.length, 0);
+    console.log(`   ✓ ${spec.name} (/${spec.slug}) — ${storeProducts.length} products, ${withImages} with a picture, `
+      + `${totalShots} shots (${(totalShots / Math.max(1, withImages)).toFixed(1)} per product)`
       + `${banner ? '' : ', NO BANNER'}${logo ? '' : ', NO LOGO'}`);
   }
 

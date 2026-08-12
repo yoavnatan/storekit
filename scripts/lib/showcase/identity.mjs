@@ -70,18 +70,60 @@ export const REGION_DIRECTION =
 
 /** "שיהיה קצת sophisticated, לא משהו שמרגיש זול" (owner, 2026-08-12).
  *
- *  This pulls AGAINST the "כיפי ומושך לקנות" note, and holding both at once is
- *  the actual brief. The resolution is that the warmth comes from LIGHT and
- *  MATERIAL, never from saturation or props: an image model asked for "fun"
- *  reaches for bright colour, confetti and a busy set, and that is precisely the
- *  cheap look. Restraint, negative space and one considered object read as
- *  expensive; a full frame reads as a discount flyer. So the fun is in the
- *  daylight and the palette, and the sophistication is in what is left out. */
+ *  Deliberately SHORT. This block used to also carry "muted and desaturated",
+ *  "generous negative space", "no props or clutter" — an attempt to spell out
+ *  what expensive looks like, which instead spelled out what empty looks like
+ *  and produced the dead catalog described at LIFE_DIRECTION below. What is left
+ *  here is only the part that was actually doing work: quality of rendering, and
+ *  the two things to stay away from. Everything about composition, light and
+ *  content now lives in LIFE_DIRECTION, where it can be positive rather than a
+ *  list of prohibitions. */
 export const QUALITY_DIRECTION =
-  'sophisticated and restrained, editorial quality, considered composition with generous negative '
-  + 'space, subtle and expensive-looking, muted and desaturated rather than bright, no props or '
-  + 'clutter, nothing garish, nothing that looks like a discount flyer or clip art, '
-  + 'photorealistic, high detail, crisp and clean';
+  'sophisticated and expensive-looking, editorial quality, photorealistic, high detail, '
+  + 'nothing garish, nothing that looks like a discount flyer or clip art';
+
+/**
+ * LIFE. Added 2026-08-12 after the owner looked at the first full catalog and said the store felt
+ * "מה זה מתה", then named exactly why — and he was right on all four counts:
+ *
+ *   "היעדר אלמנט אנושי או תנועה"      no hands, no wear, no sense of the object being used
+ *   "פלטת צבעים מונוכרומטית ושטוחה"   beige on beige, no value separation, no depth
+ *   "תאורה מלאכותית ואחידה"           soft and evenly diffused, no highlight, no shadow shape
+ *   "עריכה סימטרית וסטרילית"          dead-centre, equal margins, catalogued rather than shot
+ *
+ * Every one of those was something the previous QUALITY_DIRECTION literally asked for, in those
+ * words — "muted and desaturated rather than bright", "evenly diffused", "centred composition",
+ * "generous even margin", "no props or clutter". That block was written to answer an earlier note
+ * ("שיהיה sophisticated, לא זול") and it over-corrected: restraint was pushed until nothing was
+ * left to look at. Both notes are real, and this is where they are held together — the sophistication
+ * lives in the MATERIALS and the light quality, and the life lives in movement, asymmetry and
+ * contrast. Expensive is not the same as empty.
+ *
+ * Hands and cropped figures are allowed and wanted; FACES stay out (see NEGATIVE_PROMPT) — a
+ * generated face that resembles a real person is a likeness problem on a live commercial domain,
+ * and a hand shows use just as well.
+ */
+export const LIFE_DIRECTION = [
+  // 1. Human element — the single biggest one, per the owner's own list.
+  'show the product in USE: worn on a cropped figure, held in a hand, or being reached for — for '
+  + 'clothing and shoes, on a body rather than laid flat, so the fit and the drape are visible',
+  // 3. Dynamic light.
+  'directional natural light like late-afternoon sun through a window, with highlights and shadows '
+  + 'that have real shape and fall across the surface — never flat, never evenly diffused',
+  // 4. Depth of field.
+  'shallow depth of field, the background falling gently out of focus behind the product, cinematic',
+  // 2 + 5. Props that tell a story, chosen to CONTRAST in material.
+  'styled with two or three small props that say how the product is lived with, deliberately in '
+  + 'contrasting materials and textures — rough wood or stone against smooth fabric, a green plant '
+  + 'against canvas — arranged casually as though someone just set them down',
+  // 6. Accent colour against the neutral base.
+  'keep the palette warm and natural but let ONE small element carry a real accent colour so the '
+  + 'eye has somewhere to land',
+  // The composition note that replaces "centred, generous even margin".
+  'off-centre asymmetric composition at a natural angle, shot from a human viewpoint rather than '
+  + 'square-on, some edges cropped by the frame',
+  'alive, warm and inviting — the kind of picture that makes you want the thing',
+].join('; ');
 
 /** Shared by every prompt. Kept separate from the per-store direction because
  *  these are the rules that must hold no matter how the art direction changes —
@@ -92,7 +134,12 @@ export const NEGATIVE_PROMPT = [
   'no watermark',
   'no logo, no brand mark, no label with a brand name',
   'not a real, identifiable commercial product',
-  'no human faces',
+  // Hands, arms and figures cropped above the shoulders are WANTED — they are most of what makes a
+  // catalog look alive. Only the face is excluded, and for a specific reason rather than squeamish-
+  // ness: a generated face that resembles a real person is a likeness problem on a live commercial
+  // domain, and it buys nothing a hand does not.
+  'no visible faces, crop above the shoulders if a person appears',
+  'not flat, not evenly lit, not dead-centre, not sterile',
   'no collage, no split frame, single product only',
 ].join(', ');
 
@@ -128,17 +175,19 @@ export const SHOWCASE_STORES = [
     // stealing products out of the real ones and leaving them half empty.
     categories: ['נשים', 'גברים', 'הנעלה', 'תיקים', 'תכשיטים ואביזרים'],
     bannerSubject:
-      'a soft-focus wall of warm sand-coloured plaster in raking afternoon light, with the faint '
-      + 'shadow of a linen curtain falling across it',
+      'the corner of a sunlit fashion studio — a rail of clothes in soft focus, a linen curtain '
+      + 'lifting in the light, a woven bag and a pair of sandals on a bentwood chair, warm plaster '
+      + 'wall behind, one long shaft of afternoon sun across the floor',
     logoSubject: 'a single smooth arch form in terracotta on a warm cream ground',
     /** Warm sand studio. Not white — the owner asked for at least one store off
      *  plain white, and this is the softer of the two that are. */
     artDirection:
-      'professional e-commerce fashion photograph, single garment or accessory presented on an '
-      + 'invisible mannequin or laid flat on warm natural linen, seamless warm sand-plaster '
-      + 'backdrop in a soft beige tone, one soft key light from the upper left, gentle natural '
-      + 'shadow falling to the lower right, warm and inviting 2026 editorial catalog styling, '
-      + 'sharp focus, generous even margin around the subject, centred composition',
+      'editorial fashion photograph in a sunlit Tel Aviv apartment — a warm sand-plaster wall, a '
+      + 'linen curtain moving in the light, a corner of oak floor. Clothing is WORN by a cropped '
+      + 'figure (never a face) so the cut and the drape read; bags and accessories are carried, '
+      + 'held, or spilling their contents on a chair. Late-afternoon sun rakes across the frame and '
+      + 'throws a shaped shadow. Styled with a couple of lived-in props — sunglasses, an open book, '
+      + 'a coffee cup, a straw hat — chosen so their material contrasts with the fabric',
   },
   {
     slug: 'showcase-home',
@@ -153,8 +202,9 @@ export const SHOWCASE_STORES = [
     selfPickup: true,
     categories: ['ריהוט', 'תאורה', 'קרמיקה וכלי הגשה', 'טקסטיל', 'עיצוב ואקססוריז'],
     bannerSubject:
-      'a quiet corner of a Mediterranean interior — pale travertine, a sliver of olive foliage and '
-      + 'soft window daylight, seen slightly out of focus',
+      'a lived-in Mediterranean living room — an oak table with a half-drunk coffee and an open '
+      + 'book, hand-thrown ceramics catching the light, a linen throw over a chair arm, an olive '
+      + 'branch in a clay vase, deep window light and long shadows across travertine',
     logoSubject: 'a single stylised olive leaf shape in muted sage green on a warm off-white ground',
     /** The explicitly non-white store. Objects sit in a real room on a real
      *  surface, which is also the only honest way to shoot furniture — a sofa on
@@ -162,9 +212,10 @@ export const SHOWCASE_STORES = [
     artDirection:
       'warm interior lifestyle photograph, the object resting on a natural surface such as '
       + 'travertine stone, pale oak or raw linen, soft directional window daylight from the side, '
-      + 'a long gentle shadow, muted palette of sage green, cream and warm clay, styled but '
-      + 'uncluttered with plenty of empty space, calm modern Mediterranean interior, sharp focus, '
-      + 'the product clearly the single subject and fully in frame, '
+      + 'a long shadow with real shape, a palette of sage green, cream and warm clay lifted by one '
+      + 'accent colour somewhere small, a room that is clearly LIVED IN — a hand pouring, setting '
+      + 'down or reaching, crumbs and a folded napkin, a book left open, a plant leaning into frame. '
+      + 'The product is the subject but the room is around it, '
       // The owner floated a separate handmade-ceramics store and it was argued down — שקמה's
       // "קרמיקה וכלי הגשה" is already its largest category (22 rows), and a fifth store selling the
       // same goods makes the mall read thin rather than full. The LOOK he wanted is right, though,
@@ -185,19 +236,25 @@ export const SHOWCASE_STORES = [
     colors: { primary: '#141a24', accent: '#2f6fe4' },
     address: 'הרצל 40, חיפה',
     selfPickup: false,
+    /** The only store that opts OUT of the full styling language — see RESTRAINED_LIFE_DIRECTION.
+     *  Its whole point is to be the plain one, in its copy and in its pictures alike. */
+    restrained: true,
     categories: ['שמע', 'מחשוב ועבודה', 'טעינה וחשמל', 'בית חכם', 'צילום ווידאו'],
     bannerSubject:
-      'a smooth dark graphite surface with one clean diagonal edge of soft light crossing it, '
-      + 'minimal and precise',
+      'a working desk at blue hour — a monitor glow on graphite and brushed steel, a coiled cable, '
+      + 'headphones resting on a notebook, one small warm lamp and a single green indicator light, '
+      + 'crisp specular highlights along the metal edges',
     logoSubject: 'a single precise geometric mark of three stacked bars in deep blue on a light grey ground',
     /** The solid one. Cool grey rather than pure white: a true #fff sweep blows
      *  out a white product's own edge, which is exactly the case this store is
      *  full of. The grey keeps the silhouette. */
     artDirection:
-      'precise studio product photograph on a seamless cool light-grey sweep, even diffused '
-      + 'lighting with crisp controlled highlights, a subtle soft reflection directly beneath the '
-      + 'product, restrained and technical, product-forward framing straight on or at a slight '
-      + 'three-quarter angle, immaculately clean, sharp focus edge to edge, generous margin',
+      'the device on a real working desk in daylight — pale microcement or dark oak, a hand on it '
+      + 'or reaching for it, a cable coiled nearby, a notebook or a coffee at the edge of frame. '
+      + 'Cool daylight from one side with crisp specular highlights along the metal edges and a '
+      + 'defined shadow; the palette stays graphite, steel and off-white with a single accent — a '
+      + 'green indicator LED, a cable in colour. Precise and technical, but switched on and used, '
+      + 'shot at a three-quarter angle with shallow depth of field',
   },
   {
     slug: 'showcase-plants',
@@ -216,8 +273,9 @@ export const SHOWCASE_STORES = [
     selfPickup: true,
     categories: ['צמחי פנים', 'מרפסת וגינה', 'עציצים ומצעים', 'טיפול והזנה', 'כלי גינון'],
     bannerSubject:
-      'a bright city balcony corner in raw concrete and pale microcement, several potted green '
-      + 'plants at the edges casting crisp graphic leaf shadows across the empty middle',
+      'a Tel Aviv balcony full of plants in hard morning sun — terracotta pots at several heights, '
+      + 'a watering can and secateurs on a concrete ledge, soil on the surface, monstera and olive '
+      + 'leaves cutting sharp graphic shadows across a pale wall',
     logoSubject: 'a single stylised sprout with two leaves in fresh green on a pale concrete ground',
     /** URBAN, and that word is doing the work. שקמה is already the warm-interior store, so a
      *  nursery shot on travertine and oak would read as the same shop with plants in it. Concrete,
@@ -229,8 +287,10 @@ export const SHOWCASE_STORES = [
       'a living plant or gardening object photographed in a bright modern urban setting, resting on '
       + 'raw concrete, pale microcement or a simple painted balcony ledge, strong directional '
       + 'daylight throwing crisp graphic leaf shadows, terracotta and stoneware pots, fresh living '
-      + 'green as the only saturated colour in an otherwise muted concrete and clay palette, '
-      + 'sharp focus, the plant clearly the single subject and fully in frame with generous margin',
+      + 'green as the strongest colour against a concrete and clay palette. Someone is TENDING it — '
+      + 'hands repotting, misting, or carrying the pot — with soil on the surface, a watering can or '
+      + 'secateurs just set down, and other plants softly out of focus behind. Hard morning sun '
+      + 'throws sharp graphic leaf shadows across the wall; shot slightly from above at an angle',
   },
 ];
 
@@ -248,9 +308,73 @@ export const SHOWCASE_STORES = [
 const FIDELITY = 'render exactly what is described — the stated length, cut, material and colour, '
   + 'no substitutions and no embellishments beyond the description';
 
-export function imagePrompt(store, subject) {
-  return `${subject}. ${FIDELITY}. ${store.artDirection}. ${REGION_DIRECTION}. `
-    + `${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
+/**
+ * The GALLERY. One picture per product is a spreadsheet, not a shop (owner, 2026-08-12: "צריך המון
+ * תמונות על כל מוצר … הייתי יוצא ממנה כלקוח אחרי פחות מ-10 שניות").
+ *
+ * He is right, and it is also the feature the storefront is built for and was not demonstrating:
+ * the product card cross-fades between images on hover, the card carries dots, the product page has
+ * a carousel and a lightbox, and every one of those was inert with a single image. A showcase store
+ * that cannot show its own gallery is failing at the one job it has.
+ *
+ * Four views, because they are four different QUESTIONS a shopper asks — what is it, what is it
+ * made of, how big is it / how does it wear, and would it suit my place. Shooting the same object
+ * four times from four angles answers "what is it" four times, which is what makes a gallery
+ * boring; these deliberately change subject distance and context, not just camera position.
+ *
+ * `main` is first and is what every grid cell, the cart and the feed use — so it stays the clean,
+ * legible one. The other three are the reward for clicking.
+ */
+export const PRODUCT_VIEWS = [
+  {
+    key: 'main',
+    modifier: 'The primary catalog shot: the whole product clearly legible and filling most of the '
+      + 'frame, styled and lit as described but never ambiguous about what is being sold',
+  },
+  {
+    key: 'detail',
+    modifier: 'A tight macro detail: the material itself — the weave, grain, glaze, stitching, '
+      + 'seam, hinge or edge finish — filling the frame at close range with very shallow focus, so '
+      + 'the quality of the thing is what you see',
+  },
+  {
+    key: 'inuse',
+    modifier: 'The product actually in use by a cropped figure (never a face) — worn and moving, '
+      + 'held, poured from, carried, typed on, being planted — caught mid-gesture rather than posed',
+  },
+  {
+    key: 'context',
+    modifier: 'A wider lifestyle frame with the product smaller in a real room or street, giving '
+      + 'its scale and the life around it, other things half in shot, the product still the subject',
+  },
+];
+
+/**
+ * A quieter LIFE_DIRECTION, for a store that should not be styled (owner, 2026-08-12: "חנות
+ * אלקטרוניקה לא צריכה את כל הבלאגן העיצובי הזה, היא יכולה להיות הרבה יותר בסיסית").
+ *
+ * Right, and it is the same point the store's own entry already makes about its COPY — Teklar is
+ * deliberately the solid one. Applying one styling language to all four undid that: a laptop stand
+ * photographed with a straw hat and an open book beside it is not restraint, it is a lifestyle
+ * brochure for a hardware shop, and a seller of technical goods would not recognise their business
+ * in it.
+ *
+ * So this keeps the parts that fix DEAD — real light, depth, a hand, an angle — and drops the parts
+ * that add STORY: no prop styling, no accent colour hunting, no room around the object.
+ */
+const RESTRAINED_LIFE_DIRECTION = [
+  'the product in use or being handled — a hand on it or reaching for it — rather than posed alone',
+  'directional daylight with crisp highlights along the edges and a shadow that has shape, never '
+  + 'flat or evenly diffused',
+  'shallow depth of field with the background falling out of focus',
+  'off-centre at a natural three-quarter angle, shot from a human viewpoint',
+  'clean and uncluttered — at most one secondary object, no styling props, no set dressing',
+].join('; ');
+
+export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0]) {
+  const life = store.restrained ? RESTRAINED_LIFE_DIRECTION : LIFE_DIRECTION;
+  return `${subject}. ${view.modifier}. ${FIDELITY}. ${store.artDirection}. ${life}. `
+    + `${REGION_DIRECTION}. ${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
 }
 
 /** The store's own two brand images. Same art direction as its products — that is
@@ -263,11 +387,26 @@ export function imagePrompt(store, subject) {
  *  drawn as vector stays crisp at every width, survives a rename, and is readable
  *  to a screen reader and to Google. Asking the model for a "logo with the name"
  *  is how a showcase store ends up with a misspelt sign in its own banner. */
+/**
+ * The banner is a SCENE, not a texture (owner, 2026-08-12: "לא סתם פלקט עם SVG").
+ *
+ * The first version asked for an abstract textless surface with "the centre kept calm and
+ * uncluttered, no focal object competing for attention" — which is a specification for wallpaper.
+ * Laying a wordmark on wallpaper is exactly the placard he rejected: nothing in the picture was
+ * allowed to be interesting, so nothing was.
+ *
+ * A real shop's hero image is a photograph of the shop's world with a quiet REGION for the name,
+ * not a picture with nothing in it. So: a full editorial scene, composed so its visual weight sits
+ * to one side and the other side falls into soft shadow or open surface — the way a magazine cover
+ * leaves room for its masthead without the photograph going blank.
+ */
 export function bannerPrompt(store) {
-  return `An abstract, textless background image for a shop banner: ${store.bannerSubject}. `
-    + `${REGION_DIRECTION}. ${QUALITY_DIRECTION}. Wide composition, the centre kept calm and `
-    + `uncluttered so text can be laid over it, no focal object competing for attention. `
-    + `${NEGATIVE_PROMPT}.`;
+  return `A wide editorial hero photograph for a shop's banner: ${store.bannerSubject}. `
+    + `A real scene with depth and atmosphere, not a flat backdrop — foreground, middle and `
+    + `background at different focal distances, strong directional daylight raking across it, `
+    + `and genuine visual interest. Compose the weight to ONE side and let the opposite third `
+    + `fall into soft shadow or open surface, so a name can sit there without covering anything. `
+    + `${REGION_DIRECTION}. ${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
 }
 
 export function logoPrompt(store) {

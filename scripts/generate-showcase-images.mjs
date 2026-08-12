@@ -35,7 +35,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, PRODUCT_VIEWS } from './lib/showcase/identity.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
 import { TECH_PRODUCTS } from './lib/showcase/catalog-tech.mjs';
@@ -110,6 +110,7 @@ async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT) {
   ];
 
   let lastError = 'no attempt ran';
+  let networkFailed = false;
   for (const attempt of attempts) {
     let res;
     try {
@@ -119,7 +120,10 @@ async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT) {
         body: JSON.stringify(attempt.body),
       });
     } catch (e) {
+      // A dropped connection is the other thing that is worth simply doing again — four images in
+      // the first full run died on a bare "fetch failed".
       lastError = `${attempt.name}: network error — ${e.message}`;
+      networkFailed = true;
       continue;
     }
 
@@ -127,8 +131,11 @@ async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT) {
     if (!res.ok) {
       // The body is where Google says WHY, and dropping it is how "400" becomes unfixable.
       lastError = `${attempt.name}: HTTP ${res.status} — ${text.slice(0, 400)}`;
-      // 401/403/429 are about the KEY, not the shape, so a second shape cannot help.
-      if ([401, 403, 429].includes(res.status)) throw new Error(lastError);
+      // 401/403 are about the KEY, so a second request shape cannot help and neither can waiting.
+      if ([401, 403].includes(res.status)) throw new Error(lastError);
+      // 429 is a RATE limit, not a dead key — the whole point of it is that the same request
+      // succeeds later. Treating it as fatal is what stopped the first full run at 166 of 408.
+      if (res.status === 429) throw Object.assign(new Error(lastError), { retryable: true });
       continue;
     }
 
@@ -142,7 +149,33 @@ async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT) {
     }
     lastError = `${attempt.name}: 200 OK but no image in the response — ${text.slice(0, 300)}`;
   }
-  throw new Error(lastError);
+  // A 200 with no image happens too (the model declining a prompt, or returning only text), and it
+  // is worth one more go — the same subject usually succeeds on a re-ask.
+  throw Object.assign(new Error(lastError), { retryable: networkFailed });
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * `generateImage` with backoff.
+ *
+ * Rate limits are the normal condition of a 400-image run, not an exception: the first full run
+ * stopped at 166 because a single 429 was treated as a dead key. Waiting is the entire remedy, so
+ * the retry is generous (up to ~2 minutes across four attempts) and only ever applied to errors
+ * that time can actually fix.
+ */
+async function generateImageWithRetry(prompt, apiKey, aspect, label) {
+  const WAITS = [8_000, 20_000, 45_000, 90_000];
+  for (let i = 0; ; i++) {
+    try {
+      return await generateImage(prompt, apiKey, aspect);
+    } catch (e) {
+      const canRetry = (e.retryable || /HTTP 429|fetch failed|no image in the response/.test(e.message)) && i < WAITS.length;
+      if (!canRetry) throw e;
+      process.stdout.write(`(rate limited, waiting ${WAITS[i] / 1000}s) `);
+      await sleep(WAITS[i]);
+    }
+  }
 }
 
 /** The bytes live in a different place in each envelope; ask for all of them rather than assume. */
@@ -184,7 +217,15 @@ function buildJobs() {
   for (const store of SHOWCASE_STORES) {
     if (ONLY_STORE && store.slug !== ONLY_STORE) continue;
     for (const p of CATALOGS[store.slug]) {
-      jobs.push({ key: `${store.slug}:${p.n}`, prompt: imagePrompt(store, p.s), label: `${store.name} — ${p.n}` });
+      // One job per VIEW. `main` keeps the bare key so every URL already generated under the old
+      // one-image-per-product scheme is still found and not paid for twice.
+      for (const [i, view] of PRODUCT_VIEWS.entries()) {
+        jobs.push({
+          key: i === 0 ? `${store.slug}:${p.n}` : `${store.slug}:${p.n}#${view.key}`,
+          prompt: imagePrompt(store, p.s, view),
+          label: `${store.name} — ${p.n}${i === 0 ? '' : ` (${view.key})`}`,
+        });
+      }
     }
   }
   return jobs;
@@ -227,7 +268,7 @@ async function main() {
   for (const job of jobs) {
     process.stdout.write(`   ${job.label} … `);
     try {
-      const bytes = await generateImage(job.prompt, apiKey, job.aspect);
+      const bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, job.label);
       const url = await uploadToCloudinary(bytes, cloud, preset);
       manifest[job.key] = url;
       saveManifest(manifest);   // after EVERY image: a crash must not discard what was paid for
@@ -238,9 +279,11 @@ async function main() {
       console.log('✗');
       console.log(`      ${e.message}`);
       if (CHECK) break;
-      // A key/quota failure will fail identically for all 300, so stop rather than burn the list.
-      if (/HTTP (401|403|429)/.test(e.message)) {
-        console.log('\n   Stopping — that error is about the key or the quota, not this image.\n');
+      // Only a dead KEY stops the run now. A 429 survived four backoffs to get here, so waiting
+      // longer inside this process is not the answer either — but the manifest holds everything
+      // already paid for, so a later re-run picks up exactly where this stopped.
+      if (/HTTP (401|403)/.test(e.message)) {
+        console.log('\n   Stopping — that error is about the key itself, not this image.\n');
         break;
       }
     }

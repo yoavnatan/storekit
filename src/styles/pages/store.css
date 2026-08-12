@@ -211,24 +211,16 @@ body:has(.site-header.is-stuck) .store-banner {
   margin: 0;
   letter-spacing: -0.03em;
   line-height: 1.1;
-  /* Optically centre the NAME against the avatar circle beside it (owner, reported twice).
-     `.store-banner__identity` is `align-items:center`, which centres the LINE BOX — and a line box
-     reserves the font's full descender depth, which almost no Hebrew letter uses (only ך ן ף ץ ק
-     reach below the baseline). So the visible mass of "סהר" sits above the box's middle and the
-     word reads a hair high next to a circle that is centred exactly.
-     `text-box-trim` is the fix that needs no magic number: it trims the box to the real typographic
-     edges, so the flex centring then centres what you can actually SEE. Guarded by @supports
-     because the fallback — today's behaviour — is merely slightly off, not broken, and this is the
-     one correction the header rule warns is easy to overshoot by guessing (see header.css, where
-     the equivalent value had to be solved from two endpoints on a real build). */
-}
-
-@supports (text-box-trim: trim-both) {
-  .store-name {
-    text-box-trim: trim-both;
-    text-box-edge: cap alphabetic;
-  }
-}
+  /* NO vertical nudge here, and that is a measured result rather than an omission (2026-08-12).
+     The owner's "the name is not centred on the circle" was about the SITE HEADER lockup, which had
+     a real 2.2px error — see header.css, where it is now fixed. This heading was measured the same
+     way at the same time, on the running site, and `line-height:1.1` at this size already lands
+     Hebrew within half a pixel of the 56px avatar's centre: סהר −0.48px, אדנית −0.14px.
+     A Latin store name sits about 3.7px high, because Latin ascenders (the k and l in "Teklar")
+     reach above where Hebrew letters stop, so the same band centres differently. It is left alone:
+     any value that fixes Latin moves Hebrew off by the same amount, and Hebrew is the common case
+     on this site. Recorded so the next session measures before assuming, instead of adding a nudge
+     that makes the ordinary case worse. */
 
 .store-tagline {
   margin: 0.5rem 0 0;
