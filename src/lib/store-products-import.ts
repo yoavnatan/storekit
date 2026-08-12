@@ -6,6 +6,7 @@ import {
   MAX_IMPORT_ROWS, type SkuMatchTarget,
 } from './csv-bulk.js';
 import { mergeVariantGroups } from './variant-csv.js';
+import { importSeoAdvisory } from './csv-import-advisory.js';
 import { deleteNotificationsByRelatedIds } from './notifications.js';
 import { getStoreById } from './stores.js';
 import { pingProductsChanged } from './indexnow.js';
@@ -120,7 +121,10 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
     delete r.comboLabelByKey;
   }
 
-  if (!commit) return { ok: true, status: 200, body: { ok: true, results } };
+  // Preview only: what the seller is about to create that no row-level error would ever mention —
+  // products with no image (the format carries none, and an image-less product is dropped from the
+  // ad feed) and with no real description. Advisory, never a gate; see csv-import-advisory.ts.
+  if (!commit) return { ok: true, status: 200, body: { ok: true, results, advisory: importSeoAdvisory(results, byId) } };
 
   // Commit skips unchanged rows entirely (nothing to write, no restock-notification churn). validRows
   // and the cursor below both skip error AND unchanged rows in lock-step, so positional pairing with

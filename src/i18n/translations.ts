@@ -552,6 +552,11 @@ export const translations = {
         'מאקסל (xlsx): שמור קודם כ-CSV (קובץ ← שמור בשם ← CSV) ואז ייבא.',
         'איך מזוהה מוצר קיים: לפי עמודת "מזהה", ואם היא ריקה — לפי מק"ט זהה שכבר קיים בחנות. אין התאמה = מוצר חדש.',
         'תא ריק בשורת עדכון = הערך הקיים נשמר (לא נמחק).',
+        // The one thing the format cannot do, said where the seller decides to use it. A file-created
+        // product is image-less by construction, which is invisible in the storefront and fatal in
+        // the ad feed (product-feed.ts#isProductAdvertisable) — so it is named before the upload, not
+        // discovered when a campaign comes back paused.
+        'הקובץ לא נושא תמונות: מוצר חדש שנוצר ממנו ייווצר ללא תמונה, ומוצר ללא תמונה לא מוצג בפרסום בגוגל ובמטא. תמונות מוסיפים בכרטיס המוצר.',
         {
           text: 'גרסאות:',
           sub: [
@@ -570,6 +575,9 @@ export const translations = {
       csvConfirmUpdates: 'ודאו שאלה המוצרים הנכונים לפני הייבוא:',
       csvRowsError: 'שורות עם שגיאה',
       csvPreviewTitle: 'בדיקה לפני ייבוא',
+      csvAdvisoryTitle: 'כדאי להשלים — לא חוסם את הייבוא',
+      csvAdvisoryNoImage: 'מוצרים ללא תמונה — מוצר בלי תמונה לא מוצג בפרסום בגוגל ובמטא.',
+      csvAdvisoryThinDescription: 'מוצרים ללא תיאור (או עם תיאור קצר) — התיאור הוא מה שגוגל מציג בתוצאת החיפוש.',
       csvRowsUnchanged: 'ללא שינוי',
       csvUnchangedNote: 'שורות זהות למוצר הקיים — ידולגו בייבוא.',
       csvNothingToImport: 'אין מה לייבא — כל השורות כבר מעודכנות.',
@@ -2295,6 +2303,7 @@ export const translations = {
         'From Excel (xlsx): save as CSV first (File → Save As → CSV), then import.',
         'How an existing product is matched: by the "ID" column, or — if it\'s blank — by a matching SKU already in the store. No match = a new product.',
         'A blank cell on an update row = the current value is kept (not cleared).',
+        'The file carries no images: a product it creates starts with no photo, and a product with no photo is not shown in Google/Meta ads. Photos are added in the product card.',
         {
           text: 'Variants:',
           sub: [
@@ -2313,6 +2322,9 @@ export const translations = {
       csvConfirmUpdates: 'Confirm these are the right products before importing:',
       csvRowsError: 'Rows with errors',
       csvPreviewTitle: 'Review before import',
+      csvAdvisoryTitle: 'Worth completing — does not block the import',
+      csvAdvisoryNoImage: 'products with no image — a product without a photo is not shown in Google/Meta ads.',
+      csvAdvisoryThinDescription: 'products with no description (or a very short one) — the description is what Google shows in the search result.',
       csvRowsUnchanged: 'Unchanged',
       csvUnchangedNote: 'Rows identical to the existing product are skipped on import.',
       csvNothingToImport: 'Nothing to import — everything is already up to date.',
