@@ -1071,9 +1071,14 @@ textarea.input { resize: none; }
   .products-table tr[data-product-display] .seo-col {
     grid-area: seo;
     display: flex; align-items: center; justify-content: center;
-    width: auto; /* the desktop column's 4rem would be dead space on a card */
+    width: auto; /* the desktop column's fixed width would be dead space on a card */
     height: 100%;
-    padding-inline: 0;
+    /* Start side only, on top of the grid's own 0.6rem: the gauge is a different KIND of thing
+       from the numbers beside it, and at card density a single gap read as "one more stat". The
+       end side stays tight so the gauge keeps reading as belonging with the actions button rather
+       than floating between the two. Logical, so LTR gets the same separation mirrored. */
+    padding-inline-start: 0.75rem;
+    padding-inline-end: 0;
   }
   .products-table tr[data-product-display] .name-col {
     grid-area: name;
