@@ -30,10 +30,14 @@ import type { PlatformRevenue } from './platform-revenue.js';
  * rounding artefact — `reporting-invariants.test.ts` asserts exactly that.
  *
  * ── Three things this deliberately does NOT do ──
- * **No ad margin.** It is one of the platform's three income streams (`platform-revenue.ts`) and
- * every ad number on this platform today is a deterministic MOCK — no Google or Meta account is
- * connected (GO_LIVE §2). A document going to an accountant may not carry an invented figure, so
- * the line is absent and the statement says why. It arrives the day the connection does.
+ * **No ad-margin FIGURE — but the line is on the page** (revised 2026-08-12). It is one of the
+ * platform's three income streams (`platform-revenue.ts`) and every ad number here today is a
+ * deterministic MOCK: no Google or Meta account is connected (GO_LIVE §2). A document going to an
+ * accountant may not carry an invented figure, and that has not changed. What did change is what
+ * absence communicates: the owner read the table looking for campaign income and found no trace of
+ * it, which says "forgotten" rather than "pending". So `adMarginAgorot` is `null` and prints as a
+ * named line with no amount. It is deliberately not `0` — a zero is an assertion that nothing was
+ * earned, which is a claim this document is in no position to make.
  *
  * **No VAT, and no invoice numbers.** Both are real obligations and both are owner-blocked on the
  * רו״ח (`docs/legal-brief-agent-model.md`, `invoice_documents` in migration 0023 — nothing issues
@@ -110,7 +114,15 @@ export interface PlatformStatement {
   sellerEarnedAgorot: number;
   subscriptionsAccruedAgorot: number;
   subscribers: number;
-  /** commission + subscriptions. Ads excluded — see the header. */
+  /** The platform's margin on seller ad spend — the third income stream, and the ONLY figure on
+   *  this document that can be absent. `null` means "not connected yet, so we are not stating a
+   *  number", which the statement renders as a pending line rather than as 0: a zero is a claim
+   *  that nothing was earned, and that is a different sentence from "we cannot say". The row exists
+   *  either way (owner, 2026-08-12 — he went looking for it and found nothing, which reads as an
+   *  income stream that was forgotten rather than one that is pending). */
+  adMarginAgorot: number | null;
+  /** commission + subscriptions + ad margin when there is one. A `null` margin adds nothing, so the
+   *  total is exactly the sum of the lines printed above it in both states. */
   incomeAccruedAgorot: number;
 
   /** ── Cash: what moved ── */
@@ -121,6 +133,21 @@ export interface PlatformStatement {
   closingBalanceAgorot: number;
   /** Commission those transfers took at source — income COLLECTED, against income EARNED above. */
   commissionSettledAgorot: number;
+
+  /**
+   * **What is about to come IN, on the next payout day** — commission the upcoming run will deduct,
+   * and the day it runs. The owner's question in his own words (2026-08-12): *"ב-10 לחודש הקרוב זו
+   * העמלה שאני אקבל, הייתי מצפה שבדוח יהיה כתוב מה ייכנס לי החודש"*.
+   *
+   * **`null` on any period that has already ended, and that is the whole design of this field.**
+   * The figure is live and lifetime — commission on every sale whose money has come out of hold,
+   * mostly from earlier months — so it belongs to no period at all. Printed on a July statement it
+   * would read as July's, which is the exact confusion that produced the question. It appears only
+   * when the period being read still contains today, i.e. when "the next payout" is genuinely
+   * ahead of the reader.
+   */
+  upcomingCommissionAgorot: number | null;
+  upcomingPayoutDayISO: string | null;
 }
 
 export interface StatementInput {
@@ -133,13 +160,20 @@ export interface StatementInput {
   /** Everything before the period, both halves — what the opening balance is computed from. */
   before: { accrued: LedgerAccrual; movement: LedgerMovement };
   /** Subscription accrual for the period, from `platform-revenue.ts` so the pro-rata rule has one
-   *  home. Its commission and ad lines are ignored here: the commission comes from `accrued` (the
-   *  same query the balances use) and the ad margin is deliberately absent. */
+   *  home. Its commission line is ignored here: that figure comes from `accrued`, the same query the
+   *  balances use, so the document cannot hold two definitions of it. */
   revenue: Pick<PlatformRevenue, 'subscriptionsAgorot' | 'subscribers'>;
+  /** The ad margin, or `null` while ad reporting is a mock — the caller decides, because it is the
+   *  caller that knows whether the number it could pass came from a real account
+   *  (`ad-metrics.ts#AD_METRICS_ARE_MOCK`). Absent is `null`, never `0`. */
+  adMarginAgorot: number | null;
+  /** The next payout run's commission and day, or `null` for a period that has already closed —
+   *  the caller knows what today is, so it is the caller that decides. See the output field. */
+  upcoming: { commissionAgorot: number; payoutDayISO: string } | null;
 }
 
 export function buildPlatformStatement(input: StatementInput): PlatformStatement {
-  const { accrued, movement, before, revenue } = input;
+  const { accrued, movement, before, revenue, adMarginAgorot, upcoming } = input;
   const openingBalanceAgorot = before.accrued.netAgorot - before.movement.paidOutAgorot + before.movement.adjustmentsAgorot;
   return {
     period: input.period,
@@ -151,7 +185,8 @@ export function buildPlatformStatement(input: StatementInput): PlatformStatement
     sellerEarnedAgorot: accrued.netAgorot,
     subscriptionsAccruedAgorot: revenue.subscriptionsAgorot,
     subscribers: revenue.subscribers,
-    incomeAccruedAgorot: accrued.commissionAgorot + revenue.subscriptionsAgorot,
+    adMarginAgorot,
+    incomeAccruedAgorot: accrued.commissionAgorot + revenue.subscriptionsAgorot + (adMarginAgorot ?? 0),
 
     openingBalanceAgorot,
     paidOutAgorot: movement.paidOutAgorot,
@@ -162,5 +197,7 @@ export function buildPlatformStatement(input: StatementInput): PlatformStatement
     // from somewhere else would be right and unverifiable, which on this document is worse.
     closingBalanceAgorot: openingBalanceAgorot + accrued.netAgorot - movement.paidOutAgorot + movement.adjustmentsAgorot,
     commissionSettledAgorot: movement.commissionSettledAgorot,
+    upcomingCommissionAgorot: upcoming?.commissionAgorot ?? null,
+    upcomingPayoutDayISO: upcoming?.payoutDayISO ?? null,
   };
 }

@@ -35,11 +35,25 @@ export function platformStatementCsv(s: PlatformStatement): string {
 
     // Turnover leads the section as CONTEXT — it is what the commission is a percentage of, and it
     // is not the platform's money. The two rows after it are, and they are the ones that sum.
-    [ACCRUAL, 'נמכר דרך הפלטפורמה (מחזור)', money(s.grossAgorot)],
+    [ACCRUAL, 'מכירות דרך הפלטפורמה (מחזור המוכרים)', money(s.grossAgorot)],
     [ACCRUAL, 'מספר רכישות', s.purchases],
     [ACCRUAL, 'עמלת פלטפורמה שנצברה', money(s.commissionAccruedAgorot)],
     [ACCRUAL, 'דמי מנוי שנצברו', money(s.subscriptionsAccruedAgorot)],
+    // Empty rather than 0 while there is no ad account, for the reason the screen's row carries:
+    // a 0 in a column an accountant sums is a figure, and this one would be invented. The row is
+    // still here so the file and the page have the same lines in the same order.
+    [ACCRUAL, 'עמלות קמפיינים שנצברו', s.adMarginAgorot === null ? '' : money(s.adMarginAgorot)],
     [ACCRUAL, 'סה"כ הכנסה שנצברה', money(s.incomeAccruedAgorot)],
+    // The one CASH figure filed under the accrual section, and the label carries its basis for that
+    // reason. It sits here because it qualifies the total above it — how much of what we earned was
+    // actually collected — which is where the screen puts it too; splitting the pair across the two
+    // sections is what made the question unanswerable on the page (owner, 2026-08-12).
+    [ACCRUAL, 'מזה נגבה בפועל — עמלה שנוכתה מהתשלומים (בסיס מזומן)', money(s.commissionSettledAgorot)],
+    // Only on a statement whose period still contains today, and its own section: a forecast filed
+    // beside closed figures is the one row an accountant would carry into a filing by mistake.
+    ...(s.upcomingCommissionAgorot === null ? [] : [
+      ['צפי', `עמלות שייגבו בתשלום הקרוב (${s.upcomingPayoutDayISO}) — מכל התקופות, לא רק זו`, money(s.upcomingCommissionAgorot)],
+    ]),
 
     [CASH, 'יתרת פתיחה — כספי מוכרים בהחזקתנו', money(s.openingBalanceAgorot)],
     [CASH, 'נצבר למוכרים בתקופה', money(s.sellerEarnedAgorot)],
@@ -47,15 +61,16 @@ export function platformStatementCsv(s: PlatformStatement): string {
     [CASH, 'מספר תשלומים שבוצעו', s.payouts],
     [CASH, 'התאמות (זיכויים/חיובים חוזרים)', money(s.adjustmentsAgorot)],
     [CASH, 'יתרת סגירה — כספי מוכרים בהחזקתנו', money(s.closingBalanceAgorot)],
-    [CASH, 'עמלה שנגבתה בפועל', money(s.commissionSettledAgorot)],
 
     // On the face of the document, not in a footnote: it is what makes two printings of the same
     // month explainable rather than alarming, and what stops the ad-margin gap being read as zero.
     ['הערות', 'תקופה', `${s.period.fromISO} — ${s.period.toISO}`],
     ['הערות', 'הופק בתאריך', s.generatedAtISO],
     ['הערות', 'מחושב מהנתונים החיים — ביטול הזמנה ישנה משנה גם תקופה שכבר הופקה', ''],
-    ['הערות', 'הכנסות פרסום אינן כלולות — החיבור לגוגל/מטא טרם בוצע', ''],
+    ['הערות', 'עמלות קמפיינים ריקות בכוונה — עד לחיבור גוגל/מטא אין מספר אמיתי, ואינן נכללות בסה"כ', ''],
     ['הערות', 'ללא מע"מ ובלי מספרי חשבונית — טרם נקבעו', ''],
+    ['הערות', 'התשלום למוכרים אינו הוצאה — הוא סילוק התחייבות, ואינו מקטין את ההכנסה', ''],
+    ['הערות', 'הוצאות התפעול (סליקה, פרסום שלנו, שרתים) אינן נרשמות במערכת — הדוח אינו דוח רווח והפסד', ''],
   ];
   // `String(cell)` before the quoter: the count columns are numbers, and `toCsvCell` takes the
   // already-rendered text — a number arriving there would be quoted on nothing but chance.

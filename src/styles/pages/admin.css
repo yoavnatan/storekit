@@ -689,4 +689,10 @@ button.admin-store-row__count { padding: 0; text-align: start; }
   /* Keep each section whole rather than letting a total land alone on page two. */
   #admin-statement-doc section,
   #admin-statement-doc dl { break-inside: avoid; }
+  /* The printed sheet goes to a רו״ח, and two things on the screen are not for them (owner asked,
+     2026-08-12): the plain-language summary written for the owner, and the next-payout FORECAST,
+     which belongs to no period and is the one figure someone could carry into a filing by mistake.
+     Both stay on screen, where they are the reason the page is readable at all. The CSV keeps the
+     forecast but files it under its own "צפי" section for the same reason. */
+  #admin-statement-doc .statement-owner-only { display: none !important; }
 }

@@ -94,6 +94,57 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
     </p>
   </header>
 
+  {/* ── The bottom line, in the owner's words, before either table ──
+      Owner, 2026-08-12: *"לא מבין כלום... מרגיש לי שאני לא יודע להצביע בזמן נתון על המאזן"*. Every
+      figure he wanted was already on this page and every one of them was in accountant's language,
+      split across two bases he has to hold in his head to combine. So the three sentences he would
+      actually ask for come FIRST, each carrying its own number, and the tables below stay exactly
+      what they are — the working behind them, for the רו״ח.
+
+      It repeats three figures rather than introducing any, which is the property that keeps it
+      honest: there is nothing here to reconcile against the tables, because it IS the tables. The
+      third line is the one nothing on the page said before — what the 10th of the month actually
+      does — and it says the part that is easy to get backwards: the transfer shrinks a liability,
+      it does not reduce income. */}
+  <section class={`${SECTION} mb-4 statement-owner-only`}>
+    <h3 class="m-0 text-[0.9rem] font-semibold mb-2">שורה תחתונה</h3>
+    <ul class="m-0 p-0 list-none flex flex-col gap-2">
+      <li class="text-[0.85rem] leading-relaxed">
+        <strong class="tabular-nums">{formatAgorot(s.incomeAccruedAgorot)}</strong> — ההכנסה שלך בתקופה:
+        עמלות <span class="tabular-nums">{formatAgorot(s.commissionAccruedAgorot)}</span>
+        {' '}+ דמי מנוי <span class="tabular-nums">{formatAgorot(s.subscriptionsAccruedAgorot)}</span>
+        {s.adMarginAgorot !== null && <> + עמלות קמפיינים <span class="tabular-nums">{formatAgorot(s.adMarginAgorot)}</span></>}.
+      </li>
+      <li class="text-[0.85rem] leading-relaxed">
+        <strong class="tabular-nums">{formatAgorot(s.commissionSettledAgorot)}</strong> — מזה כבר נגבה בפועל.
+        העמלה נגבית מאליה מכל תשלום שיוצא למוכר; דמי המנוי עוד לא מחויבים בכרטיס, ולכן ההפרש.
+      </li>
+      {/* The line he asked for three times in different words, and the only forward-looking figure
+          on the page: what actually LANDS, and when. Same number as the payouts tab and the
+          overview card, from the same plan. */}
+      {s.upcomingCommissionAgorot !== null && (
+        <li class="text-[0.85rem] leading-relaxed">
+          <strong class="tabular-nums">{formatAgorot(s.upcomingCommissionAgorot)}</strong> — צפוי להיכנס אליך ב־{formatBusinessDayLabel(s.upcomingPayoutDayISO!)},
+          כשייצא התשלום למוכרים והעמלה תנוכה ממנו. זה מצטבר ממכירות של כל התקופות שהכסף שלהן יצא מההמתנה — לא רק מהחודש הזה.
+        </li>
+      )}
+      <li class="text-[0.85rem] leading-relaxed">
+        <strong class="tabular-nums">{formatAgorot(s.closingBalanceAgorot)}</strong> — כסף של מוכרים שאנחנו מחזיקים בסוף התקופה.
+        ב־10 בחודש יוצא מתוכו התשלום למוכרים והעמלה שלנו נגבית באותו רגע: הסכום הזה קטן, ההכנסה שלך למעלה לא משתנה.
+        {s.payouts > 0 && <> בתקופה הזו כבר יצאו <span class="tabular-nums">{formatAgorot(s.paidOutAgorot)}</span> ב־{s.payouts} תשלומים.</>}
+        {/* The sentence he was actually asking for (owner, 2026-08-12: *"מתי אני מושך אליי את
+            הכסף? מחשבון העסק לפרטי?"*). Nothing here models an owner's draw and nothing should:
+            it is an equity movement, not a business expense, and this system cannot see the bank
+            account at all (`platform-ledger.ts` says so about its own figures). What it CAN state
+            is the only number a draw has to respect, and stating it is worth more than any
+            withdrawable figure we could pretend to compute. */}
+        <span class="block mt-1">
+          זה גם הרצפה של חשבון הבנק העסקי: משיכה שמורידה אותו מתחת לסכום הזה היא משיכה של כסף שאינו שלך.
+        </span>
+      </li>
+    </ul>
+  </section>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div class={SECTION}>
       {/* ONLY the platform's own money (owner, 2026-08-11). "נצבר למוכרים" used to sit in this
@@ -103,32 +154,104 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
           his revenue. It does not — the seller's share was never ours (the agent model, terms
           .astro). The figure still exists, on the right, where it is the `+` line of a LIABILITY. */}
       <h3 class="m-0 text-[0.9rem] font-semibold">ההכנסה שלנו</h3>
-      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>לפי מועד ההזמנה — מה שהרווחנו בתקופה, גם אם הכסף עדיין בהמתנה.</p>
-      {/* Context, deliberately ABOVE the list and not a row in it: the mall's turnover is not the
-          platform's money either, and any line sitting inside a column that ends in a total reads
-          as part of that total. Here it is what the commission below is a percentage OF. */}
-      <p class={`m-0 mb-3 pb-3 border-b [border-color:var(--color-border)] ${NOTE}`}>
-        נמכר דרך הפלטפורמה: <span class="tabular-nums">{formatAgorot(s.grossAgorot)}</span> · {s.purchases} רכישות
+      {/* Two sentences, and the second one is the answer to the question the owner actually asked
+          (2026-08-12): *"מתי הוא מניח שאני מושך כסף אליי?"* — never, is the answer, and a document
+          on an accrual basis has to say so on its face. The commission is EARNED at the sale and
+          COLLECTED at the payout, and the figure for the collected half is the last line of the
+          table beside this one, which is where the sentence points. */}
+      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>
+        לפי מועד ההזמנה — מה שהרווחנו בתקופה, גם אם הכסף עדיין בהמתנה. בפועל העמלה נגבית מאוחר יותר,
+        כשהיא מנוכה מהתשלום למוכר ("עמלה שנגבתה בפועל", בטבלה שלצד).
       </p>
+      {/* The mall's turnover, named as a line and kept OUT of the totalled list. The owner looked
+          for "מכירות" and did not find the word (2026-08-12), so it is the label now — but it stays
+          above the divider, because any line sitting inside a column that ends in a total reads as
+          part of that total, and this is not our money. It is what the commission is a percentage
+          OF, and the note under it says so rather than leaving a reader to work it out. */}
+      <div class="mb-3 pb-3 border-b [border-color:var(--color-border)]">
+        <div class="flex items-baseline justify-between gap-4">
+          <span class={LABEL}>מכירות דרך הפלטפורמה</span>
+          <span class={AMOUNT}>{formatAgorot(s.grossAgorot)}</span>
+        </div>
+        <p class={`m-0 mt-0.5 ${NOTE}`}>{s.purchases} רכישות · מחזור המוכרים, לא הכנסה שלנו — זהו הסכום שהעמלה נגזרת ממנו</p>
+      </div>
       <dl class="m-0">
+        {/* The rate is stated because the amount alone does not say what it is MADE OF (owner,
+            2026-08-12: *"אני לא רואה מה מרכיב את הצבירה הזאת"*). Computed from the two figures
+            printed on this very page — sales above, commission here — so a reader can check it
+            rather than take it, and it is a BLENDED rate: sellers sit on different tiers
+            (`pricing.ts`), so there is no single percentage to quote instead. */}
         <div class={ROW}>
-          <dt class={LABEL}>עמלת הפלטפורמה</dt>
+          <dt class={LABEL}>
+            עמלת הפלטפורמה
+            {/* NOT "בממוצע" (owner, 2026-08-12): the commission is computed exactly, per order, at
+                the owning seller's tier rate — the percentage here is simply the ratio between the
+                two figures printed above it, and calling it an average suggested the calculation
+                itself was approximate. It reads as one clean rate whenever every seller is on the
+                same tier, which is the common case today. */}
+            {s.grossAgorot > 0 && <span class={`block ${NOTE}`}>{(s.commissionAccruedAgorot / s.grossAgorot * 100).toFixed(2)}% מסך המכירות · מחושב לכל מוכר לפי המסלול שלו</span>}
+          </dt>
           <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.commissionAccruedAgorot)}</dd>
         </div>
         <div class={ROW}>
           <dt class={LABEL}>דמי מנוי<span class={`block ${NOTE}`}>{s.subscribers} מנויים</span></dt>
           <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.subscriptionsAccruedAgorot)}</dd>
         </div>
+        {/* The third income stream. Present as a LINE even while it has no figure — see
+            `platform-statement.ts`: absent read as forgotten, and a 0 would have been a claim. */}
+        <div class={ROW}>
+          <dt class={LABEL}>עמלות קמפיינים<span class={`block ${NOTE}`}>{s.adMarginAgorot === null ? 'טרם — החיבור לגוגל/מטא לא בוצע' : 'המרווח שלנו על תקציבי הפרסום'}</span></dt>
+          <dd class={`m-0 ${AMOUNT}${s.adMarginAgorot === null ? ' [color:var(--color-muted)]' : ''}`}>{s.adMarginAgorot === null ? '—' : formatAgorot(s.adMarginAgorot)}</dd>
+        </div>
         <div class="flex items-baseline justify-between gap-4 pt-2.5 mt-1 border-t-2 [border-color:var(--color-text)]">
-          <dt class="text-[0.9rem] font-semibold">סה"כ הכנסה שנצברה</dt>
+          {/* THE line the owner was looking for and could not find (2026-08-12: *"איפה השורה
+              שאומרת כמה אני מכניס בחודש"*). It was already the bottom of this table; what was
+              missing is that "נצברה" answers only half the question, so the earned figure now
+              carries the collected one directly under it. */}
+          <dt class="text-[0.9rem] font-semibold">ההכנסה שלי בתקופה<span class={`block font-normal ${NOTE}`}>נצברה — נרשמת במועד המכירה</span></dt>
           <dd class="m-0 text-[1.05rem] font-bold tabular-nums whitespace-nowrap">{formatAgorot(s.incomeAccruedAgorot)}</dd>
         </div>
+        {/* The same figure as the cash table's last row, repeated here on purpose — the two tables
+            already share the seller-accrual bridge for the same reason. Someone reading "how much
+            did I make" has to see, in one place, how much of it actually reached us; sending them
+            to the other table to find out is how the question went unanswered in the first place.
+            SUBSCRIPTIONS ARE NAMED AS NOT COLLECTED because that is the honest gap: commission
+            comes off a payout at source, and the monthly fee is a card charge that nothing issues
+            yet (GO_LIVE §3) — so this figure is smaller than the total above by design, not by an
+            error someone should go looking for. */}
+        <div class={`${ROW} mt-1 pt-2 border-t [border-color:var(--color-border)]`}>
+          <dt class={LABEL}>מזה נגבה בפועל<span class={`block ${NOTE}`}>עמלות שנוכו מהתשלומים למוכרים. דמי מנוי ופרסום — חיוב נפרד שטרם מחובר</span></dt>
+          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.commissionSettledAgorot)}</dd>
+        </div>
+        {/* Forward-looking, on a document that is otherwise entirely backward-looking — and the ONE
+            question the owner kept asking that nothing here answered: *"מה ייכנס לי החודש"*. It is
+            deliberately below the collected line and outside every total: it belongs to no period
+            (the sub-line says so), and adding it to anything above would mix a forecast into a
+            closing. Absent once the period has closed — see `platform-statement.ts`. */}
+        {s.upcomingCommissionAgorot !== null && (
+          <div class={`${ROW} statement-owner-only`}>
+            <dt class={LABEL}>
+              צפוי להיכנס ב־{formatBusinessDayLabel(s.upcomingPayoutDayISO!)}
+              <span class={`block ${NOTE}`}>עמלות ממכירות שיצאו מההמתנה — מכל התקופות, לא רק זו. נגבות מאליהן מהתשלום למוכרים</span>
+            </dt>
+            <dd class={`m-0 ${AMOUNT} font-semibold`}>{formatAgorot(s.upcomingCommissionAgorot)}</dd>
+          </div>
+        )}
       </dl>
     </div>
 
     <div class={SECTION}>
       <h3 class="m-0 text-[0.9rem] font-semibold">תנועה בפועל — כספי מוכרים</h3>
-      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>לפי מועד התשלום — כמה כסף באמת זז, ומה נשאר אצלנו שאינו שלנו.</p>
+      {/* The second sentence answers the question this table looks like it is answering and is not
+          (owner, 2026-08-12: *"אם אני משלם למוכרים 6000 החודש, זו הוצאה שתקרה החודש"*). Under the
+          agent model it is not: the payout settles a liability that the buyer's payment created, so
+          it never passes through profit. A table headed "תנועה בפועל" sitting beside one headed
+          "ההכנסה שלנו" reads as income-minus-expenses unless it says otherwise, and getting that
+          wrong understates the platform's profit by the whole turnover of the mall. */}
+      <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>
+        לפי מועד התשלום — כמה כסף באמת זז, ומה נשאר אצלנו שאינו שלנו.
+        התשלום למוכרים אינו הוצאה שלנו: הוא החזרת כסף שמעולם לא היה שלנו, ולכן אינו מקטין את ההכנסה שבטבלה שלצד.
+      </p>
       <dl class="m-0">
         <div class={ROW}>
           <dt class={LABEL}>יתרת פתיחה</dt>
@@ -152,10 +275,12 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
           <dt class="text-[0.9rem] font-semibold">יתרת סגירה<span class={`block font-normal ${NOTE}`}>כסף של מוכרים שאנחנו מחזיקים</span></dt>
           <dd class="m-0 text-[1.05rem] font-bold tabular-nums whitespace-nowrap">{formatAgorot(s.closingBalanceAgorot)}</dd>
         </div>
-        <div class={`${ROW} mt-3 border-t [border-color:var(--color-border)] pt-3`}>
-          <dt class={LABEL}>עמלה שנגבתה בפועל<span class={`block ${NOTE}`}>נוכתה מהתשלומים שיצאו</span></dt>
-          <dd class={`m-0 ${AMOUNT}`}>{formatAgorot(s.commissionSettledAgorot)}</dd>
-        </div>
+        {/* The commission taken out of these transfers used to be stated here, below the closing
+            balance. It moved to the income table (2026-08-12), under the total it qualifies: it is
+            OUR money, and the one question this table exists to answer is what we hold that is NOT
+            ours. Its home is where someone asking "how much did I actually collect" is already
+            looking, and one figure keeps one home — repeating it here would only invite a reader to
+            check whether the two agree. */}
       </dl>
     </div>
   </div>
@@ -166,7 +291,13 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
   <ul class={`mt-4 ps-4 flex flex-col gap-1 ${NOTE}`}>
     <li>המספרים מחושבים מהנתונים החיים. ביטול הזמנה ישנה משנה גם תקופה שכבר הופקה.</li>
     <li>"שולם למוכרים" כולל העברות שנוצרו וטרם אושרו על ידי הבנק, ואינו כולל העברות שנכשלו.</li>
-    <li>הכנסות פרסום אינן כלולות — החיבור לגוגל ולמטא טרם בוצע.</li>
+    <li>שורת עמלות הקמפיינים ריקה בכוונה — עד לחיבור החשבונות בגוגל ובמטא אין מספר אמיתי לדווח, והיא אינה נכללת בסה"כ.</li>
     <li>ללא מע"מ וללא מספרי חשבונית — טרם נקבעו.</li>
+    {/* The largest thing this document is NOT, and until now the only way to find that out was to
+        look for an expense line and fail to find one. The platform records no expense of its own —
+        gateway fees, our own campaign spend, hosting — so this is an income-and-liability statement,
+        not a P&L, and the accountant's own books are where the two meet. Said here rather than
+        left implied, for the same reason as every other line on this list. */}
+    <li>הדוח מציג הכנסות והתחייבות למוכרים בלבד. הוצאות התפעול (עמלות סליקה, הפרסום שלנו, שרתים) אינן נרשמות במערכת — הן מגיעות מהבנק ומהחשבוניות אצל רואה החשבון, ורק שם מתקבל הרווח.</li>
   </ul>
 </section>

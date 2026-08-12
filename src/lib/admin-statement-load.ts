@@ -1,3 +1,5 @@
+import { AD_METRICS_ARE_MOCK } from './ad-metrics.js';
+import { planPayouts } from './payout-run.js';
 import { getLedgerAccrual, getLedgerMovement } from './payouts.js';
 import { getSubscriptionAccrual } from './seller-auth.js';
 import { buildPlatformRevenue } from './platform-revenue.js';
@@ -19,20 +21,27 @@ import { buildPlatformStatement, type PlatformStatement, type StatementPeriod } 
  * The subscription line goes through `buildPlatformRevenue` rather than being summed here, so the
  * pro-rata rule keeps one home. Its other two inputs are deliberately inert: commission is passed
  * as 0 because the statement takes that figure from `getLedgerAccrual` (the same query the balances
- * are computed from — one definition, not two), and the campaign list is empty because ad revenue
- * is excluded from this document on purpose. The header of `platform-statement.ts` says why.
+ * are computed from — one definition, not two), and the campaign list is empty because ad reporting
+ * is a mock and this document will not state a made-up figure. The header of `platform-statement.ts`
+ * says why, and `AD_METRICS_ARE_MOCK` says what to change on the day it stops being one.
  */
 export async function loadPlatformStatement(
   period: StatementPeriod,
   generatedAtISO: string,
 ): Promise<PlatformStatement> {
   const before = { from: null, to: previousDayISO(period.fromISO) };
-  const [accrued, movement, beforeAccrued, beforeMovement, tiers] = await Promise.all([
+  // The sixth read, and it is CONDITIONAL — the only thing here that is not about the period. The
+  // next payout is a live figure with no period of its own, so a statement for a month that has
+  // already closed must not carry it (`platform-statement.ts` on `upcomingCommissionAgorot`), and
+  // asking for it there would also be a query run to produce a number the document then discards.
+  const isCurrent = period.fromISO <= generatedAtISO && generatedAtISO <= period.toISO;
+  const [accrued, movement, beforeAccrued, beforeMovement, tiers, plan] = await Promise.all([
     getLedgerAccrual({ from: period.fromISO, to: period.toISO }),
     getLedgerMovement({ from: period.fromISO, to: period.toISO }),
     getLedgerAccrual(before),
     getLedgerMovement(before),
     getSubscriptionAccrual(period.fromISO, period.toISO),
+    isCurrent ? planPayouts() : Promise.resolve(null),
   ]);
   const revenue = buildPlatformRevenue(0, 0, tiers, [], period.fromISO, period.toISO);
   return buildPlatformStatement({
@@ -42,6 +51,15 @@ export async function loadPlatformStatement(
     movement,
     before: { accrued: beforeAccrued, movement: beforeMovement },
     revenue,
+    // `null`, not `revenue.adMarginAgorot` — the campaign list above is empty on purpose, so that
+    // field is 0 here and a 0 on this document would read as "we earned nothing from campaigns"
+    // rather than "no ad account is connected yet". When AD_METRICS_ARE_MOCK flips, this line takes
+    // the real margin and the campaign list has to be loaded above for it to mean anything.
+    adMarginAgorot: AD_METRICS_ARE_MOCK ? null : revenue.adMarginAgorot,
+    // Straight off the same plan the payouts tab and the overview card render, never recomputed —
+    // "what will come in on the 10th" has to be one number across all three screens or it is worth
+    // less than not showing it at all.
+    upcoming: plan ? { commissionAgorot: plan.payableCommissionAgorot, payoutDayISO: plan.payoutDayISO } : null,
   });
 }
 
