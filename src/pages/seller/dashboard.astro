@@ -90,6 +90,12 @@ import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 import StoreCategoryPicker from '../../components/StoreCategoryPicker.astro';
 import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
+// The no-JS fallbacks below write the same public store text `/api/store.ts` does, so they need the
+// same two gates. They had NEITHER until 2026-08-12 — the exact shape of the authorization hole
+// found in this same file on 2026-08-06 (review-diff → area audit row 4): the API twin checks, the
+// fallback that writes the identical row does not, and no diff contains both.
+import { storeTextOverLimit, fieldLimitRejectionMessage } from '../../lib/field-limits.js';
+import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 import { storeSettingsRev } from '../../lib/record-rev.js';
 import { toSellerProductRow } from '../../lib/seller-product-row.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
@@ -239,8 +245,17 @@ if (Astro.request.method === 'POST') {
       // fallback this replaces meant an unrecognised id silently overwrote a different shop of
       // theirs instead of failing — a form that lost its storeId must say so, not guess.
       const target = await ownedStore(sellerId, storeId);
+      const tooLong = storeTextOverLimit({ name, tagline, description });
+      const spam = findSpamKeyword(name, tagline, description);
+      const stuffing = findKeywordStuffing(name, tagline, description);
       if (!target) {
         error = d.notYours;
+      } else if (tooLong) {
+        error = fieldLimitRejectionMessage(tooLong);
+      } else if (spam) {
+        error = spamRejectionMessage(spam);
+      } else if (stuffing) {
+        error = stuffingRejectionMessage(stuffing);
       } else {
         await updateStore(target.id, { name, tagline, description, colors: target.colors });
         return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1${panelParam}`));
@@ -251,10 +266,19 @@ if (Astro.request.method === 'POST') {
     const slug = normalizeSlug(String(form.get('slug') || ''));
     const tagline = String(form.get('tagline') || '').trim();
     const description = String(form.get('description') || '').trim();
+    const newTooLong = storeTextOverLimit({ name, tagline, description });
+    const newSpam = findSpamKeyword(name, tagline, description);
+    const newStuffing = findKeywordStuffing(name, tagline, description);
     if (!name) {
       error = d.storeNameRequired;
     } else if (!slug) {
       error = d.storeUrlRequired;
+    } else if (newTooLong) {
+      error = fieldLimitRejectionMessage(newTooLong);
+    } else if (newSpam) {
+      error = spamRejectionMessage(newSpam);
+    } else if (newStuffing) {
+      error = stuffingRejectionMessage(newStuffing);
     } else if (!await canOpenAnotherStore(sellerId)) {
       // Server-side gate — the entry point is hidden at the cap, but a hidden link is not a guard.
       error = d.storeLimitReached;

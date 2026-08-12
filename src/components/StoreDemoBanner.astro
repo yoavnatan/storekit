@@ -1,92 +1,152 @@
 ---
 /**
- * Banner for a showcase store (lib/demo-stores.ts) — a generated graphic, never a
- * photo.
+ * Banner for a showcase store (lib/demo-stores.ts): the store's generated
+ * background photograph, with the store's NAME drawn over it as vector text.
  *
- * A real store's banner is the seller's own artwork. A showcase store has no
- * seller, and the two obvious substitutes both fail: reusing one of its product
- * photos crops to a giant close-up of a single shirt (tried, looked broken), and
- * inventing brand artwork would make a demo store look like a real business.
- * Saying what it is, in type, is the honest version — and it doubles as the
- * disclosure the badge and the notice below it also carry.
+ * ── What this replaced, and why (owner, 2026-08-12) ─────────────────────────
+ * A flat two-stop gradient, four ghosted line-art icons scattered over it, and
+ * the words "חנות לדוגמה" set at 112px on a 400px-tall canvas — 28% of the
+ * banner's height in a single word. The brief for the rewrite was the useful
+ * part: "לא ערומים מדי, מעוצבים יפה ונכונים, לא חובבני ולא מוגזם", and the test
+ * to hold it to — would a designer call this beautiful, or amateurish.
  *
- * SVG rather than a styled `<div>`: the box is a fixed 3/1 crop shared with the
- * seller's banner tool, and `viewBox` + `preserveAspectRatio` makes the wordmark
- * scale with the container at every width for free — no font-size breakpoints,
- * and it can never wrap or clip. The hue comes from the same 5-colour palette the
- * placeholder cards rotate through (placeholder-art.ts), so the showcase stores
- * read as distinct shops rather than one template — keyed off POSITION in the
- * showcase set, not a hash of the slug: five buckets over strings that all start
- * "showcase-" collide immediately (two of the three came out the same orange).
+ * Three things were making it the latter, and each is fixed here:
+ *   1. **Nothing behind the type.** A colour field is a placeholder; a photograph
+ *      is a banner. The picture now comes from `bannerImage` like any real
+ *      seller's, generated for this store by `generate-showcase-images.mjs`.
+ *   2. **The type was enormous and centred.** Huge centred text over the middle
+ *      of a frame is the shape of a stock template. This sets the name at 62px
+ *      (~15% of the height), off to the reading-side edge with a generous inset,
+ *      and lets the picture hold the rest of the frame.
+ *   3. **The icons.** Decorative glyphs scattered behind type read as clip art.
+ *      They are gone and nothing replaced them.
+ *
+ * ── Why the name is drawn here and not baked into the picture ───────────────
+ * An image model renders lettering unreliably — Hebrew especially — so asking
+ * for "a banner with the shop's name on it" is how a showcase store ends up with
+ * a misspelt sign in its own header. As vector text it is crisp at every width,
+ * it re-flows if the store is renamed, and it costs nothing to change. The name
+ * is `aria-hidden` because the `<h1>` immediately below already carries it: this
+ * is the same words a second time, for the eye only.
+ *
+ * ── The scrim is doing real work ────────────────────────────────────────────
+ * The four backgrounds are not one brightness — three are pale (plaster, stone,
+ * concrete) and Teklar's is dark graphite. White type survives both ONLY over a
+ * gradient that darkens the reading-side edge. It is deliberately soft and
+ * one-sided: a flat overlay across the whole picture would mute the photograph
+ * that is the point of the change.
+ *
+ * Falls back to the store's own palette when no picture exists yet — the manifest
+ * is empty until the image run has been paid for, and a store must still render.
  */
-import { PLACEHOLDER_ART, pickCardHue } from '../lib/placeholder-art.js';
-import { getLang, getT } from '../i18n/index.js';
+import { cdnBand, cdnCropSrcSet, BANNER_RATIO, BANNER_WIDTHS } from '../lib/cdn.js';
 
 interface Props {
-  /** Only used to make the gradient id unique per store. */
+  name: string;
+  tagline?: string;
+  bannerImage?: string;
+  /** The store's own two colours — only used for the no-picture fallback. */
+  colors?: { primary?: string; accent?: string };
+  /** Reading direction of the PAGE, which is what decides the side the name sits on. */
+  dir?: 'rtl' | 'ltr';
+  /** Unique per banner: gradient/filter ids are document-global. */
   slug: string;
-  /** Position in the showcase set — picks the hue, so no two of them match. */
-  index?: number;
 }
 
-const { slug, index = 0 } = Astro.props;
-const t = getT(getLang(Astro.cookies));
-// Gradient ids are document-global: two banners on one page (never happens today,
-// but a future "example stores" row would) must not share one.
-//
-// Percent-encoded rather than stripped, because a slug can be Hebrew (url-base.ts#toSlug): the old
-// `[^a-z0-9-]` strip reduced EVERY Hebrew slug to the same "demo-banner--", which is precisely the
-// collision the line above exists to prevent — the second banner's rect would fill from the first
-// one's gradient. Encoding maps each slug to its own ASCII token instead of deleting it, and stays
-// deterministic, which SSR output has to be.
-const gradientId = `demo-banner-${encodeURIComponent(slug).replace(/[^a-zA-Z0-9-]/g, '')}`;
-const hue = pickCardHue(index);
+const { name, tagline, bannerImage, colors, dir = 'rtl', slug } = Astro.props;
 
-// The same line-art the placeholder cards use, ghosted into the background so a
-// showcase store's banner and an empty slot's card read as one visual family.
-// Fixed positions rather than random: SSR output has to be stable.
-const MOTIF = [
-  { id: 'bag', x: 118, y: 92, size: 132 },
-  { id: 'mug', x: 992, y: 74, size: 116 },
-  { id: 'shirt', x: 1052, y: 246, size: 104 },
-  { id: 'plant', x: 226, y: 268, size: 96 },
-].flatMap((m) => {
-  const art = PLACEHOLDER_ART.find((a) => a.id === m.id);
-  return art ? [{ ...m, paths: art.paths }] : [];
-});
+// Percent-encoded rather than stripped: a slug can be Hebrew (url-base.ts#toSlug), and the old
+// `[^a-z0-9-]` strip reduced every Hebrew slug to the same token — so two banners on one page would
+// fill from each other's gradient. Encoding maps each slug to its own ASCII id instead.
+const uid = `sdb-${encodeURIComponent(slug).replace(/[^a-zA-Z0-9-]/g, '')}`;
+
+// Same geometry as a real seller's banner, so the two are byte-for-byte the same box and the
+// curtain-scroll on the store page is untouched.
+const W = 1600;
+const H = Math.round(W / BANNER_RATIO);
+const SIZES = '(min-width: 1160px) 1128px, calc(100vw - 2rem)';
+
+// The type sits on the reading-side edge. 1200×400 is the overlay's own coordinate space; it
+// scales with the box, so these are proportions rather than pixels.
+const INSET = 72;
+const anchorX = dir === 'rtl' ? 1200 - INSET : INSET;
+const anchor = dir === 'rtl' ? 'end' : 'start';
+// Baselines, not a centred block: the name sits just above the optical middle and the tagline hangs
+// under it, which is where a reader expects a masthead rather than a caption.
+const NAME_Y = 196;
+const TAGLINE_Y = 240;
+// The rule is a short mark, not a divider — it gives the two lines something to sit against without
+// drawing a box. Length is fixed rather than measured: SVG cannot measure text server-side, and a
+// JS measurement would relayout after hydration on the store page's LCP element.
+const RULE_Y = 226;
+const RULE_LEN = 46;
+const ruleX1 = dir === 'rtl' ? anchorX - RULE_LEN : anchorX;
+const ruleX2 = dir === 'rtl' ? anchorX : anchorX + RULE_LEN;
+
+const primary = colors?.primary ?? '#2b2118';
+const accent = colors?.accent ?? '#c4622d';
 ---
 
-<svg
-  viewBox="0 0 1200 400"
-  preserveAspectRatio="xMidYMid slice"
-  role="img"
-  aria-label={t.demo.badge}
-  class="block w-full h-full"
->
-  <defs>
-    <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-      <!-- stop-color goes through `style`, not the attribute: a var() in a bare
-           SVG presentation attribute isn't resolved, it's just an invalid string. -->
-      <stop offset="0%" style={`stop-color:color-mix(in srgb, ${hue} 82%, #ffffff)`} />
-      <stop offset="55%" style={`stop-color:${hue}`} />
-      <stop offset="100%" style={`stop-color:color-mix(in srgb, ${hue} 72%, var(--color-primary-dark))`} />
-    </linearGradient>
-  </defs>
+<div class="relative w-full h-full overflow-hidden" style="border-radius:inherit">
+  {bannerImage ? (
+    <img
+      src={cdnBand(bannerImage, W, BANNER_RATIO)}
+      srcset={cdnCropSrcSet(bannerImage, [...BANNER_WIDTHS], BANNER_RATIO) || undefined}
+      sizes={SIZES}
+      alt=""
+      width={W}
+      height={H}
+      loading="eager"
+      fetchpriority="high"
+      decoding="async"
+      class="absolute inset-0 w-full h-full object-cover"
+    />
+  ) : (
+    /* No picture yet. A two-stop wash of the store's OWN palette, so an unseeded
+       environment still reads as four different shops rather than four grey boxes. */
+    <div
+      class="absolute inset-0"
+      style={`background:linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`}
+    />
+  )}
 
-  <rect width="1200" height="400" fill={`url(#${gradientId})`} />
+  <svg
+    viewBox="0 0 1200 400"
+    preserveAspectRatio="xMidYMid slice"
+    class="absolute inset-0 w-full h-full"
+    aria-hidden="true"
+  >
+    <defs>
+      <linearGradient id={`${uid}-scrim`} x1={dir === 'rtl' ? '1' : '0'} y1="0" x2={dir === 'rtl' ? '0' : '1'} y2="0">
+        <stop offset="0%" stop-color="#12151a" stop-opacity="0.58" />
+        <stop offset="45%" stop-color="#12151a" stop-opacity="0.28" />
+        <stop offset="100%" stop-color="#12151a" stop-opacity="0" />
+      </linearGradient>
+    </defs>
 
-  <g fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="1.6"
-     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    {MOTIF.map((m) => (
-      <g transform={`translate(${m.x - m.size / 2} ${m.y - m.size / 2}) scale(${m.size / 24})`} set:html={m.paths} />
-    ))}
-  </g>
+    <rect width="1200" height="400" fill={`url(#${uid}-scrim)`} />
 
-  <!-- `dominant-baseline` is unreliable across engines for this; a plain `y` at
-       the optical centre plus text-anchor:middle is the portable version. -->
-  <text
-    x="600" y="238" text-anchor="middle"
-    font-family="Heebo, system-ui, sans-serif" font-size="112" font-weight="800"
-    fill="#ffffff" letter-spacing="-1"
-  >{t.demo.badge}</text>
-</svg>
+    <line
+      x1={ruleX1} y1={RULE_Y} x2={ruleX2} y2={RULE_Y}
+      stroke="#ffffff" stroke-opacity="0.75" stroke-width="2" stroke-linecap="round"
+    />
+
+    <!-- 600, not 800. The old banner's 800 read as shouting; a masthead at this size wants weight
+         enough to hold against a photograph and no more. Positive tracking rather than the old
+         `letter-spacing:-1`: tight tracking is for headlines at display sizes, and it makes a short
+         Hebrew word look cramped. -->
+    <text
+      x={anchorX} y={NAME_Y} text-anchor={anchor}
+      font-family="Heebo, system-ui, sans-serif" font-size="62" font-weight="600"
+      letter-spacing="0.5" fill="#ffffff"
+    >{name}</text>
+
+    {tagline && (
+      <text
+        x={anchorX} y={TAGLINE_Y} text-anchor={anchor}
+        font-family="Heebo, system-ui, sans-serif" font-size="21" font-weight="400"
+        fill="#ffffff" fill-opacity="0.88"
+      >{tagline}</text>
+    )}
+  </svg>
+</div>

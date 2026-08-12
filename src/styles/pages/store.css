@@ -211,7 +211,16 @@ body:has(.site-header.is-stuck) .store-banner {
   margin: 0;
   letter-spacing: -0.03em;
   line-height: 1.1;
-}
+  /* NO vertical nudge here, and that is a measured result rather than an omission (2026-08-12).
+     The owner's "the name is not centred on the circle" was about the SITE HEADER lockup, which had
+     a real 2.2px error — see header.css, where it is now fixed. This heading was measured the same
+     way at the same time, on the running site, and `line-height:1.1` at this size already lands
+     Hebrew within half a pixel of the 56px avatar's centre: סהר −0.48px, אדנית −0.14px.
+     A Latin store name sits about 3.7px high, because Latin ascenders (the k and l in "Teklar")
+     reach above where Hebrew letters stop, so the same band centres differently. It is left alone:
+     any value that fixes Latin moves Hebrew off by the same amount, and Hebrew is the common case
+     on this site. Recorded so the next session measures before assuming, instead of adding a nudge
+     that makes the ordinary case worse. */
 
 .store-tagline {
   margin: 0.5rem 0 0;
@@ -1452,13 +1461,6 @@ body:has(.site-header.is-stuck) .store-banner {
    pmFlagMissingVariants() on a blocked add-to-cart click. No modal/alert.
    Ring lives on each option button, not the wrapping [role=group] row — see
    product.css's identical comment for why a group-level ring breaks on wrap. */
-.store-page .variant-group--invalid { animation: variant-shake 0.4s ease; }
-.store-page .variant-group--invalid .pm-variant-opt {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-text) 30%, transparent);
-}
-@keyframes variant-shake {
-  10%, 90% { transform: translateX(-1px); }
-  20%, 80% { transform: translateX(2px); }
-  30%, 50%, 70% { transform: translateX(-4px); }
-  40%, 60% { transform: translateX(4px); }
-}
+/* The rule and its keyframes were HERE too, scoped to `.store-page`, and that duplication is what
+   hid the bug: the modal lives in BaseLayout and matched neither copy. Single definition now in
+   product.css, unscoped — read the comment there before re-scoping either of them. */

@@ -1871,6 +1871,10 @@ export const translations = {
       // back from a pause brings its products back here on its own.
       unavailable: 'לא זמין כרגע',
       addedToCart: 'נוסף ✓',
+      // A product with size/colour options cannot be added from here — the drawer has no idea which
+      // combination the shopper wants, and adding one without a combination produces a cart line the
+      // checkout then refuses. So the button goes to the product page instead, and says so.
+      chooseOptions: 'לבחירת אפשרויות',
       removeFailed: 'לא ניתן היה להסיר מהמועדפים',
       removeFailedBody: 'המוצר הוחזר לרשימה.',
       removeTitle: 'הסר מהמועדפים?',
@@ -3404,6 +3408,7 @@ export const translations = {
       addToCart: 'Add to cart',
       unavailable: 'Not available right now',
       addedToCart: 'Added ✓',
+      chooseOptions: 'Choose options',
       removeFailed: 'Could not remove from wishlist',
       removeFailedBody: 'The item was restored to your list.',
       removeTitle: 'Remove from wishlist?',

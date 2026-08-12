@@ -6,6 +6,21 @@ export interface WishlistItem {
   storeSlug: string;
   storeName: string;
   stock?: number;
+  /**
+   * Does this product have size/colour options?
+   *
+   * The drawer needs it to decide whether "add to cart" is even a legitimate button. A product with
+   * options cannot be added from a wishlist row — there is no combination chosen, and a cart line
+   * with no combination is one the checkout refuses (`variant-combo.ts#resolveSelection`). Before
+   * this existed the drawer added it anyway, with `undefined` variants, and then said "נוסף ✓" —
+   * a confirmation for something that would be rejected at the till.
+   *
+   * Optional because the wishlist lives in localStorage: a row saved before 2026-08-12 has no flag,
+   * and `undefined` means "unknown" rather than "no". The drawer treats unknown as the old
+   * behaviour, which is right for the non-variant products that are most of any list, and those
+   * rows heal the next time the shopper re-saves them.
+   */
+  hasVariants?: boolean;
 }
 
 const KEY = 'wishlist_v1';
