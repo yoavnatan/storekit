@@ -1469,13 +1469,6 @@ body:has(.site-header.is-stuck) .store-banner {
    pmFlagMissingVariants() on a blocked add-to-cart click. No modal/alert.
    Ring lives on each option button, not the wrapping [role=group] row — see
    product.css's identical comment for why a group-level ring breaks on wrap. */
-.store-page .variant-group--invalid { animation: variant-shake 0.4s ease; }
-.store-page .variant-group--invalid .pm-variant-opt {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-text) 30%, transparent);
-}
-@keyframes variant-shake {
-  10%, 90% { transform: translateX(-1px); }
-  20%, 80% { transform: translateX(2px); }
-  30%, 50%, 70% { transform: translateX(-4px); }
-  40%, 60% { transform: translateX(4px); }
-}
+/* The rule and its keyframes were HERE too, scoped to `.store-page`, and that duplication is what
+   hid the bug: the modal lives in BaseLayout and matched neither copy. Single definition now in
+   product.css, unscoped — read the comment there before re-scoping either of them. */

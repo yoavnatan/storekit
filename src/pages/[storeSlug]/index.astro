@@ -123,7 +123,17 @@ const isDemo = isDemoStore(shopStore);
 // Quiet per-product label for a showcase store. Every product in such a store is
 // one, so this is a muted line, not the pill the STORE gets — the same markup has
 // to exist in the JS card renderer further down (SSR/AJAX parity).
-const DEMO_PRODUCT_BADGE_CLASS = 'inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]';
+/* Sits ON the picture, not in the card body (owner, 2026-08-12: "צריך להופיע על גבי התמונה בצורה
+   מאוד עדינה כי כרגע זה מגדיל את הכרטיסייה עצמה"). In flow it added a line to EVERY card in a
+   showcase store, so the same product card was one height in a real store and taller in a demo one
+   — the disclosure was quietly redesigning the grid.
+   Bottom inline-start is the one free corner: the wishlist heart owns top inline-end and the image
+   dots own bottom centre. Opaque white rather than a blurred glass chip, matching the heart's own
+   treatment (memory `feedback_wishlist_heart_no_glass`) — and `pointer-events:none` so it can never
+   swallow a click meant for the card behind it. */
+const DEMO_PRODUCT_BADGE_CLASS = 'absolute bottom-[0.45rem] inset-inline-start-[0.45rem] z-[2] pointer-events-none '
+  + 'inline-flex items-center gap-1 py-[0.15rem] px-[0.4rem] rounded-[var(--radius-sm)] '
+  + 'bg-white/92 text-[0.6rem] font-medium leading-[1.4] whitespace-nowrap [color:var(--color-muted)]';
 const DEMO_PRODUCT_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>';
 const categoryTree = buildCategoryTree(storeCategories);
 // A store's own categories are free text, so they get no icons (see
@@ -452,7 +462,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
-  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''} data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined} data-ad-landing={adLanding ? '1' : undefined}>
+  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-demo-badge-class={isDemo ? DEMO_PRODUCT_BADGE_CLASS : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''} data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined} data-ad-landing={adLanding ? '1' : undefined}>
 
     {/* Owner bar. Sits above .store-banner-pin in normal flow, so it simply
         scrolls away and the curtain-scroll geometry below is untouched. */}
@@ -928,14 +938,14 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                         {p.images!.map((_, dotI) => <span class={`product-card__dot${dotI === 0 ? ' is-active' : ''}`}></span>)}
                       </div>
                     )}
-                  </div>
-                  <div class="product-card__body" dir="auto">
                     {isDemo && (
                       <span class={DEMO_PRODUCT_BADGE_CLASS}>
                         <Fragment set:html={DEMO_PRODUCT_BADGE_ICON} />
                         {t.demo.productBadge}
                       </span>
                     )}
+                  </div>
+                  <div class="product-card__body" dir="auto">
                     <a href={`/${shopStore.slug}/${p.slug}`}
                        class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150"
                        style="color:inherit;text-decoration:none;display:block">
@@ -1524,10 +1534,14 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     return categoryAncestorChain(categoryId).map((c) => c.name).join(' › ');
   }
 
-  // Mirrors the SSR badge above — see the SSR/AJAX-parity rule in AI_INSTRUCTIONS.
+  // Mirrors the SSR badge above — see the SSR/AJAX-parity rule in AI_INSTRUCTIONS. The CLASS is now
+  // read off the root rather than written out a second time here: the two copies had already drifted
+  // once (the injected one kept `mb-1` after the badge moved onto the picture), and a class list
+  // duplicated between a server render and a client render is the same drift class as
+  // memory `project_client_renderer_i18n_drift`. One definition, in the frontmatter, handed over.
   const demoRoot = document.querySelector<HTMLElement>('.store-page');
   const demoProductBadgeHtml = demoRoot?.dataset.demo
-    ? `<span class="inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>${escHtml(demoRoot.dataset.demoLabel ?? '')}</span>`
+    ? `<span class="${escHtml(demoRoot.dataset.demoBadgeClass ?? '')}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>${escHtml(demoRoot.dataset.demoLabel ?? '')}</span>`
     : '';
 
   const storeControls = document.querySelector<HTMLElement>('.store-controls');
@@ -1968,9 +1982,9 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
         </button>
         ${dotsHtml}
+        ${demoProductBadgeHtml}
       </div>
       <div class="product-card__body" dir="auto">
-        ${demoProductBadgeHtml}
         <a href="/${escHtml(storeSlug)}/${escHtml(p.slug)}" class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150" style="color:inherit;text-decoration:none;display:block">
           <h3 class="product-card__name">${escHtml(p.name)}</h3>
         </a>
