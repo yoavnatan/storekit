@@ -38,7 +38,7 @@ Multi-vendor internet mall for the Israeli market. Sellers open stores; shoppers
 - **Hold/payout periods live in `lib/payout-schedule.ts` alone** — ⚠️ placeholders, owner-blocked, same decision as the returns window; `terms.astro` interpolates them. Releasability is `lib/payout-hold.ts`, which asks `order-status-rules.ts`, never the word "cancelled".
 - **Derived vs stored:** gross/commission/hold derive from orders — `seller-balance.ts`'s no-table decision stands. Stored only where something irreversible happened: `seller_payouts` (UNIQUE seller+period, so a retried run cannot pay twice) and `seller_ledger_adjustments`.
 - **Provider: any ordinary Israeli gateway** — the agent model deletes the `create-seller`/`market_fee`/split need that narrowed it to PayMe. Separate Authorize/Capture stays hard (`lib/payment.ts`). Shortlist: GO_LIVE §3.
-- **Invoices both directions, automatic:** seller→buyer for the full order **in the seller's name**, platform→seller for commission + subscription + ad margin. `lib/invoicing/`, behind an adapter.
+- **Invoices — the platform issues only its OWN:** commission/subscription/ad margin. The buyer's invoice is the SELLER's; we record only his answer that he did — `lib/invoicing/buyer-invoice.ts`.
 - **⚠️ The regulatory basis is UNVERIFIED, owner-blocked — never restate as checked.** `docs/legal-brief-agent-model.md`.
 
 ### Checkout — decided
