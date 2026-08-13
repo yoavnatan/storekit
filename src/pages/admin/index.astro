@@ -50,6 +50,7 @@ import AdminOrdersPanel from '../../components/admin/AdminOrdersPanel.astro';
 import AdminMessagesPanel from '../../components/admin/AdminMessagesPanel.astro';
 import AdminAlertsPanel from '../../components/admin/AdminAlertsPanel.astro';
 import AdminReportsPanel from '../../components/admin/AdminReportsPanel.astro';
+import AdminModerationStatus from '../../components/admin/AdminModerationStatus.astro';
 import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.astro';
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
@@ -361,7 +362,10 @@ const [
   only(['alerts'], () => countOpenReports(), 0),
   // Is anybody checking uploaded pictures right now (image-moderation-health.ts). Overview only —
   // it is a card on the landing tab, and with no add-on declared it answers without a query at all.
-  only(['overview'], () => getImageModerationState(), 'ok' as const),
+  // Is anybody checking uploaded pictures right now (image-moderation-health.ts). The Alerts tab —
+  // it is a section at the top of it (owner, 2026-08-13; AdminModerationStatus.astro says why not
+  // the Overview and not the log). With no add-on declared it answers without a query at all.
+  only(['alerts'], () => getImageModerationState(), 'ok' as const),
 ]);
 
 const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
@@ -602,8 +606,6 @@ const badgeFor: Record<string, number> = badgeCounts;
           overview={overview}
           emptyStoreCount={storeEmptyCount}
           emptyStoresHref={tabUrl('stores', { stempty: '1' })}
-          imageModeration={imageModerationState}
-          imageModerationHref={tabUrl('alerts', {})}
         />
       </AdminPanelShell>
 
@@ -746,6 +748,7 @@ const badgeFor: Record<string, number> = badgeCounts;
       </AdminPanelShell>
 
       <AdminPanelShell panel="alerts" active={shows('alerts')}>
+        <AdminModerationStatus state={imageModerationState} />
         <AdminReportsPanel reports={userReports} openCount={openReportCount} newSince={newSince.alerts} />
         <AdminAlertsPanel
           errors={alertsPageResult.items}

@@ -1,6 +1,7 @@
 /**
- * "Is image moderation actually protecting anything right now?" — answered on the admin's Overview,
- * because an event log is the wrong home for a STATE.
+ * "Is image moderation actually protecting anything right now?" — answered as a section at the top
+ * of the admin's Alerts tab (`AdminModerationStatus.astro`, which carries the placement argument
+ * and the two placements the owner rejected before it).
  *
  * **Why this file exists at all (owner, 2026-08-13).** The first version reported a stopped filter
  * through `reportClientError`, which lands in the Alerts tab as a `warning` — the quietest level,
@@ -10,9 +11,9 @@
  * **a protection is not running, and is still not running now** — a condition that persists until
  * somebody acts, which is precisely what a log cannot express: it has no way to stop being true.
  *
- * So the log entry stays as the durable record of WHEN it started, and the answer a person needs
- * lives on the first screen they open, as a card that is present exactly while the problem is.
- * Nothing to notice, nothing to remember, and it removes itself.
+ * So the log entry stays as the durable record of WHEN it started, and the answer a person needs is
+ * stated in words at the top of the tab that is already about things being wrong — where a reader
+ * who has never seen it before can read it as one sentence. Nothing to notice, nothing to remember.
  *
  * **Two causes, one operational meaning: nobody is checking the pictures.**
  *   `off`     — `PUBLIC_IMAGE_MODERATION_ON` is not `true`. No add-on was ever declared. This is
@@ -34,7 +35,7 @@ import { MODERATION_MISSING_MARKER } from './image-moderation.js';
 
 /** How far back a "the filter stopped" report still describes NOW. A quota resets on the billing
  *  date, so the window has to be long enough to cover most of a month — but a report from five
- *  weeks ago is history, and a card that never clears is furniture (memory
+ *  weeks ago is history, and a warning that never clears is furniture (memory
  *  `feedback_no_standing_screen_prose`). */
 const RECENT_DAYS = 21;
 
@@ -51,8 +52,8 @@ export function moderationDeclaredOn(): boolean {
  * The state to show. One query, and only when an add-on is declared — with nothing declared there
  * is nothing to look up, and the answer is already known.
  *
- * Never throws: this renders the admin's landing page, and a dashboard that 500s because it could
- * not check a warning is a worse outcome than the warning going unshown.
+ * Never throws: a tab that 500s because it could not check a warning is a worse outcome than the
+ * warning going unshown.
  */
 export async function getImageModerationState(): Promise<ImageModerationState> {
   if (!moderationDeclaredOn()) return 'off';
@@ -66,7 +67,7 @@ export async function getImageModerationState(): Promise<ImageModerationState> {
     return Number(row?.n ?? 0) > 0 ? 'stopped' : 'ok';
   } catch {
     // A failed lookup is not evidence of a healthy filter, but it is not evidence of a broken one
-    // either — and inventing an alarm from a database hiccup is how a card gets ignored.
+    // either — and inventing an alarm from a database hiccup is how a warning gets ignored.
     return 'ok';
   }
 }
