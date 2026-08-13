@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moderationRefusal } from '../src/lib/image-moderation.js';
+import { moderationRefusal, moderationWentMissing, wasModerated } from '../src/lib/image-moderation.js';
 
 /**
  * The verdict rules for an uploaded image (`lib/image-moderation.ts`).
@@ -60,5 +60,49 @@ describe('what the app does with a moderation verdict', () => {
   it('ignores an entry with no readable status instead of guessing', () => {
     expect(moderationRefusal({ moderation: [{ kind: 'aws_rek' }] })).toBeNull();
     expect(moderationRefusal({ moderation: [{ status: 42 }] })).toBeNull();
+  });
+});
+
+/**
+ * The alarm for the failure the verdict itself cannot express.
+ *
+ * Cloudinary's billing docs: *"Add-ons with a usage quota hit a hard limit instead: when quota runs
+ * out, that add-on stops until it renews or you change tier"* — and a stopped add-on's upload
+ * response is identical to a never-enabled one's. Without a declared expectation there is nothing
+ * in the world that distinguishes them, so the filter would go quiet mid-month with the platform
+ * still believing it was on.
+ */
+describe('a moderation filter cannot switch itself off quietly', () => {
+  const unjudged = { secure_url: 'https://res.cloudinary.com/x/a.jpg' };
+  const judged = { moderation: [{ status: 'approved', kind: 'aws_rek' }] };
+
+  it('says nothing when no add-on is expected', () => {
+    // The default, and today's real state: nothing was promised, so nothing is missing. If this
+    // fired while the add-on is off, every seller upload on the platform would file an alert.
+    expect(moderationWentMissing(unjudged, false)).toBeNull();
+    expect(moderationWentMissing(judged, false)).toBeNull();
+  });
+
+  it('raises when an add-on IS expected and no verdict came back', () => {
+    const alarm = moderationWentMissing(unjudged, true);
+    expect(alarm).toBeTruthy();
+    // It has to name both possible causes, because the response cannot tell them apart and the
+    // owner's next action differs: switch the add-on on, or wait for the quota to renew.
+    expect(alarm).toMatch(/quota/i);
+    expect(alarm).toMatch(/NOT being filtered/i);
+  });
+
+  it('stays quiet when the add-on is expected and did run', () => {
+    expect(moderationWentMissing(judged, true)).toBeNull();
+    // Including the case where it ran and REJECTED — that is the filter working, not missing.
+    expect(moderationWentMissing({ moderation: [{ status: 'rejected' }] }, true)).toBeNull();
+  });
+
+  it('treats an empty moderation array as not moderated', () => {
+    // The shape a stopped add-on could plausibly return, and `[]` is falsy about the only thing
+    // that matters: nobody looked at the picture.
+    expect(wasModerated({ moderation: [] })).toBe(false);
+    expect(moderationWentMissing({ moderation: [] }, true)).toBeTruthy();
+    expect(wasModerated(judged)).toBe(true);
   });
 });

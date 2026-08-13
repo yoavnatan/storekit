@@ -58,6 +58,13 @@ interface ModerationEntry {
  *  is the only one who ever sees them, and a rejection with no reason reads as a broken uploader. */
 const REJECTED = 'התמונה נדחתה בבדיקת תוכן — בחר/י תמונה אחרת';
 
+/** Did an add-on actually judge this upload? The two questions below both need it, and "the array
+ *  is missing or empty" is the only evidence either way. */
+export function wasModerated(uploadResponse: unknown): boolean {
+  const list = (uploadResponse as { moderation?: unknown })?.moderation;
+  return Array.isArray(list) && list.length > 0;
+}
+
 /**
  * The sentence to fail the upload with, or `null` when there is nothing to object to.
  *
@@ -65,16 +72,44 @@ const REJECTED = 'התמונה נדחתה בבדיקת תוכן — בחר/י ת
  * drive with the shapes the provider documents instead of a live account.
  */
 export function moderationRefusal(uploadResponse: unknown): string | null {
-  const list = (uploadResponse as { moderation?: unknown })?.moderation;
-  // Not an array = the add-on is not enabled on this preset. Nothing was checked, so nothing is
-  // claimed — see the module note.
-  if (!Array.isArray(list) || list.length === 0) return null;
+  // Not moderated = the add-on is not enabled on this preset, or it has STOPPED (see
+  // `moderationWentMissing` below). Nothing was checked, so nothing is claimed — the module note
+  // says why that silence is correct here and where the alarm lives instead.
+  if (!wasModerated(uploadResponse)) return null;
 
-  const statuses = (list as ModerationEntry[])
-    .map((entry) => (typeof entry?.status === 'string' ? entry.status : ''));
+  const list = (uploadResponse as { moderation: ModerationEntry[] }).moderation;
+  const statuses = list.map((entry) => (typeof entry?.status === 'string' ? entry.status : ''));
 
   // A single rejection decides it, whatever the other add-ons said — that is what `aborted` means
   // on the entries that never got to run. Everything else, `pending` and `queued` included, is not
   // a refusal: only an explicit NO stops a seller's upload. See the module note.
   return statuses.some((s) => s === 'rejected' || s === 'aborted') ? REJECTED : null;
+}
+
+/**
+ * **The alarm for a filter that switched itself off.** Returns a message to report when moderation
+ * was supposed to run and did not, else `null`.
+ *
+ * This exists because of one sentence in Cloudinary's own billing documentation (checked
+ * 2026-08-13): *"Add-ons with a usage quota hit a hard limit instead: when quota runs out, that
+ * add-on stops until it renews or you change tier."* — and, on a free base plan, the quota cannot
+ * be raised mid-month. A stopped add-on returns an upload response with no `moderation` key, which
+ * is byte-for-byte what an add-on that was never enabled returns. So on the day the quota runs out,
+ * every check above starts answering "nothing to object to", and the platform carries on believing
+ * it is filtered. **A protection that disappears without saying so is worse than no protection**,
+ * because the second one is at least known.
+ *
+ * The distinguishing fact cannot come from the response — it has to come from US saying whether an
+ * add-on is expected. That is `PUBLIC_IMAGE_MODERATION_ON`, and it is the entire mechanism: one
+ * declared expectation, compared against what actually arrived. No scheduled job, no Admin API
+ * credentials, no quota polling — the uploads themselves are the sampling.
+ *
+ * Reported, never blocking. A quota that ran out must not also stop sellers from working; the
+ * owner is the one who can act on it, and `error-log.ts` is where they already look.
+ */
+export function moderationWentMissing(uploadResponse: unknown, expected: boolean): string | null {
+  if (!expected || wasModerated(uploadResponse)) return null;
+  return 'Image moderation is configured as ON but the upload came back with no moderation verdict '
+    + '— the Cloudinary add-on is off, or its monthly quota has run out and it has stopped. '
+    + 'Uploads are NOT being filtered right now. See GO_LIVE §2.6.';
 }

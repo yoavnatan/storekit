@@ -3,7 +3,14 @@
 export { cdnThumb as thumbUrl } from '../../lib/cdn.js';
 
 import { downscaleForUpload, MAX_UPLOAD_BYTES } from './image-downscale.js';
-import { moderationRefusal } from '../../lib/image-moderation.js';
+import { moderationRefusal, moderationWentMissing } from '../../lib/image-moderation.js';
+import { reportClientError } from '../error-reporter.js';
+
+/** Whether an image-moderation add-on is expected to be running on the upload preset. A `PUBLIC_`
+ *  var because the upload — and therefore the verdict — happens in the BROWSER; it is a statement
+ *  of intent, not a secret. Read once here rather than per call: `import.meta.env` is inlined at
+ *  build time, so this is a constant in the bundle either way. */
+const MODERATION_EXPECTED = import.meta.env.PUBLIC_IMAGE_MODERATION_ON === 'true';
 
 /**
  * Cloudinary's unsigned-upload ceiling on the free tier, and now a LAST resort rather than the
@@ -67,6 +74,14 @@ export async function cloudinaryUpload(original: Blob, cloud: string, preset: st
   // including why it says nothing at all while the add-on is off.
   const refusal = moderationRefusal(json);
   if (refusal) throw new Error(refusal);
+
+  // …and the other half: an add-on that was switched on and has since STOPPED (quota) is
+  // indistinguishable from one that was never enabled, so the only thing that can tell the
+  // difference is our own declared expectation. Reported, never thrown — a spent quota must not
+  // stop sellers working, and the owner is the one who can act on it. Every upload samples it, so
+  // there is nothing to schedule and nothing to remember.
+  const missing = moderationWentMissing(json, MODERATION_EXPECTED);
+  if (missing) reportClientError(missing);
 
   return json.secure_url;
 }
