@@ -44,6 +44,27 @@ else
   (
     cd "$MEM" || exit 0
 
+    # ⚠️ THE LINE THAT MAKES EVERYTHING BELOW SAFE. Git exports GIT_DIR (and friends) into every
+    # hook's environment, and those variables OUTLIVE the `cd` above — so without this, `git add -A`
+    # runs against the CODE repo while standing in the memory directory. What it stages is
+    # "delete all ~930 tracked files, add these 170 .md files", and it commits that onto the branch
+    # being pushed as `Memory sync <code-sha>`. That is not a hypothetical: it happened seven times
+    # between 2026-08-06 and 2026-08-13 (memory `project_prepush_hook_wiped_worktree`), and each
+    # time the advice written down afterwards was "never push from a worktree" — a rule for a person
+    # to remember, which is the wrong layer. The environment is the cause; this is the fix.
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_NAMESPACE \
+          GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
+
+    # Belt and braces, because the cost of being wrong here is the whole tree: refuse to touch
+    # anything that is not the memory checkout's own root. A mismatch means the unset above missed
+    # something, and the correct response is to back up nothing.
+    mem_top="$(git rev-parse --show-toplevel 2>/dev/null || echo)"
+    if [ -z "$mem_top" ] || [ "$(cd "$mem_top" && pwd -P)" != "$(pwd -P)" ]; then
+      echo "[pre-push] memory backup SKIPPED — git in $MEM resolves to ${mem_top:-no repo}, not to itself." >&2
+      echo "[pre-push] Nothing was committed. The code push continues." >&2
+      exit 0
+    fi
+
     if [ -n "$(git status --porcelain)" ]; then
       git add -A
       git -c user.name="Yoav Natan" -c user.email="yoavnatan.yn@gmail.com" \
