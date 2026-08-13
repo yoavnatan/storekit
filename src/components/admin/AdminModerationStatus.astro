@@ -1,6 +1,6 @@
 ---
-/** "סינון תמונות" — a section at the top of the Alerts tab saying whether uploaded pictures are
- *  being checked at all.
+/** "סינון תמונות" — whether uploaded pictures are being checked at all, in the two places that ask
+ *  different questions about it.
  *
  * **Third placement, and the owner rejected the first two (2026-08-13).** It began as a
  * `reportClientError` row inside the error log — *"it will get buried among the operational
@@ -15,17 +15,30 @@
  * number and not an event; it is a sentence about the platform's current condition, and it needs to
  * be read as one sentence by someone who has never seen it before.
  *
- * **When everything is fine it is one quiet line, and only a problem gets the box** — memory
- * `feedback_no_standing_screen_prose`. It still says something in the healthy case, because "is the
- * filter on?" is a question with no other answer anywhere in the product, and silence would leave
- * it unanswerable.
+ * **And the placement question had a fourth answer, which is his and is the right one (2026-08-13):
+ * a healthy filter is not an alert, so what is it doing in a tab called "התראות ושגיאות"?** Nothing
+ * — so the two states now live where each belongs:
+ *
+ *   `overview` — ALWAYS rendered. "Is the filter on?" is a question about the platform's standing
+ *                condition, which is exactly what a summary screen is for, and there is no other
+ *                place in the product that answers it.
+ *   `alerts`   — rendered ONLY when something is wrong. That tab is defined by problems; a green
+ *                line saying everything is fine is the furniture that teaches an eye to skip the
+ *                place the real alarm will appear (memory `feedback_no_standing_screen_prose`).
+ *
+ * A problem therefore shows in BOTH, and the duplication is the point: the summary says a thing is
+ * wrong, the tab says what to do about it, and the tab's own "(N)" carries it to someone who is
+ * looking at neither.
  */
 import type { ImageModerationState } from '../../lib/image-moderation-health.js';
 
 interface Props {
   state: ImageModerationState;
+  /** Which question this instance is answering — see the header. `alerts` renders nothing at all
+   *  when the state is `ok`. */
+  placement: 'overview' | 'alerts';
 }
-const { state } = Astro.props;
+const { state, placement } = Astro.props;
 
 /** Each state is a headline, what it MEANS for the platform, and the next action — in that order,
  *  because a reader who stops after the first line should already have the important half. */
@@ -42,32 +55,40 @@ const COPY: Record<Exclude<ImageModerationState, 'ok'>, { title: string; means: 
   },
 };
 const copy = state === 'ok' ? null : COPY[state];
+/** Nothing to say, and not the screen to say it on. */
+const silent = placement === 'alerts' && state === 'ok';
 ---
 
-<section aria-labelledby="admin-moderation-h" style="margin-bottom:1.5rem">
-  <h3 id="admin-moderation-h" class="!text-[0.95rem] !font-semibold" style="margin:0 0 0.6rem">
-    סינון תמונות
-  </h3>
+{!silent && (
+  <section aria-labelledby={`admin-moderation-h-${placement}`} style={placement === 'alerts' ? 'margin-bottom:1.5rem' : 'margin-top:1.25rem'}>
+    <h3 id={`admin-moderation-h-${placement}`} class="!text-[0.95rem] !font-semibold" style="margin:0 0 0.6rem">
+      סינון תמונות
+    </h3>
 
-  {copy ? (
-    <div style="border:1px solid var(--color-border);border-inline-start:3px solid var(--color-danger);border-radius:var(--radius);background:var(--color-surface);padding:0.85rem 1rem;max-width:70ch">
-      <p style="margin:0;font-weight:600">{copy.title}</p>
-      <p style="margin:0.4rem 0 0;font-size:0.9rem">{copy.means}</p>
-      <p class="muted" style="margin:0.55rem 0 0;font-size:0.85rem">{copy.todo}</p>
-    </div>
-  ) : (
-    /* One line, no box — the healthy state is worth stating and not worth a card. The dot is the
-       one piece of decoration it gets (owner asked, 2026-08-13): a green mark reads as "checked"
-       before the sentence does, which is the whole job of a line nobody should have to stop on.
-       `--color-success`, the token every other "this is fine" on the platform already uses, so it
-       is not a fifth green. `aria-hidden` because the word "פעיל" beside it already says this to a
-       screen reader, and colour is never the only signal. */
-    <p class="muted" style="margin:0;font-size:0.88rem;display:flex;align-items:center;gap:0.45rem">
-      <span
-        aria-hidden="true"
-        style="width:0.55rem;height:0.55rem;border-radius:50%;background:var(--color-success);box-shadow:0 0 0 3px color-mix(in srgb, var(--color-success) 18%, transparent);flex-shrink:0"
-      ></span>
-      <span><strong style="font-weight:600;color:var(--color-text)">פעיל</strong> — תמונות שמוכרים מעלים נבדקות לפני שהן עולות לאתר.</span>
-    </p>
-  )}
-</section>
+    {copy ? (
+      /* The same box on both screens, and deliberately not a shortened version on the summary: a
+         problem that is worth mentioning is worth saying what to do about, and a reader who has to
+         click through to find out is a reader who does not. */
+      <div style="border:1px solid var(--color-border);border-inline-start:3px solid var(--color-danger);border-radius:var(--radius);background:var(--color-surface);padding:0.85rem 1rem;max-width:70ch">
+        <p style="margin:0;font-weight:600">{copy.title}</p>
+        <p style="margin:0.4rem 0 0;font-size:0.9rem">{copy.means}</p>
+        <p class="muted" style="margin:0.55rem 0 0;font-size:0.85rem">{copy.todo}</p>
+      </div>
+    ) : (
+      /* Overview only — the Alerts tab never reaches here (`silent`). One line, no box: the healthy
+         state is worth stating and not worth a card. The dot is the one piece of decoration it gets
+         (owner asked, 2026-08-13): a green mark reads as "checked" before the sentence does, which
+         is the whole job of a line nobody should have to stop on. `--color-success`, the token
+         every other "this is fine" on the platform already uses, so it is not a fifth green.
+         `aria-hidden` because the word "פעיל" beside it already says this to a screen reader, and
+         colour is never the only signal. */
+      <p class="muted" style="margin:0;font-size:0.88rem;display:flex;align-items:center;gap:0.45rem">
+        <span
+          aria-hidden="true"
+          style="width:0.55rem;height:0.55rem;border-radius:50%;background:var(--color-success);box-shadow:0 0 0 3px color-mix(in srgb, var(--color-success) 18%, transparent);flex-shrink:0"
+        ></span>
+        <span><strong style="font-weight:600;color:var(--color-text)">פעיל</strong> — תמונות שמוכרים מעלים נבדקות לפני שהן עולות לאתר.</span>
+      </p>
+    )}
+  </section>
+)}
