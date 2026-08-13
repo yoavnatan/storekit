@@ -18,7 +18,7 @@ import { initCategoryPicker } from './category-picker.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { suggestTags } from '../../lib/tag-suggest.js';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
-import { productSeoPanelHtml, productSeoLabels, type ProductSeoPreview } from '../../lib/product-seo-field.js';
+import { productSeoPanelHtml, productSeoLabels, productSeoRowGaugeHtml, type ProductSeoPreview } from '../../lib/product-seo-field.js';
 import { productSeoInputFrom } from '../../lib/product-seo-hints.js';
 import { refreshProductSeoPanels } from './product-seo.js';
 import { resolvePrice, type ProductDiscount, type StoreSale } from '../../lib/discounts.js';
@@ -1578,6 +1578,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem"><span class="purchased-col-label">${esc(i.colPurchased ?? 'Purchased')}: </span>${(p.purchasedCount ?? 0) > 0 ? String(p.purchasedCount) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="date-col"><span class="date-col-label">${esc(i.colDateAddedShort ?? 'Added')}: </span>${esc(fmtDateAdded(p.createdAt))}</td>
+    <td class="seo-col">${productSeoRowGaugeHtml(productSeoInputFrom(p), productSeoLabels(i))}</td>
     <td class="actions actions-col">
       <div class="product-menu relative inline-block">
         <button class="product-menu__btn inline-flex items-center justify-center w-7 h-7 bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] opacity-50 transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] hover:opacity-100 aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:opacity-100 active:scale-90" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
@@ -2344,7 +2345,7 @@ function thumbIsResolved(wrap: HTMLElement): boolean {
 }
 
 // Number of <th>s in the products table — the empty-state row spans all of them.
-const PRODUCTS_TABLE_COLS = 12;
+const PRODUCTS_TABLE_COLS = 13;
 
 /** The "nothing matches" row. Lives INSIDE the table on purpose: the table header carries
  *  the very filter funnels the seller needs to undo the filter, so hiding the table strands
@@ -2413,6 +2414,11 @@ export async function applyPagination(): Promise<void> {
   if (stockValues?.size) {
     const i = getDashI18n();
     params.set('pstock', [...stockValues].map((v) => stockKeyFromLabel(v, i)).join(','));
+  }
+  const seoValues = productsFilters.get('seo');
+  if (seoValues?.size) {
+    const i = getDashI18n();
+    params.set('pseo', [...seoValues].map((v) => seoKeyFromLabel(v, i)).join(','));
   }
 
   let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number; stockAlerts?: number };
@@ -2554,7 +2560,7 @@ export function initStickyOffsets(): void {
 // funnel, its continuous stock column only gets sort). Add more column keys
 // here (and a matching case in getDistinctFilterValues + filterAndSortSellerProducts
 // in seller-products-query.ts) if a future column turns out to warrant it.
-const PRODUCT_FILTER_COLUMNS = ['category', 'stock'] as const;
+const PRODUCT_FILTER_COLUMNS = ['category', 'stock', 'seo'] as const;
 
 // Stock-status filter (CURRENT_TASK.md item 3): three synthetic buckets over the
 // numeric stock column so a seller can isolate just the problem inventory.
@@ -2573,9 +2579,26 @@ function stockKeyFromLabel(label: string, i: Record<string, string>): string {
   return 'ok';
 }
 
+// Search-visibility filter — the discovery half of the row gauge: the gauge marks a thin listing,
+// this finds all of them across every page. Values are the meter's OWN band words (seoLevelWeak/
+// Partial/Strong), not a second vocabulary, so "בסיסי" means the same thing in the filter, on the
+// gauge and in the product panel.
+const SEO_FILTER_KEYS = ['weak', 'partial', 'strong'] as const;
+function seoFilterLabel(key: string, i: Record<string, string>): string {
+  return key === 'weak' ? (i.seoLevelWeak ?? 'בסיסי')
+    : key === 'partial' ? (i.seoLevelPartial ?? 'טוב')
+    : (i.seoLevelStrong ?? 'מצוין');
+}
+function seoKeyFromLabel(label: string, i: Record<string, string>): string {
+  if (label === seoFilterLabel('weak', i)) return 'weak';
+  if (label === seoFilterLabel('partial', i)) return 'partial';
+  return 'strong';
+}
+
 function productFilterColumnLabel(col: string, i: Record<string, string>): string {
   if (col === 'category') return i.categoryLabel ?? 'קטגוריה';
   if (col === 'stock') return i.colStock ?? 'מלאי';
+  if (col === 'seo') return i.filterColSeo ?? 'נראות בחיפוש';
   return col;
 }
 
@@ -2690,6 +2713,11 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeToolb
 
 function refreshSortUI(): void {
   document.querySelectorAll<HTMLButtonElement>('#products-table thead .sort-btn').forEach((btn) => {
+    // The SEO column's heading wears .sort-btn for the shared heading look but is a FILTER trigger,
+    // not a sort control — and `data-active` is the flag refreshFilterUI uses to light it when a
+    // filter is on. Without this guard, sorting any other column cleared that light, because this
+    // pass deletes the attribute on every heading whose sort column isn't the current one.
+    if (!btn.dataset.sortCol) return;
     if (btn.dataset.sortCol === productsSortCol) { btn.dataset.active = 'true'; btn.dataset.dir = productsSortDir; }
     else { delete btn.dataset.active; delete btn.dataset.dir; }
   });
@@ -2770,6 +2798,7 @@ function getDistinctFilterValues(col: string): string[] {
   const i = getDashI18n();
   if (col === 'category') return [...allCategoryPaths().sort(), i.filterNoCategory ?? 'ללא קטגוריה'];
   if (col === 'stock') return STOCK_FILTER_KEYS.map((k) => stockFilterLabel(k, i));
+  if (col === 'seo') return SEO_FILTER_KEYS.map((k) => seoFilterLabel(k, i));
   return [];
 }
 
@@ -3521,7 +3550,13 @@ export function initBulkSelect(cloud: string, preset: string): void {
     });
     refreshBulkEditLabel();
     selectAllChks.forEach((chk) => { chk.hidden = !anyOpen; });
-    if (!anyOpen) firstRow?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // The SAME landing as the row menu's own "ערוך" — the form's header, flush under the pinned
+    // chrome. This was `scrollIntoView({block:'nearest'})`, and `nearest` is wrong for a target
+    // TALLER than the viewport: with the row below the fold it aligns the row's BOTTOM to the
+    // viewport's bottom, so a seller pressing "ערוך" landed somewhere in the middle of the form
+    // with its heading and Save button far above (reported 2026-08-12). It was also a native
+    // smooth scroll, which this RTL site bans for a JS-computed target (scroll-utils.ts).
+    if (!anyOpen && firstRow) scrollEditRowIntoView(firstRow);
   });
 
   function renderUploadPanel(): void {

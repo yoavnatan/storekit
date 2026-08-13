@@ -16,6 +16,7 @@ import { CSV_FIELDS } from '../../lib/csv-bulk.js';
 import { normalizeStoreSale } from '../../lib/discount-input.js';
 import { resolveSaleScope, resolveSaleProductScope } from '../../lib/store-sale-scope.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
+import { storeTextOverLimit, fieldLimitRejectionMessage } from '../../lib/field-limits.js';
 import { storeSettingsRev, mergeByFieldRev, STORE_REV_FIELDS } from '../../lib/record-rev.js';
 import { warmBannerDerivations } from '../../lib/image-derive.js';
 import { pairedImageSource } from '../../lib/store-image.js';
@@ -100,6 +101,20 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const address = merged.address as string | undefined;
     const categories = (merged.categories ?? []) as string[];
     if (!name) return json({ ok: false, error: 'Store name is required.' }, 400);
+
+    // A store's own name, tagline and description had NEITHER gate until 2026-08-12 — only the
+    // sale banner below was checked. They are seller free text on a public page, in the store's
+    // JSON-LD and in every feed row's `<g:brand>`/store name, i.e. exactly the surface the product
+    // gate exists to protect, reached through a different form. Length first, same as
+    // /api/product: refuse a huge body before scanning it word by word.
+    const storeTagline = String(merged.tagline ?? '');
+    const storeDescription = String(merged.description ?? '');
+    const storeTooLong = storeTextOverLimit({ name, tagline: storeTagline, description: storeDescription });
+    if (storeTooLong) return json({ ok: false, error: fieldLimitRejectionMessage(storeTooLong) }, 400);
+    const storeSpam = findSpamKeyword(name, storeTagline, storeDescription, ...categories);
+    if (storeSpam) return json({ ok: false, error: spamRejectionMessage(storeSpam) }, 400);
+    const storeStuffing = findKeywordStuffing(name, storeTagline, storeDescription, ...categories);
+    if (storeStuffing) return json({ ok: false, error: stuffingRejectionMessage(storeStuffing) }, 400);
 
     // Self-pickup is the seller's only shipping lever (prices are platform-set). It needs
     // a pickup address — a buyer can't collect from "nowhere" — so block enabling it blank.

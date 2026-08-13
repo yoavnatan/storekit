@@ -170,8 +170,15 @@ textarea.input { resize: none; }
      that shrinks below ~55px (thumb + cell padding) let the image overflow into the name cell and
      ride over the product title. A fixed width sized to the thumb keeps it in its own lane. */
   .products-table .thumb-col     { width: 3.6rem; }
+  /* The name/category balance is NOT fixed by moving percent between them — tried on 2026-08-12
+     (name 16.5 / cat 10) and reverted the same day: the chip went to "ד…", and a category that
+     cannot be read is not a narrower column, it is a missing one. The room comes from .seo-col
+     below instead, which is sized to its gauge rather than to its heading. */
   .products-table .name-col      { width: 13%; }
-  .products-table .cat-col       { width: 13.5%; }
+  /* +1% over the long-standing 13.5, taken from date-col below (12% still clears "01/08/26" and
+     the heading was already ellipsizing). The gauge column costs this range ~54px, and at 13.5 the
+     category chip had gone from just-fitting to clipped — which is a category you cannot read. */
+  .products-table .cat-col       { width: 14.5%; }
   .products-table .sku-col       { width: 9%; }
   /* Price and stock are both `.num` (nowrap) and start-aligned, so in RTL a price
      too wide for its column bleeds LEFT, over the stock number sitting flush
@@ -184,7 +191,7 @@ textarea.input { resize: none; }
   .products-table .stock-col     { width: 9.5%; }
   .products-table .wishlist-col  { width: 6%; }
   .products-table .purchased-col { width: 8%; }
-  .products-table .date-col      { width: 13%; }
+  .products-table .date-col      { width: 12%; }
   /* Fixed width, not a %, for the third time in this block and the same reason as .check-col and
      .thumb-col above: the kebab button is a fixed 1.75rem, and its hover state paints a FULL
      circle of that size. Under `table-layout: fixed` a 4% column drops to ~15rem*0.04 at the
@@ -192,6 +199,7 @@ textarea.input { resize: none; }
      over the neighbouring column and the table's own edge, visible only on hover, which is when
      the background appears. Sized to the button plus this block's 0.4rem cell padding on both
      sides (1.75 + 0.8 = 2.55). The 4% it gives back is absorbed by the percentage columns. */
+  .products-table .seo-col       { width: 2.3rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 2.6rem; }
   .products-table .name-col .product-name {
     white-space: nowrap;
@@ -247,8 +255,7 @@ textarea.input { resize: none; }
   .products-table .wishlist-col  { width: 4.5%; }
   .products-table .purchased-col { width: 7%; }
   .products-table .date-col      { width: 10.5%; }
-  /* 1.75rem kebab + 0.75rem padding each side. Its hover state paints a full circle of
-     that size, so a narrower column spills the circle over the table's own edge. */
+  .products-table .seo-col       { width: 2.5rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 3.4rem; }
   /* One line + "…", not a wrap: rows stay a uniform height, and the full name is one click
      away — the cell is click-to-edit and opens an input carrying the whole string. */
@@ -809,6 +816,37 @@ textarea.input { resize: none; }
   vertical-align: middle;
   cursor: pointer;
 }
+
+/* ── Search-visibility gauge + its column (lib/product-seo-field.ts#productSeoRowGaugeHtml) ──
+   Its own narrow column, immediately before the row's actions button, so it is at the same
+   coordinates in every row. It was first overlaid on the thumbnail, which meant it moved with the
+   photo — and the photo's position moves with the card's height, which moves with whether the
+   product happens to have a description or a sale — and sat behind the image on rows that had one.
+   In its own column it needs no positioning at all: the cell is the placement. */
+/* Sized to the gauge, not to a heading: the column is barely wider than the 21px dial, so the dial
+   sits close to the actions button it belongs beside AND the heading lands squarely on top of it.
+   Both are simply centred — nothing is pushed to an edge, which is what left the two misaligned
+   when the column was wide enough for a word plus a funnel. */
+.seo-col {
+  width: 2.5rem;
+  vertical-align: middle;
+  text-align: center;
+  /* Restated inside each breakpoint block below: `.products-table td` / `th` set the cell padding
+     there at a specificity this rule cannot reach, and that 0.75rem was most of the column. */
+  padding-inline: 0.15rem;
+}
+/* The heading is the filter trigger — see the note in dashboard.astro. Sized off .sort-btn (which
+   it shares) so it reads as one of the column headings, with the muted-to-text hover every other
+   heading has; `cursor` and the active colour come from .sort-btn too. */
+.seo-col__filter { justify-content: center; width: 100%; }
+.product-seo-gauge {
+  display: inline-flex;
+  line-height: 0;
+}
+/* A meter fills from the reading edge, so the arc mirrors with the page — same direction the
+   panel's linear bar gets for free from being a flow-relative width. */
+[dir="rtl"] .product-seo-gauge > svg { transform: scaleX(-1); }
+
 .thumb-wrap {
   position: relative;
   width: 42px;
@@ -1000,13 +1038,18 @@ textarea.input { resize: none; }
      now 375. */
   .products-table tbody tr[data-product-display] {
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, auto) auto;
+    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, auto) auto auto;
     grid-template-rows: auto auto auto auto;
+    /* `seo` is its own full-height column between the details and the actions button, not a cell
+       inside a row of them: the gauge then sits at the same point in every card no matter how tall
+       that card is, which is the entire reason it left the thumbnail (owner, 2026-08-12 — "it looks
+       hidden behind the photo sometimes, and sometimes far from it"). The details block moves one
+       column away from the kebab to make room; at 375px there is width for it. */
     grid-template-areas:
-      "check thumb name  stock     actions"
-      "check thumb price purchased actions"
-      "check thumb cat   wishlist  actions"
-      "check thumb date  sku       actions";
+      "check thumb name  stock     seo actions"
+      "check thumb price purchased seo actions"
+      "check thumb cat   wishlist  seo actions"
+      "check thumb date  sku       seo actions";
     column-gap: 0.6rem;
     row-gap: 0.05rem;
     padding: 0.6rem 0.2rem;
@@ -1040,6 +1083,23 @@ textarea.input { resize: none; }
     grid-area: thumb;
     display: flex; align-items: center; justify-content: center;
     height: 100%;
+  }
+  .products-table tr[data-product-display] .seo-col {
+    grid-area: seo;
+    display: flex; align-items: center; justify-content: center;
+    width: auto; /* the desktop column's fixed width would be dead space on a card */
+    height: 100%;
+    /* Asymmetric, and deliberately so. Toward the ACTIONS button it is tight (0.6rem grid gap less
+       0.3rem = 4.8px) because the dial and the kebab are the card's one non-data corner and read as
+       a pair. Toward the DETAILS it needs real air: those are numbers in rows, and at 4.8px the
+       dial joined the column of them instead of standing apart (owner, 2026-08-12, twice — first
+       that the gap was too big, then that this side had gone too tight). 16px is the settled
+       distance. Negative margin rather than a smaller `column-gap`: the gap is set once for the
+       whole grid and every other column wants the full 0.6rem. */
+    margin-inline-start: 0;
+    margin-inline-end: -0.3rem;
+    padding-inline-start: 0.4rem;
+    padding-inline-end: 0;
   }
   .products-table tr[data-product-display] .name-col {
     grid-area: name;
@@ -1157,10 +1217,16 @@ textarea.input { resize: none; }
      header to lean on once thead disappears at this width — a plain number
      reads as ambiguous, so every row spells its own label out. */
   .product-stock-label,
-  .cat-col-label,
   .sku-col-label,
   .purchased-col-label,
   .date-col-label { display: inline; color: var(--color-muted); }
+  /* Every field above spells its own label out because a bare number or date reads as ambiguous
+     with no column header. The category is the one that does NOT need it: it is a coloured chip,
+     which says "category" by looking like one. And the label was not free — "קטגוריה: " is wider
+     than the whole name column on a card that has a thumbnail, so it pushed the chip onto a
+     second line and made the card taller for nothing (owner, 2026-08-12: categories are taking
+     too much room). */
+  .cat-col-label { display: none; }
 
   /* The variant-combo grid is a real nested <table> — the blanket "td → block"
      reset above is a descendant selector, so it was also flattening this one,

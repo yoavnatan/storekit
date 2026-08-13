@@ -232,9 +232,15 @@ describe('every sort and filter control names what it sorts or filters', () => {
         // Exact class token: `\b` would let "combo-sort-btn" answer for "sort-btn" (a hyphen is
         // a word boundary), which quietly merged two different expectations into one.
         if (!m[1]!.split(/\s+/).includes(cls)) continue;
+        // `.sort-btn` is the column-heading LOOK, not a promise about behaviour: the SEO column's
+        // heading wears it and opens the filter (it has to be no wider than the 21px gauge it sits
+        // over, so it cannot afford a word plus a separate funnel). Judge such a heading by what it
+        // does — this test's own title is "names what it sorts OR FILTERS" — not by its class.
+        const isFilterTrigger = /data-filter-funnel-col=/.test(tag);
+        const want = isFilterTrigger ? /filterByLabel|filterFunnelAria/ : expected;
         const label = /aria-label=(?:"([^"]*)"|\{([^}]*)\})/.exec(tag);
         const value = label?.[1] ?? label?.[2] ?? '';
-        if (!value || !expected.test(value)) {
+        if (!value || !want.test(value)) {
           offenders.push(`${file} → ${tag.slice(0, 120)}`);
         }
       }

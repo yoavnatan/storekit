@@ -77,6 +77,7 @@ for (const s of await getVisibleStores()) {
     // checkoutInProgress was mapped in the submit handler but never sent over, so the one
     // message that must not say "try again" fell back to the generic one that does.
     checkoutInProgress: c.checkoutInProgress,
+    variantMismatch: c.variantMismatch,
     soldOutDuringCheckout: c.soldOutDuringCheckout,
     stockReducedDuringCheckout: c.stockReducedDuringCheckout,
     stockReducedDuringCheckoutOne: c.stockReducedDuringCheckoutOne,
@@ -1201,7 +1202,7 @@ for (const s of await getVisibleStores()) {
 
       try {
         const res  = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string; outOfStock?: OutOfStockDetail; coupon?: { storeSlug?: string } };
+        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string; productName?: string; outOfStock?: OutOfStockDetail; coupon?: { storeSlug?: string } };
         // A code that stopped being valid between typing it and pressing pay — it expired, the
         // seller switched it off, or somebody else took the last use of a capped one. Handled
         // exactly like a changed price and for the same reason: the buyer is not at fault, the
@@ -1229,6 +1230,21 @@ for (const s of await getVisibleStores()) {
           loadingEl?.classList.add('hidden');
           const notice = applyOutOfStock(data.outOfStock);
           if (priceNoticeEl) { priceNoticeEl.textContent = notice; priceNoticeEl.classList.remove('hidden'); }
+          return;
+        }
+        // The seller edited the product's variants while this cart sat open, so the stored choice
+        // names an option the product no longer has — and the server refuses rather than quietly
+        // selling from the shared pool (lib/variant-combo.ts#resolveSelection). Handled here and
+        // not in the catch because it is the only 400 that carries a name to put in the sentence,
+        // and because retrying cannot help: the button stays disabled-then-live but the fix is on
+        // the product page, which is what the message says.
+        if (res.status === 400 && data.error === 'variant-mismatch') {
+          const name = data.productName ?? '';
+          const text = (i18n['variantMismatch'] ?? 'האפשרויות של "{name}" השתנו. היכנסו לדף המוצר ובחרו שוב.').replace('{name}', name);
+          if (errEl) { errEl.textContent = text; errEl.classList.remove('hidden'); }
+          labelEl?.classList.remove('hidden');
+          loadingEl?.classList.add('hidden');
+          if (submitBtn) submitBtn.disabled = false;
           return;
         }
         if (!res.ok || !data.orderIds?.length) throw new Error(data.error ?? 'Unknown error');

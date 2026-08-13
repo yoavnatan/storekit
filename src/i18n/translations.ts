@@ -119,8 +119,8 @@ export const translations = {
     demo: {
       badge: 'חנות לדוגמה',
       badgeTitle: 'חנות הדגמה של הפלטפורמה — ניתן לעיין ולהוסיף לסל, אבל לא לרכוש',
-      noticeTitle: 'זו חנות לדוגמה',
-      noticeText: 'הקמנו אותה כדי להראות איך נראית חנות מלאה כאן. המוצרים הינם לצורך התרשמות בלבד ולא ניתן לרכוש אותם.',
+      noticeTitle: 'זוהי חנות לדוגמה בלבד,',
+      noticeText: 'לא ניתן לרכוש את המוצרים.',
       checkoutBlocked: 'לא ניתן להשלים רכישה מחנות לדוגמה. הסירו את המוצרים שלה מהסל, או פתחו חנות משלכם והתחילו למכור.',
       // Checkout-page wording for the per-item rule (lib/demo-stores.ts →
       // splitDemoCarts): a showcase item stays in the cart, marked, and simply
@@ -131,7 +131,7 @@ export const translations = {
       sellerLink: 'צפו בחנות לדוגמה',
       productBadge: 'מוצר לדוגמה',
       openYours: 'פתחו חנות משלכם',
-      noticeCta: 'רוצים חנות משלכם?',
+      noticeCta: 'לפתיחת חנות ←',
     },
     search: {
       pageTitle: 'תוצאות חיפוש',
@@ -552,6 +552,11 @@ export const translations = {
         'מאקסל (xlsx): שמור קודם כ-CSV (קובץ ← שמור בשם ← CSV) ואז ייבא.',
         'איך מזוהה מוצר קיים: לפי עמודת "מזהה", ואם היא ריקה — לפי מק"ט זהה שכבר קיים בחנות. אין התאמה = מוצר חדש.',
         'תא ריק בשורת עדכון = הערך הקיים נשמר (לא נמחק).',
+        // The one thing the format cannot do, said where the seller decides to use it. A file-created
+        // product is image-less by construction, which is invisible in the storefront and fatal in
+        // the ad feed (product-feed.ts#isProductAdvertisable) — so it is named before the upload, not
+        // discovered when a campaign comes back paused.
+        'הקובץ לא נושא תמונות: מוצר חדש שנוצר ממנו ייווצר ללא תמונה, ומוצר ללא תמונה לא מוצג בפרסום בגוגל ובמטא. תמונות מוסיפים בכרטיס המוצר.',
         {
           text: 'גרסאות:',
           sub: [
@@ -570,6 +575,9 @@ export const translations = {
       csvConfirmUpdates: 'ודאו שאלה המוצרים הנכונים לפני הייבוא:',
       csvRowsError: 'שורות עם שגיאה',
       csvPreviewTitle: 'בדיקה לפני ייבוא',
+      csvAdvisoryTitle: 'כדאי להשלים — לא חוסם את הייבוא',
+      csvAdvisoryNoImage: 'מוצרים ללא תמונה — מוצר בלי תמונה לא מוצג בפרסום בגוגל ובמטא.',
+      csvAdvisoryThinDescription: 'מוצרים ללא תיאור (או עם תיאור קצר) — התיאור הוא מה שגוגל מציג בתוצאת החיפוש.',
       csvRowsUnchanged: 'ללא שינוי',
       csvUnchangedNote: 'שורות זהות למוצר הקיים — ידולגו בייבוא.',
       csvNothingToImport: 'אין מה לייבא — כל השורות כבר מעודכנות.',
@@ -577,6 +585,7 @@ export const translations = {
       csvCancelImport: 'בטל',
       csvImporting: 'מייבא...',
       csvImportDone: 'הייבוא הושלם.',
+      csvImportSkipped: '{n} שורות דולגו בגלל שגיאה — תקן אותן בקובץ וייבא שוב.',
       csvImportFailed: 'הייבוא נכשל.',
       csvMissingColumns: 'חסרות עמודות חובה (שם/מחיר).',
       csvEmptyFile: 'הקובץ ריק.',
@@ -1421,6 +1430,9 @@ export const translations = {
       msgUnreadCount: '{n} הודעות שלא נקראו',
       alertsDot: 'יש התראות',
       alertsDotOtherStores: 'יש התראות בחנויות אחרות',
+      alertsDotWarning: 'יש דברים לטיפול',
+      alertsDotOtherStoresWarning: 'יש דברים לטיפול בחנויות אחרות',
+      adTabAttention: 'קמפיין מושהה שממתין לך',
       categoryLabel: 'קטגוריה',
       categoryNone: 'ללא קטגוריה',
       categoryEditHint: 'גם דרך לשונית ההגדרות',
@@ -1441,6 +1453,9 @@ export const translations = {
       weightHint: 'משקל המשלוח, בגרמים. משמש לחישוב מחיר משלוח מדויק ומופיע במודעות. אפשר להשלים בהמשך.',
       weightPlaceholder: 'לדוגמה: 250',
       seoHeading: 'טיפים לנראות במנועי חיפוש',
+      seoMissingLabel: 'חסר',
+      filterColSeo: 'נראות בחיפוש',
+      colSeo: 'SEO',
       seoProgress: '{done} מתוך {total}',
       seoLevelWeak: 'בסיסי',
       seoLevelPartial: 'טוב',
@@ -1695,6 +1710,10 @@ export const translations = {
       // message that must NOT say "try again" — pressing again is exactly what would
       // risk a second charge, which is what the server just refused to allow.
       checkoutInProgress: 'ההזמנה כבר בעיבוד. אל תלחצו שוב — כמה רגעים ותקבלו אישור.',
+      // The seller changed the product's options while this cart sat open, so the choice stored
+      // in it names something the product no longer has. "Try again" is wrong advice — pressing
+      // again changes nothing — so this names the product and sends them back to choose.
+      variantMismatch: 'האפשרויות של "{name}" השתנו מאז שהוספתם אותו לעגלה. היכנסו לדף המוצר ובחרו שוב.',
       // A sale started or ended while this page sat open, so the summary was corrected instead
       // of charging. Says what happened and what to do — it is not an error the buyer caused.
       pricesChanged: 'המחירים בעגלה התעדכנו מאז שנכנסתם. בדקו את הסכום ולחצו שוב לתשלום.',
@@ -1852,6 +1871,10 @@ export const translations = {
       // back from a pause brings its products back here on its own.
       unavailable: 'לא זמין כרגע',
       addedToCart: 'נוסף ✓',
+      // A product with size/colour options cannot be added from here — the drawer has no idea which
+      // combination the shopper wants, and adding one without a combination produces a cart line the
+      // checkout then refuses. So the button goes to the product page instead, and says so.
+      chooseOptions: 'לבחירת אפשרויות',
       removeFailed: 'לא ניתן היה להסיר מהמועדפים',
       removeFailedBody: 'המוצר הוחזר לרשימה.',
       removeTitle: 'הסר מהמועדפים?',
@@ -1952,8 +1975,8 @@ export const translations = {
     demo: {
       badge: 'Example store',
       badgeTitle: 'A platform demo store — you can browse and add to cart, but not buy',
-      noticeTitle: 'This is an example store',
-      noticeText: 'We set it up to show what a fully stocked store looks like here. The products are for illustration only and cannot be purchased.',
+      noticeTitle: 'This is an example store only,',
+      noticeText: 'the products cannot be purchased.',
       checkoutBlocked: 'An example store cannot be checked out. Remove its items from your cart, or open your own store and start selling.',
       cartExcluded: 'Not included in payment',
       cartNotice: 'Items from an example store stay in your cart to browse and are left out of the order. Everything else checks out as usual.',
@@ -1961,7 +1984,7 @@ export const translations = {
       sellerLink: 'See an example store',
       productBadge: 'Example product',
       openYours: 'Open your own store',
-      noticeCta: 'Want a store of your own?',
+      noticeCta: 'Open a store →',
     },
     search: {
       pageTitle: 'Search results',
@@ -2301,6 +2324,7 @@ export const translations = {
         'From Excel (xlsx): save as CSV first (File → Save As → CSV), then import.',
         'How an existing product is matched: by the "ID" column, or — if it\'s blank — by a matching SKU already in the store. No match = a new product.',
         'A blank cell on an update row = the current value is kept (not cleared).',
+        'The file carries no images: a product it creates starts with no photo, and a product with no photo is not shown in Google/Meta ads. Photos are added in the product card.',
         {
           text: 'Variants:',
           sub: [
@@ -2319,6 +2343,9 @@ export const translations = {
       csvConfirmUpdates: 'Confirm these are the right products before importing:',
       csvRowsError: 'Rows with errors',
       csvPreviewTitle: 'Review before import',
+      csvAdvisoryTitle: 'Worth completing — does not block the import',
+      csvAdvisoryNoImage: 'products with no image — a product without a photo is not shown in Google/Meta ads.',
+      csvAdvisoryThinDescription: 'products with no description (or a very short one) — the description is what Google shows in the search result.',
       csvRowsUnchanged: 'Unchanged',
       csvUnchangedNote: 'Rows identical to the existing product are skipped on import.',
       csvNothingToImport: 'Nothing to import — everything is already up to date.',
@@ -2326,6 +2353,7 @@ export const translations = {
       csvCancelImport: 'Cancel',
       csvImporting: 'Importing...',
       csvImportDone: 'Import complete.',
+      csvImportSkipped: '{n} rows were skipped because of errors — fix them in the file and import again.',
       csvImportFailed: 'Import failed.',
       csvMissingColumns: 'Missing required columns (name/price).',
       csvEmptyFile: 'The file is empty.',
@@ -3001,6 +3029,9 @@ export const translations = {
       msgUnreadCount: '{n} unread messages',
       alertsDot: 'You have alerts',
       alertsDotOtherStores: 'You have alerts in other stores',
+      alertsDotWarning: 'Something needs your attention',
+      alertsDotOtherStoresWarning: 'Something needs your attention in other stores',
+      adTabAttention: 'A paused campaign is waiting for you',
       categoryLabel: 'Category',
       categoryNone: 'No category',
       categoryEditHint: 'Also possible from the Settings tab',
@@ -3021,6 +3052,9 @@ export const translations = {
       weightHint: 'The shipping weight, in grams. Used for an accurate delivery price and shown in ads. You can fill it in later.',
       weightPlaceholder: 'e.g. 250',
       seoHeading: 'Tips for search visibility',
+      seoMissingLabel: 'Missing',
+      filterColSeo: 'Search visibility',
+      colSeo: 'SEO',
       seoProgress: '{done} of {total}',
       seoLevelWeak: 'Basic',
       seoLevelPartial: 'Good',
@@ -3252,6 +3286,7 @@ export const translations = {
       orderError: 'Error creating order. Please try again.',
       ownStoreBlocked: 'You cannot buy from a store you own. Remove those items from your cart.',
       checkoutInProgress: 'Your order is already being processed. Do not press again — your confirmation is on its way.',
+      variantMismatch: 'The options for "{name}" changed since you added it to your cart. Open the product page and choose again.',
       pricesChanged: 'Prices in your cart changed since you arrived. Check the total and press pay again.',
       soldOutDuringCheckout: '"{name}" sold out while you were filling in your details. We took it out of this payment — you can continue with the rest.',
       stockReducedDuringCheckout: 'Only {n} left of "{name}", so the quantity in your cart was updated. Check the total and press pay again.',
@@ -3386,6 +3421,7 @@ export const translations = {
       addToCart: 'Add to cart',
       unavailable: 'Not available right now',
       addedToCart: 'Added ✓',
+      chooseOptions: 'Choose options',
       removeFailed: 'Could not remove from wishlist',
       removeFailedBody: 'The item was restored to your list.',
       removeTitle: 'Remove from wishlist?',

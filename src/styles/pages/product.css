@@ -98,9 +98,28 @@
    flex-wrap kicks in on mobile (fit-content sizes off max-content, i.e. the
    unwrapped width, then just clamps to the full available width), so a
    group-level ring falls back to full screen width the moment options wrap. */
-.product-detail-page .variant-group--invalid { animation: variant-shake 0.4s ease; }
-.product-detail-page .variant-group--invalid .variant-opt,
-.product-detail-page .variant-group--invalid .pm-variant-opt {
+/* UNSCOPED, and it has to be (fixed 2026-08-12, owner reported the symptom).
+   This was `.product-detail-page .variant-group--invalid` here and
+   `.store-page .variant-group--invalid` in store.css — two copies of one rule, each hung off a
+   PAGE wrapper. `StoreProductModal` renders from `BaseLayout`, so its markup is inside neither
+   wrapper, and the modal's picker therefore matched no rule at all. The consequence was not a
+   missing animation: `pmFlagMissingVariants()` added the class, saw groups, and returned true —
+   which BLOCKS the add — while the screen showed nothing whatsoever. A buyer who did not choose a
+   size pressed "הוסף לעגלה" and the site simply ignored them.
+   Both page sheets are imported into main.css, so scoping never controlled loading; it only
+   controlled which ancestors matched. One definition, no ancestor. */
+/* Breathing room under the group when the "pick a size" nudge scrolls to it (owner, 2026-08-12,
+   once the shake was actually visible in the modal and he could see where it stopped).
+   Both callers use `scrollIntoView({ block: 'nearest' })`, which by definition scrolls the LEAST
+   it can — so the group's bottom edge ends up flush against the viewport edge, with the buy button
+   it is telling you about sitting just out of sight below. `scroll-margin-block-end` is the
+   property for exactly this: it pads the rectangle the browser scrolls to without adding any real
+   space to the layout, so nothing moves for anyone who never triggers it. */
+.variant-group { scroll-margin-block-end: 5rem; }
+
+.variant-group--invalid { animation: variant-shake 0.4s ease; }
+.variant-group--invalid .variant-opt,
+.variant-group--invalid .pm-variant-opt {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-text) 30%, transparent);
 }
 @keyframes variant-shake {

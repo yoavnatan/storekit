@@ -306,7 +306,7 @@ const pmI18n = {
   storeMode={true}
   storeName={shopStore.name}
   storeSlug={shopStore.slug}
-  storeLogo={shopStore.profileImage}
+  storeLogo={shopStore.profileImage} storeDemo={isDemo}
   storeHeaderLogo={storeHeaderLogo(shopStore)}
   dataLayer={{ event: 'page_view', page_type: 'product', store_id: shopStore.id, store_name: shopStore.name, store_slug: storeSlug, currency: 'ILS', ecommerce: { currency: 'ILS', items: [{ item_id: product.id, item_name: product.name, price: pv.price, item_category: productCategoryPathStr }] } }}
   productPrice={pv.price}
@@ -690,7 +690,13 @@ const pmI18n = {
               <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
                 {lang === 'he' ? 'תיאור המוצר' : 'Description'}
               </p>
-              <p dir="auto" id="product-desc" class="text-base leading-relaxed" style="color:var(--color-muted);text-align:justify;overflow-wrap:break-word">{product.description}</p>
+              {/* `whitespace-pre-line`: the description is a plain textarea, so a seller who
+                  types paragraphs gets `\n\n` in the field. ProductQuickView has always
+                  honoured that and this page did not — the same value rendered as paragraphs
+                  in the modal and as one run-on block on the product page itself, which is the
+                  more important of the two. Same renderer-drift class as
+                  memory `project_client_renderer_i18n_drift`. */}
+              <p dir="auto" id="product-desc" class="text-base leading-relaxed whitespace-pre-line" style="color:var(--color-muted);text-align:justify;overflow-wrap:break-word">{product.description}</p>
             </div>
           )}
 
@@ -1657,6 +1663,9 @@ const pmI18n = {
         storeSlug: wishlistBtn.dataset.wishlistStoreSlug ?? '',
         storeName: wishlistBtn.dataset.wishlistStoreName ?? '',
         stock: wishlistBtn.dataset.wishlistStock !== undefined ? Number(wishlistBtn.dataset.wishlistStock) : undefined,
+        // This page already knows the product's dimensions, so the flag is free here. The drawer
+        // uses it to offer "choose options" instead of an add that the checkout would refuse.
+        hasVariants: pageVariants.length > 0,
       };
       const nowActive = toggleWishlist(item);
       wishlistBtn.dataset.wishlisted = String(nowActive);

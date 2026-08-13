@@ -34,9 +34,13 @@ describe('the page ships a pending row and an island, not ten forms', () => {
   it('no longer renders any of the edit form', () => {
     // The three heaviest pieces, and the ones whose absence proves the per-product form is gone:
     // the variant/stock editor, the per-product SEO panel, and a gallery holding a product's own
-    // images. `productSeoInputFrom` reads a real product, so its absence is the whole test.
+    // images.
     expect(page).not.toContain('data-combo-stock-input');
-    expect(page).not.toContain('productSeoInputFrom(');
+    // The PANEL, not `productSeoInputFrom` itself: since 2026-08-12 the table's thumbnail cell
+    // renders a per-row search-visibility gauge from that same input, which is a few hundred bytes
+    // of SVG and exactly the kind of thing this page SHOULD paint per product. What must never come
+    // back is the whole panel — meter, five hints and a search preview — once per row.
+    expect(page).not.toContain('productSeoPanelHtml(productSeoInputFrom(');
     // The ADD form is still server-rendered — ONE form, not one per product, and it is the only
     // reason a gallery and a SEO panel appear here at all. Both start from nothing, which is what
     // these two assertions say: an empty gallery and the empty-product SEO input.
