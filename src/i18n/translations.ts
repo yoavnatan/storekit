@@ -1384,6 +1384,9 @@ export const translations = {
       orderInvoiceHint: 'החשבונית באחריותך. העלה אותה, או סמן שנמסרה.',
       orderInvoiceOwed: 'טרם סופקה',
       orderInvoiceUpload: 'העלאת חשבונית',
+      // Only ever a tooltip on the collapsed card's icon, so it names the state in full — there is
+      // no heading above it there to supply the noun.
+      orderInvoiceChip: 'חשבונית לקונה — טרם סופקה',
       orderInvoiceHandedShip: 'צורפה לחבילה',
       orderInvoiceHandedPickup: 'נמסרה באיסוף',
       orderInvoiceUploaded: 'זמינה לקונה',
@@ -3029,6 +3032,7 @@ export const translations = {
       orderInvoiceHint: 'The invoice is yours to issue. Upload it, or mark it handed over.',
       orderInvoiceOwed: 'Not provided yet',
       orderInvoiceUpload: 'Upload invoice',
+      orderInvoiceChip: 'Buyer invoice — not provided yet',
       orderInvoiceHandedShip: 'In the parcel',
       orderInvoiceHandedPickup: 'Given at pickup',
       orderInvoiceUploaded: 'Available to the buyer',

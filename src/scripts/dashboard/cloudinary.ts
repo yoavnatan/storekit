@@ -87,6 +87,45 @@ function extensionFor(type: string): string {
   return 'jpg';
 }
 
+/** What the invoice slot accepts. A PDF is what every invoicing system exports; the two image types
+ *  are the seller who tore the page out of a paper book and photographed it. Nothing else: a Word
+ *  file is editable (so it is a poor record) and the buyer may have nothing that opens it. */
+const INVOICE_ACCEPTED = ['application/pdf', 'image/jpeg', 'image/png'];
+export const INVOICE_ACCEPT_ATTR = 'application/pdf,image/jpeg,image/png';
+
+/**
+ * Upload a seller's invoice for one order, through the SECOND preset.
+ *
+ * **`raw`, not `image`, and the difference is not cosmetic.** Cloudinary happily ingests a PDF as an
+ * image resource — it rasterises pages and can transform them — and delivering it then depends on an
+ * account-level security setting for PDFs. `raw` stores and serves the bytes the seller uploaded, so
+ * what the buyer opens is the document the seller issued rather than something Cloudinary rendered
+ * from it. A tax document is the one file on this platform that must come back unchanged.
+ *
+ * The size and empty-file checks are shared with `cloudinaryUpload` above by being repeated in one
+ * function rather than two: this one calls it for nothing, because the image path's FORMAT rules are
+ * exactly what must not apply here.
+ */
+export async function cloudinaryUploadInvoice(file: File, cloud: string, preset: string): Promise<string> {
+  if (file.size === 0) throw new Error('הקובץ ריק');
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`הקובץ גדול מדי (${(file.size / 1024 / 1024).toFixed(1)}MB, המקסימום ${MAX_UPLOAD_BYTES / 1024 / 1024}MB)`);
+  }
+  if (file.type && !INVOICE_ACCEPTED.includes(file.type)) {
+    throw new Error(`פורמט לא נתמך (${file.type}) — נסו PDF, JPG או PNG`);
+  }
+  if (!preset) throw new Error('העלאת חשבוניות לא מוגדרת');
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', preset);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/raw/upload`, { method: 'POST', body: fd });
+  if (!res.ok) throw new Error(await uploadErrorMessage(res));
+  const json = await res.json() as { secure_url: string };
+  return json.secure_url;
+}
+
 /** Cloudinary's own words where it sent any, the status where it did not. */
 async function uploadErrorMessage(res: Response): Promise<string> {
   try {

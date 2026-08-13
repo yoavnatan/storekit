@@ -16,8 +16,8 @@ import { cdnThumb } from '../../lib/cdn.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
-import { orderInvoiceRowHtml, type OrderInvoiceRowState } from '../../lib/order-invoice-row.js';
-import { cloudinaryUpload } from './cloudinary.js';
+import { orderInvoiceRowHtml, orderInvoiceChipHtml, type OrderInvoiceRowState } from '../../lib/order-invoice-row.js';
+import { cloudinaryUploadInvoice, INVOICE_ACCEPT_ATTR } from './cloudinary.js';
 
 // Orders tab: order cards (accordion, status/tracking/notes/cancel), toolbar
 // sort+filter, server-fetched pagination, new-order polling, and the edit-order
@@ -202,11 +202,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       // thing the card's own re-render has to remember to clear.
       const picker = document.createElement('input');
       picker.type = 'file';
-      // ⚠️ IMAGES ONLY, and this is a real limit rather than a preference. The unsigned Cloudinary
-      // preset the dashboard uploads through is an IMAGE preset (`cloudinary.ts`), so a PDF is
-      // rejected at the provider. A photo of a paper invoice — the case this was built for — is an
-      // image and works today. Widening it to PDF is a change in the Cloudinary console, not here.
-      picker.accept = 'image/*';
+      // PDF (what an invoicing system exports) or a photo of a paper one. This goes through the
+      // dedicated `invoices` preset, NOT the product-image one, which stays image-only.
+      picker.accept = INVOICE_ACCEPT_ATTR;
       picker.addEventListener('change', async () => {
         const file = picker.files?.[0];
         if (!file) return;
@@ -215,7 +213,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         btn.textContent = tt('orderInvoiceUploading');
         try {
           const cfg = document.getElementById('upload-config');
-          const url = await cloudinaryUpload(file, cfg?.dataset.cloud ?? '', cfg?.dataset.preset ?? '');
+          const url = await cloudinaryUploadInvoice(file, cfg?.dataset.cloud ?? '', cfg?.dataset.invoicePreset ?? '');
           await send('upload', url);
         } catch (err) {
           btn.removeAttribute('disabled');
@@ -772,6 +770,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
               <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden">${orderAgeChipHtml(o.createdAt, o.shippingStatus, ordersLang)}</span>
               <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]"${notes.length ? ` title="${esc(notes.join('\n'))}"` : ' hidden'} aria-label="${esc(tt('orderNoteLabel'))}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
+              ${orderInvoiceChipHtml(o.invoice ?? null, tt('orderInvoiceChip'))}
               <button type="button" class="order-card__status-badge inline-flex items-center gap-1 shrink-0 text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95 whitespace-nowrap" style="background:${esc(color)}1a;color:${esc(color)}" aria-haspopup="listbox" aria-expanded="false"><span class="order-status-badge-label">${esc(label)}</span><svg class="order-status-badge-chevron shrink-0" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
             </div>
           </div>

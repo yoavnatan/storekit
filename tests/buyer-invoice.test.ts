@@ -140,6 +140,17 @@ describe('an uploaded invoice is a file in OUR storage', () => {
     expect(isStoredDocumentUrl('https://res.cloudinary.com.evil.example.com/x.pdf')).toBe(false);
   });
 
+  it('accepts a RAW upload, which is what a PDF invoice actually is', async () => {
+    // `cloudinaryUploadInvoice` posts to /raw/upload so the buyer opens the seller's own bytes
+    // rather than something Cloudinary rendered from them. The check must not be pinned to `image`.
+    const pdf = `https://res.cloudinary.com/${CLOUD}/raw/upload/v1/invoice.pdf`;
+    expect(isStoredDocumentUrl(pdf)).toBe(true);
+
+    const { sellerId, orderId } = await owedInvoice();
+    const state = await markBuyerInvoiceProvided(sellerId, orderId, { mode: 'upload', documentUrl: pdf });
+    expect(state!.documentUrl).toBe(pdf);
+  });
+
   it('a handover carries no file even when a URL is passed', async () => {
     const { sellerId, orderId } = await owedInvoice();
     const state = await markBuyerInvoiceProvided(sellerId, orderId, { mode: 'handover', documentUrl: FILE });

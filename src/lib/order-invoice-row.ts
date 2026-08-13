@@ -50,6 +50,37 @@ const UP = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="
  * a false statement about a self-pickup order, and a seller ticking the only box he was given would
  * be making it. A parcel and a counter are two different acts and the label names the real one.
  */
+/**
+ * The chip on the COLLAPSED card — shown only while the invoice is still owed.
+ *
+ * **Only while owed, and that is the whole design.** A marker that is present on every order is
+ * furniture: the seller stops seeing it within days, and it is then also useless on the day it
+ * matters (memory `project_tab_strip_alert_beacon` — a beacon always on is not a beacon). Owed is a
+ * state he can end, so the chip disappears when he ends it, which is what makes its presence mean
+ * something.
+ *
+ * **Not a red dot.** A dot in this app is a call to act NOW and chains from the avatar down; issuing
+ * a tax invoice is the seller's obligation to the tax authority rather than something stuck on the
+ * platform, and it would raise a dot on nearly every new order. This is a status glyph in the muted
+ * colour, next to the note chip and deliberately a DIFFERENT silhouette from it: a receipt with a
+ * torn bottom edge, against the note's folded page. Two grey icons of the same shape would be worse
+ * than one.
+ *
+ * The label lives only in `title`/`aria-label`, because the header is a dense row and a word here
+ * would push the amount and the status badge around on a phone.
+ */
+export function orderInvoiceChipHtml(state: OrderInvoiceRowState | null, label: string): string {
+  if (state?.mode) return '';
+  return (
+    `<span class="order-invoice-chip inline-flex items-center shrink-0 [color:var(--color-muted)]"` +
+    ` title="${esc(label)}" aria-label="${esc(label)}">` +
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M5 3h14v18l-2.3-1.6L14.4 21l-2.4-1.6L9.6 21l-2.3-1.6L5 21V3z"/>' +
+      '<line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/>' +
+    '</svg></span>'
+  );
+}
+
 export function orderInvoiceRowHtml(
   state: OrderInvoiceRowState | null,
   delivery: DeliveryMethod | null | undefined,

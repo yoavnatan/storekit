@@ -65,7 +65,7 @@ import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
 import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
 import { orderPayoutLine, payoutWhyText, payoutFilterValue, splitHeldByBasis, payableHeadlineAgorot } from '../../lib/order-payout-line.js';
-import { orderInvoiceRowHtml } from '../../lib/order-invoice-row.js';
+import { orderInvoiceRowHtml, orderInvoiceChipHtml } from '../../lib/order-invoice-row.js';
 import { getBuyerInvoiceStates } from '../../lib/invoicing/buyer-invoice.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
@@ -174,6 +174,9 @@ if (!sellerId) return Astro.redirect('/seller/login');
 
 const cloudinaryCloud = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
 const cloudinaryPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
+// The invoice attachment goes through its OWN unsigned preset — the one above is image-only, and
+// that is what keeps a product photo from ever being a PDF (.env.example carries the rest).
+const cloudinaryInvoicePreset = import.meta.env.PUBLIC_CLOUDINARY_INVOICE_PRESET ?? '';
 
 let error = '';
 
@@ -908,7 +911,7 @@ const orderStatusColors: Record<string, string> = {
   ) : store ? (
   <Fragment>
   <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} draftNotice={d.draftNotice} goLabel={d.unsavedGo} />
-  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-host={platformHost} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
+  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-invoice-preset={cloudinaryInvoicePreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-host={platformHost} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section dash-section--bleed">
     <div id="dash-main-card" class="card seller-dash" style="margin-bottom:1.5rem">
 
@@ -2048,6 +2051,7 @@ const orderStatusColors: Record<string, string> = {
                         <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
                           <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                           <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]" title={noteList.join('\n') || undefined} aria-label={d.orderNoteLabel} hidden={noteList.length === 0}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+                          <Fragment set:html={orderInvoiceChipHtml(invoiceStates.get(order.id) ?? null, d.orderInvoiceChip)} />
                           <button type="button" class="order-card__status-badge inline-flex items-center gap-1 shrink-0 text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95 whitespace-nowrap" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}1a;color:${orderStatusColors[order.shippingStatus] ?? '#888'};`} aria-haspopup="listbox" aria-expanded="false" aria-label={`${d.orderShippingStatus}: ${orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}`}>
                             <span class="order-status-badge-label">{orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}</span>
                             <svg class="order-status-badge-chevron shrink-0" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
