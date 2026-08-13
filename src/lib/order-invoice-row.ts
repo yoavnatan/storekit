@@ -72,11 +72,24 @@ const UP = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="
 export function orderInvoiceChipHtml(state: OrderInvoiceRowState | null, label: string): string {
   if (state?.mode) return '';
   return (
-    `<span class="order-invoice-chip inline-flex items-center shrink-0 [color:var(--color-muted)]"` +
-    ` title="${esc(label)}" aria-label="${esc(label)}">` +
-    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<path d="M5 3h14v18l-2.3-1.6L14.4 21l-2.4-1.6L9.6 21l-2.3-1.6L5 21V3z"/>' +
-      '<line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/>' +
+    `<span class="order-invoice-chip inline-flex items-center shrink-0 [color:var(--color-muted)] cursor-help"` +
+    ` data-tooltip="${esc(label)}" aria-label="${esc(label)}" tabindex="0">` +
+    // ── The two things this glyph has to do at 13px ──
+    // **Not read as the note chip.** That one is a full-width page with a folded corner and lines
+    // across it. This is a NARROW slip torn off at the bottom, and it gives up its right-hand third
+    // to the badge — so the two differ in outline before either is recognised, which is all a reader
+    // gets at this size.
+    // **Say "missing", not "here".** The badge is a MINUS rather than an ×: an × is the close/delete
+    // glyph everywhere else in this dashboard, so on an order card it invites a click that would
+    // destroy something, and at 13px its two strokes collapse into a blob. A minus stays one clean
+    // horizontal at any size and reads as absence.
+    // The badge is filled with the surface colour so it punches a hole in the slip behind it instead
+    // of tangling with its edge — a stroke-only circle at this size is two lines crossing.
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M4 2.8h11v15.4l-2.75-1.6-2.75 1.6-2.75-1.6L4 18.2z"/>' +
+      '<line x1="7.2" y1="7.4" x2="11.8" y2="7.4"/><line x1="7.2" y1="11" x2="11.8" y2="11"/>' +
+      '<circle cx="17.6" cy="17.6" r="4.9" fill="var(--color-surface)"/>' +
+      '<line x1="15.4" y1="17.6" x2="19.8" y2="17.6"/>' +
     '</svg></span>'
   );
 }
