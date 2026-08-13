@@ -109,7 +109,19 @@ export function moderationRefusal(uploadResponse: unknown): string | null {
  */
 export function moderationWentMissing(uploadResponse: unknown, expected: boolean): string | null {
   if (!expected || wasModerated(uploadResponse)) return null;
-  return 'Image moderation is configured as ON but the upload came back with no moderation verdict '
-    + '— the Cloudinary add-on is off, or its monthly quota has run out and it has stopped. '
+  return `${MODERATION_MISSING_MARKER} the upload came back with no moderation verdict — the `
+    + 'Cloudinary add-on is off, or its monthly quota has run out and it has stopped. '
     + 'Uploads are NOT being filtered right now. See GO_LIVE §2.6.';
 }
+
+/**
+ * The constant prefix every such report starts with.
+ *
+ * It is a prefix rather than a code because the string has two readers with opposite needs: a
+ * person scanning the Alerts tab, who wants a sentence, and `image-moderation-health.ts`, which
+ * asks the log "has this happened lately" to decide whether the admin's Overview shows a card. That
+ * module's header argues why matching a marker we emit ourselves is a different thing from
+ * classifying an exception's wording; `tests/image-moderation.test.ts` pins the join so a reworded
+ * message fails the suite instead of quietly emptying the card.
+ */
+export const MODERATION_MISSING_MARKER = 'Image moderation is declared ON but did not run:';

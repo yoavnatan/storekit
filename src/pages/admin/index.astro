@@ -22,6 +22,7 @@ import { getAdminThreadsPage } from '../../lib/admin-messages.js';
 import { parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames, MAX_ENTRIES as MAX_ERROR_ENTRIES } from '../../lib/error-log.js';
 import { getRecentReports, countOpenReports } from '../../lib/user-reports.js';
+import { getImageModerationState } from '../../lib/image-moderation-health.js';
 import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
 import { getPlatformAdSettings } from '../../lib/platform-ads.js';
 import { getCampaignsInRange, getCampaignTotals } from '../../lib/ad-campaigns.js';
@@ -301,7 +302,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
   productCounts, reconciliation, payoutPlan, heldBreakdown, heldBySeller, platformAccrual, ordersPage, badgeCounts,
-  perfViews, perfPlatformViews, perfSales, productNames, userReports, openReportCount,
+  perfViews, perfPlatformViews, perfSales, productNames, userReports, openReportCount, imageModerationState,
 ] = await Promise.all([
   only(COUNT_PANELS, () => getProductCountsByStore(storeIds), new Map()),
   // Cross-check every money headline against a second, independent computation over the real
@@ -358,6 +359,9 @@ const [
   // the list is bounded, and "N פתוחים" has to stay true past the end of it.
   only(['alerts'], () => getRecentReports(), []),
   only(['alerts'], () => countOpenReports(), 0),
+  // Is anybody checking uploaded pictures right now (image-moderation-health.ts). Overview only —
+  // it is a card on the landing tab, and with no add-on declared it answers without a query at all.
+  only(['overview'], () => getImageModerationState(), 'ok' as const),
 ]);
 
 const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
@@ -598,6 +602,8 @@ const badgeFor: Record<string, number> = badgeCounts;
           overview={overview}
           emptyStoreCount={storeEmptyCount}
           emptyStoresHref={tabUrl('stores', { stempty: '1' })}
+          imageModeration={imageModerationState}
+          imageModerationHref={tabUrl('alerts', {})}
         />
       </AdminPanelShell>
 

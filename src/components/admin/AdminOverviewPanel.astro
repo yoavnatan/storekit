@@ -1,6 +1,7 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
 import type { PlatformOverview } from '../../lib/admin-stats.js';
+import type { ImageModerationState } from '../../lib/image-moderation-health.js';
 
 interface Props {
   overview: PlatformOverview;
@@ -9,8 +10,14 @@ interface Props {
    *  with it; `data-goto-panel` can only switch tabs. */
   emptyStoreCount: number;
   emptyStoresHref: string;
+  /** Whether anybody is checking uploaded pictures right now (`lib/image-moderation-health.ts`).
+   *  A STATE, not an event — which is why it is a card here and not only a row in the Alerts log,
+   *  where it would sit at the quietest severity beside every browser exception ever collected
+   *  (owner, 2026-08-13). It removes itself when the answer becomes 'ok'. */
+  imageModeration: ImageModerationState;
+  imageModerationHref: string;
 }
-const { overview, emptyStoreCount, emptyStoresHref } = Astro.props;
+const { overview, emptyStoreCount, emptyStoresHref, imageModeration, imageModerationHref } = Astro.props;
 ---
 
 {/* Each card jumps to its tab (data-goto-panel, wired in tab-nav.ts's
@@ -59,6 +66,22 @@ const { overview, emptyStoreCount, emptyStoresHref } = Astro.props;
     <a href={emptyStoresHref} class="admin-stat-card admin-stat-card--warning no-underline [color:inherit]">
       <dt>חנויות ללא מוצרים</dt>
       <dd>{emptyStoreCount}</dd>
+    </a>
+  )}
+  {/* Reads as a fact about the platform rather than as a count, because it is one — the `dd` says
+      what is true now and the `dt` names what it is about, the same way every card here does. The
+      two causes are one operational meaning (nobody is checking the pictures) and two different
+      next actions, so the sentence names which. `stopped` is the loud one: it arrives by itself,
+      mid-month, while everything looks configured. */}
+  {imageModeration !== 'ok' && (
+    <a href={imageModerationHref} class="admin-stat-card admin-stat-card--warning no-underline [color:inherit]">
+      <dt>סינון תמונות</dt>
+      <dd>{imageModeration === 'off' ? 'כבוי' : 'נעצר'}</dd>
+      <p class="!text-[0.78rem] !font-normal !m-0 !mt-1 [color:var(--color-muted)]">
+        {imageModeration === 'off'
+          ? 'תמונות שמוכרים מעלים אינן נבדקות. להפעלה: תוסף ב-Cloudinary + PUBLIC_IMAGE_MODERATION_ON'
+          : 'התוסף מוצהר דלוק אך העלאה חזרה בלי בדיקה — כנראה נגמרה המכסה החודשית'}
+      </p>
     </a>
   )}
 </div>

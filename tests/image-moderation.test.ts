@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moderationRefusal, moderationWentMissing, wasModerated } from '../src/lib/image-moderation.js';
+import { MODERATION_MISSING_MARKER, moderationRefusal, moderationWentMissing, wasModerated } from '../src/lib/image-moderation.js';
 
 /**
  * The verdict rules for an uploaded image (`lib/image-moderation.ts`).
@@ -90,6 +90,18 @@ describe('a moderation filter cannot switch itself off quietly', () => {
     // owner's next action differs: switch the add-on on, or wait for the quota to renew.
     expect(alarm).toMatch(/quota/i);
     expect(alarm).toMatch(/NOT being filtered/i);
+  });
+
+  it('starts with the marker the admin Overview card looks the state up by', () => {
+    // The JOIN, and the reason it is pinned: `image-moderation-health.ts` asks the error log
+    // "has this been reported lately" with a LIKE on this prefix, to decide whether the admin's
+    // landing page shows "סינון תמונות · נעצר". Reword the sentence without the marker and the
+    // card silently stops appearing — the failure would look exactly like a healthy platform,
+    // which is the whole class this feature exists to prevent.
+    expect(moderationWentMissing(unjudged, true)!.startsWith(MODERATION_MISSING_MARKER)).toBe(true);
+    expect(MODERATION_MISSING_MARKER.length).toBeGreaterThan(15);
+    // No `%` or `_`: the marker goes into a SQL LIKE pattern, where both are wildcards.
+    expect(MODERATION_MISSING_MARKER).not.toMatch(/[%_]/);
   });
 
   it('stays quiet when the add-on is expected and did run', () => {
