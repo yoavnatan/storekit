@@ -1363,7 +1363,6 @@ export const translations = {
       orderShipping: 'משלוח',
       orderPaymentStatus: 'תשלום',
       orderShippingStatus: 'סטטוס הזמנה',
-      orderNoteLabel: 'הערה פרטית',
       // The chip's tooltip, and NOT the note's text: the note is private, the card may be on a
       // screen someone else can see, and a hover that spills it is a leak nobody chose.
       orderNoteChip: 'יש הערות בהזמנה',
@@ -3018,7 +3017,6 @@ export const translations = {
       orderShipping: 'Shipping',
       orderPaymentStatus: 'Payment',
       orderShippingStatus: 'Order status',
-      orderNoteLabel: 'Private note',
       orderNoteChip: 'This order has notes',
       orderNotePlaceholder: 'Visible only to you',
       orderAddNote: 'Add note',
