@@ -13,30 +13,33 @@
  * wrong side. And white type over a photograph needed a scrim heavy enough that it read, in his
  * words, as writing on a scribble.
  *
- * ── So there is no overlay ──────────────────────────────────────────────────
- * A real seller's banner has no text drawn over it either: this page already renders the store's
- * name as an `<h1>` in the identity row immediately below, beside its logo. The overlay was
- * repeating, in a fragile way, something the page says properly two centimetres lower — and doing
- * it differently from every other store on the site, which is exactly the inconsistency he was
- * pointing at ("לא מתאים לדרך שבה האתר מתנהג").
+ * A third overlay followed those two and lasted a day. It was HTML type, correctly placed, with a
+ * scrim behind it — and it was still wrong, for a reason neither earlier attempt had: the BANNER
+ * IMAGE NOW CARRIES THE NAME ITSELF. Each generated banner is composed around real signage reading
+ * the store's name and its line (`identity.mjs#bannerPrompt`), so the overlay printed the same
+ * words a second time, in a different typeface, over a photograph that already said them (owner,
+ * 2026-08-13: "תעיף את הכיתוב שלך על גבי הבאנר").
  *
- * What is left is the picture, at the same 3/1 geometry and through the same cdn helpers a seller's
- * own banner uses. Nothing about a showcase store's banner is special any more, which is the point.
+ * ── So there is no overlay, and no scrim either ─────────────────────────────
+ * The scrim existed only to make white type legible. With no type there is nothing to make legible,
+ * and darkening a third of the photograph for no reason is just a worse photograph.
+ *
+ * A real seller's banner has no text drawn over it either, and this page renders the store's name
+ * as an `<h1>` in the identity row immediately below. What is left here is the picture, at the same
+ * 3/1 geometry and through the same cdn helpers a seller's own banner uses. Nothing about a
+ * showcase store's banner is special any more, which is the point.
  */
 import { cdnBand, cdnCropSrcSet, BANNER_RATIO, BANNER_WIDTHS } from '../lib/cdn.js';
 
 interface Props {
-  /** Only the SCRIM needs this: a CSS gradient has no logical direction keyword, so which side to
-   *  darken has to be resolved here. Everything else uses logical properties and needs no branch. */
-  dir?: 'rtl' | 'ltr';
+  /** Only for the image's alt text — the picture itself carries the name, so nothing is drawn. */
   name: string;
-  tagline?: string;
   bannerImage?: string;
   /** The store's own two colours — only used for the no-picture fallback. */
   colors?: { primary?: string; accent?: string };
 }
 
-const { name, tagline, bannerImage, colors, dir = 'rtl' } = Astro.props;
+const { name, bannerImage, colors } = Astro.props;
 
 // Same geometry as a real seller's banner, so the two are the same box and the curtain-scroll on
 // the store page is untouched. 2048 is the top width because the source is generated at 2K+ and a
@@ -55,7 +58,7 @@ const accent = colors?.accent ?? '#c4622d';
       src={cdnBand(bannerImage, W, BANNER_RATIO)}
       srcset={cdnCropSrcSet(bannerImage, [...BANNER_WIDTHS], BANNER_RATIO) || undefined}
       sizes={SIZES}
-      alt=""
+      alt={`${name} — באנר החנות`}
       width={W}
       height={H}
       loading="eager"
@@ -69,46 +72,4 @@ const accent = colors?.accent ?? '#c4622d';
     <div class="absolute inset-0" style={`background:linear-gradient(135deg, ${accent} 0%, ${primary} 100%)`} />
   )}
 
-  {/* A scrim on the READING side only, so the type has something to sit on without flattening the
-      photograph. The generated banners are composed with their visual weight to one side and the
-      opposite third left open, which is the side this darkens. */}
-  <div
-    class="absolute inset-0 pointer-events-none"
-    style={`background:linear-gradient(to ${dir === 'rtl' ? 'left' : 'right'}, rgba(16,18,22,0.66) 0%, rgba(16,18,22,0.34) 38%, rgba(16,18,22,0) 68%)`}
-  ></div>
-
-  {/* `top-0 bottom-0`, not `inset-block-0` — the latter is not a Tailwind utility, so it compiled
-      to nothing, the box had auto height, and `justify-center` had no height to centre within: the
-      name sat at the top of the banner instead of its middle. The block axis is the same in both
-      directions anyway, so there is nothing logical to preserve here.
-      The INLINE axis is the one that needed logical properties, and that is the rest of the fix. The previous version branched on `dir` and
-      used `align-items:flex-end` for RTL — which in an RTL box is the LEFT edge, so the Hebrew
-      ended up on the wrong side. `inset-inline-start` is the reading-start edge by definition:
-      RIGHT in Hebrew, LEFT in English, with no conditional to get backwards. */}
-  <div
-    class="absolute top-0 bottom-0 flex flex-col justify-center pointer-events-none"
-    style="inset-inline-start:clamp(1rem, 5%, 3.5rem);inset-inline-end:auto;max-inline-size:min(52%, 30rem);text-align:start"
-    aria-hidden="true"
-  >
-    <span
-      class="block text-white font-semibold leading-[1.1]"
-      style="font-size:clamp(1.75rem, 4.6vw, 3.4rem);letter-spacing:0.01em;text-shadow:0 2px 16px rgba(0,0,0,0.5)"
-    >{name}</span>
-
-    {tagline && (
-      <>
-        {/* The rule the owner asked to keep: a short mark that gives the two lines something to sit
-            against without drawing a box around them. `margin-inline-start:0` pins it to the
-            reading edge — a block element in a column flex would otherwise centre itself. */}
-        <span
-          class="block"
-          style="inline-size:2.8em;block-size:2px;margin-block:0.7em 0.55em;margin-inline-start:0;background:rgba(255,255,255,0.85);border-radius:1px"
-        ></span>
-        <span
-          class="block text-white/90 font-normal leading-snug"
-          style="font-size:clamp(0.85rem, 1.45vw, 1.15rem);text-shadow:0 1px 12px rgba(0,0,0,0.5)"
-        >{tagline}</span>
-      </>
-    )}
-  </div>
 </div>

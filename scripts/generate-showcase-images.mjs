@@ -32,10 +32,11 @@
  * Renaming a product regenerates its picture, which is correct: the name is what
  * the picture is OF.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHOWCASE_STORES, imagePrompt, bannerPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, viewsForProduct } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, viewsForProduct } from './lib/showcase/identity.mjs';
+import { jsonlLine, uploadJsonl, createBatch, getBatch, downloadResults, readResults } from './lib/showcase/gemini-batch.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
 import { TECH_PRODUCTS } from './lib/showcase/catalog-tech.mjs';
@@ -43,6 +44,10 @@ import { PLANT_PRODUCTS } from './lib/showcase/catalog-plants.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_PATH = join(HERE, 'lib/showcase/image-manifest.json');
+/** Scratch for `--batch`: the request JSONLs and the (very large) results files. Gitignored, and
+ *  outside `scripts/lib/` on purpose so nothing here is ever mistaken for source. */
+const BATCH_DIR = join(HERE, '..', '.showcase-batch');
+const BATCH_STATE = join(BATCH_DIR, 'state.json');
 
 const CATALOGS = {
   'showcase-fashion': FASHION_PRODUCTS,
@@ -58,29 +63,80 @@ const has = (f) => argv.includes(f);
 const val = (name) => argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 const CHECK = has('--check');
 const FORCE = has('--force');
+const COST_ONLY = has('--cost');
+const BATCH = has('--batch');
+const SAMPLE = has('--sample');
 const ONLY_STORE = val('store');
 const LIMIT = Number(val('limit') || 0) || (CHECK ? 1 : 0);
+/** `--views=main` generates only the primary catalog shot for every product and skips the gallery
+ *  extras. That is the staging lever: the mains are what the grid, the cart, the feed and the
+ *  product hero all read, so a run of just those leaves a complete, sharp shop — the galleries are
+ *  the reward for clicking and can be bought later, out of the same manifest, without repaying for
+ *  anything. See the cost table under `--cost`. */
+const ONLY_VIEWS = (val('views') || '').split(',').filter(Boolean);
 
 /**
- * The model. `--fast` switches to the cheaper Flash tier.
+ * The model, and what it costs.
  *
- * Default is the PRO image model, chosen after the owner asked whether we were even using the right
- * tool ("התמונות מרגישות לי ירודות"). Flash is a good model and most of what he was reacting to was
- * the art direction rather than the renderer — but Pro is measurably stronger on the things this
- * catalog is full of: fabric weave, glazed ceramic, brushed metal, reflections and skin on a hand.
- * Against Google's published prices that is $0.134 an image versus $0.101, so across the ~724
- * images this run needs it is roughly $97 against $73 — $24 for the whole catalogue, once. At that
- * ratio the quality is worth more than the money, which is why this is the default rather than a
- * flag you have to know about.
+ * Prices are per IMAGE, off Google's published pricing page (verified 2026-08-12), and they are
+ * here rather than in a comment because `--cost` prints real money from them — a number nobody
+ * maintains is a number nobody can act on. Batch halves every one of them (see `--batch`).
+ *
+ * Pro was the default for one round, after the owner asked whether we were even using the right
+ * tool ("התמונות מרגישות לי ירודות"). It is measurably stronger on fabric weave, glazed ceramic,
+ * brushed metal and skin on a hand — which is most of this catalog. But at 724 images the gap is
+ * $97 against $73 interactive, and the budget for this run is real, so the default is now the one
+ * the money allows and the sample is what decides whether the difference is visible at all.
+ *
+ * `gemini-2.5-flash-image` is listed because it is the cheapest thing that exists, and excluded
+ * from being useful here by `maxSize`: it caps at 1024px, and `lib/cdn.ts` uses `c_limit`, which
+ * never upscales — so the product page's own lightbox (`w_1600`) would be served a 1024px file and
+ * stretch it. That is the pixelation the owner ruled out, bought for $8.
  */
-const MODEL = has('--fast') ? 'gemini-3.1-flash-image' : 'gemini-3-pro-image';
+const MODELS = {
+  pro: { id: 'gemini-3-pro-image', price: { '1K': 0.134, '2K': 0.134, '4K': 0.24 }, maxSize: '4K' },
+  flash: { id: 'gemini-3.1-flash-image', price: { '1K': 0.067, '2K': 0.101, '4K': 0.151 }, maxSize: '4K' },
+  'flash-lite': { id: 'gemini-3.1-flash-lite-image', price: { '1K': 0.067, '2K': 0.101, '4K': 0.151 }, maxSize: '4K' },
+  'flash-2.5': { id: 'gemini-2.5-flash-image', price: { '1K': 0.039, '2K': 0.039, '4K': 0.039 }, maxSize: '1K' },
+};
+// `--fast` used to be how you asked for Flash. Flash is now the default, so the flag selects what
+// it always did and is kept only so an invocation someone already has written down still works.
+const MODEL_KEY = val('model') || 'flash';
+if (!MODELS[MODEL_KEY]) {
+  console.error(`\n❌ --model=${MODEL_KEY} is not one of: ${Object.keys(MODELS).join(', ')}\n`);
+  process.exit(1);
+}
+const MODEL = MODELS[MODEL_KEY].id;
+/** Batch is the same models at half price, in exchange for waiting — Google's own words are "50%
+ *  of the standard interactive API cost for the equivalent model", with a 24-hour turnaround that
+ *  in practice is far shorter. Every image model here reports `batchGenerateContent` as supported,
+ *  checked against the live ListModels response rather than the docs. */
+const priceOf = (size, modelKey = MODEL_KEY) => MODELS[modelKey].price[size] * (BATCH ? 0.5 : 1);
+/** A job's own price: the eight lettering images run on Pro regardless of `--model`. */
+const jobPrice = (j) => priceOf(j.size ?? IMAGE_SIZE, j.modelKey ?? MODEL_KEY);
 
 // ── Manifest ────────────────────────────────────────────────────────────────
 const loadManifest = () => (existsSync(MANIFEST_PATH) ? JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) : {});
+/**
+ * Write the manifest by MERGING onto whatever is on disk, never by replacing it.
+ *
+ * This function used to serialise its in-memory copy over the file, which is correct only while
+ * exactly one process is writing. Two are, routinely: a long batch run collects in the background
+ * while a short interactive run regenerates one banner or one logo in the foreground. Observed
+ * 2026-08-13 — two logo entries were deleted so they would be re-made, and the background run's
+ * next save silently put them back from a copy of the manifest it had loaded an hour earlier.
+ * Nothing errored; the work simply did not happen.
+ *
+ * Re-reading first makes each save a merge, so concurrent writers add to each other instead of
+ * overwriting. It does NOT make a DELETION survive a concurrent writer that still holds the key —
+ * that is what `--force` is for, and it is why deleting entries by hand is the wrong way to ask
+ * for a regeneration while anything else is running.
+ */
 function saveManifest(m) {
   mkdirSync(dirname(MANIFEST_PATH), { recursive: true });
+  const merged = { ...loadManifest(), ...m };
   // Sorted, so the file is a stable diff rather than a reshuffle on every run.
-  const sorted = Object.fromEntries(Object.keys(m).sort().map((k) => [k, m[k]]));
+  const sorted = Object.fromEntries(Object.keys(merged).sort().map((k) => [k, merged[k]]));
   writeFileSync(MANIFEST_PATH, `${JSON.stringify(sorted, null, 2)}\n`);
 }
 
@@ -95,13 +151,19 @@ function saveManifest(m) {
  * the image from whichever envelope came back. When the fallback is what worked, it says so, so
  * this comment can eventually be deleted rather than left to rot.
  */
-async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT, size = IMAGE_SIZE) {
+async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT, size = IMAGE_SIZE, model = MODEL, reference = null) {
+  // A gallery view is generated FROM its product's main image so the two show the same object —
+  // see `SAME_ITEM_CLAUSE`. The reference goes FIRST: the model reads it as what the following
+  // text is about, which is the whole point.
+  const parts = reference
+    ? [{ inline_data: { mime_type: 'image/jpeg', data: reference.toString('base64') } }, { text: prompt }]
+    : [{ text: prompt }];
   const attempts = [
     {
       name: 'generateContent',
-      url: `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+      url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       body: {
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts }],
         generationConfig: {
           responseModalities: ['IMAGE'],
           imageConfig: { aspectRatio: aspect, imageSize: size },
@@ -112,7 +174,7 @@ async function generateImage(prompt, apiKey, aspect = IMAGE_ASPECT, size = IMAGE
       name: 'interactions',
       url: 'https://generativelanguage.googleapis.com/v1beta/interactions',
       body: {
-        model: MODEL,
+        model,
         input: [{ type: 'text', text: prompt }],
         response_format: {
           type: 'image', mime_type: 'image/jpeg',
@@ -177,11 +239,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * the retry is generous (up to ~2 minutes across four attempts) and only ever applied to errors
  * that time can actually fix.
  */
-async function generateImageWithRetry(prompt, apiKey, aspect, size) {
+async function generateImageWithRetry(prompt, apiKey, aspect, size, model, reference) {
   const WAITS = [8_000, 20_000, 45_000, 90_000];
   for (let i = 0; ; i++) {
     try {
-      return await generateImage(prompt, apiKey, aspect, size);
+      return await generateImage(prompt, apiKey, aspect, size, model, reference);
     } catch (e) {
       const canRetry = (e.retryable || /HTTP 429|fetch failed|no image in the response/.test(e.message)) && i < WAITS.length;
       if (!canRetry) throw e;
@@ -206,6 +268,18 @@ function extractImage(data) {
 /** Upload to Cloudinary through the same unsigned preset the dashboard uses, and return the
  *  delivered URL. `public_id` is not set: the preset may forbid it, and Cloudinary's own id is
  *  fine because the manifest is what maps a product to its URL. */
+/**
+ * Cloudinary's unsigned upload refuses anything over 10MB, and a 4K banner can exceed it — אדנית's
+ * arrived at 10,699,807 bytes on 2026-08-13 and was rejected after it had already been paid for.
+ *
+ * There is no image library in this project (no `sharp`), so the bytes cannot be re-compressed
+ * here, and adding a native dependency for four images would be the wrong trade. Instead the size
+ * is checked BEFORE the upload and the picture is re-generated one step smaller — which costs one
+ * extra image rather than losing the one already bought, and can only ever fire on a banner, since
+ * nothing else is generated above 2K.
+ */
+const CLOUDINARY_MAX_BYTES = 10 * 1024 * 1024;
+
 async function uploadToCloudinary(buffer, cloud, preset) {
   const fd = new FormData();
   fd.append('file', new Blob([buffer], { type: 'image/jpeg' }), 'showcase.jpg');
@@ -224,25 +298,41 @@ function buildJobs() {
   const jobs = [];
   for (const store of SHOWCASE_STORES) {
     if (ONLY_STORE && store.slug !== ONLY_STORE) continue;
-    // Banner only. The logo is no longer generated: a "minimal emblem" comes back as a PHOTOGRAPH
-    // of an object, and the avatar renders in a circle, so it arrived as a cropped photo of a
-    // terracotta arch — soft at 56px and not reading as a mark at all. StoreAvatar's own monogram is
-    // vector, exact at every size, and unmistakably a logo. See the seeder for the full reasoning.
+    // Banner and logo both carry the shop's NAME as rendered lettering, which is the one thing in
+    // this catalog the cheap model is measurably worse at — so these eight images, and only these
+    // eight, are generated on Pro. Eight at $0.134 is $1.07 against $0.81, and a misspelt shop name
+    // is the single most visible defect the whole run could ship.
     jobs.push({
       key: `${store.slug}:__banner`, prompt: bannerPrompt(store), label: `${store.name} — באנר`,
-      aspect: BANNER_ASPECT, size: BANNER_IMAGE_SIZE,
+      aspect: BANNER_ASPECT, size: BANNER_IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
+    });
+    jobs.push({
+      key: `${store.slug}:__logo`, prompt: logoPrompt(store), label: `${store.name} — לוגו`,
+      aspect: IMAGE_ASPECT, size: IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
     });
   }
   for (const store of SHOWCASE_STORES) {
     if (ONLY_STORE && store.slug !== ONLY_STORE) continue;
-    for (const p of CATALOGS[store.slug]) {
+    // `--sample`: one product per CATEGORY rather than the first N rows. The catalogs are grouped
+    // by category, so `--limit=5` returns five dresses — which answers "is the art direction right"
+    // for dresses and for nothing else. A spread is the only sample worth paying for.
+    const catalog = SAMPLE
+      ? Object.values(Object.groupBy(CATALOGS[store.slug], (p) => p.c)).map((rows) => rows[0])
+      : CATALOGS[store.slug];
+    for (const p of catalog) {
       // One job per VIEW. `main` keeps the bare key so every URL already generated under the old
       // one-image-per-product scheme is still found and not paid for twice.
-      for (const [i, view] of viewsForProduct(p.n).entries()) {
+      const views = SAMPLE ? viewsForProduct(p.n).slice(0, 1) : viewsForProduct(p.n);
+      for (const [i, view] of views.entries()) {
+        if (ONLY_VIEWS.length && !ONLY_VIEWS.includes(view.key)) continue;
         jobs.push({
           key: i === 0 ? `${store.slug}:${p.n}` : `${store.slug}:${p.n}#${view.key}`,
           prompt: imagePrompt(store, p.s, view),
           label: `${store.name} — ${p.n}${i === 0 ? '' : ` (${view.key})`}`,
+          aspect: IMAGE_ASPECT, size: IMAGE_SIZE,
+          // Every gallery view names the main image it has to match. `main` itself has no
+          // reference — it is the one that defines what the product looks like.
+          refKey: i === 0 ? null : `${store.slug}:${p.n}`,
         });
       }
     }
@@ -250,7 +340,220 @@ function buildJobs() {
   return jobs;
 }
 
+/**
+ * What this run will cost, before it spends anything.
+ *
+ * Free, and the reason it exists: the first full run was launched blind and the bill arrived after
+ * the pictures. Every lever that moves the number — model, batch, `--views=main` — is a flag, so
+ * the honest way to choose between them is to price all of them on the actual job list.
+ */
+function reportCost(jobs) {
+  const total = jobs.reduce((sum, j) => sum + jobPrice(j), 0);
+  console.log(`\n💵 ${jobs.length} image(s) still to generate — model ${MODEL_KEY} (${MODEL})`
+    + `${BATCH ? ', BATCH (half price, up to 24h)' : ', interactive'}`);
+  console.log(`   $${total.toFixed(2)}   ≈ ₪${(total * 3.7).toFixed(0)}\n`);
+  console.log('   The same job list at the other settings:');
+  for (const key of Object.keys(MODELS)) {
+    for (const batch of [false, true]) {
+      const each = (size) => MODELS[key].price[size] * (batch ? 0.5 : 1);
+      const sum = jobs.reduce((s, j) => s + (j.modelKey === 'pro' && key !== 'pro'
+        ? MODELS.pro.price[j.size ?? IMAGE_SIZE] * (batch ? 0.5 : 1)   // lettering stays on Pro
+        : each(j.size ?? IMAGE_SIZE)), 0);
+      const capped = MODELS[key].maxSize === '1K' ? '  ⚠️ caps at 1024px — soft in the lightbox' : '';
+      console.log(`     ${(key + (batch ? ' + batch' : '')).padEnd(20)} $${sum.toFixed(2).padStart(7)}${capped}`);
+    }
+  }
+  console.log('');
+}
+
+/**
+ * The batch run: submit, wait, collect.
+ *
+ * Half the price of the interactive loop above and otherwise identical in what it leaves behind —
+ * the same manifest, the same Cloudinary URLs — so `seed:showcase` cannot tell which one produced
+ * a picture. What it costs instead is time (Google says up to 24 hours; in practice much less) and
+ * the fact that nothing is visible until a chunk lands.
+ *
+ * **Resumable at every stage, because this is the run that spans a night.** `.showcase-batch/state.json`
+ * remembers the operation name for each chunk, so an interrupted or re-run command re-attaches to
+ * jobs already submitted instead of paying for them twice — the manifest alone cannot do that,
+ * since a submitted-but-uncollected chunk has been billed and has no URLs yet.
+ *
+ * Chunked at 100 rather than sent as one 724-row job so that the first pictures arrive while the
+ * rest are still queued, and so a single failed job costs a chunk instead of the catalog.
+ */
+async function runBatched(jobs, apiKey, cloud, preset, manifest) {
+  const CHUNK = Number(val('chunk') || 0) || 100;
+  // A gallery view is generated FROM its product's main image, so a batch of views cannot be
+  // submitted until the mains exist. Rather than fail halfway through a paid run, this splits the
+  // work and says so: mains first, then re-run for the galleries.
+  const waiting = jobs.filter((j) => j.refKey && !manifest[j.refKey]);
+  if (waiting.length && waiting.length < jobs.length) {
+    jobs = jobs.filter((j) => !waiting.includes(j));
+    console.log(`\n   (${waiting.length} gallery image(s) held back — they are generated from their`);
+    console.log('    product\'s main image, which this run is about to create. Re-run --batch after.)');
+  } else if (waiting.length) {
+    console.log('\n❌ Every job here is a gallery view whose main image does not exist yet.');
+    console.log('   Generate the mains first:  npm run showcase:images -- --batch --views=main\n');
+    return;
+  }
+  // A batch job names ONE model, so jobs are grouped by model before they are chunked — otherwise
+  // the eight Pro lettering images would be submitted against the Flash endpoint and silently come
+  // back in the wrong renderer, which is the one defect this split exists to prevent.
+  const chunks = [];
+  for (const group of Object.values(Object.groupBy(jobs, (j) => j.model ?? MODEL))) {
+    for (let i = 0; i < group.length; i += CHUNK) chunks.push(group.slice(i, i + CHUNK));
+  }
+
+  mkdirSync(BATCH_DIR, { recursive: true });
+  const state = existsSync(BATCH_STATE) ? JSON.parse(readFileSync(BATCH_STATE, 'utf8')) : {};
+  const saveState = () => writeFileSync(BATCH_STATE, `${JSON.stringify(state, null, 2)}\n`);
+
+  const cost = jobs.reduce((s, j) => s + jobPrice(j), 0);
+  console.log(`\n🧺 Batch mode — ${jobs.length} image(s) in ${chunks.length} chunk(s) of up to ${CHUNK}.`);
+  console.log(`   Model ${MODEL_KEY} at half price: $${cost.toFixed(2)} (≈ ₪${(cost * 3.7).toFixed(0)}).`);
+  console.log('   Google allows itself 24 hours and MEANS it — a 100-image job measured on');
+  console.log('   2026-08-12 sat in the queue for 10h42m. Interrupt freely: a re-run re-attaches');
+  console.log('   to the jobs already submitted and never pays for a chunk twice.\n');
+
+  /**
+   * PHASE 1 — submit everything, then wait. This used to submit a chunk, wait ~11 hours for it,
+   * then submit the next, which turned a four-chunk run into a three-day one for no reason:
+   * Google runs batch jobs independently and in parallel, so the whole set costs one queue wait
+   * rather than one per chunk. Measured 2026-08-12/13, and it is the difference between 11 hours
+   * and 43 for the same money.
+   */
+  for (const [i, chunk] of chunks.entries()) {
+    const model = chunk[0].model ?? MODEL;
+    const id = `${model}|${chunk.length}|${chunk[0].key}|${chunk[chunk.length - 1].key}`;
+    if (state[id]?.operation) {
+      console.log(`   chunk ${i + 1}/${chunks.length}: already submitted — ${state[id].operation}`);
+      continue;
+    }
+    const jsonlPath = join(BATCH_DIR, `requests-${i + 1}.jsonl`);
+    const lines = [];
+    for (const j of chunk) lines.push(jsonlLine(j.key, model, j.prompt, j.aspect ?? IMAGE_ASPECT, j.size ?? IMAGE_SIZE, await referenceFor(j, manifest)));
+    writeFileSync(jsonlPath, lines.join(''));
+    process.stdout.write(`   chunk ${i + 1}/${chunks.length}: uploading ${chunk.length} prompts … `);
+    const fileName = await uploadJsonl(apiKey, jsonlPath, `showcase-${i + 1}`);
+    const operation = await createBatch(apiKey, model, fileName, `showcase-${i + 1}`);
+    state[id] = { operation, submitted: new Date().toISOString() };
+    saveState();
+    console.log(`submitted (${operation})`);
+  }
+  console.log(`\n   All ${chunks.length} chunk(s) are queued and running in parallel. Collecting as they land.\n`);
+
+  // PHASE 2 — collect. Each chunk is polled to completion in turn, but they are all already
+  // running, so the total wait is the SLOWEST chunk rather than the sum of all of them.
+  let done = 0;
+  let failed = 0;
+  for (const [i, chunk] of chunks.entries()) {
+    // A chunk is identified by WHAT IS IN IT, not by its position: change the job list and the
+    // stale entry is ignored rather than re-attached to the wrong prompts.
+    const model = chunk[0].model ?? MODEL;
+    const id = `${model}|${chunk.length}|${chunk[0].key}|${chunk[chunk.length - 1].key}`;
+    const tag = `chunk ${i + 1}/${chunks.length}`;
+
+
+    // Poll. Slowly: this is a job with a 24-hour allowance, and a tight loop buys nothing.
+    let job;
+    for (let attempt = 0; ; attempt++) {
+      job = await getBatch(apiKey, state[id].operation);
+      if (job.done || job.error || /SUCCEEDED|FAILED|CANCELLED|EXPIRED/.test(job.state)) break;
+      if (attempt === 0) process.stdout.write(`   ${tag}: ${job.state} `);
+      process.stdout.write('.');
+      await sleep(30_000);
+    }
+    console.log('');
+
+    if (job.error || /FAILED|CANCELLED|EXPIRED/.test(job.state)) {
+      console.log(`   ${tag}: ✗ ${job.error ?? job.state}`);
+      failed += chunk.length;
+      // The chunk is spent either way; drop the attachment so a re-run can resubmit it deliberately.
+      delete state[id];
+      saveState();
+      continue;
+    }
+
+    if (!job.responsesFile) {
+      console.log(`   ${tag}: ✗ finished with no results file — nothing to collect`);
+      failed += chunk.length;
+      continue;
+    }
+
+    const resultsPath = join(BATCH_DIR, `results-${i + 1}.jsonl`);
+    process.stdout.write(`   ${tag}: downloading results … `);
+    await downloadResults(apiKey, job.responsesFile, resultsPath);
+    console.log(`${(statSync(resultsPath).size / 1024 / 1024).toFixed(0)}MB`);
+
+    const byKey = new Map(chunk.map((j) => [j.key, j]));
+    for await (const row of readResults(resultsPath)) {
+      const label = byKey.get(row.key)?.label ?? row.key ?? '(unkeyed row)';
+      if (row.error || !row.response) {
+        failed++;
+        console.log(`      ${label} … ✗ ${row.error ?? 'no response'}`);
+        continue;
+      }
+      const b64 = extractImage(row.response);
+      if (!b64) {
+        failed++;
+        console.log(`      ${label} … ✗ finished with no image in the envelope`);
+        continue;
+      }
+      try {
+        const url = await uploadToCloudinary(Buffer.from(b64, 'base64'), cloud, preset);
+        manifest[row.key] = url;
+        saveManifest(manifest);   // after EVERY image, same as the interactive path
+        done++;
+      } catch (e) {
+        failed++;
+        console.log(`      ${label} … ✗ ${e.message}`);
+      }
+    }
+    console.log(`   ${tag}: ✓ ${done} collected so far.`);
+    // Collected chunks stay in the state file only as a record; the manifest is what stops a re-run.
+    state[id].collected = new Date().toISOString();
+    saveState();
+    rmSync(resultsPath, { force: true });   // hundreds of MB of base64, already banked as URLs
+  }
+
+  console.log(`\n✅ ${done} generated, ${failed} failed, ${Object.keys(manifest).length} in the manifest total.`);
+  if (failed) console.log('   Re-run with --batch to retry only the failures — finished images are skipped.\n');
+  else console.log('   Now write them into the database:  npm run seed:showcase\n');
+}
+
+/**
+ * The main image a gallery view has to match, as JPEG bytes, or null.
+ *
+ * Fetched from Cloudinary at a reduced width rather than at 2K: the reference is there to fix the
+ * product's shape, colour and pattern, and 1024px carries all three. It also keeps the request
+ * small, which matters when 320 of these are going through the batch API in one file.
+ *
+ * A missing reference is NOT an error — it means the main has not been generated yet, and the
+ * caller skips the job so a later run can pick it up once the main exists.
+ */
+async function referenceFor(job, manifest) {
+  if (!job.refKey) return null;
+  const url = manifest[job.refKey];
+  if (!url) return null;
+  const res = await fetch(url.replace('/upload/', '/upload/w_1024,q_auto:good,f_jpg/'));
+  if (!res.ok) throw new Error(`could not fetch the reference image (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** The job list this invocation would actually pay for, after the manifest and the flags. */
+function pendingJobs(manifest) {
+  let jobs = buildJobs();
+  if (!FORCE) jobs = jobs.filter((j) => !manifest[j.key]);
+  if (LIMIT) jobs = jobs.slice(0, LIMIT);
+  return jobs;
+}
+
 async function main() {
+  // Pricing needs no key and must never be gated behind one: the whole point of `--cost` is to be
+  // runnable before deciding whether to spend anything at all.
+  if (COST_ONLY) { reportCost(pendingJobs(loadManifest())); return; }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.error('\n❌ GEMINI_API_KEY is not set. See .env.example — it names the two pages you need\n'
@@ -265,15 +568,15 @@ async function main() {
   }
 
   const manifest = loadManifest();
-  let jobs = buildJobs();
-  if (!FORCE) jobs = jobs.filter((j) => !manifest[j.key]);
-  if (LIMIT) jobs = jobs.slice(0, LIMIT);
+  const jobs = pendingJobs(manifest);
 
   if (!jobs.length) {
     console.log(`\n✅ Nothing to do — all ${Object.keys(manifest).length} images are already in the manifest.`);
     console.log('   Use --force to regenerate.\n');
     return;
   }
+
+  if (BATCH) { await runBatched(jobs, apiKey, cloud, preset, manifest); return; }
 
   if (CHECK) {
     console.log('\n🔎 Check mode — one image, to prove the key and the billing tier are live.\n');
@@ -287,7 +590,16 @@ async function main() {
   for (const job of jobs) {
     process.stdout.write(`   ${job.label} … `);
     try {
-      const bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, job.size);
+      const reference = await referenceFor(job, manifest);
+      if (job.refKey && !reference) {
+        console.log('— skipped: its main image does not exist yet');
+        continue;
+      }
+      let bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, job.size, job.model ?? MODEL, reference);
+      if (bytes.length > CLOUDINARY_MAX_BYTES && job.size === '4K') {
+        process.stdout.write(`(${(bytes.length / 1048576).toFixed(1)}MB is over Cloudinary's limit, re-making at 2K) `);
+        bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, '2K', job.model ?? MODEL, reference);
+      }
       const url = await uploadToCloudinary(bytes, cloud, preset);
       manifest[job.key] = url;
       saveManifest(manifest);   // after EVERY image: a crash must not discard what was paid for

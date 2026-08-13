@@ -17,14 +17,14 @@
 
 export const HOME_PRODUCTS = [
   // ── ריהוט (c:0) ────────────────────────────────────────────────────────────
-  { n: 'כורסת בד מרופדת', d: 'מושב עמוק עם ריפוד בד עמיד ורגלי עץ אלון מלא. נוחה לשעה של קריאה ולא רק להיראות טוב.', c: 0, sub: 'ישיבה', p: 1_490, w: 18_000, v: 'colorHome', s: 'an upholstered lounge armchair in warm oatmeal fabric with solid oak legs' },
-  { n: 'ספה תלת מושבית', d: 'שלושה מושבים עם ריפוד עמיד לשפשוף וכריות גב נשלפות לכביסה.', c: 0, sub: 'ישיבה', p: 4_290, w: 48_000, v: 'colorHome', s: 'a three-seat sofa in soft clay-coloured fabric with removable back cushions' },
-  { n: 'ספת דו מושבית קומפקטית', d: 'רוחב 150 ס״מ שנכנס גם לסלון קטן, בלי לוותר על עומק מושב אמיתי.', c: 0, sub: 'ישיבה', p: 2_890, w: 32_000, v: 'colorHome', s: 'a compact two-seat sofa in sage green fabric' },
+  { n: 'כורסת בד מרופדת', d: 'מושב עמוק עם ריפוד בד עמיד ורגלי עץ אלון מלא. נוחה לשעה של קריאה ולא רק להיראות טוב.', c: 0, sub: 'ישיבה', sub2: 'ספות וכורסאות', p: 1_490, w: 18_000, v: 'colorHome', s: 'an upholstered lounge armchair in warm oatmeal fabric with solid oak legs' },
+  { n: 'ספה תלת מושבית', d: 'שלושה מושבים עם ריפוד עמיד לשפשוף וכריות גב נשלפות לכביסה.', c: 0, sub: 'ישיבה', sub2: 'ספות וכורסאות', p: 4_290, w: 48_000, v: 'colorHome', s: 'a three-seat sofa in soft clay-coloured fabric with removable back cushions' },
+  { n: 'ספת דו מושבית קומפקטית', d: 'רוחב 150 ס״מ שנכנס גם לסלון קטן, בלי לוותר על עומק מושב אמיתי.', c: 0, sub: 'ישיבה', sub2: 'ספות וכורסאות', p: 2_890, w: 32_000, v: 'colorHome', s: 'a compact two-seat sofa in sage green fabric' },
   { n: 'שולחן אוכל עץ מלא', d: 'אלון מלא באורך 180 ס״מ שמושיב שישה בנוח. גימור שמן שמתחדש בעצמך.', c: 0, sub: 'שולחנות', p: 3_490, w: 42_000, v: null, s: 'a solid oak dining table with a natural oil finish, clean tapered legs' },
   { n: 'שולחן אוכל מתארך', d: 'נפתח מארבעה לשישה סועדים בתנועה אחת. פתרון לדירה שמארחת יותר ממה שיש בה מקום.', c: 0, sub: 'שולחנות', p: 2_990, w: 38_000, v: null, s: 'an extendable dining table in pale ash wood' },
-  { n: 'כיסא אוכל מרופד', d: 'מושב מרופד עם מסעד גב מעוקל שתומך בגב התחתון, ורגלי עץ יציבות.', c: 0, sub: 'ישיבה', p: 449, w: 6_500, v: 'colorHome', s: 'an upholstered dining chair in bouclé cream fabric with wooden legs' },
-  { n: 'כיסא אוכל עץ', d: 'עץ מלא בעיצוב נקי, נערם בקלות ולא חורק אחרי שנה.', c: 0, sub: 'ישיבה', p: 379, w: 5_200, v: null, s: 'a solid wood dining chair with a curved backrest, minimal design' },
-  { n: 'שרפרף בר מתכוונן', d: 'גובה מתכוונן עם משענת רגליים וסיבוב 360 מעלות. מתאים לאי במטבח.', c: 0, sub: 'ישיבה', p: 549, w: 8_400, v: 'colorHome', s: 'an adjustable-height bar stool with a leather seat and black metal base' },
+  { n: 'כיסא אוכל מרופד', d: 'מושב מרופד עם מסעד גב מעוקל שתומך בגב התחתון, ורגלי עץ יציבות.', c: 0, sub: 'ישיבה', sub2: 'כיסאות ושרפרפים', p: 449, w: 6_500, v: 'colorHome', s: 'an upholstered dining chair in bouclé cream fabric with wooden legs' },
+  { n: 'כיסא אוכל עץ', d: 'עץ מלא בעיצוב נקי, נערם בקלות ולא חורק אחרי שנה.', c: 0, sub: 'ישיבה', sub2: 'כיסאות ושרפרפים', p: 379, w: 5_200, v: null, s: 'a solid wood dining chair with a curved backrest, minimal design' },
+  { n: 'שרפרף בר מתכוונן', d: 'גובה מתכוונן עם משענת רגליים וסיבוב 360 מעלות. מתאים לאי במטבח.', c: 0, sub: 'ישיבה', sub2: 'כיסאות ושרפרפים', p: 549, w: 8_400, v: 'colorHome', s: 'an adjustable-height bar stool with a leather seat and black metal base' },
   { n: 'שולחן קפה עגול', d: 'משטח עגול בקוטר 80 ס״מ עם מדף תחתון נוסף. לא תופס את כל הסלון.', c: 0, sub: 'שולחנות', p: 890, w: 14_000, v: null, s: 'a round coffee table in light oak with a lower shelf' },
   { n: 'שולחן צד קטן', d: 'שולחן צד צר שנכנס ליד הכורסה או ליד המיטה, משטח שיש מלאכותי עמיד.', c: 0, sub: 'שולחנות', p: 429, w: 6_800, v: 'colorHome', s: 'a small side table with a marble-look top and a slim metal frame' },
   { n: 'שידת מגירות', d: 'ארבע מגירות על מסילות שקטות עם סוגר עצירה. גימור שלא מראה טביעות אצבע.', c: 0, sub: 'אחסון ומדפים', p: 1_290, w: 26_000, v: 'colorHome', s: 'a four-drawer wooden dresser in warm walnut with soft-close runners' },
