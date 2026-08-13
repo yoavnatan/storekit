@@ -25,9 +25,24 @@
  * **Use an AUTOMATIC add-on, never `manual`.** Manual moderation parks every upload in `pending`
  * until a person approves it in the Cloudinary console, and the asset is not delivered before that.
  * On this platform that would make a seller's product photo wait on the owner — the exact
- * admin-gatekeeping the zero-touch rule forbids (AI_INSTRUCTIONS → What we're building). `pending`
- * is therefore treated below as "not usable", not as "probably fine": a URL that does not render
- * is not something to store on a product.
+ * admin-gatekeeping the zero-touch rule forbids (AI_INSTRUCTIONS → What we're building).
+ *
+ * **`pending`/`queued` let the upload THROUGH, and that is the one decision here worth arguing.**
+ * It was the other way round for half a day, on the reasoning that an unapproved asset is not
+ * delivered so its URL would render nothing. The reasoning is sound and the behaviour was still
+ * wrong, because it assumed the verdict arrives IN the upload response. Cloudinary's own docs point
+ * both ways and neither can be settled without an account (asked 2026-08-13): the Rekognition page
+ * shows an example response already carrying `status: approved`, while the moderation page defines
+ * `pending` as "in the process of being moderated but an outcome hasn't been reached yet" and
+ * documents `notification_url` as the way to hear the result — i.e. asynchronous. **If it is
+ * asynchronous, refusing `pending` refuses EVERY photo the moment the add-on is switched on**, and
+ * a seller who cannot upload anything is a far worse failure than a photo that has to be re-picked.
+ * So the ambiguity is resolved toward the recoverable side: an image that turns out not to render
+ * is visible in the form's own preview and the seller replaces it in seconds.
+ * ⚠️ The consequence, and it is why GO_LIVE §2.6 carries a row rather than a note: under the
+ * asynchronous reading a `rejected` verdict arrives AFTER the product is saved, and pulling that
+ * image back off the product needs the `notification_url` webhook, which is not built. Settle which
+ * reading is true on the first real upload after enabling the add-on.
  *
  * Statuses are Cloudinary's own, verified against its moderation docs (2026-08-13):
  * `queued` · `pending` · `approved` · `rejected` · `aborted` (rejected by an earlier moderation).
@@ -42,7 +57,6 @@ interface ModerationEntry {
 /** Refusals a person reads. Hebrew, like every other upload error in `cloudinary.ts` — the seller
  *  is the only one who ever sees them, and a rejection with no reason reads as a broken uploader. */
 const REJECTED = 'התמונה נדחתה בבדיקת תוכן — בחר/י תמונה אחרת';
-const NOT_READY = 'התמונה ממתינה לבדיקת תוכן ועדיין לא ניתנת להצגה — נסה/י שוב בהמשך';
 
 /**
  * The sentence to fail the upload with, or `null` when there is nothing to object to.
@@ -60,8 +74,7 @@ export function moderationRefusal(uploadResponse: unknown): string | null {
     .map((entry) => (typeof entry?.status === 'string' ? entry.status : ''));
 
   // A single rejection decides it, whatever the other add-ons said — that is what `aborted` means
-  // on the entries that never got to run.
-  if (statuses.some((s) => s === 'rejected' || s === 'aborted')) return REJECTED;
-  if (statuses.some((s) => s === 'pending' || s === 'queued')) return NOT_READY;
-  return null;
+  // on the entries that never got to run. Everything else, `pending` and `queued` included, is not
+  // a refusal: only an explicit NO stops a seller's upload. See the module note.
+  return statuses.some((s) => s === 'rejected' || s === 'aborted') ? REJECTED : null;
 }
