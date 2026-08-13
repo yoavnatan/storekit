@@ -1884,6 +1884,19 @@ export const translations = {
       inThisStore: 'מחנות זו',
       otherStores: 'מחנויות אחרות',
     },
+    /** ShareMenu.astro. The network names stay in Latin script — a WhatsApp menu item that says
+     *  "ווטסאפ" is harder to scan than the name every Israeli reads on the app itself. */
+    share: {
+      button: 'שיתוף',
+      buttonLabel: 'שיתוף הקישור',
+      whatsapp: 'WhatsApp',
+      facebook: 'Facebook',
+      telegram: 'Telegram',
+      email: 'אימייל',
+      copyLink: 'העתקת קישור',
+      copied: 'הקישור הועתק',
+      more: 'עוד אפשרויות',
+    },
   },
   en: {
     nav: {
@@ -3417,6 +3430,17 @@ export const translations = {
       confirmRemove: 'Confirm removal',
       inThisStore: 'From this store',
       otherStores: 'From other stores',
+    },
+    share: {
+      button: 'Share',
+      buttonLabel: 'Share this link',
+      whatsapp: 'WhatsApp',
+      facebook: 'Facebook',
+      telegram: 'Telegram',
+      email: 'Email',
+      copyLink: 'Copy link',
+      copied: 'Link copied',
+      more: 'More options',
     },
   },
 } as const;

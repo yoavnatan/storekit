@@ -24,9 +24,10 @@
      that stays timeless (user: "כמה שיותר קלאסי ועל זמני"). All five rules deleted with
      the shadow — there is nothing left to switch on or off.
 
-     `.is-stuck` is still set on the header by lib/sticky-bar.ts: the store page reads it
-     (`body:has(.site-header.is-stuck) .store-banner`) to know the page has moved. It no
-     longer means anything about depth. */
+     2026-08-12: the header no longer carries `.is-stuck` either. It outlived the shadow only
+     because the store page's curtain was borrowing it as "the page has moved"; that shadow now
+     reads its own pinned banner instead (styles/pages/store.css), so the observer that set the
+     class went with the last thing that read it. */
   border-bottom: 1px solid var(--color-border);
   /* Derived, not typed (2026-08-05). The header's height is pinned INLINE at
      3.4rem with `box-sizing:border-box`, and 1px of that is the bottom border, so

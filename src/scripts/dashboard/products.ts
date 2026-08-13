@@ -3550,7 +3550,13 @@ export function initBulkSelect(cloud: string, preset: string): void {
     });
     refreshBulkEditLabel();
     selectAllChks.forEach((chk) => { chk.hidden = !anyOpen; });
-    if (!anyOpen) firstRow?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // The SAME landing as the row menu's own "ערוך" — the form's header, flush under the pinned
+    // chrome. This was `scrollIntoView({block:'nearest'})`, and `nearest` is wrong for a target
+    // TALLER than the viewport: with the row below the fold it aligns the row's BOTTOM to the
+    // viewport's bottom, so a seller pressing "ערוך" landed somewhere in the middle of the form
+    // with its heading and Save button far above (reported 2026-08-12). It was also a native
+    // smooth scroll, which this RTL site bans for a JS-computed target (scroll-utils.ts).
+    if (!anyOpen && firstRow) scrollEditRowIntoView(firstRow);
   });
 
   function renderUploadPanel(): void {

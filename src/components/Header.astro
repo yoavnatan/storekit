@@ -604,7 +604,6 @@ const strEmpty   = t.store.noProductsFound;
 )}
 
 <script>
-  import { initHeaderScrolled } from '../lib/sticky-bar.js';
   import { showActionFailedToast } from '../lib/toast.js';
   import { animateScrollTo } from '../scripts/dashboard/scroll-utils.js';
   import { getCount } from '../lib/cart.js';
@@ -649,10 +648,6 @@ const strEmpty   = t.store.noProductsFound;
     event.preventDefault();
     if (window.scrollY > 0) animateScrollTo(0);
   });
-
-  // Fades the header's shadow in the moment the page is scrolled at all — at the
-  // top it is covering nothing, so it carries only its border (header.css).
-  initHeaderScrolled(document.querySelector<HTMLElement>('.site-header'));
 
   // ── Back-to-store pill ────────────────────────────────────────
   // Deliberately NOT here: the pill is filled in by an inline script next to its

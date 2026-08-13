@@ -59,18 +59,29 @@ body:has(.store-page) { background: var(--color-surface); }
    Upward only (--shadow-bar-up): the banner it covers is the thing above it, and
    nothing bleeds down onto .store-below, which sits flush beneath.
 
-   And ONLY once the page has actually scrolled. At rest the curtain is not
-   covering anything — it is simply the next block under the banner in normal
-   flow, and a shadow there is the same false gap as the header's used to be
-   (user, 2026-08-01). `.site-header.is-stuck` is exactly "the page has moved"
-   (lib/sticky-bar.ts#initHeaderScrolled), so it is the flag rather than a second
-   mechanism measuring the same scroll.
+   And ONLY while it is actually covering something. Until then it is simply the next
+   block under the banner in normal flow, and a shadow there is the same false gap as
+   the header's used to be (user, 2026-08-01).
+
+   The flag is `.store-banner-pin.is-stuck` — the pinned image reaching its own `top`,
+   which is the exact frame this layer begins travelling over it. It used to be
+   `.site-header.is-stuck`, i.e. "the page has moved by one pixel", and that was only
+   the same moment by coincidence: it holds when the pinned banner is the first thing
+   on the page, and breaks the instant anything sits above it. Both the owner bar and
+   the showcase-store bar do (both in normal flow, both scrolling away first), so on
+   his own store, on a showcase store, and doubly on a showcase store he owns, the
+   shadow appeared while the first ~3rem of scroll was still just retiring that bar
+   and the curtain had not begun — a seam under a layer that was covering nothing
+   (user, 2026-08-12). Anchoring to the pin makes it true by construction whatever
+   ends up above it, and it also answers the case with no banner at all: no
+   .store-banner-pin element, so the shadow never appears, which is right — with
+   nothing pinned there is no curtain and nothing to cover.
 
    Not a competing signal either — and since 2026-08-02 that needs no arrangement at all:
    the header carries no shadow in any state, so this is now the ONLY depth on screen
    during the whole phase. (It used to be a hand-off, with two rules in header.css turning
    the header's own shadow off and back on around this crossing; they went with it.) */
-body:has(.site-header.is-stuck) .store-banner {
+body:has(.store-banner-pin.is-stuck) .store-banner {
   box-shadow: var(--shadow-bar-up);
 }
 
@@ -148,11 +159,12 @@ body:has(.site-header.is-stuck) .store-banner {
   margin-bottom: 0.5rem;
 }
 
+/* No top margin any more: this row is no longer a block stacked under the banner text — it is one
+   half of `.store-info__foot`, which owns the spacing between the two. */
 .store-banner__actions {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  margin-top: 1rem;
 }
 
 .store-banner-action-btn {
@@ -223,6 +235,49 @@ body:has(.site-header.is-stuck) .store-banner {
      that makes the ordinary case worse. */
 }
 
+/* THE STORE-INFO BOX — the store's own words, bounded.
+   1px, and the history matters because the value drifted once already. It was 1.5px to match
+   `.store-sale`, which at the time was a sibling box directly beneath it. That stopped being true
+   when the sale moved INSIDE and stopped drawing a border of its own — the reason went and the
+   number stayed, which the owner spotted (2026-08-12) by asking whether it matched anything.
+   It did not: 1.5px was the only one on the whole store page. Every other bounded box here is 1px —
+   the banner frame immediately above it and sharing its edges (`.store-banner__image-wrap`), every
+   `.product-card` below it, the dropdown this box opens, the category chips. So 1px is not a
+   compromise, it is the page's own weight; the 1.5px "surface card" recipe elsewhere on the site
+   (checkout, auth, order cards) is a different context and none of it is on screen here.
+   White on the banner's white, so the bounding line is the whole container — deliberate, and what
+   "קו תוחם בשפה של האתר" asked for. A grey fill was tried first and rejected.
+   No shadow: it is in flow, not floating (elevation rule, base/tokens.css). No max-width: capped
+   narrower than the page it sits in, it read as unrelated to the page — also rejected, same round.
+   Not converted to utilities: `.store-info > :first-child` selects whichever of the parts a store
+   happens to have, which has no utility form. */
+.store-info {
+  /* 1rem, and it is the gap the owner asked about (2026-08-12): measured on the running site, the
+     name+avatar row sat 34.4px under the banner picture and 8px above this box, so the heading read
+     as glued to the box it is deliberately NOT part of (see the markup note: the name is the page's
+     heading, not one of the store's remarks about itself). 8px was also exactly the box's own
+     INTERNAL rhythm — tagline and description are 0.5rem apart — so the separator between heading
+     and box was the same size as the gaps inside it, which is the whole reason it disappeared.
+     Doubling the unit is the smallest step that clears that rhythm and still lands on the 0.5rem
+     grid this block is built on.
+     He offered the other half of the choice too — tightening the 34.4px above instead — and it is
+     the wrong one. That gap is not free: 1.25rem of it is `.store-banner-pin`'s padding-bottom,
+     which exists so the picture's bottom edge survives the first bit of the curtain scroll, and the
+     rest is `.store-banner`'s padding-top, deliberately placed there rather than on the pin so it
+     travels with the title instead of being eaten by the rising details. Tightening it would also
+     pull the heading toward the picture, making heading+box read as one slab under the photo —
+     the opposite of the structure. So the loose end is this one, and this is the number that moves. */
+  margin-top: 1rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+/* The tagline's 0.5rem top margin is the gap under the store NAME, which it no longer sits under —
+   inside the box that margin prints as uneven top padding. */
+.store-info > :first-child { margin-top: 0; }
+
 .store-tagline {
   margin: 0.5rem 0 0;
   font-size: clamp(1rem, 2.2vw, 1.15rem);
@@ -250,6 +305,63 @@ body:has(.site-header.is-stuck) .store-banner {
    it floating over the page instead of pushing the product grid down when
    opened. */
 .store-details { position: relative; margin-top: 0.65rem; }
+
+/* THE FOOT — "פרטים נוספים" and the save/contact buttons on ONE row (owner, 2026-08-12).
+   `space-between`, and the owner's reason for it beats mine for the alternative: the box runs the
+   full width of the page, and content at BOTH ENDS is what earns that width. A single cluster at
+   the reading start left the other two thirds empty, which makes a full-bleed box look like a
+   full-bleed box with nothing in it.
+   That was tried — one cluster, 1.5rem between the disclosure and the pills — on the grounds that
+   the sale strip's own note in utils.css warns a far-edge element "read as unrelated to the words
+   it describes". It does not carry here: that note is about a strip's INTERNAL figure drifting off
+   from its own copy, and this row's two halves are not describing each other. They are the box's
+   footer rail, and a rail is supposed to span.
+   It also holds when "שתף" arrives (owner): a third pill grows the far-end group inward, which
+   narrows the empty middle rather than stranding anything.
+   `flex-wrap` so a narrow phone stacks instead of squeezing the labels — at 375 the row wraps to
+   two lines; a longer translation must not overflow the box.
+   `:not(:first-child)` on the divider because a store with no tagline, no description and no sale
+   has the foot as the box's only content, and a rule drawn above nothing is a line hanging off the
+   top padding.
+   The details dropdown stays `position:absolute` (see .store-details__content) — it floats over the
+   page instead of pushing the product grid down, and the box deliberately takes NO `overflow:hidden`
+   so it is not clipped to a few px tall. */
+.store-info__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+
+.store-info__foot:not(:first-child) {
+  margin-top: 0.8rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* `.store-details` keeps a 0.65rem top margin for when it stands alone; in the row that is a
+   vertical offset against the buttons beside it. (`.store-banner__actions` needed no such override
+   — its own margin was removed above, since the foot is now its only home.) */
+.store-info__foot > .store-details { margin-top: 0; }
+
+/* THE SALE SHEDS ITS BOX IN HERE, and that is the point of moving it in. `.store-sale` is a bordered
+   card everywhere else it renders (product page, dashboard preview) and has to stay one — but a card
+   inside a card is two frames saying the same thing, so in this container it becomes a plain section
+   divided by the same hairline as the foot below it. Only the box is dropped; the figure, the copy
+   and their own divider are untouched, so it is still recognisably the same strip.
+   A descendant selector on purpose (Tailwind rule, case (a)): `.store-sale` belongs to a component
+   this page does not own, and these declarations must not follow it to its other two homes.
+   Specificity 0,2,0 beats the unlayered 0,1,0 in utils.css regardless of source order. */
+.store-info .store-sale {
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--color-border);
+}
 
 .store-details__summary {
   display: inline-flex;
@@ -1265,9 +1377,14 @@ body:has(.site-header.is-stuck) .store-banner {
 
 .product-card__footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: stretch;
+  /* The price sets `line-height: 1`, so its box hugs the glyphs and the optical
+     gap under it reads smaller than the number here — 0.4rem left the price
+     leaning on the cart pill. Both renderers below used to carry this column
+     layout inline, the same magic number twice; it lives here now so the two
+     cannot drift apart on the next spacing change. */
+  gap: 0.55rem;
   /* Pin the price/cart block to the bottom of the card body. In an equal-height
      grid row a single 2-line product name used to push only ITS OWN button
      down while 1-line neighbours kept theirs up near the name — buttons at
