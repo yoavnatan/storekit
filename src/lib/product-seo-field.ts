@@ -140,9 +140,12 @@ export function productSeoBodyHtml(
 
   const slug = preview.productSlug || toSlug(input.name) || '';
   const path = slug ? `/${preview.storeSlug}/${slug}` : `/${preview.storeSlug}`;
-  // Mirrors Seo.astro's `fullTitle` (`${title} | ${store.name}`) and its description fallback, so
-  // the preview is the actual tag the page will carry rather than a nice-looking approximation.
-  const title = clip(input.name.trim() ? `${input.name} | ${preview.storeName}` : preview.storeName, 70);
+  // Mirrors what the product page actually renders — `<product> — <store>`, and NO platform
+  // suffix, because a shopper-facing store page is the store's (Seo.astro's `storeOwned`). The
+  // separator is copied from the page's own title expression rather than chosen here: this preview
+  // is a promise to the seller about the tag their page will carry, so a nicer-looking
+  // approximation is the one thing it must not be.
+  const title = clip(input.name.trim() ? `${input.name} — ${preview.storeName}` : preview.storeName, 70);
   const desc = input.description.trim()
     ? clip(input.description, PREVIEW_DESC_MAX)
     : l.previewEmptyDesc;
