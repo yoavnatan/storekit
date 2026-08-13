@@ -44,7 +44,12 @@ export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBad
        -- cart is one card there, and a badge counting rows would announce "5 new" above a list
        -- showing one (order-reporting.ts#countOrdersSince, which this replaces on this page).
        (SELECT count(DISTINCT ${CHECKOUT_GROUP_KEY_SQL}) FROM orders o WHERE o.created_at > $3::timestamptz) AS orders,
-       (SELECT count(*) FROM error_log WHERE created_at > $4::timestamptz) AS alerts,
+       -- The Alerts tab holds two lists — the automatic error log, and the reports visitors wrote
+       -- (AdminReportsPanel.astro) — so its badge counts both against the same boundary. Counting
+       -- only the errors would leave the one entry a PERSON is waiting on as the one the tab strip
+       -- never mentions.
+       (SELECT count(*) FROM error_log    WHERE created_at > $4::timestamptz)
+     + (SELECT count(*) FROM user_reports WHERE created_at > $4::timestamptz) AS alerts,
        (SELECT count(*) FROM admin_messages WHERE from_role = 'seller' AND NOT read_by_admin) AS messages`,
     [newSince.sellers, newSince.stores, newSince.orders, newSince.alerts],
   );
