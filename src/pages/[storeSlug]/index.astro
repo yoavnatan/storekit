@@ -488,17 +488,17 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         contiguous opaque flow (white details → grey products, no gap), so the
         image is the single thing the curtain covers — the details are never
         covered, they just scroll past. */}
-    <!-- A showcase store DOES use a photo banner now (2026-08-12) — its own generated background,
-         with the store name drawn over it as vector text. It goes through StoreDemoBanner rather
-         than the branch below only because of that overlay; the picture, the 3/1 wrap and the cdn
-         helpers are identical, so the curtain-scroll geometry above is unchanged either way. The
-         comment sits OUTSIDE the expression on purpose: Astro's compiler rejects an HTML comment as
-         the first child right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
+    <!-- A showcase store uses its own generated banner. It went through StoreDemoBanner originally
+         because that component drew the store's name over the picture; the name is now part of the
+         PHOTOGRAPH itself (identity.mjs#bannerPrompt), so the two branches render the same thing
+         and this one survives only as the seam where a showcase store's banner could differ again.
+         The comment sits OUTSIDE the expression on purpose: Astro's compiler rejects an HTML
+         comment as the first child right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
     {isDemo ? (
       <div class="store-banner-pin">
         <div class="container">
           <div class="store-banner__image-wrap">
-            <StoreDemoBanner name={shopStore.name} tagline={shopStore.tagline} bannerImage={shopStore.bannerImage} colors={shopStore.colors} dir={dir} />
+            <StoreDemoBanner name={shopStore.name} bannerImage={shopStore.bannerImage} colors={shopStore.colors} />
           </div>
         </div>
       </div>

@@ -390,8 +390,8 @@ export const SHOWCASE_STORES = [
     /** שקמה is the sycamore. A leaf reads instantly at any size and says "home and green" without
      *  saying "nursery", which is אדנית's job. */
     logoConcept:
-      'a sycamore leaf with a short stem, carved or routed into the sign — the leaf as a recess or '
-      + 'a raised relief in the material itself rather than as printed graphic',
+      'a single simplified sycamore leaf with a short stem, drawn as one flat solid gold shape with '
+      + 'a few clean vein lines cut out of it',
     /** The PHOTOGRAPHED one — a real shop sign, shot as a photograph. This is the store whose whole
      *  world is craft and material, so its logo being an object somebody made is the point. */
     /**
@@ -426,15 +426,27 @@ export const SHOWCASE_STORES = [
      * behind. And the colour is lifted: a dark teal board photographed in shade is where "too dark"
      * came from.
      */
+    /**
+     * Flat vector, gold on teal — and the photographed panel it replaces failed for a reason the
+     * original `logoPrompt()` note had already recorded: **the avatar renders in a CIRCLE.**
+     *
+     * A photograph of a board is a rectangle with visible edges, so cropping it round produced a
+     * teal square sitting inside a circle (owner, 2026-08-13: "הלוגו הזה שהוא ריבוע בתוך העיגול זה
+     * לא כל כך יפה"). Nothing about the wording fixes that; the medium itself is wrong for the
+     * frame it lands in. Any logo here must run EDGE TO EDGE, so that a round crop takes a clean
+     * disc of colour rather than a photograph of an object with a border.
+     *
+     * The palette is now the banner's: deep teal ground, warm gold mark. The two were separately
+     * plausible and side by side looked like two shops ("שונה מדי מהבאנר").
+     */
     logoStyle:
-      'A flat-lay PHOTOGRAPH of a single painted wooden panel, shot from directly above on a plain '
-      + 'pale background, filling the whole frame edge to edge with only a thin margin. It is a '
-      + 'flat board and nothing else: no chains, no bracket, no hooks, no wall, no door, no '
-      + 'building, no street, no room, no hands, no other object anywhere in the picture. '
-      + 'The board is BRIGHT teal, clean and evenly lit in soft daylight so every letter reads '
-      + 'clearly; the lettering and the mark are carved into it and painted in warm gold that '
-      + 'contrasts strongly against the teal. The Hebrew name is LARGE, high-contrast and the '
-      + 'unmistakable subject of the picture, in a warm slightly condensed serif with real weight.',
+      'A flat vector logo artwork — a digital design file, not a photograph, not a 3D render, not '
+      + 'a sign, not a board, not a mockup: no perspective, no shadow, no texture, no panel and no '
+      + 'visible edges of any object. The DEEP TEAL background is a solid flat colour that fills '
+      + 'the entire image right to all four edges, with no border, no frame and no lighter margin '
+      + 'around it. The mark and the Hebrew name sit on that teal in warm GOLD, high contrast and '
+      + 'generously spaced in the centre. The name is set in a warm, slightly condensed serif with '
+      + 'real weight.',
     address: 'ויצמן 8, רעננה',
     selfPickup: true,
     categories: ['ריהוט', 'תאורה', 'קרמיקה וכלי הגשה', 'טקסטיל', 'עיצוב ואקססוריז'],
@@ -1195,7 +1207,16 @@ export function logoPrompt(store) {
   return `A LOGO for a shop called "${store.name}". ${store.logoStyle} `
     + `The mark itself: ${store.logoConcept}. `
     + `${naming} `
-    + `Centred with generous even margins, complete inside the frame, nothing cropped. `
+    // THE FRAME IS A CIRCLE, in the one place a logo is seen most: `StoreAvatar` crops it round at
+    // 56px in the header and on every store card. So the background has to bleed to all four edges
+    // — a logo with a visible panel, card, sheet or border becomes a square sitting inside a circle
+    // (owner, 2026-08-13). This is a constraint of where the picture LANDS, not of its style, which
+    // is why it sits here rather than in any one store's `logoStyle`.
+    + `The background colour or surface runs edge to edge across the whole image, with no border, `
+    + `no frame, no visible panel or sheet, and no lighter margin around the outside — the artwork `
+    + `must survive being cropped into a circle. `
+    + `The mark and any lettering are centred with generous even margins inside that, well clear of `
+    + `the edges, complete and nothing cropped. `
     + `The logo of a good independent shop: simple enough to recognise at a glance, distinctive `
     // NOT `NEGATIVE_PROMPT`. That list is written for product photographs and half of it is either
     // meaningless or actively wrong here: it forbids "no logo, no brand mark" (a logo IS a brand
