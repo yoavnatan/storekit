@@ -3,6 +3,7 @@
 export { cdnThumb as thumbUrl } from '../../lib/cdn.js';
 
 import { downscaleForUpload, MAX_UPLOAD_BYTES } from './image-downscale.js';
+import { moderationRefusal } from '../../lib/image-moderation.js';
 
 /**
  * Cloudinary's unsigned-upload ceiling on the free tier, and now a LAST resort rather than the
@@ -59,6 +60,14 @@ export async function cloudinaryUpload(original: Blob, cloud: string, preset: st
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/image/upload`, { method: 'POST', body: fd });
   if (!res.ok) throw new Error(await uploadErrorMessage(res));
   const json = await res.json() as { secure_url: string };
+
+  // Content moderation, when the preset has an add-on on it: a judged-unusable asset must not
+  // become a product photo, and the ONE place that can be enforced is here, where the URL is
+  // about to be handed back to the form. `image-moderation.ts` carries the whole rationale —
+  // including why it says nothing at all while the add-on is off.
+  const refusal = moderationRefusal(json);
+  if (refusal) throw new Error(refusal);
+
   return json.secure_url;
 }
 

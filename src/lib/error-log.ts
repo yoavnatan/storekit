@@ -5,8 +5,7 @@ import { deriveSeverity, type ErrorSeverity } from './error-severity.js';
 import { alertOnCriticalError } from './critical-alert.js';
 import { errorRef } from './error-reference.js';
 import { businessDayISO, isDayISO } from './business-day.js';
-import { getSellerSession, getSellerById } from './seller-auth.js';
-import { getStoreBySellerId, getStoreBySlug } from './stores.js';
+import { resolveRequestActor } from './request-actor.js';
 
 /**
  * The admin Alerts tab's log — every 500 the middleware caught and every client-side JS error a
@@ -180,42 +179,17 @@ function normalizeStatus(value: unknown): number | null {
   return Number.isFinite(n) && n >= 100 && n <= 599 ? n : null;
 }
 
-// Best-effort identity for an error entry: derives the store from a
-// root-level `/<slug>` route and the signed-in account (buyer or seller share the
-// same session cookie — an account only counts as 'seller' if it owns a
-// store). Callers with more specific context (e.g. checkout, which already
-// knows the buyer email) build these fields directly instead, and what they
-// pass wins over what this resolves.
-// Runs inside logError's own try/catch now, but keeps its own as well: it is three queries on the
-// error path, and a rejection here must not skip the insert that is the whole point.
+// Best-effort identity for an error entry. The RULE — first path segment is a store slug, an
+// account is a seller only if it owns a store — lives in `lib/request-actor.ts`, because the
+// visitor-report table resolves the same thing for the list that renders directly above this one on
+// the Alerts tab, and two answers to "who was this" on one screen is the bug that extraction
+// prevents. Callers with more specific context (e.g. checkout, which already knows the buyer email)
+// build these fields directly instead, and what they pass wins over what this resolves.
 async function resolveErrorContext(
   pathname: string,
   cookies: AstroCookies
 ): Promise<Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'>> {
-  const ctx: Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'> = {};
-  try {
-    // Stores live at the root (/<slug>, /<slug>/<product>). Take the first path segment and let
-    // getStoreBySlug filter — a non-store route (/checkout, /search, …) simply returns null.
-    const storeMatch = pathname.match(/^\/([^/]+)(?:\/|$)/);
-    if (storeMatch?.[1]) {
-      const store = await getStoreBySlug(storeMatch[1]);
-      if (store) { ctx.storeSlug = store.slug; ctx.storeName = store.name; }
-    }
-
-    const accountId = getSellerSession(cookies);
-    if (accountId) {
-      const account = await getSellerById(accountId);
-      if (account) {
-        const ownStore = await getStoreBySellerId(accountId);
-        ctx.actorId = accountId;
-        ctx.actorLabel = account.email;
-        ctx.actorRole = ownStore ? 'seller' : 'buyer';
-        if (ownStore && !ctx.storeSlug) { ctx.storeSlug = ownStore.slug; ctx.storeName = ownStore.name; }
-      }
-    }
-  } catch { /* best-effort — never throw from inside an error handler's own context-gathering */ }
-
-  return ctx;
+  return resolveRequestActor(pathname, cookies);
 }
 
 /** How many writes are holding a pooled connection right now. Module state on purpose: the thing

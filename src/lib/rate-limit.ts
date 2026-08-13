@@ -121,6 +121,32 @@ export function couponLookupRules(storeSlug: string, ip: string): RateLimitRule[
   return [{ bucket: `coupon:${storeSlug.slice(0, 120)}:${ip}`, limit: ORIGIN_LIMIT, windowSec: WINDOW_SEC }];
 }
 
+/** Fault/content reports one address may file per hour (`/api/report`). */
+const REPORTS_PER_HOUR = 10;
+/** Its own constant rather than {@link MAX_RATE_WINDOW_SEC}, which happens to be the same number
+ *  today: that one is the PURGE's cut-off, and a rule that reads it would silently follow it if it
+ *  ever moved. */
+const REPORT_WINDOW_SEC = 60 * 60;
+
+/**
+ * "דווח על תקלה" — the one write path on the platform a signed-out visitor may use, which is the
+ * whole reason it needs a bucket at all.
+ *
+ * **This is the one rule where SUCCESSES are counted, not failures**, and the difference is the
+ * point rather than an inconsistency. Everywhere else in this file the thing being defended is a
+ * secret and a wrong answer is the abuse; here there is no secret and no wrong answer — a flood of
+ * perfectly valid reports IS the abuse, since each one lands in front of a person. So
+ * `/api/report` asks first and calls `countAuthAttempt` on the accepted ones. Ten an hour is far
+ * above anyone describing something that actually happened to them, and far below anything worth
+ * scripting.
+ *
+ * Keyed on the address alone: a report needs no account, so there is no identity to key on. The
+ * shared-NAT caution on `ORIGIN_LIMIT` applies, which is why the number is not tighter.
+ */
+export function reportRules(ip: string): RateLimitRule[] {
+  return [{ bucket: `report:${ip.slice(0, 120)}`, limit: REPORTS_PER_HOUR, windowSec: REPORT_WINDOW_SEC }];
+}
+
 export interface RateVerdict {
   allowed: boolean;
   /** Whole seconds until the blocking window expires; 0 when allowed. The UI turns this into

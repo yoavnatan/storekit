@@ -1,0 +1,163 @@
+---
+/** "דווח על תקלה" — the form itself, rendered on `/contact`.
+ *
+ * **Why a form and not a subject line on a `mailto:`** (which is what the contact page offered, and
+ * the shape the question came in as): the three facts that make a report actionable are the three
+ * nobody types — which page, which store, who they were. Everything under `page` below is captured,
+ * not asked for, and `lib/user-reports.ts` re-derives the store and the identity server-side rather
+ * than believing this form about either.
+ *
+ * It also has somewhere to land. A mail needs an inbox somebody watches; this lands in the admin's
+ * Alerts tab beside the automatic failures, with a count on the tab strip, which is the screen the
+ * owner already opens to ask "is anything wrong". No SMTP is wired on this platform yet (memory
+ * `project_messaging_email`), so a mail-shaped report is a report with no reader.
+ *
+ * The strings the SCRIPT writes travel as `data-str-*` on the form, MessageCompose's pattern — this
+ * component renders on one route, so a slice in the global i18n island would be weight on every
+ * other page. Nothing here is built in the browser from a language conditional
+ * (memory `project_client_renderer_i18n_drift`).
+ */
+import { getLang, getT } from '../i18n/index.js';
+
+interface Props {
+  /** Preselected `kind`, so an in-context "report this" link arrives on the right option. */
+  kind?: string;
+  /** The page being reported, when the visitor came from one. Site-relative; the server validates
+   *  it again on arrival and does not trust this value either. */
+  page?: string;
+}
+const { kind = 'fault', page = '' } = Astro.props;
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const r = t.report;
+
+const KINDS = [
+  { value: 'fault', label: r.kindFault },
+  { value: 'content', label: r.kindContent },
+  { value: 'store', label: r.kindStore },
+  { value: 'other', label: r.kindOther },
+];
+const selected = KINDS.some((k) => k.value === kind) ? kind : 'fault';
+---
+
+<form
+  id="report-form"
+  data-page={page}
+  data-str-sending={r.sending}
+  data-str-submit={r.submit}
+  data-str-error={r.error}
+  data-str-error-empty={r.errorEmpty}
+  data-str-throttled={r.throttled}
+  style="max-width:44rem;margin-top:1rem"
+>
+  <label class="field">
+    <span>{r.kind}</span>
+    <select id="report-kind" name="kind" class="input">
+      {KINDS.map((k) => <option value={k.value} selected={k.value === selected}>{k.label}</option>)}
+    </select>
+  </label>
+
+  <label class="field">
+    <span>{r.message}</span>
+    <textarea
+      id="report-message"
+      name="message"
+      class="input"
+      rows="6"
+      maxlength="2000"
+      required
+      placeholder={r.messagePlaceholder}
+      style="resize:none"
+    ></textarea>
+  </label>
+
+  <label class="field">
+    <span>{r.email}</span>
+    <input id="report-email" name="email" type="email" class="input" maxlength="200" autocomplete="email" />
+    <span class="muted" style="display:block;margin-top:0.35rem;font-size:0.82rem">{r.emailHint}</span>
+  </label>
+
+  {page && (
+    <p class="muted" style="font-size:0.82rem;margin:0 0 1rem">
+      {r.pageContext}: <span dir="ltr">{page}</span>
+    </p>
+  )}
+
+  <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+    <button id="report-submit" type="submit" class="btn btn--accent">{r.submit}</button>
+    {/* aria-live, not a toast: the reply to a form submission belongs beside the button that was
+        pressed, and a screen reader has to hear it without moving focus. */}
+    <p id="report-status" role="status" aria-live="polite" style="margin:0;font-size:0.88rem"></p>
+  </div>
+</form>
+
+{/* Replaces the form on success rather than sitting under it — leaving a filled form beside
+    "sent" invites the same report a second time. */}
+<div id="report-done" hidden style="max-width:44rem;margin-top:1rem;padding:1rem 1.25rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface)">
+  <p style="margin:0;font-weight:600">{r.sent}</p>
+  <p class="muted" style="margin:0.35rem 0 0;font-size:0.9rem">{r.sentBody}</p>
+</div>
+
+<script>
+  const form = document.getElementById('report-form') as HTMLFormElement | null;
+  const done = document.getElementById('report-done');
+  const status = document.getElementById('report-status');
+  const submit = document.getElementById('report-submit') as HTMLButtonElement | null;
+  if (form && submit) {
+    const d = form.dataset;
+    // Server-rendered, per the component note. The Hebrew after each `??` covers a missing
+    // attribute only and is never the source of the string.
+    const str = {
+      sending: d.strSending ?? 'שולח…',
+      submit: d.strSubmit ?? 'שליחת דיווח',
+      error: d.strError ?? 'הדיווח לא נשלח. נסו שוב.',
+      empty: d.strErrorEmpty ?? 'צריך לכתוב מה קרה',
+      throttled: d.strThrottled ?? 'נשלחו כבר כמה דיווחים מהכתובת הזו. אפשר לנסות שוב בעוד {n} דקות.',
+    };
+
+    const say = (text: string, bad: boolean) => {
+      if (!status) return;
+      status.textContent = text;
+      status.style.color = bad ? 'var(--color-danger)' : 'var(--color-muted)';
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const message = (document.getElementById('report-message') as HTMLTextAreaElement).value.trim();
+      if (!message) { say(str.empty, true); return; }
+
+      submit.disabled = true;
+      submit.textContent = str.sending;
+      say('', false);
+
+      try {
+        const res = await fetch('/api/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kind: (document.getElementById('report-kind') as HTMLSelectElement).value,
+            message,
+            email: (document.getElementById('report-email') as HTMLInputElement).value.trim(),
+            // Where they were when they hit the link, falling back to this page — the server
+            // validates it as a site-relative path either way.
+            pageUrl: d.page || location.pathname + location.search,
+          }),
+        });
+        if (res.status === 429) {
+          const body = await res.json() as { retryAfterMinutes?: number };
+          say(str.throttled.replace('{n}', String(body.retryAfterMinutes ?? 60)), true);
+          submit.disabled = false; submit.textContent = str.submit;
+          return;
+        }
+        if (!res.ok) throw new Error('failed');
+        form.hidden = true;
+        if (done) done.hidden = false;
+      } catch {
+        say(str.error, true);
+        submit.disabled = false;
+        submit.textContent = str.submit;
+      }
+    });
+  }
+</script>

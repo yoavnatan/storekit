@@ -13,6 +13,7 @@ import {
   countAuthAttempt,
   couponLookupRules,
   purgeExpiredAuthAttempts,
+  reportRules,
   registerRules,
   sellerLoginRules,
 } from '../src/lib/rate-limit.js';
@@ -155,6 +156,7 @@ describe('the purge job may not outlive a rule’s window', () => {
       ...registerRules('1.2.3.4'),
       ...adminLoginRules('1.2.3.4'),
       ...couponLookupRules('shop', '1.2.3.4'),
+      ...reportRules('1.2.3.4'),
       ...newThreadRules(BUYER, STORE),
       ...replyRules(BUYER),
     ];
