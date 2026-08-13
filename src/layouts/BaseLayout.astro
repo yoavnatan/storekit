@@ -35,7 +35,7 @@ import '../styles/main.css';
 
 const {
   title, description, image, type, noindex, jsonLd, canonical,
-  isLoggedIn, hasStore, storeMode, storeName, storeSlug, storeLogo, storeHeaderLogo, sellerMode, hideNav, showSearch, isHome,
+  isLoggedIn, hasStore, storeMode, storeName, storeSlug, storeLogo, storeDemo, storeHeaderLogo, sellerMode, hideNav, showSearch, isHome,
   dataLayer, productPrice, productCurrency, preloadImage,
 } = Astro.props;
 
@@ -43,12 +43,18 @@ const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
 
+// Is this page the STORE's, or ours? One answer, read by three things — the tab's icon, the tab's
+// text and the shared card's title (Seo.astro) — because a page showing the store's picture beside
+// our name in the title is the sovereignty rule half-applied. `storeMode` is NOT this question: it
+// is the layout, and thirteen pages of ours ask for it (see the <link> block below).
+const storeOwnsThisPage = !!storeSlug && !sellerMode;
+
 // The tab's icon on a shopper-facing store page — see the <link> block below for
 // which pages qualify and why. Resolved here rather than inline so the two slots
 // are one decision: a page can't end up with the store's favicon and the
 // platform's touch icon.
 const storeIcon =
-  storeSlug && !sellerMode
+  storeOwnsThisPage
     ? {
         favicon: storeIconUrl({ slug: storeSlug, profileImage: storeLogo }, 'favicon'),
         touch: storeIconUrl({ slug: storeSlug, profileImage: storeLogo }, 'touch'),
@@ -233,7 +239,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
       heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
-    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} />
+    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} storeOwned={storeOwnsThisPage} />
     {dlJson && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];window.dataLayer.push(${dlJson});`} />}
     {platformGtm && <script is:inline set:html={gtmHeadScript(platformGtm)} />}
     {platformPixel && <script is:inline set:html={metaPixelScript(platformPixel)} />}
@@ -297,7 +303,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
         Empty until a navigation actually starts, and it needs no teardown — the
         document is replaced. */}
     <div id="nav-progress" class="progress-track fixed inset-x-0 top-[var(--site-header-h,3.4rem)] z-[70] pointer-events-none" role="status" aria-label={t.nav.loading}></div>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} storeLogo={storeLogo} storeHeaderLogo={storeHeaderLogo} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} initialUnreadCount={initialUnreadCount} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} storeLogo={storeLogo} storeDemo={storeDemo} storeHeaderLogo={storeHeaderLogo} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} initialUnreadCount={initialUnreadCount} />
     <main id="main-content">
       <slot />
     </main>

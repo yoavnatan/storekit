@@ -284,12 +284,17 @@ export async function writeCatalog(db, catalog) {
 
     await insertMany(db, 'store_products', [
       'id', 'store_id', 'slug', 'name', 'description', 'price_agorot', 'stock', 'sku',
-      'category_id', 'hidden', 'blocked', 'tags', 'specs', 'variants', 'seller_note', 'created_at',
+      'category_id', 'hidden', 'blocked', 'tags', 'specs', 'variants', 'seller_note',
+      'weight_grams', 'created_at',
     ], products.map((p) => [
       p.id, p.storeId, p.slug, p.name, p.description ?? '',
       toAgorot(p.price), Math.max(0, Number(p.stock) || 0), p.sku || null,
       p.categoryId ?? null, Boolean(p.hidden), Boolean(p.blocked), p.tags ?? [],
       JSON.stringify(p.specs ?? []), JSON.stringify(p.variants ?? []), p.sellerNote || null,
+      // Absent is NULL, never 0 — "not supplied" and "weighs nothing" are different answers and
+      // the shipping quote treats them differently (product-weight.ts). The column's CHECK
+      // constraint rejects 0 outright, so a `?? 0` here would fail the whole insert.
+      Number(p.weightGrams) > 0 ? Math.round(p.weightGrams) : null,
       p.createdAt ?? null,
     ]));
 

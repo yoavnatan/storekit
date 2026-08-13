@@ -24,9 +24,10 @@
      that stays timeless (user: "כמה שיותר קלאסי ועל זמני"). All five rules deleted with
      the shadow — there is nothing left to switch on or off.
 
-     `.is-stuck` is still set on the header by lib/sticky-bar.ts: the store page reads it
-     (`body:has(.site-header.is-stuck) .store-banner`) to know the page has moved. It no
-     longer means anything about depth. */
+     2026-08-12: the header no longer carries `.is-stuck` either. It outlived the shadow only
+     because the store page's curtain was borrowing it as "the page has moved"; that shadow now
+     reads its own pinned banner instead (styles/pages/store.css), so the observer that set the
+     class went with the last thing that read it. */
   border-bottom: 1px solid var(--color-border);
   /* Derived, not typed (2026-08-05). The header's height is pinned INLINE at
      3.4rem with `box-sizing:border-box`, and 1px of that is the bottom border, so
@@ -787,8 +788,31 @@ nav a:hover { color: var(--color-text); }
    named here rather than given a nudge of its own for the reason that whole card exists: a preview
    built from a second set of rules drifts from the thing it previews, and drifts silently. One
    declaration, two places that render it. */
+/* RE-DERIVED 2026-08-12, after the owner reported the name reading low for a third time.
+   0.095em was over-correcting by ~2.2px at header size — visible, and in the direction he kept
+   naming. The reason the previous pass concluded no value could serve both Hebrew cases is that it
+   centred the FULL ink band, descenders included. That is not how type is optically centred: a word
+   is not perceived as sitting lower because it happens to contain a ק. Centre the band from the
+   BASELINE to the top of the letters instead, and the contradiction disappears — measured on the
+   running site with TextMetrics (no raster edge-detection, so none of the ±1px noise that defeated
+   the last attempt), all three Hebrew names want the same correction to within 0.008em:
+     סהר −0.1054em · שקמה −0.1054em · אדנית −0.1133em   (Latin "Teklar" −0.0320em)
+   0.095 − 0.108 ≈ −0.013em, which is where this lands. Hebrew then centres to ~0.0px and Latin sits
+   0.66px high — the site is Hebrew-first, so the exact case is the common one, and the residual on
+   the other is under a pixel. Still ONE declaration for both the header and its settings preview,
+   for the reason below. */
 .site-header .store-name-text,
-.hdr-preview .store-name-text { transform: translateY(0.095em); }
+.hdr-preview .store-name-text { transform: translateY(-0.013em); }
+
+/* `text-box-trim: trim-both; text-box-edge: cap alphabetic` was tried here and REJECTED, measured,
+   so it is not tried again. It looks like the principled fix — let the browser trim the box to the
+   real type band and the flex centring lands on the optical centre for every script at once — and
+   it does help Latin (0.41px high, against 1.58px). But `cap` is a LATIN metric, and Heebo's Hebrew
+   letters are shorter than its Latin capitals, so the trimmed box's top sits above the Hebrew
+   letters and every Hebrew name came out 1.11px LOW — twenty times the residual the plain value
+   leaves. Worse, `@supports` means the header would sit at two different heights depending on the
+   browser, and a lockup that moves between machines is a worse bug than a fixed sub-2px offset on
+   the less common script. One value, every browser, exact on the case this site is built for. */
 
 /* THE HEADER HAS ONE BOTTOM LINE — the 1px --color-border above, on every page,
    store or not. There is no store-colour bar and it should not come back

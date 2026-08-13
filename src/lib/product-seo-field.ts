@@ -19,6 +19,7 @@ import { toSlug } from './url-base.js';
 import {
   productSeoHints,
   productSeoScore,
+  openProductSeoHints,
   type ProductSeoHintId,
   type ProductSeoInput,
   type ProductSeoLevel,
@@ -34,6 +35,11 @@ export interface ProductSeoLabels {
   previewLabel: string;
   /** Shown in the preview when the seller hasn't written a description yet. */
   previewEmptyDesc: string;
+  /** Prefix for the row gauge's tooltip, which then lists the open items: "Missing: Photo · …". */
+  missing: string;
+  /** What the gauge IS — the products-table column's own name, so the tooltip, the column header
+   *  and the filter menu all call it the same thing. */
+  columnLabel: string;
   /** Each tip is a short LABEL plus the explanation. One line of bare prose per item read as a
    *  nag; naming the field first tells the seller what it is about before why it matters. */
   hint: Record<ProductSeoHintId, { label: string; text: string }>;
@@ -45,6 +51,8 @@ const FALLBACK: ProductSeoLabels = {
   level: { weak: 'Basic', partial: 'Good', strong: 'Excellent' },
   previewLabel: 'How it looks in search',
   previewEmptyDesc: 'No description yet',
+  missing: 'Missing',
+  columnLabel: 'Search visibility',
   hint: {
     image: { label: 'Photo (required)', text: 'Without one it cannot be advertised' },
     name: { label: 'A specific name', text: 'What it is and who it suits — briefly' },
@@ -70,6 +78,8 @@ export function productSeoLabels(d: Readonly<Record<string, unknown>>): ProductS
     },
     previewLabel: str(d.seoPreviewLabel, FALLBACK.previewLabel),
     previewEmptyDesc: str(d.seoPreviewEmptyDesc, FALLBACK.previewEmptyDesc),
+    missing: str(d.seoMissingLabel, FALLBACK.missing),
+    columnLabel: str(d.filterColSeo, FALLBACK.columnLabel),
     hint: {
       image: { label: str(d.seoLabelImage, FALLBACK.hint.image.label), text: str(d.seoHintImage, FALLBACK.hint.image.text) },
       name: { label: str(d.seoLabelName, FALLBACK.hint.name.label), text: str(d.seoHintName, FALLBACK.hint.name.text) },
@@ -130,9 +140,12 @@ export function productSeoBodyHtml(
 
   const slug = preview.productSlug || toSlug(input.name) || '';
   const path = slug ? `/${preview.storeSlug}/${slug}` : `/${preview.storeSlug}`;
-  // Mirrors Seo.astro's `fullTitle` (`${title} | ${store.name}`) and its description fallback, so
-  // the preview is the actual tag the page will carry rather than a nice-looking approximation.
-  const title = clip(input.name.trim() ? `${input.name} | ${preview.storeName}` : preview.storeName, 70);
+  // Mirrors what the product page actually renders — `<product> — <store>`, and NO platform
+  // suffix, because a shopper-facing store page is the store's (Seo.astro's `storeOwned`). The
+  // separator is copied from the page's own title expression rather than chosen here: this preview
+  // is a promise to the seller about the tag their page will carry, so a nicer-looking
+  // approximation is the one thing it must not be.
+  const title = clip(input.name.trim() ? `${input.name} — ${preview.storeName}` : preview.storeName, 70);
   const desc = input.description.trim()
     ? clip(input.description, PREVIEW_DESC_MAX)
     : l.previewEmptyDesc;
@@ -205,6 +218,60 @@ function productSeoMeterHtml(view: ProductSeoMeterView, l: ProductSeoLabels): st
     <div aria-hidden="true" style="margin-top:0.45rem;height:4px;border-radius:999px;background:var(--color-bg);overflow:hidden">
       <div data-seo-meter style="height:100%;border-radius:999px;width:${view.percent}%;background-color:${view.color};transition:width 0.3s ease-out,background-color 0.3s ease-out"></div>
     </div>`;
+}
+
+/** Length of the semicircle below (π × r, r = 9), pinned as a constant so the dash maths can't
+ *  drift from the path if the arc is ever resized. */
+const GAUGE_ARC = (Math.PI * 9).toFixed(3);
+const GAUGE_PATH = 'M3 13A9 9 0 0 1 21 13';
+
+/**
+ * The products-table row gauge: a small dial, filled to the listing's score and coloured by its
+ * band — the same score, the same three colours and the same band words as the panel's meter,
+ * because it is the same fact seen from the list.
+ *
+ * **It renders on every row, in all three bands.** The first version marked only `weak` rows, on
+ * the reasoning that a mark on every row is decoration — true when the mark is squeezed in beside
+ * a product's name, which is how the 2026-08-04 attempt failed. It is not true of a column: a
+ * column of dials reads as a column, one glance down it sorts the catalogue into done / getting
+ * there / thin, and the two good bands are the half a seller actually wants to see (owner,
+ * 2026-08-12: "it doesn't support certain scores, blue and green"). What stays from that reasoning
+ * is that the amber is the only one that carries a consequence.
+ *
+ * A nearly-full amber dial is a real state, not a bug: a listing with everything except the photo
+ * scores 4-of-5 and is still weak, because without an image it cannot be advertised at all. The
+ * tooltip carries the band in words and then what is open, so the colour never speaks alone.
+ *
+ * **Where it goes.** Its own narrow column, immediately before the row's actions button, at both
+ * widths — a fixed table column on desktop, its own full-height grid area on the mobile card. It
+ * was briefly overlaid on the thumbnail, which put it in a different place on every row (the
+ * thumbnail's position moves with the card's height, which moves with whether the product has a
+ * description or a sale) and behind the photo on rows that had one. A gauge you have to look for
+ * is not a gauge. Same coordinates in every row is the whole point of the column.
+ *
+ * No click handler of its own — the full hint list is one row-open away, in the panel this gauge
+ * summarises.
+ */
+export function productSeoRowGaugeHtml(input: ProductSeoInput, l: ProductSeoLabels): string {
+  const score = productSeoScore(input);
+  const open = openProductSeoHints(input).map((h) => l.hint[h.id].label).join(' · ');
+  // Names itself first ("Search visibility"), then the band in words, then what is open — a small
+  // coloured arc means nothing to a seller meeting it for the first time, and this is the only
+  // place that tells them.
+  const label = `${l.columnLabel} · ${l.level[score.level]}${open ? ` — ${l.missing}: ${open}` : ''}`;
+  // Dash offset, not a shortened path: one geometry for track and fill means they can never
+  // disagree about where the arc runs.
+  const offset = ((Number(GAUGE_ARC) * (100 - score.percent)) / 100).toFixed(3);
+  return `<span class="product-seo-gauge" role="img" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-seo-level="${score.level}">`
+    // Size pinned INLINE, all three properties, against reset.css's `img, picture, svg, video`
+    // rule: `height: auto` beats a bare height attribute and flattens the arc to a hairline, and
+    // `max-width: 100%` resolves against this badge's containing block — which on the ≤640px card
+    // is a thumbnail cell that collapses to ZERO width when the product has no photo, i.e. exactly
+    // the case the gauge is most often marking. Measured at 375px before the fix: svg width 0.
+    + `<svg viewBox="0 0 24 16" width="21" height="14" style="width:21px;height:14px;max-width:none;display:block" fill="none" aria-hidden="true">`
+    + `<path d="${GAUGE_PATH}" stroke="var(--color-border)" stroke-width="3" stroke-linecap="round"/>`
+    + `<path d="${GAUGE_PATH}" stroke="${LEVEL_COLOR[score.level]}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${GAUGE_ARC}" stroke-dashoffset="${offset}"/>`
+    + `</svg></span>`;
 }
 
 /**

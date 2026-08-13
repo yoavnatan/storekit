@@ -23,9 +23,30 @@ const {
   productPrice,
   productCurrency = 'ILS',
   canonical: canonicalOverride,
+  storeOwned = false,
 } = Astro.props;
 
-const fullTitle = title ? `${title} | ${store.name}` : `${store.name} — ${store.tagline}`;
+/**
+ * The tab, the search result and the shared card all read this one string.
+ *
+ * **A shopper-facing store page does NOT carry ` | Dezabin`, and that is the sovereignty rule
+ * rather than a preference (owner, 2026-08-13: "מלוא הכבוד והמקום לחנות עצמה").** It is the same
+ * decision as the store's own favicon two components away in `BaseLayout` — a shopper with six
+ * tabs open is looking at six shops, not six pages of ours — and `storeOwned` is set from the same
+ * gate, so the tab's icon and the tab's text can never disagree about whose page this is. Every
+ * page that is OURS keeps the suffix: the homepage, /stores, /search, /checkout, 404, and every
+ * seller and admin screen, including the dashboard (the platform's tool for running a store, not
+ * the store).
+ *
+ * **It costs no SEO, checked against Google's own title-link documentation (2026-08-13) rather
+ * than assumed:** the site name is a recommendation for brevity ("brand concisely"), never a
+ * requirement, and the title link is truncated to fit the device width anyway — so the suffix was
+ * spending visible pixels on our name inside results for the seller's. Google also rewrites titles
+ * it dislikes, and a store name is the clearest possible answer to "what is this page".
+ */
+const fullTitle = title
+  ? (storeOwned ? title : `${title} | ${store.name}`)
+  : `${store.name} — ${store.tagline}`;
 // Canonical is always the query-stripped, trailing-slash-free path (root stays "/"),
 // so filtered/sorted views (?category=&sort=) and any slash variant all consolidate
 // to one indexable URL — matches the site's trailingSlash:'never' policy.

@@ -30,7 +30,16 @@ export function clearSkeletonOnLoad(img: HTMLImageElement, wrapSelector: string)
   // img.src (not just .complete) — an <img> with no src yet reads .complete as
   // trivially true, which would strip the shimmer immediately instead of waiting for
   // the real image to actually load.
-  if (img.src && img.complete && img.naturalWidth > 0) done();
+  //
+  // `complete` alone, deliberately NOT `complete && naturalWidth > 0`. With a real src,
+  // `complete` means the browser is FINISHED with this image — loaded or failed — and a
+  // failed one has naturalWidth 0. The old test read that as "not done yet" and attached
+  // listeners to an image whose `error` had already fired, so nothing could ever fire
+  // again and the tile shimmered for the rest of the page's life. Measured 2026-08-12 on
+  // /megamart with three product images made to fail: two tiles still animating after six
+  // idle seconds, over an empty box — the "load more finished but images still have a
+  // skeleton" report. A broken image must settle to the plain surface behind it.
+  if (img.src && img.complete) done();
   else {
     img.addEventListener('load', done, { once: true });
     img.addEventListener('error', done, { once: true });
@@ -115,8 +124,23 @@ export function initImageSkeletons(wrapSelector: string, root: ParentNode = docu
           obs.unobserve(entry.target);
           const wrap = entry.target as HTMLElement;
           const img = wrap.querySelector('img');
-          // Already there by the time we got here — no reason to flash a shimmer on.
-          if (img?.src && img.complete && img.naturalWidth > 0) continue;
+          // Already settled by the time we got here — loaded, or failed. Either way the
+          // browser is finished and there is nothing in flight to describe, so no shimmer.
+          // (`complete` without the naturalWidth test, for the reason in clearSkeletonOnLoad:
+          // a failed image is finished too, and shimmering over one never stops.)
+          if (img?.src && img.complete) continue;
+          // Make the claim true instead of guessing it. `loading="lazy"` puts the fetch on the
+          // BROWSER's schedule — a viewport distance that varies with connection speed and is
+          // not this margin — so a tile could sit here shimmering with its fetch not yet begun:
+          // measured 2026-08-12 right after "load more", four cards on screen animating with
+          // `currentSrc` still empty, i.e. nothing had been requested. Promoting to eager at the
+          // moment we start the shimmer ties the two to one event. It costs no extra traffic
+          // worth the name: we are already inside SHIMMER_START_MARGIN, which is about where the
+          // browser was going to ask anyway.
+          // The ATTRIBUTE, not the `.loading` property: flipping it lazy→eager is what the spec
+          // defines as "start the load now", and it is also the only half jsdom reflects, so the
+          // test below can see it.
+          if (img?.getAttribute('loading') === 'lazy') img.setAttribute('loading', 'eager');
           wrap.classList.add('is-loading');
           if (img) clearSkeletonOnLoad(img, wrapSelector);
         }

@@ -4,7 +4,8 @@ import { scrollProductsPanelIntoView } from './scroll-utils.js';
 import { applyPagination, type ProductData } from './products.js';
 import { templateCsv } from '../../lib/csv-bulk.js';
 import type { MergedRowResult } from '../../lib/variant-csv.js';
-import { csvErrorMessage, buildPreviewHtml } from './csv-preview.js';
+import type { ImportSeoAdvisory } from '../../lib/csv-import-advisory.js';
+import { csvErrorMessage, csvDoneMessage, buildPreviewHtml } from './csv-preview.js';
 
 function getDashI18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
@@ -70,19 +71,19 @@ export function initCsvImport(): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, csv: pendingCsv, commit: false }),
       });
-      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; error?: string };
+      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; advisory?: ImportSeoAdvisory; error?: string };
       if (!data.ok) {
         previewEl!.innerHTML = `<p class="csv-error [color:var(--color-danger)] text-[0.85rem]">${esc(csvErrorMessage(i, data.error))}</p>`;
         return;
       }
-      renderPreview(data.results ?? []);
+      renderPreview(data.results ?? [], data.advisory);
     } catch {
       previewEl!.innerHTML = `<p class="csv-error [color:var(--color-danger)] text-[0.85rem]">${esc(i.csvImportFailed ?? 'Import failed.')}</p>`;
     }
   }
 
-  function renderPreview(results: Array<MergedRowResult>): void {
-    previewEl!.innerHTML = buildPreviewHtml(results, i);
+  function renderPreview(results: Array<MergedRowResult>, advisory?: ImportSeoAdvisory): void {
+    previewEl!.innerHTML = buildPreviewHtml(results, i, advisory);
 
     document.getElementById('csv-cancel-btn')?.addEventListener('click', () => {
       previewEl!.hidden = true;
@@ -109,13 +110,14 @@ export function initCsvImport(): void {
       const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult & { product?: ProductData }> };
       if (!data.ok) { showStatus(i.csvImportFailed ?? 'Import failed.', true); return; }
 
-      applyResults(data.results ?? []);
+      const results = data.results ?? [];
+      applyResults(results);
       previewEl!.hidden = true;
       previewEl!.innerHTML = '';
       panelEl.hidden = true;
       pendingCsv = '';
       if (fileNameEl) fileNameEl.textContent = '';
-      showStatus(i.csvImportDone ?? 'Import complete.');
+      showStatus(csvDoneMessage(results, i.csvImportDone ?? 'Import complete.', i.csvImportSkipped ?? '{n} rows were skipped because of errors.'));
     } catch {
       showStatus(i.csvImportFailed ?? 'Import failed.', true);
     } finally {

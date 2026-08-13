@@ -27,6 +27,24 @@ const COLOR_MAP: Record<string, string> = {
   'ירוק בהיר': '#bbf7d0',
   'אדום כהה': '#991b1b',
   'ורוד בהיר': '#fce7f3',
+  // Warm/neutral retail names. Added 2026-08-12 with the showcase catalogs, but
+  // they are not showcase vocabulary — these are the words an Israeli clothing or
+  // homeware shop actually writes on a product, and without them the storefront
+  // renders a text chip where a swatch belongs (resolveVariantColor returns null).
+  'טרקוטה': '#c4622d',
+  'חמרה': '#a8552f',
+  'קוניאק': '#9a5b33',
+  'חול': '#e0d3bf',
+  'שמנת': '#f2ebdd',
+  'קרם': '#f2ebdd',
+  'אבן': '#cfc7ba',
+  'טאופ': '#b0a49a',
+  'זית': '#6f8f5f',
+  'מרווה': '#9caf88',
+  'חאקי': '#8f8460',
+  'בורדו': '#7b1f2b',
+  'גרפיט': '#3a3f47',
+  'אוף וייט': '#f5f2ec',
   // English
   'red': '#e53e3e',
   'blue': '#3b82f6',

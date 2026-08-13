@@ -3,9 +3,10 @@ import { showStatus } from './status.js';
 import { applyPagination } from './products.js';
 import { CSV_FIELDS, parseCsv } from '../../lib/csv-bulk.js';
 import { guessMapping, buildCanonicalCsv, mappingStatus, mappingToRecord, type MappingEntry, type MappableKey } from '../../lib/feed-mapping.js';
-import { buildPreviewHtml, csvErrorMessage } from './csv-preview.js';
+import { buildPreviewHtml, csvErrorMessage, csvDoneMessage } from './csv-preview.js';
 import { scrollProductsPanelIntoView } from './scroll-utils.js';
 import type { MergedRowResult } from '../../lib/variant-csv.js';
+import type { ImportSeoAdvisory } from '../../lib/csv-import-advisory.js';
 
 // Drives the "External inventory sync" panel (see dashboard.astro #feed-panel + feed-mapping.ts).
 // Two sources feed the SAME server import routine (which matches id-less rows to existing products by
@@ -214,9 +215,9 @@ export function initFeedSync(): void {
   }
 
   // ---- Shared preview/commit — src is either a client-built canonical CSV (file) or the URL pull ----
-  function renderPreview(results: Array<MergedRowResult>, onCommit: (btn: HTMLButtonElement) => void): void {
+  function renderPreview(results: Array<MergedRowResult>, onCommit: (btn: HTMLButtonElement) => void, advisory?: ImportSeoAdvisory): void {
     previewEl!.hidden = false;
-    previewEl!.innerHTML = buildPreviewHtml(results, i);
+    previewEl!.innerHTML = buildPreviewHtml(results, i, advisory);
     document.getElementById('csv-cancel-btn')?.addEventListener('click', () => { previewEl!.hidden = true; previewEl!.innerHTML = ''; });
     document.getElementById('csv-confirm-btn')?.addEventListener('click', (e) => onCommit(e.currentTarget as HTMLButtonElement));
   }
@@ -232,9 +233,9 @@ export function initFeedSync(): void {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, csv, commit: false }),
       });
-      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; error?: string };
+      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; advisory?: ImportSeoAdvisory; error?: string };
       if (!data.ok) return fail(data.error);
-      renderPreview(data.results ?? [], (btn) => commitFile(btn, csv, entries));
+      renderPreview(data.results ?? [], (btn) => commitFile(btn, csv, entries), data.advisory);
     } catch { fail(); }
   }
 
@@ -245,14 +246,14 @@ export function initFeedSync(): void {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, csv, commit: true }),
       });
-      const data = await res.json() as { ok: boolean };
+      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult> };
       if (!data.ok) { showStatus(i.feedSyncFailed ?? 'Failed.', true); return; }
       await saveFeedConfig(mappingToRecord(entries)); // remember this mapping for the URL pull
       applyPagination();
       previewEl!.hidden = true; previewEl!.innerHTML = '';
       mappingEl!.hidden = true; mappingEl!.innerHTML = '';
       if (fileNameEl) fileNameEl.textContent = '';
-      showStatus(i.feedSyncDone ?? 'Sync complete.');
+      showStatus(csvDoneMessage(data.results ?? [], i.feedSyncDone ?? 'Sync complete.', i.csvImportSkipped ?? '{n} rows were skipped because of errors.'));
     } catch { showStatus(i.feedSyncFailed ?? 'Failed.', true); }
     finally { btn.disabled = false; }
   }
@@ -269,9 +270,9 @@ export function initFeedSync(): void {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, commit: false }),
       });
-      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; error?: string };
+      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; advisory?: ImportSeoAdvisory; error?: string };
       if (!data.ok) { fail(data.error); return; }
-      renderPreview(data.results ?? [], (btn) => commitSync(btn));
+      renderPreview(data.results ?? [], (btn) => commitSync(btn), data.advisory);
     } catch { fail(); }
     finally { syncBtn.disabled = false; }
   });
@@ -285,12 +286,12 @@ export function initFeedSync(): void {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, commit: true }),
       });
-      const data = await res.json() as { ok: boolean; lastSyncAt?: string };
+      const data = await res.json() as { ok: boolean; lastSyncAt?: string; results?: Array<MergedRowResult> };
       if (!data.ok) { showStatus(i.feedSyncFailed ?? 'Failed.', true); return; }
       if (data.lastSyncAt) { panelEl.dataset.lastSync = data.lastSyncAt; renderLastSync(); }
       applyPagination();
       previewEl!.hidden = true; previewEl!.innerHTML = '';
-      showStatus(i.feedSyncDone ?? 'Sync complete.');
+      showStatus(csvDoneMessage(data.results ?? [], i.feedSyncDone ?? 'Sync complete.', i.csvImportSkipped ?? '{n} rows were skipped because of errors.'));
     } catch { showStatus(i.feedSyncFailed ?? 'Failed.', true); }
     finally { btn.disabled = false; }
   }

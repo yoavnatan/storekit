@@ -11,6 +11,7 @@ import { normalizeProductDiscount } from '../../lib/discount-input.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
+import { productFieldsOverLimit, fieldLimitRejectionMessage } from '../../lib/field-limits.js';
 import { pingProductChange, pingProductsChanged } from '../../lib/indexnow.js';
 import { warmImageDerivations } from '../../lib/image-derive.js';
 import { deriveAutoTags } from '../../lib/tag-suggest.js';
@@ -113,6 +114,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // `brand` joins the gate for the same reason name/description/tags are in it: it is seller
     // free text that reaches a public surface (Product JSON-LD + the ad feed), so it is one more
     // place to stuff keywords onto the shared domain.
+    // Length, before content. The spam and stuffing filters below judge what the text SAYS; this
+    // bounds how much of it there is, which nothing did until 2026-08-12 (lib/field-limits.ts).
+    // It runs first so a megabyte of text is refused without being scanned word by word.
+    const tooLong = productFieldsOverLimit({ name, description, brand, tags, sku, sellerNote });
+    if (tooLong) return json({ ok: false, error: fieldLimitRejectionMessage(tooLong) }, 400);
     const spamHit = findSpamKeyword(name, description, brand, ...tags);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
     const stuffingHit = findKeywordStuffing(name, description, brand, ...tags);
@@ -217,6 +223,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
     if (sku && await isSkuTaken(product.storeId, sku, productId)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
+    // Same gate as add-product. It has to be repeated here rather than hoisted: this path validates
+    // the MERGED record (per-field rev merge above), which is what actually gets written — an
+    // oversized field can arrive on an edit that did not itself send that field.
+    const tooLong = productFieldsOverLimit({ name, description, brand, tags, sku, sellerNote });
+    if (tooLong) return json({ ok: false, error: fieldLimitRejectionMessage(tooLong) }, 400);
     const spamHit = findSpamKeyword(name, description, brand, ...tags);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
     const stuffingHit = findKeywordStuffing(name, description, brand, ...tags);
