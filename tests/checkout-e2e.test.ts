@@ -50,7 +50,13 @@ const twoStoreCart = (over: Record<string, unknown> = {}) => ({
   buyerPhone: '0501234567',
   buyerAddress: { city: 'תל אביב', street: 'הרצל 1' },
   items: [
-    { storeSlug: 'keramika', productSlug: 'agartal', qty: 1 },
+    // Keramika's אגרטל declares a צבע dimension, so the line has to name a combo the product
+    // actually has — the route resolves the selection against it (lib/variant-combo.ts). כחול and
+    // not אדום on purpose: אדום carries its own `variantStock` bucket while כחול has none, so this
+    // still sells from the shared pool and every `stockOf` assertion below reads the same column
+    // it always did. Tachshitim's אגרטל is a different product with no variants at all, and a
+    // selection sent to THAT one is refused just as hard — hence one line with, one without.
+    { storeSlug: 'keramika', productSlug: 'agartal', qty: 1, selectedVariants: { צבע: 'כחול' } },
     { storeSlug: 'tachshitim', productSlug: 'agartal', qty: 1 },
   ],
   idempotencyKey: newKey(),

@@ -5,6 +5,7 @@ import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, getStoresByIds } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
+import { getBuyerInvoiceUrls } from '../../lib/invoicing/buyer-invoice.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
@@ -51,6 +52,12 @@ const { active: activeOrdersCount, history: historyOrdersCount } = countBuyerPur
 const buyerOrderQuery = parseBuyerOrderQuery(Astro.url.searchParams);
 const filteredOrders = filterBuyerPurchases(purchases, buyerOrderQuery);
 const ordersPageResult = paginate(filteredOrders, parsePage(Astro.url.searchParams, 'opage'), BUYER_ORDER_PAGE_SIZE);
+// The invoices the sellers on this page have uploaded, keyed by the order slice they belong to. One
+// query for the page rather than one per slice, and only for the ids actually being rendered — the
+// buyer's list is paginated, so the other pages' documents are nobody's business here either.
+const invoiceUrlByOrderId = await getBuyerInvoiceUrls(
+  ordersPageResult.items.flatMap((p) => p.slices.map((s) => s.order.id)),
+);
 const ordersEmptyMessage = buyerOrderQuery.q
   ? t.buyerDashboard.ordersSearchEmpty
   : (buyerOrderQuery.history ? t.buyerDashboard.ordersEmptyHistory : t.buyerDashboard.ordersEmptyActive);
@@ -911,6 +918,9 @@ const STORES_NAMED = 2;
                         )}
                         {s.order.trackingNumber && (
                           <p class="o-tracking">{t.buyerDashboard.trackingNumber}: <strong>{s.order.trackingNumber}</strong></p>
+                        )}
+                        {invoiceUrlByOrderId.get(s.order.id) && (
+                          <p class="o-tracking">{t.buyerDashboard.invoiceLabel}: <a href={invoiceUrlByOrderId.get(s.order.id)} target="_blank" rel="noopener noreferrer"><strong>{t.buyerDashboard.invoiceView}</strong></a></p>
                         )}
                       </div>
                     );

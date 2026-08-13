@@ -15,6 +15,7 @@ import { storeSliceTotalAgorot } from '../../../lib/order-totals.js';
 import { toAgorot } from '../../../lib/money.js';
 import { SHIPPING_STATUS_RULES, canTransition, type ShippingStatus } from '../../../lib/order-status-rules.js';
 import { isValidEmail } from '../../../lib/email-address.js';
+import { getBuyerInvoiceStates } from '../../../lib/invoicing/buyer-invoice.js';
 
 // Never ship the whole per-store sellerNotes map to the client — on a multi-store
 // order that would expose another store's seller's private notes. Replace it with
@@ -69,7 +70,16 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
 
   const query = parseSellerOrderQuery(url.searchParams);
   const page = await getSellerOrdersPage(storeSlug, query, parsePage(url.searchParams, 'page'), 15);
-  return json({ ok: true, items: page.orders.map((o) => scopeOrder(o, storeSlug)), page: page.page, totalPages: page.totalPages, total: page.total });
+  // One read for the whole page rather than one per card. It rides along with the orders instead of
+  // being a second request from the client because the card renders the strip in its first paint —
+  // fetching it afterwards would show every order as "not provided" for a moment and then correct
+  // itself, which reads as the platform losing the seller's answer.
+  const invoices = await getBuyerInvoiceStates(sellerId, page.orders.map((o) => o.id));
+  return json({
+    ok: true,
+    items: page.orders.map((o) => ({ ...scopeOrder(o, storeSlug), invoice: invoices.get(o.id) ?? null })),
+    page: page.page, totalPages: page.totalPages, total: page.total,
+  });
 }
 
 export async function PATCH({ request, cookies }: APIContext): Promise<Response> {

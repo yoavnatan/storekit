@@ -3,13 +3,14 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import LoadingSweep from '../../components/LoadingSweep.astro';
-import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
+import StoreDemoBar from '../../components/StoreDemoBar.astro';
+import StoreDemoMark from '../../components/StoreDemoMark.astro';
 import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
+import ShareMenu from '../../components/ShareMenu.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice, storeHeaderLogo } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
-import { getDemoStores } from '../../lib/stores.js';
 import { isStoreReady } from '../../lib/store-readiness.js';
 import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
@@ -117,13 +118,29 @@ const storeReady = isStoreReady({ visibleProductCount: allProducts.length });
 // real SEO. It's also out of the sitemap and the product feed (see
 // getIndexableStores), so this is the last surface that could leak it.
 const isDemo = isDemoStore(shopStore);
-// Position in the showcase set, which is what picks the banner's colour — so the
-// three of them never come out the same shade (see StoreDemoBanner).
-const demoIndex = isDemo ? Math.max(0, (await getDemoStores()).findIndex((s) => s.id === shopStore.id)) : 0;
+// `demoIndex` used to live here: it read EVERY demo store out of the database on every showcase
+// page load, purely to pick which of five palette hues the old generated banner should use. The
+// banner now shows the store's own photograph and its own colours, so the query bought nothing and
+// is gone — along with the getDemoStores import that existed only to serve it (2026-08-12).
 // Quiet per-product label for a showcase store. Every product in such a store is
 // one, so this is a muted line, not the pill the STORE gets — the same markup has
 // to exist in the JS card renderer further down (SSR/AJAX parity).
-const DEMO_PRODUCT_BADGE_CLASS = 'inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]';
+/* Sits ON the picture, not in the card body (owner, 2026-08-12: "צריך להופיע על גבי התמונה בצורה
+   מאוד עדינה כי כרגע זה מגדיל את הכרטיסייה עצמה"). In flow it added a line to EVERY card in a
+   showcase store, so the same product card was one height in a real store and taller in a demo one
+   — the disclosure was quietly redesigning the grid.
+   Bottom inline-start is the one free corner: the wishlist heart owns top inline-end and the image
+   dots own bottom centre. Opaque white rather than a blurred glass chip, matching the heart's own
+   treatment (memory `feedback_wishlist_heart_no_glass`) — and `pointer-events:none` so it can never
+   swallow a click meant for the card behind it. */
+/* `start-*`, NOT `inset-inline-start-*` — the latter is not a Tailwind utility at all, so it
+   compiled to nothing and the chip sat flush against the edge with no inset, which is exactly what
+   the owner reported. `start-` is the logical-property utility and it mirrors under `dir=rtl` for
+   free. And more transparent, at his request: this is a disclosure, not a price tag. */
+const DEMO_PRODUCT_BADGE_CLASS = 'absolute bottom-2 start-2 z-[2] pointer-events-none '
+  + 'inline-flex items-center gap-1 py-[0.15rem] px-[0.4rem] rounded-[var(--radius-sm)] '
+  + 'bg-white/70 [backdrop-filter:blur(4px)] text-[0.6rem] font-medium leading-[1.4] '
+  + 'whitespace-nowrap [color:var(--color-muted)]';
 const DEMO_PRODUCT_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>';
 const categoryTree = buildCategoryTree(storeCategories);
 // A store's own categories are free text, so they get no icons (see
@@ -252,6 +269,8 @@ const onCustomDomain = shopStore.customDomain?.status === 'active';
 const dashboardHref = onCustomDomain ? `${platform.url}/seller/dashboard` : '/seller/dashboard';
 
 const showAddress = !!shopStore.addressVisible && !!shopStore.address;
+// The description is suppressed when it merely repeats the tagline.
+const showDesc = !!shopStore.description && shopStore.description !== shopStore.tagline;
 const showHours = !!shopStore.hoursVisible && !!shopStore.hours;
 const showDetails = showAddress || showHours;
 const hoursRows = showHours && shopStore.hours ? formatStoreHours(shopStore.hours, t.store.hoursDay, t.store.hoursClosed) : null;
@@ -406,7 +425,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   storeMode={true}
   storeName={shopStore.name}
   storeSlug={shopStore.slug}
-  storeLogo={shopStore.profileImage}
+  storeLogo={shopStore.profileImage} storeDemo={isDemo}
   storeHeaderLogo={storeHeaderLogo(shopStore)}
   dataLayer={{ event: 'page_view', page_type: 'store', store_id: shopStore.id, store_name: shopStore.name, store_slug: shopStore.slug, currency: 'ILS' }}
 >
@@ -452,7 +471,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
-  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''} data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined} data-ad-landing={adLanding ? '1' : undefined}>
+  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-demo-badge-class={isDemo ? DEMO_PRODUCT_BADGE_CLASS : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''} data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined} data-ad-landing={adLanding ? '1' : undefined}>
 
     {/* Owner bar. Sits above .store-banner-pin in normal flow, so it simply
         scrolls away and the curtain-scroll geometry below is untouched. */}
@@ -460,21 +479,29 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       <OwnerStoreBar label={t.store.ownerPreview} backLabel={t.store.ownerPreviewBack} dashboardHref={dashboardHref} />
     )}
 
+    {/* Same slot and the same reasoning: a note about the CONTEXT you are viewing this store in,
+        which scrolls away on the first gesture. See StoreDemoBar for why the disclosure moved out
+        of the store's identity block, and for why doing so does not weaken it. */}
+    {isDemo && (
+      <StoreDemoBar title={t.demo.noticeTitle} text={t.demo.noticeText} cta={t.demo.noticeCta} />
+    )}
+
     {/* Curtain scroll (CURRENT_TASK 2): ONLY the banner image is pinned; the
         store details and the products both scroll up and over it as one
         contiguous opaque flow (white details → grey products, no gap), so the
         image is the single thing the curtain covers — the details are never
         covered, they just scroll past. */}
-    <!-- A showcase store never uses a photo banner (see StoreDemoBanner) — the
-         generated wordmark takes the identical 3/1 wrap, so the curtain-scroll
-         geometry above is unchanged. The comment sits OUTSIDE the expression on
-         purpose: Astro's compiler rejects an HTML comment as the first child
-         right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
+    <!-- A showcase store DOES use a photo banner now (2026-08-12) — its own generated background,
+         with the store name drawn over it as vector text. It goes through StoreDemoBanner rather
+         than the branch below only because of that overlay; the picture, the 3/1 wrap and the cdn
+         helpers are identical, so the curtain-scroll geometry above is unchanged either way. The
+         comment sits OUTSIDE the expression on purpose: Astro's compiler rejects an HTML comment as
+         the first child right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
     {isDemo ? (
       <div class="store-banner-pin">
         <div class="container">
           <div class="store-banner__image-wrap">
-            <StoreDemoBanner slug={shopStore.slug} index={demoIndex} />
+            <StoreDemoBanner name={shopStore.name} tagline={shopStore.tagline} bannerImage={shopStore.bannerImage} colors={shopStore.colors} dir={dir} />
           </div>
         </div>
       </div>
@@ -503,101 +530,75 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       <div class="container">
         <div class="store-banner__info">
           <div class="store-banner__identity">
-            <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />
+            {/* A showcase store has a DRAWN mark rather than an uploaded picture or an initial —
+                see StoreDemoMark for the two versions that were rejected before it. A real seller
+                still gets StoreAvatar and their own logo. */}
+            {isDemo && !shopStore.profileImage
+              ? <StoreDemoMark slug={shopStore.slug} colors={shopStore.colors} size={56} />
+              : <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />}
             <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
-            <StoreDemoBadge demo={isDemo} />
-            {isDemo && (
-              <a
-                href="/seller/register"
-                class="inline-flex items-center gap-1 text-[0.78rem] font-medium
-                       [color:var(--color-accent-dark)] hover:underline"
-              >
-                {t.demo.openYours}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-                     style="flex-shrink:0">
-                  {lang === 'he' ? <polyline points="15 18 9 12 15 6"/> : <polyline points="9 18 15 12 9 6"/>}
-                </svg>
-              </a>
-            )}
           </div>
-          {isDemo && (
-            <p
-              class="mt-2 rounded-[var(--radius)] border px-3 py-2 text-[0.82rem] leading-relaxed
-                     [border-color:color-mix(in_srgb,var(--color-accent)_28%,transparent)]
-                     [background:color-mix(in_srgb,var(--color-accent)_7%,var(--color-surface))]
-                     [color:var(--color-text)]"
-              dir={dir}
-            >
-              <strong class="font-semibold">{t.demo.noticeTitle}</strong>{' '}{t.demo.noticeText}{' '}
-              <a href="/seller/register" class="font-semibold [color:var(--color-accent-dark)] hover:underline whitespace-nowrap">
-                {t.demo.noticeCta}
-              </a>
-            </p>
-          )}
-          {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
-            {shopStore.description && shopStore.description !== shopStore.tagline && (
-              <p class="store-desc" dir={dir}>{shopStore.description}</p>
-            )}
+          {/* EVERYTHING BELOW THE STORE NAME, IN ONE BOX (owner, 2026-08-12, arrived at over four
+              rounds — the rejected ones are recorded in store.css so they are not re-tried).
+              It is one object because it is one subject: what this store is (tagline, description),
+              what it is announcing right now (the sale), and what you can do about it (the details
+              disclosure, save, contact). White, the site's hairline, the site's radius — `.card`'s
+              own language, not a new one; it sits on the banner's white ground, so the bounding line
+              IS the container and no fill is wanted.
+              SECTION ORDER IS THE ARGUMENT. The sale sits under the words and ABOVE the actions row,
+              not below it: the actions are the footer of the box — the row you use once you have
+              read it — and an announcement printed after them reads as an afterthought, which is the
+              orphaning this whole exercise started from. Each section is separated by a hairline, so
+              nothing inside needs a border of its own; `.store-sale` sheds its box here (store.css)
+              rather than nesting one card inside another.
+              The identity row (avatar + h1) stays OUT: the name is the page's heading, not one of the
+              store's remarks about itself. */}
+          <div class="store-info" dir={dir}>
+              {shopStore.tagline && <p class="store-tagline">{shopStore.tagline}</p>}
+              {showDesc && <p class="store-desc">{shopStore.description}</p>}
 
-            {/* AFTER the store's own words, never between them. It sat between the name and the
-                tagline, which split the one thing this block exists to say — a store's name and its
-                tagline are a single sentence, and a notice box dropped into the middle left the
-                tagline reading as orphaned text under a banner.
-                It stays inside the identity block rather than moving to the head of the catalog: the
-                sale is an announcement BY the store, the same kind of thing as the demo notice a few
-                lines above, and notices belong with whoever is making them. Its scope line ("on
-                selected items") is a qualifier on the announcement, not a heading for the grid.
-                One consequence to know, and it is ordinary rather than exotic: this block sits high
-                on the page and scrolls normally, so the banner is off-screen by the time the shopper
-                reaches the products (measured: its top goes 529 → 229 → -171 at 0/300/700px of
-                scroll — exactly the scroll delta). Only the cover IMAGE is pinned here, not this
-                block — see store.css's note at the top. So the sale is seen on arrival and not again
-                while browsing; nothing downstream may assume it is still visible. Making it present
-                during browsing would need a real addition (a sticky bar, or a second mark at the head
-                of the catalog), not a tweak. */}
-            {/* `mt-4` (1rem) because the measured gap was 0px — `.store-desc`'s margin-bottom is 0 and
-                the strip carries no margin of its own, so they were touching. 1rem matches
-                `.store-banner__actions` below rather than the 0.5rem the two paragraphs use: those
-                are lines of one text block, this is a separate object and has to read as one. */}
-            <StoreSaleBanner sale={shopStore.sale} dir={dir} scopeLabel={saleScopeLabel} class="mt-4" />
+              {/* Renders NOTHING unless a sale is live and in its window — see StoreSaleBanner. So a
+                  store with no sale pays no hairline and no gap for one, which is why this carries no
+                  wrapper: a wrapper would leave its own divider behind on every store. */}
+              <StoreSaleBanner sale={shopStore.sale} dir={dir} scopeLabel={saleScopeLabel} />
 
-            {showDetails && (
-              <details class="store-details" dir={dir}>
-                <summary class="store-details__summary">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  {t.store.moreDetails}
-                  <svg class="store-details__chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-                </summary>
-                <div class="store-details__content">
-                  {showAddress && (
-                    <a
-                      class:list={['store-details__item', { 'store-details__item--link': !!mapsUrl }]}
-                      href={mapsUrl || undefined}
-                      target={mapsUrl ? '_blank' : undefined}
-                      rel={mapsUrl ? 'noopener noreferrer' : undefined}
-                      aria-label={mapsUrl ? t.store.viewOnMap : undefined}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      {shopStore.address}
-                    </a>
-                  )}
-                  {hoursRows && (
-                    <div class="store-details__item">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:0.15rem"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                      <ul class="store-details__hours-list min-w-[11rem]">
-                        {hoursRows.map((row) => (
-                          <li class="flex items-baseline justify-between gap-5">
-                            <span class="whitespace-nowrap">{row.label}</span>
-                            <span class="whitespace-nowrap tabular-nums text-[var(--color-text)]" dir="ltr">{row.value}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </details>
-            )}
+              <div class="store-info__foot">
+              {showDetails && (
+                <details class="store-details">
+                  <summary class="store-details__summary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {t.store.moreDetails}
+                    <svg class="store-details__chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </summary>
+                  <div class="store-details__content">
+                    {showAddress && (
+                      <a
+                        class:list={['store-details__item', { 'store-details__item--link': !!mapsUrl }]}
+                        href={mapsUrl || undefined}
+                        target={mapsUrl ? '_blank' : undefined}
+                        rel={mapsUrl ? 'noopener noreferrer' : undefined}
+                        aria-label={mapsUrl ? t.store.viewOnMap : undefined}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        {shopStore.address}
+                      </a>
+                    )}
+                    {hoursRows && (
+                      <div class="store-details__item">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:0.15rem"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <ul class="store-details__hours-list min-w-[11rem]">
+                          {hoursRows.map((row) => (
+                            <li class="flex items-baseline justify-between gap-5">
+                              <span class="whitespace-nowrap">{row.label}</span>
+                              <span class="whitespace-nowrap tabular-nums text-[var(--color-text)]" dir="ltr">{row.value}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
 
             <!-- Actions row -->
             <div class="store-banner__actions">
@@ -630,6 +631,19 @@ const bannerPreload = !isDemo && shopStore.bannerImage
               </div>
             </div>
 
+            {/* Shares `storeUrl`, never `pageCanonical`: the second one carries the category and
+                page the visitor happens to be on, and on an ad landing it is the platform URL with
+                the ad marker. A forwarded link should open the store's front door on the store's
+                own domain. */}
+            <ShareMenu
+              url={storeUrl}
+              title={shopStore.name}
+              lang={lang}
+              contentType="store"
+              storeId={shopStore.id}
+              buttonClass="store-banner-action-btn"
+            />
+
             {userId !== shopStore.sellerId && (
               <button
                 type="button"
@@ -648,6 +662,8 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 {t.store.contactShort}
               </button>
             )}
+            </div>
+          </div>
           </div>
         </div>
       </div>
@@ -920,20 +936,20 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                         {p.images!.map((_, dotI) => <span class={`product-card__dot${dotI === 0 ? ' is-active' : ''}`}></span>)}
                       </div>
                     )}
-                  </div>
-                  <div class="product-card__body" dir="auto">
                     {isDemo && (
                       <span class={DEMO_PRODUCT_BADGE_CLASS}>
                         <Fragment set:html={DEMO_PRODUCT_BADGE_ICON} />
                         {t.demo.productBadge}
                       </span>
                     )}
+                  </div>
+                  <div class="product-card__body" dir="auto">
                     <a href={`/${shopStore.slug}/${p.slug}`}
                        class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150"
                        style="color:inherit;text-decoration:none;display:block">
                       <h3 class="product-card__name">{p.name}</h3>
                     </a>
-                    <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
+                    <div class="product-card__footer">
                       <span class="product-card__price-wrap"><Fragment set:html={priceHtml(pv, { className: 'product-card__price', saleLabel: t.store.saleWas })} /></span>
                       {p.stock <= 0
                           ? <span class="badge badge--muted">{t.store.outOfStock}</span>
@@ -1088,7 +1104,10 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     // Heart/wishlist buttons are excluded — their own heart-burst is the click
     // cue, and a ripple on top would stack two competing signals on one tap.
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart):not(.wishlist-btn):not(.pm-wishlist-btn)');
-    if (btn) spawnRipple(btn, e.clientX, e.clientY);
+    // Inside an open dropdown panel the ripple is the odd one out: the share panel's rows are
+    // buttons and links side by side, so only half of them would answer a press with a wave while
+    // the other half took the row-hover the menu already uses. One signal per press — the hover.
+    if (btn && !btn.closest('[data-share-panel]')) spawnRipple(btn, e.clientX, e.clientY);
   });
 
   const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
@@ -1181,6 +1200,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         storeSlug: btn.dataset.wishlistStoreSlug ?? '',
         storeName: btn.dataset.wishlistStoreName ?? '',
         stock: btn.dataset.wishlistStock !== undefined ? Number(btn.dataset.wishlistStock) : undefined,
+        // Read off the CARD rather than duplicated onto the heart: the card already carries
+        // `data-variants` for the quick-view, and a second copy of the same JSON on a sibling
+        // element is the kind of duplication that goes stale on one side only. Works for both the
+        // server-rendered cards and the ones "טען עוד" injects, since both emit the attribute.
+        hasVariants: !!btn.closest<HTMLElement>('[data-variants]'),
       };
       const nowActive = toggleWishlist(item);
       btn.dataset.wishlisted = String(nowActive);
@@ -1371,11 +1395,14 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   // to the header (see lib/sticky-bar.ts; shared with the /stores directory).
   const controlsBar = document.querySelector<HTMLElement>('.store-controls');
   initStickyBar(controlsBar);
-  // Not a sticky bar — the curtain's own top edge. Marks the moment .store-banner
-  // rises past the header line, i.e. the moment real moving content is finally
-  // under the header rather than the pinned banner, which is what lets the
-  // header's shadow appear (header.css → "Store page: the curtain").
-  initStickyBar(document.querySelector<HTMLElement>('.store-banner'), 3.4);
+  // Not a sticky bar — the PINNED banner, and `.is-stuck` here means "the curtain
+  // has started to cover me": .store-banner-pin reaching its own `top` is the exact
+  // frame the details layer begins travelling over it. That is the only moment the
+  // curtain's shadow is true, so it is what drives it (styles/pages/store.css).
+  // The 3.4 matches .store-banner-pin's `top` — one number, two places, so keep them
+  // together. And a store with no banner at all renders no .store-banner-pin: the
+  // querySelector is null, initStickyBar bails, and the shadow correctly never fires.
+  initStickyBar(document.querySelector<HTMLElement>('.store-banner-pin'), 3.4);
 
   // ── Search + Sort ─────────────────────────────────────────────
   const searchInput = document.getElementById('product-search') as HTMLInputElement | null;
@@ -1511,10 +1538,14 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     return categoryAncestorChain(categoryId).map((c) => c.name).join(' › ');
   }
 
-  // Mirrors the SSR badge above — see the SSR/AJAX-parity rule in AI_INSTRUCTIONS.
+  // Mirrors the SSR badge above — see the SSR/AJAX-parity rule in AI_INSTRUCTIONS. The CLASS is now
+  // read off the root rather than written out a second time here: the two copies had already drifted
+  // once (the injected one kept `mb-1` after the badge moved onto the picture), and a class list
+  // duplicated between a server render and a client render is the same drift class as
+  // memory `project_client_renderer_i18n_drift`. One definition, in the frontmatter, handed over.
   const demoRoot = document.querySelector<HTMLElement>('.store-page');
   const demoProductBadgeHtml = demoRoot?.dataset.demo
-    ? `<span class="inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>${escHtml(demoRoot.dataset.demoLabel ?? '')}</span>`
+    ? `<span class="${escHtml(demoRoot.dataset.demoBadgeClass ?? '')}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>${escHtml(demoRoot.dataset.demoLabel ?? '')}</span>`
     : '';
 
   const storeControls = document.querySelector<HTMLElement>('.store-controls');
@@ -1955,13 +1986,13 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
         </button>
         ${dotsHtml}
+        ${demoProductBadgeHtml}
       </div>
       <div class="product-card__body" dir="auto">
-        ${demoProductBadgeHtml}
         <a href="/${escHtml(storeSlug)}/${escHtml(p.slug)}" class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150" style="color:inherit;text-decoration:none;display:block">
           <h3 class="product-card__name">${escHtml(p.name)}</h3>
         </a>
-        <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
+        <div class="product-card__footer">
           <span class="product-card__price-wrap">${priceHtml(pv, { className: 'product-card__price', saleLabel: pi.saleWas })}</span>
           ${stockHtml}
         </div>

@@ -38,8 +38,12 @@ count="$(printf '%s\n' "$open_rows" | wc -l | tr -d ' ')"
 # so "oldest unaudited" and "most load-bearing unaudited" are the same pick.
 next="$(printf '%s\n' "$open_rows" | head -1 | awk -F '|' '{print $2 " —" $3}' | sed 's/  */ /g')"
 
+# Counted, not written down. It said "of the 11 areas" while the table held 12, and then 17 — a
+# hardcoded total in a file whose whole job is to report the state of a list that grows.
+total="$(grep -cE '^\| [0-9]+ \|' "$TABLE")"
+
 cat <<EOF
-Area audit — $count of the 11 areas are still open, and the next one in order is:
+Area audit — $count of the $total areas are still open, and the next one in order is:
 
  ▸$next
 

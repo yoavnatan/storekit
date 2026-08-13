@@ -58,36 +58,14 @@ export function initOverflowShadow(scroller: HTMLElement | null, footer: HTMLEle
   sync();
 }
 
-/**
- * Toggles `.is-stuck` on the fixed site header the moment the page is scrolled
- * at all. It no longer drives any depth — the header has no shadow in any state
- * (2026-08-02, header.css) — but the store page still reads it (`.store-banner`,
- * styles/components/header.css).
- *
- * Same reasoning as the bar above, and the same reasoning that removed the
- * header's unconditional shadow in the first place: a shadow says "I am covering
- * content", and at the top of an unscrolled page the header is covering nothing.
- * One pixel of scroll is the exact moment that stops being true.
- *
- * The sentinel is `position:absolute; top:0` rather than an in-flow element like
- * initStickyBar's: `body` has `padding-top` for the fixed header, so anything in
- * normal flow starts ~3.4rem down and would delay the trigger by that much. body
- * is not positioned, so absolute here resolves against the initial containing
- * block — i.e. the true document top. 1px tall, not 0: a zero-area rect sitting
- * exactly on the root's edge is the one case IntersectionObserver reports
- * inconsistently.
- */
-export function initHeaderScrolled(header: HTMLElement | null): void {
-  if (!header) return;
-  const sentinel = document.createElement('div');
-  sentinel.setAttribute('aria-hidden', 'true');
-  sentinel.style.cssText = 'position:absolute;top:0;inset-inline-start:0;width:1px;height:1px;pointer-events:none';
-  document.body.appendChild(sentinel);
-  new IntersectionObserver(
-    ([entry]) => header.classList.toggle('is-stuck', !entry?.isIntersecting),
-    { threshold: 0 },
-  ).observe(sentinel);
-}
+/* GONE, 2026-08-12: initHeaderScrolled, which put `.is-stuck` on the site header on the
+   first pixel of scroll. It stopped driving any depth on 2026-08-02 (the header has no
+   shadow in any state), and its last reader was the store page's curtain shadow, which
+   was using "the page has moved" as a stand-in for "the curtain is covering something".
+   Those are only the same moment when nothing sits above the pinned banner, so the shadow
+   now keys off `.store-banner-pin.is-stuck` — the pin itself — and this observer was left
+   running on every page in the site to set a class nobody read. Don't reintroduce it to
+   answer "has the page scrolled": ask the element that cares whether IT has pinned. */
 
 export function initStickyBar(bar: HTMLElement | null, headerRem: number = STICKY_HEADER_REM): void {
   if (!bar?.parentElement) return;

@@ -45,4 +45,19 @@ describe('scrolling to a target under the fixed header', () => {
       expect(readFileSync(f, 'utf8')).toContain('scrollBelowPinnedChrome');
     }
   });
+
+  it('the products table never uses scrollIntoView — its edit form is TALLER than the viewport', () => {
+    // `block:'nearest'` scrolls the least it can, which for a target taller than the scrollport
+    // means aligning whichever edge is closer: open a row from below and the form's BOTTOM lands at
+    // the viewport's bottom, i.e. the seller arrives in the middle of the form with the heading and
+    // the Save button off-screen above. Reported 2026-08-12 on the toolbar's "ערוך", which was the
+    // one opener left doing this — the row menu's own opener already went through
+    // scrollEditRowIntoView, so the same button did two different things depending on how it was
+    // pressed. Nothing here is short enough for scrollIntoView to be safe; the helper aims at the
+    // form's own header and re-aims while the gallery images resize it.
+    const products = readFileSync(join('src', 'scripts', 'dashboard', 'products.ts'), 'utf8');
+    const codeLines = products.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line));
+    expect(codeLines.filter((line) => /\.scrollIntoView\(/.test(line))).toEqual([]);
+    expect(products).toContain('scrollEditRowIntoView');
+  });
 });

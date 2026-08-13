@@ -251,6 +251,12 @@
                   <span data-wl-qty="${esc(item.slug)}" aria-live="polite" aria-atomic="true">1</span>
                   <button data-wl-plus="${esc(item.slug)}" data-stock="${remaining ?? ''}" aria-label="${esc(cartI18n.qtyIncrease ?? 'Increase quantity')}" ${remaining != null && remaining <= 1 ? 'disabled' : ''}>+</button>
                 </div>
+                ${item.hasVariants ? `
+                <a
+                  class="btn btn--sm btn--ghost"
+                  href="/${esc(storeSlug)}/${esc(item.slug)}"
+                  style="flex:1;font-size:0.78rem;white-space:nowrap;display:flex;align-items:center;justify-content:center"
+                >${esc(i18n.chooseOptions ?? 'Choose options')}</a>` : `
                 <button
                   class="btn btn--sm"
                   data-wl-cart="${esc(item.slug)}"
@@ -263,7 +269,7 @@
                   data-label-added="${esc(i18n.addedToCart ?? 'Added ✓')}"
                   style="flex:1;font-size:0.78rem;white-space:nowrap"
                   ${remaining != null && remaining <= 0 ? 'disabled' : ''}
-                >${esc(i18n.addToCart ?? 'Add to cart')}</button>`}
+                >${esc(i18n.addToCart ?? 'Add to cart')}</button>`}`}
                 <button data-wl-rm="${esc(item.slug)}" class="cart-line__rm" aria-label="${esc(i18n.remove ?? 'Remove')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><circle cx="10" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1.1" fill="currentColor" stroke="none"/><path d="M9 6V4h6v2"/></svg></button>
             </div>
           </div>`;

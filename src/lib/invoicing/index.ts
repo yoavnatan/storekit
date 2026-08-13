@@ -64,11 +64,15 @@ export async function planBuyerInvoice(
   storeSlug: string,
   seller: Pick<Seller, 'id' | 'businessType'>,
 ): Promise<InvoiceDocument | null> {
-  const net = orderNetForStore(order, storeSlug);
-  // Shipping rides on the slice the buyer paid for. `storeSubtotals` carries it per store, so an
-  // order spanning stores does not put one carrier charge on every seller's document.
-  const shipping = order.storeSubtotals?.[storeSlug]?.shippingAgorot ?? 0;
-  const grossAgorot = net + shipping;
+  // GOODS ONLY — shipping is deliberately NOT here, and this used to be wrong.
+  //
+  // Shipping money never reaches the seller: `payouts.ts` computes his balance from what buyers paid
+  // for goods, "net of seller discounts, never shipping", because the carrier contract is the
+  // platform's and the seller neither prices shipping nor profits from it
+  // (memory `project_shipping_model`). A document that included it would have the seller invoicing
+  // the buyer for money he was never paid — the two halves of one order disagreeing about who sold
+  // what. The shipping fee is the platform's own revenue and belongs on the platform's own document.
+  const grossAgorot = orderNetForStore(order, storeSlug);
   if (grossAgorot <= 0) return null;
 
   const vatAgorot = chargesVat(seller.businessType) ? vatWithinAgorot(grossAgorot) : 0;

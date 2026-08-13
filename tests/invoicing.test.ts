@@ -89,27 +89,35 @@ describe('VAT is extracted, never added', () => {
 });
 
 describe("the buyer's invoice, owed by the seller", () => {
-  it('is for what the buyer PAID — slice plus shipping, before any commission', async () => {
+  it('is for the GOODS the buyer paid for, before any commission and WITHOUT shipping', async () => {
     const sellerId = await makeSeller('licensed');
     const orderId = await makeOrder();
     const doc = await planBuyerInvoice(orderWith(orderId, 10_000, 2_000), 'shop', { id: sellerId, businessType: 'licensed' });
 
     expect(doc).not.toBeNull();
-    // The buyer's document has to match their card statement. Commission is between the platform
-    // and the seller and belongs on the other document entirely.
-    expect(doc!.amountAgorot).toBe(12_000);
+    // Commission is between the platform and the seller and belongs on the other document entirely,
+    // so the figure is BEFORE it. Shipping is excluded for the opposite reason: it never reaches the
+    // seller at all (`payouts.ts` — "never shipping"), so invoicing the buyer for it in the seller's
+    // name would bill for money he was never paid.
+    expect(doc!.amountAgorot).toBe(10_000);
     expect(doc!.direction).toBe('seller_to_buyer');
     expect(doc!.sellerId).toBe(sellerId);
     expect(doc!.status).toBe('pending');
-    expect(doc!.vatAgorot).toBe(vatWithinAgorot(12_000));
+    expect(doc!.vatAgorot).toBe(vatWithinAgorot(10_000));
   });
 
   it('shows no VAT for an עוסק פטור', async () => {
     const sellerId = await makeSeller('exempt');
     const orderId = await makeOrder();
     const doc = await planBuyerInvoice(orderWith(orderId, 10_000, 2_000), 'shop', { id: sellerId, businessType: 'exempt' });
-    expect(doc!.amountAgorot).toBe(12_000);
+    expect(doc!.amountAgorot).toBe(10_000);
     expect(doc!.vatAgorot).toBe(0);
+  });
+
+  it('plans nothing for a slice that is shipping only — there are no goods to invoice', async () => {
+    const sellerId = await makeSeller('licensed');
+    const orderId = await makeOrder();
+    expect(await planBuyerInvoice(orderWith(orderId, 0, 2_000), 'shop', { id: sellerId, businessType: 'licensed' })).toBeNull();
   });
 
   it('plans ONE document per order however many times the checkout replays', async () => {
