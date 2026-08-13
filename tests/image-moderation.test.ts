@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MODERATION_MISSING_MARKER, moderationRefusal, moderationWentMissing, wasModerated } from '../src/lib/image-moderation.js';
+import { UPLOAD_REFUSED, isUploadRefusal } from '../src/scripts/dashboard/cloudinary.js';
 
 /**
  * The verdict rules for an uploaded image (`lib/image-moderation.ts`).
@@ -116,5 +117,32 @@ describe('a moderation filter cannot switch itself off quietly', () => {
     expect(wasModerated({ moderation: [] })).toBe(false);
     expect(moderationWentMissing({ moderation: [] }, true)).toBeTruthy();
     expect(wasModerated(judged)).toBe(true);
+  });
+});
+
+/**
+ * What the SELLER is told, which is a separate question from what the platform decides.
+ *
+ * `products.ts#uploadErrorText` wrapped every upload error in "העלאת התמונה נכשלה. נסה שוב." — so
+ * the four errors this uploader raises for things the seller must FIX (empty file, unsupported
+ * format, too large, refused by moderation) all arrived as an instruction to press the same button
+ * again, with the only actionable sentence buried in a parenthesis after it. Marking them by NAME
+ * is what lets the copy tell the two apart without matching Hebrew strings in two places.
+ */
+describe('a refusal is not a retry', () => {
+  function refusalFor(message: string): Error {
+    const err = new Error(message);
+    err.name = UPLOAD_REFUSED;
+    return err;
+  }
+
+  it('marks the errors a seller has to act on, and nothing else', () => {
+    expect(isUploadRefusal(refusalFor('הקובץ ריק'))).toBe(true);
+    // A dropped connection or a provider 500 is genuinely worth repeating and keeps the "try
+    // again" wording — so a plain Error is never a refusal.
+    expect(isUploadRefusal(new Error('Upload failed: 502'))).toBe(false);
+    expect(isUploadRefusal(new TypeError('Failed to fetch'))).toBe(false);
+    expect(isUploadRefusal('not an error')).toBe(false);
+    expect(isUploadRefusal(undefined)).toBe(false);
   });
 });

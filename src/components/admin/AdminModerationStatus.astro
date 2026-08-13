@@ -56,7 +56,18 @@ const copy = state === 'ok' ? null : COPY[state];
       <p class="muted" style="margin:0.55rem 0 0;font-size:0.85rem">{copy.todo}</p>
     </div>
   ) : (
-    /* One line, no box. The healthy state is worth stating and not worth decorating. */
-    <p class="muted" style="margin:0;font-size:0.88rem">פעיל — תמונות שמוכרים מעלים נבדקות לפני שהן עולות לאתר.</p>
+    /* One line, no box — the healthy state is worth stating and not worth a card. The dot is the
+       one piece of decoration it gets (owner asked, 2026-08-13): a green mark reads as "checked"
+       before the sentence does, which is the whole job of a line nobody should have to stop on.
+       `--color-success`, the token every other "this is fine" on the platform already uses, so it
+       is not a fifth green. `aria-hidden` because the word "פעיל" beside it already says this to a
+       screen reader, and colour is never the only signal. */
+    <p class="muted" style="margin:0;font-size:0.88rem;display:flex;align-items:center;gap:0.45rem">
+      <span
+        aria-hidden="true"
+        style="width:0.55rem;height:0.55rem;border-radius:50%;background:var(--color-success);box-shadow:0 0 0 3px color-mix(in srgb, var(--color-success) 18%, transparent);flex-shrink:0"
+      ></span>
+      <span><strong style="font-weight:600;color:var(--color-text)">פעיל</strong> — תמונות שמוכרים מעלים נבדקות לפני שהן עולות לאתר.</span>
+    </p>
   )}
 </section>

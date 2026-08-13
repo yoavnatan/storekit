@@ -38,6 +38,33 @@ let moderationAlreadyReported = false;
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
 
 /**
+ * A refusal the seller has to ACT on, as opposed to a failure they should retry.
+ *
+ * **The distinction exists because "try again" is wrong advice for most of the errors this file
+ * throws, and wrong advice is worse than none.** Every message below is surfaced by
+ * `products.ts#uploadErrorText`, which wrapped all of them in "העלאת התמונה נכשלה. נסה שוב." — so a
+ * seller told their photo is a HEIC, or too large, or was refused by content moderation, was
+ * simultaneously told the fix is to press the same button again. It is not; the fix is a different
+ * file. Marking these by NAME rather than by matching their text keeps the two halves from drifting
+ * apart in different languages.
+ *
+ * A network failure and a provider 500 are deliberately NOT refusals: those really are worth
+ * retrying, and they keep the retry wording.
+ */
+export const UPLOAD_REFUSED = 'UploadRefused';
+
+function refuse(message: string): Error {
+  const err = new Error(message);
+  err.name = UPLOAD_REFUSED;
+  return err;
+}
+
+/** Is this an error the seller must fix rather than repeat? */
+export function isUploadRefusal(err: unknown): err is Error {
+  return err instanceof Error && err.name === UPLOAD_REFUSED;
+}
+
+/**
  * Upload one image and return its delivered URL.
  *
  * **The failure path is the point of this function, not the happy path.** It used to throw
@@ -47,17 +74,17 @@ const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/a
  * upload survives: nobody, including whoever is debugging it, is ever told the reason.
  */
 export async function cloudinaryUpload(original: Blob, cloud: string, preset: string): Promise<string> {
-  if (original.size === 0) throw new Error('הקובץ ריק');
+  if (original.size === 0) throw refuse('הקובץ ריק');
   // The format check runs on the ORIGINAL, before any re-encode: HEIC is what a seller actually
   // picked and what the message has to name, and `downscaleForUpload` would hand back a JPEG that
   // hides the real problem behind a confusing success.
   if (original.type && !ACCEPTED.includes(original.type)) {
-    throw new Error(`פורמט לא נתמך (${original.type}) — נסה JPG או PNG`);
+    throw refuse(`פורמט לא נתמך (${original.type}) — נסה JPG או PNG`);
   }
 
   const blob = await downscaleForUpload(original);
   if (blob.size > MAX_UPLOAD_BYTES) {
-    throw new Error(`הקובץ גדול מדי (${(blob.size / 1024 / 1024).toFixed(1)}MB, המקסימום ${MAX_UPLOAD_BYTES / 1024 / 1024}MB)`);
+    throw refuse(`הקובץ גדול מדי (${(blob.size / 1024 / 1024).toFixed(1)}MB, המקסימום ${MAX_UPLOAD_BYTES / 1024 / 1024}MB)`);
   }
 
   const fd = new FormData();
@@ -80,7 +107,7 @@ export async function cloudinaryUpload(original: Blob, cloud: string, preset: st
   // about to be handed back to the form. `image-moderation.ts` carries the whole rationale —
   // including why it says nothing at all while the add-on is off.
   const refusal = moderationRefusal(json);
-  if (refusal) throw new Error(refusal);
+  if (refusal) throw refuse(refusal);
 
   // …and the other half: an add-on that was switched on and has since STOPPED (quota) is
   // indistinguishable from one that was never enabled, so the only thing that can tell the

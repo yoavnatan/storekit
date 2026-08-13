@@ -1,6 +1,7 @@
 import { esc } from '../../lib/gallery-widget.js';
 import { showActionFailedToast } from '../../lib/toast.js';
 import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery, finalizeGallery, closeGalleryPanel } from './gallery.js';
+import { isUploadRefusal } from './cloudinary.js';
 import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
@@ -1757,6 +1758,13 @@ function clearBusy(btns: HTMLButtonElement[]): void {
  */
 function uploadErrorText(err: unknown, i18n: Record<string, string>): string {
   const reason = err instanceof Error ? err.message : '';
+  // A REFUSAL is shown on its own, because the generic wording ends in "try again" and that is the
+  // wrong instruction for every one of them: the same file will be refused the same way. The
+  // refusal already says what to do — pick another photo, convert the HEIC, use a smaller one —
+  // and prefixing it with "failed, try again" buries the only actionable sentence in a parenthesis
+  // (cloudinary.ts#UPLOAD_REFUSED). Anything else — a dropped connection, a provider 500 — really
+  // is worth repeating, and keeps the retry wording.
+  if (isUploadRefusal(err)) return reason;
   const generic = i18n.uploadFailed ?? 'Image upload failed. Please try again.';
   return reason ? `${generic} (${reason})` : generic;
 }
