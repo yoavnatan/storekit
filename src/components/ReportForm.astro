@@ -18,6 +18,7 @@
  * (memory `project_client_renderer_i18n_drift`).
  */
 import { getLang, getT } from '../i18n/index.js';
+import { MAX_REPORT_LEN, REPORT_KINDS, type ReportKind } from '../lib/user-reports.js';
 
 interface Props {
   /** Preselected `kind`, so an in-context "report this" link arrives on the right option. */
@@ -32,13 +33,18 @@ const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const r = t.report;
 
-const KINDS = [
-  { value: 'fault', label: r.kindFault },
-  { value: 'content', label: r.kindContent },
-  { value: 'store', label: r.kindStore },
-  { value: 'other', label: r.kindOther },
-];
-const selected = KINDS.some((k) => k.value === kind) ? kind : 'fault';
+/** A `Record` over `ReportKind`, not an array of pairs, and that is the whole point: the kinds are
+ *  a CHECK constraint on `user_reports` (migration 0025) and a `switch` in the admin panel, so a
+ *  fifth one added there and forgotten here would render a form that cannot offer it. Typed this
+ *  way the omission is a compile error, not a missing option nobody notices. */
+const KIND_LABELS: Record<ReportKind, string> = {
+  fault: r.kindFault,
+  content: r.kindContent,
+  store: r.kindStore,
+  other: r.kindOther,
+};
+const KINDS = REPORT_KINDS.map((value) => ({ value, label: KIND_LABELS[value] }));
+const selected = (REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fault';
 ---
 
 <form
@@ -65,7 +71,7 @@ const selected = KINDS.some((k) => k.value === kind) ? kind : 'fault';
       name="message"
       class="input"
       rows="6"
-      maxlength="2000"
+      maxlength={MAX_REPORT_LEN}
       required
       placeholder={r.messagePlaceholder}
       style="resize:none"
