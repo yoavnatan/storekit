@@ -7,6 +7,7 @@ import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
 import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
+import ShareMenu from '../../components/ShareMenu.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice, storeHeaderLogo } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { getDemoStores } from '../../lib/stores.js';
@@ -630,6 +631,19 @@ const bannerPreload = !isDemo && shopStore.bannerImage
               </div>
             </div>
 
+            {/* Shares `storeUrl`, never `pageCanonical`: the second one carries the category and
+                page the visitor happens to be on, and on an ad landing it is the platform URL with
+                the ad marker. A forwarded link should open the store's front door on the store's
+                own domain. */}
+            <ShareMenu
+              url={storeUrl}
+              title={shopStore.name}
+              lang={lang}
+              contentType="store"
+              storeId={shopStore.id}
+              buttonClass="store-banner-action-btn"
+            />
+
             {userId !== shopStore.sellerId && (
               <button
                 type="button"
@@ -1088,7 +1102,10 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     // Heart/wishlist buttons are excluded — their own heart-burst is the click
     // cue, and a ripple on top would stack two competing signals on one tap.
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart):not(.wishlist-btn):not(.pm-wishlist-btn)');
-    if (btn) spawnRipple(btn, e.clientX, e.clientY);
+    // Inside an open dropdown panel the ripple is the odd one out: the share panel's rows are
+    // buttons and links side by side, so only half of them would answer a press with a wave while
+    // the other half took the row-hover the menu already uses. One signal per press — the hover.
+    if (btn && !btn.closest('[data-share-panel]')) spawnRipple(btn, e.clientX, e.clientY);
   });
 
   const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
