@@ -108,6 +108,10 @@
             "command": "bash .claude/hooks/memory-backup-age.sh",
             "timeout": 15,
             "statusMessage": "Checking when memory last reached GitHub..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/decision-drift.sh"
           }
         ]
       }
