@@ -31,11 +31,50 @@ function closeAll(except?: HTMLElement): void {
   }
 }
 
+/** Clear of the viewport edge, in px. Below this the panel reads as pinned to the screen rather
+ *  than dropped from the button — and at 320px it was leaving the screen outright. */
+const EDGE_MARGIN = 12;
+
+/**
+ * Keep the open panel inside the viewport.
+ *
+ * The CSS anchors it to one edge of the trigger and lets it grow outward, which is right until the
+ * trigger sits near the edge of the screen — and this one does, at both ends: the store banner's
+ * actions row starts at the container's inline-start, and the product page's row is in the buy
+ * column. Measured across seven widths it overflowed at four of them, worst 17px off-screen on the
+ * product page at 768.
+ *
+ * Nudged with a PHYSICAL `left`, not with `transform`: the panel's entrance animation animates
+ * `transform`, and an animation outranks an inline style for its whole duration — the nudge would
+ * have been ignored for 130ms and then jumped into place. Physical rather than logical because the
+ * sign of a logical inset flips with `dir`, while this is arithmetic on a measured rect, which is
+ * physical already. The CSS inset is released in the same breath, or it keeps anchoring the side
+ * the nudge is moving away from.
+ */
+function positionPanel(panel: HTMLElement): void {
+  panel.style.left = '';
+  panel.style.insetInlineStart = '';
+  panel.style.insetInlineEnd = '';
+
+  const parent = panel.offsetParent as HTMLElement | null;
+  if (!parent) return;
+  const rect = panel.getBoundingClientRect();
+
+  const maxLeft = window.innerWidth - EDGE_MARGIN - rect.width;
+  const wantedLeft = Math.max(EDGE_MARGIN, Math.min(rect.left, maxLeft));
+  if (Math.abs(wantedLeft - rect.left) < 0.5) return;
+
+  panel.style.insetInlineStart = 'auto';
+  panel.style.insetInlineEnd = 'auto';
+  panel.style.left = `${wantedLeft - parent.getBoundingClientRect().left}px`;
+}
+
 function openMenu(menu: HTMLElement): void {
   const panel = panelOf(menu);
   if (!panel) return;
   closeAll(menu);
   panel.hidden = false;
+  positionPanel(panel);
   menu.querySelector<HTMLButtonElement>('[data-share-trigger]')?.setAttribute('aria-expanded', 'true');
 }
 
