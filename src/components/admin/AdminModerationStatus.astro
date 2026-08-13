@@ -1,0 +1,62 @@
+---
+/** "סינון תמונות" — a section at the top of the Alerts tab saying whether uploaded pictures are
+ *  being checked at all.
+ *
+ * **Third placement, and the owner rejected the first two (2026-08-13).** It began as a
+ * `reportClientError` row inside the error log — *"it will get buried among the operational
+ * alerts"*, and he was right twice over: buried by volume, and wrong in kind, because a log row
+ * says something HAPPENED once while this says a protection is not running and still is not. It
+ * then became a stat card on the Overview grid — *"easy to miss, and it is not a remark"*: a
+ * three-word tile sitting between counts of sellers and stores reads as a metric, and a metric is
+ * something you glance past. **What he asked for is what this is: a plain section, in words, at the
+ * top of the tab that is already about things being wrong.**
+ *
+ * The lesson worth keeping is that a signal has to be shaped like what it says. This is not a
+ * number and not an event; it is a sentence about the platform's current condition, and it needs to
+ * be read as one sentence by someone who has never seen it before.
+ *
+ * **When everything is fine it is one quiet line, and only a problem gets the box** — memory
+ * `feedback_no_standing_screen_prose`. It still says something in the healthy case, because "is the
+ * filter on?" is a question with no other answer anywhere in the product, and silence would leave
+ * it unanswerable.
+ */
+import type { ImageModerationState } from '../../lib/image-moderation-health.js';
+
+interface Props {
+  state: ImageModerationState;
+}
+const { state } = Astro.props;
+
+/** Each state is a headline, what it MEANS for the platform, and the next action — in that order,
+ *  because a reader who stops after the first line should already have the important half. */
+const COPY: Record<Exclude<ImageModerationState, 'ok'>, { title: string; means: string; todo: string }> = {
+  off: {
+    title: 'סינון תמונות אינו פעיל',
+    means: 'כל תמונה שמוכר מעלה עולה לאתר בלי שאף אחד בדק אותה. זה המצב מאז ומתמיד — לא תקלה.',
+    todo: 'להפעלה: בקונסולה של Cloudinary → Settings → Add-ons → Amazon Rekognition AI Moderation (שכבה חינמית), ואז לשנות ב-.env את PUBLIC_IMAGE_MODERATION_ON ל-true.',
+  },
+  stopped: {
+    title: 'סינון התמונות נעצר',
+    means: 'התוסף מוגדר אצלנו כדלוק, אבל העלאה חזרה בלי בדיקה — כלומר כרגע תמונות עולות בלי סינון. הסיבה הכי סבירה: המכסה החודשית של התוסף נגמרה.',
+    todo: 'לבדוק בקונסולה של Cloudinary → Settings → Add-ons מה מצב המכסה. בחבילה החינמית אי אפשר להגדיל באמצע החודש — היא מתאפסת בתאריך החיוב.',
+  },
+};
+const copy = state === 'ok' ? null : COPY[state];
+---
+
+<section aria-labelledby="admin-moderation-h" style="margin-bottom:1.5rem">
+  <h3 id="admin-moderation-h" class="!text-[0.95rem] !font-semibold" style="margin:0 0 0.6rem">
+    סינון תמונות
+  </h3>
+
+  {copy ? (
+    <div style="border:1px solid var(--color-border);border-inline-start:3px solid var(--color-danger);border-radius:var(--radius);background:var(--color-surface);padding:0.85rem 1rem;max-width:70ch">
+      <p style="margin:0;font-weight:600">{copy.title}</p>
+      <p style="margin:0.4rem 0 0;font-size:0.9rem">{copy.means}</p>
+      <p class="muted" style="margin:0.55rem 0 0;font-size:0.85rem">{copy.todo}</p>
+    </div>
+  ) : (
+    /* One line, no box. The healthy state is worth stating and not worth decorating. */
+    <p class="muted" style="margin:0;font-size:0.88rem">פעיל — תמונות שמוכרים מעלים נבדקות לפני שהן עולות לאתר.</p>
+  )}
+</section>
