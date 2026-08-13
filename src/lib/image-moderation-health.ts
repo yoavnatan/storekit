@@ -33,11 +33,13 @@
 import { firstRow } from './db.js';
 import { MODERATION_MISSING_MARKER } from './image-moderation.js';
 
-/** How far back a "the filter stopped" report still describes NOW. A quota resets on the billing
+/** How far back a "the filter stopped" report still describes NOW. Exported because the tab badge
+ *  asks the same question with the same window — two windows would mean the tab could carry a "(1)"
+ *  for a condition the section below it no longer shows. A quota resets on the billing
  *  date, so the window has to be long enough to cover most of a month — but a report from five
  *  weeks ago is history, and a warning that never clears is furniture (memory
  *  `feedback_no_standing_screen_prose`). */
-const RECENT_DAYS = 21;
+export const MODERATION_STALE_DAYS = 21;
 
 export type ImageModerationState = 'ok' | 'off' | 'stopped';
 
@@ -62,7 +64,7 @@ export async function getImageModerationState(): Promise<ImageModerationState> {
       `SELECT count(*) AS n FROM error_log
         WHERE message LIKE $1
           AND created_at > now() - make_interval(days => $2)`,
-      [`${MODERATION_MISSING_MARKER}%`, RECENT_DAYS],
+      [`${MODERATION_MISSING_MARKER}%`, MODERATION_STALE_DAYS],
     );
     return Number(row?.n ?? 0) > 0 ? 'stopped' : 'ok';
   } catch {

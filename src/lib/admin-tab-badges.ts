@@ -1,4 +1,6 @@
 import { firstRow } from './db.js';
+import { MODERATION_MISSING_MARKER } from './image-moderation.js';
+import { MODERATION_STALE_DAYS, moderationDeclaredOn } from './image-moderation-health.js';
 import { CHECKOUT_GROUP_KEY_SQL } from './checkout-group.js';
 import type { TabViews } from './admin-tab-views.js';
 
@@ -36,7 +38,7 @@ export type AdminTabBadges = {
 };
 
 export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBadges> {
-  const row = await firstRow<Record<keyof AdminTabBadges, string | number>>(
+  const row = await firstRow<Record<string, string | number>>(
     `SELECT
        (SELECT count(*) FROM sellers WHERE created_at > $1::timestamptz) AS sellers,
        (SELECT count(*) FROM stores  WHERE created_at > $2::timestamptz) AS stores,
@@ -44,23 +46,44 @@ export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBad
        -- cart is one card there, and a badge counting rows would announce "5 new" above a list
        -- showing one (order-reporting.ts#countOrdersSince, which this replaces on this page).
        (SELECT count(DISTINCT ${CHECKOUT_GROUP_KEY_SQL}) FROM orders o WHERE o.created_at > $3::timestamptz) AS orders,
-       -- The Alerts tab holds two lists — the automatic error log, and the reports visitors wrote
-       -- (AdminReportsPanel.astro) — so its badge counts both against the same boundary. Counting
-       -- only the errors would leave the one entry a PERSON is waiting on as the one the tab strip
-       -- never mentions.
-       (SELECT count(*) FROM error_log    WHERE created_at > $4::timestamptz)
-     + (SELECT count(*) FROM user_reports WHERE created_at > $4::timestamptz) AS alerts,
+       -- The Alerts tab holds three things — the automatic error log, the reports visitors wrote
+       -- (AdminReportsPanel.astro) and whether image moderation is running at all
+       -- (AdminModerationStatus.astro) — so its badge counts all three against the same boundary.
+       -- Counting only the errors would leave the one entry a PERSON is waiting on as the one the
+       -- tab strip never mentions.
+       --
+       -- **The moderation term is ONE, never a count of its reports, and that is the point (owner,
+       -- 2026-08-13: "make stopped add a number").** A stopped filter is reported by the BROWSER
+       -- on upload, so a seller loading a catalogue files one report per session and twenty sellers
+       -- file twenty — for a single condition. Counting those rows would put "(20)" on the tab for
+       -- one problem, which is how a number stops meaning anything. So the raw reports are excluded
+       -- from the error count above (NOT LIKE) and the condition contributes exactly 1.
+       (SELECT count(*) FROM error_log
+         WHERE created_at > $4::timestamptz AND message NOT LIKE $5) AS alert_errors,
+       (SELECT count(*) FROM user_reports WHERE created_at > $4::timestamptz) AS alert_reports,
+       -- Deliberately NOT measured against newSince: every other badge counts things that ARRIVED,
+       -- and opening the tab is a complete answer to them. This is a condition that is still true
+       -- after it has been read, so it clears when the filter comes back — not when it is looked at.
+       (SELECT count(*) FROM error_log
+         WHERE message LIKE $5 AND created_at > now() - make_interval(days => $6)) AS moderation_reports,
        (SELECT count(*) FROM admin_messages WHERE from_role = 'seller' AND NOT read_by_admin) AS messages`,
-    [newSince.sellers, newSince.stores, newSince.orders, newSince.alerts],
+    [newSince.sellers, newSince.stores, newSince.orders, newSince.alerts,
+     `${MODERATION_MISSING_MARKER}%`, MODERATION_STALE_DAYS],
   );
   // `count` is a bigint: a string from `pg`, a number from PGlite (§8). Left alone, the badge would
   // render `(3)` one way and `("3")` the other, and `count === 0` would never be true.
   const n = (value: string | number | undefined) => Number(value ?? 0);
+  // One, or nothing. `moderationDeclaredOn()` gates it because an add-on nobody enabled is not an
+  // incident — it is the platform's standing configuration, and a badge that can never reach zero
+  // is furniture (memory `feedback_no_standing_screen_prose`). The section at the top of the tab is
+  // what says "off"; this number is only ever about a filter that WAS running and stopped.
+  const moderationStopped = moderationDeclaredOn() && n(row?.moderation_reports) > 0 ? 1 : 0;
+
   return {
     sellers: n(row?.sellers),
     stores: n(row?.stores),
     orders: n(row?.orders),
-    alerts: n(row?.alerts),
+    alerts: n(row?.alert_errors) + n(row?.alert_reports) + moderationStopped,
     messages: n(row?.messages),
   };
 }

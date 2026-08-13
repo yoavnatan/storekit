@@ -12,6 +12,13 @@ import { reportClientError } from '../error-reporter.js';
  *  build time, so this is a constant in the bundle either way. */
 const MODERATION_EXPECTED = import.meta.env.PUBLIC_IMAGE_MODERATION_ON === 'true';
 
+/** Once per page, not once per photo. A stopped filter is ONE condition, and the seller who
+ *  discovers it is the one doing a bulk upload — without this, a hundred products file a hundred
+ *  identical rows and spend the error reporter's whole per-session budget (5), which is how a real
+ *  JavaScript error on the same page ends up unrecorded. The badge counts the condition as 1 for
+ *  the same reason (`admin-tab-badges.ts`); this keeps the LOG from lying about it too. */
+let moderationAlreadyReported = false;
+
 /**
  * Cloudinary's unsigned-upload ceiling on the free tier, and now a LAST resort rather than the
  * first thing a seller with a good camera meets.
@@ -81,7 +88,10 @@ export async function cloudinaryUpload(original: Blob, cloud: string, preset: st
   // stop sellers working, and the owner is the one who can act on it. Every upload samples it, so
   // there is nothing to schedule and nothing to remember.
   const missing = moderationWentMissing(json, MODERATION_EXPECTED);
-  if (missing) reportClientError(missing);
+  if (missing && !moderationAlreadyReported) {
+    moderationAlreadyReported = true;
+    reportClientError(missing);
+  }
 
   return json.secure_url;
 }

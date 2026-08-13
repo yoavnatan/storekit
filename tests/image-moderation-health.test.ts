@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { query } from '../src/lib/db.js';
 import { MODERATION_MISSING_MARKER } from '../src/lib/image-moderation.js';
 import { getImageModerationState, moderationDeclaredOn } from '../src/lib/image-moderation-health.js';
+import { getAdminTabBadges } from '../src/lib/admin-tab-badges.js';
 
 /**
  * The state behind the admin Overview's "סינון תמונות" card.
@@ -82,5 +83,44 @@ describe('is anybody checking uploaded pictures right now', () => {
       ['TypeError: cannot read properties of undefined'],
     );
     expect(await getImageModerationState()).toBe('ok');
+  });
+});
+
+describe('what the Alerts tab badge counts', () => {
+  const boundary = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const views = { sellers: boundary, stores: boundary, orders: boundary, alerts: boundary };
+
+  beforeEach(async () => {
+    await query('DELETE FROM user_reports');
+  });
+
+  it('counts a stopped filter ONCE, however many uploads reported it', async () => {
+    // The rule the owner asked for, and the trap inside it. A stopped filter is reported by the
+    // BROWSER on upload, so a seller loading a catalogue files one and twenty sellers file twenty —
+    // for a single condition. "(20)" on the tab for one problem is how a number stops meaning
+    // anything.
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'true';
+    for (let i = 0; i < 7; i++) await logMissing(1);
+    expect((await getAdminTabBadges(views)).alerts).toBe(1);
+  });
+
+  it('adds nothing while no add-on is declared', async () => {
+    // "Off" is the platform's standing configuration, not an incident. A badge that can never
+    // reach zero is furniture — the section at the top of the tab is what says "off".
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'false';
+    await logMissing(1);
+    expect((await getAdminTabBadges(views)).alerts).toBe(0);
+  });
+
+  it('still counts ordinary errors beside it, and does not double-count the reports', async () => {
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'true';
+    await logMissing(1);
+    await logMissing(1);
+    await query(
+      `INSERT INTO error_log (id, source, message) VALUES (gen_random_uuid(), 'server', $1)`,
+      ['TypeError: something else broke'],
+    );
+    // 1 for the ordinary error + 1 for the condition — never 3.
+    expect((await getAdminTabBadges(views)).alerts).toBe(2);
   });
 });
