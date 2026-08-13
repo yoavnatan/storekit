@@ -70,3 +70,6 @@ pics/
 # Claude Code internal memory mirror (never source)
 .claude-memory/
 showcase-prompts.csv
+
+# `showcase:images --batch` scratch: request JSONLs and multi-hundred-MB results files.
+.showcase-batch/
