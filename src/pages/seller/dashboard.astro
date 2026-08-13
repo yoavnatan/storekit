@@ -63,6 +63,8 @@ import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
 import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
 import { orderPayoutLine, payoutWhyText, payoutFilterValue, splitHeldByBasis, payableHeadlineAgorot } from '../../lib/order-payout-line.js';
+import { orderInvoiceRowHtml } from '../../lib/order-invoice-row.js';
+import { getBuyerInvoiceStates } from '../../lib/invoicing/buyer-invoice.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
@@ -768,6 +770,12 @@ const [ordersPage, orderStatusCounts] = store
     ])
   : [{ orders: [] as Order[], total: 0, page: 1, totalPages: 1 }, {} as Record<string, number>];
 const newOrdersCount = orderStatusCounts.pending ?? 0;
+// Whether the seller has already provided each of these orders' buyer invoices. One query for the
+// page, after it, because the ids are its output — and skipped entirely when there are no orders,
+// so an empty store's first paint does not pay for a round trip that can only answer "none".
+const invoiceStates = ordersPage.orders.length
+  ? await getBuyerInvoiceStates(sellerId, ordersPage.orders.map((o) => o.id))
+  : new Map();
 // Overview "orders needing attention" square (CURRENT_TASK item 4): 'processing'
 // (בטיפול) = started but not yet shipped, the second attention stage after the
 // new-orders ('pending') count above. 'ready' (ממתין לאיסוף) is omitted for the
@@ -1929,7 +1937,7 @@ const orderStatusColors: Record<string, string> = {
                 deliveryMethod: storeSub?.deliveryMethod ?? null,
               });
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-payout={payoutFilterValue(payLine)} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-delivery-method={storeSub?.deliveryMethod ?? ''} data-payout={payoutFilterValue(payLine)} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the
@@ -2118,6 +2126,21 @@ const orderStatusColors: Record<string, string> = {
                         <button class="order-save-btn btn btn--sm btn--accent ms-auto" type="button">{d.orderSave}</button>
                       </div>
                       <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">{d.orderSaved}</p>
+                      {/* The buyer's invoice — the seller's document, and the platform only records
+                          that he provided it. `set:html` from the SAME builder the AJAX card calls,
+                          so the two renderers cannot drift apart the way the order card's strings
+                          once did. The input is our own state plus `d.*` copy; nothing user-typed
+                          reaches it unescaped (order-invoice-row.ts escapes what it interpolates). */}
+                      <Fragment set:html={orderInvoiceRowHtml(
+                        invoiceStates.get(order.id) ?? null,
+                        storeSub?.deliveryMethod ?? null,
+                        {
+                          title: d.orderInvoice, hint: d.orderInvoiceHint, owed: d.orderInvoiceOwed,
+                          upload: d.orderInvoiceUpload, handedShip: d.orderInvoiceHandedShip,
+                          handedPickup: d.orderInvoiceHandedPickup, uploaded: d.orderInvoiceUploaded,
+                          view: d.orderInvoiceView,
+                        },
+                      )} />
                       {['pending', 'processing', 'ready'].includes(order.shippingStatus) && (
                         <button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id={order.id} data-store-slug={store!.slug}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>

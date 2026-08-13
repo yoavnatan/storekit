@@ -16,6 +16,8 @@ import { cdnThumb } from '../../lib/cdn.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
+import { orderInvoiceRowHtml, type OrderInvoiceRowState } from '../../lib/order-invoice-row.js';
+import { cloudinaryUpload } from './cloudinary.js';
 
 // Orders tab: order cards (accordion, status/tracking/notes/cancel), toolbar
 // sort+filter, server-fetched pagination, new-order polling, and the edit-order
@@ -128,6 +130,105 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   }
 
 
+  /** The strip's copy, read through `tt` in one place so the two renderers cannot disagree. */
+  function invoiceRowLabels() {
+    return {
+      title: tt('orderInvoice'),
+      hint: tt('orderInvoiceHint'),
+      owed: tt('orderInvoiceOwed'),
+      upload: tt('orderInvoiceUpload'),
+      handedShip: tt('orderInvoiceHandedShip'),
+      handedPickup: tt('orderInvoiceHandedPickup'),
+      uploaded: tt('orderInvoiceUploaded'),
+      view: tt('orderInvoiceView'),
+    };
+  }
+
+  /**
+   * "I provided the buyer's invoice" — an upload, or a tick that it went with the goods.
+   *
+   * The section is REPLACED with what the server confirmed rather than with what was clicked. The
+   * server is the one that decides whether the URL is one of ours and whether this order is even
+   * this seller's, so painting the success first would show a settled invoice for a write that was
+   * refused — and this is the surface a buyer later asks about.
+   */
+  function bindInvoiceRow(card: HTMLElement, orderId: string): void {
+    const section = card.querySelector<HTMLElement>('.order-card__invoice');
+    if (!section || !orderId) return;
+
+    const deliveryMethod = (card.dataset.deliveryMethod as DeliveryMethod | undefined) ?? undefined;
+
+    /**
+     * The failure goes INSIDE the strip, not into a toast.
+     *
+     * `showActionFailedToast` says "that didn't go through" and nothing else — which is right for
+     * an action whose cause the seller cannot act on, and wrong here: the likely failure is
+     * Cloudinary refusing a format, and its own sentence ("format not supported") is the one thing
+     * that tells him what to do next. It also belongs beside the two buttons he just pressed rather
+     * than in a corner of the screen.
+     */
+    function showError(message: string): void {
+      const row = section!.querySelector<HTMLElement>('.order-invoice-error')
+        ?? section!.appendChild(Object.assign(document.createElement('p'), {
+          className: 'order-invoice-error mt-1.5 text-[0.72rem] font-semibold [color:var(--color-danger)]',
+        }));
+      row.setAttribute('role', 'alert');
+      row.textContent = message;
+    }
+
+    async function send(mode: 'upload' | 'handover', documentUrl?: string): Promise<void> {
+      const res = await fetch('/api/seller/order-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, mode, documentUrl }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json() as { invoice?: OrderInvoiceRowState };
+      section!.outerHTML = orderInvoiceRowHtml(data.invoice ?? null, deliveryMethod, invoiceRowLabels());
+      bindInvoiceRow(card, orderId);
+    }
+
+    section.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-invoice-mode]');
+      if (!btn) return;
+
+      if (btn.dataset.invoiceMode === 'handover') {
+        btn.setAttribute('disabled', '');
+        send('handover').catch(() => { btn.removeAttribute('disabled'); showError(tt('orderInvoiceError')); });
+        return;
+      }
+
+      // The picker is created per click and never kept: a file input left in the card is one more
+      // thing the card's own re-render has to remember to clear.
+      const picker = document.createElement('input');
+      picker.type = 'file';
+      // ⚠️ IMAGES ONLY, and this is a real limit rather than a preference. The unsigned Cloudinary
+      // preset the dashboard uploads through is an IMAGE preset (`cloudinary.ts`), so a PDF is
+      // rejected at the provider. A photo of a paper invoice — the case this was built for — is an
+      // image and works today. Widening it to PDF is a change in the Cloudinary console, not here.
+      picker.accept = 'image/*';
+      picker.addEventListener('change', async () => {
+        const file = picker.files?.[0];
+        if (!file) return;
+        const label = btn.textContent;
+        btn.setAttribute('disabled', '');
+        btn.textContent = tt('orderInvoiceUploading');
+        try {
+          const cfg = document.getElementById('upload-config');
+          const url = await cloudinaryUpload(file, cfg?.dataset.cloud ?? '', cfg?.dataset.preset ?? '');
+          await send('upload', url);
+        } catch (err) {
+          btn.removeAttribute('disabled');
+          if (label) btn.textContent = label;
+          // Cloudinary's own sentence where there is one ("format not supported"), because the
+          // seller can act on that and cannot act on "try again".
+          showError(err instanceof Error && err.message ? err.message : tt('orderInvoiceError'));
+        }
+      });
+      picker.click();
+    });
+  }
+
   function bindOrderCard(card: HTMLElement): void {
     if (card.dataset.bound === '1') return;
     card.dataset.bound = '1';
@@ -144,6 +245,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     const copyBtn       = card.querySelector<HTMLButtonElement>('.order-copy-track');
     const orderId       = card.dataset.orderId ?? '';
     const storeSlug     = card.dataset.storeSlug ?? '';
+
+    bindInvoiceRow(card, orderId);
 
     // Notes: a per-store LIST of private notes, managed independently of the
     // status/tracking save — each add / edit / delete is its own note-only PATCH
@@ -618,6 +721,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     paymentStatus: Order['paymentStatus'];
     paidAt?: string;
     deliveredAt?: string;
+    /** Whether the seller has already provided the buyer's invoice. Rides with the page
+     *  (`/api/seller/orders`) so the strip is right in the first paint rather than after a
+     *  correction. Absent on an order placed before this surface existed — same as "not yet". */
+    invoice?: OrderInvoiceRowState | null;
   }): string {
     const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
     const color    = colorMap[o.shippingStatus] ?? '#888';
@@ -649,7 +756,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // Header layout mirrors the SSR card in seller/dashboard.astro exactly — a
     // 3-column grid below 640px OF THE CARD (container query) and the desktop
     // row above it. Keep the two in sync; the comment there explains why.
-    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-payout="${esc(orderPayoutFilterValueOf(o))}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-delivery-method="${esc(storeSub.deliveryMethod ?? '')}" data-payout="${esc(orderPayoutFilterValueOf(o))}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
         <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? `<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="${esc(tt('orderNewLabel'))}"></span>` : ''}</span>
@@ -720,6 +827,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             <button class="order-save-btn btn btn--sm btn--accent" type="button">${esc(tt('orderSave'))}</button>
           </div>
           <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">${esc(tt('orderSaved'))}</p>
+          ${orderInvoiceRowHtml(o.invoice ?? null, storeSub.deliveryMethod, invoiceRowLabels())}
           ${(CANCELLABLE_FROM as readonly string[]).includes(o.shippingStatus) ? `<button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>${esc(tt('orderCancel'))}</button>` : ''}
         </div>
       </div>

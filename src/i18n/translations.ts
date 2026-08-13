@@ -1368,6 +1368,19 @@ export const translations = {
       orderSave: 'שמור',
       orderSaved: 'נשמר ✓',
       orderCancel: 'ביטול הזמנה',
+      // The buyer's invoice is the SELLER's to issue — the platform only records that he did, and
+      // the copy has to say that in one clause rather than explain the tax position (terms.astro
+      // carries that). Two handover strings because a parcel and a self-pickup are different acts.
+      orderInvoice: 'חשבונית לקונה',
+      orderInvoiceHint: 'החשבונית באחריותך. העלה אותה, או סמן שנמסרה.',
+      orderInvoiceOwed: 'טרם סופקה',
+      orderInvoiceUpload: 'העלאת חשבונית',
+      orderInvoiceHandedShip: 'צורפה לחבילה',
+      orderInvoiceHandedPickup: 'נמסרה באיסוף',
+      orderInvoiceUploaded: 'זמינה לקונה',
+      orderInvoiceView: 'צפייה',
+      orderInvoiceUploading: 'מעלה…',
+      orderInvoiceError: 'לא נשמר — נסו שוב',
       // The order card's own strings. They were written straight into the markup
       // in BOTH renderers (the SSR card and the client rebuild), so an English
       // dashboard served an English shell around a Hebrew order card.
@@ -1780,6 +1793,11 @@ export const translations = {
       // total reads as items + משלוח − הנחה instead of a number that just looks too low.
       orderDiscount: 'הנחה',
       trackingNumber: 'מספר מעקב',
+      // Shown ONLY when the seller uploaded a file. There is deliberately no "no invoice yet" line:
+      // the document is the seller's to issue and very often travels in the parcel, so an absence
+      // here means nothing the buyer can act on and would read as the platform reporting a fault.
+      invoiceLabel: 'חשבונית',
+      invoiceView: 'הצגה',
       menuBtn: 'פתח תפריט',
       closeDrawer: 'סגור תפריט',
       navAriaLabel: 'ניווט אזור אישי',
@@ -2942,6 +2960,16 @@ export const translations = {
       orderSave: 'Save',
       orderSaved: 'Saved ✓',
       orderCancel: 'Cancel order',
+      orderInvoice: 'Buyer invoice',
+      orderInvoiceHint: 'The invoice is yours to issue. Upload it, or mark it handed over.',
+      orderInvoiceOwed: 'Not provided yet',
+      orderInvoiceUpload: 'Upload invoice',
+      orderInvoiceHandedShip: 'In the parcel',
+      orderInvoiceHandedPickup: 'Given at pickup',
+      orderInvoiceUploaded: 'Available to the buyer',
+      orderInvoiceView: 'View',
+      orderInvoiceUploading: 'Uploading…',
+      orderInvoiceError: 'Not saved — try again',
       orderNewLabel: 'New order',
       orderNewCount: '{n} new orders',
       orderProductsOne: 'One product',
@@ -3310,6 +3338,8 @@ export const translations = {
       orderTotalAll: 'Order total',
       orderDiscount: 'Discount',
       trackingNumber: 'Tracking number',
+      invoiceLabel: 'Invoice',
+      invoiceView: 'View',
       menuBtn: 'Open menu',
       closeDrawer: 'Close menu',
       navAriaLabel: 'Personal area navigation',
