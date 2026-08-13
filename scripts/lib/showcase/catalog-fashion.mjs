@@ -64,10 +64,10 @@ export const FASHION_PRODUCTS = [
   { n: 'מכנסי דגמ״ח', sub: 'מכנסיים', d: 'גזרה רחבה עם כיסי צד גדולים ובד עמיד. נוח, ובעיקר שורד.', c: 1, p: 259, w: 600, v: 'apparel', s: "loose fit cargo trousers in washed olive" },
   { n: 'מכנסיים קצרים מחויטים', sub: 'מכנסיים', d: 'שורט באורך מעל הברך עם קפל קדמי וחגורת בד. מסודר בלי להיות רשמי.', c: 1, p: 179, w: 300, v: 'apparel', s: 'tailored shorts in sand beige with a front pleat' },
   { n: 'מכנסי טרנינג עם גומי', sub: 'מכנסיים', d: 'פוטר רך עם גומי בקרסול וכיסי רוכסן. יושבים טוב גם בלי חגורה.', c: 1, p: 199, w: 480, v: 'apparel', s: 'tapered jogger sweatpants in dark heather grey with zip pockets' },
-  { n: 'ז׳קט חולצה מרופד', sub: 'מעילים וז׳קטים', d: 'שאקט בבד עבה עם ריפוד דק וכיסי חזה. השכבה שמחליפה מעיל רוב השנה.', c: 1, p: 389, w: 880, v: 'apparel', s: 'a padded shirt jacket (shacket) in tobacco brown with chest pockets' },
-  { n: 'ז׳קט בומבר קליל', sub: 'מעילים וז׳קטים', d: 'בומבר בבד קל עם גומי בשרוול, מתקפל לתיק בלי להתקמט.', c: 1, p: 349, w: 640, v: 'apparel', s: "a lightweight bomber jacket in deep navy" },
-  { n: 'ז׳קט ג׳ינס מכופתר', sub: 'מעילים וז׳קטים', d: 'ז׳קט דנים עם כיסי חזה וכפתורי מתכת, בגזרה מודרנית קצת יותר רחבה.', c: 1, p: 339, w: 800, v: 'apparel', s: "a men's denim trucker jacket in dark wash" },
-  { n: 'מעיל פוך קצר', sub: 'מעילים וז׳קטים', d: 'מעיל פוך קל במיוחד שמתקפל לשקית שמגיעה איתו. חם הרבה מעל למשקל שלו.', c: 1, p: 449, w: 720, v: 'apparel', s: 'a lightweight quilted puffer jacket in slate blue' },
+  { n: 'ז׳קט חולצה מרופד', sub: 'מעילים וז׳קטים', sub2: 'ז׳קטים', d: 'שאקט בבד עבה עם ריפוד דק וכיסי חזה. השכבה שמחליפה מעיל רוב השנה.', c: 1, p: 389, w: 880, v: 'apparel', s: 'a padded shirt jacket (shacket) in tobacco brown with chest pockets' },
+  { n: 'ז׳קט בומבר קליל', sub: 'מעילים וז׳קטים', sub2: 'ז׳קטים', d: 'בומבר בבד קל עם גומי בשרוול, מתקפל לתיק בלי להתקמט.', c: 1, p: 349, w: 640, v: 'apparel', s: "a lightweight bomber jacket in deep navy" },
+  { n: 'ז׳קט ג׳ינס מכופתר', sub: 'מעילים וז׳קטים', sub2: 'ז׳קטים', d: 'ז׳קט דנים עם כיסי חזה וכפתורי מתכת, בגזרה מודרנית קצת יותר רחבה.', c: 1, p: 339, w: 800, v: 'apparel', s: "a men's denim trucker jacket in dark wash" },
+  { n: 'מעיל פוך קצר', sub: 'מעילים וז׳קטים', sub2: 'מעילים', d: 'מעיל פוך קל במיוחד שמתקפל לשקית שמגיעה איתו. חם הרבה מעל למשקל שלו.', c: 1, p: 449, w: 720, v: 'apparel', s: 'a lightweight quilted puffer jacket in slate blue' },
   { n: 'סט פיג׳מה כותנה', sub: 'בית וספורט', d: 'מכנס ארוך וחולצה מכופתרת מכותנה נושמת. מרגיש כמו סוף השבוע.', c: 1, p: 189, w: 460, v: 'apparel', s: "a cotton pyjama set in soft striped grey" },
   { n: 'גופיית ספורט נושמת', sub: 'בית וספורט', d: 'בד טכני שמייבש מהר עם תפרים שטוחים שלא משפשפים. לריצה ולחדר כושר.', c: 1, p: 89, w: 130, v: 'apparel', s: 'a breathable sports tank top in slate grey' },
   // Twelve rows added 2026-08-13 at the owner's request. The men's shelf was the smallest of the
@@ -85,7 +85,7 @@ export const FASHION_PRODUCTS = [
   { n: 'קרדיגן מכופתר', sub: 'סריגים', d: 'סריג מכופתר עם כיסים אמיתיים, נלבש פתוח או סגור.', c: 1, p: 359, w: 560, v: 'apparel', s: 'a buttoned cardigan in oatmeal with patch pockets' },
   { n: 'מכנסי פשתן משוחררים', sub: 'מכנסיים', d: 'פשתן בגזרה רחבה עם גומי חלקי במותן. מכנס הקיץ שאפשר גם לצאת בו.', c: 1, p: 269, w: 380, v: 'apparel', s: 'relaxed wide-leg linen trousers in stone, worn by a cropped male figure' },
   { n: 'מכנסי חליפה מחויטים', sub: 'מכנסיים', d: 'קפל קדמי וגזרה ישרה שנופלת נקי על הנעל.', c: 1, p: 349, w: 460, v: 'apparel', s: 'tailored pleated trousers in dark grey with a clean break at the shoe' },
-  { n: 'מעיל טרנץ׳ ארוך לגבר', sub: 'מעילים וז׳קטים', d: 'טרנץ׳ באורך מתחת לברך מבד דוחה מים קליל, עם חגורה שאפשר לקשור או להתעלם ממנה.', c: 1, p: 749, w: 1_100, v: 'apparel', s: 'a long lightweight trench coat in classic beige, worn open by a cropped male figure' },
+  { n: 'מעיל טרנץ׳ ארוך לגבר', sub: 'מעילים וז׳קטים', sub2: 'מעילים', d: 'טרנץ׳ באורך מתחת לברך מבד דוחה מים קליל, עם חגורה שאפשר לקשור או להתעלם ממנה.', c: 1, p: 749, w: 1_100, v: 'apparel', s: 'a long lightweight trench coat in classic beige, worn open by a cropped male figure' },
   { n: 'מכנסי שחייה קצרים', sub: 'בית וספורט', d: 'בד שמתייבש מהר עם כיס רשת ורוכסן אחורי. נראה טוב גם מחוץ למים.', c: 1, p: 159, w: 180, v: 'apparel', s: 'quick-dry swim shorts in a bold coral and cream stripe' },
 
   // ── הנעלה (c:2) ────────────────────────────────────────────────────────────
