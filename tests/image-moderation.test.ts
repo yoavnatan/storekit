@@ -41,13 +41,20 @@ describe('what the app does with a moderation verdict', () => {
     expect(moderationRefusal({ moderation: [{ status: 'aborted', kind: 'webpurify' }] })).toBeTruthy();
   });
 
-  it('refuses a pending or queued one rather than storing a URL that will not render', () => {
-    // Manual moderation parks an asset in `pending` and Cloudinary does not deliver it until a
-    // person approves. Treating that as "probably fine" would put an invisible image on a product
-    // page. See the module header on why an automatic add-on is the only supported configuration.
+  it('lets a pending or queued one through — only an explicit NO stops a seller', () => {
+    // The case that decides whether this feature is usable at all. Cloudinary's docs point both
+    // ways on whether the verdict arrives in the upload response or later via `notification_url`;
+    // if it is the latter, EVERY upload comes back `pending`, and refusing that would mean no
+    // seller could add a photo from the moment the add-on is switched on. The ambiguity is resolved
+    // toward the recoverable failure — see the module header, and GO_LIVE §2.6 for the webhook this
+    // leaves open.
     for (const status of ['pending', 'queued']) {
-      expect(moderationRefusal({ moderation: [{ status, kind: 'manual' }] })).toBeTruthy();
+      expect(moderationRefusal({ moderation: [{ status, kind: 'aws_rek' }] })).toBeNull();
     }
+    // …but a rejection sitting beside a pending one is still a rejection.
+    expect(moderationRefusal({
+      moderation: [{ status: 'pending', kind: 'webpurify' }, { status: 'rejected', kind: 'aws_rek' }],
+    })).toBeTruthy();
   });
 
   it('ignores an entry with no readable status instead of guessing', () => {
