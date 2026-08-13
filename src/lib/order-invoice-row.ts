@@ -29,6 +29,7 @@ export interface OrderInvoiceRowLabels {
   handedPickup: string;
   uploaded: string;
   view: string;
+  undo: string;
 }
 
 const CLS = {
@@ -39,6 +40,7 @@ const CLS = {
   done: 'order-invoice-state inline-flex items-center gap-1.5 font-semibold [color:var(--color-success)]',
   owed: 'order-invoice-state [color:var(--color-muted)]',
   link: 'order-invoice-link font-semibold [color:var(--color-primary)] hover:underline',
+  undo: 'order-invoice-action [color:var(--color-muted)] bg-transparent border-0 p-0 cursor-pointer hover:underline',
   hint: 'order-invoice-hint block mt-1.5 text-[0.72rem] [color:var(--color-muted)]',
 };
 
@@ -94,6 +96,15 @@ export function orderInvoiceChipHtml(state: OrderInvoiceRowState | null, label: 
   );
 }
 
+/**
+ * The way back out of a settled state, and it earns its place: the two buttons sit side by side, so
+ * a mis-tap on "צורפה לחבילה" is easy and its result — a claim the platform will repeat to a buyer
+ * who asks — is not something a seller should have to live with. Muted and last in the row, because
+ * it is the exit and not the action.
+ */
+const undoHtml = (label: string): string =>
+  `<button type="button" class="${CLS.undo}" data-invoice-mode="clear">${esc(label)}</button>`;
+
 export function orderInvoiceRowHtml(
   state: OrderInvoiceRowState | null,
   delivery: DeliveryMethod | null | undefined,
@@ -107,9 +118,10 @@ export function orderInvoiceRowHtml(
     // pinned server-side (`buyer-invoice.ts`), so this is the second layer rather than the only one.
     body =
       `<span class="${CLS.done}">${CHECK}${esc(labels.uploaded)}</span>` +
-      `<a class="${CLS.link}" href="${esc(state.documentUrl)}" target="_blank" rel="noopener noreferrer">${esc(labels.view)}</a>`;
+      `<a class="${CLS.link}" href="${esc(state.documentUrl)}" target="_blank" rel="noopener noreferrer">${esc(labels.view)}</a>` +
+      undoHtml(labels.undo);
   } else if (state?.mode === 'handover') {
-    body = `<span class="${CLS.done}">${CHECK}${esc(handedLabel)}</span>`;
+    body = `<span class="${CLS.done}">${CHECK}${esc(handedLabel)}</span>` + undoHtml(labels.undo);
   } else {
     body =
       `<span class="${CLS.owed}">${esc(labels.owed)}</span>` +

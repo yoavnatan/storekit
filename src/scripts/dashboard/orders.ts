@@ -142,6 +142,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       handedPickup: tt('orderInvoiceHandedPickup'),
       uploaded: tt('orderInvoiceUploaded'),
       view: tt('orderInvoiceView'),
+      undo: tt('orderInvoiceUndo'),
     };
   }
 
@@ -177,7 +178,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       row.textContent = message;
     }
 
-    async function send(mode: 'upload' | 'handover', documentUrl?: string): Promise<void> {
+    async function send(mode: 'upload' | 'handover' | 'clear', documentUrl?: string): Promise<void> {
       const res = await fetch('/api/seller/order-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -190,7 +191,17 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       // about exactly the state that has now changed. Left behind it says "still owed" over an
       // invoice the seller has just provided — on the collapsed card, where he will not open it to
       // find out otherwise.
-      if (data.invoice?.mode) card.querySelector('.order-invoice-chip')?.remove();
+      // The chip lives in the card HEADER, outside the section just replaced, and it is a claim about
+      // exactly the state that changed — so it has to move in BOTH directions. Left behind after a
+      // settle it says "still owed" over a provided invoice; not restored after an undo it says
+      // "provided" over one that is owed again, which is the same lie the other way round.
+      const chip = card.querySelector('.order-invoice-chip');
+      if (data.invoice?.mode) chip?.remove();
+      else if (!chip) {
+        const host = card.querySelector('.order-note-chip')?.parentElement ?? card.querySelector('.order-card__header');
+        host?.insertAdjacentHTML('beforeend', orderInvoiceChipHtml(null, tt('orderInvoiceChip')));
+        initInfoTooltips(card);
+      }
       bindInvoiceRow(card, orderId);
     }
 
@@ -198,9 +209,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-invoice-mode]');
       if (!btn) return;
 
-      if (btn.dataset.invoiceMode === 'handover') {
+      const chosen = btn.dataset.invoiceMode;
+      if (chosen === 'handover' || chosen === 'clear') {
         btn.setAttribute('disabled', '');
-        send('handover').catch(() => { btn.removeAttribute('disabled'); showError(tt('orderInvoiceError')); });
+        send(chosen).catch(() => { btn.removeAttribute('disabled'); showError(tt('orderInvoiceError')); });
         return;
       }
 

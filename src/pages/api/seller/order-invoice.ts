@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { markBuyerInvoiceProvided, type BuyerInvoiceMode } from '../../../lib/invoicing/buyer-invoice.js';
+import { markBuyerInvoiceProvided, clearBuyerInvoiceProvided, type BuyerInvoiceMode } from '../../../lib/invoicing/buyer-invoice.js';
 import { getOrderById, orderBelongsToStore } from '../../../lib/orders.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getSellerById } from '../../../lib/seller-auth.js';
@@ -34,7 +34,8 @@ interface Body {
   documentUrl?: unknown;
 }
 
-const isMode = (v: unknown): v is BuyerInvoiceMode => v === 'upload' || v === 'handover';
+type Action = BuyerInvoiceMode | 'clear';
+const isMode = (v: unknown): v is Action => v === 'upload' || v === 'handover' || v === 'clear';
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
@@ -46,6 +47,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const { orderId, mode, documentUrl } = read.value ?? {};
   if (typeof orderId !== 'string' || !orderId) return json({ error: 'Missing orderId' }, 400);
   if (!isMode(mode)) return json({ error: 'Invalid mode' }, 400);
+
+  // Undo. There is no backfill branch below it on purpose: an order with no row was never settled,
+  // so there is nothing to take back and a 404 is the honest answer rather than a row invented in
+  // order to immediately mean "owed".
+  if (mode === 'clear') {
+    const cleared = await clearBuyerInvoiceProvided(sellerId, orderId);
+    return cleared ? json({ ok: true, invoice: cleared }) : json({ error: 'Not found' }, 404);
+  }
 
   const url = typeof documentUrl === 'string' ? documentUrl : null;
   let state = await markBuyerInvoiceProvided(sellerId, orderId, { mode, documentUrl: url });

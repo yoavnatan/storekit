@@ -1394,6 +1394,7 @@ export const translations = {
       orderInvoiceHandedPickup: 'נמסרה באיסוף',
       orderInvoiceUploaded: 'זמינה לקונה',
       orderInvoiceView: 'צפייה',
+      orderInvoiceUndo: 'ביטול סימון',
       orderInvoiceUploading: 'מעלה…',
       orderInvoiceError: 'לא נשמר — נסו שוב',
       // The order card's own strings. They were written straight into the markup
@@ -3041,6 +3042,7 @@ export const translations = {
       orderInvoiceHandedPickup: 'Given at pickup',
       orderInvoiceUploaded: 'Available to the buyer',
       orderInvoiceView: 'View',
+      orderInvoiceUndo: 'Undo',
       orderInvoiceUploading: 'Uploading…',
       orderInvoiceError: 'Not saved — try again',
       orderNewLabel: 'New order',
