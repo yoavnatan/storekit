@@ -127,6 +127,39 @@ describe('an order that predates the invoice row', () => {
   });
 });
 
+describe('undoing a settlement', () => {
+  it('puts the invoice back to owed, with no settlement time left behind', async () => {
+    const orderId = await makePaidOrder(slug);
+    await POST(ctx(sellerId, { orderId, mode: 'handover' }));
+    expect((await getBuyerInvoiceForOrder(orderId))[0].providedAt).not.toBeNull();
+
+    const res = await POST(ctx(sellerId, { orderId, mode: 'clear' }));
+    expect(res.status).toBe(200);
+
+    const [state] = await getBuyerInvoiceForOrder(orderId);
+    expect(state.status).toBe('pending');
+    expect(state.mode).toBeNull();
+    expect(state.documentUrl).toBeNull();
+    // A kept timestamp would make the NEXT settlement report the moment of the mistake.
+    expect(state.providedAt).toBeNull();
+  });
+
+  it("cannot undo another seller's order", async () => {
+    const orderId = await makePaidOrder(slug);
+    await POST(ctx(sellerId, { orderId, mode: 'handover' }));
+    const intruder = await makeSeller();
+
+    expect((await POST(ctx(intruder, { orderId, mode: 'clear' }))).status).toBe(404);
+    expect((await getBuyerInvoiceForOrder(orderId))[0].mode).toBe('handover');
+  });
+
+  it('answers 404 for an order that was never settled, and invents no row', async () => {
+    const orderId = await makePaidOrder(slug);
+    expect((await POST(ctx(sellerId, { orderId, mode: 'clear' }))).status).toBe(404);
+    expect(await getBuyerInvoiceForOrder(orderId)).toHaveLength(0);
+  });
+});
+
 describe('the ordinary guards', () => {
   it('rejects a signed-out caller', async () => {
     const orderId = await makePaidOrder(slug);

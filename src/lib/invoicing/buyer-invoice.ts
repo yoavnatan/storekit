@@ -122,7 +122,8 @@ export function isStoredDocumentUrl(url: string): boolean {
  *
  * Re-settling is allowed and deliberate: a seller who ticked "handed over" and later uploads the
  * file should end with the file. `issued_at` is left at the FIRST settlement (`COALESCE`) because it
- * answers "when did this stop being outstanding", which the correction does not change.
+ * answers "when did this stop being outstanding", which the correction does not change — and it is
+ * `clearBuyerInvoiceProvided` that nulls it, because an undo DOES change that answer.
  */
 export async function markBuyerInvoiceProvided(
   sellerId: string,
@@ -193,6 +194,38 @@ export async function getBuyerInvoiceForOrder(orderId: string): Promise<BuyerInv
     [orderId],
   );
   return found.map(toState);
+}
+
+/**
+ * Undo a settlement — back to owed, as if the button had never been pressed.
+ *
+ * **Reversible on purpose, and it is not a money action.** The two buttons sit next to each other,
+ * so "צורפה לחבילה" is one slip of the finger away from an upload, and what the row holds is a
+ * CLAIM the seller made rather than a document anyone issued: nothing was sent, nothing was charged,
+ * and no tax document exists that would need a credit note to cancel. A one-way button on a claim
+ * that easy to make wrong is a trap.
+ *
+ * `issued_at` is cleared rather than kept. It answers "when did this stop being outstanding", and
+ * after an undo the honest answer is that it has not — a retained timestamp would make the NEXT
+ * settlement report the moment of the mistake.
+ *
+ * Same seller-scoped WHERE as the settle path, for the same reason: the order id comes from a client.
+ */
+export async function clearBuyerInvoiceProvided(
+  sellerId: string,
+  orderId: string,
+): Promise<BuyerInvoiceState | null> {
+  if (!isUuid(sellerId) || !isUuid(orderId)) return null;
+  const updated = await firstRow<StateRow>(
+    `UPDATE invoice_documents
+        SET status = 'pending', provider = NULL, document_url = NULL, issued_at = NULL
+      WHERE order_id = $1
+        AND seller_id = $2
+        AND direction = 'seller_to_buyer'
+  RETURNING order_id, status, provider, document_url, issued_at`,
+    [orderId, sellerId],
+  );
+  return updated ? toState(updated) : null;
 }
 
 /**
