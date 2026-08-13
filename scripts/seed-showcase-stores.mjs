@@ -246,14 +246,21 @@ async function seed(db, clean) {
     categories.push(...storeCategories);
 
     const banner = manifest[`${spec.slug}:__banner`];
-    // NO generated logo, deliberately (owner, 2026-08-12, with a screenshot). A generated "minimal
-    // emblem" comes back as a PHOTOGRAPH of an object — a terracotta arch, a leaf — and the avatar
-    // renders in a circle, so it arrived as a cropped photo of a thing rather than a mark, soft at
-    // 56px and softer at 32. `StoreAvatar` already draws a proper monogram when `profileImage` is
-    // absent: a letter on the store's own gradient, vector, exact at every size and on every DPR,
-    // and unmistakably a logo. That is strictly better here and it costs nothing to generate.
-    // A real seller still uploads their own; this is only what a platform-owned store defaults to.
-    const logo = undefined;
+    /**
+     * The generated logo IS used now (owner, 2026-08-13), and this reverses the note that stood
+     * here — correctly, because what it rejected is not what exists.
+     *
+     * The old objection was real: asked for "a minimal abstract emblem", the model returned a
+     * PHOTOGRAPH of an object — a terracotta arch, a leaf — which in a 56px circle read as a smudge
+     * rather than a mark, so `StoreAvatar`'s vector monogram was strictly better. What changed is
+     * the ASK. Each store now specifies a mark and a MEDIUM of its own (`identity.mjs`'s
+     * `logoConcept` + `logoStyle`): a flat vector crescent, a painted panel photographed flat, a
+     * rendered monogram, a brush drawing. Those are pictures OF a logo, and they hold up small.
+     *
+     * `StoreAvatar` keeps its monogram fallback for any store without one, so a real seller who
+     * uploads nothing still gets something deliberate.
+     */
+    const logo = manifest[`${spec.slug}:__logo`];
 
     stores.push({
       id: storeId,
