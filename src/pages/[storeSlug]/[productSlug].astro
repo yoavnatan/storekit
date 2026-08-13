@@ -15,6 +15,7 @@ import { offerShippingDetails } from '../../lib/shipping.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
+import ShareMenu from '../../components/ShareMenu.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
@@ -148,6 +149,24 @@ const initialStatusText =
 // unclaimed domain — the exact thing the marker exists to prevent. That URL is `noindex` below, so
 // it never competes with the seller's domain for the organic result.
 const productUrl = adLanding ? adLandingUrl(shopStore, productSlug) : productCanonicalUrl(shopStore, productSlug);
+// What a shopper forwards is always the seller's own canonical — never the ad landing above. That
+// URL exists so Merchant Center resolves the item on a domain the ad account can claim; passed
+// around by hand it would spread the ad marker through WhatsApp and attribute organic traffic to
+// a campaign that never ran.
+const shareUrl = productCanonicalUrl(shopStore, productSlug);
+/**
+ * The picture that arrives with the link in WhatsApp/Facebook/Telegram — i.e. the whole of what
+ * "a shared product looks good" means, since every one of them builds its card from `og:image`
+ * and none of them resizes anything.
+ *
+ * It used to be `images[0]`, the raw upload: a seller's 4000px phone photo, several megabytes,
+ * handed to scrapers that give up on a slow or oversized fetch and fall back to a link with no
+ * picture at all. `cdnSrc(…, 1200)` is a ceiling, never an upscale (lib/cdn.ts), and 1200 is
+ * deliberately one of `LIGHTBOX_WIDTHS` — `image-derive.ts` pre-renders exactly that rung when the
+ * seller saves, so the scraper hits a warm transform instead of paying Cloudinary's ~0.8s cold
+ * render inside its own timeout.
+ */
+const ogImage = images[0] ? cdnSrc(images[0], 1200) : storeImageUrl(shopStore, OG_IMAGE_FORMAT);
 const storeCanonical = storeCanonicalUrl(shopStore);
 // Resolved against the store's OWN origin — on a verified custom domain that is the seller's
 // domain, and a picture served from a domain the page does not claim is a mismatch a validator
@@ -278,7 +297,7 @@ const pmI18n = {
 <BaseLayout
   title={`${product.name} — ${shopStore.name}`}
   description={product.description || shopStore.tagline || `${product.name} at ${shopStore.name}`}
-  image={images[0] ?? storeImageUrl(shopStore, OG_IMAGE_FORMAT)}
+  image={ogImage}
   type="product"
   jsonLd={jsonLd}
   canonical={productUrl}
@@ -601,9 +620,12 @@ const pmI18n = {
               )
             }
 
-                <!-- Wishlist (available even when out of stock) -->
+                <!-- Wishlist + share — the two things you can do with a product without buying it,
+                     so they share a row and the same quiet text treatment. Both stay available
+                     when the product is out of stock. -->
+                <div class="flex items-center gap-5 self-start">
                 <button type="button" id="wishlist-btn"
-                        class="flex items-center gap-2 text-sm font-medium self-start"
+                        class="flex items-center gap-2 text-sm font-medium"
                         style="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0.25rem 0;visibility:hidden"
                         data-wishlist-slug={product.slug}
                         data-wishlist-name={product.name}
@@ -641,6 +663,17 @@ const pmI18n = {
                     btn.style.visibility = 'visible';
                   })();
                 </script>
+                <ShareMenu
+                  url={shareUrl}
+                  title={`${product.name} · ${shopStore.name}`}
+                  lang={lang}
+                  contentType="product"
+                  storeId={shopStore.id}
+                  itemId={product.id}
+                  buttonClass="flex items-center gap-2 text-sm font-medium transition-colors duration-150 hover:text-[color:var(--color-text)]"
+                  buttonStyle="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0.25rem 0"
+                />
+                </div>
           </div>
         </div>
       </div>
