@@ -254,35 +254,3 @@ export async function getBuyerInvoiceUrls(orderIds: readonly string[]): Promise<
   );
   return new Map(found.map((r) => [r.order_id, r.document_url]));
 }
-
-/**
- * Orders whose invoice is still outstanding, oldest first.
- *
- * ⚠️ **Read by tests only today, and that is deliberate rather than an oversight.** The obvious next
- * step is a red dot for "you owe invoices", and a dot in this app is a CHAIN — `seller-alerts.ts`
- * runs on every page a signed-in seller loads, and a new state there has to dot the avatar, the
- * account dropdown, the store row and the tab, or it is a dead end. That is a decision about the
- * alert surface, not a detail of this one, so it is not taken here.
- *
- * What the seller has instead is the strip on the order itself, which says "טרם סופקה" on exactly
- * the orders it is true of — the reminder standing on the row it is about rather than as a banner
- * over the screen.
- */
-export async function getOutstandingBuyerInvoices(
-  sellerId: string,
-  limit = 50,
-): Promise<{ orderId: string; ageDays: number }[]> {
-  if (!isUuid(sellerId)) return [];
-  const found = await rows<{ order_id: string; age_days: string | number }>(
-    `SELECT d.order_id, EXTRACT(DAY FROM now() - d.created_at)::int AS age_days
-       FROM invoice_documents d
-      WHERE d.seller_id = $1
-        AND d.direction = 'seller_to_buyer'
-        AND d.status = 'pending'
-        AND d.order_id IS NOT NULL
-   ORDER BY d.created_at ASC
-      LIMIT $2`,
-    [sellerId, limit],
-  );
-  return found.map((r) => ({ orderId: r.order_id, ageDays: Number(r.age_days) || 0 }));
-}

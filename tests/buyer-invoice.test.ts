@@ -15,7 +15,6 @@ import {
   markBuyerInvoiceProvided,
   getBuyerInvoiceStates,
   getBuyerInvoiceForOrder,
-  getOutstandingBuyerInvoices,
   isStoredDocumentUrl,
 } from '../src/lib/invoicing/buyer-invoice.js';
 import type { Order } from '../src/lib/orders.js';
@@ -82,7 +81,7 @@ describe('only the seller who owns the order can settle it', () => {
   });
 
   it("answers null for ANOTHER seller's order, and leaves it untouched", async () => {
-    const { sellerId, orderId } = await owedInvoice();
+    const { orderId } = await owedInvoice();
     const intruder = await makeSeller();
 
     expect(await markBuyerInvoiceProvided(intruder, orderId, { mode: 'handover' })).toBeNull();
@@ -92,7 +91,6 @@ describe('only the seller who owns the order can settle it', () => {
     const [state] = await getBuyerInvoiceForOrder(orderId);
     expect(state.status).toBe('pending');
     expect(state.mode).toBeNull();
-    expect((await getOutstandingBuyerInvoices(sellerId)).map((o) => o.orderId)).toContain(orderId);
   });
 
   it('answers null for an order that does not exist — same answer, nothing probeable', async () => {
@@ -187,11 +185,11 @@ describe('the dashboard reads a page at a time', () => {
     expect((await getBuyerInvoiceStates(intruder, [orderId])).size).toBe(0);
   });
 
-  it('drops an order out of the outstanding list once it is settled', async () => {
+  it('stops being owed once it is settled', async () => {
     const { sellerId, orderId } = await owedInvoice();
-    expect((await getOutstandingBuyerInvoices(sellerId)).map((o) => o.orderId)).toContain(orderId);
+    expect((await getBuyerInvoiceForOrder(orderId))[0].status).toBe('pending');
 
     await markBuyerInvoiceProvided(sellerId, orderId, { mode: 'handover' });
-    expect((await getOutstandingBuyerInvoices(sellerId)).map((o) => o.orderId)).not.toContain(orderId);
+    expect((await getBuyerInvoiceForOrder(orderId))[0].status).toBe('issued');
   });
 });
