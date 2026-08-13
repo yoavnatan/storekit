@@ -1377,9 +1377,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 
 .product-card__footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: stretch;
+  /* The price sets `line-height: 1`, so its box hugs the glyphs and the optical
+     gap under it reads smaller than the number here — 0.4rem left the price
+     leaning on the cart pill. Both renderers below used to carry this column
+     layout inline, the same magic number twice; it lives here now so the two
+     cannot drift apart on the next spacing change. */
+  gap: 0.55rem;
   /* Pin the price/cart block to the bottom of the card body. In an equal-height
      grid row a single 2-line product name used to push only ITS OWN button
      down while 1-line neighbours kept theirs up near the name — buttons at
