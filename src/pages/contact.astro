@@ -19,13 +19,34 @@
 export const prerender = false;
 
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ReportForm from '../components/ReportForm.astro';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId } from '../lib/stores.js';
-import { getLang } from '../i18n/index.js';
+import { getLang, getT } from '../i18n/index.js';
+import { safeRedirectPath, safeRefererPath } from '../lib/safe-redirect.js';
 import { store as platform } from '../config/store.config.js';
 
 const lang = getLang(Astro.cookies);
+const t = getT(lang);
 const dir = lang === 'he' ? 'rtl' : 'ltr';
+
+// Which page the report is about — CAPTURED, never asked for, which is the whole reason this is a
+// form and not a mail (ReportForm.astro). Two sources, in order:
+//   `?report=<kind>&from=<path>` — an explicit "report this" link, which also preselects the kind;
+//   the `Referer` otherwise — the footer's plain `/contact` link is on every page of the site, so
+//   the page someone left to come and report is already known without adding a fifth footer link
+//   or hanging a query string off one that every crawler follows.
+// Both are request-supplied values this page RENDERS, so both go through the shared validators
+// (Hard rules → Security review gate); a referrer from another origin degrades to nothing.
+const reportKind = Astro.url.searchParams.get('report') ?? 'fault';
+const cameFrom = safeRedirectPath(Astro.url.searchParams.get('from'), '')
+  || safeRefererPath(Astro.request.headers.get('referer'), Astro.url.origin, '');
+// Arriving here from this page itself says nothing about what is being reported.
+const reportPage = cameFrom.split('?')[0] === '/contact' ? '' : cameFrom;
+// The response now differs by `Referer`, so it must say so. Nothing caches an SSR page in front of
+// this app today — which is exactly why the header goes in now rather than after a CDN is put there
+// and one visitor is shown the page another visitor came from.
+Astro.response.headers.set('Vary', 'Referer');
 
 const sellerId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sellerId;
@@ -69,12 +90,21 @@ const description = lang === 'he'
     </h2>
     <p style="max-width:60ch">
       {lang === 'he'
-        ? 'לכל דבר אחר — פתיחת חנות, תקלה באתר, דיווח על תוכן, או פנייה שהמוכר לא נענה לה:'
-        : 'For anything else — opening a store, a fault on the site, reporting content, or an enquiry a seller has not answered:'}
+        ? 'לפתיחת חנות, שאלה על הפלטפורמה, או פנייה שהמוכר לא נענה לה:'
+        : 'To open a store, ask about the platform, or follow up on an enquiry a seller has not answered:'}
     </p>
     <p style="margin-top:0.5rem;font-weight:600">
       <a href={`mailto:${email}`}>{email}</a>
     </p>
+
+    {/* A fault or a content report leaves the mailto and gets a form, because those are the two
+        kinds of message that are worthless without the context a person cannot type — see
+        ReportForm.astro. The address above stays for everything else: a business enquiry does not
+        want a ticket, and losing the published address is itself a Merchant Center risk (see this
+        page's header). */}
+    <h2 id="report" class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">{t.report.title}</h2>
+    <p class="muted" style="max-width:60ch">{t.report.lede}</p>
+    <ReportForm kind={reportKind} page={reportPage} />
 
     <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
       {lang === 'he' ? 'פרטי המפעיל' : 'Operator'}
