@@ -17,6 +17,7 @@ import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
 import { orderInvoiceRowHtml, orderInvoiceChipHtml, type OrderInvoiceRowState } from '../../lib/order-invoice-row.js';
+import { initInfoTooltips } from '../tooltip.js';
 import { cloudinaryUploadInvoice, INVOICE_ACCEPT_ATTR } from './cloudinary.js';
 
 // Orders tab: order cards (accordion, status/tracking/notes/cancel), toolbar
@@ -185,6 +186,11 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json() as { invoice?: OrderInvoiceRowState };
       section!.outerHTML = orderInvoiceRowHtml(data.invoice ?? null, deliveryMethod, invoiceRowLabels());
+      // The chip lives in the card HEADER, outside the section just replaced, and it is a claim
+      // about exactly the state that has now changed. Left behind it says "still owed" over an
+      // invoice the seller has just provided — on the collapsed card, where he will not open it to
+      // find out otherwise.
+      if (data.invoice?.mode) card.querySelector('.order-invoice-chip')?.remove();
       bindInvoiceRow(card, orderId);
     }
 
@@ -245,6 +251,11 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     const storeSlug     = card.dataset.storeSlug ?? '';
 
     bindInvoiceRow(card, orderId);
+    // The invoice chip explains itself through the site's own floating tooltip rather than the
+    // browser's `title` bubble — which arrives a second late, in the OS font, ignoring the page's
+    // direction. Bound per card because a card can arrive three ways (server paint, filter/sort
+    // rebuild, new-order insert), and `initInfoTooltips` is idempotent per element.
+    initInfoTooltips(card);
 
     // Notes: a per-store LIST of private notes, managed independently of the
     // status/tracking save — each add / edit / delete is its own note-only PATCH
