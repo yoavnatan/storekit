@@ -58,6 +58,8 @@ const PUBLIC_BY_DESIGN: Record<string, string> = {
     'writes the language cookie of whoever asked, and that is the whole blast radius',
   'src/pages/api/log-client-error.ts':
     'a browser reporting its own crash cannot be asked to authenticate; it is rate-limited instead (error-log-client-rate)',
+  'src/pages/api/report.ts':
+    'a visitor reporting a fault or improper content — requiring an account means the only reports that arrive are from people who were already fine, and a guest whose checkout broke is exactly who has something to say. It is rate-limited per address (rate-limit.ts#reportRules) and it takes NOTHING from the body about who the sender is: the role, the id and the store are resolved server-side from the session and the path (user-reports.ts)',
 };
 
 // Admin routes that legitimately answer before the cookie is valid.
