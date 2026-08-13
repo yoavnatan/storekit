@@ -24,7 +24,21 @@ const {
   productCurrency = 'ILS',
   canonical: canonicalOverride,
   storeOwned = false,
+  siteName,
 } = Astro.props;
+
+/**
+ * Whose SITE this page belongs to — the second thing Google reads when deciding what name to print
+ * above a result (after `WebSite` structured data; developers.google.com/search/docs/appearance/
+ * site-names, checked 2026-08-13), and what Facebook prints on a shared card.
+ *
+ * It said `Dezabin` on every page including a seller's own verified domain, which is the same
+ * half-applied sovereignty the title carried: a store answering on `acme.co.il` was declaring
+ * somebody else's site as its own. On the platform path it makes no difference to Google — a
+ * subdirectory cannot have a site name at all — so this costs nothing there and is the difference
+ * that matters on the domain the seller paid for.
+ */
+const resolvedSiteName = (storeOwned && siteName) || store.name;
 
 /**
  * The tab, the search result and the shared card all read this one string.
@@ -72,7 +86,7 @@ const isDefaultOgImage = image === store.social.ogImage;
 
 <!-- Open Graph -->
 <meta property="og:type" content={type} />
-<meta property="og:site_name" content={store.name} />
+<meta property="og:site_name" content={resolvedSiteName} />
 <meta property="og:title" content={fullTitle} />
 <meta property="og:description" content={description} />
 <meta property="og:url" content={canonical} />

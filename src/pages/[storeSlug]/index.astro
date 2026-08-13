@@ -284,9 +284,9 @@ const mapsUrl = showAddress && shopStore.address ? googleMapsSearchUrl(shopStore
 const ogImage = storeImageUrl(shopStore, OG_IMAGE_FORMAT, platform.url);
 const storeLogo = resolveStoreImage(shopStore, 'logo');
 
-const jsonLd = {
-  '@context': 'https://schema.org',
+const storeNode = {
   '@type': 'Store',
+  '@id': `${storeUrl}#store`,
   name: shopStore.name,
   description: shopStore.description || shopStore.tagline || `Shop at ${shopStore.name}`,
   url: storeUrl,
@@ -295,6 +295,49 @@ const jsonLd = {
   ...(showAddress && shopStore.address ? { address: shopStore.address } : {}),
   ...(showHours && shopStore.hours ? { openingHours: formatStoreHoursSchema(shopStore.hours) } : {}),
 };
+
+/**
+ * The name Google prints ABOVE the result, and the only markup that can set it.
+ *
+ * Emitted ONLY for a store on its own verified domain, and that is Google's rule rather than our
+ * caution: site names are supported at the domain and subdomain level and **not** for a
+ * subdirectory (checked against developers.google.com/search/docs/appearance/site-names,
+ * 2026-08-13). So `dezabin.co.il/<slug>` shows OUR name above every store's result no matter what
+ * is declared here, and nothing in this file can change that — the seller's own domain is the
+ * whole mechanism by which a store stops appearing as a page inside the platform. Declaring a
+ * WebSite node on the platform path would be a claim Google discards, on the page type we have
+ * the most of.
+ *
+ * Placed on the store's FRONT page only, for the same reason: Google reads it from the home page
+ * of the domain, which on a custom host is exactly this page and never a category or page 2. The
+ * ad landing is excluded because it is a platform URL by construction (custom-domain.ts) — a
+ * WebSite node claiming the seller's domain has no business on it.
+ *
+ * `publisher` points at the store's own node rather than at the platform: on that domain the
+ * publisher IS the shop. No `SearchAction` — Google retired the sitelinks search box in 2023, so
+ * it would be markup for a feature that no longer renders.
+ */
+const declaresOwnSite = hasActiveCustomDomain(shopStore) && !selectedCategory && currentPage === 1 && !adLanding;
+
+const jsonLd = declaresOwnSite
+  ? {
+      '@context': 'https://schema.org',
+      '@graph': [
+        storeNode,
+        {
+          '@type': 'WebSite',
+          '@id': `${storeUrl}#website`,
+          name: shopStore.name,
+          url: storeUrl,
+          // The document's own `<html lang>` (BaseLayout), not a constant: this page is rendered
+          // in whichever language the visitor's cookie asked for, and structured data that
+          // contradicts the element it sits in is worse than none.
+          inLanguage: lang,
+          publisher: { '@id': `${storeUrl}#store` },
+        },
+      ],
+    }
+  : { '@context': 'https://schema.org', ...storeNode };
 
 /**
  * A category view describes itself as a CollectionPage, not as the Store.

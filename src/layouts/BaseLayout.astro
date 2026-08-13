@@ -239,7 +239,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
       heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
-    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} storeOwned={storeOwnsThisPage} />
+    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} storeOwned={storeOwnsThisPage} siteName={storeName} />
     {dlJson && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];window.dataLayer.push(${dlJson});`} />}
     {platformGtm && <script is:inline set:html={gtmHeadScript(platformGtm)} />}
     {platformPixel && <script is:inline set:html={metaPixelScript(platformPixel)} />}
