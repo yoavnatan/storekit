@@ -4,6 +4,7 @@ import { store as platform } from '../config/store.config.js';
 import { getStoreByCustomDomain } from '../lib/stores.js';
 import { isPlatformHost } from '../lib/custom-domain.js';
 import { stripTrailingSlashes } from '../lib/url-base.js';
+import { siteIsHiddenFromSearch } from '../lib/site-mode.js';
 
 // robots.txt — SSR, because it is HOST-DEPENDENT and used not to be.
 //
@@ -52,7 +53,27 @@ function body(sitemaps: readonly string[], feedAllowed: boolean): string {
   ].join('\n');
 }
 
+/**
+ * The whole site closed to crawling — `SITE_NOINDEX=1` (`lib/site-mode.ts`).
+ *
+ * Deliberately host-independent: it answers before the custom-domain branch below, so a seller's
+ * domain is covered by the same decision rather than staying open through a different code path.
+ *
+ * **No `Sitemap:` line, on purpose.** A sitemap is an invitation to crawl the URLs in it, and one
+ * published next to `Disallow: /` is a document that argues with itself; engines have been observed
+ * to take the invitation. If nothing may be crawled, nothing is offered.
+ *
+ * And this file is only half the switch — `Seo.astro` puts `noindex` on every page for the same
+ * reason. `Disallow` stops a crawl; `noindex` is what removes a page that was ALREADY taken, and a
+ * page that is disallowed can never be re-read to discover it is now noindex. Both, always.
+ */
+function closedToCrawlers(): string {
+  return 'User-agent: *\nDisallow: /\n';
+}
+
 export async function GET(ctx: APIContext): Promise<Response> {
+  if (siteIsHiddenFromSearch()) return txt(closedToCrawlers());
+
   const host = (ctx.request.headers.get('host') ?? '').toLowerCase().replace(/:\d+$/, '').trim();
 
   // A seller's own verified domain: its sitemap is the one `sitemap-content.xml` builds for THAT
