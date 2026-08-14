@@ -142,7 +142,18 @@ export const translations = {
         'הכול מובנה מראש',
         'להתחיל למכור',
       ],
-      inviteHint: 'חנות משלכם, שקונים מגיעים אליה דרך המתחם, עם ממשק פרסום, SEO ומשלוחים מובנים.',
+      // The owner's own sentence, tightened twice (2026-08-14). "כולל … מערכת
+      // משלוחים מובנית" became a bare list: "מובנית" is feminine singular, so it
+      // agreed with the shipping system alone and left the other three items
+      // uncovered, and "כולל" was doing the work "הכל במקום אחד" already does at
+      // the end. "כלי פרסום" over "ממשק פרסום" for the same reason the short
+      // form was banned upstairs — it is a tool the seller operates, and nothing
+      // about it can be read as free ad budget.
+      //
+      // ⚠️ It now names סליקה, which is a capability the platform does not have
+      // wired yet (GO_LIVE §3). That is fine only because payments are a launch
+      // BLOCKER — this line must not reach a live site before they work.
+      inviteHint: 'חנות עצמאית עם חשיפה לקהל המתחם — כלי פרסום, קידום במנועי חיפוש, סליקה ומשלוחים, הכל במקום אחד.',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -2052,7 +2063,7 @@ export const translations = {
         'Everything built in',
         'Start selling',
       ],
-      inviteHint: 'A store of your own, that shoppers reach through the stores beside it, with a built-in ads manager, SEO and shipping.',
+      inviteHint: 'A store of your own, found by the shoppers the place brings — ad tools, search visibility, payments and shipping, all in one place.',
     },
     demo: {
       badge: 'Example store',

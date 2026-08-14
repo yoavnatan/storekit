@@ -46,12 +46,43 @@
      by side average out to grey, which is exactly the monotone this replaces.
      Each is dark enough that the 1.2px line-art drawn in the same hue clears
      3:1 against that hue's strongest tile wash (22%) — do not lighten one
-     without re-checking, the gold is the tight one at 3.07:1. */
+     without re-checking, the gold is the tight one at 3.07:1.
+
+     ⚠️ These five are ALSO `MARK_HUES` (lib/store-mark.ts) — the colour every
+     store's generated identity mark and favicon is built from — and
+     tests/store-image.test.ts pins the two lists equal, in this order. Editing
+     one of these hexes re-colours the identity of every existing store. That is
+     why the invitation cards got their own list below instead of taking one of
+     these. */
   --color-tile-blue: #2563c9;
   --color-tile-orange: #c2620d;
   --color-tile-green: #158a56;
   --color-tile-gold: #a8760a;
   --color-tile-red: #c33a2c;
+
+  /* The placeholder "open a store" cards (lib/placeholder-art.ts). Same
+     mechanism as the tile hues above — one per card, rotated by index — and a
+     separate list on purpose (owner, 2026-08-14): a store MARK is an identity,
+     where red is simply one store's colour, but an invitation card is asking
+     for something, and a red wash on it reads as a warning rather than as a
+     product. Sharing the list would have meant re-colouring every existing
+     store to change the invitation.
+
+     Seven, because 7 is coprime with 2, 3 and 4 — the /stores grid's column
+     counts — which is what stops one colour running down a whole column at some
+     viewport width. Ordered so row-neighbours differ in temperature, since four
+     of the seven are cool.
+
+     Same contrast rule as above, measured 2026-08-14 against each hue's
+     strongest wash (22%): orange 3.14, blue 4.12, green 3.29, gold 3.08,
+     navy 8.23, sky 3.40, slate 4.38. Do not add a hue without measuring it. */
+  --color-invite-orange: #c2620d;
+  --color-invite-blue: #2563c9;
+  --color-invite-green: #158a56;
+  --color-invite-gold: #a8760a;
+  --color-invite-navy: #2a3547;
+  --color-invite-sky: #0e7fa8;
+  --color-invite-slate: #5a6478;
 
   --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
 
