@@ -150,7 +150,12 @@ const taglineTone =
     // this class list is utilities and a stylesheet cannot address those. The
     // header needs to nudge THIS element and nothing else near it.
     'dz-logo',
-    'inline-flex flex-col gap-[0.05em] align-middle',
+    // No `gap-[…]` here. The wordmark→tagline gap is `TAGLINE.gapEm`, applied through the `style`
+    // attribute below for the same reason the SVG's height is: Tailwind scans source TEXT for
+    // class names, so a value interpolated from a module is never emitted and the class silently
+    // does nothing. It was a literal in this list AND in scripts/generate-brand-assets.mjs, which
+    // meant the site header and the mail header could drift apart with nothing to notice it.
+    'inline-flex flex-col align-middle',
     // The Hebrew line is narrower than the mark and hangs off the start edge by
     // design, so the column aligns to start. The English line is WIDER than the
     // mark, which makes it the widest child and therefore the column's width —
@@ -161,7 +166,7 @@ const taglineTone =
     isHe || !tagline ? 'items-start' : 'items-center',
     className,
   ]}
-  style={size ? `font-size:${size}` : undefined}
+  style={`row-gap:${TAGLINE.gapEm}em${size ? `;font-size:${size}` : ''}`}
 >
   {/* `max-w-none` is not decoration: reset.css sets `svg { max-width:100% }`,
       which clamps a fixed-size inline SVG inside a narrow box — the same trap
