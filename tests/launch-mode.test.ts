@@ -228,16 +228,21 @@ describe('placeholder tile colour', () => {
     }
   });
 
-  it('keeps the four tightest pairs at least three slots apart', () => {
-    // These four are the pairs that share a corner of the wheel — two of them by
-    // design, being the same angle at a different depth (tokens.css says why).
-    // They are the ones a shopper could read as one card repeated.
+  it('never puts the four tightest pairs side by side, and separates them by depth', () => {
+    // These four share a corner of the wheel — two of them by design, being the
+    // same angle at a different depth (tokens.css says why). They are the ones a
+    // shopper could read as one card repeated.
+    //
+    // TWO slots, not three: three was the guarantee at seven hues and eleven
+    // cannot hold it — four of them sit in the green corner, and four items in an
+    // 11-cycle whose other seven must also stay non-adjacent leave gaps of two.
+    // The depth assertion below is what carries the pairs the ordering cannot.
     const PAIRS = [/orange|clay/, /green\)|fresh/, /green\)|teal/, /blue|indigo/];
     for (const pair of PAIRS) {
       const at = TILE_HUES.map((h, i) => (pair.test(h) ? i : -1)).filter((i) => i >= 0);
       expect(at).toHaveLength(2);
       const gap = Math.abs(at[0]! - at[1]!);
-      expect(Math.min(gap, TILE_HUES.length - gap)).toBeGreaterThanOrEqual(3);
+      expect(Math.min(gap, TILE_HUES.length - gap)).toBeGreaterThanOrEqual(2);
     }
     // And within each of those pairs the two must differ in depth, which is what
     // separates the two that are the same hue angle.
@@ -247,13 +252,15 @@ describe('placeholder tile colour', () => {
     }
   });
 
-  it('opens the invitation run with the yellow', () => {
+  it('opens the invitation run with the yellow, then the olive', () => {
     // Owner, 2026-08-14: the first open slot is the one being asked to act on, so
     // it carries the most positive colour in the set. It only holds because the
     // callers pass a 0-based index — see the note at the StorePlaceholderCard
     // call sites; offsetting by the store count made this depend on how many
     // stores happened to exist.
     expect(pickCardHue(0)).toBe('var(--color-invite-yellow)');
+    // And the olive second — his call too, over the sky that was here.
+    expect(pickCardHue(1)).toBe('var(--color-invite-olive)');
   });
 
   it('leaves at most one repeat across a full directory grid', () => {
