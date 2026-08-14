@@ -596,6 +596,22 @@ export const translations = {
       productShow: 'הצג בחנות',
       productHiddenChip: 'מוסתר',
       productHiddenToast: 'המוצר הוסתר מהחנות ולא יוצג לקונים.',
+      // ── "מוצג בכרטיסייה" — the seller's pick for the homepage store card ──
+      // The label names the PLACE, not the honour: "מוצר מוביל" would be a rank
+      // the platform never gives, while a seller can check "כרטיסיית החנות
+      // בעמוד הבית" against something they can go and look at. The owner asked
+      // for the where to be spelled out (2026-08-14: "צריך גם להדגיש שזה מוצג
+      // בכרטיסיית החנות בדף הבית אולי בטולטיפ או באינפו") — hence the hint,
+      // which says both what it does AND what happens when nothing is chosen,
+      // because "the newest fill the rest" is the part that stops a seller
+      // thinking they have to pick four.
+      productFeature: 'הצג בכרטיסיית החנות',
+      productUnfeature: 'הסר מכרטיסיית החנות',
+      productFeaturedChip: 'בכרטיסייה',
+      productFeatureHint: 'עד {n} מוצרים שיופיעו בכרטיסיית החנות בעמוד הבית. מה שלא נבחר מושלם מהמוצרים החדשים.',
+      productFeaturedToast: 'המוצר יופיע בכרטיסיית החנות בעמוד הבית.',
+      productUnfeaturedToast: 'המוצר הוסר מכרטיסיית החנות.',
+      productFeatureLimit: 'אפשר לבחור עד {n} מוצרים. הסר אחד כדי לבחור אחר.',
       productShownToast: 'המוצר חזר להיות גלוי בחנות.',
       stockAlertBadge: 'מוצרים עם מלאי הדורש טיפול',
       bulkDeleteTitle: 'מחיקת מוצרים',
@@ -2425,6 +2441,13 @@ export const translations = {
       productShow: 'Show in store',
       productHiddenChip: 'Hidden',
       productHiddenToast: 'Product hidden from the store — buyers won\'t see it.',
+      productFeature: 'Show on the store card',
+      productUnfeature: 'Remove from the store card',
+      productFeaturedChip: 'On the card',
+      productFeatureHint: 'Up to {n} products shown on your store card on the home page. Any slot you don\'t pick is filled with your newest.',
+      productFeaturedToast: 'This product will show on your store card on the home page.',
+      productUnfeaturedToast: 'Removed from the store card.',
+      productFeatureLimit: 'You can pick up to {n} products. Remove one to pick another.',
       productShownToast: 'Product is visible in the store again.',
       stockAlertBadge: 'Products with stock needing attention',
       bulkDeleteTitle: 'Delete products',

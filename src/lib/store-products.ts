@@ -98,6 +98,20 @@ export interface StoreProduct {
    *  unlike a stock shortage — excluded from the Products tab's stock-alert count so an
    *  intentional take-down never nags (CURRENT_TASK.md, סשן א׳). */
   hidden?: boolean;
+  /**
+   * Seller's choice of what the homepage STORE CARD shows — up to
+   * `STORE_PREVIEW_SLOTS` products per store (`setProductFeatured` enforces the cap).
+   *
+   * Absent is not "no" but "not chosen", and the difference is the whole design:
+   * `getStorePreviews` puts flagged products first and then FILLS the remaining slots with the
+   * newest, so a store that never touches this looks exactly as it did before and a brand-new
+   * store looks full from its first upload — before its owner has discovered the feature exists.
+   * A flag that emptied the card until four were set would be a worse default than no feature.
+   *
+   * It affects the card only, never the store's own grid: inside the shop the shopper is
+   * browsing a catalogue and expects it ordered, not merchandised.
+   */
+  featured?: boolean;
   /** Seller-set markdown on this product — percent or ₪ off, optionally scheduled, with a
    *  seller-controlled storefront badge. `price` stays the ORIGINAL (it is what gets struck
    *  through); the price to display/charge is always `discounts.ts#resolvePrice`, never this
@@ -122,7 +136,7 @@ export interface StoreProduct {
  */
 const COLUMNS = `p.id, p.store_id, p.slug, p.name, p.description, p.price_agorot, p.stock, p.sku, p.brand,
     p.weight_grams,
-    p.category_id, p.hidden, p.blocked, p.tags, p.specs, p.variants, p.seller_note,
+    p.category_id, p.hidden, p.blocked, p.featured, p.tags, p.specs, p.variants, p.seller_note,
     p.discount_type, p.discount_percent, p.discount_amount_agorot, p.discount_show_badge,
     to_char(p.discount_starts_at, 'YYYY-MM-DD') AS discount_starts_at,
     to_char(p.discount_ends_at, 'YYYY-MM-DD') AS discount_ends_at,
@@ -162,6 +176,7 @@ interface ProductRow {
   category_id: string | null;
   hidden: boolean;
   blocked: boolean;
+  featured: boolean;
   tags: string[] | null;
   specs: ProductSpec[] | null;
   variants: ProductVariant[] | null;
@@ -235,6 +250,7 @@ function toProduct(row: ProductRow): StoreProduct {
   if (variantImages) product.variantImages = variantImages;
   if (row.blocked) product.blocked = true;
   if (row.hidden) product.hidden = true;
+  if (row.featured) product.featured = true;
   const discount = toDiscount(row);
   if (discount) product.discount = discount;
   if (row.seller_note) product.sellerNote = row.seller_note;
@@ -718,6 +734,78 @@ export async function getVisibleProductRefsByStoreIds(storeIds: readonly string[
  *  draw. Fetching the maximum once beats asking the layout first. */
 export const STORE_PREVIEW_SLOTS = 4;
 
+/** What `setProductFeatured` answers with — `false` plus a reason beats a bare `false`, because the
+ *  two failures need different words in the UI: one is "you already picked four", the other is
+ *  "this isn't your product". */
+export type FeatureResult =
+  | { ok: true; featured: boolean; count: number }
+  | { ok: false; reason: 'not-found' | 'limit'; count: number };
+
+/**
+ * Flag or unflag a product for its store's homepage card, enforcing the per-store cap.
+ *
+ * ONE statement does the check and the write, and that is deliberate rather than tidy. The obvious
+ * shape — count, compare, update — is a read-then-write race between two dashboard tabs, or between
+ * two clicks on a slow connection, and it lets a store past the cap with nothing in the logs to say
+ * so. Instead the `UPDATE` carries its own condition and the affected-row count IS the answer,
+ * exactly as `decrementStock` does for inventory (AI_INSTRUCTIONS → Inventory integrity). Zero rows
+ * means either the cap held or nothing needed doing, and the follow-up read tells those apart.
+ *
+ * Turning a flag OFF is never capped, so it takes the plain path — a seller must always be able to
+ * undo, even from a state the cap would now refuse to re-enter.
+ *
+ * The cap is `STORE_PREVIEW_SLOTS` because that is how many the card draws: allowing a fifth would
+ * be a choice the seller makes and never sees, which is worse than refusing it.
+ *
+ * `storeId` is matched in the WHERE clause rather than read off the product — an id is not a
+ * permission (memory `project_checkout_idempotency_ownership`), and what the caller has proved is
+ * the STORE. A product id from another shop simply matches no row.
+ */
+export async function setProductFeatured(
+  storeId: string,
+  productId: string,
+  featured: boolean,
+): Promise<FeatureResult> {
+  if (!isUuid(storeId) || !isUuid(productId)) return { ok: false, reason: 'not-found', count: 0 };
+
+  const countFeatured = async (): Promise<number> => {
+    const [row] = await rows<{ n: string }>(
+      'SELECT count(*)::text AS n FROM store_products WHERE store_id = $1 AND featured',
+      [storeId],
+    );
+    return Number(row?.n ?? 0);
+  };
+
+  const updated = featured
+    ? await rows<{ id: string }>(
+        `UPDATE store_products SET featured = true
+          WHERE id = $1 AND store_id = $2 AND NOT featured
+            AND (SELECT count(*) FROM store_products WHERE store_id = $2 AND featured) < $3
+        RETURNING id`,
+        [productId, storeId, STORE_PREVIEW_SLOTS],
+      )
+    : await rows<{ id: string }>(
+        `UPDATE store_products SET featured = false
+          WHERE id = $1 AND store_id = $2 AND featured
+        RETURNING id`,
+        [productId, storeId],
+      );
+
+  const count = await countFeatured();
+  if (updated.length) return { ok: true, featured, count };
+
+  // Nothing changed, and there are two innocent reasons for that: the product is already in the
+  // state asked for (a double click, or two tabs), or it is not this store's. Only the cap is a
+  // real refusal, and it can only be the explanation when the flag was being turned ON.
+  const [own] = await rows<{ featured: boolean }>(
+    'SELECT featured FROM store_products WHERE id = $1 AND store_id = $2',
+    [productId, storeId],
+  );
+  if (!own) return { ok: false, reason: 'not-found', count };
+  if (own.featured === featured) return { ok: true, featured, count };
+  return { ok: false, reason: 'limit', count };
+}
+
 /** What a store card needs from its catalogue, and nothing else. */
 export interface StorePreview {
   /** Whether the store has ANY visible product. The homepage drops a store with none, and a store
@@ -750,6 +838,19 @@ export interface StorePreview {
  * Products with no photo are excluded from the ranking, not ranked and then filtered: the old code
  * mapped every product to its first image and dropped the blanks *before* slicing, so a store whose
  * three newest products have no photos still shows its next three that do.
+ *
+ * `featured DESC` LEADS the ordering and `created_at DESC` still follows it, which is the whole
+ * contract of the feature (2026-08-14, added after the owner found that NOTHING chose these
+ * thumbnails — not him, not a seller): a seller's picks come first and the remaining slots FILL
+ * with the newest rather than being left empty. So a store that has never used the feature is
+ * ordered exactly as it was before, and a store that has flagged one product shows that one plus
+ * its three newest. There is no state in which the feature empties a card, which is what makes it
+ * safe to ship to every existing store at once — and what makes a brand-new store look full from
+ * its first upload, before its owner has discovered any of this.
+ *
+ * A product with no photo cannot lead the card even when flagged, because `WHERE image IS NOT NULL`
+ * runs before the ranking. That is correct rather than incidental: a slot is a picture, and
+ * honouring a flag with a blank tile would spend the seller's choice on nothing.
  */
 export async function getStorePreviews(storeIds: readonly string[], perStore: number): Promise<Map<string, StorePreview>> {
   const ids = [...new Set(storeIds.filter(isUuid))];
@@ -758,14 +859,14 @@ export async function getStorePreviews(storeIds: readonly string[], perStore: nu
 
   const rows_ = await rows<{ store_id: string; images: string[] | null }>(
     `WITH visible AS (
-       SELECT p.id, p.store_id, p.created_at,
+       SELECT p.id, p.store_id, p.created_at, p.featured,
               (SELECT i.url FROM product_images i WHERE i.product_id = p.id ORDER BY i.position LIMIT 1) AS image
          FROM store_products p
         WHERE p.store_id = ANY($1::uuid[]) AND NOT p.hidden AND NOT p.blocked
      ),
      ranked AS (
        SELECT store_id, image,
-              row_number() OVER (PARTITION BY store_id ORDER BY created_at DESC, id) AS rn
+              row_number() OVER (PARTITION BY store_id ORDER BY featured DESC, created_at DESC, id) AS rn
          FROM visible
         WHERE image IS NOT NULL
      )
@@ -912,6 +1013,11 @@ const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }>
   variants: { sql: 'variants = $::jsonb', value: (v) => JSON.stringify(Array.isArray(v) ? v : []) },
   sellerNote: { sql: 'seller_note = $', value: (v) => (v ? String(v) : null) },
   hidden: { sql: 'hidden = $', value: (v) => v === true },
+  // Not reachable through the ordinary product form — `setProductFeatured` owns this column so
+  // the per-store cap is enforced in one place. Listed here anyway because bulk edit and CSV
+  // import both build their updates from this map, and a column they can silently not write is
+  // the kind of gap that is found months later.
+  featured: { sql: 'featured = $', value: (v) => v === true },
   blocked: { sql: 'blocked = $', value: (v) => v === true },
 };
 

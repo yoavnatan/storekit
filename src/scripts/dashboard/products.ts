@@ -2317,6 +2317,58 @@ export function initProductVisibilityToggle(): void {
   });
 }
 
+/**
+ * Reflect a product's store-card pick onto its row — the chip, the row marker and the menu label.
+ *
+ * Its own function for the same reason `applyProductHiddenState` is one: the row is rebuilt from
+ * `ProductData` by the client renderer on sort/filter, so a state written only into the DOM by the
+ * click handler would silently vanish the next time the table re-rendered.
+ */
+function applyProductFeaturedState(productId: string, featured: boolean, i18n: Record<string, string>): void {
+  const row = document.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(productId)}"]`);
+  if (!row) return;
+  row.dataset.featured = featured ? '1' : '';
+  const chip = row.querySelector<HTMLElement>('.product-featured-chip');
+  if (chip) chip.hidden = !featured;
+  const btn = row.querySelector<HTMLElement>('[data-toggle-featured]');
+  if (btn) {
+    btn.dataset.featured = featured ? '1' : '';
+    const label = btn.querySelector<HTMLElement>('.menu-feature-label');
+    if (label) label.textContent = featured ? (i18n.productUnfeature ?? 'הסר מכרטיסיית החנות') : (i18n.productFeature ?? 'הצג בכרטיסיית החנות');
+  }
+}
+
+export function initProductFeatureToggle(): void {
+  document.addEventListener('click', async (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>('[data-toggle-featured]');
+    if (!btn) return;
+    const productId = btn.dataset.toggleFeatured ?? '';
+    const i18n = getDashI18n();
+    const next = btn.dataset.featured !== '1';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/store-product/featured', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId, featured: next }),
+      });
+      const data = await res.json() as { featured?: boolean; count?: number; limit?: number; error?: string };
+      // 409 is the CAP, and it gets its own sentence with the number in it — "שגיאה בשמירה" would
+      // send a seller looking for a bug in something that is working exactly as designed.
+      if (res.status === 409) {
+        showStatus((i18n.productFeatureLimit ?? 'אפשר לבחור עד {n} מוצרים. הסר אחד כדי לבחור אחר.')
+          .replace('{n}', String(data.limit ?? 4)), true);
+        return;
+      }
+      if (!res.ok || typeof data.featured !== 'boolean') { showStatus(data.error ?? (i18n.errorSaving ?? 'שגיאה בשמירה.'), true); return; }
+      applyProductFeaturedState(productId, data.featured, i18n);
+      showStatus(data.featured
+        ? (i18n.productFeaturedToast ?? 'המוצר יופיע בכרטיסיית החנות בעמוד הבית.')
+        : (i18n.productUnfeaturedToast ?? 'המוצר הוסר מכרטיסיית החנות.'));
+    } finally { btn.disabled = false; }
+  });
+}
+
 /** The thumbnail a `.thumb-wrap` shows, for deciding whether a decoded one can be reused. */
 function thumbSrcOf(wrap: HTMLElement): string {
   return wrap.querySelector<HTMLImageElement>('.product-thumb')?.getAttribute('src') ?? '';
