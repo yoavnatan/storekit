@@ -381,6 +381,28 @@ export const SHOWCASE_STORES = [
      * field is what tells this store apart from the other three at a glance in the grid, and a
      * shopper who meets the coloured light on every third product stops seeing it.
      */
+    /**
+     * Products that ALWAYS get the stained-glass light, whatever the hash says (owner, 2026-08-14:
+     * "רוצה לפחות 2 מוצרים עם ויטראז׳ על גבי כרטיסיית חנות כמוצרים לדוגמא").
+     *
+     * These are the four thumbnails the homepage store card draws, and the card takes them by rule
+     * rather than by choice: `getStorePreviews` returns the first image of the four NEWEST visible
+     * products that have a photo. Nothing chooses them — not the owner, not a seller — so a
+     * one-in-nine hash landing on any of them was pure luck, and it did not (0 of 4).
+     *
+     * Naming them here is honest about what it is: the store card is the only picture of this shop
+     * a stranger sees on the homepage, so for a SHOWCASE store — an exhibit, whose whole job is to
+     * show what the platform can look like — it is staged deliberately rather than left to a
+     * `created_at` ordering. Two of the four, not all four, so the card still shows the store's
+     * ordinary graphite field beside it and the coloured light still reads as the exception.
+     *
+     * ⚠️ It is a NAME LIST, so it breaks silently in one specific way: rename either product and
+     * the entry stops matching and simply stops applying. `tests/showcase-catalog-integrity`
+     * fails if a name here is not in the catalog. What it cannot check is whether these are still
+     * the four the card shows — that depends on the seeded `created_at`, which is deterministic
+     * (fixed PRNG seed) but shifts if products are added or removed above them in the catalog.
+     */
+    backdropAccentAlways: ['ז׳קט בלייזר לא מובנה', 'שמלת קיץ פרחונית'],
     backdropAccent:
       'a plain pale limestone wall, softly out of focus, washed by the light of a tall stained-'
       + 'glass window just outside the frame — broad soft pools of cobalt, ruby, amber and '
@@ -399,13 +421,46 @@ export const SHOWCASE_STORES = [
       // shape — it carries two or three more colours inside its own silhouette. Written as flat
       // areas with crisp edges rather than as a gradient, because a gradient is the one thing a
       // 56px circle turns to mud, and `LOGO_NEGATIVE` bans them for that reason anyway.
+      // ── The two crescents faced opposite ways, and the BANNER's is the one that stays ────────
+      // Owner, 2026-08-14: "בבאנר שמת חצי ירח אחד ובלוגו אחד אחר, כל אחד פונה לכיוון אחר, צריך
+      // שיהיה אחיד" — then, on being asked which: "יותר אהבתי את הסהר של הבאנר אז אולי תתאים אותו
+      // ללוגו."
+      //
+      // The cause is worth keeping, because it will recur the next time two pictures share a mark.
+      // The banner was generated WITH the logo attached as a reference, which fixes a shape but
+      // says nothing about its handedness — a reference image constrains what a thing looks like,
+      // not which way round it is drawn, and a crescent is the one shape where those are different
+      // questions. Nothing in either prompt named a direction, so both were free, and they landed
+      // on opposite answers.
+      //
+      // So the direction is now WORDED rather than merely referenced, in the one place that can be
+      // checked by eye — and the reference runs the other way (`logoRefKey`), because the picture
+      // he chose is the banner's.
+      // ── A REFERENCE IMAGE WAS TRIED HERE FIRST AND IS THE WRONG TOOL. DON'T RETRY IT. ────────
+      // `logoRefKey: '__banner'` was set so the avatar could be redrawn from the crescent on the
+      // banner wall. What came back was a soft, blurred copy of the BANNER — the shop, the rail of
+      // clothes, the whole scene — with no mark in it at all, and it cost a Pro image to learn.
+      //
+      // The rule it teaches is worth more than the image: a reference works when the target IS the
+      // reference's subject and shares its medium (שקמה's emblem is the middle of its own banner;
+      // אדנית's lettering is inside its own illustration). It fails when the target is a small
+      // part of a busy photograph AND the output is a different medium — the model reproduces what
+      // it was shown, and "redraw only this fragment, flat" loses to a whole picture.
+      //
+      // Words carry it instead, and they carry the one thing the reference never could anyway:
+      // handedness. A reference fixes what a shape looks like, not which way round it is drawn,
+      // which is exactly how the banner and the logo ended up facing opposite ways with neither
+      // prompt naming a direction.
       'A flat vector logo artwork on a plain solid background — a digital design file, not a '
       + 'photograph, not a 3D render, not a sign on a wall: no perspective, no shadow, no texture, '
-      + 'no mockup. The mark is DEEP INK BLUE, and it is not one flat colour: inside its own shape '
-      + 'it carries two or three accompanying colours — a band of bright cobalt, a sliver of soft '
-      + 'violet, one warm tangerine edge — as clean flat areas divided by crisp straight edges, '
-      + 'never a gradient, never a blend, never a glow. The background is a soft off-white, and '
-      + 'the mark sits alone and generously spaced in the centre of the frame.',
+      + 'no mockup. DIRECTION, and it matters more than anything else here: the crescent\'s solid '
+      + 'body is on the RIGHT and its two tapering horns point to the LEFT, so it opens leftward '
+      + 'like a backwards C — never mirrored, never flipped, never opening to the right. The mark '
+      + 'is DEEP INK BLUE and is not one flat colour: inside its own shape it carries a band of '
+      + 'bright cobalt, a sliver of soft violet and one warm tangerine edge, as clean flat areas '
+      + 'divided by crisp straight edges — never a gradient, never a blend, never a glow. The '
+      + 'background is a soft off-white, and the mark sits alone and generously spaced in the '
+      + 'centre of the frame.',
     address: 'דיזנגוף 112, תל אביב',
     selfPickup: false,
     // Mutually exclusive on purpose: a product carries exactly ONE categoryId, so
@@ -475,10 +530,11 @@ export const SHOWCASE_STORES = [
       // now comes in as a reference image (`bannerRefKey`) so the crescent on the wall is the same
       // crescent, rather than a second, similar moon.
       'Mounted on the wall immediately beside the name — to the right of it, at the same height, '
-      + 'sized to match the letters — is the shop\'s own mark: the crescent moon exactly as it is '
-      + 'drawn in the reference image, same shape, same taper, same flat blocks of blue, cobalt, '
-      + 'violet and tangerine inside it, cut as a solid panel and fixed to the wall. Exactly one '
-      + 'crescent, and it and the name read as one sign together. '
+      + 'sized to match the letters — is the shop\'s own mark: a crescent moon, its solid body on '
+      + 'the right and its two tapering horns pointing to the LEFT, opening leftward. It is deep '
+      + 'ink blue, and inside its own shape it carries flat blocks of bright cobalt, soft violet '
+      + 'and warm tangerine, divided by crisp straight edges. Cut as a solid panel and fixed to '
+      + 'the wall. Exactly one crescent, and it and the name read as one sign together. '
       + 'Both are real, physical signage inside the scene — cut or painted letters mounted on the '
       + 'wall, lit by the same light as everything else and casting its own small shadow, never '
       + 'text laid over the photograph. The letterform is elegant and distinctive, the wordmark of a real '
@@ -487,9 +543,12 @@ export const SHOWCASE_STORES = [
       + 'even-weight, default-looking sans-serif. The letters are a rich DEEP INK BLUE, the same '
       + 'blue as the shop\'s own mark, standing out clearly against the pale wall behind them — '
       + 'never gold, never brass, never metallic, never grey.',
-    /** The logo, as a reference — the crescent on the banner has to BE the crescent on the avatar,
-     *  not a second moon that resembles it. Same mechanism as שקמה's emblem and אדנית's lettering. */
-    bannerRefKey: '__logo',
+    /* `bannerRefKey: '__logo'` stood here and is deliberately GONE (2026-08-14). The banner is now
+       the source of this store's mark and the logo is drawn from it (`logoRefKey`), so pointing the
+       banner back at the logo would close a cycle in which neither picture is authoritative and a
+       regeneration of either could quietly redefine the other. The crescent is therefore described
+       in words in `bannerLettering` — including the direction, which is the thing a reference image
+       never pinned and which is why the two disagreed in the first place. */
     /** Its own region clause, because the shared one names terracotta, olive and clay — and this is
      *  the store that was corrected OFF that palette. With the shared clause it came back as שקמה's
      *  room twice out of two: warm plaster, an olive branch in a clay jug. Israeli-Mediterranean is
@@ -1305,8 +1364,12 @@ function accentFor(store, subject) {
  * the count is MEASURED before a run and named in the commit, the same way `companionFor` records
  * "8 of אדנית's 89".
  */
-function backdropFor(store, subject) {
+function backdropFor(store, subject, name) {
   if (!store.backdropAccent) return store.backdrop;
+  // The named list wins over the hash — see `backdropAccentAlways`. It is checked against the
+  // product's Hebrew NAME rather than its English image subject because the list is written and
+  // read by a person, and the name is what he sees on the card he is talking about.
+  if (name && store.backdropAccentAlways?.includes(name)) return store.backdropAccent;
   return hashOf(`${subject}#stage`) % 9 === 0 ? store.backdropAccent : store.backdrop;
 }
 
@@ -1394,10 +1457,13 @@ export const SAME_ITEM_CLAUSE =
   + 'this reads as a second photograph from a real shoot rather than a copy of the first. Never '
   + 'reproduce the reference image, its angle, its distance or its background.';
 
-export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0]) {
+/** `name` is the product's catalog name (`row.n`) and is only read by `backdropAccentAlways`.
+ *  Optional so that anything generating a one-off prompt without a catalog row still works; the
+ *  hash rule does not need it. */
+export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0], name = '') {
   const life = store.restrained ? RESTRAINED_LIFE_DIRECTION : LIFE_DIRECTION;
   const world = view.key === 'main' && store.backdrop
-    ? `Behind and beneath it: ${backdropFor(store, subject)}.`
+    ? `Behind and beneath it: ${backdropFor(store, subject, name)}.`
     : `${store.artDirection}.${settingFor(store, subject)}${companionFor(store, subject)}${accentFor(store, subject)}`;
   // A gallery view is generated FROM the main image, so it opens by naming that reference — and it
   // drops the colourway, which is already visible in the picture it is being shown.
