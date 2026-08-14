@@ -3,6 +3,8 @@ import type { APIRoute } from 'astro';
 import { getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { resolvePrice } from '../../lib/discounts.js';
+import { normalizeHe } from '../../lib/product-listing.js';
+import { searchableVariantValues } from '../../lib/product-search-text.js';
 
 /**
  * The store header search's product index — every visible product in ONE store,
@@ -41,6 +43,14 @@ type SearchProduct = {
   /** The RAW image URL. The client wraps it in `cdnThumb` for its 56px cell, so
    *  sending a pre-sized URL here would both be longer and defeat that crop. */
   image: string;
+  /** Everything BESIDES the name that this product can be found by — its tags and its searchable
+   *  variant values (product-search-text.ts) — already normalised, and omitted when there is
+   *  nothing. Sent because the dropdown's silence is a claim: server-side search matches a
+   *  product on its colours (migration 0027), so a name-only dropdown would answer "לא נמצאו
+   *  מוצרים" for "צהוב" and then Enter would find three. Normalised HERE and the name left raw so
+   *  the payload carries each string once — the client normalises the name it already has and
+   *  joins the two, which is character-for-character what normalising the whole haystack gives. */
+  find?: string;
 };
 
 function json(data: unknown, status = 200, cache?: string) {
@@ -61,12 +71,14 @@ export const GET: APIRoute = async ({ url }) => {
   const visible = await getVisibleProductsByStoreId(store.id);
   const products: SearchProduct[] = visible.map((p) => {
     const view = resolvePrice(p, store.sale);
+    const find = normalizeHe([...(p.tags ?? []), ...searchableVariantValues(p.variants)].join(' '));
     return {
       slug: p.slug,
       name: p.name,
       price: view.price,
       basePrice: view.isDiscounted ? p.price : undefined,
       image: p.images?.[0] ?? '',
+      ...(find ? { find } : {}),
     };
   });
 

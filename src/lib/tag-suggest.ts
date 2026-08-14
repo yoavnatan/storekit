@@ -67,6 +67,14 @@ function isMeaningfulWord(word: string): boolean {
 // (colour/material/style) — but a size code carries no search meaning, so those
 // are rejected: single/double letter sizes (S/M/L/XL/XXL), OS/one-size/free-size,
 // and anything starting with a digit (numeric sizes 38/42, measurements 20cm).
+//
+// This is NOT the rule for what search matches — that is
+// `product-search-text.ts#isSearchableVariantValue`, which reads `variants` at the source and is
+// wider on purpose (it keeps `XL` and `50ml`, which are things a shopper types even though they
+// are not topics a product is ABOUT). This rule stays narrow because its output is a stored,
+// seller-editable tag that also becomes JSON-LD `keywords`. Since 0027 search no longer depends on
+// this copy, so narrowing it further costs nothing — but widening it would put "XL" in a keywords
+// list, which is what it exists to prevent.
 const SIZE_VALUE_RE = /^(?:x*s|x*l|xxl|m|os|one[\s-]?size|free[\s-]?size)$/i;
 
 function isMeaningfulValue(value: string): boolean {

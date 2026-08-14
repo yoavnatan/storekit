@@ -145,13 +145,20 @@ function declaredColumns() {
         add(table, col[1]);
       }
     }
-    for (const m of sql.matchAll(/ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
-      add(m[1], m[2]);
-    }
-    // A column the migrations later drop is not expected to be there.
-    for (const m of sql.matchAll(/ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
-      byTable.get(m[1].toLowerCase())?.delete(m[2].toLowerCase());
-    }
+    // ADDs and DROPs applied in the order they are WRITTEN, which is why they are collected and
+    // sorted by offset rather than looped one kind at a time. Every ADD before any DROP reads a
+    // file that re-adds a column it just dropped exactly backwards — 0027 drops `search_text` and
+    // re-adds it with a new generation expression, and two passes concluded the column does not
+    // exist, so drift silently stopped checking for it. Two regexes and not one alternation: the
+    // merged pattern is past the complexity the linter allows, and these two are the originals.
+    const adds = [...sql.matchAll(/ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)];
+    const drops = [...sql.matchAll(/ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)];
+    const columnOps = [
+      ...adds.map((m) => ({ at: m.index, apply: () => add(m[1], m[2]) })),
+      // A column the migrations later drop is not expected to be there.
+      ...drops.map((m) => ({ at: m.index, apply: () => byTable.get(m[1].toLowerCase())?.delete(m[2].toLowerCase()) })),
+    ].sort((a, b) => a.at - b.at);
+    for (const op of columnOps) op.apply();
   }
   return byTable;
 }

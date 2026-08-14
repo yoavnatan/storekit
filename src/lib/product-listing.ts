@@ -1,5 +1,6 @@
 import type { StoreProduct } from './store-products.js';
 import { isProductInStock } from './variant-combo.js';
+import { productSearchSource } from './product-search-text.js';
 import { performanceTier, PERFORMANCE_TIERS, DEFAULT_LABEL_THRESHOLDS } from './product-labels.js';
 import { effectivePrice, type StoreSale } from './discounts.js';
 
@@ -89,8 +90,18 @@ export function matchesQueryWords(query: string, haystack: string): boolean {
   return nQuery.split(' ').every((word) => word && nHaystack.includes(word));
 }
 
-function matchesSearch(query: string, name: string, tags: string): boolean {
-  return matchesQueryWords(query, `${name} ${tags.replace(/,/g, ' ')}`);
+/** The haystack is `product-search-text.ts#productSearchSource` and nothing else — the same three
+ *  parts, in the same order, that migration 0027 stores in `search_text` for the platform-wide
+ *  search. A store's own search box and the header's must not disagree about whether a store sells
+ *  something in yellow. */
+function matchesSearch(query: string, product: StoreProduct): boolean {
+  // The empty-query exit is HERE and not only inside `matchesQueryWords`, because the argument is
+  // evaluated first: without it, every product on every store page render builds a haystack —
+  // walking its variant dimensions and regex-testing each option — to answer a question nobody
+  // asked. Most renders of this page carry no `q` at all, and it is the most-indexed page type
+  // here, where time-to-first-byte is a ranking input.
+  if (!query) return true;
+  return matchesQueryWords(query, productSearchSource(product));
 }
 
 /** Single source of truth for category+search+sort — used server-side by both the store page's initial render and the load-more API, so behavior never drifts between the two. */
@@ -101,7 +112,7 @@ export function filterAndSortProducts(products: StoreProduct[], query: ProductLi
 
   const filtered = products.filter((p) => {
     const matchesCategory = !categoryIds || (!!p.categoryId && categoryIds.has(p.categoryId));
-    return matchesCategory && matchesSearch(q, p.name, p.tags?.join(',') ?? '');
+    return matchesCategory && matchesSearch(q, p);
   });
 
   if (sort === 'default') return rankDefault(filtered, query.purchasedUnits ?? {}, query.nowMs ?? Date.now());
