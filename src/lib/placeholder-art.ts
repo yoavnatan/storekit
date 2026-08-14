@@ -108,18 +108,22 @@ export const INVITE_HUES: readonly InviteHue[] = [
   // so it gets the most positive colour in the set. Whatever else moves here,
   // slot 0 stays yellow.
   { token: 'var(--color-invite-yellow)', maxWash: 26, family: 'yellow', ink: 'var(--color-invite-yellow-ink)' },
-  // …AND THE OLIVE IS SECOND, also his call: it was the sky here and he wanted
-  // the muted green in the pair a seller sees first. Reclassified out of the
-  // `yellow` family in the same move — it is a yellow-GREEN, and filing it under
-  // yellow is what would have made this pairing illegal for no visual reason.
-  { token: 'var(--color-invite-olive)', maxWash: 30, family: 'green' },
+  // …AND THE TEAL IS SECOND (owner, 2026-08-14). This slot held the sky, then the
+  // OLIVE — he wanted a green in the pair a seller sees first — and now the two
+  // greens have simply traded places: he saw the teal card and asked for that one
+  // here instead. The olive keeps the teal's old slot, so the set is unchanged and
+  // only the order moved. Both are filed `green` rather than `yellow`: the olive is
+  // a yellow-GREEN, and filing it under yellow is what would have made this pairing
+  // illegal for no visual reason.
+  { token: 'var(--color-invite-teal)', maxWash: 30, family: 'green' },
   { token: 'var(--color-invite-orange)', maxWash: 22, family: 'warm' },
   { token: 'var(--color-invite-green)', maxWash: 22, family: 'green' },
   { token: 'var(--color-invite-sky)', maxWash: 22, family: 'blue' },
-  // 175°, one of the two genuinely free angles. Deeper than the emerald on
-  // purpose — at 22% the two were the same card, which is exactly why a teal was
-  // thrown out of the seven-hue set.
-  { token: 'var(--color-invite-teal)', maxWash: 30, family: 'green' },
+  // The olive, moved down here when the teal took slot 1. The note that used to sit
+  // on this line belongs to the teal above: 175° is one of the two genuinely free
+  // angles, and it is deeper than the emerald on purpose — at 22% the two were the
+  // same card, which is exactly why a teal was thrown out of the seven-hue set.
+  { token: 'var(--color-invite-olive)', maxWash: 30, family: 'green' },
   // The orange's own corner of the wheel, at 34% rather than 22%. Not a second
   // orange: at that depth it reads as clay, and its wash lands ~30 points darker
   // than the orange's on every channel.

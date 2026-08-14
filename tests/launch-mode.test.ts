@@ -252,15 +252,19 @@ describe('placeholder tile colour', () => {
     }
   });
 
-  it('opens the invitation run with the yellow, then the olive', () => {
+  it('opens the invitation run with the yellow, then the teal', () => {
     // Owner, 2026-08-14: the first open slot is the one being asked to act on, so
     // it carries the most positive colour in the set. It only holds because the
     // callers pass a 0-based index — see the note at the StorePlaceholderCard
     // call sites; offsetting by the store count made this depend on how many
     // stores happened to exist.
     expect(pickCardHue(0)).toBe('var(--color-invite-yellow)');
-    // And the olive second — his call too, over the sky that was here.
-    expect(pickCardHue(1)).toBe('var(--color-invite-olive)');
+    // And a green second — his call too, over the sky that was here. Which green is
+    // his as well: it was the olive until 2026-08-14, when he saw the teal card and
+    // asked for the two to trade places. They still both exist, so this pins the
+    // ORDER, which is the only thing that moved.
+    expect(pickCardHue(1)).toBe('var(--color-invite-teal)');
+    expect(pickCardHue(5)).toBe('var(--color-invite-olive)');
   });
 
   it('leaves at most one repeat across a full directory grid', () => {

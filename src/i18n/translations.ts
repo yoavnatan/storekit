@@ -150,10 +150,10 @@ export const translations = {
     launch: {
       inviteLabels: [
         'מתחם חנויות דיגיטלי',
-        'החנות שלך כאן',
+        'בלי להקים אתר',
         'פתיחת חנות',
         'הכול כבר כאן',
-        'בלי להקים אתר',
+        'החנות שלך כאן',
       ],
       /** The four capabilities, as chips in the card's tag row. Nouns only, no verbs and no
        *  adjectives — the row is read at a glance and each word has to survive alone. */
