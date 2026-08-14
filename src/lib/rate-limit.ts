@@ -147,6 +147,36 @@ export function reportRules(ip: string): RateLimitRule[] {
   return [{ bucket: `report:${ip.slice(0, 120)}`, limit: REPORTS_PER_HOUR, windowSec: REPORT_WINDOW_SEC }];
 }
 
+/** Forgot-password requests one address may trigger per window. Well above "I clicked it twice and
+ *  nothing came, let me try again", and low enough that nobody can use the form to bury a seller's
+ *  inbox — which is the real abuse here, since every accepted request sends a real person a mail. */
+const RESET_REQUESTS_PER_WINDOW = 5;
+
+/**
+ * "שכחתי סיסמה" (`/seller/forgot-password`).
+ *
+ * **Successes are counted, like `reportRules` and unlike everything above** — and for the same
+ * reason. There is no secret to get wrong here: every well-formed request is "valid", and a flood
+ * of valid ones is the abuse. Two different abuses, in fact, which is why there are two buckets and
+ * why the identity one is the tighter:
+ *
+ *   identity (`reset:<email>`) — mail-bombing ONE seller, and probing whether an address is
+ *                                registered by watching what the form does. Neither is a
+ *                                per-source behaviour; both are per-target.
+ *   origin   (`reset-ip:<ip>`) — walking a list of addresses from one place, which the identity
+ *                                bucket cannot see at all (one row each, one attempt each).
+ *
+ * Keyed on the address the caller TYPED, deliberately, and not on whether it belongs to anybody:
+ * the page must behave identically for a registered and an unregistered address
+ * (`lib/password-reset.ts`), and a limiter that only counts real accounts is itself the oracle.
+ */
+export function passwordResetRules(email: string, ip: string): RateLimitRule[] {
+  return [
+    { bucket: `reset:${identityKey(email)}`, limit: RESET_REQUESTS_PER_WINDOW, windowSec: WINDOW_SEC },
+    { bucket: `reset-ip:${ip}`, limit: ORIGIN_LIMIT, windowSec: WINDOW_SEC },
+  ];
+}
+
 export interface RateVerdict {
   allowed: boolean;
   /** Whole seconds until the blocking window expires; 0 when allowed. The UI turns this into

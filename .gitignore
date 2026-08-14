@@ -73,3 +73,6 @@ showcase-prompts.csv
 
 # `showcase:images --batch` scratch: request JSONLs and multi-hundred-MB results files.
 .showcase-batch/
+
+# `npm run email:preview` output — rendered HTML of every mail, regenerated on demand.
+.email-preview/

@@ -103,6 +103,7 @@ if (Astro.request.method === 'POST') {
           <input class="input" type="password" name="password" required autocomplete="current-password" />
         </label>
         <button class="btn" type="submit">{t.auth.login}</button>
+        <p class="muted auth-switch"><a href="/seller/forgot-password">{t.auth.forgotPassword}</a></p>
         <p class="muted auth-switch">{t.auth.noStore} <a href="/seller/register">{t.auth.openOne}</a></p>
       </form>
     </div>
