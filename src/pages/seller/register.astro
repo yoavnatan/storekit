@@ -3,7 +3,7 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import BrandLogo from '../../components/BrandLogo.astro';
 import CsrfField from '../../components/CsrfField.astro';
-import { registerSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
+import { registerSeller, setSellerSession, getSellerSession, MIN_PASSWORD_LENGTH } from '../../lib/seller-auth.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { getDemoStores } from '../../lib/stores.js';
 import { getVisibleProductsByStoreIds } from '../../lib/store-products.js';
@@ -55,7 +55,7 @@ if (Astro.request.method === 'POST') {
     // The browser's type="email" is a convenience, not a guarantee — this POST can arrive without
     // one. The address is the account's only recovery channel, so a junk value is unrecoverable.
     error = t.auth.invalidEmail;
-  } else if (password.length < 6) {
+  } else if (password.length < MIN_PASSWORD_LENGTH) {
     error = t.auth.passwordTooShort;
   } else {
     // Per-source only, and counted on EVERY attempt that reaches this point — including a

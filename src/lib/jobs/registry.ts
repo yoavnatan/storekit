@@ -19,6 +19,7 @@
  */
 import { purgeExpiredCheckouts } from '../checkout-idempotency.js';
 import { purgeExpiredAuthAttempts } from '../rate-limit.js';
+import { purgeExpiredPasswordResetTokens } from '../password-reset.js';
 import { purgeOldAnalyticsVisitors } from '../analytics.js';
 import { purgeOldStoreViewVisitors } from '../store-pageviews.js';
 import { visitorRetentionCutoffISO } from '../visitor-retention.js';
@@ -172,6 +173,27 @@ const purgeAuthAttempts: Job = {
   leaseSec: 5 * MINUTE,
   async run() {
     return `purged ${await purgeExpiredAuthAttempts()}`;
+  },
+};
+
+/**
+ * Drop spent and expired forgot-password links (`lib/password-reset.ts`).
+ *
+ * *Idempotent:* a `DELETE … WHERE expires_at < now()`, like the two purges above. A second pass
+ * finds nothing.
+ *
+ * *Correctness does not depend on it,* and that is worth being explicit about on a table that holds
+ * credentials: both statements that accept a token test `expires_at > now()` and `used_at IS NULL`
+ * in SQL, so an unpurged row is already refused. This job is hygiene — the rows carry a hash of
+ * something that was mailed to a person, and there is no reason to keep them once they can no
+ * longer do anything.
+ */
+const purgeResetTokens: Job = {
+  name: 'purge-reset-tokens',
+  intervalSec: 6 * HOUR,
+  leaseSec: 5 * MINUTE,
+  async run() {
+    return `purged ${await purgeExpiredPasswordResetTokens()}`;
   },
 };
 
@@ -384,4 +406,4 @@ const orderSla: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, orderSla, purgeVisitorDetail];
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, orderSla, purgeVisitorDetail];

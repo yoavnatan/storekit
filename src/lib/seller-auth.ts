@@ -6,6 +6,10 @@ import { requiredSecret } from './runtime-env.js';
 import { firstRow, isUuid, query, rows } from './db.js';
 import type { PayoutDetails } from './payout-details.js';
 
+/** The shortest password the platform accepts, in ONE place. Registration and the forgot-password
+ *  flow both read it — two independent numbers is how a reset ends up quietly weaker than signup. */
+export const MIN_PASSWORD_LENGTH = 6;
+
 const COOKIE_NAME = 'seller_session';
 const ONE_DAY = 60 * 60 * 24;
 // Sellers should stay signed in until they explicitly log out, not get
@@ -112,6 +116,25 @@ function verifyPassword(password: string, stored: string): boolean {
 /** True for a record still on the old fast hash, so a successful login can rewrite it. */
 function needsRehash(stored: string): boolean {
   return !stored.startsWith('scrypt:');
+}
+
+/**
+ * Set a password when the CURRENT one cannot be asked for — the forgot-password flow, and nothing
+ * else (`lib/password-reset.ts` owns the token that authorizes it; this function authorizes
+ * nothing and must never be called from a route directly).
+ *
+ * It exists so that hashing stays in this file. The alternative was exporting `hashPassword`, and
+ * then the reset module would hold its own copy of the "how a password is stored" decision —
+ * exactly the second definition that leaves one caller on scrypt and the other on whatever comes
+ * next. Same reason `verifyPassword` is not exported either.
+ */
+export async function setSellerPassword(sellerId: string, newPassword: string): Promise<boolean> {
+  if (!isUuid(sellerId) || !newPassword) return false;
+  const row = await firstRow<{ id: string }>(
+    `UPDATE sellers SET password_hash = $2 WHERE id = $1 RETURNING id`,
+    [sellerId, hashPassword(newPassword)],
+  );
+  return Boolean(row);
 }
 
 /**

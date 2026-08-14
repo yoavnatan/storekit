@@ -58,6 +58,21 @@
   margin-bottom: 1rem;
 }
 
+/* The neutral twin of .auth-error — "we sent the link", "the password was updated". Same shape, so
+   the card does not jump when one replaces the other, but it is not a failure and must not be red:
+   the forgot-password page shows this on its ONLY successful path, and a red box there reads as
+   "something went wrong" to the person who just did the right thing. */
+.auth-notice {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
 .auth-form { margin-top: 0; }
 .auth-form .btn { width: 100%; padding: 0.7rem 1rem; font-size: 0.95rem; }
 .auth-switch { margin-top: 1.1rem; text-align: center; font-size: 0.9rem; }
