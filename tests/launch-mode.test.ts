@@ -180,7 +180,7 @@ describe('placeholder tile colour', () => {
     // warning; GREY because on a wash it is barely a colour and the card reads as
     // unfilled; VIOLET because it is the signature of AI-generated apps and reads
     // as an untrustworthy product (owner, 2026-08-14). The muted slots are greens
-    // — sage — which is a green-grey, and still a colour.
+    // — olive — which is a green, and still a colour.
     for (const hue of TILE_HUES) {
       expect(hue).not.toMatch(/red|grey|gray|slate|violet|purple|plum|indigo/);
     }
@@ -191,7 +191,7 @@ describe('placeholder tile colour', () => {
     // the greens, and the two warm-pales. Three apart is the widest a seven-cycle
     // allows, so neither pair can land side by side in a row or stacked in a
     // column of the directory grid.
-    const PAIRS = [/green|sage/, /orange|rose/];
+    const PAIRS = [/green|olive/, /orange|rose/];
     for (const pair of PAIRS) {
       const at = TILE_HUES.map((h, i) => (pair.test(h) ? i : -1)).filter((i) => i >= 0);
       expect(at).toHaveLength(2);
@@ -200,7 +200,7 @@ describe('placeholder tile colour', () => {
     }
     // The greens also differ in depth, which is what carries them where the
     // ordering cannot — a shopper scrolling sees them at different distances.
-    const greens = INVITE_HUES.filter((h) => /green|sage/.test(h.token));
+    const greens = INVITE_HUES.filter((h) => /green|olive/.test(h.token));
     expect(new Set(greens.map((h) => h.maxWash)).size).toBe(greens.length);
   });
 

@@ -80,10 +80,12 @@
        returns grey at every depth. It was rendered INVERTED for one round — a
        dark tile with white art — and that was rejected as too much of an outlier
        in a row of pale cards, and it read as black rather than navy. What the
-       slot holds now is a muted sage: green-grey, pale like its neighbours, a
-       colour rather than an absence of one. Do not put a near-neutral dark hue
-       here again — the wash will grey it out, and the only escape is the
-       inversion that was already tried and rejected.
+       Then a grey-green sage, which was pale like its neighbours and still read
+       as a grey. What the slot holds now is an OLIVE — the owner named the zone
+       ("ירוק זית, ירוק בקבוק"), and it is the first thing here that is a colour
+       rather than an absence of one. Do not put a near-neutral dark hue here
+       again: the wash will grey it out, and the only escape is the inversion that
+       was already tried and rejected.
      • THE GOLD WAS ORANGE. #a8760a is what "yellow" collapses to when the
        line-art has to be drawn in the same colour: past that lightness nothing
        yellow clears 3:1 against its own wash. So yellow got an INK of its own
@@ -107,7 +109,7 @@
 
      Contrast measured 2026-08-14 — the INK against that hue's deepest wash, at
      the per-hue cap in placeholder-art.ts: orange 3.71 · blue 3.87 ·
-     yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 · rose 4.01. 3:1 is the
+     yellow 5.20 · sky 3.40 · green 3.29 · olive 3.81 · rose 4.01. 3:1 is the
      floor. Do not add or lighten a hue without re-measuring. */
   --color-invite-orange: #bf4620;
   --color-invite-blue: #2563c9;
@@ -118,7 +120,7 @@
   --color-invite-yellow-ink: #7a5c00;
   --color-invite-sky: #0e7fa8;
   --color-invite-green: #158a56;
-  --color-invite-sage: #4a6459;
+  --color-invite-olive: #5c6b2f;
   --color-invite-rose: #b8195c;
 
   --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
