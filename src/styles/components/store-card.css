@@ -127,7 +127,20 @@
    these properties on the same element, so `font-bold` and a text colour would lose to it and need
    `!` — exactly the case AI_INSTRUCTIONS' conversion rule says to leave alone (exception (f)). */
 .store-card__tag--invite {
-  font-weight: 700;
+  /* 600, AND THIS ROW HAS ALREADY SETTLED THIS ARGUMENT ONCE. It shipped at 700 for one round and
+     the owner's reaction was the useful kind — "זה היה יותר יפה קודם, אבל אני מבין שההדגשה כן
+     מושכת את העין... מה עושים" — i.e. both halves are true and the question is which knob was
+     doing which job.
+     The answer is written on the chip beside this one: `.store-sale-chip` (utils.css) was 0.7rem
+     at weight 700 and its note records that this made it "the one chip in the row that was a
+     different shape AND tall enough to drive the row's height". It settled at 600, with the reason
+     stated as a rule rather than a taste — "a running sale outranks a category label, and weight is
+     how to say that without breaking the row". That is this chip's situation exactly, and at the
+     same size in the same row.
+     So the eye-catching is the COLOUR's job, which is the change that stays; the weight only has to
+     say "outranks a category label", and 600 says it. Two full-strength signals for one message is
+     the stacking the design line rules out anyway. */
+  font-weight: 600;
   /* The hue at full strength, mixed toward the text colour so it stays legible against the 11%
      wash of itself that `.badge-finish` puts behind it — a chip whose ink and fill are the same
      colour at different alphas is the one way this pairing can go unreadable. */
