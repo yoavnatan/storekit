@@ -35,7 +35,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, viewsForProduct } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, BANNER_DELIVERED_RATIO, viewsForProduct } from './lib/showcase/identity.mjs';
 import { jsonlLine, uploadJsonl, createBatch, getBatch, downloadResults, readResults } from './lib/showcase/gemini-batch.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
@@ -291,6 +291,39 @@ async function uploadToCloudinary(buffer, cloud, preset) {
   return body.secure_url;
 }
 
+/**
+ * Store the banner at the ratio it is DISPLAYED at, so that nothing is ever cropped again.
+ *
+ * The store header shows a 3:1 band, and `cdnBand` gets there with `ar_3,c_fill,g_auto` — a
+ * SALIENCY crop, which picks its own band and cannot be argued with from inside a prompt. Three
+ * rounds of banner complaints were all the same sentence in different words ("הכיתוב נחתך",
+ * "העציצים ייחתכו", "אלמנטים שנחתכים מלמעלה ולמטה", "לא במידה הנכונה"), and every one of them was
+ * that crop rather than the picture.
+ *
+ * Widening the generated frame (16:9 → 21:9) shrank the loss from 41% of the height to 22%; it did
+ * not remove it, because no image model offers 3:1. So the last 22% is taken HERE, once, from the
+ * exact centre — which is where every banner prompt composes to — and the cropped result is
+ * uploaded as the asset the manifest points at. `cdnBand` then asks a 3:1 source for a 3:1 band
+ * and crops nothing at all, on this and on every future delivery.
+ *
+ * Cloudinary does the cropping because there is no image library in this project (see
+ * `CLOUDINARY_MAX_BYTES` for why one is not worth adding for four images a month): the picture is
+ * uploaded, fetched back through a `c_fill,g_center` transform, and re-uploaded. It costs one
+ * round trip and one JPEG re-encode at `q_auto:best`, and it costs nothing in generation — which
+ * is the only budget that is actually scarce here.
+ *
+ * A real seller's banner still goes through `g_auto` untouched: they upload an arbitrary
+ * photograph nobody composed for this band, and saliency is genuinely the best guess there. This
+ * is only for the pictures we commission and therefore control.
+ */
+async function cropToDeliveredRatio(url, ratio, cloud, preset) {
+  const cropped = url.replace('/upload/', `/upload/ar_${ratio},c_fill,g_center,f_jpg,q_auto:best/`);
+  const res = await fetch(cropped);
+  if (!res.ok) throw new Error(`could not fetch the cropped banner (${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return uploadToCloudinary(buffer, cloud, preset);
+}
+
 /** Every image this catalog needs, as {key, prompt, label}. Banner and logo first: they are three
  *  of the ~306 and they are the two a person actually looks at, so a `--limit` run shows something
  *  worth judging instead of five handbags. */
@@ -305,6 +338,9 @@ function buildJobs() {
     jobs.push({
       key: `${store.slug}:__banner`, prompt: bannerPrompt(store), label: `${store.name} — באנר`,
       aspect: BANNER_ASPECT, size: BANNER_IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
+      // Generated at 21:9, STORED at 3:1 — see `cropToDeliveredRatio`. The banner is the only
+      // image here whose delivered shape is fixed by the page rather than by the picture.
+      deliverRatio: BANNER_DELIVERED_RATIO,
       // A banner may be generated FROM the store's own logo — שקמה's is the mark at the centre of
       // the picture (`bannerRefKey` in identity.mjs), and describing a mark is not the same as
       // getting that mark back. Same mechanism the gallery views use, pointed at a brand image
@@ -511,7 +547,11 @@ async function runBatched(jobs, apiKey, cloud, preset, manifest) {
         continue;
       }
       try {
-        const url = await uploadToCloudinary(Buffer.from(b64, 'base64'), cloud, preset);
+        const raw = await uploadToCloudinary(Buffer.from(b64, 'base64'), cloud, preset);
+        const job = byKey.get(row.key);
+        const url = job?.deliverRatio
+          ? await cropToDeliveredRatio(raw, job.deliverRatio, cloud, preset)
+          : raw;
         manifest[row.key] = url;
         saveManifest(manifest);   // after EVERY image, same as the interactive path
         done++;
@@ -610,11 +650,14 @@ async function main() {
         process.stdout.write(`(${(bytes.length / 1048576).toFixed(1)}MB is over Cloudinary's limit, re-making at 2K) `);
         bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, '2K', job.model ?? MODEL, reference);
       }
-      const url = await uploadToCloudinary(bytes, cloud, preset);
+      const raw = await uploadToCloudinary(bytes, cloud, preset);
+      const url = job.deliverRatio
+        ? await cropToDeliveredRatio(raw, job.deliverRatio, cloud, preset)
+        : raw;
       manifest[job.key] = url;
       saveManifest(manifest);   // after EVERY image: a crash must not discard what was paid for
       done++;
-      console.log(`✓ ${(bytes.length / 1024).toFixed(0)}KB`);
+      console.log(`✓ ${(bytes.length / 1024).toFixed(0)}KB${job.deliverRatio ? `, stored at ${job.deliverRatio}:1` : ''}`);
     } catch (e) {
       failed++;
       console.log('✗');

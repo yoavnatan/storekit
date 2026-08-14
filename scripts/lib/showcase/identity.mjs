@@ -289,6 +289,27 @@ export const IMAGE_ASPECT = '1:1';
  * are the ones we control, so this is the end that moves.
  */
 export const BANNER_ASPECT = '21:9';
+/**
+ * The ratio the banner is STORED at, which is not the ratio it is generated at.
+ *
+ * 21:9 narrowed the crop; it could not remove it, because no image model offers 3:1. So the
+ * generator takes the last step itself — centre-crop to this ratio before the upload — and the
+ * asset the manifest points at is already the shape the page shows. `cdnBand` then crops nothing.
+ * The mechanism, and why Cloudinary rather than a local image library, is at
+ * `cropToDeliveredRatio()` in `generate-showcase-images.mjs`.
+ *
+ * This is CONFORMING to the site's contract rather than special-casing around it: a real seller's
+ * banner is already 3:1 by the time it is stored, because the dashboard's crop tool produces it
+ * that way (`cdn.ts`'s `BANNER_RATIO` note). The generated stores were the only banners on the
+ * site entering delivery at some other shape, which is exactly why they were the only ones losing
+ * their edges.
+ *
+ * It must equal `BANNER_RATIO` in `src/lib/cdn.ts` — the same number in two places that cannot
+ * import each other (a `.mjs` build script and a TypeScript module). `tests/showcase-banner-ratio`
+ * fails if they drift, because drift here is silent: the banner would simply start being cropped
+ * again, which is the bug this exists to end.
+ */
+export const BANNER_DELIVERED_RATIO = 3;
 
 export const SHOWCASE_STORES = [
   {
@@ -345,6 +366,28 @@ export const SHOWCASE_STORES = [
     backdrop: 'a plain wall of deep cool graphite grey, like dark honed stone, softly out of focus '
       + 'and noticeably darker than the product, with a pale grey marble ledge to stand on — the '
       + 'contrast between the dark field and the light stone is the point',
+    /**
+     * The stained-glass room, on roughly one hero shot in nine (owner, 2026-08-14, about his own
+     * banner: "זה גם כל כך יפה שעשית מאחורה עם הויטראז׳ … אי אפשר לעשות מעט מוצרים עם כזאת אווירה
+     * מאחורה?").
+     *
+     * It is described as LIGHT and not as a window, and that is what makes it safe rather than a
+     * violation of `PRODUCT_VIEWS.main` — whose whole design is one object on a plain field with
+     * "no props, no objects, no room, no scenery", and which is the rule that stopped this catalog
+     * cropping its own products. Coloured light falling across a plain wall adds no object to the
+     * frame, cannot crowd the garment and cannot be cut off. The wall is still a plain wall.
+     *
+     * "מעט" is the whole brief, so it is one in nine and not a new house style: the plain graphite
+     * field is what tells this store apart from the other three at a glance in the grid, and a
+     * shopper who meets the coloured light on every third product stops seeing it.
+     */
+    backdropAccent:
+      'a plain pale limestone wall, softly out of focus, washed by the light of a tall stained-'
+      + 'glass window just outside the frame — broad soft pools of cobalt, ruby, amber and '
+      + 'emerald light lying across the wall and across the pale stone ledge the product stands '
+      + 'on, with the clean grey of the stone still showing between them. The coloured LIGHT is '
+      + 'the only decoration: the window itself is never visible, and there is still nothing in '
+      + 'the picture but the product, the ledge and the wall',
     logoStyle:
       // No typography note here, deliberately: this store is `logoNameless`, and a style line that
       // describes how to set the name is an instruction to draw one. That contradiction is what put
@@ -425,14 +468,28 @@ export const SHOWCASE_STORES = [
       // and a material and nothing about the drawing. This store is `logoNameless`, so unlike
       // אדנית there is no logo lettering to copy — the type has to be specified instead, and what
       // makes a fashion label's name look designed is stroke contrast and spacing, not a font name.
-      'It is real, physical signage inside the scene — cut or painted letters mounted on the wall, '
-      + 'lit by the same light as everything else and casting its own small shadow, never text laid '
-      + 'over the photograph. The letterform is elegant and distinctive, the wordmark of a real '
+      // THE MARK, beside the name (owner, 2026-08-14: "עשית לי את השם שלו אבל בלי הסמל של הסהר,
+      // צריך להיות ליד הסמל"). It was never asked for: this store is `logoNameless`, so the crescent
+      // and the name have only ever existed in two different pictures — the avatar carries the mark
+      // and the banner carried the word, and neither one showed the shop's actual lock-up. The logo
+      // now comes in as a reference image (`bannerRefKey`) so the crescent on the wall is the same
+      // crescent, rather than a second, similar moon.
+      'Mounted on the wall immediately beside the name — to the right of it, at the same height, '
+      + 'sized to match the letters — is the shop\'s own mark: the crescent moon exactly as it is '
+      + 'drawn in the reference image, same shape, same taper, same flat blocks of blue, cobalt, '
+      + 'violet and tangerine inside it, cut as a solid panel and fixed to the wall. Exactly one '
+      + 'crescent, and it and the name read as one sign together. '
+      + 'Both are real, physical signage inside the scene — cut or painted letters mounted on the '
+      + 'wall, lit by the same light as everything else and casting its own small shadow, never '
+      + 'text laid over the photograph. The letterform is elegant and distinctive, the wordmark of a real '
       + 'fashion label: high stroke contrast between thick and hairline-thin strokes, refined '
       + 'tapered terminals, generous letter-spacing, drawn with real character — never a plain, '
       + 'even-weight, default-looking sans-serif. The letters are a rich DEEP INK BLUE, the same '
       + 'blue as the shop\'s own mark, standing out clearly against the pale wall behind them — '
       + 'never gold, never brass, never metallic, never grey.',
+    /** The logo, as a reference — the crescent on the banner has to BE the crescent on the avatar,
+     *  not a second moon that resembles it. Same mechanism as שקמה's emblem and אדנית's lettering. */
+    bannerRefKey: '__logo',
     /** Its own region clause, because the shared one names terracotta, olive and clay — and this is
      *  the store that was corrected OFF that palette. With the shared clause it came back as שקמה's
      *  room twice out of two: warm plaster, an olive branch in a clay jug. Israeli-Mediterranean is
@@ -779,8 +836,11 @@ export const SHOWCASE_STORES = [
       + 'its own angle — a laptop open at three-quarters, a keyboard tilted from above, over-ear '
       + 'headphones in profile, a mouse, a smartwatch on its side, a compact camera, a power bank, '
       + 'a small speaker turned away, a neatly coiled cable, a monitor straight on — floating and '
-      + 'arranged across the whole width in a considered, balanced composition at slightly '
-      + 'different sizes and depths, each object complete, unclipped, with air around it',
+      + 'arranged across the width in a considered, balanced composition at slightly different '
+      + 'sizes and depths. EVERY object is complete and whole, with clear empty space between it '
+      + 'and the edge of the picture: nothing touches the left or right edge, nothing runs off the '
+      + 'side, nothing is half in and half out of frame. Leave a generous empty margin down both '
+      + 'sides and keep the whole arrangement inside it',
     bannerStyle:
       'A premium 3D product-design render on a seamless white studio ground — the same medium as '
       + 'the shop\'s own logo: solid physical objects with real form, soft even studio lighting, '
@@ -912,26 +972,41 @@ export const SHOWCASE_STORES = [
      * material, and still unmistakably drawn. That is also the older and better tradition for a
      * plant shop's sign than either extreme.
      */
+    // Round three, and the note is the same word for the third time ("היער לא מספיק ריאליסטי"), so
+    // the answer stops splitting the difference. Two rounds tried to land between illustration and
+    // photograph — screen-print, then botanical plate — and each read as the flatter of the two,
+    // because "painted but realistic" leaves the model free to choose, and it chooses painted. So
+    // the LEAVES are now simply described as real, and only the treatment of the whole picture is
+    // still designed. What he rejected in round one was a photograph of a NURSERY — a shop, a
+    // ledge, a wall — not realistic foliage; nothing here brings that back.
     bannerStyle:
-      'A finely painted botanical illustration — drawn and painted rather than photographed, but '
-      + 'rendered with real depth and realism: every leaf modelled in light and shade with its '
-      + 'veins, its sheen and its own colour, layers receding into soft shadow behind the ones in '
-      + 'front, pots with real glaze and real weight to them. The detail and craft of a good '
-      + 'botanical plate, not flat graphic shapes, not vector, not clip art, and not a photograph. '
-      + 'Warm, calm and even light throughout — no sun, no hard cast shadows, no dark corners, no '
-      + 'camera blur, no lens flare. Elegant and considered rather than rustic or naive, and '
-      + 'symmetrical: the foliage is built outward from the centre in both directions.',
+      'Photographic realism in the foliage: real living leaves with real surface — waxy highlights, '
+      + 'fine veining, translucency where light passes through a leaf, tiny imperfections and '
+      + 'curled edges, real depth of field falling away into the layers behind, real glazed and '
+      + 'terracotta pots with weight and texture. The plants must look like plants somebody could '
+      + 'photograph, not like drawn or painted shapes, not flat, not stylised, not vector, not clip '
+      + 'art. The picture as a WHOLE is still composed and designed rather than a snapshot: warm, '
+      + 'calm, even light with no sun, no hard cast shadows and no dark corners, symmetrical, the '
+      + 'foliage built outward from the centre in both directions, and the name lettered into it.',
     bannerLettering:
       // "Hand-lettered in the same brush as the foliage" produced a clean drawn typeface, because
       // nothing told it WHICH brush — the logo was not in the room. It is now (`bannerRefKey`), and
       // the instruction is to copy it rather than to describe it (owner: "זה חייב להיות תואם לפונט
       // שמופיע בלוגו"). Same move that put שקמה's actual mark at the centre of its own banner.
-      'The name is HAND-LETTERED with a loaded brush in exactly the lettering style of the '
-      + 'reference image — the same painted strokes, the same slightly uneven weight, the same warm '
-      + 'informal hand, the same deep olive-green ink — as if the same person lettered both. Large '
+      // LEGIBILITY beats the brush (owner, 2026-08-14: "הכיתוב לא ברור- הא׳ נראית כמו מ׳"). The
+      // previous wording asked for "slightly uneven weight" and "a loaded brush", which is a
+      // licence to let a stroke thicken until א closes up into מ — and א and מ differ by exactly
+      // that, whether the diagonal arms stay open. The hand stays; the deformation does not, and
+      // the two letters are named so the instruction has something to be checked against.
+      'The name is HAND-LETTERED with a brush in the lettering style of the reference image — the '
+      + 'same warm informal hand, the same deep olive-green ink, as if the same person lettered '
+      + 'both. But every letter is drawn CLEANLY and CORRECTLY and is instantly readable: even '
+      + 'stroke weight, open counters, clear space between the letters, nothing blotted, nothing '
+      + 'closed up, nothing running together. In particular the first letter is א (aleph) and must '
+      + 'read unmistakably as א — its two separate diagonal arms clearly open and clearly detached '
+      + 'from the central stroke — never closing up into anything that could be read as מ. Large '
       + 'and confident in the clearing at the centre, with clear space around it so no leaf crosses '
-      + 'or covers a letter. Never a typeface, never geometric, never gold, never metallic, never '
-      + 'with a shadow or an outline.',
+      + 'or covers a letter. Never gold, never metallic, never with a shadow or an outline.',
     /** The logo, as a reference image — it is where the lettering has to come from. */
     bannerRefKey: '__logo',
     /** URBAN, and that word is doing the work. שקמה is already the warm-interior store, so a
@@ -1218,6 +1293,23 @@ function accentFor(store, subject) {
   return hashOf(subject) % 3 === 0 ? ` ${store.accent}.` : '';
 }
 
+/**
+ * The hero backdrop for one product — the store's plain field, or its `backdropAccent` for a
+ * minority of them. See סהר's `backdropAccent` for what it is and why it is rare.
+ *
+ * Its own hash suffix, like `companionFor`/`colorwayFor`: sharing a hash with `viewsForProduct`
+ * would mean every product with a full gallery also got the special backdrop, and the correlation
+ * is visible long before anyone works out why.
+ *
+ * The divisor is not the rate — the hash is not uniform over a hundred Hebrew product names — so
+ * the count is MEASURED before a run and named in the commit, the same way `companionFor` records
+ * "8 of אדנית's 89".
+ */
+function backdropFor(store, subject) {
+  if (!store.backdropAccent) return store.backdrop;
+  return hashOf(`${subject}#stage`) % 9 === 0 ? store.backdropAccent : store.backdrop;
+}
+
 /** One of the store's `settings`, chosen per product — see אדנית's entry for why they rotate. */
 function settingFor(store, subject) {
   if (!store.settings?.length) return '';
@@ -1305,7 +1397,7 @@ export const SAME_ITEM_CLAUSE =
 export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0]) {
   const life = store.restrained ? RESTRAINED_LIFE_DIRECTION : LIFE_DIRECTION;
   const world = view.key === 'main' && store.backdrop
-    ? `Behind and beneath it: ${store.backdrop}.`
+    ? `Behind and beneath it: ${backdropFor(store, subject)}.`
     : `${store.artDirection}.${settingFor(store, subject)}${companionFor(store, subject)}${accentFor(store, subject)}`;
   // A gallery view is generated FROM the main image, so it opens by naming that reference — and it
   // drops the colourway, which is already visible in the picture it is being shown.
