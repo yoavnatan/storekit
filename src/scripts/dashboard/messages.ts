@@ -5,7 +5,7 @@ import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-loc
 import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
 import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
 import { registerPanelRefresh } from './tab-sync.js';
-import { scrollBelowPinnedChrome } from './scroll-utils.js';
+import { initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
 
 // Messages tab: buyer<->seller threads and admin<->seller "system" threads in
 // ONE table (both normalized to the same row shape server-side — see
@@ -705,6 +705,9 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     if (fromValues?.size) params.set('mfrom', encodeList([...fromValues]));
 
     let data: { ok: boolean; items?: MessageRowData[]; page?: number; totalPages?: number; total?: number };
+    // The rows about to be replaced, dimmed while their replacements are in flight —
+    // list-pager.ts#markListBusy carries why.
+    const endBusy = markListBusy(msgTbody);
     try {
     // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
     // the list would claim the filter matched nothing — but it is silent unless it says so, and
@@ -714,6 +717,8 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     } catch {
       showActionFailedToast();
       return;
+    } finally {
+      endBusy();
     }
     if (!data.ok) { showActionFailedToast(); return; }
 
@@ -733,18 +738,17 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     renderMessagesPaginationControls(data.totalPages ?? 1);
   }
 
+  function messagesPagerLabels(): PagerLabels {
+    return {
+      prev: msgDashI18nDict.paginationPrev ?? 'הקודם',
+      next: msgDashI18nDict.paginationNext ?? 'הבא',
+      pageInfo: msgDashI18nDict.paginationPageInfo ?? 'עמוד {page} מתוך {total}',
+      goToPage: msgDashI18nDict.paginationGoToPage ?? 'מעבר לעמוד {page}',
+    };
+  }
+
   function renderMessagesPaginationControls(totalPages: number): void {
-    const nav = document.getElementById('msg-pagination') as HTMLElement | null;
-    if (!nav) return;
-    if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
-    const pageInfo = (msgDashI18nDict.paginationPageInfo ?? 'עמוד {page} מתוך {total}')
-      .replace('{page}', String(messagesCurrentPage)).replace('{total}', String(totalPages));
-    nav.hidden = false;
-    nav.innerHTML = `
-      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${messagesCurrentPage <= 1 ? ' disabled' : ''}>${escMsg(msgDashI18nDict.paginationPrev ?? 'הקודם')}</button>
-      <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">${escMsg(pageInfo)}</span>
-      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${messagesCurrentPage >= totalPages ? ' disabled' : ''}>${escMsg(msgDashI18nDict.paginationNext ?? 'הבא')}</button>
-    `;
+    renderListPagers('messages', messagesCurrentPage, totalPages, messagesPagerLabels());
   }
 
   function initMessagesPagination(): void {
@@ -752,13 +756,13 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     if (!nav) return;
     messagesCurrentPage = parseInt(nav.dataset.page ?? '1', 10) || 1;
     renderMessagesPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
-    nav.addEventListener('click', (e) => {
-      const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
-      if (!btn || btn.disabled) return;
-      messagesCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
-      applyMessagesPagination();
-      const wrap = document.querySelector<HTMLElement>('.msg-table-wrap');
-      if (wrap) scrollBelowPinnedChrome(wrap);
+    initListPager({
+      name: 'messages',
+      labels: messagesPagerLabels,
+      getPage: () => messagesCurrentPage,
+      setPage: (page) => { messagesCurrentPage = page; },
+      apply: applyMessagesPagination,
+      scrollTarget: () => document.querySelector<HTMLElement>('.msg-table-wrap'),
     });
   }
   initMessagesPagination();

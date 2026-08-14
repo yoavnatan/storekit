@@ -6,6 +6,7 @@ import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
 import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.js';
+import { initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
@@ -2447,22 +2448,20 @@ function emptyFilterRow(): HTMLTableRowElement {
   return tr;
 }
 
-function renderPaginationControls(totalPages: number): void {
-  const nav = document.getElementById('products-pagination') as HTMLElement | null;
-  if (!nav) return;
-  if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
-
+/** The strings the shared pager renders with — read fresh each time, like every other
+ *  dictionary read in this file, so a dashboard rendered in English never falls back. */
+function pagerLabels(): PagerLabels {
   const i = getDashI18n();
-  const pageInfo = (i.paginationPageInfo ?? 'עמוד {page} מתוך {total}')
-    .replace('{page}', String(productsCurrentPage))
-    .replace('{total}', String(totalPages));
+  return {
+    prev: i.paginationPrev ?? 'הקודם',
+    next: i.paginationNext ?? 'הבא',
+    pageInfo: i.paginationPageInfo ?? 'עמוד {page} מתוך {total}',
+    goToPage: i.paginationGoToPage ?? 'מעבר לעמוד {page}',
+  };
+}
 
-  nav.hidden = false;
-  nav.innerHTML = `
-    <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${productsCurrentPage <= 1 ? ' disabled' : ''}>${esc(i.paginationPrev ?? 'הקודם')}</button>
-    <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">${esc(pageInfo)}</span>
-    <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${productsCurrentPage >= totalPages ? ' disabled' : ''}>${esc(i.paginationNext ?? 'הבא')}</button>
-  `;
+function renderPaginationControls(totalPages: number): void {
+  renderListPagers('products', productsCurrentPage, totalPages, pagerLabels());
 }
 
 // Fetches the current page/search/sort/filter state from /api/seller/products
@@ -2507,6 +2506,11 @@ export async function applyPagination(): Promise<void> {
   }
 
   let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number; stockAlerts?: number };
+  // The rows about to be replaced, dimmed if the replacements are slow enough to be worth saying
+  // so (list-pager.ts#markListBusy — the site's one threshold, so an ordinary page change draws
+  // nothing at all). What made a page change read as a failed click was the scroll, not the wait,
+  // and that is fixed where it happened; this covers the genuinely slow connection.
+  const endBusy = markListBusy(tbody);
   try {
   // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
   // the list would claim the filter matched nothing — but it is silent unless it says so, and
@@ -2516,6 +2520,11 @@ export async function applyPagination(): Promise<void> {
   } catch {
     showActionFailedToast();
     return;
+  } finally {
+    // Cleared here and not after the rebuild: everything from here to `replaceChildren` is
+    // synchronous, so the browser never gets a frame in which the OLD rows are back at full
+    // opacity — and the dim can't outlive a failed fetch either.
+    endBusy();
   }
   if (!data.ok) { showActionFailedToast(); return; }
 
@@ -2585,13 +2594,13 @@ export function initPagination(): void {
   productsPageSize = parseInt(sizeSelect?.value ?? '20', 10) || 20;
   renderPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
 
-  nav.addEventListener('click', (e) => {
-    const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
-    if (!btn || btn.disabled) return;
-    productsCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
-    applyPagination();
-    const table = document.getElementById('products-table');
-    if (table) scrollBelowPinnedChrome(table);
+  initListPager({
+    name: 'products',
+    labels: pagerLabels,
+    getPage: () => productsCurrentPage,
+    setPage: (page) => { productsCurrentPage = page; },
+    apply: applyPagination,
+    scrollTarget: () => document.getElementById('products-table'),
   });
 
   sizeSelect?.addEventListener('change', () => {
