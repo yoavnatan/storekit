@@ -112,6 +112,28 @@
   white-space: nowrap;
 }
 
+/* The INVITE chips on the placeholder card — the four capabilities, not a store's categories.
+   Bolder and in the chip's own hue rather than the muted grey a category label takes (owner,
+   2026-08-14: "רוצה את הכיתוב בבולד, מודגש.. זה לא מספיק קריא ובולט").
+
+   A category chip is quiet ON PURPOSE — it is a read-only fact about a shop, sitting under that
+   shop's name, and it must never compete with it. These four are the opposite errand: they are the
+   only content that card has, on a card whose entire job is to be read by somebody deciding whether
+   to open a store. Same shape, opposite emphasis, which is why this is a modifier rather than a
+   change to the base class — bolding `.store-card__tag` itself would shout on every real store
+   card on the homepage.
+
+   CSS and not utilities, deliberately: `.store-card__tag` is unlayered legacy CSS setting both of
+   these properties on the same element, so `font-bold` and a text colour would lose to it and need
+   `!` — exactly the case AI_INSTRUCTIONS' conversion rule says to leave alone (exception (f)). */
+.store-card__tag--invite {
+  font-weight: 700;
+  /* The hue at full strength, mixed toward the text colour so it stays legible against the 11%
+     wash of itself that `.badge-finish` puts behind it — a chip whose ink and fill are the same
+     colour at different alphas is the one way this pairing can go unreadable. */
+  color: color-mix(in srgb, var(--badge-hue) 72%, var(--color-text));
+}
+
 /* Keeps the shared fill and shadow, swaps the line for a dashed one — "+3 more" is a count, not a
    category, and the dash is what says so without giving it a colour of its own. */
 .store-card__tag--more {
