@@ -12,7 +12,7 @@
  * card is an open slot, and it deliberately doesn't tell a seller what kind of
  * store belongs in it.
  */
-import { pickArtTrio, pickCardInk, tileBackground, tileEdge } from '../lib/placeholder-art.js';
+import { pickArtTrio, pickCardHue, pickCardInk, tileBackground, tileEdge } from '../lib/placeholder-art.js';
 import { getLang, getT } from '../i18n/index.js';
 
 interface Props {
@@ -29,6 +29,7 @@ const t = getT(lang);
 const art = pickArtTrio(index, previewSlots);
 // The wash colour and the stroke colour are the same for six of the seven hues.
 // Yellow is the one that cannot be — placeholder-art.ts's `ink` note says why.
+const hue = pickCardHue(index);
 const ink = pickCardInk(index);
 // The TITLE rotates on its own cycle (5) — see the note on `launch` in
 // translations.ts for why that length matters against a responsive grid. The
@@ -44,7 +45,13 @@ const hint = t.launch.inviteHint;
      art can't take that class (it also sets width/height/object-fit, which would
      stretch a 24-viewBox glyph to fill the tile). group-hover reproduces just the
      transform, with the same curve and duration. -->
-<a href="/seller/register" class="store-card group" role={role}>
+<!-- `--store-glow` is the whole reason this card's hover border and the halo behind
+     its plus are its own colour rather than the platform navy. A real store card sets
+     it from the store's identity mark (StoreCard.astro), store-card.css turns it into
+     the hover edge and utils.css into the avatar halo — this card simply never set it,
+     so it fell through to both fallbacks and looked like a different KIND of card on
+     hover. It has a colour of its own; it should say so with the same mechanism. -->
+<a href="/seller/register" class="store-card group" role={role} style={`--store-glow:${hue}`}>
   <div class="store-card__head">
     <span class="store-glow-wrap">
       <!-- Tracks StoreCard's avatar exactly — 56px and round. A different size

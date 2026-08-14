@@ -180,31 +180,28 @@ describe('placeholder tile colour', () => {
     // warning; GREY because on a wash it is barely a colour and the card reads as
     // unfilled; VIOLET because it is the signature of AI-generated apps and reads
     // as an untrustworthy product (owner, 2026-08-14). The muted slots are greens
-    // — sage and moss — which are green-greys, and still colours.
+    // — sage — which is a green-grey, and still a colour.
     for (const hue of TILE_HUES) {
       expect(hue).not.toMatch(/red|grey|gray|slate|violet|purple|plum|indigo/);
     }
   });
 
-  it('separates the three greens by depth, since it cannot by hue', () => {
-    // green, sage and moss all sit in the same corner of the wheel, so what tells
-    // their cards apart is how deep each one washes. Equal caps and they are one
-    // card printed three times.
-    const greens = INVITE_HUES.filter((h) => /green|sage|moss/.test(h.token));
-    expect(greens).toHaveLength(3);
-    expect(new Set(greens.map((h) => h.maxWash)).size).toBe(3);
-    // …and no two of them may be NEXT to each other in the rotation, or they land
-    // side by side in every grid the directory can produce. Two steps apart is the
-    // best that three items in a seven-cycle allow, so that is the floor, and the
-    // differing depths above are what carry the pair a 2-column grid stacks.
-    const at = TILE_HUES.map((h, i) => (/green|sage|moss/.test(h) ? i : -1)).filter((i) => i >= 0);
-    for (const a of at) {
-      for (const b of at) {
-        if (a === b) continue;
-        const gap = Math.min(Math.abs(a - b), TILE_HUES.length - Math.abs(a - b));
-        expect(gap).toBeGreaterThanOrEqual(2);
-      }
+  it('keeps the two look-alike pairs three slots apart', () => {
+    // Two pairs sit close enough at a pale wash to be mistaken for each other:
+    // the greens, and the two warm-pales. Three apart is the widest a seven-cycle
+    // allows, so neither pair can land side by side in a row or stacked in a
+    // column of the directory grid.
+    const PAIRS = [/green|sage/, /orange|rose/];
+    for (const pair of PAIRS) {
+      const at = TILE_HUES.map((h, i) => (pair.test(h) ? i : -1)).filter((i) => i >= 0);
+      expect(at).toHaveLength(2);
+      const gap = Math.abs(at[0]! - at[1]!);
+      expect(Math.min(gap, TILE_HUES.length - gap)).toBe(3);
     }
+    // The greens also differ in depth, which is what carries them where the
+    // ordering cannot — a shopper scrolling sees them at different distances.
+    const greens = INVITE_HUES.filter((h) => /green|sage/.test(h.token));
+    expect(new Set(greens.map((h) => h.maxWash)).size).toBe(greens.length);
   });
 
   it('keeps every tile wash inside its own hue\'s budget', () => {

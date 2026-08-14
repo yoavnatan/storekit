@@ -44,9 +44,9 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  coprime with all three works (5, 7, 11 …), so a colour can be swapped freely
  *  but one cannot simply be dropped.
  *
- *  Order is not alphabetical and not arbitrary: five of the seven are cool and
- *  three of those are greens, so they are spread out between the warm ones —
- *  most of all the two closest, `moss` and `sage`, which sit four apart.
+ *  Order is not alphabetical and not arbitrary. Two pairs sit close enough at a
+ *  pale wash to need separating, and both are three slots apart: the two greens
+ *  (`green` and `sage`), and the two warm-pales (`orange` and `rose`).
  *
  *  ⚠️ `--color-invite-*`, NOT `--color-tile-*`. The tile tokens look like the
  *  obvious ones to reuse and are the wrong list: they are `MARK_HUES`, the
@@ -76,7 +76,7 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *
  *  Contrast measured 2026-08-14, ink against `color-mix(hue maxWash%, white)`:
  *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 ·
- *  moss 4.96. Never raise a cap without re-measuring; 3:1 is the floor. */
+ *  rose 4.01. Never raise a cap without re-measuring; 3:1 is the floor. */
 export interface InviteHue {
   /** CSS custom property for the tile wash, declared in tokens.css. */
   token: string;
@@ -86,25 +86,22 @@ export interface InviteHue {
   ink?: string;
 }
 
-// The ORDER spreads the three greens as far apart as seven slots allow: 0, 3 and
-// 5, which is a circular gap of 3-2-2. There is no arrangement with a gap of 3
-// everywhere — three items in a 7-cycle cannot all sit three apart — so two of
-// them WILL be two steps apart, and on a 2-column grid that means one pair can end
-// up vertically adjacent. Their different wash depths are what carry the
-// separation there; the ordering only makes sure no pair is ever side by side.
+// The ORDER separates the two pairs that are close enough at a pale wash to be
+// mistaken for each other: the greens (`green`, `sage`) and the warm-pales
+// (`orange`, `rose`). Each pair sits three slots apart, the widest a seven-cycle
+// allows, so neither can ever land side by side in a row or stacked in a column.
 export const INVITE_HUES: readonly InviteHue[] = [
-  // The darkest of the three greens.
-  { token: 'var(--color-invite-moss)', maxWash: 38 },
   { token: 'var(--color-invite-orange)', maxWash: 22 },
   { token: 'var(--color-invite-blue)', maxWash: 26 },
   { token: 'var(--color-invite-green)', maxWash: 22 },
+  { token: 'var(--color-invite-rose)', maxWash: 26 },
   { token: 'var(--color-invite-yellow)', maxWash: 26, ink: 'var(--color-invite-yellow-ink)' },
   // The quiet card of the seven, and the slot that took three tries — a slate
   // grey, then the site's dark navy, then that navy inverted to a dark tile with
   // white art, which read as black and as an outlier in a row of pale cards.
   // tokens.css carries the full record. Deeper than its neighbours because it is
-  // among the least saturated hues here and a 22% wash of one of those barely
-  // registers; that depth is also what keeps it apart from `moss` and `green`.
+  // the least saturated hue here and a 22% wash of it barely registers; that
+  // depth is also what keeps it apart from `green`.
   { token: 'var(--color-invite-sage)', maxWash: 30 },
   { token: 'var(--color-invite-sky)', maxWash: 22 },
 ];
