@@ -122,15 +122,27 @@ export const translations = {
     // seller arriving late saw a single card advertising, say, shipping, and
     // never learned the rest existed. So every card now carries the entire
     // offer: a rotating hook on top, the full sentence underneath.
+    //
+    // The sentence runs in the order the owner asked for (2026-08-14): the store
+    // first, then what being here does for it, then what comes with it. The
+    // middle clause is deliberately NOT "כוח של קבוצה" — that is a metaphor, and
+    // the thing it stands for is concrete and worth saying outright: shoppers
+    // arrive at this store through the mall around it. `auth.benefitMall` still
+    // carries the short metaphor, where it sits in a list of three and has no
+    // room to explain itself; a card does.
+    //
+    // No label repeats a clause of the sentence beneath it. "חנות משלכם" and
+    // "כוח של קבוצה" were labels until the sentence absorbed both, and a title
+    // restating the line directly under it reads as a mistake, not as emphasis.
     launch: {
       inviteLabels: [
         'מתחם חנויות דיגיטלי',
-        'חנות משלכם',
-        'כוח של קבוצה',
-        'הכול מובנה מראש',
+        'המקום שלכם כאן',
         'פתיחת חנות',
+        'הכול מובנה מראש',
+        'להתחיל למכור',
       ],
-      inviteHint: 'חנות משלכם לצד כל השאר, עם ממשק פרסום, SEO ומשלוחים מובנים.',
+      inviteHint: 'חנות משלכם, שקונים מגיעים אליה דרך המתחם, עם ממשק פרסום, SEO ומשלוחים מובנים.',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -2035,12 +2047,12 @@ export const translations = {
     launch: {
       inviteLabels: [
         'A home for independent stores',
-        'A store of your own',
-        'Strength in numbers',
-        'Everything built in',
+        'Your place here',
         'Open a store',
+        'Everything built in',
+        'Start selling',
       ],
-      inviteHint: 'A store of your own alongside all the rest, with a built-in ads manager, SEO and shipping.',
+      inviteHint: 'A store of your own, that shoppers reach through the stores beside it, with a built-in ads manager, SEO and shipping.',
     },
     demo: {
       badge: 'Example store',

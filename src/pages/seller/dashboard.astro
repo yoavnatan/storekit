@@ -1004,7 +1004,11 @@ const orderStatusColors: Record<string, string> = {
         <p class="muted flex items-center gap-1.5 flex-wrap" style="margin:0.25rem 0 0;font-size:0.82rem">
           <span>{d.storeSubtitle} ·</span>
           <code id="dash-store-address" dir="ltr" data-has-custom-domain={store.customDomain?.status === 'active' ? '1' : ''} style="font-size:0.78rem">{store.customDomain?.status === 'active' ? store.customDomain.hostname : `${platformHost}/${store.slug}`}</code>
-          <CopyButton target="dash-store-address" label={d.cdCopy} copiedLabel={d.cdCopied} class="!py-0 !px-1 !min-h-0" />
+          {/* No size override. It carried `!py-0 !px-1` to sit lightly on a 0.82rem line, and what
+              that actually did was pull the ghost border in against the 13px icon — the button read
+              as a box drawn around the glyph. `.btn--sm`'s own padding is what the three copy
+              buttons in the settings panel use, and matching them is also the point. */}
+          <CopyButton target="dash-store-address" label={d.cdCopy} copiedLabel={d.cdCopied} />
         </p>
 
         {settingsSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
