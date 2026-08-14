@@ -98,6 +98,12 @@ ${addressBlock(order)}
 ${ctaButton(`${SITE}/seller/dashboard`, 'לצפייה בהזמנה בדשבורד')}`;
   return {
     to: sellerEmail,
+    // Reply goes to the BUYER, not to us. This is the one mail on the platform whose recipient has
+    // a reason to answer the person it is about — "מתי אפשר לאסוף?", "אפשר להחליף מידה?" — and with
+    // the default reply-to that answer lands in the platform's inbox, where nobody can act on it and
+    // the seller believes they replied to their customer. sendEmail() only fills in the business
+    // address when a message names none (email/index.ts).
+    replyTo: order.buyerEmail,
     // Store name leads the subject so a multi-store seller sorts by store at a glance.
     subject: `הזמנה חדשה · ${storeName} · ${formatAgorot(order.totalAgorot)} (${ref})`,
     html: renderEmailShell({ previewText: `הזמנה חדשה בחנות ${storeName}`, heading: `הזמנה חדשה · ${storeName}`, bodyHtml }),

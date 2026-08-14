@@ -11,7 +11,7 @@
 
 import type { Order } from '../orders.js';
 import { store } from '../../config/store.config.js';
-import { STATUS_MESSAGES, type NotifiableStatus } from '../order-status-copy.js';
+import { STATUS_MESSAGES, isEmailedStatus, type NotifiableStatus } from '../order-status-copy.js';
 import { logError } from '../error-log.js';
 import type { EmailMessage } from './adapter.js';
 import { renderEmailShell, esc } from './template.js';
@@ -19,11 +19,16 @@ import { storeMeta, storefrontUrl, storeHeader, itemsTable, refLine, ctaButton }
 import { sendEmail } from './index.js';
 
 /**
- * Build the status-change email for a buyer, or null when the status carries no
- * buyer-facing message (e.g. 'processing' / 'delivered' / back to 'pending').
+ * Build the status-change email for a buyer, or null when the status doesn't earn one.
+ *
+ * Two gates, not one, and they are different questions. STATUS_MESSAGES answers "is there any
+ * buyer-facing wording for this at all" (excludes 'processing' / 'delivered' / back to 'pending').
+ * EMAILED_STATUSES answers "is it worth an inbox interruption" — 'ready' has copy, shows in-app,
+ * and deliberately sends no mail. The reasoning lives at the constant, in order-status-copy.ts.
  * Pure — no I/O.
  */
 export function buildOrderStatusEmail(order: Order, status: string): EmailMessage | null {
+  if (!isEmailedStatus(status)) return null;
   const msg = STATUS_MESSAGES[status as NotifiableStatus];
   if (!msg) return null;
 

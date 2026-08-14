@@ -159,7 +159,9 @@ function subjectSafe(value: string): string {
  */
 const MAX_STACK_IN_EMAIL = 1200;
 
-function renderAlertEmail(entry: CriticalAlertInput): { subject: string; html: string; text: string } {
+/** Exported for `scripts/email-preview.mjs` — the alert is one of the mails the platform sends, so
+ *  it has to be reviewable next to the others without provoking a real critical error to see it. */
+export function renderAlertEmail(entry: CriticalAlertInput): { subject: string; html: string; text: string } {
   const when = new Date(entry.createdAt).toLocaleString('he-IL', { timeZone: BUSINESS_TIMEZONE });
   const route = entry.route ?? '—';
   const ref = entry.id ? errorRef(entry.id) : '';
@@ -251,7 +253,10 @@ export async function alertOnCriticalError(entry: CriticalAlertInput): Promise<v
     if (await alreadyAlertedForRoute(entry.route, ROUTE_COOLDOWN_MS)) return;
 
     const { subject, html, text } = renderAlertEmail(entry);
-    const result = await sendEmail({ to, subject, html, text });
+    // Reply-to is the alert address itself, not the platform's customer-service address. This mail
+    // is machine-to-owner: hitting reply should keep it inside the ops mailbox rather than open a
+    // support thread nobody sent.
+    const result = await sendEmail({ to, subject, html, text, replyTo: to });
     if (!result.ok) {
       console.error('[critical-alert] send failed:', result.error, '|', entry.route, entry.message);
     }

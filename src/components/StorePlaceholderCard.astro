@@ -12,7 +12,7 @@
  * card is an open slot, and it deliberately doesn't tell a seller what kind of
  * store belongs in it.
  */
-import { pickArtTrio, pickCardHue, TILE_WASHES } from '../lib/placeholder-art.js';
+import { pickArtTrio, pickCardInk, tileBackground, tileEdge } from '../lib/placeholder-art.js';
 import { getLang, getT } from '../i18n/index.js';
 
 interface Props {
@@ -27,10 +27,16 @@ const { index = 0, role, previewSlots = 3 } = Astro.props;
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const art = pickArtTrio(index, previewSlots);
-const hue = pickCardHue(index);
-// Copy rotates on its own cycle (5) — see the note on `launch.invites` in
-// translations.ts for why that length matters against a responsive grid.
-const copy = t.launch.invites[index % t.launch.invites.length]!;
+// The wash colour and the stroke colour are the same for six of the seven hues.
+// Yellow is the one that cannot be — placeholder-art.ts's `ink` note says why.
+const ink = pickCardInk(index);
+// The TITLE rotates on its own cycle (5) — see the note on `launch` in
+// translations.ts for why that length matters against a responsive grid. The
+// subtitle is the same on every card on purpose, and that note says why: the
+// number of these cards falls as real stores arrive, so a card that carried one
+// feature of the offer left a late-arriving seller seeing only that feature.
+const label = t.launch.inviteLabels[index % t.launch.inviteLabels.length]!;
+const hint = t.launch.inviteHint;
 ---
 
 <!-- `group` is what lets the art zoom on card hover the way a real card's photos
@@ -55,34 +61,47 @@ const copy = t.launch.invites[index % t.launch.invites.length]!;
       </span>
     </span>
     <div class="store-card__title-group">
-      <!-- `.store-card__name`/`__tagline` are nowrap+ellipsis, which is right for
-           a store NAME (one line, truncation loses nothing you can't guess) but
-           wrong for a sentence — on the 2-column mobile grid every line came out
-           as "יש לכם מוצ...". These wrap instead; the card stretches to its
-           neighbours anyway, so a second line costs nothing. `!` is needed
-           because store-card.css is unlayered legacy CSS and outranks utilities. -->
-      <span class="store-card__name !whitespace-normal !overflow-visible">{copy.label}</span>
-      <span class="store-card__tagline !whitespace-normal !overflow-visible">{copy.hint}</span>
+      <!-- ONE LINE EACH, exactly like a real card — and the `!whitespace-normal
+           !overflow-visible` overrides that used to be here are gone (owner,
+           2026-08-14: "שכל הכרטיסיות יהיו באותו גובה ויהיה אותו מרחק מהטקסט
+           ומהתמונות").
+
+           They were added because the long hint truncated to "יש לכם מוצ..." on
+           the 2-column mobile grid, with the reasoning that "the card stretches
+           to its neighbours anyway, so a second line costs nothing". It does
+           cost: the card stretches, but its CONTENT does not — a head two lines
+           taller pushes only THIS card's preview row down, so the picture rows
+           of two neighbouring cards sit at different heights and the gap above
+           them differs. That is the misalignment he photographed, and no amount
+           of resizing the thumbnails can fix a head that is a different height.
+
+           The truncation that motivated the override is answered at the source
+           instead: `launch.inviteHint` is now a short line rather than a
+           sentence (see its note in translations.ts). A store card's whole
+           alignment contract is "name one line, tagline one line, tags row
+           reserved" — this card either keeps it or it breaks the row. -->
+      <span class="store-card__name">{label}</span>
+      <span class="store-card__tagline">{hint}</span>
     </div>
   </div>
   <!-- Empty, same as a store with no categories — it's what reserves the tags
        row's height so this card lines up with its neighbours (see StoreCard). -->
   <div class="store-card__tags"></div>
-  <!-- The whole card takes ONE hue (`pickCardHue`), and the three tiles differ
-       only in gradient angle and wash strength. Three flat grey boxes with a
-       hairline glyph read as "image failed to load"; a coloured wash reads as
-       three product photos, which is the difference between the card looking
-       dead and looking stocked. One hue per card rather than one per tile: three
-       different tints inside a single card cancel each other out and the card
-       goes grey again — the variety belongs between cards, where it reads as
-       different stores. -->
+  <!-- The whole card takes ONE hue (`pickCardHueSpec`), and the three tiles differ
+       only in how deep that hue sinks — never in light direction, which is a
+       constant (`tileBackground`, and the note above it says what varying it
+       looked like). Three flat grey boxes with a hairline glyph read as "image
+       failed to load"; a lit coloured wash reads as three product photos, which
+       is the difference between the card looking dead and looking stocked. One
+       hue per card rather than one per tile: three different tints inside a
+       single card cancel each other out and the card goes grey again — the
+       variety belongs between cards, where it reads as different stores. -->
   <div class="store-card__preview" aria-hidden="true">
     {art.map((a, i) => {
-      const wash = TILE_WASHES[i % TILE_WASHES.length]!;
       return (
         <span
           class="store-card__preview-img-wrap store-card__preview-img-wrap--empty"
-          style={`background:linear-gradient(${wash.angle}deg, color-mix(in srgb, ${hue} ${wash.from}%, var(--color-surface)), color-mix(in srgb, ${hue} ${wash.to}%, var(--color-surface)))`}
+          style={`background:${tileBackground(index, i)};box-shadow:${tileEdge(index)}`}
         >
           <!-- Sized to fill the tile the way a product photo does (~55% of it) —
                a small centred glyph reads as "no image", a large one reads as the
@@ -98,7 +117,7 @@ const copy = t.launch.invites[index % t.launch.invites.length]!;
             stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"
             class="transition-transform duration-[380ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)]
                    group-hover:scale-[1.08] motion-reduce:transform-none"
-            style={`color:${hue}`}
+            style={`color:${ink}`}
             set:html={a.paths}
           />
         </span>

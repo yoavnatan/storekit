@@ -14,6 +14,26 @@ import type { Order } from './orders.js';
 
 export type NotifiableStatus = 'ready' | 'shipped' | 'cancelled';
 
+/**
+ * The subset that also earns an EMAIL. The two channels are not the same channel: an in-app
+ * notification waits on a screen the buyer chose to open, while a mail interrupts an inbox, and a
+ * milestone can be worth the first without being worth the second.
+ *
+ * `ready` is exactly that case (owner, 2026-08-14). "ההזמנה נארזה ומוכנה לשליחה" is the seller's
+ * packing milestone — nothing is asked of the buyer, nothing has moved yet, and the parcel-is-on-
+ * its-way mail follows it within hours. Two mails for one departure is the shape a buyer starts
+ * filtering the sender out over, and the cost of that lands on `shipped` and `cancelled`, which
+ * genuinely have to arrive.
+ *
+ * So `ready` keeps its in-app notification and loses its mail. Anything added here later should be
+ * read the same way: does the buyer have to DO something, or has something real changed for them?
+ */
+export const EMAILED_STATUSES: readonly NotifiableStatus[] = ['shipped', 'cancelled'];
+
+export function isEmailedStatus(status: string): status is NotifiableStatus {
+  return (EMAILED_STATUSES as readonly string[]).includes(status);
+}
+
 export const STATUS_MESSAGES: Record<NotifiableStatus, { title: string; body: (o: Order) => string }> = {
   ready: {
     title: 'ההזמנה שלך מוכנה',

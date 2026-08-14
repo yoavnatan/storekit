@@ -73,7 +73,7 @@ export const translations = {
       // in exactly one place, deliberately: the site description in
       // store.config.ts, which is written for what a person types into Google
       // rather than for how the product describes itself. Its twin in
-      // `auth.benefitMall` and the `invites` label below say "כוח של קבוצה" —
+      // `auth.benefitMall` and the `inviteLabels` entry below say "כוח של קבוצה" —
       // "מתחם" carries no metaphor of pull, so that bullet keeps one and the
       // noun does not.
       //
@@ -93,25 +93,74 @@ export const translations = {
       // "זירת מסחר", a different word doing a legal job, and "marketplace" is
       // its correct twin.
       startSelling: 'מתחם חנויות דיגיטלי',
-      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה. פרסום, SEO ומשלוחים מובנים — הכל במקום אחד.',
-      builtInAds: 'פרסום מובנה',
+      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה. ממשק פרסום, SEO ומשלוחים מובנים — הכל במקום אחד.',
+      // "ממשק פרסום מובנה", never "פרסום מובנה" (owner, 2026-08-14). What is
+      // built in is the SYSTEM that runs the campaigns — the ad SPEND is billed
+      // separately, per actual spend, and is never inside the monthly fee (see
+      // lib/pricing.ts: subscription and advertising are additive, never
+      // offset). The short form promised a seller free traffic, which is the one
+      // thing the business model does not include. Same rule anywhere else ads
+      // are listed beside SEO and shipping — `auth.benefitBuiltIn`, the launch
+      // card hint below.
+      builtInAds: 'ממשק פרסום מובנה',
       builtInSeo: 'SEO מובנה',
       builtInShipping: 'משלוחים מובנים',
     },
-    // Rotated across placeholder cards so a grid of them reads as varied
-    // content rather than one banner repeated a dozen times. Keep the count at
-    // FIVE (or another number coprime with 2, 3 and 4): the directory grid's
-    // column count is responsive, and a cycle length that divides it lines the
-    // same line up down a whole column — which is exactly the repetition this
-    // rotation exists to avoid.
+    // Placeholder store cards (StorePlaceholderCard.astro).
+    //
+    // The TITLE rotates so a grid of them reads as varied content rather than
+    // one banner repeated a dozen times. Keep the count at FIVE (or another
+    // number coprime with 2, 3 and 4): the directory grid's column count is
+    // responsive, and a cycle length that divides it lines the same line up down
+    // a whole column — which is exactly the repetition this rotation exists to
+    // avoid.
+    //
+    // The SUBTITLE does not rotate, and that is the point (owner, 2026-08-14).
+    // Each card used to carry one feature of the offer, so the pitch was only
+    // whole when every card was on screen at once — and the number of cards
+    // FALLS as real stores arrive (planLaunchShelf keeps a floor of one). A
+    // seller arriving late saw a single card advertising, say, shipping, and
+    // never learned the rest existed. So every card now carries the entire
+    // offer: a rotating hook on top, the full sentence underneath.
+    //
+    // The sentence runs in the order the owner asked for (2026-08-14): the store
+    // first, then what being here does for it, then what comes with it. The
+    // middle clause is deliberately NOT "כוח של קבוצה" — that is a metaphor, and
+    // the thing it stands for is concrete and worth saying outright: shoppers
+    // arrive at this store through the mall around it. `auth.benefitMall` still
+    // carries the short metaphor, where it sits in a list of three and has no
+    // room to explain itself; a card does.
+    //
+    // No label repeats a clause of the sentence beneath it. "חנות משלכם" and
+    // "כוח של קבוצה" were labels until the sentence absorbed both, and a title
+    // restating the line directly under it reads as a mistake, not as emphasis.
     launch: {
-      invites: [
-        { label: 'מתחם חנויות דיגיטלי', hint: 'הכל תחת קורת גג אחת' },
-        { label: 'חנות משלכם', hint: 'השם, המוצרים והלקוחות שלכם' },
-        { label: 'כוח של קבוצה', hint: 'חנות אחת, תנועה של כולן' },
-        { label: 'פרסום ו-SEO מובנים', hint: 'פעילים מהיום הראשון' },
-        { label: 'משלוחים מובנים', hint: 'מחיר, מעקב ואיסוף בפנים' },
+      inviteLabels: [
+        'מתחם חנויות דיגיטלי',
+        'המקום שלכם כאן',
+        'פתיחת חנות',
+        'הכול מובנה מראש',
+        'להתחיל למכור',
       ],
+      // The owner's own sentence, tightened twice (2026-08-14). "כולל … מערכת
+      // משלוחים מובנית" became a bare list: "מובנית" is feminine singular, so it
+      // agreed with the shipping system alone and left the other three items
+      // uncovered, and "כולל" was doing the work "הכל במקום אחד" already does at
+      // the end. "כלי פרסום" over "ממשק פרסום" for the same reason the short
+      // form was banned upstairs — it is a tool the seller operates, and nothing
+      // about it can be read as free ad budget.
+      //
+      // ⚠️ It now names סליקה, which is a capability the platform does not have
+      // wired yet (GO_LIVE §3). That is fine only because payments are a launch
+      // BLOCKER — this line must not reach a live site before they work.
+      // ONE LINE, because of where it lands (2026-08-14). This sits in a store
+      // card's `__tagline` slot, whose whole job is to be one line so that every
+      // card in a row puts its picture row at the same height. The long version
+      // wrapped to three or four lines and pushed this card's pictures down on
+      // its own, which is the misalignment the owner photographed. The full
+      // offer belongs on /seller/register, which is one click away and is where
+      // somebody who read this line is going.
+      inviteHint: 'חנות משלכם — פרסום, סליקה ומשלוחים מובנים',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -340,8 +389,25 @@ export const translations = {
       oauthFailed: 'שגיאה בהתחברות עם Google. נסה שנית.',
       oauthUnverifiedEmail: 'כתובת המייל בחשבון Google הזה לא אומתה על ידי Google. יש לאמת אותה שם, או להתחבר עם סיסמה.',
       loginSubtitle: 'התחבר לחשבון שלך כדי להמשיך.',
+      forgotPassword: 'שכחת סיסמה?',
+      forgotTitle: 'איפוס סיסמה',
+      forgotSubtitle: 'נשלח לך קישור לבחירת סיסמה חדשה.',
+      forgotSubmit: 'שליחת קישור',
+      // Says nothing about whether the address is registered — the same sentence either way, on
+      // purpose (lib/password-reset.ts).
+      forgotSent: 'אם הכתובת רשומה אצלנו, שלחנו אליה קישור לאיפוס סיסמה. בדוק גם בתיקיית הספאם.',
+      forgotBackToLogin: 'חזרה לכניסה',
+      resetTitle: 'בחירת סיסמה חדשה',
+      resetSubtitle: 'הקישור תקף לשימוש אחד.',
+      newPassword: 'סיסמה חדשה',
+      confirmPassword: 'אישור הסיסמה',
+      resetSubmit: 'שמירת הסיסמה',
+      resetMismatch: 'שתי הסיסמאות אינן זהות.',
+      resetInvalid: 'הקישור אינו תקף — ייתכן שפג תוקפו או שכבר נעשה בו שימוש. אפשר לבקש קישור חדש.',
+      resetRequestNew: 'בקשת קישור חדש',
+      resetDone: 'הסיסמה עודכנה. אפשר להיכנס עכשיו.',
       benefitMall: 'כוח של קבוצה — תנועה של כל החנויות',
-      benefitBuiltIn: 'פרסום, SEO ומשלוחים מובנים',
+      benefitBuiltIn: 'ממשק פרסום, SEO ומשלוחים מובנים',
       benefitHebrew: 'עברית ו-RTL באופן מלא',
     },
     dashboard: {
@@ -686,7 +752,7 @@ export const translations = {
       lcClose: 'סגור את החנות',
       lcOpenOrders: 'הזמנות פתוחות: {n}',
       lcPauseConfirmTitle: 'להקפיא את החנות?',
-      lcPauseConfirmBody: 'החנות תפסיק לקבל הזמנות מיד ותוסר מהמתחם ומהחיפוש. ניתן להחזיר אותה לפעילות בכל רגע.',
+      lcPauseConfirmBody: 'החנות תפסיק לקבל הזמנות מיד ותוסר מהמתחם ומהחיפוש — דף החנות יציג הודעה לקונים. ההזמנות הקיימות ניתנות לטיפול דרך הדשבורד. ניתן להחזיר את החנות לפעילות בכל רגע.',
       lcResumeConfirmTitle: 'להחזיר את החנות לפעילות?',
       lcResumeConfirmBody: 'החנות תחזור למכור ותופיע שוב במתחם ובחיפוש. שים לב: קמפיינים שנעצרו לא חוזרים לבד — יש להפעילם מחדש בלשונית הפרסום.',
       lcCancelCloseConfirmTitle: 'לבטל את הסגירה?',
@@ -2006,19 +2072,23 @@ export const translations = {
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
       startSelling: 'A home for independent stores',
-      startSellingDesc: 'A store of your own, alongside every other store on the platform. Ads, SEO and shipping built in — all in one place.',
-      builtInAds: 'Built-in ads',
+      startSellingDesc: 'A store of your own, alongside every other store on the platform. A built-in ads manager, SEO and shipping — all in one place.',
+      // "ads manager", never bare "ads" — see the Hebrew twin above: the manager
+      // is included, the ad spend is billed separately.
+      builtInAds: 'Built-in ads manager',
       builtInSeo: 'Built-in SEO',
       builtInShipping: 'Built-in shipping',
     },
     launch: {
-      invites: [
-        { label: 'A home for independent stores', hint: 'Everything under one roof' },
-        { label: 'A store of your own', hint: 'Your name, products and customers' },
-        { label: 'Strength in numbers', hint: 'One store, the traffic of them all' },
-        { label: 'Ads and SEO built in', hint: 'Active from day one' },
-        { label: 'Shipping built in', hint: 'Pricing, tracking and pickup' },
+      inviteLabels: [
+        'A home for independent stores',
+        'Your place here',
+        'Open a store',
+        'Everything built in',
+        'Start selling',
       ],
+      // One line — see the Hebrew entry for why the long version could not stay.
+      inviteHint: 'A store of your own — ads, payments and shipping built in',
     },
     demo: {
       badge: 'Example store',
@@ -2191,8 +2261,23 @@ export const translations = {
       oauthFailed: 'Google sign-in failed. Please try again.',
       oauthUnverifiedEmail: 'The email address on this Google account has not been verified by Google. Verify it there, or sign in with a password.',
       loginSubtitle: 'Log in to your account to continue.',
+      forgotPassword: 'Forgot your password?',
+      forgotTitle: 'Reset password',
+      forgotSubtitle: "We'll email you a link to choose a new one.",
+      forgotSubmit: 'Send link',
+      forgotSent: 'If that address is registered with us, we sent it a reset link. Check your spam folder too.',
+      forgotBackToLogin: 'Back to sign in',
+      resetTitle: 'Choose a new password',
+      resetSubtitle: 'This link works once.',
+      newPassword: 'New password',
+      confirmPassword: 'Confirm password',
+      resetSubmit: 'Save password',
+      resetMismatch: 'The two passwords do not match.',
+      resetInvalid: 'This link is not valid — it may have expired or already been used. You can request a new one.',
+      resetRequestNew: 'Request a new link',
+      resetDone: 'Your password has been updated. You can sign in now.',
       benefitMall: 'Strength in numbers — the traffic of every store',
-      benefitBuiltIn: 'Ads, SEO and shipping built in',
+      benefitBuiltIn: 'A built-in ads manager, SEO and shipping',
       benefitHebrew: 'Full Hebrew and RTL',
     },
     dashboard: {
@@ -2494,7 +2579,7 @@ export const translations = {
       lcClose: 'Close the store',
       lcOpenOrders: 'Open orders: {n}',
       lcPauseConfirmTitle: 'Pause the store?',
-      lcPauseConfirmBody: 'The store stops taking orders immediately and leaves the listing and search. You can reopen it at any time.',
+      lcPauseConfirmBody: 'The store stops taking orders immediately and leaves the listing and search — its page shows a notice to shoppers. Existing orders can still be handled from the dashboard. You can reopen the store at any time.',
       lcResumeConfirmTitle: 'Reopen the store?',
       lcResumeConfirmBody: 'The store starts selling again and returns to the listing and search. Note: campaigns that were stopped do not resume on their own — restart them in the Advertising tab.',
       lcCancelCloseConfirmTitle: 'Cancel the closure?',

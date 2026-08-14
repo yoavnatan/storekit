@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildOrderStatusEmail } from '../src/lib/email/order-status-email.js';
+import { EMAILED_STATUSES, STATUS_MESSAGES } from '../src/lib/order-status-copy.js';
 import type { Order } from '../src/lib/orders.js';
 
 function order(overrides: Partial<Order> = {}): Order {
@@ -27,10 +28,14 @@ describe('buildOrderStatusEmail', () => {
     expect(msg!.html).toContain('Urban Threads'); // store named
   });
 
-  it('builds a ready email', () => {
-    const msg = buildOrderStatusEmail(order({ shippingStatus: 'ready' }), 'ready');
-    expect(msg!.subject).toContain('מוכנה');
-    expect(msg!.html).toContain('לצפייה בחנות'); // CTA present for ready
+  // The two channels diverge here on purpose (owner, 2026-08-14): 'ready' is the seller's packing
+  // milestone, so it still raises an in-app notification and no longer sends mail. Both halves are
+  // asserted, because "no email" is only correct as long as the notification survives — a change
+  // that dropped the status entirely would otherwise pass this file.
+  it('sends NO email for ready — while keeping its in-app copy', () => {
+    expect(buildOrderStatusEmail(order({ shippingStatus: 'ready' }), 'ready')).toBeNull();
+    expect(EMAILED_STATUSES).not.toContain('ready');
+    expect(STATUS_MESSAGES.ready.title).toContain('מוכנה');
   });
 
   it('builds a cancellation email with the refund note and no store CTA', () => {
@@ -53,7 +58,7 @@ describe('buildOrderStatusEmail', () => {
   });
 
   it('escapes buyer-supplied fields (no HTML injection)', () => {
-    const msg = buildOrderStatusEmail(order({ buyerName: '<b>x</b>', shippingStatus: 'ready' }), 'ready');
+    const msg = buildOrderStatusEmail(order({ buyerName: '<b>x</b>', shippingStatus: 'shipped' }), 'shipped');
     expect(msg!.html).not.toContain('<b>x</b>');
     expect(msg!.html).toContain('&lt;b&gt;');
   });

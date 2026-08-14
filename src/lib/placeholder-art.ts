@@ -38,42 +38,166 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  has one clear colour identity, and the row gets its variety from card to card
  *  instead of from tile to tile.
  *
- *  Five, and the rotation step is 1, because 5 is coprime with 2, 3 and 4 — the
+ *  Seven, and the rotation step is 1, because 7 is coprime with 2, 3 and 4 — the
  *  column counts `/stores`' grid uses. A pool of 4 (or a step sharing a factor)
- *  puts the same colour down an entire column at some viewport width.
+ *  puts the same colour down an entire column at some viewport width. Any count
+ *  coprime with all three works (5, 7, 11 …), so a colour can be swapped freely
+ *  but one cannot simply be dropped.
  *
- *  Values are tokens (`tokens.css`), never hexes here — and they are deliberately
- *  vivid rather than brand colours. The consumer mixes the hue down to a wash for
- *  the tile background and draws the line-art in the hue at full strength. */
-export const TILE_HUES: readonly string[] = [
-  'var(--color-tile-blue)',
-  'var(--color-tile-orange)',
-  'var(--color-tile-green)',
-  'var(--color-tile-gold)',
-  'var(--color-tile-red)',
+ *  Order is not alphabetical and not arbitrary: five of the seven are cool, so
+ *  they are interleaved with the warm ones to keep row-neighbours apart.
+ *
+ *  ⚠️ `--color-invite-*`, NOT `--color-tile-*`. The tile tokens look like the
+ *  obvious ones to reuse and are the wrong list: they are `MARK_HUES`, the
+ *  palette every store's generated identity mark is built from, and a change
+ *  here would have re-coloured every existing store. tokens.css carries both and
+ *  says which is which — along with the full history of what these seven are and
+ *  why (red out, grey out, yellow made yellow, orange made redder).
+ *
+ *  Values are tokens, never hexes here.
+ *
+ *  `maxWash` is the deepest mix % of this hue the tile wash may reach, and it is
+ *  PER HUE rather than one global cap, because equal percentages do not produce
+ *  equal fill. The cap exists so the line-art keeps 3:1 against the deepest part
+ *  of the wash behind it, and a dark hue has far more room before it gets there
+ *  than a light one. With one cap of 22 for everybody the dark hues washed out to
+ *  almost nothing and their cards read as unfilled tiles, which is the "image
+ *  failed to load" look this whole treatment exists to avoid.
+ *
+ *  `ink` is the colour the line-art is stroked in, and it defaults to the hue
+ *  itself — one colour per card is the rule, and six of the seven keep it. Yellow
+ *  is the exception and had to be: the art used to BE the wash colour, which
+ *  meant the only "yellows" that could pass 3:1 against themselves were the dark
+ *  muddy ones, and that is why this slot was a gold that read as orange. Splitting
+ *  the ink off is what let the wash become an actual yellow. Reach for it only for
+ *  that reason — a card whose art is a different colour from its tiles stops
+ *  reading as one object.
+ *
+ *  Contrast measured 2026-08-14, ink against `color-mix(hue maxWash%, white)`:
+ *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 ·
+ *  violet 4.78. Never raise a cap without re-measuring; 3:1 is the floor. */
+export interface InviteHue {
+  /** CSS custom property for the tile wash, declared in tokens.css. */
+  token: string;
+  /** Deepest mix % of this hue a tile wash may use. See above. */
+  maxWash: number;
+  /** Line-art colour, when it cannot be the hue itself. Defaults to `token`. */
+  ink?: string;
+}
+
+export const INVITE_HUES: readonly InviteHue[] = [
+  { token: 'var(--color-invite-orange)', maxWash: 22 },
+  { token: 'var(--color-invite-blue)', maxWash: 26 },
+  { token: 'var(--color-invite-yellow)', maxWash: 26, ink: 'var(--color-invite-yellow-ink)' },
+  { token: 'var(--color-invite-sky)', maxWash: 22 },
+  { token: 'var(--color-invite-green)', maxWash: 22 },
+  // The quiet card of the seven, and the slot that took three tries — a slate
+  // grey, then the site's dark navy, then that navy inverted to a dark tile with
+  // white art, which read as black and as an outlier in a row of pale cards.
+  // tokens.css carries the full record. A little deeper than its neighbours
+  // because it is the least saturated hue here and a 22% wash of it barely
+  // registers; sage is where "muted" stops being "missing".
+  { token: 'var(--color-invite-sage)', maxWash: 30 },
+  { token: 'var(--color-invite-violet)', maxWash: 22 },
 ];
 
-/** The only thing that separates the three tiles of one card: gradient angle and
- *  how much of the card's hue washes into white. `from` never exceeds 22 — the
- *  line-art is drawn in the same hue, and past that the two collapse into each
- *  other (22% is where the weakest token, gold, still clears 3:1). */
+/** Just the tokens, in order — the shape most callers and tests want. */
+export const TILE_HUES: readonly string[] = INVITE_HUES.map((h) => h.token);
+
+/** ONE light direction for every tile of every card (owner, 2026-08-14).
+ *
+ *  The first version gave each tile its own gradient angle — 145°, 215°, 175° —
+ *  so within a single card the light appeared to come from three different
+ *  directions at once. Three squares side by side, each lit from somewhere else,
+ *  read exactly the way it was described: small pictures hung crooked. Nothing
+ *  was geometrically tilted (the tiles are `aspect-ratio: 1`); the tilt was
+ *  entirely in the lighting.
+ *
+ *  So the angle is a constant now, and it is the ONE thing the tiles no longer
+ *  vary. 168° is very close to straight down with a slight lean — light from
+ *  above, the way a product photograph is lit, and the lean keeps it from
+ *  reading as a flat horizontal band. */
+export const TILE_LIGHT_ANGLE = 168;
+
+/** What separates the three tiles of one card, now that the angle can't: how
+ *  deep the card's hue sinks into the surface. Every tile is lightest at the top
+ *  and deepest at the bottom — a consistent ramp is what makes three tiles read
+ *  as one lit scene, and the depth difference between them is what stops the
+ *  card being a single flat block of colour.
+ *
+ *  These are FRACTIONS of the hue's own `maxWash`, not absolute mix percentages.
+ *  Absolutes were the first version and they gave every hue the same numbers,
+ *  which the least saturated hues could not carry — see the note on INVITE_HUES.
+ *  A fraction means the three tiles of a card always sit at the same three
+ *  RELATIVE depths, whichever hue the card drew. */
 export interface TileWash {
-  angle: number;
-  /** Mix % of the hue at the gradient's strong end. */
-  from: number;
-  /** Mix % at the weak end. */
-  to: number;
+  /** Share of the hue's `maxWash` at the lit top edge. */
+  top: number;
+  /** …and at the shaded bottom edge. Always the deeper of the two. */
+  bottom: number;
 }
 
 export const TILE_WASHES: readonly TileWash[] = [
-  { angle: 145, from: 20, to: 6 },
-  { angle: 215, from: 12, to: 4 },
-  { angle: 175, from: 22, to: 8 },
+  { top: 0.18, bottom: 1 },
+  { top: 0.09, bottom: 0.68 },
+  { top: 0.27, bottom: 0.95 },
 ];
 
-/** The dominant hue of the card at `cardIndex`. */
+/** Mix % for one tile edge, rounded — a fraction of the card hue's own budget. */
+function washPercent(hue: InviteHue, fraction: number): number {
+  return Math.round(hue.maxWash * fraction * 10) / 10;
+}
+
+/**
+ * The full CSS `background` for one tile of the card at `cardIndex`: the wash,
+ * under a soft highlight that falls from just above the tile's top edge.
+ *
+ * The highlight is what gives the tile a surface instead of a fill — it is the
+ * same light the gradient ramps away from, so the two are one treatment rather
+ * than the "gradients-on-gradients" store-card.css warns against. It is
+ * deliberately weak and stops well before the middle: past that it turns the
+ * tile into a glossy button, which is a 2010 treatment and not this site's.
+ *
+ * Takes the CARD index rather than a hue string, because the wash depth is a
+ * property of the hue and the two must not be picked apart — the whole reason
+ * the caps are per-hue is that a hue and its budget belong together.
+ */
+export function tileBackground(cardIndex: number, tileIndex: number): string {
+  const hue = pickCardHueSpec(cardIndex);
+  const wash = TILE_WASHES[tileIndex % TILE_WASHES.length]!;
+  return [
+    `radial-gradient(120% 78% at 50% -12%, color-mix(in srgb, #fff 55%, transparent) 0%, transparent 62%)`,
+    `linear-gradient(${TILE_LIGHT_ANGLE}deg,`
+      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, wash.top)}%, var(--color-surface)) 0%,`
+      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, wash.bottom)}%, var(--color-surface)) 100%)`,
+  ].join(', ');
+}
+
+/** The hairline that closes the tile off from the card behind it. A wash with no
+ *  edge floats; the edge is what makes three of them read as a deliberate set —
+ *  and it is drawn in the card's own hue, not the grey border token, so it
+ *  belongs to the tile rather than outlining it. Scaled by the same budget: on a
+ *  hue whose wash runs deep, a 12% edge disappears into it. */
+export function tileEdge(cardIndex: number): string {
+  const hue = pickCardHueSpec(cardIndex);
+  return `inset 0 0 0 1px color-mix(in srgb, ${hue.token} ${washPercent(hue, 0.55)}%, transparent)`;
+}
+
+/** The full hue spec of the card at `cardIndex` — token plus its wash budget. */
+export function pickCardHueSpec(cardIndex: number): InviteHue {
+  return INVITE_HUES[cardIndex % INVITE_HUES.length]!;
+}
+
+/** The dominant hue of the card at `cardIndex`, as a CSS value — the tiles' wash. */
 export function pickCardHue(cardIndex: number): string {
-  return TILE_HUES[cardIndex % TILE_HUES.length]!;
+  return pickCardHueSpec(cardIndex).token;
+}
+
+/** The colour this card's line-art is stroked in — its hue, unless that hue is
+ *  too light to be drawn on top of itself (see `ink` on InviteHue). */
+export function pickCardInk(cardIndex: number): string {
+  const hue = pickCardHueSpec(cardIndex);
+  return hue.ink ?? hue.token;
 }
 
 /** Step between one card's starting art and the next card's. Must be coprime

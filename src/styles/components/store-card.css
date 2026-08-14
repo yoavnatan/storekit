@@ -128,6 +128,12 @@
   position: relative;
   flex: 1 1 0;
   aspect-ratio: 1;
+  /* A `max-height: 6rem` stood here for one round and was REVERTED (owner, 2026-08-14: "לא טוב").
+     It read the complaint as "the thumbnails are too big" when what he described was two cards
+     side by side that do not line up — and capping one card's thumbs while the other's head is a
+     different height makes the two rows disagree by MORE, not less. The fix is at the head, not
+     here: see `.store-card__title-group` and StorePlaceholderCard's own note. Left as a comment so
+     the same wrong lever is not pulled again on the same complaint. */
   border-radius: var(--radius-sm);
   overflow: hidden;
   /* White, not the page's off-white --color-bg. A product photo shot on a

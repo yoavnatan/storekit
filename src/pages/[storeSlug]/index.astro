@@ -687,7 +687,12 @@ const bannerPreload = !isDemo && shopStore.bannerImage
               buttonClass="store-banner-action-btn"
             />
 
+            {/* Own positioning context, exactly like the favourite button above: the login hint is
+                `position:absolute` and gets appended to this button's parent, so without a
+                `relative` wrapper it anchors to whatever ancestor happens to be positioned and
+                lands at the edge of the banner instead of under the button. */}
             {userId !== shopStore.sellerId && (
+              <div style="position:relative;display:flex;align-items:center">
               <button
                 type="button"
                 class="store-banner-action-btn"
@@ -704,6 +709,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 {t.store.contactShort}
               </button>
+              </div>
             )}
             </div>
           </div>
@@ -2705,6 +2711,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:var(--shadow-card);font-size:0.8rem;color:var(--color-text)';
     hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
     const container = btn.parentElement ?? btn;
+    // The hint is `position:absolute`, so it lands under the button only if this
+    // container is the positioning context. Markup is meant to provide that; if a
+    // future edit drops the wrapper the hint would silently fly to the nearest
+    // positioned ancestor instead of just looking wrong here, so pin it.
+    if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
     container.appendChild(hint);
     const dismiss = () => { hint.remove(); document.removeEventListener('click', outsideClick); };
     const outsideClick = (e: MouseEvent) => { if (!hint.contains(e.target as Node) && e.target !== btn) dismiss(); };

@@ -23,6 +23,7 @@ import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
+import CopyButton from '../../components/dashboard/CopyButton.astro';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
 import { productSeoPanelHtml, productSeoLabels, productSeoRowGaugeHtml } from '../../lib/product-seo-field.js';
 // The only PANEL this page renders is the ADD form's, which starts from a product that does not
@@ -994,8 +995,21 @@ const orderStatusColors: Record<string, string> = {
             {d.viewLive}
           </a>
         </div>
-        {/* The store's public address — the seller's own domain once verified, else the platform path. */}
-        <p class="muted" style="margin:0.25rem 0 0;font-size:0.82rem">{d.storeSubtitle} · <code id="dash-store-address" data-has-custom-domain={store.customDomain?.status === 'active' ? '1' : ''} style="font-size:0.78rem">{store.customDomain?.status === 'active' ? store.customDomain.hostname : `/${store.slug}`}</code></p>
+        {/* The store's public address — the seller's own domain once verified, else the platform host.
+            The WHOLE address, not the `/slug` path this used to show (owner, 2026-08-14): a path is
+            not something anyone can be sent to, and this line is the one place in the dashboard a
+            seller looks when someone asks him where his store is. It is also the copy source, so
+            what he hands over is a working address rather than a fragment he has to complete.
+            No scheme, deliberately — see the note on `cd-local-addr` further down. */}
+        <p class="muted flex items-center gap-1.5 flex-wrap" style="margin:0.25rem 0 0;font-size:0.82rem">
+          <span>{d.storeSubtitle} ·</span>
+          <code id="dash-store-address" dir="ltr" data-has-custom-domain={store.customDomain?.status === 'active' ? '1' : ''} style="font-size:0.78rem">{store.customDomain?.status === 'active' ? store.customDomain.hostname : `${platformHost}/${store.slug}`}</code>
+          {/* No size override. It carried `!py-0 !px-1` to sit lightly on a 0.82rem line, and what
+              that actually did was pull the ghost border in against the 13px icon — the button read
+              as a box drawn around the glyph. `.btn--sm`'s own padding is what the three copy
+              buttons in the settings panel use, and matching them is also the point. */}
+          <CopyButton target="dash-store-address" label={d.cdCopy} copiedLabel={d.cdCopied} />
+        </p>
 
         {settingsSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
         {productSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.productAdded}</p>}
@@ -2826,8 +2840,11 @@ const orderStatusColors: Record<string, string> = {
         )}
         <script type="application/json" id="category-tree-data" set:html={jsonForScript(categoryTree)} />
 
+        <!-- `platformHost`, not `.hostname`: the host keeps the port, and in dev the address without
+             it is one nobody can reach. It must be the SAME expression the code elements below are
+             rendered from, or saving a new slug swaps a working address for a broken one. -->
         {store && (
-        <div id="store-url" class="mt-8" data-store-id={store.id} data-host={new URL(platformConfig.url).hostname} data-current-slug={store.slug}>
+        <div id="store-url" class="mt-8" data-store-id={store.id} data-host={platformHost} data-current-slug={store.slug}>
           <!-- Settings carries TWO "addresses" — the physical one in the store-details
                form above and this web one. They used to share the literal same Hebrew
                label ("כתובת החנות"); now they're named apart (כתובת פיזית / כתובת האתר)
@@ -2837,7 +2854,8 @@ const orderStatusColors: Record<string, string> = {
             <p class="muted text-[0.8rem] leading-[1.5] mt-1 mb-0">{d.storeUrlSubtitle}</p>
           </div>
           <div class="flex items-center gap-2 flex-wrap mb-1">
-            <code id="store-url-current" class="font-mono text-[0.85rem] [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/${store.slug}`}</code>
+            <code id="store-url-current" dir="ltr" class="font-mono text-[0.85rem] [color:var(--color-text)]">{`${platformHost}/${store.slug}`}</code>
+            <CopyButton target="store-url-current" label={d.cdCopy} copiedLabel={d.cdCopied} />
             <button type="button" id="store-url-edit" class="btn btn--ghost btn--sm">{d.edit}</button>
           </div>
           <p class="muted text-[0.8rem] leading-[1.5]">{d.storeUrlEditHint}</p>
@@ -2846,7 +2864,7 @@ const orderStatusColors: Record<string, string> = {
             {/* dir="auto" so a Hebrew slug types right-to-left; the preview stays ltr because the
                 address reads host-then-path, with bidi laying the Hebrew run out inside it. */}
             <input id="store-url-input" class="input" dir="auto" autocomplete="off" spellcheck="false" value={store.slug} />
-            <p class="muted text-[0.78rem]" dir="ltr" style="text-align:start"><span id="store-url-preview" class="font-mono [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/${store.slug}`}</span></p>
+            <p class="muted text-[0.78rem]" dir="ltr" style="text-align:start"><span id="store-url-preview" class="font-mono [color:var(--color-text)]">{`${platformHost}/${store.slug}`}</span></p>
             <p class="muted text-[0.78rem] leading-[1.5]">{d.storeUrlHebrewNote}</p>
             <div class="flex gap-2">
               <button type="button" id="store-url-save" class="btn btn--sm">{d.save}</button>
@@ -2872,10 +2890,19 @@ const orderStatusColors: Record<string, string> = {
           </div>
           <p class="muted text-[0.85rem] leading-[1.6] mb-3" set:html={d.cdLead}></p>
 
-          {/* The always-live local address — the point of the whole feature: a custom domain never replaces it. */}
+          {/* The always-live local address — the point of the whole feature: a custom domain never replaces it.
+              NO `https://` (owner asked, 2026-08-14, and the answer is no): this is the same address the
+              store-URL section above prints without a scheme, and one address spelled two ways on one
+              screen reads as two addresses. It is also not what a seller does with it — it goes into a
+              bio, a WhatsApp message, a printed card, where every platform links a bare host anyway and
+              the scheme is noise a browser hides. The scheme still belongs anywhere the string is a real
+              LINK (`cd-visit`'s href) — it just isn't part of what an address LOOKS like. */}
           <div class="flex flex-col gap-1 mb-4 text-[0.82rem]">
             <span class="muted">{d.cdLocalLabel}</span>
-            <code id="cd-local-addr" class="font-mono text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.35rem] px-[.6rem] w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{`${platformConfig.url}/${store.slug}`}</code>
+            <span class="flex items-center gap-2 min-w-0">
+              <code id="cd-local-addr" dir="ltr" class="font-mono text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.35rem] px-[.6rem] w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{`${platformHost}/${store.slug}`}</code>
+              <CopyButton target="cd-local-addr" label={d.cdCopy} copiedLabel={d.cdCopied} />
+            </span>
           </div>
 
           {/* State A — no domain connected yet */}
@@ -2888,7 +2915,8 @@ const orderStatusColors: Record<string, string> = {
           {/* State B/C — a domain exists (pending or active) */}
           <div id="cd-connected" hidden={!cd} class="flex flex-col gap-3">
             <div class="flex items-center gap-2 flex-wrap">
-              <code id="cd-hostname" class="font-mono text-[0.85rem] font-semibold [color:var(--color-text)]">{cd?.hostname ?? ''}</code>
+              <code id="cd-hostname" dir="ltr" class="font-mono text-[0.85rem] font-semibold [color:var(--color-text)]">{cd?.hostname ?? ''}</code>
+              <CopyButton target="cd-hostname" label={d.cdCopy} copiedLabel={d.cdCopied} />
               <span id="cd-badge" class={`inline-flex items-center gap-[.35rem] text-[0.75rem] font-semibold py-[.2rem] px-[.55rem] rounded-full ${cdActive ? 'bg-[#f0fdf4] text-[#166534]' : 'bg-[#fffbeb] text-[#92400e]'}`}>
                 <span class={`w-[7px] h-[7px] rounded-full ${cdActive ? 'bg-[#16a34a]' : 'bg-[#d97706]'}`}></span>
                 <span id="cd-badge-text">{cdActive ? d.cdStatusActive : d.cdStatusPending}</span>
@@ -2912,9 +2940,7 @@ const orderStatusColors: Record<string, string> = {
                 <span class="muted">{d.cdDnsValue}</span>
                 <span class="flex items-center gap-2 min-w-0">
                   <code id="cd-cname-value" class="font-mono [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.3rem] px-[.5rem] overflow-hidden text-ellipsis whitespace-nowrap">{cdTarget}</code>
-                  <button type="button" class="btn btn--ghost btn--sm shrink-0" id="cd-copy" aria-label={d.cdCopy}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  </button>
+                  <CopyButton target="cd-cname-value" label={d.cdCopy} copiedLabel={d.cdCopied} />
                 </span>
               </div>
               <p class="muted text-[0.78rem] leading-[1.5] mt-2">{d.cdPendingNote}</p>
@@ -3346,6 +3372,7 @@ const orderStatusColors: Record<string, string> = {
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks, initStorePreviewLink } from '../../scripts/dashboard/ui.js';
   import { initInfoTooltips } from '../../scripts/tooltip.js';
   import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
+  import { initCopyValueButtons } from '../../scripts/dashboard/copy-value.js';
   import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
   import { initDiscountFields, refreshDiscountFieldsIn } from '../../scripts/dashboard/discount-field.js';
   // The panel filler. Stage 1 on purpose: a panel that has never been opened has no chunk of its
@@ -3379,6 +3406,9 @@ const orderStatusColors: Record<string, string> = {
   // registered exactly once.
   initDiscountFields();
   initUnsavedGuard();
+  // Delegated, so it covers the copy button in the header AND the ones in the settings panel,
+  // which only exists after the click that opens it.
+  initCopyValueButtons();
   initStorePreviewLink();
   initStoreSwitcher();
   initAutoHideStatus();

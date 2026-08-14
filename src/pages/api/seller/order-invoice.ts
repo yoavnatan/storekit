@@ -7,6 +7,7 @@ import { getOrderById, orderBelongsToStore } from '../../../lib/orders.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getSellerById } from '../../../lib/seller-auth.js';
 import { planBuyerInvoice } from '../../../lib/invoicing/index.js';
+import { sendInvoiceReadyEmail } from '../../../lib/email/invoice-email.js';
 import { PAYMENT_STATUS_RULES } from '../../../lib/order-status-rules.js';
 
 /**
@@ -89,6 +90,18 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // such order, and an upload whose URL was not one of ours. Distinguishing them would turn this
   // route into a way to ask which order ids exist.
   if (!state) return json({ error: 'Not found' }, 404);
+
+  // Tell the buyer the document exists. Only for `upload` — a `handover` invoice is physically in
+  // the parcel and there is nothing to link to (email/invoice-email.ts). Fire-and-forget after the
+  // write, like every other mail on the platform: the upload is the fact, the mail is a notice about
+  // it, and the seller's request must not fail because a provider was slow.
+  //
+  // Deliberately not de-duplicated against a previous send. A seller only reaches this by choosing a
+  // file, so a second one is a corrected invoice — which is exactly the case the buyer must hear
+  // about, and the case a "we already told him" guard would swallow.
+  if (mode === 'upload') {
+    void sendInvoiceReadyEmail(orderId, state.documentUrl);
+  }
 
   return json({ ok: true, invoice: state });
 }

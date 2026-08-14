@@ -17,8 +17,12 @@ import {
   PLACEHOLDER_ART,
   TILE_HUES,
   TILE_WASHES,
+  TILE_LIGHT_ANGLE,
+  INVITE_HUES,
+  tileBackground,
   pickArtTrio,
   pickCardHue,
+  pickCardInk,
 } from '../src/lib/placeholder-art.js';
 
 describe('launch-mode thresholds', () => {
@@ -123,20 +127,114 @@ describe('placeholder tile colour', () => {
     }
   });
 
-  it('draws every hue from a token, never a literal colour', () => {
-    for (const hue of TILE_HUES) expect(hue).toMatch(/^var\(--color-tile-[a-z]+\)$/);
+  it('draws every hue from an INVITE token, never a literal colour or a mark hue', () => {
+    // `--color-tile-*` is a different palette with the same shape: it is MARK_HUES,
+    // what every store's generated identity mark is built from (store-mark.ts), and
+    // reaching for it here would tie the invitation's colours to every existing
+    // store's identity. tokens.css carries both lists and says which is which.
+    for (const hue of TILE_HUES) expect(hue).toMatch(/^var\(--color-invite-[a-z]+\)$/);
   });
 
-  it('keeps the tile wash below the strength the same-hue line-art needs', () => {
-    // Art is stroked in the card's hue at full strength; past ~22% mix the wash
-    // and the stroke collapse into one another (gold clears 3:1 by the least).
+  it('declares every invite hue and ink it uses in tokens.css', () => {
+    const css = readFileSync(join(process.cwd(), 'src/styles/base/tokens.css'), 'utf8');
+    const declared = new Set([...css.matchAll(/--color-[a-z-]+(?=:)/g)].map((m) => m[0]));
+    for (let i = 0; i < INVITE_HUES.length; i++) {
+      expect(declared).toContain(pickCardHue(i).slice(4, -1));
+      // An ink must be a declared token too, and never a literal colour.
+      expect(pickCardInk(i)).toMatch(/^var\(--color-[a-z-]+\)$/);
+      expect(declared).toContain(pickCardInk(i).slice(4, -1));
+    }
+  });
+
+  it('inks the art in the card\'s own hue unless that hue cannot carry it', () => {
+    // One colour per card is the rule, and yellow is the single exception: it is
+    // too light to be stroked on top of itself at 3:1. Anything else reaching for
+    // an ink means the card has stopped reading as one object.
+    const split = INVITE_HUES.filter((h) => h.ink && h.ink !== h.token);
+    expect(split.map((h) => h.token)).toEqual(['var(--color-invite-yellow)']);
+    // And every other card's art IS its wash colour.
+    for (let i = 0; i < INVITE_HUES.length; i++) {
+      if (INVITE_HUES[i]!.ink) continue;
+      expect(pickCardInk(i)).toBe(pickCardHue(i));
+    }
+  });
+
+  it('keeps every card pale — no inverted tile in the set', () => {
+    // A dark tile with white art was tried for the neutral slot and rejected as
+    // an outlier in a row of pale cards (owner, 2026-08-14). Every ramp starts
+    // near white, so a card that renders dark end to end means the rule slipped.
+    for (let card = 0; card < INVITE_HUES.length; card++) {
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(Math.min(...mixes)).toBeLessThanOrEqual(10);
+      }
+    }
+  });
+
+  it('has no grey and no red left in the invitation palette', () => {
+    // Both were removed by the owner and for opposite reasons: red because a red
+    // wash on a card that is asking for something reads as a warning, grey
+    // because on a wash it is barely a colour and the card reads as unfilled. The
+    // muted slot is a sage — a green-grey, which is still a colour.
+    for (const hue of TILE_HUES) expect(hue).not.toMatch(/red|grey|gray|slate/);
+  });
+
+  it('keeps every tile wash inside its own hue\'s budget', () => {
+    // Art is stroked in the card's hue at full strength, and the cap is what keeps
+    // 3:1 between the two. It is per-hue because equal percentages are not equal
+    // fill — see the note on INVITE_HUES for the measured ratios.
     expect(TILE_WASHES).toHaveLength(3);
     for (const w of TILE_WASHES) {
-      expect(w.from).toBeLessThanOrEqual(22);
-      expect(w.to).toBeLessThan(w.from);
+      expect(w.bottom).toBeLessThanOrEqual(1);
+      expect(w.top).toBeLessThan(w.bottom);
+      expect(w.top).toBeGreaterThan(0);
     }
     // Tiles must actually differ, or the card is one flat block of colour.
-    expect(new Set(TILE_WASHES.map((w) => `${w.angle}/${w.from}`)).size).toBe(TILE_WASHES.length);
+    expect(new Set(TILE_WASHES.map((w) => `${w.top}/${w.bottom}`)).size).toBe(TILE_WASHES.length);
+    // And no hue's budget may drift past what the measurements cover. The ceiling
+    // is where the least saturated hue in the set sits; past it a card stops
+    // being a tinted tile and starts being a coloured block.
+    for (const hue of INVITE_HUES) {
+      expect(hue.maxWash).toBeGreaterThanOrEqual(22);
+      expect(hue.maxWash).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it('never renders a wash deeper than the hue it belongs to allows', () => {
+    for (let card = 0; card < INVITE_HUES.length; card++) {
+      const cap = INVITE_HUES[card]!.maxWash;
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(mixes).toHaveLength(2);
+        for (const mix of mixes) expect(mix).toBeLessThanOrEqual(cap);
+      }
+    }
+  });
+
+  it('lights every tile from the same direction', () => {
+    // The regression: three tiles with three gradient angles read as small
+    // pictures hung crooked (owner, 2026-08-14). Light direction is a constant,
+    // and depth is the only thing a tile is allowed to vary.
+    const angles = TILE_WASHES.map((_, i) => tileBackground(0, i))
+      .map((bg) => bg.match(/linear-gradient\((\d+)deg/)?.[1]);
+    expect(new Set(angles).size).toBe(1);
+    expect(angles[0]).toBe(String(TILE_LIGHT_ANGLE));
+  });
+
+  it('ramps every tile lighter at the top than at the bottom', () => {
+    // A tile lit from below would pass the "one angle" test above and still look
+    // wrong, so the ramp direction is pinned separately: the first colour stop
+    // of the wash is always the weaker mix.
+    for (let card = 0; card < INVITE_HUES.length; card++) {
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const stops = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(stops).toHaveLength(2);
+        expect(stops[0]!).toBeLessThan(stops[1]!);
+      }
+    }
   });
 });
 
