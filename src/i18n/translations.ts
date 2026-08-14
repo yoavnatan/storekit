@@ -178,17 +178,23 @@ export const translations = {
       // which is where a list belongs and where it needs no connective grammar.
       //
       // What is left is the one thing a chip cannot say: that being here is
-      // worth something a store alone is not. It says it CONCRETELY — "כוח של
-      // קבוצה" was tried in this slot and the owner rejected it (2026-08-14):
-      // it is a metaphor standing in for something plain and better said
-      // outright, which is that shoppers reach this store through the mall
-      // around it. `auth.benefitMall` keeps the metaphor, where it sits in a
-      // list of three and has no room to explain itself.
+      // worth something a store alone is not.
+      //
+      // It says it as a METAPHOR, and that is the settled answer after trying the
+      // other way (owner, 2026-08-14, both halves his). On the long sentence this
+      // slot used to hold, he ruled "כוח של קבוצה" out — a metaphor standing in
+      // for something plain and better said outright, which is that shoppers
+      // reach this store through the mall around it. That was right THERE, where
+      // a clause fits. It was then carried into this short line as "קונים מגיעים
+      // מהמתחם" and he preferred the metaphor back: at four words there is no
+      // room to explain anything, and a compressed explanation reads flatter than
+      // the figure it was replacing. Same reason `auth.benefitMall` keeps it.
+      // Don't re-derive this from the long-sentence ruling — the two slots differ.
       //
       // ⚠️ `inviteFeatures` names סליקה, which is a capability the platform does
       // not have wired yet (GO_LIVE §3). That is fine only because payments are
       // a launch BLOCKER — this card must not reach a live site before they work.
-      inviteHint: 'חנות משלכם — קונים מגיעים מהמתחם',
+      inviteHint: 'חנות משלכם — כוח של קבוצה',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -2140,7 +2146,7 @@ export const translations = {
       inviteFeatures: ['Shipping', 'Ad tools', 'Payments', 'SEO'],
       openCategoryHint: 'No store here yet — open the first one',
       // One line — see the Hebrew entry for why the list moved into chips.
-      inviteHint: 'A store of your own — shoppers arrive through the place',
+      inviteHint: 'A store of your own — with a crowd behind it',
     },
     demo: {
       badge: 'Example store',
