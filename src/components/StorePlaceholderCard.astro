@@ -90,12 +90,25 @@ const hint = t.launch.inviteHint;
        space was already being paid for and was showing nothing (owner,
        2026-08-14: "הפיצ׳רים יופיעו בתוך באצ׳ים של קטגוריות כזה").
 
-       Same `.store-card__tag` as a store's category chip, deliberately: on this
-       shelf a chip means "a fact about this card", and inventing a second chip
-       style for the same slot would make the placeholder read as a different
-       kind of object rather than as a store card with nothing in it yet. -->
+       `badge-finish` IS THE CHIP. It carries the fill, the border and the
+       background-clip; `.store-card__tag` is geometry and type only, and its own
+       comment in store-card.css says so. Shipped without it for one round and the
+       chips rendered as bare grey words with no shape at all (owner: "סתם טקסט
+       בלי שום רקע ובורדר? ממש מכוער"). Any new chip anywhere on this shelf needs
+       BOTH classes — that pairing is what makes every chip in a badge row differ
+       only by hue.
+
+       And the hue is this card's OWN (`pickCardInk`, the same ink its line-art
+       tiles are drawn in), which is the second half of what he asked for: a
+       category chip is deliberately muted grey, so taking the card's colour is
+       what makes these read as an invitation rather than as four categories this
+       shop happens to stock. It costs nothing — `--badge-hue` is the one knob
+       `.badge-finish` exposes precisely so a variant is a colour and never a
+       second set of rules. -->
   <div class="store-card__tags">
-    {t.launch.inviteFeatures.map((f) => <span class="store-card__tag">{f}</span>)}
+    {t.launch.inviteFeatures.map((f) => (
+      <span class="store-card__tag badge-finish" style={`--badge-hue:${ink}`}>{f}</span>
+    ))}
   </div>
   <!-- The whole card takes ONE hue (`pickCardHueSpec`), and the three tiles differ
        only in how deep that hue sinks — never in light direction, which is a

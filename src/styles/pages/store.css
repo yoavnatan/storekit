@@ -738,6 +738,39 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    `aria-pressed` is not valid ARIA on a link — a link that IS the current view says
    `aria-current="page"`. Missing this pair is what made the selected chip lose its
    fill the moment the row became links. */
+/* The OPEN slot — a seed category nobody sells yet, linking to store registration (stores.astro).
+   It has to read as "not one of the filters" while still belonging to the row, so it keeps every
+   bit of `.category-chip`'s geometry and changes exactly three things: a DASHED border (the one
+   convention on this site that already means "a place for something that is not here yet" — the
+   same language as an empty slot), the accent tone instead of the neutral text colour, and a `+`
+   after the label. No fill: the filled state belongs to the SELECTED chip and spending it here
+   would make an invitation look like the current view.
+
+   Not a new component, deliberately. A second chip design in one scrolling row is two objects the
+   eye has to sort before it can read either, and the row is already doing the harder job of being
+   crawlable links that behave like a filter. */
+.category-chip--open {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text));
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface));
+}
+
+.category-chip--open:hover {
+  /* Hover is white + shadow everywhere on this site, never a tint (memory
+     feedback_hover_light_not_tint) — but a chip is in normal flow, so it takes the border half of
+     that rule and not the shadow half (elevation rule, base/tokens.css). */
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+}
+
+/* Sized off the label rather than fixed, so it stays optically level with the text at any zoom. */
+.category-chip__plus {
+  font-size: 1.05em;
+  line-height: 1;
+  opacity: 0.75;
+}
+
 .category-chip[aria-pressed="true"],
 .category-chip[aria-current="page"] {
   background: var(--color-primary);

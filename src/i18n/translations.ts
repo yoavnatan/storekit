@@ -158,6 +158,10 @@ export const translations = {
       /** The four capabilities, as chips in the card's tag row. Nouns only, no verbs and no
        *  adjectives — the row is read at a glance and each word has to survive alone. */
       inviteFeatures: ['משלוחים', 'פרסום', 'סליקה', 'SEO'],
+      /** The open-category chip on /stores. It has to work as a title attribute AND as the chip's
+       *  accessible name, so it is a whole sentence rather than a label — a chip reading only
+       *  "מזון" beside four filter chips would be indistinguishable from one. */
+      openCategoryHint: 'עדיין אין חנות בקטגוריה הזאת — פתחו את הראשונה',
       // ONE LINE, and now a PROMISE rather than a list (owner, 2026-08-14).
       //
       // Two constraints met here. It sits in a store card's `__tagline` slot,
@@ -2119,6 +2123,7 @@ export const translations = {
         'No site to build',
       ],
       inviteFeatures: ['Shipping', 'Ads', 'Payments', 'SEO'],
+      openCategoryHint: 'No store here yet — open the first one',
       // One line — see the Hebrew entry for why the list moved into chips.
       inviteHint: 'A store of your own — with a crowd behind it',
     },
