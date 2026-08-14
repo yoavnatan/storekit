@@ -11,7 +11,7 @@ import { orderPayoutLine, payoutWhyText, payoutFilterValue, PAYOUT_FILTER_VALUES
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { Order } from '../../lib/orders.js';
 import type { DeliveryMethod } from '../../lib/shipping.js';
-import { initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
+import { createFetchGate, initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
@@ -1097,6 +1097,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     openOrdersFilterColumns(ordersFilterTrigger);
   });
 
+  const ordersFetchGate = createFetchGate();
   // ── Orders: server-fetched page/search/sort/filter (AJAX) ───────────
   // Same reasoning as Products' applyPagination() — search/sort/filter now
   // run server-side (seller-orders-query.ts), so a change re-fetches the
@@ -1123,18 +1124,22 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // list-pager.ts#markListBusy for why a page change that changes nothing for a whole round
     // trip is the complaint this answers.
     const endBusy = markListBusy(list);
+    // Only the newest press may write the list — see list-pager.ts#createFetchGate.
+    const { isCurrent, signal } = ordersFetchGate.begin();
     try {
     // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
     // the list would claim the filter matched nothing — but it is silent unless it says so, and
     // "nothing moved" is indistinguishable from "the filter matched what was already here".
-      const res = await fetch(`/api/seller/orders?${params.toString()}`);
+      const res = await fetch(`/api/seller/orders?${params.toString()}`, { signal });
       data = await res.json() as typeof data;
     } catch {
-      showActionFailedToast();
+      // An abort is our own doing, not a failure the seller should be told about.
+      if (isCurrent()) showActionFailedToast();
       return;
     } finally {
       endBusy();
     }
+    if (!isCurrent()) return;
     if (!data.ok) { showActionFailedToast(); return; }
 
     ordersCurrentPage = data.page ?? 1;

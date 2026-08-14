@@ -5,7 +5,7 @@ import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-loc
 import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
 import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
 import { registerPanelRefresh } from './tab-sync.js';
-import { initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
+import { createFetchGate, initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
 
 // Messages tab: buyer<->seller threads and admin<->seller "system" threads in
 // ONE table (both normalized to the same row shape server-side — see
@@ -679,6 +679,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
 
   document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach(bindMessageRow);
 
+  const messagesFetchGate = createFetchGate();
   // ── Messages: server-fetched page/search/sort/filter (AJAX) ──────────
   // Same reasoning as Products/Orders' own applyPagination() — search/sort/
   // filter now run server-side (seller-messages-query.ts), so a change
@@ -708,18 +709,22 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     // The rows about to be replaced, dimmed while their replacements are in flight —
     // list-pager.ts#markListBusy carries why.
     const endBusy = markListBusy(msgTbody);
+    // Only the newest press may write the list — see list-pager.ts#createFetchGate.
+    const { isCurrent, signal } = messagesFetchGate.begin();
     try {
     // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
     // the list would claim the filter matched nothing — but it is silent unless it says so, and
     // "nothing moved" is indistinguishable from "the filter matched what was already here".
-      const res = await fetch(`/api/seller/messages?${params.toString()}`);
+      const res = await fetch(`/api/seller/messages?${params.toString()}`, { signal });
       data = await res.json() as typeof data;
     } catch {
-      showActionFailedToast();
+      // An abort is our own doing, not a failure the seller should be told about.
+      if (isCurrent()) showActionFailedToast();
       return;
     } finally {
       endBusy();
     }
+    if (!isCurrent()) return;
     if (!data.ok) { showActionFailedToast(); return; }
 
     messagesCurrentPage = data.page ?? 1;

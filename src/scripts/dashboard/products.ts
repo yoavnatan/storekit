@@ -6,7 +6,7 @@ import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
 import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.js';
-import { initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
+import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
@@ -2465,6 +2465,9 @@ function renderPaginationControls(totalPages: number): void {
   renderListPagers('products', productsCurrentPage, totalPages, pagerLabels());
 }
 
+/** This tab's in-flight request — see createFetchGate for the fast-paging bug it closes. */
+const productsFetchGate = createFetchGate();
+
 // Fetches the current page/search/sort/filter state from /api/seller/products
 // and rebuilds the tbody from the response — the AJAX counterpart of the
 // admin dashboard's server-paginated list tabs, except via fetch+DOM patch
@@ -2512,21 +2515,30 @@ export async function applyPagination(): Promise<void> {
   // nothing at all). What made a page change read as a failed click was the scroll, not the wait,
   // and that is fixed where it happened; this covers the genuinely slow connection.
   const endBusy = markListBusy(tbody);
+  // Claims the list for THIS request and aborts any older one still running — paging fast used to
+  // let a slow answer for the page you left overwrite the page you are on (list-pager.ts#createFetchGate).
+  const { isCurrent, signal } = productsFetchGate.begin();
   try {
   // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
   // the list would claim the filter matched nothing — but it is silent unless it says so, and
   // "nothing moved" is indistinguishable from "the filter matched what was already here".
-    const res = await fetch(`/api/seller/products?${params.toString()}`);
+    const res = await fetch(`/api/seller/products?${params.toString()}`, { signal });
     data = await res.json() as typeof data;
   } catch {
-    showActionFailedToast();
+    // A request WE aborted is not a failure, and saying so would put an error toast on screen
+    // every time the seller pressed "next" twice quickly.
+    if (isCurrent()) showActionFailedToast();
     return;
   } finally {
     // Cleared here and not after the rebuild: everything from here to `replaceChildren` is
     // synchronous, so the browser never gets a frame in which the OLD rows are back at full
-    // opacity — and the dim can't outlive a failed fetch either.
+    // opacity — and the dim can't outlive a failed fetch either. Calling it from a superseded
+    // request is a no-op by construction (markListBusy), so this needs no guard of its own.
     endBusy();
   }
+  // Answered, but a newer press has already claimed the list — writing anything here is exactly
+  // the 2 → 3 → 2 the gate exists to stop.
+  if (!isCurrent()) return;
   if (!data.ok) { showActionFailedToast(); return; }
 
   productsCurrentPage = data.page ?? 1;

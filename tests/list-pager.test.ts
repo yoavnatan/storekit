@@ -15,7 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { initListPager, markListBusy, pageWindow, renderListPagers, type PagerLabels } from '../src/scripts/dashboard/list-pager.js';
+import { createFetchGate, initListPager, markListBusy, pageWindow, renderListPagers, type PagerLabels } from '../src/scripts/dashboard/list-pager.js';
 import { LOADING_CUE_DELAY_MS } from '../src/lib/loading-sweep.js';
 
 const LABELS: PagerLabels = {
@@ -295,6 +295,71 @@ describe('there is one pager, not one per tab', () => {
     expect(files).toContain('src/scripts/dashboard/products.ts');
     expect(files).toContain('src/scripts/dashboard/orders.ts');
     expect(files).toContain('src/scripts/dashboard/messages.ts');
+  });
+});
+
+describe('paging fast cannot rewind the list', () => {
+  /**
+   * The reported bug (owner, 2026-08-15): pressing next quickly went 2 -> 3 -> back to 2. Every
+   * press fires its own request, each answer wrote `currentPage = data.page` and repainted the
+   * strip, so the LAST answer to arrive won — and a slow page 2 landing after a fast page 3 rewound
+   * both the number and the rows. The clicks were never the problem; the network was being allowed
+   * to decide the order.
+   */
+  it('lets only the newest request write, whatever order the answers arrive in', () => {
+    const gate = createFetchGate();
+    const first = gate.begin();   // "next" -> page 2
+    const second = gate.begin();  // "next" again, before page 2 answered -> page 3
+    // Page 2 answers LAST. It must not be allowed to touch anything.
+    expect(first.isCurrent()).toBe(false);
+    expect(second.isCurrent()).toBe(true);
+  });
+
+  it('aborts the request it supersedes rather than leaving it to finish', () => {
+    // A browser caps parallel connections to one origin, so an answer nobody will read is not
+    // free — it is holding a slot the press the seller is waiting on could be using.
+    const gate = createFetchGate();
+    const first = gate.begin();
+    expect(first.signal.aborted).toBe(false);
+    const second = gate.begin();
+    expect(first.signal.aborted).toBe(true);
+    expect(second.signal.aborted).toBe(false);
+  });
+
+  it('does not slow a press down — each one claims the list immediately', () => {
+    // Guards against "fixing" this with a debounce, which is the one thing that was ruled out:
+    // a seller sometimes wants to page quickly, and a delay is exactly what that would cost.
+    const gate = createFetchGate();
+    const presses = Array.from({ length: 5 }, () => gate.begin());
+    expect(presses.map((p) => p.isCurrent())).toEqual([false, false, false, false, true]);
+  });
+
+  it('leaves the dim to whichever request is still running', () => {
+    vi.useFakeTimers();
+    const el = document.createElement('div');
+    const endFirst = markListBusy(el);
+    const endSecond = markListBusy(el);
+    // The superseded caller's cleanup must not lift the dim of the one that replaced it...
+    endFirst();
+    expect(el.getAttribute('aria-busy')).toBe('true');
+    vi.advanceTimersByTime(LOADING_CUE_DELAY_MS + 1);
+    expect(el.className).not.toBe('');
+    // ...and the newest one still ends it cleanly.
+    endSecond();
+    expect(el.className).toBe('');
+    expect(el.hasAttribute('aria-busy')).toBe(false);
+  });
+
+  it('cannot leave a dim behind that nothing will clear', () => {
+    // The trap in the case above: a superseded request's TIMER is still pending. If it fires after
+    // the newest one finished, the list stays dimmed forever with no request running.
+    vi.useFakeTimers();
+    const el = document.createElement('div');
+    markListBusy(el);            // superseded, its cleanup never called (an aborted fetch)
+    const endSecond = markListBusy(el);
+    endSecond();
+    vi.advanceTimersByTime(LOADING_CUE_DELAY_MS * 3);
+    expect(el.className).toBe('');
   });
 });
 

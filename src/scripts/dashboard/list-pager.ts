@@ -193,15 +193,71 @@ export function renderListPagers(name: string, page: number, totalPages: number,
  */
 const BUSY_CLASSES = 'opacity-[.45] pointer-events-none';
 
+/** The busy period each element is currently in. Fast paging starts several, and only the newest
+ *  may end one — otherwise a superseded caller's cleanup lifts the dim of the request that replaced
+ *  it, or worse, its own timer fires afterwards and leaves a dim nothing will ever clear. */
+const busyTimers = new WeakMap<HTMLElement, number>();
+
 export function markListBusy(el: HTMLElement | null): () => void {
   if (!el) return () => {};
   const classes = BUSY_CLASSES.split(' ');
+  // A new period supersedes the previous one. The CLASS is deliberately left alone: if the list is
+  // already dimmed it is still loading, and taking the dim off to put it back would flash.
+  window.clearTimeout(busyTimers.get(el));
   el.setAttribute('aria-busy', 'true');
   const timer = window.setTimeout(() => el.classList.add(...classes), LOADING_CUE_DELAY_MS);
+  busyTimers.set(el, timer);
   return () => {
+    if (busyTimers.get(el) !== timer) return; // superseded — not ours to end
     window.clearTimeout(timer);
+    busyTimers.delete(el);
     el.classList.remove(...classes);
     el.removeAttribute('aria-busy');
+  };
+}
+
+/**
+ * One list's in-flight fetch, so that PAGING FAST cannot corrupt what is on screen.
+ *
+ * The bug this exists for (owner, 2026-08-15): pressing next/previous quickly went 2 → 3 → back to
+ * 2. Each press fires its own request and each answer wrote `currentPage = data.page` and repainted
+ * the strip — so whichever answer arrived LAST won, and a slow request for page 2 landing after a
+ * fast one for page 3 rewound both the number and the rows. Nothing was wrong with the click; it
+ * was the network being allowed to decide the order.
+ *
+ * The fix is not to slow the clicks down. A debounce would make fast paging feel worse, which is
+ * the thing being asked for ("בן אדם לפעמים רוצים לדפדף מהר"), so every press still fires
+ * immediately and still repaints its number on the same frame. What changes is that only the NEWEST
+ * request may touch state or DOM, and the ones it supersedes are `abort()`ed rather than left to
+ * finish into a result nobody will read — a browser caps parallel connections to one origin, so an
+ * abandoned request is not free.
+ *
+ * `begin()` at the top of an apply; `signal` on the fetch; `isCurrent()` after every `await` that
+ * could have let a newer press through.
+ *
+ * Prior art in this repo: `buyer/dashboard.astro`'s `ordersRequestSeq`, which has guarded exactly
+ * this since before the shared pager existed — it stays inline there because it also gates that
+ * list's skeleton timer.
+ */
+export interface FetchGate {
+  /** Claim the list. Aborts whatever was in flight and returns this request's own liveness check. */
+  begin: () => { isCurrent: () => boolean; signal: AbortSignal };
+}
+
+export function createFetchGate(): FetchGate {
+  let seq = 0;
+  let inFlight: AbortController | null = null;
+  return {
+    begin() {
+      const mine = ++seq;
+      inFlight?.abort();
+      const controller = new AbortController();
+      inFlight = controller;
+      return {
+        isCurrent: () => mine === seq,
+        signal: controller.signal,
+      };
+    },
   };
 }
 
