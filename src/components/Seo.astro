@@ -12,6 +12,7 @@
 import { store } from '../config/store.config.js';
 import { jsonForScript } from '../lib/json-script.js';
 import { stripTrailingSlashes } from '../lib/url-base.js';
+import { siteIsHiddenFromSearch } from '../lib/site-mode.js';
 
 const {
   title,
@@ -82,7 +83,7 @@ const isDefaultOgImage = image === store.social.ogImage;
 <title>{fullTitle}</title>
 <meta name="description" content={description} />
 <link rel="canonical" href={canonical} />
-<meta name="robots" content={noindex ? 'noindex,nofollow' : 'index,follow'} />
+<meta name="robots" content={noindex || siteIsHiddenFromSearch() ? 'noindex,nofollow' : 'index,follow'} />
 
 <!-- Open Graph -->
 <meta property="og:type" content={type} />

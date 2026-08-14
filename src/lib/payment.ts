@@ -124,7 +124,10 @@ export const MOCK_DECLINE_MARKER = '+decline@';
 /** Dev/demo provider: approves every charge without touching a real gateway, so the full
  *  order flow works end-to-end with no company or merchant account. The MOCK- prefixed
  *  ref makes it obvious at a glance that a given order's payment wasn't real. */
-class MockPaymentProvider implements PaymentProvider {
+/** Exported so `lib/site-mode.ts` can ask the live provider whether it is this one, rather than
+ *  comparing a name or trusting a flag. That check is what closes the shop on a production server
+ *  with no gateway wired — see the file header there for why it is derived and not switched. */
+export class MockPaymentProvider implements PaymentProvider {
   async authorize(req: PaymentRequest): Promise<PaymentResult> {
     // Guarded on DEV as well as on the marker. A production build must never be one
     // crafted email address away from a free "declined" checkout — and more to the

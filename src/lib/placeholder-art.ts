@@ -44,8 +44,9 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  coprime with all three works (5, 7, 11 …), so a colour can be swapped freely
  *  but one cannot simply be dropped.
  *
- *  Order is not alphabetical and not arbitrary: five of the seven are cool, so
- *  they are interleaved with the warm ones to keep row-neighbours apart.
+ *  Order is not alphabetical and not arbitrary. Two pairs sit close enough at a
+ *  pale wash to need separating, and both are three slots apart: the two greens
+ *  (`green` and `olive`), and the two warm-pales (`orange` and `rose`).
  *
  *  ⚠️ `--color-invite-*`, NOT `--color-tile-*`. The tile tokens look like the
  *  obvious ones to reuse and are the wrong list: they are `MARK_HUES`, the
@@ -74,8 +75,8 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  reading as one object.
  *
  *  Contrast measured 2026-08-14, ink against `color-mix(hue maxWash%, white)`:
- *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 ·
- *  violet 4.78. Never raise a cap without re-measuring; 3:1 is the floor. */
+ *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 ·
+ *  olive 3.81 · rose 4.01. Never raise a cap without re-measuring; 3:1 is the floor. */
 export interface InviteHue {
   /** CSS custom property for the tile wash, declared in tokens.css. */
   token: string;
@@ -85,20 +86,24 @@ export interface InviteHue {
   ink?: string;
 }
 
+// The ORDER separates the two pairs that are close enough at a pale wash to be
+// mistaken for each other: the greens (`green`, `olive`) and the warm-pales
+// (`orange`, `rose`). Each pair sits three slots apart, the widest a seven-cycle
+// allows, so neither can ever land side by side in a row or stacked in a column.
 export const INVITE_HUES: readonly InviteHue[] = [
   { token: 'var(--color-invite-orange)', maxWash: 22 },
   { token: 'var(--color-invite-blue)', maxWash: 26 },
-  { token: 'var(--color-invite-yellow)', maxWash: 26, ink: 'var(--color-invite-yellow-ink)' },
-  { token: 'var(--color-invite-sky)', maxWash: 22 },
   { token: 'var(--color-invite-green)', maxWash: 22 },
-  // The quiet card of the seven, and the slot that took three tries — a slate
-  // grey, then the site's dark navy, then that navy inverted to a dark tile with
-  // white art, which read as black and as an outlier in a row of pale cards.
-  // tokens.css carries the full record. A little deeper than its neighbours
-  // because it is the least saturated hue here and a 22% wash of it barely
-  // registers; sage is where "muted" stops being "missing".
-  { token: 'var(--color-invite-sage)', maxWash: 30 },
-  { token: 'var(--color-invite-violet)', maxWash: 22 },
+  { token: 'var(--color-invite-rose)', maxWash: 26 },
+  { token: 'var(--color-invite-yellow)', maxWash: 26, ink: 'var(--color-invite-yellow-ink)' },
+  // The muted green — olive rather than the emerald above it, and the slot that
+  // took four tries: a slate grey, the site's dark navy, that navy inverted to a
+  // dark tile with white art, then a grey-green sage. tokens.css carries the full
+  // record. Deeper than its neighbours because it is among the least saturated
+  // hues here and a 22% wash of one of those barely registers; that depth is also
+  // part of what keeps it apart from `green`.
+  { token: 'var(--color-invite-olive)', maxWash: 30 },
+  { token: 'var(--color-invite-sky)', maxWash: 22 },
 ];
 
 /** Just the tokens, in order — the shape most callers and tests want. */

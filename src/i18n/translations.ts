@@ -157,7 +157,13 @@ export const translations = {
       ],
       /** The four capabilities, as chips in the card's tag row. Nouns only, no verbs and no
        *  adjectives — the row is read at a glance and each word has to survive alone. */
-      inviteFeatures: ['משלוחים', 'פרסום', 'סליקה', 'SEO'],
+      // "כלי פרסום", not "פרסום" — the same rule as `home.builtInAds` above, and
+      // it does not relax because the slot got smaller: what the seller gets is
+      // the tool that runs the campaigns, never the ad budget, which is billed
+      // separately per actual spend (lib/pricing.ts). A bare "פרסום" sitting in a
+      // list of four things you receive is exactly the reading that rule exists
+      // to close.
+      inviteFeatures: ['משלוחים', 'כלי פרסום', 'סליקה', 'SEO'],
       /** The open-category chip on /stores. It has to work as a title attribute AND as the chip's
        *  accessible name, so it is a whole sentence rather than a label — a chip reading only
        *  "מזון" beside four filter chips would be indistinguishable from one. */
@@ -172,14 +178,17 @@ export const translations = {
       // which is where a list belongs and where it needs no connective grammar.
       //
       // What is left is the one thing a chip cannot say: that being here is
-      // worth something a store alone is not. "כוח של קבוצה" is a metaphor, and
-      // this is the one slot short enough that a metaphor is the honest choice —
-      // the concrete version of it needs a clause, and there is no room for one.
+      // worth something a store alone is not. It says it CONCRETELY — "כוח של
+      // קבוצה" was tried in this slot and the owner rejected it (2026-08-14):
+      // it is a metaphor standing in for something plain and better said
+      // outright, which is that shoppers reach this store through the mall
+      // around it. `auth.benefitMall` keeps the metaphor, where it sits in a
+      // list of three and has no room to explain itself.
       //
       // ⚠️ `inviteFeatures` names סליקה, which is a capability the platform does
       // not have wired yet (GO_LIVE §3). That is fine only because payments are
       // a launch BLOCKER — this card must not reach a live site before they work.
-      inviteHint: 'חנות משלכם — כוח של קבוצה',
+      inviteHint: 'חנות משלכם — קונים מגיעים מהמתחם',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -1826,6 +1835,12 @@ export const translations = {
       // logged-in seller owns. Like demoBlocked, retrying can never help — the message
       // says what to change instead of "try again".
       ownStoreBlocked: 'לא ניתן לקנות מחנות שבבעלותך. הסירו את הפריטים האלה מהעגלה.',
+      // The platform is live but not yet selling — the site is on its real domain while the payment
+      // gateway is still being connected (lib/site-mode.ts). Says so plainly rather than blaming
+      // something temporary: "נסו שוב" would be a lie, and a shopper who tries again all evening
+      // is worse off than one who was told the truth once. The cart is deliberately kept — coming
+      // back to a cart that is still there is the difference between "closed" and "broken".
+      storeClosed: 'האתר עדיין לא פתוח לרכישות — אנחנו באמצע חיבור מערכת התשלומים. העגלה שלך נשמרת, ואפשר לחזור אליה בהמשך.',
       // The previous submit is still being processed at the payment provider. The one
       // message that must NOT say "try again" — pressing again is exactly what would
       // risk a second charge, which is what the server just refused to allow.
@@ -2122,10 +2137,10 @@ export const translations = {
         'It is all already here',
         'No site to build',
       ],
-      inviteFeatures: ['Shipping', 'Ads', 'Payments', 'SEO'],
+      inviteFeatures: ['Shipping', 'Ad tools', 'Payments', 'SEO'],
       openCategoryHint: 'No store here yet — open the first one',
       // One line — see the Hebrew entry for why the list moved into chips.
-      inviteHint: 'A store of your own — with a crowd behind it',
+      inviteHint: 'A store of your own — shoppers arrive through the place',
     },
     demo: {
       badge: 'Example store',
@@ -3474,6 +3489,7 @@ export const translations = {
       invalidEmail: 'Invalid email address',
       orderError: 'Error creating order. Please try again.',
       ownStoreBlocked: 'You cannot buy from a store you own. Remove those items from your cart.',
+      storeClosed: 'The site is not open for purchases yet — we are connecting the payment system. Your cart is saved and will be here when you come back.',
       checkoutInProgress: 'Your order is already being processed. Do not press again — your confirmation is on its way.',
       variantMismatch: 'The options for "{name}" changed since you added it to your cart. Open the product page and choose again.',
       pricesChanged: 'Prices in your cart changed since you arrived. Check the total and press pay again.',

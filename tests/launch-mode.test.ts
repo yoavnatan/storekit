@@ -167,17 +167,41 @@ describe('placeholder tile colour', () => {
       for (let tile = 0; tile < TILE_WASHES.length; tile++) {
         const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
           .map((m) => Number(m[1]));
-        expect(Math.min(...mixes)).toBeLessThanOrEqual(10);
+        // 15 is nowhere near an inversion (that card started at 78) and leaves
+        // room for the deepest hue's own lit edge, which lands at 10.3.
+        expect(Math.min(...mixes)).toBeLessThanOrEqual(15);
       }
     }
   });
 
-  it('has no grey and no red left in the invitation palette', () => {
-    // Both were removed by the owner and for opposite reasons: red because a red
-    // wash on a card that is asking for something reads as a warning, grey
-    // because on a wash it is barely a colour and the card reads as unfilled. The
-    // muted slot is a sage — a green-grey, which is still a colour.
-    for (const hue of TILE_HUES) expect(hue).not.toMatch(/red|grey|gray|slate/);
+  it('keeps the three colours the owner ruled out, out', () => {
+    // Each was removed for its own reason and none of them is aesthetic drift:
+    // RED because a red wash on a card that is asking for something reads as a
+    // warning; GREY because on a wash it is barely a colour and the card reads as
+    // unfilled; VIOLET because it is the signature of AI-generated apps and reads
+    // as an untrustworthy product (owner, 2026-08-14). The muted slots are greens
+    // — olive — which is a green, and still a colour.
+    for (const hue of TILE_HUES) {
+      expect(hue).not.toMatch(/red|grey|gray|slate|violet|purple|plum|indigo/);
+    }
+  });
+
+  it('keeps the two look-alike pairs three slots apart', () => {
+    // Two pairs sit close enough at a pale wash to be mistaken for each other:
+    // the greens, and the two warm-pales. Three apart is the widest a seven-cycle
+    // allows, so neither pair can land side by side in a row or stacked in a
+    // column of the directory grid.
+    const PAIRS = [/green|olive/, /orange|rose/];
+    for (const pair of PAIRS) {
+      const at = TILE_HUES.map((h, i) => (pair.test(h) ? i : -1)).filter((i) => i >= 0);
+      expect(at).toHaveLength(2);
+      const gap = Math.abs(at[0]! - at[1]!);
+      expect(Math.min(gap, TILE_HUES.length - gap)).toBe(3);
+    }
+    // The greens also differ in depth, which is what carries them where the
+    // ordering cannot — a shopper scrolling sees them at different distances.
+    const greens = INVITE_HUES.filter((h) => /green|olive/.test(h.token));
+    expect(new Set(greens.map((h) => h.maxWash)).size).toBe(greens.length);
   });
 
   it('keeps every tile wash inside its own hue\'s budget', () => {
@@ -193,11 +217,11 @@ describe('placeholder tile colour', () => {
     // Tiles must actually differ, or the card is one flat block of colour.
     expect(new Set(TILE_WASHES.map((w) => `${w.top}/${w.bottom}`)).size).toBe(TILE_WASHES.length);
     // And no hue's budget may drift past what the measurements cover. The ceiling
-    // is where the least saturated hue in the set sits; past it a card stops
-    // being a tinted tile and starts being a coloured block.
+    // is where the darkest, least saturated hue in the set sits; past it a card
+    // stops being a tinted tile and starts being a coloured block.
     for (const hue of INVITE_HUES) {
       expect(hue.maxWash).toBeGreaterThanOrEqual(22);
-      expect(hue.maxWash).toBeLessThanOrEqual(30);
+      expect(hue.maxWash).toBeLessThanOrEqual(38);
     }
   });
 

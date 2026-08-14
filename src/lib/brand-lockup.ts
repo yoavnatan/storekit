@@ -49,4 +49,14 @@ export const GRADIENT = { from: '#2a3c40', to: '#3a5260', x1: 0, y1: 0, x2: 3438
  *  the boxes parks the Hebrew a visible pixel inside the English.
  *  Both are re-solved by the generator whenever the wordmark moves — and
  *  `sizeEm` then carries a bisection against the built site, see the test. */
-export const TAGLINE = { sizeEm: 0.40459, marginEm: -0.04607 };
+/** `gapEm` is the space between the wordmark and the Hebrew line, in the LOCKUP's em — the one
+ *  geometric number the generator was still re-typing after 2026-08-10 moved the other five here
+ *  (it read `gap:.05em` in `scripts/generate-brand-assets.mjs` and `gap-[0.05em]` in
+ *  `BrandLogo.astro`, and nothing could have told you they had drifted).
+ *
+ *  Opened from 0.05 to 0.12 on 2026-08-14 (owner, looking at the mail header): at 0.05 the Hebrew
+ *  read as attached to the wordmark rather than set under it. Still small on purpose — the gap is
+ *  what keeps this a subtitle rather than a second name, and too much of it makes them two
+ *  unrelated lines. This is the LOCKUP's spacing, so the site header and the mail move together;
+ *  they are the same lockup and a divergence here is a brand that looks assembled twice. */
+export const TAGLINE = { sizeEm: 0.40459, marginEm: -0.04607, gapEm: 0.12 };

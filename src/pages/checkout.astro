@@ -7,6 +7,9 @@ import { getVisibleStores } from '../lib/stores.js';
 import { isDemoStore } from '../lib/demo-stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { SHIPPING_RATES, availableDeliveryMethods, type DeliveryMethod } from '../lib/shipping.js';
+import { checkoutIsOpen } from '../lib/site-mode.js';
+
+const checkoutOpen = checkoutIsOpen();
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
@@ -85,6 +88,7 @@ for (const s of await getVisibleStores()) {
     stockLeftNote: c.stockLeftNote,
     stockLeftNoteOne: c.stockLeftNoteOne,
     demoBlocked: t.demo.checkoutBlocked,
+    storeClosed: c.storeClosed,
     demoBadge: t.demo.badge,
     demoBadgeTitle: t.demo.badgeTitle,
     demoExcluded: t.demo.cartExcluded,
@@ -241,6 +245,17 @@ for (const s of await getVisibleStores()) {
               </div>
             </div>
           </div>
+
+          {/* The platform is live but not selling yet (lib/site-mode.ts). Rendered on the SERVER,
+              above the pay button, so the shopper reads it before filling anything in rather than
+              after — the API's 503 is the guarantee, this is the courtesy.
+
+              The form below stays exactly as it is: fields, cart and coupons all still work, and
+              only the last step is refused. Same shape as the showcase-store rule, and for the same
+              reason — someone evaluating the platform should be able to walk the real flow. */}
+          {!checkoutOpen && (
+            <p class="text-sm mb-4 py-2.5 px-3 rounded-[var(--radius)] [color:var(--color-warning)] [background:color-mix(in_srgb,var(--color-warning)_9%,transparent)] border [border-color:color-mix(in_srgb,var(--color-warning)_28%,transparent)]" role="status">{c.storeClosed}</p>
+          )}
 
           <p id="form-global-error" class="hidden text-sm [color:var(--color-danger)] mb-4" role="alert"></p>
 
@@ -1262,6 +1277,10 @@ for (const s of await getVisibleStores()) {
         const msg = (err as Error).message;
         const key = msg === 'demo-store' ? 'demoBlocked'
           : msg === 'own-store' ? 'ownStoreBlocked'
+          // The platform is not selling yet (lib/site-mode.ts). The banner above the form already
+          // said so on page load; this is the backstop for a page that was open before the switch
+          // moved, and it must not say "try again" either.
+          : msg === 'store-closed' ? 'storeClosed'
           // The previous submit is still at the gateway. "Try again" is the wrong
           // advice here — pressing again is what we are trying to prevent — so this
           // one asks them to wait instead.
