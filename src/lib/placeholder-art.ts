@@ -74,16 +74,13 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  reading as one object.
  *
  *  Contrast measured 2026-08-14, ink against `color-mix(hue maxWash%, white)`:
- *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 · navy 8.35 ·
+ *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 ·
  *  violet 4.78. Never raise a cap without re-measuring; 3:1 is the floor. */
 export interface InviteHue {
   /** CSS custom property for the tile wash, declared in tokens.css. */
   token: string;
   /** Deepest mix % of this hue a tile wash may use. See above. */
   maxWash: number;
-  /** Lightest mix % — the floor the ramp starts from. Defaults to 0, which is
-   *  what every pale hue wants. Navy is the one that does not: see below. */
-  minWash?: number;
   /** Line-art colour, when it cannot be the hue itself. Defaults to `token`. */
   ink?: string;
 }
@@ -94,20 +91,13 @@ export const INVITE_HUES: readonly InviteHue[] = [
   { token: 'var(--color-invite-yellow)', maxWash: 26, ink: 'var(--color-invite-yellow-ink)' },
   { token: 'var(--color-invite-sky)', maxWash: 22 },
   { token: 'var(--color-invite-green)', maxWash: 22 },
-  // The one INVERTED card: a dark navy tile with the art in white, instead of a
-  // pale tile with dark art.
-  //
-  // It is not a stylistic flourish, it is the only way this hue exists at all.
-  // The site's navy is deliberately low-chroma (#1c2333 spans 23 points across
-  // its channels), so mixing ANY amount of it into white keeps that spread
-  // proportional and the result is a grey — at 30% and at 45% alike. The owner
-  // asked for the grey to go and the site's dark navy to take its place; a
-  // washed navy would have handed back the same grey card under a new name.
-  //
-  // It also has a precedent on the same screen: the showcase stores photograph
-  // their products on deep backgrounds, so a dark tile in this grid reads as a
-  // product shot, which is exactly what these tiles are standing in for.
-  { token: 'var(--color-invite-navy)', minWash: 78, maxWash: 100, ink: 'var(--color-surface)' },
+  // The quiet card of the seven, and the slot that took three tries — a slate
+  // grey, then the site's dark navy, then that navy inverted to a dark tile with
+  // white art, which read as black and as an outlier in a row of pale cards.
+  // tokens.css carries the full record. A little deeper than its neighbours
+  // because it is the least saturated hue here and a 22% wash of it barely
+  // registers; sage is where "muted" stops being "missing".
+  { token: 'var(--color-invite-sage)', maxWash: 30 },
   { token: 'var(--color-invite-violet)', maxWash: 22 },
 ];
 
@@ -135,12 +125,11 @@ export const TILE_LIGHT_ANGLE = 168;
  *  as one lit scene, and the depth difference between them is what stops the
  *  card being a single flat block of colour.
  *
- *  These are FRACTIONS of the hue's own range (`minWash` → `maxWash`), not
- *  absolute mix percentages. Absolutes were the first version and they gave every
- *  hue the same numbers, which the dark hues could not carry — see the note on
- *  INVITE_HUES. A fraction means the three tiles of a card always sit at the same
- *  three RELATIVE depths, whichever hue the card drew, including the inverted
- *  navy one whose range starts at 78 rather than 0. */
+ *  These are FRACTIONS of the hue's own `maxWash`, not absolute mix percentages.
+ *  Absolutes were the first version and they gave every hue the same numbers,
+ *  which the least saturated hues could not carry — see the note on INVITE_HUES.
+ *  A fraction means the three tiles of a card always sit at the same three
+ *  RELATIVE depths, whichever hue the card drew. */
 export interface TileWash {
   /** Share of the hue's `maxWash` at the lit top edge. */
   top: number;
@@ -154,10 +143,9 @@ export const TILE_WASHES: readonly TileWash[] = [
   { top: 0.27, bottom: 0.95 },
 ];
 
-/** Mix % for one tile edge, rounded — a fraction of the card hue's own range. */
+/** Mix % for one tile edge, rounded — a fraction of the card hue's own budget. */
 function washPercent(hue: InviteHue, fraction: number): number {
-  const floor = hue.minWash ?? 0;
-  return Math.round((floor + (hue.maxWash - floor) * fraction) * 10) / 10;
+  return Math.round(hue.maxWash * fraction * 10) / 10;
 }
 
 /**
