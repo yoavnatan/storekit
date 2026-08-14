@@ -351,6 +351,10 @@ function buildJobs() {
     jobs.push({
       key: `${store.slug}:__logo`, prompt: logoPrompt(store), label: `${store.name} — לוגו`,
       aspect: IMAGE_ASPECT, size: IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
+      // A logo may be drawn FROM the store's banner — סהר's mark lives on the banner wall and the
+      // avatar is redrawn from it (`logoRefKey`). The pair is directional on purpose: exactly one
+      // of `logoRefKey`/`bannerRefKey` may be set per store, or neither picture is the source.
+      refKey: store.logoRefKey ? `${store.slug}:${store.logoRefKey}` : null,
     });
   }
   for (const store of SHOWCASE_STORES) {
@@ -369,7 +373,7 @@ function buildJobs() {
         if (ONLY_VIEWS.length && !ONLY_VIEWS.includes(view.key)) continue;
         jobs.push({
           key: i === 0 ? `${store.slug}:${p.n}` : `${store.slug}:${p.n}#${view.key}`,
-          prompt: imagePrompt(store, p.s, view),
+          prompt: imagePrompt(store, p.s, view, p.n),
           label: `${store.name} — ${p.n}${i === 0 ? '' : ` (${view.key})`}`,
           aspect: IMAGE_ASPECT, size: IMAGE_SIZE,
           // Every gallery view names the main image it has to match. `main` itself has no
