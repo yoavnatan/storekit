@@ -89,7 +89,7 @@ for (const store of SHOWCASE_STORES) {
         vi === 0 ? 'ראשית' : view.key,
         done ? 'קיים' : 'חסר',
         `/${store.slug}/${slug}`,
-        imagePrompt(store, p.s, view),
+        imagePrompt(store, p.s, view, p.n),
       ].map(cell));
       n++;
     }

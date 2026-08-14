@@ -46,12 +46,73 @@
      by side average out to grey, which is exactly the monotone this replaces.
      Each is dark enough that the 1.2px line-art drawn in the same hue clears
      3:1 against that hue's strongest tile wash (22%) — do not lighten one
-     without re-checking, the gold is the tight one at 3.07:1. */
+     without re-checking, the gold is the tight one at 3.07:1.
+
+     ⚠️ These five are ALSO `MARK_HUES` (lib/store-mark.ts) — the colour every
+     store's generated identity mark and favicon is built from — and
+     tests/store-image.test.ts pins the two lists equal, in this order. Editing
+     one of these hexes re-colours the identity of every existing store. That is
+     why the invitation cards got their own list below instead of taking one of
+     these. */
   --color-tile-blue: #2563c9;
   --color-tile-orange: #c2620d;
   --color-tile-green: #158a56;
   --color-tile-gold: #a8760a;
   --color-tile-red: #c33a2c;
+
+  /* The placeholder "open a store" cards (lib/placeholder-art.ts). Same
+     mechanism as the tile hues above — one per card, rotated by index — and a
+     separate list on purpose (owner, 2026-08-14): a store MARK is an identity,
+     where red is simply one store's colour, but an invitation card is asking
+     for something, and a red wash on it reads as a warning rather than as a
+     product. Sharing the list would have meant re-colouring every existing
+     store to change the invitation.
+
+     Seven, because 7 is coprime with 2, 3 and 4 — the /stores grid's column
+     counts — which is what stops one colour running down a whole column at some
+     viewport width. Ordered so row-neighbours differ in temperature.
+
+     Revised 2026-08-14, all changes the owner's:
+     • THE NEUTRAL SLOT, in three tries. A slate grey first — barely a colour at
+       a wash, so the card read as an unfilled tile. Then the site's dark navy
+       (#1c2333), which cannot exist as a wash at all: it spans 23 points across
+       its channels, so any mix with white keeps that spread proportional and
+       returns grey at every depth. It was rendered INVERTED for one round — a
+       dark tile with white art — and that was rejected as too much of an outlier
+       in a row of pale cards, and it read as black rather than navy. What the
+       slot holds now is a muted sage: green-grey, pale like its neighbours, a
+       colour rather than an absence of one. Do not put a near-neutral dark hue
+       here again — the wash will grey it out, and the only escape is the
+       inversion that was already tried and rejected.
+     • THE GOLD WAS ORANGE. #a8760a is what "yellow" collapses to when the
+       line-art has to be drawn in the same colour: past that lightness nothing
+       yellow clears 3:1 against its own wash. So yellow got an INK of its own
+       (see -ink below) and the wash is a real yellow.
+     • THE ORANGE IS REDDER: #c2620d → #bf4620.
+     Violet fills the seventh slot the grey left — the one colour here nobody
+     asked for. A teal was tried there first, on the reasoning that it comes from
+     the site's own language (--color-brand-dark is a teal-slate), and it failed
+     for a measurable reason worth keeping: at a 22% wash, hue ANGLE is most of
+     what distinguishes one tile from another, and teal sat 20° from the green
+     already in the list. The two cards were indistinguishable. Violet is ~55°
+     from the nearest neighbour, which is why it reads as its own card. If this
+     one gets swapped, swap it for something equally far from 155–215°.
+
+     Contrast measured 2026-08-14 — the INK against that hue's deepest wash, at
+     the per-hue cap in placeholder-art.ts: orange 3.71 · blue 3.87 ·
+     yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 · violet 4.78. 3:1 is the
+     floor. Do not add or lighten a hue without re-measuring. */
+  --color-invite-orange: #bf4620;
+  --color-invite-blue: #2563c9;
+  --color-invite-yellow: #d4b106;
+  /* The one hue whose line-art is NOT drawn in the wash colour. A yellow light
+     enough to read as yellow cannot also be the stroke on top of itself; this
+     deep amber is the same colour family two stops down. */
+  --color-invite-yellow-ink: #7a5c00;
+  --color-invite-sky: #0e7fa8;
+  --color-invite-green: #158a56;
+  --color-invite-sage: #4a6459;
+  --color-invite-violet: #6d3fc0;
 
   --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
 

@@ -35,7 +35,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, viewsForProduct } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, BANNER_DELIVERED_RATIO, viewsForProduct } from './lib/showcase/identity.mjs';
 import { jsonlLine, uploadJsonl, createBatch, getBatch, downloadResults, readResults } from './lib/showcase/gemini-batch.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
@@ -291,6 +291,39 @@ async function uploadToCloudinary(buffer, cloud, preset) {
   return body.secure_url;
 }
 
+/**
+ * Store the banner at the ratio it is DISPLAYED at, so that nothing is ever cropped again.
+ *
+ * The store header shows a 3:1 band, and `cdnBand` gets there with `ar_3,c_fill,g_auto` — a
+ * SALIENCY crop, which picks its own band and cannot be argued with from inside a prompt. Three
+ * rounds of banner complaints were all the same sentence in different words ("הכיתוב נחתך",
+ * "העציצים ייחתכו", "אלמנטים שנחתכים מלמעלה ולמטה", "לא במידה הנכונה"), and every one of them was
+ * that crop rather than the picture.
+ *
+ * Widening the generated frame (16:9 → 21:9) shrank the loss from 41% of the height to 22%; it did
+ * not remove it, because no image model offers 3:1. So the last 22% is taken HERE, once, from the
+ * exact centre — which is where every banner prompt composes to — and the cropped result is
+ * uploaded as the asset the manifest points at. `cdnBand` then asks a 3:1 source for a 3:1 band
+ * and crops nothing at all, on this and on every future delivery.
+ *
+ * Cloudinary does the cropping because there is no image library in this project (see
+ * `CLOUDINARY_MAX_BYTES` for why one is not worth adding for four images a month): the picture is
+ * uploaded, fetched back through a `c_fill,g_center` transform, and re-uploaded. It costs one
+ * round trip and one JPEG re-encode at `q_auto:best`, and it costs nothing in generation — which
+ * is the only budget that is actually scarce here.
+ *
+ * A real seller's banner still goes through `g_auto` untouched: they upload an arbitrary
+ * photograph nobody composed for this band, and saliency is genuinely the best guess there. This
+ * is only for the pictures we commission and therefore control.
+ */
+async function cropToDeliveredRatio(url, ratio, cloud, preset) {
+  const cropped = url.replace('/upload/', `/upload/ar_${ratio},c_fill,g_center,f_jpg,q_auto:best/`);
+  const res = await fetch(cropped);
+  if (!res.ok) throw new Error(`could not fetch the cropped banner (${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return uploadToCloudinary(buffer, cloud, preset);
+}
+
 /** Every image this catalog needs, as {key, prompt, label}. Banner and logo first: they are three
  *  of the ~306 and they are the two a person actually looks at, so a `--limit` run shows something
  *  worth judging instead of five handbags. */
@@ -305,10 +338,24 @@ function buildJobs() {
     jobs.push({
       key: `${store.slug}:__banner`, prompt: bannerPrompt(store), label: `${store.name} — באנר`,
       aspect: BANNER_ASPECT, size: BANNER_IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
+      // Generated at 21:9, STORED at 3:1 — see `cropToDeliveredRatio`. The banner is the only
+      // image here whose delivered shape is fixed by the page rather than by the picture.
+      deliverRatio: BANNER_DELIVERED_RATIO,
+      // A banner may be generated FROM the store's own logo — שקמה's is the mark at the centre of
+      // the picture (`bannerRefKey` in identity.mjs), and describing a mark is not the same as
+      // getting that mark back. Same mechanism the gallery views use, pointed at a brand image
+      // instead of a product. On a run where the logo does not exist yet this banner is simply
+      // held back for the next one, which is what `refKey` already means everywhere else.
+      refKey: store.bannerRefKey ? `${store.slug}:${store.bannerRefKey}` : null,
     });
     jobs.push({
       key: `${store.slug}:__logo`, prompt: logoPrompt(store), label: `${store.name} — לוגו`,
       aspect: IMAGE_ASPECT, size: IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
+      // A logo may be drawn FROM the store's banner — סהר's mark lives on the banner wall and the
+      // avatar is redrawn from it (`logoRefKey`). The pair is directional on purpose: exactly one
+      // of `logoRefKey`/`bannerRefKey` may be set per store, or neither picture is the source.
+      refKey: store.logoRefKey ? `${store.slug}:${store.logoRefKey}` : null,
+      refCrop: store.logoRefCrop ?? null,
     });
   }
   for (const store of SHOWCASE_STORES) {
@@ -327,7 +374,7 @@ function buildJobs() {
         if (ONLY_VIEWS.length && !ONLY_VIEWS.includes(view.key)) continue;
         jobs.push({
           key: i === 0 ? `${store.slug}:${p.n}` : `${store.slug}:${p.n}#${view.key}`,
-          prompt: imagePrompt(store, p.s, view),
+          prompt: imagePrompt(store, p.s, view, p.n),
           label: `${store.name} — ${p.n}${i === 0 ? '' : ` (${view.key})`}`,
           aspect: IMAGE_ASPECT, size: IMAGE_SIZE,
           // Every gallery view names the main image it has to match. `main` itself has no
@@ -347,11 +394,15 @@ function buildJobs() {
  * the pictures. Every lever that moves the number — model, batch, `--views=main` — is a flag, so
  * the honest way to choose between them is to price all of them on the actual job list.
  */
+const shekels = (usd) => (usd * 3.7).toFixed(usd * 3.7 < 10 ? 2 : 0);
+
 function reportCost(jobs) {
   const total = jobs.reduce((sum, j) => sum + jobPrice(j), 0);
   console.log(`\n💵 ${jobs.length} image(s) still to generate — model ${MODEL_KEY} (${MODEL})`
     + `${BATCH ? ', BATCH (half price, up to 24h)' : ', interactive'}`);
-  console.log(`   $${total.toFixed(2)}   ≈ ₪${(total * 3.7).toFixed(0)}\n`);
+  // Two decimals under ₪10: a four-image touch-up priced itself at "≈ ₪0", which is the one number
+  // this report must never print — the whole point of it is to be believed before spending.
+  console.log(`   $${total.toFixed(2)}   ≈ ₪${shekels(total)}\n`);
   console.log('   The same job list at the other settings:');
   for (const key of Object.keys(MODELS)) {
     for (const batch of [false, true]) {
@@ -411,7 +462,7 @@ async function runBatched(jobs, apiKey, cloud, preset, manifest) {
 
   const cost = jobs.reduce((s, j) => s + jobPrice(j), 0);
   console.log(`\n🧺 Batch mode — ${jobs.length} image(s) in ${chunks.length} chunk(s) of up to ${CHUNK}.`);
-  console.log(`   Model ${MODEL_KEY} at half price: $${cost.toFixed(2)} (≈ ₪${(cost * 3.7).toFixed(0)}).`);
+  console.log(`   Model ${MODEL_KEY} at half price: $${cost.toFixed(2)} (≈ ₪${shekels(cost)}).`);
   console.log('   Google allows itself 24 hours and MEANS it — a 100-image job measured on');
   console.log('   2026-08-12 sat in the queue for 10h42m. Interrupt freely: a re-run re-attaches');
   console.log('   to the jobs already submitted and never pays for a chunk twice.\n');
@@ -501,7 +552,11 @@ async function runBatched(jobs, apiKey, cloud, preset, manifest) {
         continue;
       }
       try {
-        const url = await uploadToCloudinary(Buffer.from(b64, 'base64'), cloud, preset);
+        const raw = await uploadToCloudinary(Buffer.from(b64, 'base64'), cloud, preset);
+        const job = byKey.get(row.key);
+        const url = job?.deliverRatio
+          ? await cropToDeliveredRatio(raw, job.deliverRatio, cloud, preset)
+          : raw;
         manifest[row.key] = url;
         saveManifest(manifest);   // after EVERY image, same as the interactive path
         done++;
@@ -536,7 +591,20 @@ async function referenceFor(job, manifest) {
   if (!job.refKey) return null;
   const url = manifest[job.refKey];
   if (!url) return null;
-  const res = await fetch(url.replace('/upload/', '/upload/w_1024,q_auto:good,f_jpg/'));
+  // `refCrop` cuts the reference down to the ONE thing the job is about before it is sent.
+  //
+  // It exists because the plain version failed in a way worth recording: סהר's logo was generated
+  // from its banner so the two crescents would match, and what came back was a soft blurred copy
+  // of the whole shop with no mark in it at all. A model shown a picture reproduces the PICTURE —
+  // "redraw only the small object on the right, flat" loses to a photograph of a room.
+  //
+  // Cropping fixes the premise rather than arguing with it: hand it an image that IS the mark and
+  // the ordinary behaviour is the wanted one. The crop is a Cloudinary transform, so it costs no
+  // generation and no local image library — the same reason `cropToDeliveredRatio` is built that
+  // way. Fractional geometry (`x_0.85,w_0.095`), so it survives the source being re-rendered at a
+  // different pixel size.
+  const transform = `${job.refCrop ? `${job.refCrop}/` : ''}w_1024,q_auto:good,f_jpg`;
+  const res = await fetch(url.replace('/upload/', `/upload/${transform}/`));
   if (!res.ok) throw new Error(`could not fetch the reference image (${res.status})`);
   return Buffer.from(await res.arrayBuffer());
 }
@@ -600,11 +668,14 @@ async function main() {
         process.stdout.write(`(${(bytes.length / 1048576).toFixed(1)}MB is over Cloudinary's limit, re-making at 2K) `);
         bytes = await generateImageWithRetry(job.prompt, apiKey, job.aspect, '2K', job.model ?? MODEL, reference);
       }
-      const url = await uploadToCloudinary(bytes, cloud, preset);
+      const raw = await uploadToCloudinary(bytes, cloud, preset);
+      const url = job.deliverRatio
+        ? await cropToDeliveredRatio(raw, job.deliverRatio, cloud, preset)
+        : raw;
       manifest[job.key] = url;
       saveManifest(manifest);   // after EVERY image: a crash must not discard what was paid for
       done++;
-      console.log(`✓ ${(bytes.length / 1024).toFixed(0)}KB`);
+      console.log(`✓ ${(bytes.length / 1024).toFixed(0)}KB${job.deliverRatio ? `, stored at ${job.deliverRatio}:1` : ''}`);
     } catch (e) {
       failed++;
       console.log('✗');

@@ -264,12 +264,52 @@ export const BANNER_IMAGE_SIZE = '2K';
 /** Products and logos: square. `lib/cdn.ts` crops per surface and every product surface is either
  *  square or close to it, so a square source is never mostly discarded. */
 export const IMAGE_ASPECT = '1:1';
-/** The banner is NOT square, and generating it square wastes most of the frame — the store header
- *  is a 3/1 band (`BANNER_RATIO`), so a 1:1 source loses two thirds of its height to the crop and,
- *  worse, the composition the model actually balanced. 16:9 is the widest ratio the image API
- *  offers; cropping 16:9 to 3:1 trims a little top and bottom off a picture that was composed
- *  wide, which is a different thing from salvaging a band out of a square. */
-export const BANNER_ASPECT = '16:9';
+/**
+ * 21:9, and this is the fix for a whole CLASS of complaint rather than a preference.
+ *
+ * The banner is delivered as a 3:1 band (`BANNER_RATIO`), cropped out of whatever is generated
+ * here — and the crop is `g_auto`, so Cloudinary picks the band by saliency, not by obeying the
+ * careful "keep it in the middle" the prompt asks for. At 16:9 that crop throws away 41% of the
+ * height, and every banner complaint so far has been something that fell into it: שקמה's name off
+ * the top (2026-08-13), אדנית's pots off the bottom and then a white letterbox band (2026-08-14),
+ * and finally שקמה's tagline cut clean off the sign even though the sign was dead centre in the
+ * source. Prompt wording cannot beat a saliency crop; a narrower crop can.
+ *
+ * At 21:9 the same 3:1 band keeps 78% of the height instead of 59% — about a ninth off each edge
+ * instead of a fifth — so there is far less for `g_auto` to get wrong, and what it does take is
+ * background either way.
+ *
+ * **"16:9 is the widest ratio the image API offers" stood here and was wrong.** Probed live
+ * against `gemini-3.1-flash-image` on 2026-08-14: `aspectRatio: '21:9'` is accepted and returns
+ * 1584x672 at `imageSize: '1K'`. Nothing was measured before it was written down the first time,
+ * which is the only reason it survived three rounds of the bug it was causing.
+ *
+ * `g_auto` itself is deliberately NOT changed: `cdnBand` serves every real seller's uploaded
+ * banner too, and for an arbitrary photograph saliency is the right chooser. This store's pictures
+ * are the ones we control, so this is the end that moves.
+ */
+export const BANNER_ASPECT = '21:9';
+/**
+ * The ratio the banner is STORED at, which is not the ratio it is generated at.
+ *
+ * 21:9 narrowed the crop; it could not remove it, because no image model offers 3:1. So the
+ * generator takes the last step itself — centre-crop to this ratio before the upload — and the
+ * asset the manifest points at is already the shape the page shows. `cdnBand` then crops nothing.
+ * The mechanism, and why Cloudinary rather than a local image library, is at
+ * `cropToDeliveredRatio()` in `generate-showcase-images.mjs`.
+ *
+ * This is CONFORMING to the site's contract rather than special-casing around it: a real seller's
+ * banner is already 3:1 by the time it is stored, because the dashboard's crop tool produces it
+ * that way (`cdn.ts`'s `BANNER_RATIO` note). The generated stores were the only banners on the
+ * site entering delivery at some other shape, which is exactly why they were the only ones losing
+ * their edges.
+ *
+ * It must equal `BANNER_RATIO` in `src/lib/cdn.ts` — the same number in two places that cannot
+ * import each other (a `.mjs` build script and a TypeScript module). `tests/showcase-banner-ratio`
+ * fails if they drift, because drift here is silent: the banner would simply start being cropped
+ * again, which is the bug this exists to end.
+ */
+export const BANNER_DELIVERED_RATIO = 3;
 
 export const SHOWCASE_STORES = [
   {
@@ -326,24 +366,223 @@ export const SHOWCASE_STORES = [
     backdrop: 'a plain wall of deep cool graphite grey, like dark honed stone, softly out of focus '
       + 'and noticeably darker than the product, with a pale grey marble ledge to stand on — the '
       + 'contrast between the dark field and the light stone is the point',
+    /**
+     * The stained-glass room, on roughly one hero shot in nine (owner, 2026-08-14, about his own
+     * banner: "זה גם כל כך יפה שעשית מאחורה עם הויטראז׳ … אי אפשר לעשות מעט מוצרים עם כזאת אווירה
+     * מאחורה?").
+     *
+     * It is described as LIGHT and not as a window, and that is what makes it safe rather than a
+     * violation of `PRODUCT_VIEWS.main` — whose whole design is one object on a plain field with
+     * "no props, no objects, no room, no scenery", and which is the rule that stopped this catalog
+     * cropping its own products. Coloured light falling across a plain wall adds no object to the
+     * frame, cannot crowd the garment and cannot be cut off. The wall is still a plain wall.
+     *
+     * "מעט" is the whole brief, so it is one in nine and not a new house style: the plain graphite
+     * field is what tells this store apart from the other three at a glance in the grid, and a
+     * shopper who meets the coloured light on every third product stops seeing it.
+     */
+    /**
+     * Products that ALWAYS get the stained-glass light, whatever the hash says (owner, 2026-08-14:
+     * "רוצה לפחות 2 מוצרים עם ויטראז׳ על גבי כרטיסיית חנות כמוצרים לדוגמא").
+     *
+     * These are the four thumbnails the homepage store card draws, and the card takes them by rule
+     * rather than by choice: `getStorePreviews` returns the first image of the four NEWEST visible
+     * products that have a photo. Nothing chooses them — not the owner, not a seller — so a
+     * one-in-nine hash landing on any of them was pure luck, and it did not (0 of 4).
+     *
+     * Naming them here is honest about what it is: the store card is the only picture of this shop
+     * a stranger sees on the homepage, so for a SHOWCASE store — an exhibit, whose whole job is to
+     * show what the platform can look like — it is staged deliberately rather than left to a
+     * `created_at` ordering. Two of the four, not all four, so the card still shows the store's
+     * ordinary graphite field beside it and the coloured light still reads as the exception.
+     *
+     * ⚠️ It is a NAME LIST, so it breaks silently in one specific way: rename a product and the
+     * entry stops matching and simply stops applying. `tests/showcase-catalog-integrity` fails if
+     * a name here is not in the catalog.
+     *
+     * Only the blazer is here for the card's sake — `cardProducts`'s other stained-glass slot,
+     * סניקרס רטרו, is picked by the hash already and needs no entry. The dress is no longer on the
+     * card at all (owner, 2026-08-14: "לא אהבתי שהראשון שם זה שמלה פרחונית, אני מעדיף במקום איזה
+     * נעליים"); it stays in this list only because its picture was already made this way and
+     * spending a generation to undo a good image buys nothing.
+     */
+    backdropAccentAlways: ['ז׳קט בלייזר לא מובנה', 'שמלת קיץ פרחונית'],
+    /**
+     * What the homepage store card shows, in order — see `cardAt()` in the showcase seeder for how
+     * a name here becomes a `created_at`, and why the alternative was not stable enough to stage.
+     *
+     * The soft V-neck top leads (owner, 2026-08-14: "במקום הנעליים שים למעלה חולצת מחשוף V רכה
+     * שיש שם, היא יפה יותר" — it replaced סניקרס רטרו, which had replaced the floral dress).
+     *
+     * Two of the four still carry the stained-glass light — the V-neck by the hash, the blazer by
+     * `backdropAccentAlways` — and two carry the store's ordinary graphite field, which is the mix
+     * that makes the coloured light read as an exception rather than as this shop's default. That
+     * the swap kept the count is luck, not design: if a future swap lands on two plain products,
+     * the replacement's name goes in `backdropAccentAlways` and its picture is regenerated.
+     *
+     * The four are also deliberately four DIFFERENT things — a top, a jacket, a trouser, an
+     * accessory. A card of four tops says less about a clothes shop than four categories do, and
+     * this is the only picture of the store a stranger meets on the homepage.
+     */
+    cardProducts: ['חולצת מחשוף V רכה', 'ז׳קט בלייזר לא מובנה', 'מכנסי מטען רחבים', 'חגורת עור קלאסית'],
+    backdropAccent:
+      'a plain pale limestone wall, softly out of focus, washed by the light of a tall stained-'
+      + 'glass window just outside the frame — broad soft pools of cobalt, ruby, amber and '
+      + 'emerald light lying across the wall and across the pale stone ledge the product stands '
+      + 'on, with the clean grey of the stone still showing between them. The coloured LIGHT is '
+      + 'the only decoration: the window itself is never visible, and there is still nothing in '
+      + 'the picture but the product, the ledge and the wall',
     logoStyle:
       // No typography note here, deliberately: this store is `logoNameless`, and a style line that
       // describes how to set the name is an instruction to draw one. That contradiction is what put
       // "סהר" under the crescent on the first attempt even though the naming clause said MARK ALONE
       // — given two instructions, the model followed the more specific.
+      // Repalette 2026-08-14, owner: "את הלוגו עצמו צריך להחליף לצבע כחול או אפור כהה ויותר צבעים
+      // נלווים מבחינת הירח עצמו." Two separate asks and they are easy to collapse into one by
+      // accident: the mark's OWN colour becomes deep blue, and the moon stops being a single flat
+      // shape — it carries two or three more colours inside its own silhouette. Written as flat
+      // areas with crisp edges rather than as a gradient, because a gradient is the one thing a
+      // 56px circle turns to mud, and `LOGO_NEGATIVE` bans them for that reason anyway.
+      // ── The two crescents faced opposite ways, and the BANNER's is the one that stays ────────
+      // Owner, 2026-08-14: "בבאנר שמת חצי ירח אחד ובלוגו אחד אחר, כל אחד פונה לכיוון אחר, צריך
+      // שיהיה אחיד" — then, on being asked which: "יותר אהבתי את הסהר של הבאנר אז אולי תתאים אותו
+      // ללוגו."
+      //
+      // The cause is worth keeping, because it will recur the next time two pictures share a mark.
+      // The banner was generated WITH the logo attached as a reference, which fixes a shape but
+      // says nothing about its handedness — a reference image constrains what a thing looks like,
+      // not which way round it is drawn, and a crescent is the one shape where those are different
+      // questions. Nothing in either prompt named a direction, so both were free, and they landed
+      // on opposite answers.
+      //
+      // So the direction is now WORDED rather than merely referenced, in the one place that can be
+      // checked by eye — and the reference runs the other way (`logoRefKey`), because the picture
+      // he chose is the banner's.
+      // ── A WHOLE-BANNER reference was tried here and failed; a CROPPED one is the answer ──────
+      // Owner, three rounds running, ending in "הלוגו של סהר לא נראה כמו בבאנר! צריך להיות *בדיוק*
+      // אותו הסהר" (2026-08-14).
+      //
+      // First attempt: `logoRefKey: '__banner'` with no crop. What came back was a soft blurred
+      // copy of the whole shop — the rail of clothes, the room — with no mark in it at all. A model
+      // shown a picture reproduces the PICTURE; "redraw only the small object on the right, flat"
+      // loses to a photograph of a room. Second attempt: no reference at all, the crescent
+      // described in words. That produced a good crescent facing the right way and NOT the same
+      // crescent — words can carry direction and palette, they cannot carry a specific division of
+      // a shape into five wedges.
+      //
+      // `logoRefCrop` fixes the premise instead of arguing with it: the reference is cut down to
+      // the mark alone before it is sent, so the target IS the reference's whole subject — which
+      // is the condition under which a reference has worked every time here (שקמה's emblem is the
+      // middle of its own banner; אדנית's lettering is inside its own illustration). The words
+      // stay, because they carry what a reference cannot pin: handedness, and the fact that the
+      // output is flat vector rather than a photograph of a painted panel on a wall.
       'A flat vector logo artwork on a plain solid background — a digital design file, not a '
       + 'photograph, not a 3D render, not a sign on a wall: no perspective, no shadow, no texture, '
-      + 'no mockup. ONE colour only, a soft warm terracotta on off-white, and the mark sits alone '
-      + 'and generously spaced in the centre of the frame.',
+      + 'no mockup, no wall behind it and no lighting on it. The reference image is this shop\'s '
+      + 'existing mark, photographed. Reproduce it EXACTLY as a flat drawing: the same crescent, '
+      + 'the same proportions, the same wedge divisions in the same places, the same colours in '
+      + 'the same order. DIRECTION, which matters most of all: the crescent\'s solid body is on '
+      + 'the RIGHT and its two tapering horns point to the LEFT, so it opens leftward like a '
+      + 'backwards C — never mirrored, never flipped, never opening to the right. The moon is deep '
+      + 'navy blue, and across its width it is cut by straight radial lines into flat wedges of '
+      + 'orange, royal blue, purple, orange and royal blue again, with the navy remaining at the '
+      + 'top and bottom tips — every division a crisp straight edge, never a gradient, never a '
+      + 'blend, never a glow. The background is a soft off-white, and the mark sits alone and '
+      + 'generously spaced in the centre of the frame.',
+    /** The banner, cropped to the crescent alone — see `logoStyle` for why the crop is the whole
+     *  point and what happened without it. Fractional geometry so it survives the banner being
+     *  re-rendered at another size; it does NOT survive the banner being regenerated with the mark
+     *  somewhere else, which is why the crescent is also described in words. */
+    logoRefKey: '__banner',
+    logoRefCrop: 'c_crop,x_0.852,y_0.24,w_0.095,h_0.44,g_north_west',
     address: 'דיזנגוף 112, תל אביב',
     selfPickup: false,
     // Mutually exclusive on purpose: a product carries exactly ONE categoryId, so
     // a curated shelf like "קולקציה חדשה" cannot be a category here without
     // stealing products out of the real ones and leaving them half empty.
     categories: ['נשים', 'גברים', 'הנעלה', 'תיקים', 'תכשיטים ואביזרים'],
+    /**
+     * COLOUR, and it is a correction rather than a preference (owner, 2026-08-14: "שהבאנר יהיה
+     * יותר צבעוני, הוא כרגע רק אפור וזה משעמם … משהו יותר חי. משהו כיפי").
+     *
+     * The old subject was "a cool, quiet fashion studio in pale stone — greys and bone whites",
+     * which is the store's PRODUCT direction restated. That is the mistake: the cool stone field
+     * exists so a garment photographed against it reads as designed rather than busy (see
+     * `region`), and a banner has no garment to protect — it inherited the restraint and kept none
+     * of the reason for it. The colour the products carry one at a time (`colorways`) is all in
+     * this one frame at once, which is also the honest picture of what this shop sells.
+     *
+     * The pale stone stays as the GROUND, so the banner is still recognisably this store and not
+     * שקמה's warm room. What changes is what stands on it.
+     */
+    // MENSWEAR is named explicitly (owner, 2026-08-14: "חסר לי שם טאצ׳ של בגדי גברים בבאנר"), and
+    // the omission was structural rather than careless: "a rail of clothes" is read by an image
+    // model as womenswear every time, so a store that sells both had a banner that advertised
+    // half of itself. The catalog has had a גברים category since 2026-08-13.
     bannerSubject:
-      'a cool, quiet fashion studio in pale stone — a marble ledge, a rail of clothes softly out of '
-      + 'focus, one hard shaft of daylight across a limestone wall, greys and bone whites',
+      'a bright, cheerful fashion room: a long rail of clothes in strong saturated colour — '
+      + 'cobalt, tangerine, emerald green, cherry red, soft lilac — hung close together against a '
+      + 'pale stone wall that carries two large blocks of painted colour behind them. The rail is '
+      + 'clearly MIXED: alongside the women\'s pieces, a definite section of MENSWEAR — men\'s '
+      + 'shirts, a men\'s jacket and a knit on broader hangers, in the same strong colours — plus a '
+      + 'pair of men\'s shoes among the shoes below, so it reads at a glance as a shop for both. A '
+      + 'panel of coloured glass throws a pool of colour across the floor, a striped rug, a few '
+      + 'bags and shoes in bright colours set out on a pale marble ledge. Clean bright daylight, '
+      + 'alive and fun and full of colour — never grey, never monochrome, never austere, never empty',
+    /** The banner's own medium. Photographic, like the products, because this is a clothes shop and
+     *  a shopper wants to see cloth — but the raking-daylight-and-atmosphere language that used to
+     *  be hardcoded in `bannerPrompt` is gone, since that is what softened this exact banner
+     *  (owner, 2026-08-12: "ממש מטושטשת") and what greyed it. */
+    bannerStyle:
+      // WHERE the sign hangs is the whole of this note. Three attempts put it high on the wall
+      // above the rail, which is where a sign goes in a real shop and is also the top third of the
+      // frame — so the delivered band cut the name in half twice. Telling the model "the middle
+      // third" does not beat what it knows about shops; giving it a different PLACE for the sign
+      // does. A name painted on the wall beside the rail, at eye level, is just as real and lands
+      // where the crop can reach it.
+      'A wide photograph, shot on a full-frame camera, in bright even daylight with everything in '
+      + 'focus. Contemporary Israeli 2026: a pale stone or plaster room used as a CANVAS for '
+      + 'strong saturated colour. Colourful, cheerful and inviting, the kind of shop you want to '
+      + 'walk into. Composed left to right across the width: the clothes fill one side, and the '
+      + 'sign has a clear calm panel of empty wall to itself on the other side. The sign hangs LOW '
+      + 'on that wall, at eye level and at the exact vertical CENTRE of the picture — level with '
+      + 'the middle of the clothes rail, never above it, never up near the ceiling, never in the '
+      + 'top third of the frame. There is as much wall visible above the name as there is below it.',
+    /** Not gold. The lettering colour is now the LOGO's, which is the pairing שקמה's own note
+     *  argues for — its logo and banner were repainted to one palette because side by side they
+     *  read as two different shops. סהר's mark went deep ink blue today, so its sign does too. */
+    bannerLettering:
+      // The letterform, round two (owner, 2026-08-14: "הפונט גם פשוט מדי"). What came back was a
+      // plain even-weight sans, which is the shape a model defaults to when it is told a colour
+      // and a material and nothing about the drawing. This store is `logoNameless`, so unlike
+      // אדנית there is no logo lettering to copy — the type has to be specified instead, and what
+      // makes a fashion label's name look designed is stroke contrast and spacing, not a font name.
+      // THE MARK, beside the name (owner, 2026-08-14: "עשית לי את השם שלו אבל בלי הסמל של הסהר,
+      // צריך להיות ליד הסמל"). It was never asked for: this store is `logoNameless`, so the crescent
+      // and the name have only ever existed in two different pictures — the avatar carries the mark
+      // and the banner carried the word, and neither one showed the shop's actual lock-up. The logo
+      // now comes in as a reference image (`bannerRefKey`) so the crescent on the wall is the same
+      // crescent, rather than a second, similar moon.
+      'Mounted on the wall immediately beside the name — to the right of it, at the same height, '
+      + 'sized to match the letters — is the shop\'s own mark: a crescent moon, its solid body on '
+      + 'the right and its two tapering horns pointing to the LEFT, opening leftward. It is deep '
+      + 'ink blue, and inside its own shape it carries flat blocks of bright cobalt, soft violet '
+      + 'and warm tangerine, divided by crisp straight edges. Cut as a solid panel and fixed to '
+      + 'the wall. Exactly one crescent, and it and the name read as one sign together. '
+      + 'Both are real, physical signage inside the scene — cut or painted letters mounted on the '
+      + 'wall, lit by the same light as everything else and casting its own small shadow, never '
+      + 'text laid over the photograph. The letterform is elegant and distinctive, the wordmark of a real '
+      + 'fashion label: high stroke contrast between thick and hairline-thin strokes, refined '
+      + 'tapered terminals, generous letter-spacing, drawn with real character — never a plain, '
+      + 'even-weight, default-looking sans-serif. The letters are a rich DEEP INK BLUE, the same '
+      + 'blue as the shop\'s own mark, standing out clearly against the pale wall behind them — '
+      + 'never gold, never brass, never metallic, never grey.',
+    /* `bannerRefKey: '__logo'` stood here and is deliberately GONE (2026-08-14). The banner is now
+       the source of this store's mark and the logo is drawn from it (`logoRefKey`), so pointing the
+       banner back at the logo would close a cycle in which neither picture is authoritative and a
+       regeneration of either could quietly redefine the other. The crescent is therefore described
+       in words in `bannerLettering` — including the direction, which is the thing a reference image
+       never pinned and which is why the two disagreed in the first place. */
     /** Its own region clause, because the shared one names terracotta, olive and clay — and this is
      *  the store that was corrected OFF that palette. With the shared clause it came back as שקמה's
      *  room twice out of two: warm plaster, an olive branch in a clay jug. Israeli-Mediterranean is
@@ -450,10 +689,73 @@ export const SHOWCASE_STORES = [
     address: 'ויצמן 8, רעננה',
     selfPickup: true,
     categories: ['ריהוט', 'תאורה', 'קרמיקה וכלי הגשה', 'טקסטיל', 'עיצוב ואקססוריז'],
+    /**
+     * The MAXIMAL one, and the only banner in the set that is (owner, 2026-08-14: "בדיוק כמו הלוגו
+     * שיש כרגע שיהיה במרכז, ומסביב המון פרחים במלא צבעים בסגנון מקסיקני ריאליסטי מאוד ובכל מיני
+     * צורות, וחיות דמיוניות כאלו, משהו פרוע כזה. שטיח ומנורה גדולה ונרות").
+     *
+     * It is a deliberate exception to the restraint every other picture in this file is written
+     * for, and it earns it: this is the store whose whole identity is a decorative tradition
+     * (Oaxacan pottery, Talavera, alebrije), stated in `artDirection` and carried by every product
+     * it sells. A banner is the one frame where that tradition can be the subject rather than the
+     * pattern on an object, and the other three banners stay quiet, so nothing about the set reads
+     * as busy — only this shop does.
+     *
+     * "כמו הלוגו במרכז" is answered twice over: described here, AND the logo image itself is fed
+     * to the model as a reference (`bannerRefKey`). Describing a mark and getting the same mark
+     * back are different things, and this store has already been through the version where its
+     * logo and its banner looked like two shops.
+     */
     bannerSubject:
-      'a calm living room with a deep teal-plastered wall — a dark walnut table, one brass lamp lit '
-      + 'warm, a hand-woven kilim runner in terracotta and saffron, a piece of painted folk pottery '
-      + 'catching the light, low raking window light and long shadows. No greenery, no beige',
+      'the shop\'s own emblem dead CENTRE — a deep teal roundel carrying the shop name in warm '
+      + 'gold, exactly the mark in the reference image, hanging in the middle of the scene as a '
+      + 'real painted enamel sign — and everything else massed symmetrically around it. Flowers '
+      + 'everywhere, dense and overflowing, in every colour and every shape: marigolds, dahlias, '
+      + 'roses, carnations, zinnias, wild blossoms large and small, in the hot Mexican folk palette '
+      + 'of pink, cobalt, marigold orange, blood red and emerald. Among the flowers, fantastical '
+      + 'carved animals in the alebrije tradition — a jaguar, a long-tailed bird, a lizard — '
+      + 'brightly painted in dots and stripes, half hidden in the blooms. Beneath it all a woven '
+      + 'kilim rug in terracotta and saffron; one large brass lamp lit warm to the side; lit '
+      + 'candles with real flames scattered through the scene. Wild, abundant and joyful, every '
+      + 'inch of the frame alive with colour, and yet ordered around the centre so the emblem is '
+      + 'unmistakably the middle of it',
+    /** Painted and highly realistic at once, which is what "בסגנון מקסיקני ריאליסטי מאוד" is
+     *  asking for — not a photograph of a room, and not flat illustration either: the surface of a
+     *  richly painted decorative panel where every flower, feather and flame is rendered with real
+     *  texture and real light. */
+    /**
+     * PHOTOGRAPHED, round two (owner, 2026-08-14: "יצא לא מספיק ריאליסטי, נראה מאוד מלאכותי. זה
+     * צריך להיות יותר אמיתי").
+     *
+     * "A richly painted panel rendered in extremely fine realistic detail" was an attempt to have
+     * both — his original ask said "ריאליסטי מאוד" of a decorative Mexican world — and it produced
+     * the thing that is neither: a digital painting, which is the exact look people mean by
+     * artificial. Realism is not a level of detail you can dial up inside an illustration; it is
+     * the medium. So the scene is now a real arrangement in front of a real camera, built out of
+     * objects that exist — cut flowers, carved painted wood, beeswax, brass, wool.
+     *
+     * Note what this does NOT change: the subject stays maximal, the emblem stays at the centre.
+     * The complaint was about how it was made, not about what is in it.
+     */
+    bannerStyle:
+      'A photograph, shot on a full-frame camera with a macro-sharp lens — a REAL arrangement of '
+      + 'REAL objects physically built in front of the camera and lit for it, not a painting, not '
+      + 'an illustration, not a digital render and not a collage. Real cut flowers with real petals '
+      + 'and real stamens; hand-carved painted wooden folk animals with visible grain, brush marks '
+      + 'and worn paint; real beeswax candles with real flames and running wax; a real brass lamp '
+      + 'with tarnish and fingerprints on it; a real hand-woven wool rug with individual threads. '
+      + 'Everything has genuine texture, genuine weight and genuine imperfection. Deeply saturated '
+      + 'Mexican folk colour, warm practical light from the lamp and the candle flames mixing with '
+      + 'soft daylight, real shadows falling between the objects, real depth from things standing '
+      + 'in front of other things. Photorealistic throughout, everything in sharp focus, the '
+      + 'composition symmetrical and centred and filling the whole frame.',
+    bannerLettering:
+      'The name is on the teal emblem at the centre, in warm gold, exactly as the reference image '
+      + 'sets it — real raised or painted lettering on a real object in the scene, catching the '
+      + 'warm light, never text laid over the picture. It is the brightest and clearest thing in '
+      + 'the frame and the flowers never cover or crowd it.',
+    /** The logo, fed to the model as a reference image — see `bannerSubject`. */
+    bannerRefKey: '__logo',
     /** The explicitly non-white store. Objects sit in a real room on a real
      *  surface, which is also the only honest way to shoot furniture — a sofa on
      *  a white sweep has no scale. */
@@ -555,31 +857,122 @@ export const SHOWCASE_STORES = [
     colors: { primary: '#141a24', accent: '#2f6fe4' },
     /** The one Latin name, so it gets the one letterform mark: a monogram. It is also the most
      *  engineered of the four ideas, which is the point — this store is the plain one. */
+    // "Two straight bars meeting at one right angle" left the SOLIDITY unstated, and the mark-alone
+    // render read it as licence to decorate the only shape in the frame: the T came back with a
+    // second T cut into its face as a groove, and the blue edge glowing like a light rather than
+    // being a painted side. A monogram this simple has to be described as one solid piece or the
+    // model finds something to add to it.
     logoConcept:
-      'a geometric monogram of the letter T, built from two straight bars with square ends meeting '
-      + 'at one right angle, precise and engineered',
+      'a geometric monogram of the letter T as ONE single solid piece: one horizontal bar resting '
+      + 'squarely across the top of one vertical stem, both with flat faces and sharp square ends, '
+      + 'precise and engineered — no groove, no channel, no inset or engraved line, no second T '
+      + 'cut into it, no outline, no cut-out and no pattern on any face',
     /** The 3D RENDER one, which is also this store's own language: everything Teklar sells is
      *  photographed as a clean object on white, so its logo is one too. */
     /** White, because this store's whole direction already IS the empty backdrop. Named anyway so
      *  the hero staging reads from one place for all four rather than from three plus an exception. */
     backdrop: 'a seamless white studio sweep falling very slightly to pale grey at the corners, '
       + 'and the same white surface to stand on',
+    /** The MARK ALONE, like סהר (owner, 2026-08-14: "בלוגו לא צריך להיות הכיתוב של הטקלר"). Same
+     *  reasoning that made סהר nameless and it applies at least as well here: a monogram IS a
+     *  letterform, so a name set underneath it says the same thing twice, and the store's name sits
+     *  beside the avatar on every surface the avatar appears on. It also takes the second store out
+     *  of the one failure this file cannot fully control, a misspelt name. */
+    logoNameless: true,
     logoStyle:
+      // The typography sentence that stood at the end of this string is deliberately gone, not
+      // merely unused: סהר's own note records that a style line describing how to set the name is
+      // an instruction to DRAW one, and that given the naming clause and a type note the model
+      // follows the more specific of the two. Removing the field without removing the sentence is
+      // exactly how "MARK ALONE" loses.
       'A clean 3D render of the mark as a solid physical object standing on a seamless white studio '
       + 'surface — brushed anodised aluminium with a soft contact shadow beneath it and one crisp '
-      + 'specular highlight along the top edge, shot straight on. Graphite and a single electric '
-      + 'blue face. The Latin name is set beneath in a tight, technical, medium-weight grotesque, '
-      + 'flat and matte against the render.',
+      + 'specular highlight along the top edge, shot straight on. Graphite, with exactly ONE of its '
+      + 'side faces painted a flat matte electric blue — a painted surface, never a light, never a '
+      + 'glow, never an illuminated edge or a neon strip.',
     address: 'הרצל 40, חיפה',
     selfPickup: false,
     /** The only store that opts OUT of the full styling language — see RESTRAINED_LIFE_DIRECTION.
      *  Its whole point is to be the plain one, in its copy and in its pictures alike. */
     restrained: true,
     categories: ['שמע', 'מחשוב ועבודה', 'טעינה וחשמל', 'בית חכם', 'צילום ווידאו'],
+    /**
+     * The homepage card leads with the ANCHOR products (owner, 2026-08-14: "צריך לשים את המוצרים
+     * היותר מובנים בראשי … הדברים ששמת למעלה הם דברים קצת קיקיוניים ואיזוטריים").
+     *
+     * Left to `created_at` this store's card opened with an action-camera mounting kit, a mouse
+     * mat, a microphone arm and a novelty speaker — four accessories, three of them accessories TO
+     * something else that was not in the picture. An electronics shop is judged in four thumbnails
+     * by whether it stocks the big obvious things, and only then by whether it also has the cable.
+     *
+     * So: the ultra-wide monitor, the soundbar and the turntable, which he named, and the lit photo
+     * tent for "צילום לשולחן". Four categories out of five, and the three most expensive things in
+     * the shop lead — which is also the honest picture of what this catalogue is for.
+     *
+     * ⚠️ He also said "רמקול USB", and there is no such product in this catalogue. The nearest is
+     * `מיקרופון USB לשולחן` (a USB desk microphone), which is a swap of one name if that is what
+     * he meant.
+     */
+    cardProducts: ['מסך אולטרה־רחב', 'סאונדבר לטלוויזיה', 'פטיפון עם מגבר מובנה', 'אוהל צילום מואר'],
+    /**
+     * The VECTOR one (owner, 2026-08-14: "לא הגיוני שהבאנר מוזהב, צריך שיהיה כמו הלוגו, יותר פשוט,
+     * יותר ׳וקטורי׳ כלומר לא ריאליסטי. ותמונות של כל מיני ציוד היקפי ומחשבים וגאד׳גטים בכל מיני
+     * זוויות").
+     *
+     * The gold is not a styling slip, it is the bug this whole round fixed: `bannerPrompt` used to
+     * hardcode "polished brass, warm gold" for every store's lettering, so the plainest shop in the
+     * set — a white studio sweep, graphite and one electric blue, `restrained: true` — was gilded
+     * by the shared prompt no matter what its own direction said.
+     *
+     * Drawn rather than photographed is the other half, and it is the one place this store's
+     * pictures and its banner are allowed to disagree: the products are photographs on white
+     * because that is what a shopper needs to see, and a shelf of the same photographs is not a
+     * banner. A flat vector field of the same objects is, and it is nearer to the logo, which is
+     * what he asked it to look like.
+     */
+    /**
+     * Round two, and the two notes only look contradictory (owner, 2026-08-14: "הבאנר צריך להיות
+     * יותר מושקע, יותר תלת מימד, כיתוב בפונט יותר מקצועי ומתוחכם", one round after "יותר וקטורי,
+     * כלומר לא ריאליסטי").
+     *
+     * Both point at the same target, which is this store's own LOGO: a 3D render of a machined
+     * object on a white sweep. "Not realistic" ruled out a photograph, and flat vector was one step
+     * too far past it — a flat outline drawing of a laptop is a diagram, and a diagram cannot look
+     * expensive. A render is still a made thing rather than a photograph, and it is the only one of
+     * the three that can. So the medium is now the logo's exactly, which is where it should have
+     * been the moment he said "כמו הלוגו".
+     */
     bannerSubject:
-      'a bright, clean white studio arrangement of a few pieces of consumer electronics — headphones, '
-      + 'a keyboard, a small speaker — spaced apart on a seamless white surface with soft shadows '
-      + 'beneath each one, calm and evenly composed, no room and no background objects',
+      'consumer electronics and computer peripherals as clean 3D-rendered objects, each seen from '
+      + 'its own angle — a laptop open at three-quarters, a keyboard tilted from above, over-ear '
+      + 'headphones in profile, a mouse, a smartwatch on its side, a compact camera, a power bank, '
+      + 'a small speaker turned away, a neatly coiled cable, a monitor straight on — floating and '
+      + 'arranged across the width in a considered, balanced composition at slightly different '
+      + 'sizes and depths. EVERY object is complete and whole, with clear empty space between it '
+      + 'and the edge of the picture: nothing touches the left or right edge, nothing runs off the '
+      + 'side, nothing is half in and half out of frame. Leave a generous empty margin down both '
+      + 'sides and keep the whole arrangement inside it',
+    bannerStyle:
+      'A premium 3D product-design render on a seamless white studio ground — the same medium as '
+      + 'the shop\'s own logo: solid physical objects with real form, soft even studio lighting, '
+      + 'matte and satin surfaces, gentle contact shadows and one restrained specular highlight '
+      + 'along an edge. Rendered and immaculate rather than photographed, and not flat illustration '
+      + 'either: it has depth and volume. The palette is the shop\'s own and only that — graphite, '
+      + 'brushed dark aluminium, cool light grey, white, and ONE electric blue used sparingly as '
+      + 'the accent. Expensive, precise and understated, the look of a good hardware brand\'s own '
+      + 'launch page. Absolutely no gold, no brass, no bronze, no copper, no warm metal and no '
+      + 'ornament of any kind.',
+    bannerLettering:
+      // "A tight, technical, medium-weight sans-serif" produced a plain light grotesque that reads
+      // as a default rather than as a choice (owner: "הפונט … פשוט מדי" was said of סהר, "יותר
+      // מקצועי ומתוחכם" of this one — the same complaint from two directions). A weight, a width
+      // and a spacing are what separate a designed wordmark from a system font, so they are named.
+      'The name is set as a designed wordmark in a sophisticated, tightly drawn geometric '
+      + 'sans-serif with real weight and confidence — bold, low-contrast, generously letter-spaced, '
+      + 'the kind of precise custom lettering a serious technology brand uses, never a thin or '
+      + 'default-looking system font. Solid graphite, flat and matte against the render, sitting in '
+      + 'a clear open area at the centre with the objects arranged around it. Never gold, never '
+      + 'metallic, never a serif, never a script, and never with an outline, a shadow or a glow.',
     /** Teklar opts out of the region clause almost entirely — see `artDirection`. There is no
      *  Mediterranean anything in a white studio sweep, and the store's whole point is that there
      *  is nothing in the frame except the product. */
@@ -655,10 +1048,78 @@ export const SHOWCASE_STORES = [
     // better demonstration than one.
     selfPickup: true,
     categories: ['צמחי פנים', 'מרפסת וגינה', 'עציצים ומצעים', 'טיפול והזנה', 'כלי גינון'],
+    /**
+     * The DRAWN one (owner, 2026-08-14: "זה כיוון טוב … אבל הכיתוב למעלה מדי, ואם אני אחתוך אז
+     * העציצים ייחתכו מלמטה, ויש שם יותר מדי צל. משהו יותר ממורכז וחכם, אולי כמה עציצים או סבך כזה
+     * של יער ועליו כתוב שם החנות … יותר מתוחכם, יותר באנרי, פחות צילום ריאליסטי").
+     *
+     * Three notes, and only two of them are about this store. The crop damage — type at the top,
+     * pots cut off at the bottom — is `bannerPrompt`'s job and is fixed there for all four, because
+     * a rule written into one store's subject protects one store. What belongs HERE is the medium
+     * and the composition: a thicket that closes over the whole frame with the name in a clearing
+     * at its centre has nothing at an edge to lose, which is the structural version of the same
+     * fix. The heavy shadow goes with the photograph it came from; a drawn banner has no sun in it
+     * to cast one.
+     *
+     * Illustration is also the right medium for this store specifically, and it is the one that
+     * finally makes it stop looking like everybody else's photograph: its logo is already the
+     * hand-drawn one (`logoStyle` — ink and gouache, visible brush strokes), so the banner is now
+     * the only one in the set that matches its own mark's medium rather than merely its palette.
+     */
     bannerSubject:
-      'a very simple, calm composition: three or four potted plants of different heights standing '
-      + 'on a plain concrete ledge against a bare pale wall in clean morning sun, generous empty '
-      + 'wall around them, one clear leaf shadow — quiet and uncluttered, only a few plants',
+      'a dense, layered thicket of foliage filling the whole frame — big monstera and fan-palm '
+      + 'leaves, ferns, trailing ivy, olive and eucalyptus sprigs, a few flowering stems — in five '
+      + 'or six distinct greens from deep forest to fresh lime, with three or four terracotta pots '
+      + 'and glazed planters nestled in among the leaves near the bottom, each one whole and '
+      + 'complete. At the centre the leaves part into a calm open clearing of plain warm cream, '
+      + 'and the name sits in it with the foliage arching around it on both sides',
+    /**
+     * Round two: the same drawing, rendered for real (owner, 2026-08-14: "שיהיה יותר ריאליסטי").
+     *
+     * This does NOT reopen "פחות צילום ריאליסטי" from the round before — both notes are live and
+     * they are about different things. What he rejected was a PHOTOGRAPH of a nursery; what he is
+     * rejecting now is flat screen-printed shapes, which came back looking like clip art. Between
+     * them sits botanical illustration: every leaf modelled, veined and shaded, real depth and real
+     * material, and still unmistakably drawn. That is also the older and better tradition for a
+     * plant shop's sign than either extreme.
+     */
+    // Round three, and the note is the same word for the third time ("היער לא מספיק ריאליסטי"), so
+    // the answer stops splitting the difference. Two rounds tried to land between illustration and
+    // photograph — screen-print, then botanical plate — and each read as the flatter of the two,
+    // because "painted but realistic" leaves the model free to choose, and it chooses painted. So
+    // the LEAVES are now simply described as real, and only the treatment of the whole picture is
+    // still designed. What he rejected in round one was a photograph of a NURSERY — a shop, a
+    // ledge, a wall — not realistic foliage; nothing here brings that back.
+    bannerStyle:
+      'Photographic realism in the foliage: real living leaves with real surface — waxy highlights, '
+      + 'fine veining, translucency where light passes through a leaf, tiny imperfections and '
+      + 'curled edges, real depth of field falling away into the layers behind, real glazed and '
+      + 'terracotta pots with weight and texture. The plants must look like plants somebody could '
+      + 'photograph, not like drawn or painted shapes, not flat, not stylised, not vector, not clip '
+      + 'art. The picture as a WHOLE is still composed and designed rather than a snapshot: warm, '
+      + 'calm, even light with no sun, no hard cast shadows and no dark corners, symmetrical, the '
+      + 'foliage built outward from the centre in both directions, and the name lettered into it.',
+    bannerLettering:
+      // "Hand-lettered in the same brush as the foliage" produced a clean drawn typeface, because
+      // nothing told it WHICH brush — the logo was not in the room. It is now (`bannerRefKey`), and
+      // the instruction is to copy it rather than to describe it (owner: "זה חייב להיות תואם לפונט
+      // שמופיע בלוגו"). Same move that put שקמה's actual mark at the centre of its own banner.
+      // LEGIBILITY beats the brush (owner, 2026-08-14: "הכיתוב לא ברור- הא׳ נראית כמו מ׳"). The
+      // previous wording asked for "slightly uneven weight" and "a loaded brush", which is a
+      // licence to let a stroke thicken until א closes up into מ — and א and מ differ by exactly
+      // that, whether the diagonal arms stay open. The hand stays; the deformation does not, and
+      // the two letters are named so the instruction has something to be checked against.
+      'The name is HAND-LETTERED with a brush in the lettering style of the reference image — the '
+      + 'same warm informal hand, the same deep olive-green ink, as if the same person lettered '
+      + 'both. But every letter is drawn CLEANLY and CORRECTLY and is instantly readable: even '
+      + 'stroke weight, open counters, clear space between the letters, nothing blotted, nothing '
+      + 'closed up, nothing running together. In particular the first letter is א (aleph) and must '
+      + 'read unmistakably as א — its two separate diagonal arms clearly open and clearly detached '
+      + 'from the central stroke — never closing up into anything that could be read as מ. Large '
+      + 'and confident in the clearing at the centre, with clear space around it so no leaf crosses '
+      + 'or covers a letter. Never gold, never metallic, never with a shadow or an outline.',
+    /** The logo, as a reference image — it is where the lettering has to come from. */
+    bannerRefKey: '__logo',
     /** URBAN, and that word is doing the work. שקמה is already the warm-interior store, so a
      *  nursery shot on travertine and oak would read as the same shop with plants in it. Concrete,
      *  hard graphic daylight and sharp leaf shadows are a different world, and they are also the
@@ -943,6 +1404,27 @@ function accentFor(store, subject) {
   return hashOf(subject) % 3 === 0 ? ` ${store.accent}.` : '';
 }
 
+/**
+ * The hero backdrop for one product — the store's plain field, or its `backdropAccent` for a
+ * minority of them. See סהר's `backdropAccent` for what it is and why it is rare.
+ *
+ * Its own hash suffix, like `companionFor`/`colorwayFor`: sharing a hash with `viewsForProduct`
+ * would mean every product with a full gallery also got the special backdrop, and the correlation
+ * is visible long before anyone works out why.
+ *
+ * The divisor is not the rate — the hash is not uniform over a hundred Hebrew product names — so
+ * the count is MEASURED before a run and named in the commit, the same way `companionFor` records
+ * "8 of אדנית's 89".
+ */
+function backdropFor(store, subject, name) {
+  if (!store.backdropAccent) return store.backdrop;
+  // The named list wins over the hash — see `backdropAccentAlways`. It is checked against the
+  // product's Hebrew NAME rather than its English image subject because the list is written and
+  // read by a person, and the name is what he sees on the card he is talking about.
+  if (name && store.backdropAccentAlways?.includes(name)) return store.backdropAccent;
+  return hashOf(`${subject}#stage`) % 9 === 0 ? store.backdropAccent : store.backdrop;
+}
+
 /** One of the store's `settings`, chosen per product — see אדנית's entry for why they rotate. */
 function settingFor(store, subject) {
   if (!store.settings?.length) return '';
@@ -1027,10 +1509,13 @@ export const SAME_ITEM_CLAUSE =
   + 'this reads as a second photograph from a real shoot rather than a copy of the first. Never '
   + 'reproduce the reference image, its angle, its distance or its background.';
 
-export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0]) {
+/** `name` is the product's catalog name (`row.n`) and is only read by `backdropAccentAlways`.
+ *  Optional so that anything generating a one-off prompt without a catalog row still works; the
+ *  hash rule does not need it. */
+export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0], name = '') {
   const life = store.restrained ? RESTRAINED_LIFE_DIRECTION : LIFE_DIRECTION;
   const world = view.key === 'main' && store.backdrop
-    ? `Behind and beneath it: ${store.backdrop}.`
+    ? `Behind and beneath it: ${backdropFor(store, subject, name)}.`
     : `${store.artDirection}.${settingFor(store, subject)}${companionFor(store, subject)}${accentFor(store, subject)}`;
   // A gallery view is generated FROM the main image, so it opens by naming that reference — and it
   // drops the colourway, which is already visible in the picture it is being shown.
@@ -1077,62 +1562,134 @@ export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0]) {
  * to be — there are eight of these in the whole project, they are checked by eye in a minute, and
  * a re-roll costs $0.134.
  */
-const nameClause = (store) => {
+/**
+ * `sole` is false for the banner, and that is a correction rather than an option (2026-08-14).
+ *
+ * This clause used to end "No other writing anywhere." unconditionally — and the banner asks for a
+ * SECOND line, the tagline, in the very next sentence. So every banner prompt sent since the
+ * tagline was added has forbidden the tagline one clause before requesting it. For the logo the
+ * closing sentence is simply true and it stays.
+ */
+const nameClause = (store, { sole = true } = {}) => {
   // U+0590–U+05FF is the whole Hebrew block, so the maqaf (־) and the gershayim (״) are already in
   // it — naming them separately is what the duplicate-character-class rule catches.
   const script = /^[֐-׿\s'"]+$/.test(store.name) ? 'Hebrew' : 'Latin';
+  const closing = sole ? ' No other writing anywhere.' : '';
   return script === 'Hebrew'
     ? `The shop name "${store.name}" appears in the scene, spelled EXACTLY "${store.name}" — `
       + `four-square Hebrew letters read right to left, clean modern Hebrew typography, `
-      + `correctly formed, well spaced and clearly legible. No other writing anywhere.`
+      + `correctly formed, well spaced and clearly legible.${closing}`
     : `The shop name "${store.name}" appears in the scene, spelled EXACTLY "${store.name}" in `
       + `LATIN letters — do not translate it, do not transliterate it into Hebrew or any other `
-      + `alphabet. Clean modern typography, correctly formed and clearly legible. `
-      + `No other writing anywhere.`;
+      + `alphabet. Clean modern typography, correctly formed and clearly legible.${closing}`;
 };
 
+/**
+ * The banner's own prohibitions — NOT `NEGATIVE_PROMPT`, and for the reason `LOGO_NEGATIVE`
+ * already records one level down (2026-08-14).
+ *
+ * That list opens with "no text of any kind, in any language", then "no headline, no lettering
+ * laid over the image", then "no logo, no brand mark" — and the banner is the one picture in this
+ * file whose entire job is to carry the shop's NAME, with שקמה's also carrying its logo. Every
+ * banner prompt sent before today therefore demanded lettering in its first sentence and forbade
+ * it in its last, which a model resolves by picking one: it is the likeliest explanation for gold
+ * type appearing where the store's own palette was asked for, and for the name drifting to an
+ * edge. What is kept from that list is only what still applies to a picture with two lines of
+ * wanted text in it.
+ */
+const BANNER_NEGATIVE = [
+  'no watermark, no signature, no border, no frame around the picture',
+  // The two lines are named in the prompt itself; everything else is the failure this replaces.
+  'no third line of text, no headline, no caption, no slogan, no address, no phone number, no '
+  + 'price, no date, no invented words, no lettering in any other language, no garbled or '
+  + 'half-formed letterforms anywhere',
+  'exactly ONE of the shop name in the picture — no duplicate, no echo, no ghost copy, no '
+  + 'reflection of it, no second smaller version of it anywhere',
+  'no printed labels, no packaging text, no writing on any object in the frame',
+  // סהר's second attempt came back with the whole shop repeated as a narrow strip along the bottom
+  // edge, like a contact sheet — a wide frame invites a model to tile rather than to compose, and
+  // it is only ever visible once you look at the uncropped source.
+  'ONE single continuous scene filling the frame — never tiled, never repeated, never a second '
+  + 'strip or narrow band showing the same scene again along any edge, never a mirrored or '
+  + 'duplicated copy of the picture inside itself, never split into panels',
+  // Same reasoning as the product list: a generated face resembling a real person is a likeness
+  // problem on a live commercial domain, and nothing in a banner needs one.
+  'no visible faces, crop above the shoulders if a person appears',
+  'anatomically correct: if any part of a person is in frame, every arm, hand, finger and leg is '
+  + 'complete, whole, correctly shaped and in its natural position',
+  'nothing important cropped or running off the edge of the frame',
+].join(', ');
+
+/**
+ * The banner, and the ONE thing this function no longer decides: the medium.
+ *
+ * It used to open every banner with "A wide photograph, shot on a full-frame camera", light it
+ * with raking daylight, and put the name up in "polished brass, warm gold". Four shops given one
+ * art-directed picture came back as one picture four times — which is exactly the lesson
+ * `logoPrompt()` learned twice over and wrote down: *whatever this prompt holds constant is what
+ * will make the four look alike.* The owner said it about the results (2026-08-14): Teklar's
+ * banner was gilded when its whole store is a white studio, and אדנית's was a photograph when what
+ * a nursery's banner wants is a drawn one.
+ *
+ * So the medium, the palette, the lettering material and the composition all moved into
+ * `bannerStyle`, per store, exactly as `logoStyle` holds them for the logo. What stays here is
+ * only what is true of all four regardless of how they are drawn: the two lines of lettering and
+ * their spelling, the crop, sharpness, and the prohibitions above. `regionFor()` and
+ * `QUALITY_DIRECTION` are deliberately NOT appended any more — both are written for photographs
+ * ("photorealistic and sharp on the product itself"), and a flat vector banner told to be
+ * photorealistic is a prompt arguing with itself again.
+ *
+ * The one thing that must not come back is the old opening line, whatever the medium is. "A wide
+ * editorial hero photograph for a shop's banner" is what printed "Hero Workspace" across Teklar in
+ * a serif with a garbled English sub-line under it — naming a banner, a hero and an editorial
+ * describes a LAYOUT, and a layout has a headline. No `bannerStyle` may use those words; each says
+ * what the picture IS instead.
+ */
 export function bannerPrompt(store) {
-  // The name is now IN the picture, as physical signage (owner, 2026-08-12: "חייב כיתוב על
-  // הבאנרים, זה לא יכול להיות סתם תמונה משעממת"). This reverses the SVG-overlay decision recorded
-  // below, and it reverses it on evidence: the eight-image test showed the model spells a Hebrew
-  // shop name correctly most of the time, and eight images is a set a person can check by eye.
-  //
-  // What does NOT come back is the old opening line. "A wide editorial hero photograph for a
-  // shop's banner" is what printed "Hero Workspace" across Teklar in a serif with a garbled English
-  // sub-line under it — naming a banner, a hero and an editorial describes a LAYOUT, and a layout
-  // has a headline. So the name is asked for as a physical object in the world — letters on a
-  // wall, a painted sign — which the model renders as photography rather than as typesetting.
-  return `A wide photograph, shot on a full-frame camera: ${store.bannerSubject}. `
-    + `${nameClause(store)} It is real, physical signage inside the scene — cut metal or painted `
-    + `letters mounted on a wall, lit by the same light as everything else and casting its own `
-    + `small shadow — never text laid over the photograph. `
+  // The name is IN the picture (owner, 2026-08-12: "חייב כיתוב על הבאנרים, זה לא יכול להיות סתם
+  // תמונה משעממת"). This reversed the SVG-overlay decision recorded below, and it reversed it on
+  // evidence: the eight-image test showed the model spells a Hebrew shop name correctly most of
+  // the time, and eight images is a set a person can check by eye.
+  return `${store.bannerStyle} `
+    + `The picture shows: ${store.bannerSubject}. `
+    + `${nameClause(store, { sole: false })} ${store.bannerLettering} `
     // The tagline, at the owner's request 2026-08-12 ("אני רוצה גם משפט קצר על החנות בבאנר"). It
     // is the one place a SECOND line of lettering is asked for anywhere in this file, and it is
     // deliberately described as smaller and subordinate: two lines at equal weight is a poster,
     // and it also doubles the chance of a misspelling on the line nobody is looking at.
-    + `Directly beneath the name, in noticeably smaller and lighter letters on the same wall, the `
+    + `Directly beneath the name, in noticeably smaller and lighter letters, the `
     + `line "${store.bannerTagline ?? store.tagline}" — spelled exactly that way, correctly formed `
     + `and legible, clearly secondary to the name above it. No other words anywhere in the picture. `
-    // The banner is DELIVERED as a 3:1 band cropped from this 16:9 frame, so the top and bottom
-    // sixths are thrown away — and שקמה's name was sitting in the part that gets cut (owner,
-    // 2026-08-13: "הבאנר של שקמה חתוך מלמעלה"). Lettering placed near an edge of the source is
-    // lettering placed outside the finished banner.
-    + `Place the name and its line in the MIDDLE THIRD of the frame vertically — well away from the `
-    + `top and bottom edges, with generous clear space above and below the whole block, because the `
-    + `picture will be cropped to a wide band and anything near an edge will be cut off. `
-    + `The lettering itself is bright and rich in colour against its wall — polished brass, warm `
-    + `gold or a saturated painted colour that stands out — never flat grey and never low contrast. `
-    + `A real scene with depth and atmosphere, not a flat backdrop — foreground, middle and `
-    + `background at different focal distances, strong directional daylight raking across it, `
-    + `and genuine visual interest. Compose the weight to ONE side and give the sign a calm, `
-    + `uncluttered wall of its own to sit on. `
-    // Owner, 2026-08-12: "התמונה בבאנר של סהר ממש מטושטשת." The depth-of-field language above is
-    // what did it — asked for three focal distances and atmosphere, the model softened the whole
-    // frame. A banner is displayed 1400px wide and is the first thing anyone sees, so sharpness is
-    // named explicitly and beats the atmosphere clause.
-    + `The photograph is TACK SHARP and in crisp focus across the frame, especially the sign — `
-    + `high resolution, fine detail, no motion blur, no soft-focus haze, no overall blur. `
-    + `${regionFor(store)}. ${QUALITY_DIRECTION}. ${NEGATIVE_PROMPT}.`;
+    // The banner is DELIVERED as a 3:1 band cropped from the middle of this 16:9 frame, so a fifth
+    // of the height goes off the top and another fifth off the bottom. Twice now that has cost
+    // something that mattered: שקמה's name (2026-08-13, "הבאנר של שקמה חתוך מלמעלה") and then
+    // אדנית's pots (2026-08-14, "הכיתוב למעלה מדי, ואם אני אחתוך אז העציצים ייחתכו מלמטה"). The
+    // second is why this clause now governs the SUBJECT and not only the lettering: a rule that
+    // only protects the type just moves the amputation to whatever is under it.
+    + `IMPORTANT — the finished picture is cropped to a wide band across the MIDDLE of this frame: `
+    + `a strip off the top and a strip off the bottom are thrown away. Everything that matters — `
+    + `the name, its line, and the main subject, whole and complete — sits well inside that middle `
+    + `band, with generous clear space above and below it. Nothing important touches or comes near `
+    + `the top or bottom edge. `
+    // "Leave the top and the bottom of the frame as quiet background that can be lost without
+    // taking anything with it" stood here, and אדנית's banner answered it exactly: the model drew
+    // the artwork as a 3:1 strip with a plain WHITE BAR above and below it (owner, 2026-08-14:
+    // "האורך נחתך למטה נראה שיש שם חלל לבן"). It did what it was told. The mistake was telling a
+    // picture that part of it was disposable — the CROP is what is disposable, and the picture has
+    // to be a whole picture at 16:9 whether or not anyone ever sees its edges.
+    + `The picture still FILLS THE WHOLE FRAME, edge to edge, all the way to all four sides: the `
+    + `top fifth and the bottom fifth are simply more of the same scene, quieter and with nothing `
+    + `important in them. Never a blank, white or empty band across the top or the bottom, never a `
+    + `letterbox, never a border, never a plain margin — no part of the frame is left empty. `
+    // Owner, 2026-08-12: "התמונה בבאנר של סהר ממש מטושטשת." Depth-of-field language is what did it
+    // — asked for three focal distances and atmosphere, the model softened the whole frame. A
+    // banner is displayed 1400px wide and is the first thing anyone sees, so sharpness is named
+    // explicitly and outranks any atmosphere a `bannerStyle` asks for. Worded for any medium: a
+    // drawn banner has no focus, but it can still arrive mushy.
+    + `The image is CRISP and SHARP across the whole frame, especially the lettering — high `
+    + `resolution, fine detail, clean edges, no blur, no soft-focus haze, nothing mushy or `
+    + `pixelated. `
+    + `${BANNER_NEGATIVE}.`;
 }
 
 /**

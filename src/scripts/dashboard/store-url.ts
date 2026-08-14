@@ -97,12 +97,19 @@ export function initStoreUrl(): void {
     if (currentEl) currentEl.textContent = `${host}/${newSlug}`;
     input!.value = newSlug;
     if (preview) preview.textContent = `${host}/${newSlug}`;
+    // The header line carries the WHOLE address (host + path), not the path alone — it is
+    // what the seller copies out of the dashboard, so it has to be complete. Must stay the
+    // same spelling the server rendered, or the copy button starts handing out something
+    // that only looks like an address.
     const addr = document.getElementById('dash-store-address');
-    if (addr && addr.dataset.hasCustomDomain !== '1') addr.textContent = `/${newSlug}`;
+    if (addr && addr.dataset.hasCustomDomain !== '1') addr.textContent = `${host}/${newSlug}`;
     const viewBtn = document.getElementById('dash-view-store') as HTMLAnchorElement | null;
     if (viewBtn && (viewBtn.getAttribute('href') ?? '').startsWith('/')) viewBtn.href = `/${newSlug}`;
+    // No scheme — the reason is on the element in dashboard.astro. It matters here too:
+    // this element is a copy source, and re-rendering it in a second spelling would mean
+    // the string the seller pastes depends on whether he changed his slug this session.
     const cdAddr = document.getElementById('cd-local-addr');
-    if (cdAddr) cdAddr.textContent = `https://${host}/${newSlug}`;
+    if (cdAddr) cdAddr.textContent = `${host}/${newSlug}`;
 
     flash(i.storeUrlChanged ?? 'URL updated.');
     // Brief confirmation, then collapse the editor (the updated current-URL display stays as proof).

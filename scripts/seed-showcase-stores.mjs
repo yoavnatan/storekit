@@ -69,6 +69,31 @@ const NOW = Date.now();
 const DAY = 86_400_000;
 const iso = (ms) => new Date(ms).toISOString();
 
+/**
+ * The four products a store's homepage card leads with, dated so that they actually do.
+ *
+ * `getStorePreviews` draws the four NEWEST visible products that carry a photo — `ORDER BY
+ * created_at DESC, id`. Nothing in the product chooses this and no seller can, so for these stores
+ * it was decided by `int(1, 45)` and, for the products that landed on the same day, by a `uuid()`
+ * minted fresh on every seed. That last part is the sharp edge: **the card reshuffled between two
+ * reseeds an hour apart** (measured 2026-08-14 — a belt moved from third to first), so a showcase
+ * store's own shop window was not the same picture twice, and no amount of choosing which product
+ * to stage would have stuck.
+ *
+ * `cardProducts` in `identity.mjs` names them in the order the card should show them. Each gets a
+ * timestamp newer than anything the random path can produce (which bottoms out at NOW - 1 day) and
+ * a distinct hour, so the ordering is total and the `id` tie-break is never reached.
+ *
+ * A store without the field keeps the old behaviour exactly. This is deliberately NOT a general
+ * "featured product" mechanism: real sellers have no such control today (the gap the owner found
+ * on 2026-08-14 and the reason this exists), and inventing one here in a demo seeder would be the
+ * wrong place — it belongs in the schema and the dashboard, as its own decision.
+ */
+const cardAt = (spec, name) => {
+  const rank = spec.cardProducts?.indexOf(name) ?? -1;
+  return rank < 0 ? null : iso(NOW - rank * 3600_000 - 60_000);
+};
+
 // Deterministic pseudo-random: a re-seed produces the same prices and stock, so a screenshot or a
 // bug report from one run still matches the next.
 let _s = 20260812;
@@ -245,7 +270,7 @@ async function seed(db, clean) {
         images: gallery,
         categoryId: leafFor(row),
         weightGrams: row.w,
-        createdAt: iso(NOW - int(1, 45) * DAY),
+        createdAt: cardAt(spec, row.n) ?? iso(NOW - int(1, 45) * DAY),
       };
       const variants = variantsFor(row.v);
       if (variants) {

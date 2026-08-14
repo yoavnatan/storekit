@@ -44,7 +44,6 @@ export function initCustomDomain(): void {
   const visitLink = document.getElementById('cd-visit') as HTMLAnchorElement | null;
   const checkBtn  = document.getElementById('cd-check') as HTMLButtonElement | null;
   const removeBtn = document.getElementById('cd-remove') as HTMLButtonElement | null;
-  const copyBtn   = document.getElementById('cd-copy');
   const cnameVal  = document.getElementById('cd-cname-value');
   const msg       = document.getElementById('cd-msg') as HTMLElement | null;
   if (!setup || !connected) return;
@@ -172,11 +171,8 @@ export function initCustomDomain(): void {
   // Loaded with a pending domain (e.g. seller added it earlier) → resume background verification.
   if (root.dataset.cdStatus === 'pending') startPolling();
 
-  copyBtn?.addEventListener('click', async () => {
-    const value = cnameVal?.textContent ?? '';
-    if (!value) return;
-    try { await navigator.clipboard.writeText(value); }
-    catch { /* clipboard blocked (insecure ctx) — silently ignore, the value is visible anyway */ }
-    flash(i.cdCopied ?? 'Copied.');
-  });
+  // The CNAME's copy button is no longer wired here: it is a `CopyButton` like the three
+  // address ones added beside it (2026-08-14), handled by copy-value.ts. One copy mechanism
+  // on the page, and a tick on the button rather than a flash in the panel's status line —
+  // which is where real DNS results are reported, and shouldn't also mean "copied".
 }

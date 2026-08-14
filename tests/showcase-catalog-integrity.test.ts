@@ -60,6 +60,26 @@ describe('showcase catalogs', () => {
         expect(missing).toEqual([]);
       });
 
+      it('every product named in cardProducts is in the catalog, and there are at most four', () => {
+        // The card draws STORE_PREVIEW_SLOTS thumbnails (4). A fifth name here would be dated as
+        // the newest product in the store and then never shown — which looks like the staging
+        // silently failing rather than like a list that is one too long.
+        const named: string[] = (store as { cardProducts?: string[] }).cardProducts ?? [];
+        const names = new Set(rows.map((r) => r.n));
+        expect(named.filter((n) => !names.has(n))).toEqual([]);
+        expect(named.length).toBeLessThanOrEqual(4);
+        expect(new Set(named).size).toBe(named.length);
+      });
+
+      it('every product named in backdropAccentAlways is actually in the catalog', () => {
+        // A name list fails SILENTLY: rename the product and the entry simply stops matching, the
+        // run still costs the same, and the only symptom is a store card that quietly went back to
+        // plain grey — which nobody would connect to a rename weeks earlier.
+        const named: string[] = (store as { backdropAccentAlways?: string[] }).backdropAccentAlways ?? [];
+        const names = new Set(rows.map((r) => r.n));
+        expect(named.filter((n) => !names.has(n))).toEqual([]);
+      });
+
       it('either gives a category sub-shelves throughout, or not at all', () => {
         // A category where only some rows carry `sub` renders a two-level menu with a half-empty
         // second level — which is how גברים looked before 2026-08-13, and it reads as broken
@@ -76,4 +96,65 @@ describe('showcase catalogs', () => {
       });
     });
   }
+
+  /**
+   * The brand prompts, checked for a hole rather than for taste.
+   *
+   * `bannerPrompt()` interpolates four per-store fields. A missing one does not throw — it writes
+   * the word "undefined" into the middle of a prompt and the run pays full price for whatever
+   * comes back, which at Pro/2K is a real charge against a real budget with nothing to show for
+   * it. That is the class this guards; what the strings SAY is a matter for the eye.
+   *
+   * The medium moved out of `bannerPrompt` and into `bannerStyle` on 2026-08-14 precisely so the
+   * four stores could stop looking alike, so it is now a required field on every store rather
+   * than a shared default that could quietly absorb an omission.
+   */
+  it.each(SHOWCASE_STORES.map((s: { slug: string; name: string }) => [s.name, s.slug]))(
+    '%s carries every field the banner and logo prompts interpolate',
+    (_name, slug) => {
+      const store: Record<string, unknown> = SHOWCASE_STORES
+        .find((s: { slug: string }) => s.slug === slug)!;
+      for (const field of ['bannerStyle', 'bannerSubject', 'bannerLettering', 'logoStyle', 'logoConcept', 'tagline']) {
+        const value = store[field];
+        expect(typeof value, `${slug}.${field}`).toBe('string');
+        expect((value as string).trim().length, `${slug}.${field} is empty`).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  it('a store never points its banner and its logo at each other', () => {
+    /**
+     * The two brand images may derive one from the other, and the direction is the whole point:
+     * whichever is NOT the reference is the source of the store's mark. Set both and there is no
+     * source — regenerating either would redefine the other, and the drift would only ever be
+     * visible as "the avatar and the banner face different ways", which is the exact defect this
+     * pairing was introduced to fix (סהר, 2026-08-14).
+     *
+     * It is also a real generation-order hazard: the banner job runs before the logo job, so a
+     * store with both set would hand the logo a banner drawn from last round's logo.
+     */
+    for (const store of SHOWCASE_STORES as { slug: string; bannerRefKey?: string; logoRefKey?: string }[]) {
+      expect(
+        Boolean(store.bannerRefKey && store.logoRefKey),
+        `${store.slug}: bannerRefKey and logoRefKey are both set — one picture has to be the source`,
+      ).toBe(false);
+    }
+  });
+
+  it('a logo that names a reference image names one that exists', () => {
+    for (const store of SHOWCASE_STORES as { slug: string; logoRefKey?: string }[]) {
+      if (!store.logoRefKey) continue;
+      expect(['__logo', '__banner'], `${store.slug}.logoRefKey`).toContain(store.logoRefKey);
+    }
+  });
+
+  it('a banner that names a reference image names one that exists', () => {
+    // `bannerRefKey` is resolved against the manifest as `<slug>:<key>` and a miss means the banner
+    // is silently HELD BACK rather than generated — a run that reports success and produces
+    // nothing. Only `__logo` and `__banner` are brand keys, so a typo is catchable here.
+    for (const store of SHOWCASE_STORES as { slug: string; bannerRefKey?: string }[]) {
+      if (!store.bannerRefKey) continue;
+      expect(['__logo', '__banner'], `${store.slug}.bannerRefKey`).toContain(store.bannerRefKey);
+    }
+  });
 });
