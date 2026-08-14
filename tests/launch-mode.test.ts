@@ -18,6 +18,7 @@ import {
   TILE_HUES,
   TILE_WASHES,
   TILE_LIGHT_ANGLE,
+  INVITE_HUES,
   tileBackground,
   pickArtTrio,
   pickCardHue,
@@ -125,27 +126,56 @@ describe('placeholder tile colour', () => {
     }
   });
 
-  it('draws every hue from a token, never a literal colour', () => {
-    for (const hue of TILE_HUES) expect(hue).toMatch(/^var\(--color-tile-[a-z]+\)$/);
+  it('draws every hue from an INVITE token, never a literal colour or a mark hue', () => {
+    // `--color-tile-*` is a different palette with the same shape: it is MARK_HUES,
+    // what every store's generated identity mark is built from (store-mark.ts), and
+    // reaching for it here would tie the invitation's colours to every existing
+    // store's identity. tokens.css carries both lists and says which is which.
+    for (const hue of TILE_HUES) expect(hue).toMatch(/^var\(--color-invite-[a-z]+\)$/);
   });
 
-  it('keeps the tile wash below the strength the same-hue line-art needs', () => {
-    // Art is stroked in the card's hue at full strength; past ~22% mix the wash
-    // and the stroke collapse into one another (gold clears 3:1 by the least).
+  it('declares every invite hue it uses in tokens.css', () => {
+    const css = readFileSync(join(process.cwd(), 'src/styles/base/tokens.css'), 'utf8');
+    const declared = new Set([...css.matchAll(/--color-invite-[a-z]+/g)].map((m) => m[0]));
+    for (const hue of TILE_HUES) expect(declared).toContain(hue.slice(4, -1));
+  });
+
+  it('keeps every tile wash inside its own hue\'s budget', () => {
+    // Art is stroked in the card's hue at full strength, and the cap is what keeps
+    // 3:1 between the two. It is per-hue because equal percentages are not equal
+    // fill — see the note on INVITE_HUES for the measured ratios.
     expect(TILE_WASHES).toHaveLength(3);
     for (const w of TILE_WASHES) {
-      expect(w.bottom).toBeLessThanOrEqual(22);
+      expect(w.bottom).toBeLessThanOrEqual(1);
       expect(w.top).toBeLessThan(w.bottom);
+      expect(w.top).toBeGreaterThan(0);
     }
     // Tiles must actually differ, or the card is one flat block of colour.
     expect(new Set(TILE_WASHES.map((w) => `${w.top}/${w.bottom}`)).size).toBe(TILE_WASHES.length);
+    // And no hue's budget may drift past what the darkest measurement covers.
+    for (const hue of INVITE_HUES) {
+      expect(hue.maxWash).toBeGreaterThanOrEqual(22);
+      expect(hue.maxWash).toBeLessThanOrEqual(38);
+    }
+  });
+
+  it('never renders a wash deeper than the hue it belongs to allows', () => {
+    for (let card = 0; card < INVITE_HUES.length; card++) {
+      const cap = INVITE_HUES[card]!.maxWash;
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(mixes).toHaveLength(2);
+        for (const mix of mixes) expect(mix).toBeLessThanOrEqual(cap);
+      }
+    }
   });
 
   it('lights every tile from the same direction', () => {
     // The regression: three tiles with three gradient angles read as small
     // pictures hung crooked (owner, 2026-08-14). Light direction is a constant,
     // and depth is the only thing a tile is allowed to vary.
-    const angles = TILE_WASHES.map((_, i) => tileBackground('var(--color-tile-blue)', i))
+    const angles = TILE_WASHES.map((_, i) => tileBackground(0, i))
       .map((bg) => bg.match(/linear-gradient\((\d+)deg/)?.[1]);
     expect(new Set(angles).size).toBe(1);
     expect(angles[0]).toBe(String(TILE_LIGHT_ANGLE));
@@ -155,10 +185,13 @@ describe('placeholder tile colour', () => {
     // A tile lit from below would pass the "one angle" test above and still look
     // wrong, so the ramp direction is pinned separately: the first colour stop
     // of the wash is always the weaker mix.
-    for (let i = 0; i < TILE_WASHES.length; i++) {
-      const stops = [...tileBackground('HUE', i).matchAll(/HUE (\d+)%/g)].map((m) => Number(m[1]));
-      expect(stops).toHaveLength(2);
-      expect(stops[0]!).toBeLessThan(stops[1]!);
+    for (let card = 0; card < INVITE_HUES.length; card++) {
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const stops = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(stops).toHaveLength(2);
+        expect(stops[0]!).toBeLessThan(stops[1]!);
+      }
     }
   });
 });
