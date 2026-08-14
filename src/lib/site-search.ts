@@ -53,7 +53,7 @@ export interface SiteSearchOptions {
 }
 
 // Platform-wide search for the header search bar: matches stores by name/tagline/
-// description and products by name/tags, each product hit carries its store's
+// description and products by name/tags/variant values, each product hit carries its store's
 // name+slug so a product result can show "which store it's in" next to it. Powers
 // both the header dropdown preview (small caps) and the dedicated /search results
 // page (larger caps) — same matching logic, just different limits/image size.

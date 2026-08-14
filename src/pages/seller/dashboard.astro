@@ -48,6 +48,7 @@ import {
   deleteProduct,
   countStockAlerts,
   isProductVisible,
+  STORE_PREVIEW_SLOTS,
   type StoreProduct,
   type StoreProductCounts,
 } from '../../lib/store-products.js';
@@ -151,6 +152,10 @@ const t    = getT(lang);
 const d    = t.dashboard;
 // Built once — the discount block's labels are the same for every product row.
 const discountLabels = discountFieldLabels(d);
+/** The store-card pick's tooltip, interpolated once rather than per row. The count comes from
+ *  `STORE_PREVIEW_SLOTS` and never from a literal: the cap, the card's slot count and this
+ *  sentence are the same fact, and a hard-coded "4" here would be the copy that goes stale first. */
+const featureHint = d.productFeatureHint.replace('{n}', String(STORE_PREVIEW_SLOTS));
 // Same, for the "will this be found" panel. `seoPreviewCtx` is per-store, not per-product; the
 // edit rows override `productSlug` from the product they render.
 const seoLabels = productSeoLabels(d);
@@ -1780,7 +1785,7 @@ const orderStatusColors: Record<string, string> = {
                 const { combos: pVariantCombos } = variantCombosData(p.variants ?? [], p.variantStock, p.stock);
                 return (
                 <>
-                  <tr data-product-display={p.id} data-store-id={store.id} data-discount={p.discount ? JSON.stringify(p.discount) : ''} data-hidden={p.hidden ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
+                  <tr data-product-display={p.id} data-store-id={store.id} data-discount={p.discount ? JSON.stringify(p.discount) : ''} data-hidden={p.hidden ? '1' : ''} data-featured={p.featured ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
                     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
@@ -1797,6 +1802,15 @@ const orderStatusColors: Record<string, string> = {
                       <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1" hidden={!p.hidden}>
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                         {d.productHiddenChip}
+                      </span>
+                      {/* Shown when this product is one of the store card's picks. A CHIP and not
+                          only a menu state, because the menu is a per-row popup: without a mark on
+                          the row itself the only way to answer "which four did I choose?" is to
+                          open every kebab in the table. Same geometry as the hidden chip beside it,
+                          in the accent rather than the muted tone — this one is a good thing. */}
+                      <span class="product-featured-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-accent)] [background:color-mix(in_srgb,var(--color-accent)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1" hidden={!p.featured}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                        {d.productFeaturedChip}
                       </span>
                       {/* NO "this listing is thin" marker here — tried and removed 2026-08-04, do not
                           re-add without solving the column first. `.name-col` is 13% under
@@ -1887,6 +1901,16 @@ const orderStatusColors: Record<string, string> = {
                             <svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                             <svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             <span class="menu-visibility-label">{p.hidden ? d.productShow : d.productHide}</span>
+                          </button></li>
+                          {/* The store-card pick. `data-tooltip` carries the WHERE and the fallback
+                              rule (owner, 2026-08-14: "צריך גם להדגיש שזה מוצג בכרטיסיית החנות בדף
+                              הבית אולי בטולטיפ או באינפו") — a seller who has never looked at the
+                              homepage cannot otherwise tell what this switch does, and the "מה שלא
+                              נבחר מושלם מהמוצרים החדשים" half is what stops them believing they
+                              must pick four before anything works at all. */}
+                          <li role="none"><button class="product-menu__item product-menu__item--feature flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-featured={p.id} data-featured={p.featured ? '1' : ''} data-tooltip={featureHint} role="menuitem">
+                            <svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                            <span class="menu-feature-label">{p.featured ? d.productUnfeature : d.productFeature}</span>
                           </button></li>
                           <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>{d.delete}</button></li>
                         </ul>
@@ -3598,6 +3622,7 @@ const orderStatusColors: Record<string, string> = {
       p.initProductMenus();
       p.initDeleteProduct();
       p.initProductVisibilityToggle();
+      p.initProductFeatureToggle();
       p.initProductsToolbar();
       p.initBulkSelect(CLOUD, PRESET);
       csv.initCsvImport();

@@ -123,49 +123,68 @@ export const translations = {
     // never learned the rest existed. So every card now carries the entire
     // offer: a rotating hook on top, the full sentence underneath.
     //
-    // The sentence runs in the order the owner asked for (2026-08-14): the store
-    // first, then what being here does for it, then what comes with it. The
-    // middle clause is deliberately NOT "כוח של קבוצה" — that is a metaphor, and
-    // the thing it stands for is concrete and worth saying outright: shoppers
-    // arrive at this store through the mall around it. `auth.benefitMall` still
-    // carries the short metaphor, where it sits in a list of three and has no
-    // room to explain itself; a card does.
+    // ── The card says the offer in THREE registers now (owner, 2026-08-14) ──
+    // A rotating hook, one short promise, and the four capabilities as chips —
+    // his own structure: "שבסלוגן יהיה רשום 'חנות משלכם — כוח של קבוצה' ואז
+    // הפיצ׳רים יופיעו בתוך באצ׳ים … ואז מוותרים על המילה 'מובנים'".
     //
-    // No label repeats a clause of the sentence beneath it. "חנות משלכם" and
-    // "כוח של קבוצה" were labels until the sentence absorbed both, and a title
-    // restating the line directly under it reads as a mistake, not as emphasis.
+    // It resolves a note that stood right here and argued the opposite — that
+    // "כוח של קבוצה" is a metaphor and the concrete thing was worth saying
+    // outright. The concrete version needed a sentence, the sentence needed
+    // three lines, and three lines broke the row's alignment (see
+    // StorePlaceholderCard). Splitting register by register is what makes both
+    // true at once: the metaphor is the only thing short enough to sit on one
+    // line, and the four things it stands for are no longer a clause to be
+    // squeezed in — they are four chips in a row that was already reserved and
+    // was previously EMPTY on this card.
+    //
+    // "מובנים" is gone at his request. It was doing grammatical work rather
+    // than persuasive work — a bare noun in a chip needs no adjective to say
+    // the platform provides it, which is what the chip's presence already means.
+    //
+    // No label repeats a clause of the line beneath it: "חנות משלכם" and
+    // "כוח של קבוצה" are both in the subtitle now, so neither may be a label —
+    // a title restating the line directly under it reads as a mistake, not as
+    // emphasis. "להתחיל למכור" is gone for a different reason (owner: "נשמע כמו
+    // תרגום גרוע למשהו" — it is a calque of "start selling").
     launch: {
       inviteLabels: [
         'מתחם חנויות דיגיטלי',
-        'המקום שלכם כאן',
+        'החנות שלך כאן',
         'פתיחת חנות',
-        'הכול מובנה מראש',
-        'להתחיל למכור',
+        'הכול כבר כאן',
+        'בלי להקים אתר',
       ],
-      // The owner's own sentence, tightened twice (2026-08-14). "כולל … מערכת
-      // משלוחים מובנית" became a bare list: "מובנית" is feminine singular, so it
-      // agreed with the shipping system alone and left the other three items
-      // uncovered, and "כולל" was doing the work "הכל במקום אחד" already does at
-      // the end. "כלי פרסום" over "ממשק פרסום" for the same reason the short
-      // form was banned upstairs — it is a tool the seller operates, and nothing
-      // about it can be read as free ad budget.
+      /** The four capabilities, as chips in the card's tag row. Nouns only, no verbs and no
+       *  adjectives — the row is read at a glance and each word has to survive alone. */
+      // "כלי פרסום", not "פרסום" — the same rule as `home.builtInAds` above, and
+      // it does not relax because the slot got smaller: what the seller gets is
+      // the tool that runs the campaigns, never the ad budget, which is billed
+      // separately per actual spend (lib/pricing.ts). A bare "פרסום" sitting in a
+      // list of four things you receive is exactly the reading that rule exists
+      // to close.
+      inviteFeatures: ['משלוחים', 'כלי פרסום', 'סליקה', 'SEO'],
+      // ONE LINE, and now a PROMISE rather than a list (owner, 2026-08-14).
       //
-      // ⚠️ It now names סליקה, which is a capability the platform does not have
-      // wired yet (GO_LIVE §3). That is fine only because payments are a launch
-      // BLOCKER — this line must not reach a live site before they work.
-      // ONE LINE, because of where it lands (2026-08-14). This sits in a store
-      // card's `__tagline` slot, whose whole job is to be one line so that every
-      // card in a row puts its picture row at the same height. The long version
-      // wrapped to three or four lines and pushed this card's pictures down on
-      // its own, which is the misalignment the owner photographed. The full
-      // offer belongs on /seller/register, which is one click away and is where
-      // somebody who read this line is going.
+      // Two constraints met here. It sits in a store card's `__tagline` slot,
+      // whose whole job is to be one line so every card in a row puts its
+      // picture row at the same height — the longer version wrapped to three
+      // lines and pushed this card's pictures down on its own. And the four
+      // capabilities it used to enumerate now live in `inviteFeatures` as chips,
+      // which is where a list belongs and where it needs no connective grammar.
       //
-      // "כלי פרסום", not "פרסום" — restored 2026-08-14 after the shortening pass
-      // dropped it. It is the same rule as `home.builtInAds` above and it does not
-      // relax on a short line: what the seller gets is the tool, never the ad
-      // budget. Shorter than the line it replaces, so the one-line contract holds.
-      inviteHint: 'חנות משלכם — כלי פרסום, סליקה ומשלוחים',
+      // What is left is the one thing a chip cannot say: that being here is
+      // worth something a store alone is not. It says it CONCRETELY — "כוח של
+      // קבוצה" was tried in this slot and the owner rejected it (2026-08-14):
+      // it is a metaphor standing in for something plain and better said
+      // outright, which is that shoppers reach this store through the mall
+      // around it. `auth.benefitMall` keeps the metaphor, where it sits in a
+      // list of three and has no room to explain itself.
+      //
+      // ⚠️ `inviteFeatures` names סליקה, which is a capability the platform does
+      // not have wired yet (GO_LIVE §3). That is fine only because payments are
+      // a launch BLOCKER — this card must not reach a live site before they work.
+      inviteHint: 'חנות משלכם — קונים מגיעים מהמתחם',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -603,6 +622,22 @@ export const translations = {
       productShow: 'הצג בחנות',
       productHiddenChip: 'מוסתר',
       productHiddenToast: 'המוצר הוסתר מהחנות ולא יוצג לקונים.',
+      // ── "מוצג בכרטיסייה" — the seller's pick for the homepage store card ──
+      // The label names the PLACE, not the honour: "מוצר מוביל" would be a rank
+      // the platform never gives, while a seller can check "כרטיסיית החנות
+      // בעמוד הבית" against something they can go and look at. The owner asked
+      // for the where to be spelled out (2026-08-14: "צריך גם להדגיש שזה מוצג
+      // בכרטיסיית החנות בדף הבית אולי בטולטיפ או באינפו") — hence the hint,
+      // which says both what it does AND what happens when nothing is chosen,
+      // because "the newest fill the rest" is the part that stops a seller
+      // thinking they have to pick four.
+      productFeature: 'הצג בכרטיסיית החנות',
+      productUnfeature: 'הסר מכרטיסיית החנות',
+      productFeaturedChip: 'בכרטיסייה',
+      productFeatureHint: 'עד {n} מוצרים שיופיעו בכרטיסיית החנות בעמוד הבית. מה שלא נבחר מושלם מהמוצרים החדשים.',
+      productFeaturedToast: 'המוצר יופיע בכרטיסיית החנות בעמוד הבית.',
+      productUnfeaturedToast: 'המוצר הוסר מכרטיסיית החנות.',
+      productFeatureLimit: 'אפשר לבחור עד {n} מוצרים. הסר אחד כדי לבחור אחר.',
       productShownToast: 'המוצר חזר להיות גלוי בחנות.',
       stockAlertBadge: 'מוצרים עם מלאי הדורש טיפול',
       bulkDeleteTitle: 'מחיקת מוצרים',
@@ -2087,13 +2122,14 @@ export const translations = {
     launch: {
       inviteLabels: [
         'A home for independent stores',
-        'Your place here',
+        'Your store here',
         'Open a store',
-        'Everything built in',
-        'Start selling',
+        'It is all already here',
+        'No site to build',
       ],
-      // One line — see the Hebrew entry for why the long version could not stay.
-      inviteHint: 'A store of your own — ad tools, payments and shipping',
+      inviteFeatures: ['Shipping', 'Ad tools', 'Payments', 'SEO'],
+      // One line — see the Hebrew entry for why the list moved into chips.
+      inviteHint: 'A store of your own — shoppers arrive through the place',
     },
     demo: {
       badge: 'Example store',
@@ -2446,6 +2482,13 @@ export const translations = {
       productShow: 'Show in store',
       productHiddenChip: 'Hidden',
       productHiddenToast: 'Product hidden from the store — buyers won\'t see it.',
+      productFeature: 'Show on the store card',
+      productUnfeature: 'Remove from the store card',
+      productFeaturedChip: 'On the card',
+      productFeatureHint: 'Up to {n} products shown on your store card on the home page. Any slot you don\'t pick is filled with your newest.',
+      productFeaturedToast: 'This product will show on your store card on the home page.',
+      productUnfeaturedToast: 'Removed from the store card.',
+      productFeatureLimit: 'You can pick up to {n} products. Remove one to pick another.',
       productShownToast: 'Product is visible in the store again.',
       stockAlertBadge: 'Products with stock needing attention',
       bulkDeleteTitle: 'Delete products',
