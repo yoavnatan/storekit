@@ -305,6 +305,12 @@ function buildJobs() {
     jobs.push({
       key: `${store.slug}:__banner`, prompt: bannerPrompt(store), label: `${store.name} — באנר`,
       aspect: BANNER_ASPECT, size: BANNER_IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
+      // A banner may be generated FROM the store's own logo — שקמה's is the mark at the centre of
+      // the picture (`bannerRefKey` in identity.mjs), and describing a mark is not the same as
+      // getting that mark back. Same mechanism the gallery views use, pointed at a brand image
+      // instead of a product. On a run where the logo does not exist yet this banner is simply
+      // held back for the next one, which is what `refKey` already means everywhere else.
+      refKey: store.bannerRefKey ? `${store.slug}:${store.bannerRefKey}` : null,
     });
     jobs.push({
       key: `${store.slug}:__logo`, prompt: logoPrompt(store), label: `${store.name} — לוגו`,
@@ -347,11 +353,15 @@ function buildJobs() {
  * the pictures. Every lever that moves the number — model, batch, `--views=main` — is a flag, so
  * the honest way to choose between them is to price all of them on the actual job list.
  */
+const shekels = (usd) => (usd * 3.7).toFixed(usd * 3.7 < 10 ? 2 : 0);
+
 function reportCost(jobs) {
   const total = jobs.reduce((sum, j) => sum + jobPrice(j), 0);
   console.log(`\n💵 ${jobs.length} image(s) still to generate — model ${MODEL_KEY} (${MODEL})`
     + `${BATCH ? ', BATCH (half price, up to 24h)' : ', interactive'}`);
-  console.log(`   $${total.toFixed(2)}   ≈ ₪${(total * 3.7).toFixed(0)}\n`);
+  // Two decimals under ₪10: a four-image touch-up priced itself at "≈ ₪0", which is the one number
+  // this report must never print — the whole point of it is to be believed before spending.
+  console.log(`   $${total.toFixed(2)}   ≈ ₪${shekels(total)}\n`);
   console.log('   The same job list at the other settings:');
   for (const key of Object.keys(MODELS)) {
     for (const batch of [false, true]) {
@@ -411,7 +421,7 @@ async function runBatched(jobs, apiKey, cloud, preset, manifest) {
 
   const cost = jobs.reduce((s, j) => s + jobPrice(j), 0);
   console.log(`\n🧺 Batch mode — ${jobs.length} image(s) in ${chunks.length} chunk(s) of up to ${CHUNK}.`);
-  console.log(`   Model ${MODEL_KEY} at half price: $${cost.toFixed(2)} (≈ ₪${(cost * 3.7).toFixed(0)}).`);
+  console.log(`   Model ${MODEL_KEY} at half price: $${cost.toFixed(2)} (≈ ₪${shekels(cost)}).`);
   console.log('   Google allows itself 24 hours and MEANS it — a 100-image job measured on');
   console.log('   2026-08-12 sat in the queue for 10h42m. Interrupt freely: a re-run re-attaches');
   console.log('   to the jobs already submitted and never pays for a chunk twice.\n');

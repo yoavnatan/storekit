@@ -76,4 +76,39 @@ describe('showcase catalogs', () => {
       });
     });
   }
+
+  /**
+   * The brand prompts, checked for a hole rather than for taste.
+   *
+   * `bannerPrompt()` interpolates four per-store fields. A missing one does not throw — it writes
+   * the word "undefined" into the middle of a prompt and the run pays full price for whatever
+   * comes back, which at Pro/2K is a real charge against a real budget with nothing to show for
+   * it. That is the class this guards; what the strings SAY is a matter for the eye.
+   *
+   * The medium moved out of `bannerPrompt` and into `bannerStyle` on 2026-08-14 precisely so the
+   * four stores could stop looking alike, so it is now a required field on every store rather
+   * than a shared default that could quietly absorb an omission.
+   */
+  it.each(SHOWCASE_STORES.map((s: { slug: string; name: string }) => [s.name, s.slug]))(
+    '%s carries every field the banner and logo prompts interpolate',
+    (_name, slug) => {
+      const store: Record<string, unknown> = SHOWCASE_STORES
+        .find((s: { slug: string }) => s.slug === slug)!;
+      for (const field of ['bannerStyle', 'bannerSubject', 'bannerLettering', 'logoStyle', 'logoConcept', 'tagline']) {
+        const value = store[field];
+        expect(typeof value, `${slug}.${field}`).toBe('string');
+        expect((value as string).trim().length, `${slug}.${field} is empty`).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  it('a banner that names a reference image names one that exists', () => {
+    // `bannerRefKey` is resolved against the manifest as `<slug>:<key>` and a miss means the banner
+    // is silently HELD BACK rather than generated — a run that reports success and produces
+    // nothing. Only `__logo` and `__banner` are brand keys, so a typo is catchable here.
+    for (const store of SHOWCASE_STORES as { slug: string; bannerRefKey?: string }[]) {
+      if (!store.bannerRefKey) continue;
+      expect(['__logo', '__banner'], `${store.slug}.bannerRefKey`).toContain(store.bannerRefKey);
+    }
+  });
 });
