@@ -12,7 +12,7 @@
  * card is an open slot, and it deliberately doesn't tell a seller what kind of
  * store belongs in it.
  */
-import { pickArtTrio, pickCardHue, tileBackground, tileEdge } from '../lib/placeholder-art.js';
+import { pickArtTrio, pickCardInk, tileBackground, tileEdge } from '../lib/placeholder-art.js';
 import { getLang, getT } from '../i18n/index.js';
 
 interface Props {
@@ -27,7 +27,9 @@ const { index = 0, role, previewSlots = 3 } = Astro.props;
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const art = pickArtTrio(index, previewSlots);
-const hue = pickCardHue(index);
+// The wash colour and the stroke colour are the same for six of the seven hues.
+// Yellow is the one that cannot be — placeholder-art.ts's `ink` note says why.
+const ink = pickCardInk(index);
 // The TITLE rotates on its own cycle (5) — see the note on `launch` in
 // translations.ts for why that length matters against a responsive grid. The
 // subtitle is the same on every card on purpose, and that note says why: the
@@ -72,7 +74,7 @@ const hint = t.launch.inviteHint;
   <!-- Empty, same as a store with no categories — it's what reserves the tags
        row's height so this card lines up with its neighbours (see StoreCard). -->
   <div class="store-card__tags"></div>
-  <!-- The whole card takes ONE hue (`pickCardHue`), and the three tiles differ
+  <!-- The whole card takes ONE hue (`pickCardHueSpec`), and the three tiles differ
        only in how deep that hue sinks — never in light direction, which is a
        constant (`tileBackground`, and the note above it says what varying it
        looked like). Three flat grey boxes with a hairline glyph read as "image
@@ -102,7 +104,7 @@ const hint = t.launch.inviteHint;
             stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"
             class="transition-transform duration-[380ms] ease-[cubic-bezier(0.25,0.46,0.45,0.94)]
                    group-hover:scale-[1.08] motion-reduce:transform-none"
-            style={`color:${hue}`}
+            style={`color:${ink}`}
             set:html={a.paths}
           />
         </span>
