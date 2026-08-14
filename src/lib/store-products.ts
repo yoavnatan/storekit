@@ -1014,11 +1014,11 @@ const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }>
   variants: { sql: 'variants = $::jsonb', value: (v) => JSON.stringify(Array.isArray(v) ? v : []) },
   sellerNote: { sql: 'seller_note = $', value: (v) => (v ? String(v) : null) },
   hidden: { sql: 'hidden = $', value: (v) => v === true },
-  // Not reachable through the ordinary product form — `setProductFeatured` owns this column so
-  // the per-store cap is enforced in one place. Listed here anyway because bulk edit and CSV
-  // import both build their updates from this map, and a column they can silently not write is
-  // the kind of gap that is found months later.
-  featured: { sql: 'featured = $', value: (v) => v === true },
+  // `featured` is DELIBERATELY ABSENT, and it was here for an hour before this note replaced it.
+  // The per-store cap lives inside `setProductFeatured`'s single UPDATE; a second way to write the
+  // column — the product PATCH, bulk edit, a CSV column — is a way past that statement, and the
+  // cap would then be a rule enforced in one of two writers, which this checklist calls the next
+  // bug. One writer, no exceptions: `setProductFeatured`.
   blocked: { sql: 'blocked = $', value: (v) => v === true },
 };
 

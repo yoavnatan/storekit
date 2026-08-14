@@ -16,7 +16,7 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { ownedProduct } from '../../../lib/store-ownership.js';
 import { setProductFeatured, STORE_PREVIEW_SLOTS } from '../../../lib/store-products.js';
-import { readJsonBody } from '../../../lib/request-body.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -28,7 +28,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   // Capped read — an unbounded body on an authenticated endpoint is the class
   // `lib/request-body.ts` exists for.
-  const body = await readJsonBody<{ productId?: unknown; featured?: unknown }>(request);
+  const body = await readJsonBody<{ productId?: unknown; featured?: unknown }>(request, BODY_LIMIT.control);
   if (!body.ok) return json({ error: 'Bad request' }, body.status);
 
   const productId = typeof body.value?.productId === 'string' ? body.value.productId : '';

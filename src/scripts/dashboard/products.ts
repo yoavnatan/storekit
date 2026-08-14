@@ -41,6 +41,11 @@ export interface ProductData {
   variantStock?: Record<string, number>;
   variantImages?: Record<string, string>;
   hidden?: boolean;
+  /** One of the store card's picks — see `setProductFeatured`. Carried here because this renderer
+   *  REBUILDS the row on every sort and filter: a state the click handler wrote straight into the
+   *  DOM and nowhere else would vanish the first time the seller sorted the table, which is the
+   *  twin-renderer drift this file has been bitten by before. */
+  featured?: boolean;
   createdAt?: string;
   /** Revision of the fields the edit form owns, computed server-side (lib/record-rev.ts) — rides back on save so a stale tab can't overwrite a newer one. */
   rev?: string;
@@ -213,6 +218,22 @@ function getRawI18n() {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
 }
 function getDashI18n() { return getRawI18n().dashboard ?? {}; }
+
+/** The store-card pick tooltip. `{n}` is `STORE_PREVIEW_SLOTS`, which this bundle cannot import
+ *  (it is a server module), so the number rides along on the dashboard i18n payload. A hard-coded
+ *  sentence here would be the copy that drifts first — the twin lives in dashboard.astro and both
+ *  read the same two keys. */
+function featureHintText(i: Record<string, string>): string {
+  // Read the already-interpolated sentence off a row the SERVER rendered, rather than re-doing the
+  // interpolation here. `STORE_PREVIEW_SLOTS` is a server module this bundle cannot import, and
+  // the alternatives were both worse: a literal 4 in this file is a second definition of the cap,
+  // and shipping the number as its own i18n key puts a quantity in the dictionary. Every table this
+  // renderer rebuilds was server-rendered first, so there is always such a row; the raw string is
+  // the fallback, and it is only reachable in a table with no products at all — which has no rows
+  // to rebuild.
+  const rendered = document.querySelector<HTMLElement>('[data-toggle-featured][data-tooltip]')?.dataset.tooltip;
+  return rendered ?? (i.productFeatureHint ?? '');
+}
 function getGalleryI18n() { return getRawI18n().gallery ?? {}; }
 
 // Re-derives the bulk-edit button's "ערוך"/"סגור עריכה" label from actual row state (which
@@ -1558,6 +1579,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.dataset.storeName = resolvedStoreName;
   display.dataset.hasVariants = p.variants?.length ? '1' : '';
   display.dataset.hidden = p.hidden ? '1' : '';
+  display.dataset.featured = p.featured ? '1' : '';
   if (p.hidden) display.classList.add('is-product-hidden');
   display.innerHTML = `
     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
@@ -1568,6 +1590,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       <span class="sale-chip ms-1.5 align-middle" data-row-sale="${esc(p.id)}" dir="ltr"${rowSaleLabel(p) ? '' : ' hidden'}>${rowSaleLabel(p)}</span>
       <span class="product-note-chip inline-flex items-center align-middle ms-1 [color:var(--color-muted)]"${p.sellerNote ? ` title="${esc(p.sellerNote)}"` : ' hidden'} aria-label="${esc(i.sellerNoteLabel ?? 'Private note')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3.5h15v10.5l-5.5 5.5h-9.5z"/><path d="M19.5 14h-5.5v5.5"/><line x1="8" y1="8.5" x2="16" y2="8.5"/><line x1="8" y1="12" x2="13" y2="12"/></svg></span>
       <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.hidden ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>${esc(i.productHiddenChip ?? 'מוסתר')}</span>
+      <span class="product-featured-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-accent)] [background:color-mix(in_srgb,var(--color-accent)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.featured ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>${esc(i.productFeaturedChip ?? 'בכרטיסייה')}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
@@ -1589,6 +1612,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
           <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product="${p.id}" role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
           <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
           <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility="${p.id}" data-hidden="${p.hidden ? '1' : ''}" role="menuitem"><svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span class="menu-visibility-label">${esc(p.hidden ? (i.productShow ?? 'הצג בחנות') : (i.productHide ?? 'הסתר מהחנות'))}</span></button></li>
+          <li role="none"><button class="product-menu__item product-menu__item--feature flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-featured="${p.id}" data-featured="${p.featured ? '1' : ''}" data-tooltip="${esc(featureHintText(i))}" role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg><span class="menu-feature-label">${esc(p.featured ? (i.productUnfeature ?? 'הסר מכרטיסיית החנות') : (i.productFeature ?? 'הצג בכרטיסיית החנות'))}</span></button></li>
           <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>${esc(i.delete ?? 'Delete')}</button></li>
         </ul>
       </div>
@@ -1709,6 +1733,7 @@ function syncPageProductFromRow(displayRow: Element | null | undefined, rev?: st
   const stock = Number(displayRow.dataset.sortStock);
   if (Number.isFinite(stock)) p.stock = stock;
   p.hidden = displayRow.dataset.hidden === '1';
+  p.featured = displayRow.dataset.featured === '1';
   try { p.discount = displayRow.dataset.discount ? JSON.parse(displayRow.dataset.discount) : undefined; }
   catch { /* an unparseable attribute is not a reason to drop the rest of the patch */ }
   if (rev) p.rev = rev;
