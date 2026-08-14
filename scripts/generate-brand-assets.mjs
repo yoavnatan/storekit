@@ -66,7 +66,7 @@ function page({ size, tone, tagline, background }) {
     @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:500;}
     html,body{margin:0;height:100%}
     body{background:${background};display:flex;align-items:center;justify-content:center}
-    .logo{display:inline-flex;flex-direction:column;align-items:flex-start;gap:.05em;font-size:${size}px}
+    .logo{display:inline-flex;flex-direction:column;align-items:flex-start;row-gap:${TAGLINE.gapEm}em;font-size:${size}px}
     .logo svg{height:${HEIGHT_EM}em;width:auto;flex:none;display:block;max-width:none}
     .tag{font-family:'Heebo';font-weight:500;font-size:${TAGLINE.sizeEm}em;line-height:1;direction:rtl;
          margin-inline-start:${TAGLINE.marginEm}em;color:${tone === 'white' ? '#fff' : BRAND_A}}
