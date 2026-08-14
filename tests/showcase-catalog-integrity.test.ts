@@ -60,6 +60,17 @@ describe('showcase catalogs', () => {
         expect(missing).toEqual([]);
       });
 
+      it('every product named in cardProducts is in the catalog, and there are at most four', () => {
+        // The card draws STORE_PREVIEW_SLOTS thumbnails (4). A fifth name here would be dated as
+        // the newest product in the store and then never shown — which looks like the staging
+        // silently failing rather than like a list that is one too long.
+        const named: string[] = (store as { cardProducts?: string[] }).cardProducts ?? [];
+        const names = new Set(rows.map((r) => r.n));
+        expect(named.filter((n) => !names.has(n))).toEqual([]);
+        expect(named.length).toBeLessThanOrEqual(4);
+        expect(new Set(named).size).toBe(named.length);
+      });
+
       it('every product named in backdropAccentAlways is actually in the catalog', () => {
         // A name list fails SILENTLY: rename the product and the entry simply stops matching, the
         // run still costs the same, and the only symptom is a store card that quietly went back to

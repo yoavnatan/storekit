@@ -396,13 +396,31 @@ export const SHOWCASE_STORES = [
      * `created_at` ordering. Two of the four, not all four, so the card still shows the store's
      * ordinary graphite field beside it and the coloured light still reads as the exception.
      *
-     * ⚠️ It is a NAME LIST, so it breaks silently in one specific way: rename either product and
-     * the entry stops matching and simply stops applying. `tests/showcase-catalog-integrity`
-     * fails if a name here is not in the catalog. What it cannot check is whether these are still
-     * the four the card shows — that depends on the seeded `created_at`, which is deterministic
-     * (fixed PRNG seed) but shifts if products are added or removed above them in the catalog.
+     * ⚠️ It is a NAME LIST, so it breaks silently in one specific way: rename a product and the
+     * entry stops matching and simply stops applying. `tests/showcase-catalog-integrity` fails if
+     * a name here is not in the catalog.
+     *
+     * Only the blazer is here for the card's sake — `cardProducts`'s other stained-glass slot,
+     * סניקרס רטרו, is picked by the hash already and needs no entry. The dress is no longer on the
+     * card at all (owner, 2026-08-14: "לא אהבתי שהראשון שם זה שמלה פרחונית, אני מעדיף במקום איזה
+     * נעליים"); it stays in this list only because its picture was already made this way and
+     * spending a generation to undo a good image buys nothing.
      */
     backdropAccentAlways: ['ז׳קט בלייזר לא מובנה', 'שמלת קיץ פרחונית'],
+    /**
+     * What the homepage store card shows, in order — see `cardAt()` in the showcase seeder for how
+     * a name here becomes a `created_at`, and why the alternative was not stable enough to stage.
+     *
+     * Shoes lead, at the owner's request. Two of the four carry the stained-glass light (סניקרס
+     * רטרו by the hash, the blazer by `backdropAccentAlways`) and two carry the store's ordinary
+     * graphite field, which is the mix that makes the coloured light read as an exception rather
+     * than as this shop's default.
+     *
+     * The four are also deliberately four DIFFERENT things — a shoe, a jacket, a trouser, an
+     * accessory. A card of four tops says less about a clothes shop than four categories do, and
+     * this is the only picture of the store a stranger meets on the homepage.
+     */
+    cardProducts: ['סניקרס רטרו', 'ז׳קט בלייזר לא מובנה', 'מכנסי מטען רחבים', 'חגורת עור קלאסית'],
     backdropAccent:
       'a plain pale limestone wall, softly out of focus, washed by the light of a tall stained-'
       + 'glass window just outside the frame — broad soft pools of cobalt, ruby, amber and '
