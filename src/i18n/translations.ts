@@ -160,7 +160,12 @@ export const translations = {
       // its own, which is the misalignment the owner photographed. The full
       // offer belongs on /seller/register, which is one click away and is where
       // somebody who read this line is going.
-      inviteHint: 'חנות משלכם — פרסום, סליקה ומשלוחים מובנים',
+      //
+      // "כלי פרסום", not "פרסום" — restored 2026-08-14 after the shortening pass
+      // dropped it. It is the same rule as `home.builtInAds` above and it does not
+      // relax on a short line: what the seller gets is the tool, never the ad
+      // budget. Shorter than the line it replaces, so the one-line contract holds.
+      inviteHint: 'חנות משלכם — כלי פרסום, סליקה ומשלוחים',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -2088,7 +2093,7 @@ export const translations = {
         'Start selling',
       ],
       // One line — see the Hebrew entry for why the long version could not stay.
-      inviteHint: 'A store of your own — ads, payments and shipping built in',
+      inviteHint: 'A store of your own — ad tools, payments and shipping',
     },
     demo: {
       badge: 'Example store',

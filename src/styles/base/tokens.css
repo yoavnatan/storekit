@@ -89,18 +89,24 @@
        yellow clears 3:1 against its own wash. So yellow got an INK of its own
        (see -ink below) and the wash is a real yellow.
      • THE ORANGE IS REDDER: #c2620d → #bf4620.
-     Violet fills the seventh slot the grey left — the one colour here nobody
-     asked for. A teal was tried there first, on the reasoning that it comes from
-     the site's own language (--color-brand-dark is a teal-slate), and it failed
-     for a measurable reason worth keeping: at a 22% wash, hue ANGLE is most of
-     what distinguishes one tile from another, and teal sat 20° from the green
-     already in the list. The two cards were indistinguishable. Violet is ~55°
-     from the nearest neighbour, which is why it reads as its own card. If this
-     one gets swapped, swap it for something equally far from 155–215°.
+     • NO VIOLET. It held the seventh slot for one round and the owner rejected
+       it on association: purple is what AI-generated apps are built in, and it
+       reads as an untrustworthy product. Do not reach for it here again. A teal
+       had the slot before that and failed on a measurable count instead — at a
+       22% wash hue ANGLE is most of what tells two tiles apart, and teal sat 20°
+       from the green already in the list, so the two cards were the same card.
+       The slot is a moss now: the darkest of the three greens, deliberately a
+       third green rather than a new direction, because the owner asked for the
+       green-greys twice and the palette is his.
+
+     Three greens is a real risk and it is handled by DEPTH, not by hue: green is
+     vivid at 22%, sage is muted at 30%, moss is dark at 38%, and their washes land
+     at (202,232,220), (201,208,205) and (177,185,182) — far enough apart to read
+     as three cards. Keep them at different depths or they collapse into one.
 
      Contrast measured 2026-08-14 — the INK against that hue's deepest wash, at
      the per-hue cap in placeholder-art.ts: orange 3.71 · blue 3.87 ·
-     yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 · violet 4.78. 3:1 is the
+     yellow 5.20 · sky 3.40 · green 3.29 · sage 4.11 · moss 4.96. 3:1 is the
      floor. Do not add or lighten a hue without re-measuring. */
   --color-invite-orange: #bf4620;
   --color-invite-blue: #2563c9;
@@ -112,7 +118,7 @@
   --color-invite-sky: #0e7fa8;
   --color-invite-green: #158a56;
   --color-invite-sage: #4a6459;
-  --color-invite-violet: #6d3fc0;
+  --color-invite-moss: #33473f;
 
   --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
 
