@@ -23,6 +23,7 @@
     "lint:all": "eslint .",
     "lint:baseline": "eslint . --suppressions-location .eslint-baseline.json --suppress-all",
     "lint:prune": "eslint . --suppressions-location .eslint-baseline.json --prune-suppressions",
+    "email:preview": "node scripts/email-preview.mjs",
     "brand:assets": "node scripts/generate-brand-assets.mjs",
     "copy:review": "node scripts/copy-review.mjs export",
     "copy:apply": "node scripts/copy-review.mjs apply",
