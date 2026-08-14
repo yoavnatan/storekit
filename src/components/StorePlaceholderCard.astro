@@ -84,9 +84,19 @@ const hint = t.launch.inviteHint;
       <span class="store-card__tagline">{hint}</span>
     </div>
   </div>
-  <!-- Empty, same as a store with no categories — it's what reserves the tags
-       row's height so this card lines up with its neighbours (see StoreCard). -->
-  <div class="store-card__tags"></div>
+  <!-- The four capabilities, in the row a real card spends on its categories.
+       It was rendered EMPTY until now, purely to reserve height so this card
+       lined up with its neighbours — so these chips cost nothing at all: the
+       space was already being paid for and was showing nothing (owner,
+       2026-08-14: "הפיצ׳רים יופיעו בתוך באצ׳ים של קטגוריות כזה").
+
+       Same `.store-card__tag` as a store's category chip, deliberately: on this
+       shelf a chip means "a fact about this card", and inventing a second chip
+       style for the same slot would make the placeholder read as a different
+       kind of object rather than as a store card with nothing in it yet. -->
+  <div class="store-card__tags">
+    {t.launch.inviteFeatures.map((f) => <span class="store-card__tag">{f}</span>)}
+  </div>
   <!-- The whole card takes ONE hue (`pickCardHueSpec`), and the three tiles differ
        only in how deep that hue sinks — never in light direction, which is a
        constant (`tileBackground`, and the note above it says what varying it
