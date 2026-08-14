@@ -11,7 +11,7 @@ import { orderPayoutLine, payoutWhyText, payoutFilterValue, PAYOUT_FILTER_VALUES
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { Order } from '../../lib/orders.js';
 import type { DeliveryMethod } from '../../lib/shipping.js';
-import { scrollBelowPinnedChrome } from './scroll-utils.js';
+import { initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
@@ -1119,6 +1119,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     if (payoutValues?.size) params.set('opay', encodeList([...payoutValues]));
 
     let data: { ok: boolean; items?: Parameters<typeof buildOrderCard>[0][]; page?: number; totalPages?: number; total?: number };
+    // The cards about to be replaced, dimmed while their replacements are in flight — see
+    // list-pager.ts#markListBusy for why a page change that changes nothing for a whole round
+    // trip is the complaint this answers.
+    const endBusy = markListBusy(list);
     try {
     // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
     // the list would claim the filter matched nothing — but it is silent unless it says so, and
@@ -1128,6 +1132,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     } catch {
       showActionFailedToast();
       return;
+    } finally {
+      endBusy();
     }
     if (!data.ok) { showActionFailedToast(); return; }
 
@@ -1143,18 +1149,17 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     renderOrdersPaginationControls(data.totalPages ?? 1);
   }
 
+  function ordersPagerLabels(): PagerLabels {
+    return {
+      prev: tt('paginationPrev'),
+      next: tt('paginationNext'),
+      pageInfo: tt('paginationPageInfo'),
+      goToPage: tt('paginationGoToPage'),
+    };
+  }
+
   function renderOrdersPaginationControls(totalPages: number): void {
-    const nav = document.getElementById('orders-pagination') as HTMLElement | null;
-    if (!nav) return;
-    if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
-    const pageInfo = (tt('paginationPageInfo'))
-      .replace('{page}', String(ordersCurrentPage)).replace('{total}', String(totalPages));
-    nav.hidden = false;
-    nav.innerHTML = `
-      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${ordersCurrentPage <= 1 ? ' disabled' : ''}>${esc(tt('paginationPrev'))}</button>
-      <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">${esc(pageInfo)}</span>
-      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${ordersCurrentPage >= totalPages ? ' disabled' : ''}>${esc(tt('paginationNext'))}</button>
-    `;
+    renderListPagers('orders', ordersCurrentPage, totalPages, ordersPagerLabels());
   }
 
   function initOrdersPagination(): void {
@@ -1162,13 +1167,13 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     if (!nav) return;
     ordersCurrentPage = parseInt(nav.dataset.page ?? '1', 10) || 1;
     renderOrdersPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
-    nav.addEventListener('click', (e) => {
-      const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
-      if (!btn || btn.disabled) return;
-      ordersCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
-      applyOrdersPagination();
-      const list = document.getElementById('orders-list');
-      if (list) scrollBelowPinnedChrome(list);
+    initListPager({
+      name: 'orders',
+      labels: ordersPagerLabels,
+      getPage: () => ordersCurrentPage,
+      setPage: (page) => { ordersCurrentPage = page; },
+      apply: applyOrdersPagination,
+      scrollTarget: () => document.getElementById('orders-list'),
     });
   }
   initOrdersPagination();

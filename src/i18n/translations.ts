@@ -526,7 +526,10 @@ export const translations = {
       itemsPerPageLabel: 'הצג בעמוד:',
       paginationPrev: 'הקודם',
       paginationNext: 'הבא',
+      // The nav's accessible name. It used to be printed between the arrows; the page NUMBERS say
+      // it now, and a sentence repeating them was one more thing on the line.
       paginationPageInfo: 'עמוד {page} מתוך {total}',
+      paginationGoToPage: 'מעבר לעמוד {page}',
       edit: 'ערוך',
       delete: 'מחק',
       save: 'שמור',
@@ -2407,6 +2410,7 @@ export const translations = {
       paginationPrev: 'Previous',
       paginationNext: 'Next',
       paginationPageInfo: 'Page {page} of {total}',
+      paginationGoToPage: 'Go to page {page}',
       edit: 'Edit',
       delete: 'Delete',
       save: 'Save',

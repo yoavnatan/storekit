@@ -1715,6 +1715,20 @@ const orderStatusColors: Record<string, string> = {
             </div>
           </div>
 
+          {/* The SAME pager as the one under the table, rendered from the same state
+              (list-pager.ts, keyed by data-list-pager) — because the one under the table is the
+              one a seller has to scroll the whole page to reach, and then scroll back to see what
+              it did. Hidden until the script runs and only shown when there is more than one page,
+              so a small catalogue never sees it.
+
+              `empty:hidden` on every one of these, and it is load-bearing rather than tidy: the
+              `hidden` ATTRIBUTE loses to a `flex` class (memory `project_tailwind_hidden_vs_flex`,
+              and .home-spotlight-arrow[hidden] in home.css is the same fix), so `hidden` alone left
+              a padded flex row above the table for every store with one page. `:empty` adds a
+              pseudo-class to the selector, so it beats `.flex` whatever the source order — and the
+              pager is emptied and hidden by the same branch, so the two can never disagree. */}
+          <nav class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pb-[.65rem]" data-list-pager="products" data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
+
           <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
               <tr>
@@ -1936,7 +1950,7 @@ const orderStatusColors: Record<string, string> = {
             </tbody>
           </table>
 
-          <nav id="products-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={d.productsTitle} data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
+          <nav id="products-pagination" class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pt-4 pb-1" data-list-pager="products" data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
 
           {/* The products on this page, as the edit-row builder needs them — the same objects
               /api/seller/products returns, from the same mapper (lib/seller-product-row.ts), so a
@@ -2022,6 +2036,8 @@ const orderStatusColors: Record<string, string> = {
           {/* The instant this list was read by — the new-order poll starts here instead of asking
               the server what it has missed once its own JavaScript is running, which left every
               order that arrived during page load announced by nobody (getOrderPollWatermark). */}
+          {/* Twin of the pager under the list — same reasoning as the products tab's (list-pager.ts). */}
+          <nav class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pb-[.65rem]" data-list-pager="orders" data-page={ordersPage.page} data-total-pages={ordersPage.totalPages} hidden></nav>
           <div class="flex flex-col gap-3" id="orders-list" data-since={ordersWatermark}>
             {ordersPage.orders.map((order) => {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
@@ -2259,7 +2275,7 @@ const orderStatusColors: Record<string, string> = {
               );
             })}
           </div>
-          <nav id="orders-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={d.ordersTitle} data-page={ordersPage.page} data-total-pages={ordersPage.totalPages} hidden></nav>
+          <nav id="orders-pagination" class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pt-4 pb-1" data-list-pager="orders" data-page={ordersPage.page} data-total-pages={ordersPage.totalPages} hidden></nav>
           </Fragment>
         )}
       </SellerPanelShell>
@@ -2592,6 +2608,8 @@ const orderStatusColors: Record<string, string> = {
         </div>
         <script type="application/json" id="msg-filter-values-data" set:html={jsonForScript({ product: msgDistinctProducts, from: msgDistinctFrom })} />
 
+          {/* Twin of the pager under the table — same reasoning as the products tab's (list-pager.ts). */}
+          <nav class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pb-[.65rem]" data-list-pager="messages" data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
           <div class="msg-table-wrap">
             <table class="msg-table">
               <thead>
@@ -2638,7 +2656,7 @@ const orderStatusColors: Record<string, string> = {
             </table>
           </div>
           <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>{messageRows.length === 0 ? d.messagesNoneYet : d.messagesFilterEmpty}</p>
-          <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={t.dashboard.tabMessages} data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
+          <nav id="msg-pagination" class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pt-4 pb-1" data-list-pager="messages" data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
       </SellerPanelShell>
 
       {/* The running sale, for the client-side row renderer: a rebuilt row must show the same

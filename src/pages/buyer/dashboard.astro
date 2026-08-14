@@ -624,9 +624,20 @@ const STORES_NAMED = 2;
        show/hide with no JS state to keep in sync. */
     .o-search-wrap:has(.o-search-input:placeholder-shown) .o-search-clear { display: none; }
 
-    /* ── Orders pagination ── */
-    .o-pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: 0.5rem 0 0; }
-    .o-pagination-info { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; }
+    /* ── Orders pagination ──
+       Two of these now, above the list and below it, both written by list-pager.ts. The page
+       numbers replaced the "page X of Y" line that used to sit between the arrows, so
+       `.o-pagination-info` is gone with it.
+
+       Both remaining rules stay CSS rather than becoming utilities on the element, and for the
+       same reason in both cases (memory `project_unlayered_css_beats_utility`): this block is
+       UNLAYERED and Tailwind's utilities are in `@layer utilities`, so an unlayered rule here wins
+       over any utility no matter how specific. `:empty` therefore has to live beside the `display`
+       it is overriding — the `hidden` attribute alone loses to `display:flex` — and the top pager's
+       padding has to be a modifier, because the shorthand above already sets all four sides. */
+    .o-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.4rem; padding: 0.5rem 0 0; }
+    .o-pagination:empty { display: none; }
+    .o-pagination--top { padding: 0 0 0.65rem; }
 
     /* ── Order-card skeleton (shown while a page/search/tab fetch is in flight) ── */
     .o-card-skel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); margin-bottom: 0.75rem; padding: 0.9rem 1rem; }
@@ -831,6 +842,12 @@ const STORES_NAMED = 2;
 
           <p class="empty" id="orders-empty" hidden={ordersPageResult.total > 0}>{ordersEmptyMessage}</p>
 
+          {/* Twin of the pager under the list, written by the same code (list-pager.ts). The buyer
+              had the seller's problem in full: the only pager was below every order card, so
+              changing page meant scrolling past the whole list to reach it, only prev/next existed,
+              and the scroll fired before the new orders arrived. */}
+          <nav class="o-pagination o-pagination--top" data-list-pager="buyer-orders" data-page={ordersPageResult.page} data-total-pages={ordersPageResult.totalPages} hidden></nav>
+
           <div id="orders-list">
             {ordersPageResult.items.map((p) => {
             // Flattened across the whole purchase — the collapsed card summarises the ORDER, so
@@ -939,7 +956,7 @@ const STORES_NAMED = 2;
             })}
           </div>
 
-          <nav id="orders-pagination" class="o-pagination" aria-label={t.buyerDashboard.ordersTitle} data-page={ordersPageResult.page} data-total-pages={ordersPageResult.totalPages} hidden></nav>
+          <nav id="orders-pagination" class="o-pagination" data-list-pager="buyer-orders" data-page={ordersPageResult.page} data-total-pages={ordersPageResult.totalPages} hidden></nav>
           </Fragment>
         )}
       </div>
@@ -1221,12 +1238,16 @@ const STORES_NAMED = 2;
   data-pagination-prev={t.dashboard.paginationPrev}
   data-pagination-next={t.dashboard.paginationNext}
   data-pagination-page-info={t.dashboard.paginationPageInfo}
+  data-pagination-go-to-page={t.dashboard.paginationGoToPage}
 ></div>
 
 <script>
   import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';
   import { formatPrice, cdnThumb } from '../../config/store.config.js';
   import { escapeHtml as escB } from '../../lib/html-escape.js';
+  // No `markListBusy` here on purpose: this list already draws real order skeletons on the same
+  // threshold (LOADING_CUE_DELAY_MS, in applyBuyerOrdersPagination), which is the better cue.
+  import { initListPager, renderListPagers, type PagerLabels } from '../../scripts/dashboard/list-pager.js';
   import { debounce } from '../../lib/admin-nav.js';
   import { initImageSkeletons } from '../../lib/img-skeleton.js';
   import { BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
@@ -1275,6 +1296,7 @@ const STORES_NAMED = 2;
     paginationPrev:    _i18nEl.dataset.paginationPrev    ?? 'Previous',
     paginationNext:    _i18nEl.dataset.paginationNext    ?? 'Next',
     paginationPageInfo:_i18nEl.dataset.paginationPageInfo ?? 'Page {page} of {total}',
+    paginationGoToPage:_i18nEl.dataset.paginationGoToPage ?? 'Go to page {page}',
   };
 
   const navBtns = document.querySelectorAll<HTMLButtonElement>('.my-nav-btn[data-tab]');
@@ -2401,17 +2423,15 @@ const STORES_NAMED = 2;
     write('o-count-history', history);
   }
 
+  const buyerPagerLabels = (): PagerLabels => ({
+    prev: I.paginationPrev,
+    next: I.paginationNext,
+    pageInfo: I.paginationPageInfo,
+    goToPage: I.paginationGoToPage,
+  });
+
   function renderOrdersPaginationControls(totalPages: number): void {
-    const nav = document.getElementById('orders-pagination') as HTMLElement | null;
-    if (!nav) return;
-    if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
-    const pageInfo = I.paginationPageInfo.replace('{page}', String(ordersCurrentPage)).replace('{total}', String(totalPages));
-    nav.hidden = false;
-    nav.innerHTML = `
-      <button type="button" class="btn btn--ghost btn--sm" data-page-prev${ordersCurrentPage <= 1 ? ' disabled' : ''}>${escB(I.paginationPrev)}</button>
-      <span class="o-pagination-info">${escB(pageInfo)}</span>
-      <button type="button" class="btn btn--ghost btn--sm" data-page-next${ordersCurrentPage >= totalPages ? ' disabled' : ''}>${escB(I.paginationNext)}</button>
-    `;
+    renderListPagers('buyer-orders', ordersCurrentPage, totalPages, buyerPagerLabels());
   }
 
   function initBuyerOrdersPagination(): void {
@@ -2419,12 +2439,13 @@ const STORES_NAMED = 2;
     if (!nav) return;
     ordersCurrentPage = parseInt(nav.dataset.page ?? '1', 10) || 1;
     renderOrdersPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
-    nav.addEventListener('click', (e) => {
-      const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
-      if (!btn || btn.disabled) return;
-      ordersCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
-      applyBuyerOrdersPagination();
-      document.getElementById('orders-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    initListPager({
+      name: 'buyer-orders',
+      labels: buyerPagerLabels,
+      getPage: () => ordersCurrentPage,
+      setPage: (page) => { ordersCurrentPage = page; },
+      apply: applyBuyerOrdersPagination,
+      scrollTarget: () => document.getElementById('orders-list'),
     });
   }
   initBuyerOrdersPagination();
