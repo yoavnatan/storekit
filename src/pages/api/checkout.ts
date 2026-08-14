@@ -23,6 +23,7 @@ import { recordMoneyEvent } from '../../lib/money-events.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
+import { checkoutClosedReason } from '../../lib/site-mode.js';
 import { readAttribution } from '../../lib/attribution.js';
 import { getCouponByCode, claimCoupon, releaseCoupon } from '../../lib/store-coupons.js';
 import { checkCoupon, normalizeCouponCode } from '../../lib/coupons.js';
@@ -165,6 +166,14 @@ async function markOrdersPaid(orderIds: string[], checkoutRef: string, paymentRe
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
+  // FIRST, before the body is even read. The platform goes onto its real domain weeks before a
+  // payment gateway exists (GO_LIVE §7), and until one does, every path below would hand out real
+  // orders and real stock for nothing — `MockPaymentProvider.authorize()` approves everything.
+  // Not a hidden button and not a flag someone has to remember: `lib/site-mode.ts` derives this
+  // from what the payment provider actually is, so wiring the real one opens the shop by itself.
+  const closed = checkoutClosedReason();
+  if (closed) return json({ error: 'store-closed', reason: closed }, 503);
+
   const read = await readJsonBody<CheckoutBody>(request, BODY_LIMIT.collection);
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON body' }, read.status);
   const body = read.value;
