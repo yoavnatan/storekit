@@ -331,8 +331,29 @@ textarea.input { resize: none; }
 /* The nested sort/filter group carries no padding of its own here. */
 .dash-toolbar .table-toolbar { padding-bottom: 0; }
 
+/* A toolbar that also carries the list pager (`--paged`, products only so far).
+   `display: contents` is the whole trick: the three controls stay the TOOLBAR's own flex items
+   above 640px, so `flex-1` on the search and `ms-auto` on the page size keep meaning exactly what
+   they meant before the wrapper existed. The wrapper is there for ≤640px alone, where it becomes
+   the single nowrap row the toolbar itself used to be — see the mobile block. */
+.dash-toolbar__controls { display: contents; }
+
 @media (max-width: 640px) {
   .dash-toolbar { flex-wrap: nowrap; }
+  /* ...except a paged one, which has a second line to give the pager. The nowrap moves down onto
+     the controls, so search/page-size/sort/filter still share one line exactly as before. */
+  .dash-toolbar--paged { flex-wrap: wrap; }
+  .dash-toolbar--paged .dash-toolbar__controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    width: 100%;
+    min-width: 0;
+  }
+  /* Its own line, centred, and the top margin is what keeps it off the controls above it — the
+     row's `gap` covers the horizontal case only. */
+  .dash-toolbar--paged .dash-toolbar__pager { width: 100%; margin-top: 0.15rem; }
   /* Icon-only: drop the text label + chevron on every pill; keep the leading
      glyph and the filter-count badge. "בעמוד:" (page-size label) is a
      .toolbar-btn-label too, so it collapses to just the number pill. */

@@ -1682,12 +1682,22 @@ const orderStatusColors: Record<string, string> = {
               every control but the search goes icon/compact. All drive the same
               server refetch (initProductsToolbar / initPagination in
               products.ts). */}
-          <div class="dash-toolbar" hidden={products.length === 0}>
+          {/* The pager rides IN this row (owner, 2026-08-14: "בדסקטופ חבל על השורה"). Above 640px
+              the row is a search pill at one end and a page-size pill at the other with nothing
+              between them, and the pager was taking a whole line of its own to sit under that gap.
+
+              `.dash-toolbar__controls` is `display:contents` there, so the three controls stay the
+              TOOLBAR's own flex items and their `flex-1`/`ms-auto` keep meaning what they meant —
+              the wrapper exists only for ≤640px, where it becomes the real single nowrap row it
+              always was and the pager drops below it. `order-*` is what puts the pager between the
+              search and the page size without moving it into that wrapper. */}
+          <div class="dash-toolbar dash-toolbar--paged" hidden={products.length === 0}>
+            <div class="dash-toolbar__controls">
             <div class="relative flex-1 min-w-[110px] max-w-[280px]">
               <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input type="search" id="products-search-input" value={sellerProductQuery.q} placeholder={d.productsSearchPlaceholder ?? 'חיפוש מוצרים…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
             </div>
-            <div class="inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-muted)] shrink-0 ms-auto">
+            <div class="order-2 inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-muted)] shrink-0 ms-auto">
               <span class="toolbar-btn-label">{d.itemsPerPageLabel ?? 'בעמוד:'}</span>
               {/* `aria-label` on the native element because the visible label above is
                   display:none ≤640px (dashboard.css, .dash-toolbar .toolbar-btn-label) to keep the
@@ -1700,7 +1710,7 @@ const orderStatusColors: Record<string, string> = {
             </div>
             {/* Sort/filter — display:none on desktop (they live in the table
                 header there); flex only ≤640px where they join this row. */}
-            <div class="table-toolbar">
+            <div class="table-toolbar order-3">
             <button type="button" id="products-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
               <span id="products-sort-label" class="toolbar-btn-label">{d.sortOptDateDesc}</span>
@@ -1713,21 +1723,23 @@ const orderStatusColors: Record<string, string> = {
               <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             </div>
+            </div>
+
+            {/* The SAME pager as the one under the table, rendered from the same state
+                (list-pager.ts, keyed by data-list-pager) — because the one under the table is the
+                one a seller has to scroll the whole page to reach, and then scroll back to see what
+                it did. Hidden until the script runs and only shown when there is more than one page,
+                so a small catalogue never sees it — and when it is hidden this row looks exactly as
+                it did before the pager moved into it.
+
+                `empty:hidden` is load-bearing rather than tidy: the `hidden` ATTRIBUTE loses to a
+                `flex` class (memory `project_tailwind_hidden_vs_flex`, and
+                .home-spotlight-arrow[hidden] in home.css is the same fix), so `hidden` alone left a
+                padded flex row for every store with one page. `:empty` adds a pseudo-class to the
+                selector, so it beats `.flex` whatever the source order — and the pager is emptied
+                and hidden by the same branch, so the two can never disagree. */}
+            <nav class="dash-toolbar__pager order-1 empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] mx-auto" data-list-pager="products" data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
           </div>
-
-          {/* The SAME pager as the one under the table, rendered from the same state
-              (list-pager.ts, keyed by data-list-pager) — because the one under the table is the
-              one a seller has to scroll the whole page to reach, and then scroll back to see what
-              it did. Hidden until the script runs and only shown when there is more than one page,
-              so a small catalogue never sees it.
-
-              `empty:hidden` on every one of these, and it is load-bearing rather than tidy: the
-              `hidden` ATTRIBUTE loses to a `flex` class (memory `project_tailwind_hidden_vs_flex`,
-              and .home-spotlight-arrow[hidden] in home.css is the same fix), so `hidden` alone left
-              a padded flex row above the table for every store with one page. `:empty` adds a
-              pseudo-class to the selector, so it beats `.flex` whatever the source order — and the
-              pager is emptied and hidden by the same branch, so the two can never disagree. */}
-          <nav class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pb-[.65rem]" data-list-pager="products" data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
 
           <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
