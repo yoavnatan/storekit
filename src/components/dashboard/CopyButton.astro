@@ -15,6 +15,13 @@
  * document: these buttons sit both in the always-rendered header and inside the
  * settings panel, which arrives on a click, so there is no one moment at which
  * they could all be wired directly.
+ *
+ * **No `title`, deliberately (owner, 2026-08-14).** It gave this button the BROWSER's tooltip —
+ * a different font, a different colour, its own slow timing, sitting where the OS puts it — next
+ * to a site that has one tooltip of its own. `icon-tooltips.ts` labels every icon-only control
+ * from its `aria-label` automatically, and skips any element carrying a `title` precisely so the
+ * two can never both appear; removing the attribute is the whole opt-in. It also means the label
+ * follows `copy-value.ts`'s swap to "הועתק" while the tick is up, which a static `title` did not.
  */
 interface Props {
   /** id of the element whose text is copied. */
@@ -36,7 +43,6 @@ const { target, label, copiedLabel, class: klass } = Astro.props;
   data-copy-label={label}
   data-copy-copied-label={copiedLabel}
   aria-label={label}
-  title={label}
 >
   {/* Which icon shows is a CLASS, not the `hidden` attribute: `hidden` is not in Astro's
       SVGAttributes and does not type-check on an <svg>. `.hidden` is safe here — the flex

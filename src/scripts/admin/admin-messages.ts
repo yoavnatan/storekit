@@ -218,7 +218,7 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
     <td class="msg-table__td msg-table__td--preview">${escapeHtml(message.content)}${previewTag}</td>
     <td class="msg-table__td msg-table__td--date">${escapeHtml(formatHeDateTime(message.createdAt))}</td>
     <td class="msg-table__td msg-table__td--actions">
-      <button class="seller-msg-delete" data-delete-thread-id="${escapeHtml(threadId)}" data-thread-subject="${escapeHtml(subject)}" type="button" aria-label="מחק שיחה" title="מחק שיחה">
+      <button class="seller-msg-delete" data-delete-thread-id="${escapeHtml(threadId)}" data-thread-subject="${escapeHtml(subject)}" type="button" aria-label="מחק שיחה">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
       </button>
     </td>
