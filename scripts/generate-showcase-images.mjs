@@ -355,6 +355,7 @@ function buildJobs() {
       // avatar is redrawn from it (`logoRefKey`). The pair is directional on purpose: exactly one
       // of `logoRefKey`/`bannerRefKey` may be set per store, or neither picture is the source.
       refKey: store.logoRefKey ? `${store.slug}:${store.logoRefKey}` : null,
+      refCrop: store.logoRefCrop ?? null,
     });
   }
   for (const store of SHOWCASE_STORES) {
@@ -590,7 +591,20 @@ async function referenceFor(job, manifest) {
   if (!job.refKey) return null;
   const url = manifest[job.refKey];
   if (!url) return null;
-  const res = await fetch(url.replace('/upload/', '/upload/w_1024,q_auto:good,f_jpg/'));
+  // `refCrop` cuts the reference down to the ONE thing the job is about before it is sent.
+  //
+  // It exists because the plain version failed in a way worth recording: סהר's logo was generated
+  // from its banner so the two crescents would match, and what came back was a soft blurred copy
+  // of the whole shop with no mark in it at all. A model shown a picture reproduces the PICTURE —
+  // "redraw only the small object on the right, flat" loses to a photograph of a room.
+  //
+  // Cropping fixes the premise rather than arguing with it: hand it an image that IS the mark and
+  // the ordinary behaviour is the wanted one. The crop is a Cloudinary transform, so it costs no
+  // generation and no local image library — the same reason `cropToDeliveredRatio` is built that
+  // way. Fractional geometry (`x_0.85,w_0.095`), so it survives the source being re-rendered at a
+  // different pixel size.
+  const transform = `${job.refCrop ? `${job.refCrop}/` : ''}w_1024,q_auto:good,f_jpg`;
+  const res = await fetch(url.replace('/upload/', `/upload/${transform}/`));
   if (!res.ok) throw new Error(`could not fetch the reference image (${res.status})`);
   return Buffer.from(await res.arrayBuffer());
 }

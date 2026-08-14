@@ -411,16 +411,20 @@ export const SHOWCASE_STORES = [
      * What the homepage store card shows, in order — see `cardAt()` in the showcase seeder for how
      * a name here becomes a `created_at`, and why the alternative was not stable enough to stage.
      *
-     * Shoes lead, at the owner's request. Two of the four carry the stained-glass light (סניקרס
-     * רטרו by the hash, the blazer by `backdropAccentAlways`) and two carry the store's ordinary
-     * graphite field, which is the mix that makes the coloured light read as an exception rather
-     * than as this shop's default.
+     * The soft V-neck top leads (owner, 2026-08-14: "במקום הנעליים שים למעלה חולצת מחשוף V רכה
+     * שיש שם, היא יפה יותר" — it replaced סניקרס רטרו, which had replaced the floral dress).
      *
-     * The four are also deliberately four DIFFERENT things — a shoe, a jacket, a trouser, an
+     * Two of the four still carry the stained-glass light — the V-neck by the hash, the blazer by
+     * `backdropAccentAlways` — and two carry the store's ordinary graphite field, which is the mix
+     * that makes the coloured light read as an exception rather than as this shop's default. That
+     * the swap kept the count is luck, not design: if a future swap lands on two plain products,
+     * the replacement's name goes in `backdropAccentAlways` and its picture is regenerated.
+     *
+     * The four are also deliberately four DIFFERENT things — a top, a jacket, a trouser, an
      * accessory. A card of four tops says less about a clothes shop than four categories do, and
      * this is the only picture of the store a stranger meets on the homepage.
      */
-    cardProducts: ['סניקרס רטרו', 'ז׳קט בלייזר לא מובנה', 'מכנסי מטען רחבים', 'חגורת עור קלאסית'],
+    cardProducts: ['חולצת מחשוף V רכה', 'ז׳קט בלייזר לא מובנה', 'מכנסי מטען רחבים', 'חגורת עור קלאסית'],
     backdropAccent:
       'a plain pale limestone wall, softly out of focus, washed by the light of a tall stained-'
       + 'glass window just outside the frame — broad soft pools of cobalt, ruby, amber and '
@@ -454,31 +458,43 @@ export const SHOWCASE_STORES = [
       // So the direction is now WORDED rather than merely referenced, in the one place that can be
       // checked by eye — and the reference runs the other way (`logoRefKey`), because the picture
       // he chose is the banner's.
-      // ── A REFERENCE IMAGE WAS TRIED HERE FIRST AND IS THE WRONG TOOL. DON'T RETRY IT. ────────
-      // `logoRefKey: '__banner'` was set so the avatar could be redrawn from the crescent on the
-      // banner wall. What came back was a soft, blurred copy of the BANNER — the shop, the rail of
-      // clothes, the whole scene — with no mark in it at all, and it cost a Pro image to learn.
+      // ── A WHOLE-BANNER reference was tried here and failed; a CROPPED one is the answer ──────
+      // Owner, three rounds running, ending in "הלוגו של סהר לא נראה כמו בבאנר! צריך להיות *בדיוק*
+      // אותו הסהר" (2026-08-14).
       //
-      // The rule it teaches is worth more than the image: a reference works when the target IS the
-      // reference's subject and shares its medium (שקמה's emblem is the middle of its own banner;
-      // אדנית's lettering is inside its own illustration). It fails when the target is a small
-      // part of a busy photograph AND the output is a different medium — the model reproduces what
-      // it was shown, and "redraw only this fragment, flat" loses to a whole picture.
+      // First attempt: `logoRefKey: '__banner'` with no crop. What came back was a soft blurred
+      // copy of the whole shop — the rail of clothes, the room — with no mark in it at all. A model
+      // shown a picture reproduces the PICTURE; "redraw only the small object on the right, flat"
+      // loses to a photograph of a room. Second attempt: no reference at all, the crescent
+      // described in words. That produced a good crescent facing the right way and NOT the same
+      // crescent — words can carry direction and palette, they cannot carry a specific division of
+      // a shape into five wedges.
       //
-      // Words carry it instead, and they carry the one thing the reference never could anyway:
-      // handedness. A reference fixes what a shape looks like, not which way round it is drawn,
-      // which is exactly how the banner and the logo ended up facing opposite ways with neither
-      // prompt naming a direction.
+      // `logoRefCrop` fixes the premise instead of arguing with it: the reference is cut down to
+      // the mark alone before it is sent, so the target IS the reference's whole subject — which
+      // is the condition under which a reference has worked every time here (שקמה's emblem is the
+      // middle of its own banner; אדנית's lettering is inside its own illustration). The words
+      // stay, because they carry what a reference cannot pin: handedness, and the fact that the
+      // output is flat vector rather than a photograph of a painted panel on a wall.
       'A flat vector logo artwork on a plain solid background — a digital design file, not a '
       + 'photograph, not a 3D render, not a sign on a wall: no perspective, no shadow, no texture, '
-      + 'no mockup. DIRECTION, and it matters more than anything else here: the crescent\'s solid '
-      + 'body is on the RIGHT and its two tapering horns point to the LEFT, so it opens leftward '
-      + 'like a backwards C — never mirrored, never flipped, never opening to the right. The mark '
-      + 'is DEEP INK BLUE and is not one flat colour: inside its own shape it carries a band of '
-      + 'bright cobalt, a sliver of soft violet and one warm tangerine edge, as clean flat areas '
-      + 'divided by crisp straight edges — never a gradient, never a blend, never a glow. The '
-      + 'background is a soft off-white, and the mark sits alone and generously spaced in the '
-      + 'centre of the frame.',
+      + 'no mockup, no wall behind it and no lighting on it. The reference image is this shop\'s '
+      + 'existing mark, photographed. Reproduce it EXACTLY as a flat drawing: the same crescent, '
+      + 'the same proportions, the same wedge divisions in the same places, the same colours in '
+      + 'the same order. DIRECTION, which matters most of all: the crescent\'s solid body is on '
+      + 'the RIGHT and its two tapering horns point to the LEFT, so it opens leftward like a '
+      + 'backwards C — never mirrored, never flipped, never opening to the right. The moon is deep '
+      + 'navy blue, and across its width it is cut by straight radial lines into flat wedges of '
+      + 'orange, royal blue, purple, orange and royal blue again, with the navy remaining at the '
+      + 'top and bottom tips — every division a crisp straight edge, never a gradient, never a '
+      + 'blend, never a glow. The background is a soft off-white, and the mark sits alone and '
+      + 'generously spaced in the centre of the frame.',
+    /** The banner, cropped to the crescent alone — see `logoStyle` for why the crop is the whole
+     *  point and what happened without it. Fractional geometry so it survives the banner being
+     *  re-rendered at another size; it does NOT survive the banner being regenerated with the mark
+     *  somewhere else, which is why the crescent is also described in words. */
+    logoRefKey: '__banner',
+    logoRefCrop: 'c_crop,x_0.852,y_0.24,w_0.095,h_0.44,g_north_west',
     address: 'דיזנגוף 112, תל אביב',
     selfPickup: false,
     // Mutually exclusive on purpose: a product carries exactly ONE categoryId, so
@@ -880,6 +896,24 @@ export const SHOWCASE_STORES = [
      *  Its whole point is to be the plain one, in its copy and in its pictures alike. */
     restrained: true,
     categories: ['שמע', 'מחשוב ועבודה', 'טעינה וחשמל', 'בית חכם', 'צילום ווידאו'],
+    /**
+     * The homepage card leads with the ANCHOR products (owner, 2026-08-14: "צריך לשים את המוצרים
+     * היותר מובנים בראשי … הדברים ששמת למעלה הם דברים קצת קיקיוניים ואיזוטריים").
+     *
+     * Left to `created_at` this store's card opened with an action-camera mounting kit, a mouse
+     * mat, a microphone arm and a novelty speaker — four accessories, three of them accessories TO
+     * something else that was not in the picture. An electronics shop is judged in four thumbnails
+     * by whether it stocks the big obvious things, and only then by whether it also has the cable.
+     *
+     * So: the ultra-wide monitor, the soundbar and the turntable, which he named, and the lit photo
+     * tent for "צילום לשולחן". Four categories out of five, and the three most expensive things in
+     * the shop lead — which is also the honest picture of what this catalogue is for.
+     *
+     * ⚠️ He also said "רמקול USB", and there is no such product in this catalogue. The nearest is
+     * `מיקרופון USB לשולחן` (a USB desk microphone), which is a swap of one name if that is what
+     * he meant.
+     */
+    cardProducts: ['מסך אולטרה־רחב', 'סאונדבר לטלוויזיה', 'פטיפון עם מגבר מובנה', 'אוהל צילום מואר'],
     /**
      * The VECTOR one (owner, 2026-08-14: "לא הגיוני שהבאנר מוזהב, צריך שיהיה כמו הלוגו, יותר פשוט,
      * יותר ׳וקטורי׳ כלומר לא ריאליסטי. ותמונות של כל מיני ציוד היקפי ומחשבים וגאד׳גטים בכל מיני
