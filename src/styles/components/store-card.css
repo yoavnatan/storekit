@@ -128,25 +128,12 @@
   position: relative;
   flex: 1 1 0;
   aspect-ratio: 1;
-  /* A CEILING on the thumb's height, and it is what stops a wide card growing tall (owner,
-     2026-08-14, with a screenshot: "כרטיסיות דמה גבוהות מדי ומעוותות את הכרטיסיות האמיתיות שלידן,
-     לא צריך את כל הגובה הזה").
-
-     The thumbs are square and `flex: 1 1 0`, so their HEIGHT is a function of the card's WIDTH —
-     and a shelf of two makes each card ~700px, which put ~150px of thumbnail under a three-line
-     head. That is the whole card's height, and in a flex row every neighbour stretches to match:
-     the "open a store" card beside it had its icon squares blown up to match a height it had no
-     content for, which is the distortion he photographed. Nothing was wrong with either card on
-     its own — only with the tallest one setting the row.
-
-     A max-height rather than a media query or a different ratio, because the trigger is card
-     width and card width is not a breakpoint here (it is a share of --shelf-fit/--shelf-count).
-     This self-limits: on a 3-up desktop shelf or on mobile the thumb is already under 6rem and
-     the ceiling never applies, so nothing below ~400px of card changes at all. Above it the box
-     goes letterbox and `object-fit: cover` crops top and bottom — safe by construction for these
-     photos, since `PRODUCT_VIEWS.main` stages every product at roughly half the frame, centred,
-     with clear space on all four sides. */
-  max-height: 6rem;
+  /* A `max-height: 6rem` stood here for one round and was REVERTED (owner, 2026-08-14: "לא טוב").
+     It read the complaint as "the thumbnails are too big" when what he described was two cards
+     side by side that do not line up — and capping one card's thumbs while the other's head is a
+     different height makes the two rows disagree by MORE, not less. The fix is at the head, not
+     here: see `.store-card__title-group` and StorePlaceholderCard's own note. Left as a comment so
+     the same wrong lever is not pulled again on the same complaint. */
   border-radius: var(--radius-sm);
   overflow: hidden;
   /* White, not the page's off-white --color-bg. A product photo shot on a

@@ -153,7 +153,14 @@ export const translations = {
       // ⚠️ It now names סליקה, which is a capability the platform does not have
       // wired yet (GO_LIVE §3). That is fine only because payments are a launch
       // BLOCKER — this line must not reach a live site before they work.
-      inviteHint: 'חנות עצמאית עם חשיפה לקהל המתחם — כלי פרסום, קידום במנועי חיפוש, סליקה ומשלוחים, הכל במקום אחד.',
+      // ONE LINE, because of where it lands (2026-08-14). This sits in a store
+      // card's `__tagline` slot, whose whole job is to be one line so that every
+      // card in a row puts its picture row at the same height. The long version
+      // wrapped to three or four lines and pushed this card's pictures down on
+      // its own, which is the misalignment the owner photographed. The full
+      // offer belongs on /seller/register, which is one click away and is where
+      // somebody who read this line is going.
+      inviteHint: 'חנות משלכם — פרסום, סליקה ומשלוחים מובנים',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -2063,7 +2070,8 @@ export const translations = {
         'Everything built in',
         'Start selling',
       ],
-      inviteHint: 'A store of your own, found by the shoppers the place brings — ad tools, search visibility, payments and shipping, all in one place.',
+      // One line — see the Hebrew entry for why the long version could not stay.
+      inviteHint: 'A store of your own — ads, payments and shipping built in',
     },
     demo: {
       badge: 'Example store',
