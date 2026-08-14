@@ -206,8 +206,11 @@ export function renderAlertEmail(entry: CriticalAlertInput): { subject: string; 
   // describing one failure in two different shapes is the drift this was extracted to end.
   const paste = errorCopyText({ ...entry, severity: 'critical' }, { when, maxStack: MAX_STACK_IN_EMAIL });
 
+  // `meaning` is deliberately NOT repeated here — `renderEmailShell` already prints it as the
+  // heading, immediately above this line. The two were written apart, so the mail said the same
+  // sentence twice; nobody had seen it, because until `npm run email:preview` existed the only way
+  // to look at this letter was to cause a critical error and then read your own inbox.
   const bodyHtml = `
-    <p style="margin:0 0 4px;font-size:16px"><strong>${esc(meaning)}</strong></p>
     <p style="margin:0 0 16px;font-size:13px;color:#666">שגיאה בדרגת חומרה קריטית${ref ? ` · מזהה ${esc(ref)}` : ''}</p>
     <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-size:14px">
       ${rows.map(([label, value]) => `
