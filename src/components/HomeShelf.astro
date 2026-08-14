@@ -128,8 +128,11 @@ const arriveClass = eagerFirst
             role="listitem"
           />
         ))}
+        <!-- `i`, not `stores.length + i` — see the same call in pages/stores.astro. The index
+             picks the card's colour, and offsetting it by the store count made the first
+             invitation's colour depend on how many stores happen to exist. -->
         {Array.from({ length: invites }).map((_, i) => (
-          <StorePlaceholderCard index={stores.length + i} previewSlots={previewSlots} role="listitem" />
+          <StorePlaceholderCard index={i} previewSlots={previewSlots} role="listitem" />
         ))}
       </div>
     </div>

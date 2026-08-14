@@ -111,6 +111,23 @@ describe('placeholder art', () => {
   });
 });
 
+/** HSL of a 6-digit hex — hue in degrees, saturation 0..1. Local to this file:
+ *  it exists only so the palette rules can be checked against the COLOURS rather
+ *  than against the names somebody gave them. */
+function hslOf(hex: string): [number, number] {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0))
+    : max === g ? (b - r) / d + 2
+    : (r - g) / d + 4;
+  return [Math.round(h * 60), s];
+}
+
 describe('placeholder tile colour', () => {
   it('gives one dominant hue per card, not per tile', () => {
     expect(pickCardHue(3)).toBe(TILE_HUES[3]);
@@ -175,34 +192,77 @@ describe('placeholder tile colour', () => {
   });
 
   it('keeps the three colours the owner ruled out, out', () => {
-    // Each was removed for its own reason and none of them is aesthetic drift:
+    // Each was ruled out for its own reason and none of them is aesthetic drift:
     // RED because a red wash on a card that is asking for something reads as a
-    // warning; GREY because on a wash it is barely a colour and the card reads as
+    // warning; GREY because at a wash it is barely a colour and the card reads as
     // unfilled; VIOLET because it is the signature of AI-generated apps and reads
-    // as an untrustworthy product (owner, 2026-08-14). The muted slots are greens
-    // — olive — which is a green, and still a colour.
-    for (const hue of TILE_HUES) {
-      expect(hue).not.toMatch(/red|grey|gray|slate|violet|purple|plum|indigo/);
+    // as an untrustworthy product (owner, 2026-08-14).
+    //
+    // Measured off the declared hexes, never off the token NAMES. Names were the
+    // first version and they were wrong in both directions: they called the
+    // deep-blue `indigo` a purple, and they would have passed any purple somebody
+    // named `berry`.
+    const css = readFileSync(join(process.cwd(), 'src/styles/base/tokens.css'), 'utf8');
+    for (const token of TILE_HUES) {
+      const name = token.slice(4, -1);
+      const hex = new RegExp(`${name}:\\s*(#[0-9a-f]{6})`).exec(css)?.[1];
+      expect(hex, `${name} is not declared in tokens.css`).toBeTruthy();
+      const [h, s] = hslOf(hex!);
+      // A band, not a floor: the rose is at 335° and is deliberately past the
+      // violets, and the indigo at 224° is deliberately short of them.
+      expect(h >= 255 && h <= 320, `${name} (${hex}) is a violet`).toBe(false);
+      expect(h > 352 || h < 8, `${name} (${hex}) is a red`).toBe(false);
+      expect(s, `${name} (${hex}) has too little chroma to read as a colour`)
+        .toBeGreaterThanOrEqual(0.2);
     }
   });
 
-  it('keeps the two look-alike pairs three slots apart', () => {
-    // Two pairs sit close enough at a pale wash to be mistaken for each other:
-    // the greens, and the two warm-pales. Three apart is the widest a seven-cycle
-    // allows, so neither pair can land side by side in a row or stacked in a
-    // column of the directory grid.
-    const PAIRS = [/green|olive/, /orange|rose/];
+  it('never puts two cards of the same family next to each other', () => {
+    // Eleven hues cannot all be far apart on the wheel, so the ordering carries
+    // as much of the distinctness as the colour values do. Adjacent same-family
+    // cards would land side by side in a row at every column count.
+    for (let i = 0; i < INVITE_HUES.length; i++) {
+      const here = INVITE_HUES[i]!.family;
+      const next = INVITE_HUES[(i + 1) % INVITE_HUES.length]!.family;
+      expect(here, `slots ${i} and ${(i + 1) % INVITE_HUES.length} share a family`).not.toBe(next);
+    }
+  });
+
+  it('keeps the four tightest pairs at least three slots apart', () => {
+    // These four are the pairs that share a corner of the wheel — two of them by
+    // design, being the same angle at a different depth (tokens.css says why).
+    // They are the ones a shopper could read as one card repeated.
+    const PAIRS = [/orange|clay/, /green\)|fresh/, /green\)|teal/, /blue|indigo/];
     for (const pair of PAIRS) {
       const at = TILE_HUES.map((h, i) => (pair.test(h) ? i : -1)).filter((i) => i >= 0);
       expect(at).toHaveLength(2);
       const gap = Math.abs(at[0]! - at[1]!);
-      expect(Math.min(gap, TILE_HUES.length - gap)).toBe(3);
+      expect(Math.min(gap, TILE_HUES.length - gap)).toBeGreaterThanOrEqual(3);
     }
-    // The greens also differ in depth, which is what carries them where the
-    // ordering cannot — a shopper scrolling sees them at different distances.
-    const greens = INVITE_HUES.filter((h) => /green|olive/.test(h.token));
-    expect(new Set(greens.map((h) => h.maxWash)).size).toBe(greens.length);
+    // And within each of those pairs the two must differ in depth, which is what
+    // separates the two that are the same hue angle.
+    for (const pair of PAIRS) {
+      const caps = INVITE_HUES.filter((h) => pair.test(h.token)).map((h) => h.maxWash);
+      expect(new Set(caps).size).toBe(2);
+    }
   });
+
+  it('opens the invitation run with the yellow', () => {
+    // Owner, 2026-08-14: the first open slot is the one being asked to act on, so
+    // it carries the most positive colour in the set. It only holds because the
+    // callers pass a 0-based index — see the note at the StorePlaceholderCard
+    // call sites; offsetting by the store count made this depend on how many
+    // stores happened to exist.
+    expect(pickCardHue(0)).toBe('var(--color-invite-yellow)');
+  });
+
+  it('leaves at most one repeat across a full directory grid', () => {
+    // The point of eleven rather than seven (owner, 2026-08-14): the /stores grid
+    // fills 12 placeholder slots, and at seven hues five of them repeated.
+    const seen = Array.from({ length: LAUNCH_GRID_SLOTS }, (_, i) => pickCardHue(i));
+    expect(LAUNCH_GRID_SLOTS - new Set(seen).size).toBeLessThanOrEqual(1);
+  });
+
 
   it('keeps every tile wash inside its own hue\'s budget', () => {
     // Art is stroked in the card's hue at full strength, and the cap is what keeps

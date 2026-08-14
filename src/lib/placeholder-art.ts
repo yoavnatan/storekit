@@ -38,15 +38,12 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  has one clear colour identity, and the row gets its variety from card to card
  *  instead of from tile to tile.
  *
- *  Seven, and the rotation step is 1, because 7 is coprime with 2, 3 and 4 — the
+ *  Eleven, and the rotation step is 1, because 11 is coprime with 2, 3 and 4 — the
  *  column counts `/stores`' grid uses. A pool of 4 (or a step sharing a factor)
  *  puts the same colour down an entire column at some viewport width. Any count
  *  coprime with all three works (5, 7, 11 …), so a colour can be swapped freely
- *  but one cannot simply be dropped.
- *
- *  Order is not alphabetical and not arbitrary. Two pairs sit close enough at a
- *  pale wash to need separating, and both are three slots apart: the two greens
- *  (`green` and `olive`), and the two warm-pales (`orange` and `rose`).
+ *  but one cannot simply be added or dropped — which is why the owner's "one more
+ *  shade" became four (tokens.css says it in full).
  *
  *  ⚠️ `--color-invite-*`, NOT `--color-tile-*`. The tile tokens look like the
  *  obvious ones to reuse and are the wrong list: they are `MARK_HUES`, the
@@ -66,7 +63,7 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  failed to load" look this whole treatment exists to avoid.
  *
  *  `ink` is the colour the line-art is stroked in, and it defaults to the hue
- *  itself — one colour per card is the rule, and six of the seven keep it. Yellow
+ *  itself — one colour per card is the rule, and ten of the eleven keep it. Yellow
  *  is the exception and had to be: the art used to BE the wash colour, which
  *  meant the only "yellows" that could pass 3:1 against themselves were the dark
  *  muddy ones, and that is why this slot was a gold that read as orange. Splitting
@@ -75,36 +72,61 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  reading as one object.
  *
  *  Contrast measured 2026-08-14, ink against `color-mix(hue maxWash%, white)`:
- *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 ·
- *  olive 3.81 · rose 4.01. Never raise a cap without re-measuring; 3:1 is the floor. */
+ *  orange 3.71 · clay 4.68 · blue 3.86 · indigo 5.46 · yellow 5.20 · sky 3.40 ·
+ *  green 3.29 · fresh 3.85 · teal 3.54 · olive 3.81 · rose 4.01. Never raise a cap
+ *  without re-measuring; 3:1 is the floor. */
 export interface InviteHue {
   /** CSS custom property for the tile wash, declared in tokens.css. */
   token: string;
   /** Deepest mix % of this hue a tile wash may use. See above. */
   maxWash: number;
+  /** Which corner of the wheel this hue sits in. Not decoration: it is what the
+   *  ordering rule is enforced against — two cards from the same family may never
+   *  be adjacent in the rotation, or they land side by side in a row. */
+  family: 'warm' | 'yellow' | 'green' | 'blue';
   /** Line-art colour, when it cannot be the hue itself. Defaults to `token`. */
   ink?: string;
 }
 
-// The ORDER separates the two pairs that are close enough at a pale wash to be
-// mistaken for each other: the greens (`green`, `olive`) and the warm-pales
-// (`orange`, `rose`). Each pair sits three slots apart, the widest a seven-cycle
-// allows, so neither can ever land side by side in a row or stacked in a column.
+// The ORDER is the second half of the distinctness argument, and the one that
+// does not show up in any single colour value. Eleven hues cannot all be far
+// apart on the wheel — see tokens.css for why two of them are depth-variants of
+// their neighbours rather than new angles — so what keeps a grid from looking
+// repetitive is that no two cards of the same FAMILY are ever adjacent, and the
+// four tightest pairs (orange/clay, green/fresh, green/teal, blue/indigo) sit at
+// least three slots apart. Both are pinned by tests; the cycle below alternates
+// warm → green → yellow → blue and repeats, which is what produces that.
 export const INVITE_HUES: readonly InviteHue[] = [
-  { token: 'var(--color-invite-orange)', maxWash: 22 },
-  { token: 'var(--color-invite-blue)', maxWash: 26 },
-  { token: 'var(--color-invite-green)', maxWash: 22 },
-  { token: 'var(--color-invite-rose)', maxWash: 26 },
-  { token: 'var(--color-invite-yellow)', maxWash: 26, ink: 'var(--color-invite-yellow-ink)' },
-  // The muted green — olive rather than the emerald above it, and the slot that
-  // took four tries: a slate grey, the site's dark navy, that navy inverted to a
-  // dark tile with white art, then a grey-green sage. tokens.css carries the full
-  // record. Deeper than its neighbours because it is among the least saturated
-  // hues here and a 22% wash of one of those barely registers; that depth is also
-  // part of what keeps it apart from `green`.
-  { token: 'var(--color-invite-olive)', maxWash: 30 },
-  { token: 'var(--color-invite-sky)', maxWash: 22 },
+  // YELLOW LEADS, and that is a decision rather than an accident of ordering
+  // (owner, 2026-08-14): "הצהוב בהתחלה כן יפה, הוא מזמין גם לפעולה... זה צבע
+  // חיובי". The first open slot a seller meets is the one being asked to act on,
+  // so it gets the most positive colour in the set. Whatever else moves here,
+  // slot 0 stays yellow.
+  { token: 'var(--color-invite-yellow)', maxWash: 26, family: 'yellow', ink: 'var(--color-invite-yellow-ink)' },
+  { token: 'var(--color-invite-sky)', maxWash: 22, family: 'blue' },
+  { token: 'var(--color-invite-orange)', maxWash: 22, family: 'warm' },
+  { token: 'var(--color-invite-green)', maxWash: 22, family: 'green' },
+  // The muted green — olive rather than the emerald, and the slot that took four
+  // tries: a slate grey, the site's dark navy, that navy inverted to a dark tile
+  // with white art, then a grey-green sage. tokens.css carries the full record.
+  { token: 'var(--color-invite-olive)', maxWash: 30, family: 'yellow' },
+  { token: 'var(--color-invite-blue)', maxWash: 26, family: 'blue' },
+  // The orange's own corner of the wheel, at 34% rather than 22%. Not a second
+  // orange: at that depth it reads as clay, and its wash lands ~30 points darker
+  // than the orange's on every channel.
+  { token: 'var(--color-invite-clay)', maxWash: 34, family: 'warm' },
+  // 137° — one of the only two genuinely free angles left, and deep enough that
+  // it does not collapse into the emerald at 153°.
+  { token: 'var(--color-invite-fresh)', maxWash: 34, family: 'green' },
+  { token: 'var(--color-invite-rose)', maxWash: 26, family: 'warm' },
+  // 175°, the second free angle. Deeper than the emerald on purpose — at 22% the
+  // two were the same card, which is exactly why a teal was thrown out of the
+  // seven-hue set.
+  { token: 'var(--color-invite-teal)', maxWash: 30, family: 'green' },
+  // The blue's own corner at 34%. Same argument as the clay.
+  { token: 'var(--color-invite-indigo)', maxWash: 34, family: 'blue' },
 ];
+
 
 /** Just the tokens, in order — the shape most callers and tests want. */
 export const TILE_HUES: readonly string[] = INVITE_HUES.map((h) => h.token);

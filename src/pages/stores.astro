@@ -312,10 +312,16 @@ const jsonLd = {
               role="listitem"
             />
           ))}
+          <!-- `i`, NOT `gridStores.length + i`. The index picks each card's colour and art, and
+               offsetting it by the number of real stores made both depend on how many stores
+               happen to exist — so the first invitation was a different colour on every page of
+               the directory, and would change again the day a seller signs up. Nothing collides:
+               real cards draw from a different palette entirely (store-mark.ts). Slot 0 is the
+               yellow, deliberately — see INVITE_HUES. -->
           {Array.from({ length: placeholderCount }).map((_, i) => (
-            <StorePlaceholderCard index={gridStores.length + i} role="listitem" />
+            <StorePlaceholderCard index={i} role="listitem" />
           ))}
-          {showGenericInvite && <StorePlaceholderCard index={gridStores.length} role="listitem" />}
+          {showGenericInvite && <StorePlaceholderCard index={0} role="listitem" />}
         </div>
       )}
 
