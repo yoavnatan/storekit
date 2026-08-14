@@ -68,9 +68,13 @@
      product. Sharing the list would have meant re-colouring every existing
      store to change the invitation.
 
-     Seven, because 7 is coprime with 2, 3 and 4 — the /stores grid's column
+     ELEVEN, because 11 is coprime with 2, 3 and 4 — the /stores grid's column
      counts — which is what stops one colour running down a whole column at some
-     viewport width. Ordered so row-neighbours differ in temperature.
+     viewport width. That coprimality is why the list cannot simply grow by one:
+     8 divides both the 2- and the 4-column grid, so the step up from seven is
+     eleven, not eight (owner asked for "one more", 2026-08-14, and this is why he
+     got four). Eleven also means the 12-slot directory grid repeats exactly one
+     colour instead of five, which is what the ask was really about.
 
      Revised 2026-08-14, all changes the owner's:
      • THE NEUTRAL SLOT, in three tries. A slate grey first — barely a colour at
@@ -102,17 +106,33 @@
        purple and a third green all ruled out, ~330° is the only part of the
        wheel this palette does not already occupy.
 
-     Rose sits 45° from the orange and both go pale, so their washes are closer
-     than any other pair here: (237,195,213) against (241,214,206) at their caps.
-     They are three slots apart in the rotation for that reason. Do not put them
-     next to each other, and do not lighten the rose.
+     • THE FOUR ADDED TO REACH ELEVEN (2026-08-14). Once red, grey and purple are
+       excluded the wheel has one real gap left — 75°–153° — and it fits about two
+       hues, not four. So two of the additions are new ANGLES (fresh 137°, teal
+       175°) and two are the same angle as an existing hue at a much greater DEPTH
+       (clay is the orange's corner at 34% rather than 22%, indigo is the blue's at
+       34% rather than 26%). That is the same mechanism the greens already use, and
+       it is what makes eleven possible at all: past a certain point a pale wash
+       cannot carry another distinguishable hue, and weight is the axis that is
+       still free. The measured washes, which is what actually has to differ:
+       clay (210,188,178) vs orange (241,214,206); indigo (178,188,215) vs
+       blue (198,214,241); fresh (179,205,186) vs green (204,229,218) vs
+       teal (183,214,212) vs olive (206,211,193).
+
+     The rotation ORDER is what keeps look-alikes apart, and every hue declares a
+     `family` in placeholder-art.ts so a test can enforce it: no two cards of the
+     same family are ever adjacent, and the four tight pairs (orange/clay,
+     green/fresh, green/teal, blue/indigo) sit at least three slots apart.
 
      Contrast measured 2026-08-14 — the INK against that hue's deepest wash, at
-     the per-hue cap in placeholder-art.ts: orange 3.71 · blue 3.87 ·
-     yellow 5.20 · sky 3.40 · green 3.29 · olive 3.81 · rose 4.01. 3:1 is the
-     floor. Do not add or lighten a hue without re-measuring. */
+     the per-hue cap in placeholder-art.ts: orange 3.71 · blue 3.86 · yellow 5.20 ·
+     sky 3.40 · green 3.29 · olive 3.81 · rose 4.01 · fresh 3.85 · teal 3.54 ·
+     indigo 5.46 · clay 4.68. 3:1 is the floor. Do not add or lighten a hue
+     without re-measuring. */
   --color-invite-orange: #bf4620;
+  --color-invite-clay: #7a3b1e;
   --color-invite-blue: #2563c9;
+  --color-invite-indigo: #1e3a8a;
   --color-invite-yellow: #d4b106;
   /* The one hue whose line-art is NOT drawn in the wash colour. A yellow light
      enough to read as yellow cannot also be the stroke on top of itself; this
@@ -120,6 +140,8 @@
   --color-invite-yellow-ink: #7a5c00;
   --color-invite-sky: #0e7fa8;
   --color-invite-green: #158a56;
+  --color-invite-fresh: #1f6b34;
+  --color-invite-teal: #0f766e;
   --color-invite-olive: #5c6b2f;
   --color-invite-rose: #b8195c;
 
