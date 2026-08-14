@@ -93,9 +93,14 @@ export interface InviteHue {
 // apart on the wheel — see tokens.css for why two of them are depth-variants of
 // their neighbours rather than new angles — so what keeps a grid from looking
 // repetitive is that no two cards of the same FAMILY are ever adjacent, and the
-// four tightest pairs (orange/clay, green/fresh, green/teal, blue/indigo) sit at
-// least three slots apart. Both are pinned by tests; the cycle below alternates
-// warm → green → yellow → blue and repeats, which is what produces that.
+// four tightest pairs (orange/clay, green/fresh, green/teal, blue/indigo) are
+// never side by side either. Both are pinned by tests.
+//
+// Three slots apart was the guarantee at seven hues and cannot survive eleven:
+// four of these sit in the green corner, and four items in an 11-cycle whose
+// other seven slots must also stay non-adjacent leave gaps of two. So the promise
+// is two — no pair ever adjacent — and inside each tight pair the two differ in
+// DEPTH, which is what tells them apart where the ordering runs out.
 export const INVITE_HUES: readonly InviteHue[] = [
   // YELLOW LEADS, and that is a decision rather than an accident of ordering
   // (owner, 2026-08-14): "הצהוב בהתחלה כן יפה, הוא מזמין גם לפעולה... זה צבע
@@ -103,29 +108,31 @@ export const INVITE_HUES: readonly InviteHue[] = [
   // so it gets the most positive colour in the set. Whatever else moves here,
   // slot 0 stays yellow.
   { token: 'var(--color-invite-yellow)', maxWash: 26, family: 'yellow', ink: 'var(--color-invite-yellow-ink)' },
-  { token: 'var(--color-invite-sky)', maxWash: 22, family: 'blue' },
+  // …AND THE OLIVE IS SECOND, also his call: it was the sky here and he wanted
+  // the muted green in the pair a seller sees first. Reclassified out of the
+  // `yellow` family in the same move — it is a yellow-GREEN, and filing it under
+  // yellow is what would have made this pairing illegal for no visual reason.
+  { token: 'var(--color-invite-olive)', maxWash: 30, family: 'green' },
   { token: 'var(--color-invite-orange)', maxWash: 22, family: 'warm' },
   { token: 'var(--color-invite-green)', maxWash: 22, family: 'green' },
-  // The muted green — olive rather than the emerald, and the slot that took four
-  // tries: a slate grey, the site's dark navy, that navy inverted to a dark tile
-  // with white art, then a grey-green sage. tokens.css carries the full record.
-  { token: 'var(--color-invite-olive)', maxWash: 30, family: 'yellow' },
-  { token: 'var(--color-invite-blue)', maxWash: 26, family: 'blue' },
+  { token: 'var(--color-invite-sky)', maxWash: 22, family: 'blue' },
+  // 175°, one of the two genuinely free angles. Deeper than the emerald on
+  // purpose — at 22% the two were the same card, which is exactly why a teal was
+  // thrown out of the seven-hue set.
+  { token: 'var(--color-invite-teal)', maxWash: 30, family: 'green' },
   // The orange's own corner of the wheel, at 34% rather than 22%. Not a second
   // orange: at that depth it reads as clay, and its wash lands ~30 points darker
   // than the orange's on every channel.
   { token: 'var(--color-invite-clay)', maxWash: 34, family: 'warm' },
-  // 137° — one of the only two genuinely free angles left, and deep enough that
-  // it does not collapse into the emerald at 153°.
+  // 137° — the other free angle, and deep enough that it does not collapse into
+  // the emerald at 153°.
   { token: 'var(--color-invite-fresh)', maxWash: 34, family: 'green' },
+  { token: 'var(--color-invite-blue)', maxWash: 26, family: 'blue' },
   { token: 'var(--color-invite-rose)', maxWash: 26, family: 'warm' },
-  // 175°, the second free angle. Deeper than the emerald on purpose — at 22% the
-  // two were the same card, which is exactly why a teal was thrown out of the
-  // seven-hue set.
-  { token: 'var(--color-invite-teal)', maxWash: 30, family: 'green' },
   // The blue's own corner at 34%. Same argument as the clay.
   { token: 'var(--color-invite-indigo)', maxWash: 34, family: 'blue' },
 ];
+
 
 
 /** Just the tokens, in order — the shape most callers and tests want. */
@@ -210,8 +217,11 @@ export function tileEdge(cardIndex: number): string {
   return `inset 0 0 0 1px color-mix(in srgb, ${hue.token} ${washPercent(hue, 0.55)}%, transparent)`;
 }
 
-/** The full hue spec of the card at `cardIndex` — token plus its wash budget. */
-export function pickCardHueSpec(cardIndex: number): InviteHue {
+/** The full hue spec of the card at `cardIndex` — token, wash budget, ink.
+ *  Module-private on purpose: a caller that could take the spec apart could also
+ *  pair a token with somebody else's cap, and the caps only mean anything attached
+ *  to the hue they were measured against. */
+function pickCardHueSpec(cardIndex: number): InviteHue {
   return INVITE_HUES[cardIndex % INVITE_HUES.length]!;
 }
 
