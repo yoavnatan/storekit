@@ -22,6 +22,7 @@ import {
   tileBackground,
   pickArtTrio,
   pickCardHue,
+  pickCardInk,
 } from '../src/lib/placeholder-art.js';
 
 describe('launch-mode thresholds', () => {
@@ -134,10 +135,56 @@ describe('placeholder tile colour', () => {
     for (const hue of TILE_HUES) expect(hue).toMatch(/^var\(--color-invite-[a-z]+\)$/);
   });
 
-  it('declares every invite hue it uses in tokens.css', () => {
+  it('declares every invite hue and ink it uses in tokens.css', () => {
     const css = readFileSync(join(process.cwd(), 'src/styles/base/tokens.css'), 'utf8');
-    const declared = new Set([...css.matchAll(/--color-invite-[a-z]+/g)].map((m) => m[0]));
-    for (const hue of TILE_HUES) expect(declared).toContain(hue.slice(4, -1));
+    const declared = new Set([...css.matchAll(/--color-[a-z-]+(?=:)/g)].map((m) => m[0]));
+    for (let i = 0; i < INVITE_HUES.length; i++) {
+      expect(declared).toContain(pickCardHue(i).slice(4, -1));
+      // An ink may be a site token rather than an invite one — the inverted card
+      // strokes its art in --color-surface — but it must still be a declared name
+      // and never a literal colour.
+      expect(pickCardInk(i)).toMatch(/^var\(--color-[a-z-]+\)$/);
+      expect(declared).toContain(pickCardInk(i).slice(4, -1));
+    }
+  });
+
+  it('inks the art in the card\'s own hue unless that hue cannot carry it', () => {
+    // One colour per card is the rule, and five of the seven keep it. The two
+    // exceptions are the two ends of the lightness range and both had to be:
+    // yellow is too light to be stroked on top of itself at 3:1, and navy is the
+    // inverted tile, where the art is white on a dark ground. Anything else
+    // needing an ink means the card has stopped reading as one object.
+    const split = INVITE_HUES.filter((h) => h.ink && h.ink !== h.token);
+    expect(split.map((h) => h.token).sort()).toEqual([
+      'var(--color-invite-navy)',
+      'var(--color-invite-yellow)',
+    ]);
+    // And every other card's art IS its wash colour.
+    for (let i = 0; i < INVITE_HUES.length; i++) {
+      if (INVITE_HUES[i]!.ink) continue;
+      expect(pickCardInk(i)).toBe(pickCardHue(i));
+    }
+  });
+
+  it('starts every ramp at the floor its hue declares', () => {
+    // The inverted navy tile is dark end to end; a ramp that ignored `minWash`
+    // would start it at near-white and reintroduce exactly the grey this palette
+    // removed.
+    for (let card = 0; card < INVITE_HUES.length; card++) {
+      const floor = INVITE_HUES[card]!.minWash ?? 0;
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        for (const mix of mixes) expect(mix).toBeGreaterThanOrEqual(floor);
+      }
+    }
+  });
+
+  it('has no grey and no red left in the invitation palette', () => {
+    // Both were removed by the owner and for opposite reasons: red because a red
+    // wash on a card that is asking for something reads as a warning, grey
+    // because on a wash it is barely a colour and the card reads as unfilled.
+    for (const hue of TILE_HUES) expect(hue).not.toMatch(/red|grey|gray|slate/);
   });
 
   it('keeps every tile wash inside its own hue\'s budget', () => {
@@ -154,8 +201,13 @@ describe('placeholder tile colour', () => {
     expect(new Set(TILE_WASHES.map((w) => `${w.top}/${w.bottom}`)).size).toBe(TILE_WASHES.length);
     // And no hue's budget may drift past what the darkest measurement covers.
     for (const hue of INVITE_HUES) {
-      expect(hue.maxWash).toBeGreaterThanOrEqual(22);
-      expect(hue.maxWash).toBeLessThanOrEqual(38);
+      const floor = hue.minWash ?? 0;
+      expect(hue.maxWash).toBeGreaterThan(floor);
+      expect(hue.maxWash).toBeLessThanOrEqual(100);
+      // A pale card's range must stay pale: only an INVERTED hue (one that
+      // declares a floor, i.e. is dark end to end) may run past the low 30s,
+      // because there the art is white and the contrast rule works the other way.
+      if (!hue.minWash) expect(hue.maxWash).toBeLessThanOrEqual(30);
     }
   });
 

@@ -41,55 +41,74 @@ export const PLACEHOLDER_ART: readonly PlaceholderArt[] = [
  *  Seven, and the rotation step is 1, because 7 is coprime with 2, 3 and 4 — the
  *  column counts `/stores`' grid uses. A pool of 4 (or a step sharing a factor)
  *  puts the same colour down an entire column at some viewport width. Any count
- *  coprime with all three works; five was the old one, and the set grew when red
- *  came out and the site's own navy, a sky and a slate went in (owner,
- *  2026-08-14 — a red invitation reads as a warning, not as a product).
+ *  coprime with all three works (5, 7, 11 …), so a colour can be swapped freely
+ *  but one cannot simply be dropped.
  *
- *  Order is not alphabetical and not arbitrary: four of the seven are cool, so
+ *  Order is not alphabetical and not arbitrary: five of the seven are cool, so
  *  they are interleaved with the warm ones to keep row-neighbours apart.
  *
  *  ⚠️ `--color-invite-*`, NOT `--color-tile-*`. The tile tokens look like the
  *  obvious ones to reuse and are the wrong list: they are `MARK_HUES`, the
  *  palette every store's generated identity mark is built from, and a change
  *  here would have re-coloured every existing store. tokens.css carries both and
- *  says which is which.
+ *  says which is which — along with the full history of what these seven are and
+ *  why (red out, grey out, yellow made yellow, orange made redder).
  *
- *  Values are tokens, never hexes here. Two of them ARE brand colours now, which
- *  the first version avoided — but that rule was about a card built from three
- *  brand blues at once, which averaged to grey. One navy card standing between
- *  an orange one and a sky one is the opposite case.
+ *  Values are tokens, never hexes here.
  *
  *  `maxWash` is the deepest mix % of this hue the tile wash may reach, and it is
  *  PER HUE rather than one global cap, because equal percentages do not produce
- *  equal fill. The cap exists so the line-art — stroked in the same hue at full
- *  strength — keeps 3:1 against the deepest part of the wash behind it, and a
- *  dark low-chroma hue has far more room before it gets there than a light
- *  saturated one. With one cap of 22 for everybody, navy and slate washed out to
+ *  equal fill. The cap exists so the line-art keeps 3:1 against the deepest part
+ *  of the wash behind it, and a dark hue has far more room before it gets there
+ *  than a light one. With one cap of 22 for everybody the dark hues washed out to
  *  almost nothing and their cards read as unfilled tiles, which is the "image
  *  failed to load" look this whole treatment exists to avoid.
  *
- *  Measured 2026-08-14, ratio of the hue against `color-mix(hue maxWash%, white)`:
- *  orange 3.14 · blue 3.87 · green 3.29 · gold 3.08 · navy 6.60 · sky 3.40 ·
- *  slate 3.63. Never raise one without re-measuring; 3:1 is the floor. */
+ *  `ink` is the colour the line-art is stroked in, and it defaults to the hue
+ *  itself — one colour per card is the rule, and six of the seven keep it. Yellow
+ *  is the exception and had to be: the art used to BE the wash colour, which
+ *  meant the only "yellows" that could pass 3:1 against themselves were the dark
+ *  muddy ones, and that is why this slot was a gold that read as orange. Splitting
+ *  the ink off is what let the wash become an actual yellow. Reach for it only for
+ *  that reason — a card whose art is a different colour from its tiles stops
+ *  reading as one object.
+ *
+ *  Contrast measured 2026-08-14, ink against `color-mix(hue maxWash%, white)`:
+ *  orange 3.71 · blue 3.87 · yellow 5.20 · sky 3.40 · green 3.29 · navy 8.35 ·
+ *  violet 4.78. Never raise a cap without re-measuring; 3:1 is the floor. */
 export interface InviteHue {
-  /** CSS custom property, declared in tokens.css. */
+  /** CSS custom property for the tile wash, declared in tokens.css. */
   token: string;
   /** Deepest mix % of this hue a tile wash may use. See above. */
   maxWash: number;
+  /** Lightest mix % — the floor the ramp starts from. Defaults to 0, which is
+   *  what every pale hue wants. Navy is the one that does not: see below. */
+  minWash?: number;
+  /** Line-art colour, when it cannot be the hue itself. Defaults to `token`. */
+  ink?: string;
 }
 
 export const INVITE_HUES: readonly InviteHue[] = [
   { token: 'var(--color-invite-orange)', maxWash: 22 },
   { token: 'var(--color-invite-blue)', maxWash: 26 },
-  { token: 'var(--color-invite-green)', maxWash: 22 },
-  { token: 'var(--color-invite-gold)', maxWash: 22 },
-  // 32, not the ~40 its contrast allows: at 38 the navy card was visibly heavier
-  // than every other card in the row, which made it read as a different kind of
-  // card rather than as the same card in another colour. The cap is a ceiling,
-  // not a target.
-  { token: 'var(--color-invite-navy)', maxWash: 32 },
+  { token: 'var(--color-invite-yellow)', maxWash: 26, ink: 'var(--color-invite-yellow-ink)' },
   { token: 'var(--color-invite-sky)', maxWash: 22 },
-  { token: 'var(--color-invite-slate)', maxWash: 34 },
+  { token: 'var(--color-invite-green)', maxWash: 22 },
+  // The one INVERTED card: a dark navy tile with the art in white, instead of a
+  // pale tile with dark art.
+  //
+  // It is not a stylistic flourish, it is the only way this hue exists at all.
+  // The site's navy is deliberately low-chroma (#1c2333 spans 23 points across
+  // its channels), so mixing ANY amount of it into white keeps that spread
+  // proportional and the result is a grey — at 30% and at 45% alike. The owner
+  // asked for the grey to go and the site's dark navy to take its place; a
+  // washed navy would have handed back the same grey card under a new name.
+  //
+  // It also has a precedent on the same screen: the showcase stores photograph
+  // their products on deep backgrounds, so a dark tile in this grid reads as a
+  // product shot, which is exactly what these tiles are standing in for.
+  { token: 'var(--color-invite-navy)', minWash: 78, maxWash: 100, ink: 'var(--color-surface)' },
+  { token: 'var(--color-invite-violet)', maxWash: 22 },
 ];
 
 /** Just the tokens, in order — the shape most callers and tests want. */
@@ -116,11 +135,12 @@ export const TILE_LIGHT_ANGLE = 168;
  *  as one lit scene, and the depth difference between them is what stops the
  *  card being a single flat block of colour.
  *
- *  These are FRACTIONS of the hue's own `maxWash`, not absolute mix percentages.
- *  Absolutes were the first version and they gave every hue the same numbers,
- *  which the navy and slate cards could not carry — see the note on INVITE_HUES.
- *  A fraction means the three tiles of a card always sit at the same three
- *  RELATIVE depths, whichever hue the card drew. */
+ *  These are FRACTIONS of the hue's own range (`minWash` → `maxWash`), not
+ *  absolute mix percentages. Absolutes were the first version and they gave every
+ *  hue the same numbers, which the dark hues could not carry — see the note on
+ *  INVITE_HUES. A fraction means the three tiles of a card always sit at the same
+ *  three RELATIVE depths, whichever hue the card drew, including the inverted
+ *  navy one whose range starts at 78 rather than 0. */
 export interface TileWash {
   /** Share of the hue's `maxWash` at the lit top edge. */
   top: number;
@@ -134,9 +154,10 @@ export const TILE_WASHES: readonly TileWash[] = [
   { top: 0.27, bottom: 0.95 },
 ];
 
-/** Mix % for one tile edge, rounded — a fraction of the card hue's own budget. */
+/** Mix % for one tile edge, rounded — a fraction of the card hue's own range. */
 function washPercent(hue: InviteHue, fraction: number): number {
-  return Math.round(hue.maxWash * fraction * 10) / 10;
+  const floor = hue.minWash ?? 0;
+  return Math.round((floor + (hue.maxWash - floor) * fraction) * 10) / 10;
 }
 
 /**
@@ -179,9 +200,16 @@ export function pickCardHueSpec(cardIndex: number): InviteHue {
   return INVITE_HUES[cardIndex % INVITE_HUES.length]!;
 }
 
-/** The dominant hue of the card at `cardIndex`, as a CSS value. */
+/** The dominant hue of the card at `cardIndex`, as a CSS value — the tiles' wash. */
 export function pickCardHue(cardIndex: number): string {
   return pickCardHueSpec(cardIndex).token;
+}
+
+/** The colour this card's line-art is stroked in — its hue, unless that hue is
+ *  too light to be drawn on top of itself (see `ink` on InviteHue). */
+export function pickCardInk(cardIndex: number): string {
+  const hue = pickCardHueSpec(cardIndex);
+  return hue.ink ?? hue.token;
 }
 
 /** Step between one card's starting art and the next card's. Must be coprime
