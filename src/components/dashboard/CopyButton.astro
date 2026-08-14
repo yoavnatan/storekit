@@ -1,0 +1,51 @@
+---
+/**
+ * "Copy" button for a value the seller reads and then has to paste somewhere
+ * else — his store address above all, which goes into an Instagram bio, a
+ * WhatsApp status and a printed card, and which he otherwise retypes by hand
+ * from a `<code>` element.
+ *
+ * It copies the LIVE text of `target`, never a value baked in at render time.
+ * The store address changes underneath it: `store-url.ts` rewrites the slug in
+ * place without a reload, and a button holding a render-time snapshot would keep
+ * handing out the old address with nothing on screen to say so — memory
+ * `project_href_frozen_at_render`, exactly the same class of bug.
+ *
+ * Behaviour lives in `scripts/dashboard/copy-value.ts`, delegated on the
+ * document: these buttons sit both in the always-rendered header and inside the
+ * settings panel, which arrives on a click, so there is no one moment at which
+ * they could all be wired directly.
+ */
+interface Props {
+  /** id of the element whose text is copied. */
+  target: string;
+  /** Accessible name at rest, and after the tick clears. */
+  label: string;
+  /** Accessible name for the ~1.5s the tick is showing. */
+  copiedLabel: string;
+  class?: string;
+}
+
+const { target, label, copiedLabel, class: klass } = Astro.props;
+---
+
+<button
+  type="button"
+  class:list={['btn', 'btn--ghost', 'btn--sm', 'shrink-0', klass]}
+  data-copy-from={target}
+  data-copy-label={label}
+  data-copy-copied-label={copiedLabel}
+  aria-label={label}
+  title={label}
+>
+  {/* Which icon shows is a CLASS, not the `hidden` attribute: `hidden` is not in Astro's
+      SVGAttributes and does not type-check on an <svg>. `.hidden` is safe here — the flex
+      display that beats it (memory `project_tailwind_hidden_vs_flex`) would have to be on
+      the icon itself, and nothing sets one; the button is the flex container. */}
+  <svg data-copy-icon="idle" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+  <svg data-copy-icon="done" class="hidden" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+  <!-- The tick is the visible confirmation; this is the same confirmation for a
+       screen reader, which cannot see an icon swap and does not reliably
+       announce an aria-label changing under a focused button. -->
+  <span class="sr-only" data-copy-status role="status" aria-live="polite"></span>
+</button>
