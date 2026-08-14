@@ -73,7 +73,7 @@ export const translations = {
       // in exactly one place, deliberately: the site description in
       // store.config.ts, which is written for what a person types into Google
       // rather than for how the product describes itself. Its twin in
-      // `auth.benefitMall` and the `invites` label below say "כוח של קבוצה" —
+      // `auth.benefitMall` and the `inviteLabels` entry below say "כוח של קבוצה" —
       // "מתחם" carries no metaphor of pull, so that bullet keeps one and the
       // noun does not.
       //
@@ -93,25 +93,44 @@ export const translations = {
       // "זירת מסחר", a different word doing a legal job, and "marketplace" is
       // its correct twin.
       startSelling: 'מתחם חנויות דיגיטלי',
-      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה. פרסום, SEO ומשלוחים מובנים — הכל במקום אחד.',
-      builtInAds: 'פרסום מובנה',
+      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה. ממשק פרסום, SEO ומשלוחים מובנים — הכל במקום אחד.',
+      // "ממשק פרסום מובנה", never "פרסום מובנה" (owner, 2026-08-14). What is
+      // built in is the SYSTEM that runs the campaigns — the ad SPEND is billed
+      // separately, per actual spend, and is never inside the monthly fee (see
+      // lib/pricing.ts: subscription and advertising are additive, never
+      // offset). The short form promised a seller free traffic, which is the one
+      // thing the business model does not include. Same rule anywhere else ads
+      // are listed beside SEO and shipping — `auth.benefitBuiltIn`, the launch
+      // card hint below.
+      builtInAds: 'ממשק פרסום מובנה',
       builtInSeo: 'SEO מובנה',
       builtInShipping: 'משלוחים מובנים',
     },
-    // Rotated across placeholder cards so a grid of them reads as varied
-    // content rather than one banner repeated a dozen times. Keep the count at
-    // FIVE (or another number coprime with 2, 3 and 4): the directory grid's
-    // column count is responsive, and a cycle length that divides it lines the
-    // same line up down a whole column — which is exactly the repetition this
-    // rotation exists to avoid.
+    // Placeholder store cards (StorePlaceholderCard.astro).
+    //
+    // The TITLE rotates so a grid of them reads as varied content rather than
+    // one banner repeated a dozen times. Keep the count at FIVE (or another
+    // number coprime with 2, 3 and 4): the directory grid's column count is
+    // responsive, and a cycle length that divides it lines the same line up down
+    // a whole column — which is exactly the repetition this rotation exists to
+    // avoid.
+    //
+    // The SUBTITLE does not rotate, and that is the point (owner, 2026-08-14).
+    // Each card used to carry one feature of the offer, so the pitch was only
+    // whole when every card was on screen at once — and the number of cards
+    // FALLS as real stores arrive (planLaunchShelf keeps a floor of one). A
+    // seller arriving late saw a single card advertising, say, shipping, and
+    // never learned the rest existed. So every card now carries the entire
+    // offer: a rotating hook on top, the full sentence underneath.
     launch: {
-      invites: [
-        { label: 'מתחם חנויות דיגיטלי', hint: 'הכל תחת קורת גג אחת' },
-        { label: 'חנות משלכם', hint: 'השם, המוצרים והלקוחות שלכם' },
-        { label: 'כוח של קבוצה', hint: 'חנות אחת, תנועה של כולן' },
-        { label: 'פרסום ו-SEO מובנים', hint: 'פעילים מהיום הראשון' },
-        { label: 'משלוחים מובנים', hint: 'מחיר, מעקב ואיסוף בפנים' },
+      inviteLabels: [
+        'מתחם חנויות דיגיטלי',
+        'חנות משלכם',
+        'כוח של קבוצה',
+        'הכול מובנה מראש',
+        'פתיחת חנות',
       ],
+      inviteHint: 'חנות משלכם לצד כל השאר, עם ממשק פרסום, SEO ומשלוחים מובנים.',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -341,7 +360,7 @@ export const translations = {
       oauthUnverifiedEmail: 'כתובת המייל בחשבון Google הזה לא אומתה על ידי Google. יש לאמת אותה שם, או להתחבר עם סיסמה.',
       loginSubtitle: 'התחבר לחשבון שלך כדי להמשיך.',
       benefitMall: 'כוח של קבוצה — תנועה של כל החנויות',
-      benefitBuiltIn: 'פרסום, SEO ומשלוחים מובנים',
+      benefitBuiltIn: 'ממשק פרסום, SEO ומשלוחים מובנים',
       benefitHebrew: 'עברית ו-RTL באופן מלא',
     },
     dashboard: {
@@ -2006,19 +2025,22 @@ export const translations = {
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
       startSelling: 'A home for independent stores',
-      startSellingDesc: 'A store of your own, alongside every other store on the platform. Ads, SEO and shipping built in — all in one place.',
-      builtInAds: 'Built-in ads',
+      startSellingDesc: 'A store of your own, alongside every other store on the platform. A built-in ads manager, SEO and shipping — all in one place.',
+      // "ads manager", never bare "ads" — see the Hebrew twin above: the manager
+      // is included, the ad spend is billed separately.
+      builtInAds: 'Built-in ads manager',
       builtInSeo: 'Built-in SEO',
       builtInShipping: 'Built-in shipping',
     },
     launch: {
-      invites: [
-        { label: 'A home for independent stores', hint: 'Everything under one roof' },
-        { label: 'A store of your own', hint: 'Your name, products and customers' },
-        { label: 'Strength in numbers', hint: 'One store, the traffic of them all' },
-        { label: 'Ads and SEO built in', hint: 'Active from day one' },
-        { label: 'Shipping built in', hint: 'Pricing, tracking and pickup' },
+      inviteLabels: [
+        'A home for independent stores',
+        'A store of your own',
+        'Strength in numbers',
+        'Everything built in',
+        'Open a store',
       ],
+      inviteHint: 'A store of your own alongside all the rest, with a built-in ads manager, SEO and shipping.',
     },
     demo: {
       badge: 'Example store',
@@ -2192,7 +2214,7 @@ export const translations = {
       oauthUnverifiedEmail: 'The email address on this Google account has not been verified by Google. Verify it there, or sign in with a password.',
       loginSubtitle: 'Log in to your account to continue.',
       benefitMall: 'Strength in numbers — the traffic of every store',
-      benefitBuiltIn: 'Ads, SEO and shipping built in',
+      benefitBuiltIn: 'A built-in ads manager, SEO and shipping',
       benefitHebrew: 'Full Hebrew and RTL',
     },
     dashboard: {

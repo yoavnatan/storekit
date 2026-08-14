@@ -12,7 +12,7 @@
  * card is an open slot, and it deliberately doesn't tell a seller what kind of
  * store belongs in it.
  */
-import { pickArtTrio, pickCardHue, TILE_WASHES } from '../lib/placeholder-art.js';
+import { pickArtTrio, pickCardHue, tileBackground, tileEdge } from '../lib/placeholder-art.js';
 import { getLang, getT } from '../i18n/index.js';
 
 interface Props {
@@ -28,9 +28,13 @@ const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const art = pickArtTrio(index, previewSlots);
 const hue = pickCardHue(index);
-// Copy rotates on its own cycle (5) — see the note on `launch.invites` in
-// translations.ts for why that length matters against a responsive grid.
-const copy = t.launch.invites[index % t.launch.invites.length]!;
+// The TITLE rotates on its own cycle (5) — see the note on `launch` in
+// translations.ts for why that length matters against a responsive grid. The
+// subtitle is the same on every card on purpose, and that note says why: the
+// number of these cards falls as real stores arrive, so a card that carried one
+// feature of the offer left a late-arriving seller seeing only that feature.
+const label = t.launch.inviteLabels[index % t.launch.inviteLabels.length]!;
+const hint = t.launch.inviteHint;
 ---
 
 <!-- `group` is what lets the art zoom on card hover the way a real card's photos
@@ -61,28 +65,28 @@ const copy = t.launch.invites[index % t.launch.invites.length]!;
            as "יש לכם מוצ...". These wrap instead; the card stretches to its
            neighbours anyway, so a second line costs nothing. `!` is needed
            because store-card.css is unlayered legacy CSS and outranks utilities. -->
-      <span class="store-card__name !whitespace-normal !overflow-visible">{copy.label}</span>
-      <span class="store-card__tagline !whitespace-normal !overflow-visible">{copy.hint}</span>
+      <span class="store-card__name !whitespace-normal !overflow-visible">{label}</span>
+      <span class="store-card__tagline !whitespace-normal !overflow-visible">{hint}</span>
     </div>
   </div>
   <!-- Empty, same as a store with no categories — it's what reserves the tags
        row's height so this card lines up with its neighbours (see StoreCard). -->
   <div class="store-card__tags"></div>
   <!-- The whole card takes ONE hue (`pickCardHue`), and the three tiles differ
-       only in gradient angle and wash strength. Three flat grey boxes with a
-       hairline glyph read as "image failed to load"; a coloured wash reads as
-       three product photos, which is the difference between the card looking
-       dead and looking stocked. One hue per card rather than one per tile: three
-       different tints inside a single card cancel each other out and the card
-       goes grey again — the variety belongs between cards, where it reads as
-       different stores. -->
+       only in how deep that hue sinks — never in light direction, which is a
+       constant (`tileBackground`, and the note above it says what varying it
+       looked like). Three flat grey boxes with a hairline glyph read as "image
+       failed to load"; a lit coloured wash reads as three product photos, which
+       is the difference between the card looking dead and looking stocked. One
+       hue per card rather than one per tile: three different tints inside a
+       single card cancel each other out and the card goes grey again — the
+       variety belongs between cards, where it reads as different stores. -->
   <div class="store-card__preview" aria-hidden="true">
     {art.map((a, i) => {
-      const wash = TILE_WASHES[i % TILE_WASHES.length]!;
       return (
         <span
           class="store-card__preview-img-wrap store-card__preview-img-wrap--empty"
-          style={`background:linear-gradient(${wash.angle}deg, color-mix(in srgb, ${hue} ${wash.from}%, var(--color-surface)), color-mix(in srgb, ${hue} ${wash.to}%, var(--color-surface)))`}
+          style={`background:${tileBackground(hue, i)};box-shadow:${tileEdge(hue)}`}
         >
           <!-- Sized to fill the tile the way a product photo does (~55% of it) —
                a small centred glyph reads as "no image", a large one reads as the
