@@ -147,7 +147,7 @@ function declaredColumns() {
     }
     // ADDs and DROPs applied in the order they are WRITTEN, which is why they are collected and
     // sorted by offset rather than looped one kind at a time. Every ADD before any DROP reads a
-    // file that re-adds a column it just dropped exactly backwards — 0026 drops `search_text` and
+    // file that re-adds a column it just dropped exactly backwards — 0027 drops `search_text` and
     // re-adds it with a new generation expression, and two passes concluded the column does not
     // exist, so drift silently stopped checking for it. Two regexes and not one alternation: the
     // merged pattern is past the complexity the linter allows, and these two are the originals.

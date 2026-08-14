@@ -560,11 +560,12 @@ function likeContains(word: string): string {
 
 /**
  * The platform's product search — every word of `query` present in the product's normalised
- * name+tags, newest first, capped.
+ * name + tags + searchable variant values, newest first, capped.
  *
  * **The matching rule is `product-listing.ts#matchesQueryWords`, and both halves of it moved.**
  * The normalisation is `store_products.search_text`, a stored generated column written by
- * `product_search_text()` (migration 0006) — a character-for-character port of `normalizeHe`,
+ * `product_search_text()` (migration 0006, variants added in 0027) — a character-for-character
+ * port of `product-search-text.ts#productSearchSource` through `normalizeHe`,
  * pinned to it by `tests/product-search-normalize.test.ts`. The word-by-word AND is one
  * `LIKE` per word against that column, which the trigram index answers.
  *

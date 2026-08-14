@@ -1462,7 +1462,9 @@ const strEmpty   = t.store.noProductsFound;
      * "לא נמצאו מוצרים" for both. Suggestions being unavailable is silence, not a claim about
      * the store's catalogue.
      */
-    type SearchProduct = { slug: string; name: string; price: number; basePrice?: number; image: string };
+    // `find`: tags + searchable variant values, pre-normalised by /api/store-search-index —
+    // absent when the product has neither. See matchesSearch below.
+    type SearchProduct = { slug: string; name: string; price: number; basePrice?: number; image: string; find?: string };
     let products: SearchProduct[] = [];
     let indexReady = false;
     let indexLoad: Promise<void> | null = null;
@@ -1572,11 +1574,18 @@ const strEmpty   = t.store.noProductsFound;
         .replace(/\s+/g, ' ').trim();
     }
 
-    function matchesSearch(query: string, name: string): boolean {
+    // The haystack is the name PLUS `find` — the tags and searchable variant values the index
+    // endpoint already normalised. Matching the name alone made this dropdown contradict the
+    // search behind it: the server matches a product on its colours (migration 0027), so "צהוב"
+    // said "לא נמצאו מוצרים" here and then returned three results on Enter. `find` arrives
+    // normalised and the name does not, which is why only the name is run through normalizeHe —
+    // joining two separately-normalised strings with a space gives the same characters as
+    // normalising the whole haystack, since the seam collapses to one space either way.
+    function matchesSearch(query: string, product: SearchProduct): boolean {
       if (!query) return true;
       const nQuery = normalizeHe(query);
-      const nName = normalizeHe(name);
-      return nQuery.split(' ').every((word) => word && nName.includes(word));
+      const haystack = `${normalizeHe(product.name)} ${product.find ?? ''}`;
+      return nQuery.split(' ').every((word) => word && haystack.includes(word));
     }
 
     async function renderResults(q: string) {
@@ -1587,7 +1596,7 @@ const strEmpty   = t.store.noProductsFound;
       // The index never loaded — say nothing rather than "this store has no such product".
       // Enter still runs the real server-side search, which is the recovery path.
       if (!indexReady) { hideDropdown(); return; }
-      const hits = products.filter((p) => matchesSearch(q, p.name)).slice(0, 5);
+      const hits = products.filter((p) => matchesSearch(q, p)).slice(0, 5);
       if (!hits.length) {
         dropdown.innerHTML = `<div class="hsd-empty">${strEmpty}</div>`;
       } else {
