@@ -122,15 +122,27 @@ export const translations = {
     // seller arriving late saw a single card advertising, say, shipping, and
     // never learned the rest existed. So every card now carries the entire
     // offer: a rotating hook on top, the full sentence underneath.
+    //
+    // The sentence runs in the order the owner asked for (2026-08-14): the store
+    // first, then what being here does for it, then what comes with it. The
+    // middle clause is deliberately NOT "כוח של קבוצה" — that is a metaphor, and
+    // the thing it stands for is concrete and worth saying outright: shoppers
+    // arrive at this store through the mall around it. `auth.benefitMall` still
+    // carries the short metaphor, where it sits in a list of three and has no
+    // room to explain itself; a card does.
+    //
+    // No label repeats a clause of the sentence beneath it. "חנות משלכם" and
+    // "כוח של קבוצה" were labels until the sentence absorbed both, and a title
+    // restating the line directly under it reads as a mistake, not as emphasis.
     launch: {
       inviteLabels: [
         'מתחם חנויות דיגיטלי',
-        'חנות משלכם',
-        'כוח של קבוצה',
-        'הכול מובנה מראש',
+        'המקום שלכם כאן',
         'פתיחת חנות',
+        'הכול מובנה מראש',
+        'להתחיל למכור',
       ],
-      inviteHint: 'חנות משלכם לצד כל השאר, עם ממשק פרסום, SEO ומשלוחים מובנים.',
+      inviteHint: 'חנות משלכם, שקונים מגיעים אליה דרך המתחם, עם ממשק פרסום, SEO ומשלוחים מובנים.',
     },
     // Showcase ("חנות לדוגמה") stores — see lib/demo-stores.ts. The label is
     // always visible on the card AND on the store page: a shopper must never
@@ -705,7 +717,7 @@ export const translations = {
       lcClose: 'סגור את החנות',
       lcOpenOrders: 'הזמנות פתוחות: {n}',
       lcPauseConfirmTitle: 'להקפיא את החנות?',
-      lcPauseConfirmBody: 'החנות תפסיק לקבל הזמנות מיד ותוסר מהמתחם ומהחיפוש — במקום הקטלוג, דף החנות יציג הודעה לקונים. ההזמנות שכבר נפתחו אינן מושפעות: תמשיך לטפל בהן מכאן כרגיל. ניתן להחזיר אותה לפעילות בכל רגע.',
+      lcPauseConfirmBody: 'החנות תפסיק לקבל הזמנות מיד ותוסר מהמתחם ומהחיפוש — דף החנות יציג הודעה לקונים. ההזמנות הקיימות ניתנות לטיפול דרך הדשבורד. ניתן להחזיר את החנות לפעילות בכל רגע.',
       lcResumeConfirmTitle: 'להחזיר את החנות לפעילות?',
       lcResumeConfirmBody: 'החנות תחזור למכור ותופיע שוב במתחם ובחיפוש. שים לב: קמפיינים שנעצרו לא חוזרים לבד — יש להפעילם מחדש בלשונית הפרסום.',
       lcCancelCloseConfirmTitle: 'לבטל את הסגירה?',
@@ -2035,12 +2047,12 @@ export const translations = {
     launch: {
       inviteLabels: [
         'A home for independent stores',
-        'A store of your own',
-        'Strength in numbers',
-        'Everything built in',
+        'Your place here',
         'Open a store',
+        'Everything built in',
+        'Start selling',
       ],
-      inviteHint: 'A store of your own alongside all the rest, with a built-in ads manager, SEO and shipping.',
+      inviteHint: 'A store of your own, that shoppers reach through the stores beside it, with a built-in ads manager, SEO and shipping.',
     },
     demo: {
       badge: 'Example store',
@@ -2516,7 +2528,7 @@ export const translations = {
       lcClose: 'Close the store',
       lcOpenOrders: 'Open orders: {n}',
       lcPauseConfirmTitle: 'Pause the store?',
-      lcPauseConfirmBody: 'The store stops taking orders immediately and leaves the listing and search — its page shows a notice to shoppers instead of the catalog. Orders already placed are unaffected: you keep handling them from here as usual. You can reopen it at any time.',
+      lcPauseConfirmBody: 'The store stops taking orders immediately and leaves the listing and search — its page shows a notice to shoppers. Existing orders can still be handled from the dashboard. You can reopen the store at any time.',
       lcResumeConfirmTitle: 'Reopen the store?',
       lcResumeConfirmBody: 'The store starts selling again and returns to the listing and search. Note: campaigns that were stopped do not resume on their own — restart them in the Advertising tab.',
       lcCancelCloseConfirmTitle: 'Cancel the closure?',
