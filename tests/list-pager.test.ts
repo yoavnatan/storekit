@@ -23,6 +23,7 @@ const LABELS: PagerLabels = {
   next: 'next',
   pageInfo: 'page {page} of {total}',
   goToPage: 'go to page {page}',
+  jump: 'jump to a page',
 };
 const labels = (): PagerLabels => LABELS;
 
@@ -191,6 +192,78 @@ describe('pressing a page', () => {
     nav.querySelector<HTMLElement>('[aria-current="page"]')!.click();
     nav.querySelector<HTMLButtonElement>('[data-page-prev]')!.click(); // disabled on page 1
     expect(w.apply).not.toHaveBeenCalled();
+  });
+});
+
+describe('the gap is the way to a page the window is hiding', () => {
+  /** Same harness as above, at a page count big enough to hide pages behind a marker. */
+  function wire(totalPages = 40) {
+    mountNavs('products', 9, totalPages);
+    let page = 9;
+    const applied: number[] = [];
+    const apply = vi.fn(() => { applied.push(page); return Promise.resolve(); });
+    initListPager({
+      name: 'products',
+      labels,
+      getPage: () => page,
+      setPage: (p) => { page = p; },
+      apply,
+      scrollTarget: () => null,
+    });
+    renderListPagers('products', page, totalPages, LABELS);
+    return { applied, page: () => page };
+  }
+  const gap = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>('[data-page-jump]')!;
+  const field = (): HTMLInputElement | null => document.querySelector<HTMLInputElement>('[data-page-jump-input]');
+  const press = (el: Element, key: string): void => { el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); };
+
+  it('says which pages it stands for', () => {
+    wire();
+    // Page 9 of 40 at 7 slots renders `1 … 7 8 9 10 11 … 40`, so the first marker is pages 2-6.
+    expect(gap().dataset.jumpFrom).toBe('2');
+    expect(gap().dataset.jumpTo).toBe('6');
+    expect(gap().getAttribute('aria-label')).toBe('jump to a page');
+  });
+
+  it('opens a field carrying that range, and lands anywhere in one action', () => {
+    const w = wire();
+    gap().click();
+    expect(field()!.placeholder).toBe('2–6');
+    field()!.value = '33';
+    press(field()!, 'Enter');
+    expect(w.page()).toBe(33);
+    expect(w.applied).toEqual([33]);
+    expect(field()).toBeNull();
+  });
+
+  it('clamps a page that does not exist instead of asking for a valid one', () => {
+    // A field that rejects rather than corrects makes the seller guess the ceiling.
+    const w = wire(40);
+    gap().click();
+    field()!.value = '999';
+    press(field()!, 'Enter');
+    expect(w.page()).toBe(40);
+  });
+
+  it('does nothing at all on Escape, or on nonsense', () => {
+    const w = wire();
+    gap().click();
+    field()!.value = '12';
+    press(field()!, 'Escape');
+    expect(field()).toBeNull();
+    expect(w.page()).toBe(9);
+
+    gap().click();
+    field()!.value = 'abc';
+    press(field()!, 'Enter');
+    expect(w.page()).toBe(9);
+    expect(w.applied).toEqual([]);
+  });
+
+  it('is not offered when nothing is hidden', () => {
+    mountNavs('products', 2, 4);
+    renderListPagers('products', 2, 4, LABELS);
+    expect(document.querySelector('[data-page-jump]')).toBeNull();
   });
 });
 

@@ -436,7 +436,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     // A system thread is the platform's own record — the seller reads and
     // replies to it, but can't delete it (a buyer thread they can).
     const deleteBtn = data.kind === 'buyer'
-      ? `<button class="seller-msg-delete" data-delete-msg-id="${escMsg(data.id)}" type="button" aria-label="${escMsg(msgI18n.deleteConv)}" title="${escMsg(msgI18n.deleteConv)}">
+      ? `<button class="seller-msg-delete" data-delete-msg-id="${escMsg(data.id)}" type="button" aria-label="${escMsg(msgI18n.deleteConv)}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         </button>`
       : '';
@@ -744,6 +744,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       next: msgDashI18nDict.paginationNext ?? 'הבא',
       pageInfo: msgDashI18nDict.paginationPageInfo ?? 'עמוד {page} מתוך {total}',
       goToPage: msgDashI18nDict.paginationGoToPage ?? 'מעבר לעמוד {page}',
+      jump: msgDashI18nDict.paginationJump ?? 'קפיצה לעמוד',
     };
   }
 

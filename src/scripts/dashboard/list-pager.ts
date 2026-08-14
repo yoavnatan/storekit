@@ -36,9 +36,22 @@ export interface PagerLabels {
   pageInfo: string;
   /** "מעבר לעמוד {page}" — each number button's accessible name. */
   goToPage: string;
+  /** "קפיצה לעמוד" — the gap's own name, since what it stands for is "the pages you can't see". */
+  jump: string;
 }
 
-/** Rendered between two non-adjacent page numbers. Not a button — there is nothing to press. */
+/**
+ * Rendered between two non-adjacent page numbers — and it is a BUTTON, because it stands for the
+ * pages that are not on screen and those are exactly the ones a seller cannot reach in one click.
+ *
+ * Numbers alone are a window, so a far page costs several hops: on a 20-page catalogue any page is
+ * within four clicks on a desktop and eight on a phone, and at 100 pages the numbers stop being
+ * navigation at all. Pressing the gap turns it into a small field: type the page, Enter, done — one
+ * action to anywhere, at any size, without spending a single pixel of the strip's width on a
+ * control that would otherwise sit there unused for every store small enough not to need it.
+ *
+ * It is also in the right PLACE for what it does: the marker already means "pages 2–7 are here".
+ */
 const GAP = '…';
 
 /* The pager is styled in utilities rather than a stylesheet (Tailwind v4 only), the same way the
@@ -54,6 +67,17 @@ const NUM_BUTTON =
    Colour alone was not enough: `--color-primary` is a dark navy a shade off the body text, so a
    bold navy digit among muted ones read as "slightly darker", not as "this is where you are". */
 const NUM_CURRENT = `${NUM_BASE} bg-[color:var(--color-bg)] [color:var(--color-primary)] [border-color:var(--color-primary)]`;
+/* The gap. It takes the number buttons' own hover, which is what says it is pressable at all — a
+   bare "…" reads as punctuation. `cursor-help` would be a lie (it does something), and a `title`
+   would be the browser's tooltip; `icon-tooltips.ts` cannot label it either, since that only covers
+   controls whose content is a glyph, so the name lives in `aria-label` for a screen reader and the
+   hover state does the rest for a mouse. */
+const GAP_BUTTON =
+  `${NUM_BASE} min-w-[1.4rem] bg-transparent [color:var(--color-muted)] cursor-pointer hover:[color:var(--color-text)] hover:[border-color:var(--color-border)] hover:bg-[color:var(--color-surface)]`;
+/* The field the gap becomes. Same height and border as a number so the strip does not jump when it
+   opens; `dir=ltr` because a number typed into an RTL field puts the caret on the wrong side of it. */
+const JUMP_INPUT =
+  'w-[2.9rem] h-[1.85rem] px-[.2rem] text-center text-[.8rem] font-semibold tabular-nums rounded-sm border [border-color:var(--color-primary)] bg-[color:var(--color-surface)] [color:var(--color-text)] outline-none';
 
 /**
  * Which page numbers to show. Always the first and the last (so the size of the list is
@@ -108,8 +132,15 @@ function slotsFor(width: number): number {
 }
 
 function pagerHtml(page: number, totalPages: number, labels: PagerLabels, slots: number): string {
-  const cell = (p: number | typeof GAP): string => {
-    if (p === GAP) return `<span class="px-[.1rem] text-[.8rem] [color:var(--color-muted)]" aria-hidden="true">${GAP}</span>`;
+  const cells = pageWindow(page, totalPages, slots);
+  const cell = (p: number | typeof GAP, i: number): string => {
+    if (p === GAP) {
+      // The range this marker stands for, read off its neighbours — it is what the field opens
+      // pre-filled with, so pressing it says what it covers instead of asking a blank question.
+      const from = (cells[i - 1] as number) + 1;
+      const to = (cells[i + 1] as number) - 1;
+      return `<button type="button" class="${GAP_BUTTON}" data-page-jump aria-label="${esc(labels.jump)}" data-jump-from="${from}" data-jump-to="${to}">${GAP}</button>`;
+    }
     // The current page is a <span>, not a button: pressing it would re-fetch the page
     // already on screen and move nothing (AI_INSTRUCTIONS → no-op interactions must be
     // invisible). `aria-current` is what tells a screen reader which one it is.
@@ -118,7 +149,7 @@ function pagerHtml(page: number, totalPages: number, labels: PagerLabels, slots:
   };
   return `
     <button type="button" class="btn btn--ghost btn--sm shrink-0 disabled:opacity-40 disabled:cursor-default" data-page-prev${page <= 1 ? ' disabled' : ''}>${esc(labels.prev)}</button>
-    <span class="flex items-center gap-[.15rem]">${pageWindow(page, totalPages, slots).map(cell).join('')}</span>
+    <span class="flex items-center gap-[.15rem]">${cells.map(cell).join('')}</span>
     <button type="button" class="btn btn--ghost btn--sm shrink-0 disabled:opacity-40 disabled:cursor-default" data-page-next${page >= totalPages ? ' disabled' : ''}>${esc(labels.next)}</button>
   `;
 }
@@ -213,20 +244,61 @@ export function initListPager(opts: ListPagerOptions): void {
 
   const totalPagesNow = (): number => parseInt(navs[0]!.dataset.totalPages ?? '1', 10) || 1;
 
+  /** Go to `target`, if it is a real page and not the one already on screen. */
+  const goTo = (target: number): void => {
+    const total = totalPagesNow();
+    if (!Number.isFinite(target)) return;
+    const page = Math.min(Math.max(1, Math.trunc(target)), total);
+    if (page === opts.getPage()) return;
+    opts.setPage(page);
+    // Repainted BEFORE the fetch, so the number the seller pressed is marked as theirs
+    // on the same frame as the press. The list underneath is still the old page for as
+    // long as the round trip takes, and this plus the dim is what says so.
+    rerender(total);
+    void opts.apply().then(() => scrollListTopIntoView(opts.scrollTarget()));
+  };
+
+  /**
+   * Turn a gap marker into the field that replaces it. Nothing else in the pager changes, so the
+   * numbers on either side stay put and stay clickable — the seller can abandon the idea by
+   * clicking one of them, without having to find a way to close this first.
+   */
+  const openJump = (gap: HTMLElement): void => {
+    const from = gap.dataset.jumpFrom ?? '';
+    const to = gap.dataset.jumpTo ?? '';
+    const input = document.createElement('input');
+    input.type = 'text';
+    // `text` + `inputmode`, not `type=number`: a number input brings spinner arrows and a scroll
+    // wheel that changes the value, both of which this page already refuses elsewhere (the ad
+    // budget field carries the same note).
+    input.inputMode = 'numeric';
+    input.dir = 'ltr';
+    input.className = JUMP_INPUT;
+    input.setAttribute('data-page-jump-input', '');
+    input.setAttribute('aria-label', gap.getAttribute('aria-label') ?? '');
+    input.placeholder = from && to && from !== to ? `${from}–${to}` : from;
+    const close = (): void => { if (input.isConnected) rerender(totalPagesNow()); };
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); const v = parseInt(input.value, 10); close(); goTo(v); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+    });
+    // Leaving without committing puts the marker back. Deferred a frame because a click on a page
+    // NUMBER blurs this field first, and re-rendering inside that blur would delete the button the
+    // click is still travelling to.
+    input.addEventListener('blur', () => { window.setTimeout(close, 0); });
+    gap.replaceWith(input);
+    input.focus();
+  };
+
   navs.forEach((nav) => {
     nav.addEventListener('click', (e) => {
+      const gap = (e.target as Element).closest<HTMLButtonElement>('[data-page-jump]');
+      if (gap) { openJump(gap); return; }
       const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next], [data-page-go]');
       if (!btn || btn.disabled) return;
-      const target = btn.dataset.pageGo
+      goTo(btn.dataset.pageGo
         ? parseInt(btn.dataset.pageGo, 10)
-        : opts.getPage() + (btn.hasAttribute('data-page-prev') ? -1 : 1);
-      if (!Number.isFinite(target) || target === opts.getPage()) return;
-      opts.setPage(target);
-      // Repainted BEFORE the fetch, so the number the seller pressed is marked as theirs
-      // on the same frame as the press. The list underneath is still the old page for as
-      // long as the round trip takes, and this plus the dim is what says so.
-      rerender(totalPagesNow());
-      void opts.apply().then(() => scrollListTopIntoView(opts.scrollTarget()));
+        : opts.getPage() + (btn.hasAttribute('data-page-prev') ? -1 : 1));
     });
 
     // A nav that is 0-wide (its panel is still `hidden`) measures 3 slots and would keep
@@ -236,6 +308,9 @@ export function initListPager(opts: ListPagerOptions): void {
     if (typeof ResizeObserver !== 'undefined') {
       new ResizeObserver(() => {
         if (nav.hidden) return;
+        // Never while the jump field is open: a repaint would delete it mid-typing, and the
+        // resize that triggers it is often the on-screen keyboard opening under the field.
+        if (document.querySelector('[data-page-jump-input]')) return;
         const slots = slotsFor(nav.clientWidth);
         if (String(slots) === nav.dataset.pagerSlots) return;
         rerender(totalPagesNow());

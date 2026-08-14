@@ -530,6 +530,7 @@ export const translations = {
       // it now, and a sentence repeating them was one more thing on the line.
       paginationPageInfo: 'עמוד {page} מתוך {total}',
       paginationGoToPage: 'מעבר לעמוד {page}',
+      paginationJump: 'קפיצה לעמוד',
       edit: 'ערוך',
       delete: 'מחק',
       save: 'שמור',
@@ -2411,6 +2412,7 @@ export const translations = {
       paginationNext: 'Next',
       paginationPageInfo: 'Page {page} of {total}',
       paginationGoToPage: 'Go to page {page}',
+      paginationJump: 'Jump to a page',
       edit: 'Edit',
       delete: 'Delete',
       save: 'Save',

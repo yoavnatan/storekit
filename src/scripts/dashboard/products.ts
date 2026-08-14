@@ -577,7 +577,7 @@ const CHIP_IMAGE_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fil
 // a size/storage/etc chip has nothing meaningful to point a photo at.
 function chipImageBtnHtml(hasImage: boolean, i18n: Record<string, string>): string {
   const label = hasImage ? (i18n.variantImageAssigned ?? 'Change linked image') : (i18n.variantImageAssign ?? 'Link an image to this color');
-  return `<button type="button" class="variant-chip-image-btn" data-variant-chip-image aria-label="${esc(label)}" title="${esc(label)}" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;border:none;background:none;cursor:pointer;padding:0;color:${hasImage ? 'var(--color-accent)' : 'var(--color-muted)'};flex-shrink:0">${CHIP_IMAGE_ICON_SVG}</button>`;
+  return `<button type="button" class="variant-chip-image-btn" data-variant-chip-image aria-label="${esc(label)}" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;border:none;background:none;cursor:pointer;padding:0;color:${hasImage ? 'var(--color-accent)' : 'var(--color-muted)'};flex-shrink:0">${CHIP_IMAGE_ICON_SVG}</button>`;
 }
 
 function chipHtml(dimName: string, value: string, i18n: Record<string, string>, image = ''): string {
@@ -2457,6 +2457,7 @@ function pagerLabels(): PagerLabels {
     next: i.paginationNext ?? 'הבא',
     pageInfo: i.paginationPageInfo ?? 'עמוד {page} מתוך {total}',
     goToPage: i.paginationGoToPage ?? 'מעבר לעמוד {page}',
+    jump: i.paginationJump ?? 'קפיצה לעמוד',
   };
 }
 
