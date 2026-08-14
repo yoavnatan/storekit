@@ -17,6 +17,8 @@ import {
   PLACEHOLDER_ART,
   TILE_HUES,
   TILE_WASHES,
+  TILE_LIGHT_ANGLE,
+  tileBackground,
   pickArtTrio,
   pickCardHue,
 } from '../src/lib/placeholder-art.js';
@@ -132,11 +134,32 @@ describe('placeholder tile colour', () => {
     // and the stroke collapse into one another (gold clears 3:1 by the least).
     expect(TILE_WASHES).toHaveLength(3);
     for (const w of TILE_WASHES) {
-      expect(w.from).toBeLessThanOrEqual(22);
-      expect(w.to).toBeLessThan(w.from);
+      expect(w.bottom).toBeLessThanOrEqual(22);
+      expect(w.top).toBeLessThan(w.bottom);
     }
     // Tiles must actually differ, or the card is one flat block of colour.
-    expect(new Set(TILE_WASHES.map((w) => `${w.angle}/${w.from}`)).size).toBe(TILE_WASHES.length);
+    expect(new Set(TILE_WASHES.map((w) => `${w.top}/${w.bottom}`)).size).toBe(TILE_WASHES.length);
+  });
+
+  it('lights every tile from the same direction', () => {
+    // The regression: three tiles with three gradient angles read as small
+    // pictures hung crooked (owner, 2026-08-14). Light direction is a constant,
+    // and depth is the only thing a tile is allowed to vary.
+    const angles = TILE_WASHES.map((_, i) => tileBackground('var(--color-tile-blue)', i))
+      .map((bg) => bg.match(/linear-gradient\((\d+)deg/)?.[1]);
+    expect(new Set(angles).size).toBe(1);
+    expect(angles[0]).toBe(String(TILE_LIGHT_ANGLE));
+  });
+
+  it('ramps every tile lighter at the top than at the bottom', () => {
+    // A tile lit from below would pass the "one angle" test above and still look
+    // wrong, so the ramp direction is pinned separately: the first colour stop
+    // of the wash is always the weaker mix.
+    for (let i = 0; i < TILE_WASHES.length; i++) {
+      const stops = [...tileBackground('HUE', i).matchAll(/HUE (\d+)%/g)].map((m) => Number(m[1]));
+      expect(stops).toHaveLength(2);
+      expect(stops[0]!).toBeLessThan(stops[1]!);
+    }
   });
 });
 

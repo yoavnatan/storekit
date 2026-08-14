@@ -53,23 +53,73 @@ export const TILE_HUES: readonly string[] = [
   'var(--color-tile-red)',
 ];
 
-/** The only thing that separates the three tiles of one card: gradient angle and
- *  how much of the card's hue washes into white. `from` never exceeds 22 — the
- *  line-art is drawn in the same hue, and past that the two collapse into each
- *  other (22% is where the weakest token, gold, still clears 3:1). */
+/** ONE light direction for every tile of every card (owner, 2026-08-14).
+ *
+ *  The first version gave each tile its own gradient angle — 145°, 215°, 175° —
+ *  so within a single card the light appeared to come from three different
+ *  directions at once. Three squares side by side, each lit from somewhere else,
+ *  read exactly the way it was described: small pictures hung crooked. Nothing
+ *  was geometrically tilted (the tiles are `aspect-ratio: 1`); the tilt was
+ *  entirely in the lighting.
+ *
+ *  So the angle is a constant now, and it is the ONE thing the tiles no longer
+ *  vary. 168° is very close to straight down with a slight lean — light from
+ *  above, the way a product photograph is lit, and the lean keeps it from
+ *  reading as a flat horizontal band. */
+export const TILE_LIGHT_ANGLE = 168;
+
+/** What separates the three tiles of one card, now that the angle can't: how
+ *  deep the card's hue sinks into the surface. Every tile is lightest at the top
+ *  and deepest at the bottom — a consistent ramp is what makes three tiles read
+ *  as one lit scene, and the depth difference between them is what stops the
+ *  card being a single flat block of colour.
+ *
+ *  `bottom` never exceeds 22 — the line-art is drawn in the same hue at full
+ *  strength, and past that the two collapse into each other (22% is where the
+ *  weakest token, gold, still clears 3:1). */
 export interface TileWash {
-  angle: number;
-  /** Mix % of the hue at the gradient's strong end. */
-  from: number;
-  /** Mix % at the weak end. */
-  to: number;
+  /** Mix % of the card's hue at the lit top edge. */
+  top: number;
+  /** …and at the shaded bottom edge. Always the deeper of the two. */
+  bottom: number;
 }
 
 export const TILE_WASHES: readonly TileWash[] = [
-  { angle: 145, from: 20, to: 6 },
-  { angle: 215, from: 12, to: 4 },
-  { angle: 175, from: 22, to: 8 },
+  { top: 4, bottom: 22 },
+  { top: 2, bottom: 15 },
+  { top: 6, bottom: 21 },
 ];
+
+/**
+ * The full CSS `background` for one tile: the wash, under a soft highlight that
+ * falls from just above the tile's top edge.
+ *
+ * The highlight is what gives the tile a surface instead of a fill — it is the
+ * same light the gradient ramps away from, so the two are one treatment rather
+ * than the "gradients-on-gradients" store-card.css warns against. It is
+ * deliberately weak and stops well before the middle: past that it turns the
+ * tile into a glossy button, which is a 2010 treatment and not this site's.
+ *
+ * Kept here, not in the component, so the lighting rule above lives in one place
+ * and the card stays a template.
+ */
+export function tileBackground(hue: string, tileIndex: number): string {
+  const wash = TILE_WASHES[tileIndex % TILE_WASHES.length]!;
+  return [
+    `radial-gradient(120% 78% at 50% -12%, color-mix(in srgb, #fff 55%, transparent) 0%, transparent 62%)`,
+    `linear-gradient(${TILE_LIGHT_ANGLE}deg,`
+      + ` color-mix(in srgb, ${hue} ${wash.top}%, var(--color-surface)) 0%,`
+      + ` color-mix(in srgb, ${hue} ${wash.bottom}%, var(--color-surface)) 100%)`,
+  ].join(', ');
+}
+
+/** The hairline that closes the tile off from the card behind it. A wash with no
+ *  edge floats; the edge is what makes three of them read as a deliberate set —
+ *  and it is drawn in the card's own hue, not the grey border token, so it
+ *  belongs to the tile rather than outlining it. */
+export function tileEdge(hue: string): string {
+  return `inset 0 0 0 1px color-mix(in srgb, ${hue} 12%, transparent)`;
+}
 
 /** The dominant hue of the card at `cardIndex`. */
 export function pickCardHue(cardIndex: number): string {
