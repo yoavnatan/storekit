@@ -12,6 +12,7 @@ import { getStorePreviews, STORE_PREVIEW_SLOTS } from '../lib/store-products.js'
 import LoadingSweep from '../components/LoadingSweep.astro';
 import { isLaunchMode, showShelfInvite, launchInviteCount, LAUNCH_GRID_SLOTS } from '../lib/launch-mode.js';
 import { getCategoryTranslations, resolveCategoryLabel } from '../lib/category-translations.js';
+import { SEED_CATEGORIES } from '../lib/store-taxonomy.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const PAGE_SIZE = 24;
@@ -75,6 +76,39 @@ const catLabel = (c: string) => resolveCategoryLabel(c, lang, categoryTranslatio
 const allCategories = [...new Set(
   storesWithProducts.flatMap(({ store }) => (store.categories ?? []).map((c) => c.trim()).filter(Boolean))
 )].sort((a, b) => catLabel(a).localeCompare(catLabel(b), lang === 'he' ? 'he' : 'en'));
+
+/**
+ * Seed categories NOBODY sells yet, offered as an invitation rather than as a filter.
+ *
+ * The row is derived from stores that exist, so early on it is four chips wide and reads as an
+ * empty directory rather than as a young one (owner, 2026-08-14: "חסר לי גם ב׳כל החנויות׳ משהו
+ * בקטגוריות, זה נראה מאוד ריק שם"). His own suggestion, and it is better than padding: a category
+ * with no shop in it is the most specific invitation this page can make — it names a gap and the
+ * person reading it may be exactly who fills it.
+ *
+ *  is the closed vocabulary we authored (store-taxonomy.ts), so every chip here
+ * resolves to a real icon and a real label; a seller-invented category would not, and inviting
+ * somebody into a category one shop made up is not an invitation to anything.
+ *
+ * CAPPED, and the cap is the whole design. Twenty of the twenty-four are unclaimed today, and a
+ * row of twenty calls-to-action is not a directory with some gaps — it is an advert with a
+ * directory attached. Four is enough to read as "there is room here" without ever outnumbering the
+ * real chips; when the catalogue fills, this row shrinks on its own and eventually vanishes, which
+ * is the correct end state and needs no cleanup.
+ *
+ * Deterministic by position rather than random, so the page does not reshuffle between two loads
+ * of the same catalogue — and it is not sorted alphabetically either: taking every Nth of what is
+ * left spreads the four across the vocabulary (fashion, home, food, tools) rather than handing out
+ * four neighbours from one corner of it.
+ */
+const OPEN_CATEGORY_SLOTS = 4;
+const claimed = new Set(allCategories.map((c) => c.trim()));
+const openCategories = (() => {
+  const unclaimed = SEED_CATEGORIES.filter((c) => !claimed.has(c));
+  if (unclaimed.length <= OPEN_CATEGORY_SLOTS) return unclaimed;
+  const step = Math.floor(unclaimed.length / OPEN_CATEGORY_SLOTS);
+  return Array.from({ length: OPEN_CATEGORY_SLOTS }, (_, i) => unclaimed[i * step]!);
+})();
 
 function norm(s: string): string {
   return s.toLowerCase().trim();
@@ -234,6 +268,22 @@ const jsonLd = {
                       keyed by it — while the text is the reader's label. */}
                   <CategoryIcon label={c} />
                   {catLabel(c)}
+                </a>
+              ))}
+              {/* The OPEN slots — a category nobody sells yet, linking to store registration
+                  rather than to a filter that would return nothing. Deliberately the LAST thing in
+                  the row: the real chips are what a shopper came for, and an invitation that
+                  pushes them down the row is an advert wearing a filter costume.
+                  `--open` is a modifier on the same chip, not a second chip: same geometry, same
+                  icon, same pill — it differs by a dashed edge and the accent tone, which is
+                  exactly enough to say "not one of the filters" without becoming a different
+                  object in the row. */}
+              {openCategories.map((c) => (
+                <a href="/seller/register" class="category-chip category-chip--open" role="listitem" title={t.launch.openCategoryHint}>
+                  <CategoryIcon label={c} />
+                  {catLabel(c)}
+                  <span class="category-chip__plus" aria-hidden="true">+</span>
+                  <span class="sr-only">{t.launch.openCategoryHint}</span>
                 </a>
               ))}
             </div>

@@ -164,6 +164,10 @@ export const translations = {
       // list of four things you receive is exactly the reading that rule exists
       // to close.
       inviteFeatures: ['משלוחים', 'כלי פרסום', 'סליקה', 'SEO'],
+      /** The open-category chip on /stores. It has to work as a title attribute AND as the chip's
+       *  accessible name, so it is a whole sentence rather than a label — a chip reading only
+       *  "מזון" beside four filter chips would be indistinguishable from one. */
+      openCategoryHint: 'עדיין אין חנות בקטגוריה הזאת — פתחו את הראשונה',
       // ONE LINE, and now a PROMISE rather than a list (owner, 2026-08-14).
       //
       // Two constraints met here. It sits in a store card's `__tagline` slot,
@@ -2128,6 +2132,7 @@ export const translations = {
         'No site to build',
       ],
       inviteFeatures: ['Shipping', 'Ad tools', 'Payments', 'SEO'],
+      openCategoryHint: 'No store here yet — open the first one',
       // One line — see the Hebrew entry for why the list moved into chips.
       inviteHint: 'A store of your own — shoppers arrive through the place',
     },
