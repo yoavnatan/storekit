@@ -94,7 +94,15 @@
        line-art has to be drawn in the same colour: past that lightness nothing
        yellow clears 3:1 against its own wash. So yellow got an INK of its own
        (see -ink below) and the wash is a real yellow.
-     • THE ORANGE IS REDDER: #c2620d → #bf4620.
+     • THE ORANGE IS NOT RED, and this is the second time that has been decided.
+       It was an amber (#c2620d), was pushed to a red-orange (#bf4620) to separate
+       it from the yellow, and the owner threw that out on sight (2026-08-14): "זה
+       נותן לי קונוטציה של להתרחק, כל האדום הזה". He is right about the mechanism —
+       red is the one hue that means STOP, on a card whose whole job is to invite.
+       So it is #b8600c now: the same corner of the wheel, but at 29° rather than
+       14° it reads as burnt amber. Do not push this one back toward red to widen
+       the gap from the yellow — the gap that matters is against the CLAY, and that
+       one is depth (22% vs 34%), not angle.
      • THE SEVENTH SLOT, and it has burned three colours. TEAL failed on a
        measurable count: at a pale wash hue ANGLE is most of what tells two tiles
        apart, and teal sat 20° from the green already in the list, so the two
@@ -125,11 +133,11 @@
      green/fresh, green/teal, blue/indigo) sit at least three slots apart.
 
      Contrast measured 2026-08-14 — the INK against that hue's deepest wash, at
-     the per-hue cap in placeholder-art.ts: orange 3.71 · blue 3.86 · yellow 5.20 ·
+     the per-hue cap in placeholder-art.ts: orange 3.34 · blue 3.86 · yellow 5.20 ·
      sky 3.40 · green 3.29 · olive 3.81 · rose 4.01 · fresh 3.85 · teal 3.54 ·
      indigo 5.46 · clay 4.68. 3:1 is the floor. Do not add or lighten a hue
      without re-measuring. */
-  --color-invite-orange: #bf4620;
+  --color-invite-orange: #b8600c;
   --color-invite-clay: #7a3b1e;
   --color-invite-blue: #2563c9;
   --color-invite-indigo: #1e3a8a;
