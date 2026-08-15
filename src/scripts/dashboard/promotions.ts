@@ -15,6 +15,7 @@ import { dashStoreSale, syncPageProduct } from './products.js';
 import { selectedRowIds } from './bulk-selection.js';
 import { initSelectDropdown } from './select-dropdown.js';
 import { initProductMultiPicker, readProductOptions } from './product-multi-picker.js';
+import { bindCategoryPickersIn } from './category-picker.js';
 
 interface SaleResponse { ok: boolean; error?: string }
 
@@ -435,6 +436,11 @@ async function refreshPromotionsPanel(): Promise<void> {
 export function initPromotionsTab(): void {
   initSaleForm();
   initBulkDiscount(getI18n());
+  // The sale's category-scope picker. Bound from THIS chunk, not by the sweep that used to run in
+  // the products chunk: this panel arrives on the click that opens it, long after that sweep — so
+  // the trigger did nothing at all unless the seller happened to open the Products tab afterwards
+  // (see bindCategoryPickersIn).
+  bindCategoryPickersIn('dash-panel-promotions');
 
   // The reverse direction of markPromotionsStale(): a discount removed from the roll-up leaves
   // the Products tab's chip and inline edit form showing the value it no longer has.

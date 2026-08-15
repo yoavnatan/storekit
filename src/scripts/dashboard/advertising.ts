@@ -12,6 +12,7 @@ import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote, campaignFeeOf, type AdScopeKind, type CampaignHealthView } from '../../lib/ad-scope-label.js';
 import { MIN_CAMPAIGN_BUDGET, MAX_CAMPAIGN_BUDGET, isValidCampaignBudget } from '../../lib/ad-budget.js';
 import { initProductMultiPicker, readProductOptions, type ProductPickerOption } from './product-multi-picker.js';
+import { bindCategoryPickersIn } from './category-picker.js';
 
 interface CampaignStats { impressions: number; clicks: number; ctr: number; spend: number; adSpend?: number; cpc: number; conversions: number; roas: number }
 interface RunPeriod { start: string; end: string; days: number }
@@ -175,6 +176,12 @@ export function initAdvertisingTab(): void {
   // floating-portal dropdown (viewport-clamped, stays pinned on scroll). The
   // selects keep holding the value + submitting; only their popup changes.
   form.querySelectorAll<HTMLSelectElement>('select').forEach((sel) => initSelectDropdown(sel));
+
+  // The boost's category-scope picker, same reasoning as the selects above and the same reasoning
+  // as Promotions': this panel is fetched on the click that opens it, so nothing bound at page load
+  // has ever seen it. No-op on the admin's per-store view, which has no dashboard shell and binds
+  // its own picker (see bindCategoryPickersIn).
+  bindCategoryPickersIn('dash-panel-advertising');
 
   // Baseline card's boost CTA jumps down to the boost card (seller tab only —
   // null-safe on the admin per-store view where the CTA is absent). The card has
