@@ -151,6 +151,19 @@ lowest-numbered open row at session start, before any work has created an opinio
 area is interesting. It does not block; it removes the discretion that was quietly selecting for
 the areas least worth auditing.
 
+**A ✅ EXPIRES, and that is measured now rather than remembered (owner, 2026-08-16).** The table has
+always said a ✅ is a statement about code that existed on that date; nothing acted on it. Row 7
+audited the dashboard's forms on 08-09, the panel-loading model underneath them was replaced on
+08-11, and the row still read ✅ while five separate bugs came out of exactly that change — every
+one of them reported by the owner rather than caught here. `npm run audit:drift` asks git which
+rows have had code move under them since the day they were marked, ranked by how many files; the
+session-start hook names the worst three. **Re-running every audit on a schedule was the obvious
+answer and it is the wrong one** — it never finishes and it spends most of its time re-reading code
+nobody touched. Re-opening a row when its subject moves does finish, and a re-read is far cheaper
+than the audit was: only what changed has to be read again. The paths each row watches live in
+`.claude/audit-areas.json`, kept in lockstep with this table by `tests/audit-areas.test.ts`; when
+you finish an audit, write the paths you actually read.
+
 **A ☐ does not mean untested.** The repo has 209 test files and ~2,690 tests, and every area above is
 covered by some of them. It means nobody has read that area *as a whole against its outside
 contract* — which is the specific gap this table closes, and the one the feed's own passing tests

@@ -28,7 +28,8 @@
     "copy:review": "node scripts/copy-review.mjs export",
     "copy:apply": "node scripts/copy-review.mjs apply",
     "brand:wordmark": "node scripts/generate-wordmark.mjs",
-    "showcase:prompts": "node ./scripts/export-showcase-prompts.mjs"
+    "showcase:prompts": "node ./scripts/export-showcase-prompts.mjs",
+    "audit:drift": "node scripts/audit-drift.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.0.2",
