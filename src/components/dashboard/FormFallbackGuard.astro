@@ -135,18 +135,57 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
     // turn a recovered form into a 403 the seller cannot explain.
     var SKIP_NAME = { _csrf: 1 };
 
-    /** Identity that survives a reload: the form's own id (or its field names when it has none),
-     *  scoped by the record it edits, so two products' editors never share a draft.
-     *  '' for a form with nothing named in it — it has no draft worth keeping, and every such
-     *  form would otherwise key to the same empty string as every other. */
+    /** Which form owns each key, so a second form with the same signature gets the next ordinal
+     *  instead of silently sharing the first one's draft. */
+    var claimedKeys = {};
+
+    /**
+     * Identity that survives a reload AND survives the form changing shape under it.
+     *
+     * It used to fall back to the form's FIELD NAMES when it had no id, and that is a set which
+     * moves: a product's editor grows and loses named inputs as the gallery, the variant rows and
+     * the tag editor wire themselves up, and every one of those changes rewrote the identity of the
+     * form. Two things broke because of it, both reported (owner, 2026-08-15):
+     *
+     *   · the floating notice's "שחזר" did nothing at all. It recomputes the key at click time
+     *     (`keyFor(o.form)`) while the offer was filed under the key computed during the scan, so
+     *     the lookup missed and the handler returned silently — a button that answers nothing;
+     *   · the draft the seller typed was SAVED under a third key, written after those initialisers
+     *     ran, so the next load's scan looked under the early key and offered the wrong thing or
+     *     nothing.
+     *
+     * So the signature is now made of things that do not move: the form's own id, else what it
+     * POSTS to, scoped by the record it edits. Where that is still not unique — two editors on one
+     * page posting to the same endpoint for the same record — an ordinal is appended in document
+     * order, which is stable within a load and identical on the next one because the markup is.
+     *
+     * `''` for a form with nothing named in it: it has no draft worth keeping, and every such form
+     * would otherwise key to the same string as every other.
+     */
     function keyFor(form) {
-      var names = [];
-      for (var i = 0; i < form.elements.length; i++) if (form.elements[i].name) names.push(form.elements[i].name);
-      if (!names.length) return '';
+      if (form.dataset.draftKey !== undefined) return form.dataset.draftKey;
+      var named = false;
+      for (var i = 0; i < form.elements.length; i++) if (form.elements[i].name) { named = true; break; }
+      if (!named) return '';
       var store = (document.getElementById('upload-config') || { dataset: {} }).dataset.storeId || '';
       var record = (form.querySelector('[name="productId"]') || form.querySelector('[name="storeId"]') || {}).value || '';
-      return PREFIX + store + ':' + (form.id || names.join(',')) + ':' + record;
+      var sig = form.id || form.getAttribute('action') || 'form';
+      var base = PREFIX + store + ':' + sig + ':' + record;
+      var key = base;
+      // `isConnected`: a form that has left the document has left its key with it. Without that
+      // check every rebuilt editor — the products table replaces its rows on every page change —
+      // would take the next ordinal and lose the draft filed under the plain one.
+      var taken = function (k) { var o = claimedKeys[k]; return !!o && o !== form && o.isConnected; };
+      var n = 2;
+      while (taken(key)) { key = base + '#' + n; n++; }
+      claimedKeys[key] = form;
+      // Cached ON the form, so the answer cannot change later in the page's life however much the
+      // form does. Everything downstream — the offer registry, the localStorage record, the
+      // notice's buttons — then agrees by construction rather than by luck.
+      form.dataset.draftKey = key;
+      return key;
     }
+
 
     /** Keyed by name + which occurrence of that name, so radio groups and repeated names land
      *  back on the right element even if the page rendered slightly differently. */

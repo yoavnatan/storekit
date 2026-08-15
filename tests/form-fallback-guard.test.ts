@@ -539,6 +539,58 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     expect(document.activeElement?.textContent).toBe(RESTORE);
   });
 
+  /**
+   * The notice's own button used to do NOTHING on a form with no `id` (owner, 2026-08-15: "ההודעה
+   * התחתונה לא באמת משחזרת").
+   *
+   * Its handler recomputes the key at click time, and the key fell back to the form's FIELD NAMES
+   * when there was no id — a set that moves, because a product's editor grows named inputs as its
+   * gallery, variant rows and tag editor wire themselves up. So the offer was filed under one key
+   * and looked up under another: `offers[key]` missed, the handler returned, and the button
+   * answered nothing. The same drift wrote the seller's draft under a third key.
+   *
+   * The form here has no id and gains a field between the scan and the press, which is exactly
+   * that sequence.
+   */
+  const NO_ID = 'method="POST" action="/api/product" data-unsaved-guard';
+  const PRODUCT_FIELDS = '<input type="hidden" name="productId" value="p1" /><input name="name" value="server" />';
+
+  it('restores from the notice even after the form has grown a field', () => {
+    renderPanels([{ tab: 'tab-products', label: 'Products', open: true,
+      form: `<form ${NO_ID}>${PRODUCT_FIELDS}</form>` }]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    type('name', 'never saved');
+    vi.advanceTimersByTime(1000);
+
+    renderPanels([{ tab: 'tab-products', label: 'Products', open: true,
+      form: `<form ${NO_ID}>${PRODUCT_FIELDS}</form>` }]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    expect(noticeShown()).toBe(true);
+    expect(noticeButtons()).toContain('dash-draft-restore');
+
+    // A widget wires itself up after the scan and adds its own named input — the drift.
+    const form = document.querySelector('form')!;
+    form.insertAdjacentHTML('beforeend', '<input type="hidden" name="images" value="" />');
+
+    document.getElementById('dash-draft-restore')!.click();
+
+    expect(document.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('never saved');
+    // ...and it closed itself, rather than sitting there having done nothing.
+    expect(noticeShown()).toBe(false);
+    expect(document.querySelector('form [role="status"]')).toBeNull();
+  });
+
+  it('gives two same-shaped editors their own draft', () => {
+    // Two product rows open at once post to the same endpoint; the record id is what separates
+    // them, and where even that repeats an ordinal does.
+    renderPanels([{ tab: 'tab-products', label: 'Products', open: true,
+      form: `<form ${NO_ID}><input type="hidden" name="productId" value="p1" /><input name="name" value="server" /></form>`
+          + `<form ${NO_ID}><input type="hidden" name="productId" value="p2" /><input name="name" value="server" /></form>` }]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    const [a, b] = Array.from(document.querySelectorAll('form'));
+    expect(a!.dataset.draftKey).not.toBe(b!.dataset.draftKey);
+  });
+
   it('says nothing at all on the ordinary load, where there is no draft', () => {
     renderPanels([{ tab: 'tab-settings', label: 'Store settings', open: true,
       form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` }]);
