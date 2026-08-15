@@ -1159,8 +1159,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       prev: tt('paginationPrev'),
       next: tt('paginationNext'),
       pageInfo: tt('paginationPageInfo'),
-      goToPage: tt('paginationGoToPage'),
-      jump: tt('paginationJump'),
     };
   }
 

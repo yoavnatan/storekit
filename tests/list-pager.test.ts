@@ -1,30 +1,31 @@
 // @vitest-environment jsdom
 /**
- * The dashboard's list pager (products / orders / messages).
+ * The dashboard's list pager (products / orders / messages / the buyer's orders).
  *
- * Three complaints produced it (owner, 2026-08-14, about the products tab), and each one is a
- * property something here has to keep:
+ * Four complaints from the owner produced what it is, and each one is a property something here
+ * has to keep:
  *
  *  1. the pager existed only UNDER the list → every tab renders it twice, and one write fills both;
- *  2. only prev/next existed → the numbers are on screen, first and last always among them;
- *  3. the scroll fired before the rows changed → the scroll waits for `apply()` to resolve.
+ *  2. only prev/next existed → there is a page selector, and every page is one action away;
+ *  3. the scroll fired before the rows changed → the scroll waits for `apply()` to resolve;
+ *  4. paging fast rewound the list → only the newest request may write (`createFetchGate`).
  *
- * (3) is the one worth a test rather than a read: it was invisible in the source (`apply()` was
- * simply not awaited) and it is the kind of thing a later edit re-introduces by accident.
+ * (3) and (4) are the two worth testing rather than reading: both were invisible in the source —
+ * an `apply()` that was simply not awaited, and an answer allowed to land out of order — and both
+ * are the kind of thing a later edit re-introduces by accident.
+ *
+ * What is NOT here any more, deliberately: the windowed strip of page numbers with `…` markers,
+ * thrown out on 2026-08-15 ("זה מסובך מדי למשתמש"). Its window algorithm, per-width slot count and
+ * jump field went with it, and so did their tests — a test for a mechanism nobody ships is a
+ * mechanism nobody deleted.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { createFetchGate, initListPager, markListBusy, pageWindow, renderListPagers, type PagerLabels } from '../src/scripts/dashboard/list-pager.js';
+import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from '../src/scripts/dashboard/list-pager.js';
 import { LOADING_CUE_DELAY_MS } from '../src/lib/loading-sweep.js';
 
-const LABELS: PagerLabels = {
-  prev: 'prev',
-  next: 'next',
-  pageInfo: 'page {page} of {total}',
-  goToPage: 'go to page {page}',
-  jump: 'jump to a page',
-};
+const LABELS: PagerLabels = { prev: 'prev', next: 'next', pageInfo: 'page {page} of {total}' };
 const labels = (): PagerLabels => LABELS;
 
 /** Both navs of one tab, the way dashboard.astro renders them (top and bottom). */
@@ -36,54 +37,56 @@ function mountNavs(name: string, page: number, totalPages: number): HTMLElement[
   return [...document.querySelectorAll<HTMLElement>(`[data-list-pager="${name}"]`)];
 }
 
-const numbersIn = (nav: HTMLElement): string[] =>
-  [...nav.querySelectorAll('[data-page-go], [aria-current="page"]')].map((el) => el.textContent ?? '');
+const pageSelect = (root: ParentNode = document): HTMLSelectElement =>
+  root.querySelector<HTMLSelectElement>('[data-page-select]')!;
 
 beforeEach(() => {
   document.body.innerHTML = '';
   vi.useRealTimers();
-  // jsdom lays nothing out, so every element measures 0 and the pager would render its narrowest
-  // window everywhere. A desktop width is the honest default for these tests; the width→slots
-  // rule itself is exercised through pageWindow's explicit `slots` above.
-  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 900 });
 });
 
-describe('which pages are offered', () => {
-  it('offers every page when they all fit', () => {
-    expect(pageWindow(2, 4, 7)).toEqual([1, 2, 3, 4]);
+describe('one control, every page', () => {
+  it('offers every page, not a window over them', () => {
+    mountNavs('products', 3, 12);
+    renderListPagers('products', 3, 12, LABELS);
+    const options = [...pageSelect().options].map((o) => o.value);
+    expect(options).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']);
+    expect(pageSelect().value).toBe('3');
   });
 
-  it('always keeps the first and the last reachable in one click', () => {
-    const w = pageWindow(9, 40, 5);
-    expect(w[0]).toBe(1);
-    expect(w[w.length - 1]).toBe(40);
+  it('looks the same at 3 pages and at 40 — nothing about the shape depends on the count', () => {
+    mountNavs('products', 1, 3);
+    renderListPagers('products', 1, 3, LABELS);
+    const small = document.querySelector('[data-list-pager]')!.children.length;
+    renderListPagers('products', 20, 40, LABELS);
+    expect(document.querySelector('[data-list-pager]')!.children.length).toBe(small);
+    expect(pageSelect().options.length).toBe(40);
   });
 
-  it('centres the window on the page you are on', () => {
-    expect(pageWindow(9, 40, 5)).toEqual([1, '…', 8, 9, 10, '…', 40]);
+  it('puts the dropdown INSIDE the translated sentence rather than beside it', () => {
+    // The label is a template: the words either side of the control are the translation's own, so
+    // a language that words it differently is not left with an English-shaped row.
+    const [top] = mountNavs('products', 3, 12);
+    renderListPagers('products', 3, 12, LABELS);
+    expect(top!.textContent).toContain('page');
+    expect(top!.querySelector('[data-pager-after]')!.textContent).toBe('of 12');
   });
 
-  it('runs the window up against the end rather than past it', () => {
-    expect(pageWindow(40, 40, 5)).toEqual([1, '…', 37, 38, 39, 40]);
-    expect(pageWindow(1, 40, 5)).toEqual([1, 2, 3, 4, '…', 40]);
+  it('names the whole thing for a screen reader — a bare number says nothing', () => {
+    const [top] = mountNavs('products', 3, 12);
+    renderListPagers('products', 3, 12, LABELS);
+    expect(pageSelect().getAttribute('aria-label')).toBe('page 3 of 12');
+    expect(top!.getAttribute('aria-label')).toBe('page 3 of 12');
   });
 
-  it('never renders a gap marker standing in for a single page', () => {
-    // "1 … 3 4 5" hides exactly page 2 behind an ellipsis that is the same width as the number
-    // it replaces — a strictly worse pager than showing it.
-    for (let page = 1; page <= 12; page++) {
-      const w = pageWindow(page, 12, 5);
-      w.forEach((cell, i) => {
-        if (cell !== '…') return;
-        const before = w[i - 1] as number;
-        const after = w[i + 1] as number;
-        expect(after - before).toBeGreaterThan(2);
-      });
-    }
-  });
-
-  it('holds a floor of three numbers, however narrow the strip claims to be', () => {
-    expect(pageWindow(5, 12, 1).filter((c) => c !== '…').length).toBeGreaterThanOrEqual(3);
+  it('stops "previous" at the first page and "next" at the last', () => {
+    mountNavs('products', 1, 12);
+    renderListPagers('products', 1, 12, LABELS);
+    expect(document.querySelector<HTMLButtonElement>('[data-page-prev]')!.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('[data-page-next]')!.disabled).toBe(false);
+    renderListPagers('products', 12, 12, LABELS);
+    expect(document.querySelector<HTMLButtonElement>('[data-page-prev]')!.disabled).toBe(false);
+    expect(document.querySelector<HTMLButtonElement>('[data-page-next]')!.disabled).toBe(true);
   });
 });
 
@@ -92,43 +95,37 @@ describe('one state, both copies', () => {
     const [top, bottom] = mountNavs('products', 3, 9);
     renderListPagers('products', 3, 9, LABELS);
     expect(top!.hidden).toBe(false);
-    expect(top!.innerHTML).toBe(bottom!.innerHTML);
-    expect(numbersIn(top!)).toEqual(numbersIn(bottom!));
+    expect(pageSelect(top!).value).toBe(pageSelect(bottom!).value);
+    expect(top!.getAttribute('aria-label')).toBe(bottom!.getAttribute('aria-label'));
   });
 
-  it('marks the current page as text, not a button — pressing it would move nothing', () => {
-    const [top] = mountNavs('products', 3, 9);
-    renderListPagers('products', 3, 9, LABELS);
-    const current = top!.querySelector('[aria-current="page"]')!;
-    expect(current.tagName).toBe('SPAN');
-    expect(current.textContent).toBe('3');
-    expect(top!.querySelector('[data-page-go="3"]')).toBeNull();
-  });
-
-  it('hides itself entirely when there is only one page', () => {
+  it('empties itself when there is only one page', () => {
+    // Emptied, not merely `hidden`: the `hidden` attribute loses to the `flex` class on these navs,
+    // so a `:empty` rule is what actually hides them.
     const [top, bottom] = mountNavs('products', 1, 1);
     renderListPagers('products', 1, 1, LABELS);
-    expect(top!.hidden).toBe(true);
-    expect(bottom!.innerHTML).toBe('');
+    expect(top!.children.length).toBe(0);
+    expect(bottom!.children.length).toBe(0);
+  });
+
+  it('comes back when a list grows past one page again', () => {
+    mountNavs('products', 1, 1);
+    renderListPagers('products', 1, 1, LABELS);
+    renderListPagers('products', 1, 4, LABELS);
+    expect(pageSelect().options.length).toBe(4);
   });
 
   it('keeps the live total on the element, so a filter that shrank the list moves "next" with it', () => {
     const [top] = mountNavs('products', 1, 9);
     renderListPagers('products', 1, 2, LABELS);
     expect(top!.dataset.totalPages).toBe('2');
-  });
-
-  it('names itself for a screen reader — the numbers alone do not say what they are', () => {
-    const [top] = mountNavs('products', 3, 9);
-    renderListPagers('products', 3, 9, LABELS);
-    expect(top!.getAttribute('aria-label')).toBe('page 3 of 9');
-    expect(top!.querySelector('[data-page-go="4"]')?.getAttribute('aria-label')).toBe('go to page 4');
+    expect(pageSelect(top!).options.length).toBe(2);
   });
 });
 
-describe('pressing a page', () => {
-  /** Wires a pager whose apply() resolves only when the returned `resolve` is called. */
-  function wire(totalPages = 9) {
+describe('choosing a page', () => {
+  /** Wires a pager whose apply() resolves only when the returned `release` is called. */
+  function wire(totalPages = 12) {
     mountNavs('products', 1, totalPages);
     let page = 1;
     let release: () => void = () => {};
@@ -150,11 +147,17 @@ describe('pressing a page', () => {
     return { applied, scrolled, apply, release: () => release(), page: () => page };
   }
 
-  it('goes straight to a number that is not adjacent', () => {
+  const choose = (value: string): void => {
+    const select = pageSelect();
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  it('goes straight to any page in one action', () => {
     const w = wire();
-    document.querySelector<HTMLButtonElement>('[data-page-go="5"]')!.click();
-    expect(w.page()).toBe(5);
-    expect(w.applied).toEqual([5]);
+    choose('9');
+    expect(w.page()).toBe(9);
+    expect(w.applied).toEqual([9]);
   });
 
   it('steps with prev/next', () => {
@@ -163,18 +166,29 @@ describe('pressing a page', () => {
     expect(w.page()).toBe(2);
   });
 
-  it('repaints the pressed number BEFORE the fetch answers', () => {
+  it('cannot be asked for a page that does not exist', () => {
+    // Worth stating because it is what the numbers strip could NOT promise: it had a free-text jump
+    // field, so it needed a clamp and a rule about what to do with nonsense. A select only ever
+    // offers real pages, and that whole branch stopped existing.
+    const w = wire(12);
+    expect([...pageSelect().options].map((o) => Number(o.value))).toEqual(
+      Array.from({ length: 12 }, (_, i) => i + 1),
+    );
+    choose('999'); // a select refuses a value it has no option for
+    expect(w.page()).toBe(1);
+  });
+
+  it('shows the chosen page BEFORE the fetch answers', () => {
     wire();
-    document.querySelector<HTMLButtonElement>('[data-page-go="5"]')!.click();
-    // Still awaiting apply() here — and page 5 is already the marked one, which is the only
+    choose('9');
+    // Still awaiting apply() here — and the control already reads 9, which is the only
     // acknowledgement the seller gets while the rows underneath are still the old page's.
-    const nav = document.querySelector<HTMLElement>('[data-list-pager="products"]')!;
-    expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe('5');
+    expect(pageSelect().value).toBe('9');
   });
 
   it('does not scroll until the new rows are actually on screen', async () => {
     const w = wire();
-    document.querySelector<HTMLButtonElement>('[data-page-go="5"]')!.click();
+    choose('9');
     await Promise.resolve();
     // The bug this replaces: the old handler called apply() without awaiting it and scrolled on
     // the very next line, so the page jumped to the top of a list still showing the page the
@@ -186,130 +200,26 @@ describe('pressing a page', () => {
     expect(w.scrolled).toEqual(['asked']);
   });
 
-  it('ignores a press that changes nothing', () => {
+  it('ignores a choice that changes nothing', () => {
     const w = wire();
-    const nav = document.querySelector<HTMLElement>('[data-list-pager="products"]')!;
-    nav.querySelector<HTMLElement>('[aria-current="page"]')!.click();
-    nav.querySelector<HTMLButtonElement>('[data-page-prev]')!.click(); // disabled on page 1
+    choose('1');
+    document.querySelector<HTMLButtonElement>('[data-page-prev]')!.click(); // disabled on page 1
     expect(w.apply).not.toHaveBeenCalled();
-  });
-});
-
-describe('the gap is the way to a page the window is hiding', () => {
-  /** Same harness as above, at a page count big enough to hide pages behind a marker. */
-  function wire(totalPages = 40) {
-    mountNavs('products', 9, totalPages);
-    let page = 9;
-    const applied: number[] = [];
-    const apply = vi.fn(() => { applied.push(page); return Promise.resolve(); });
-    initListPager({
-      name: 'products',
-      labels,
-      getPage: () => page,
-      setPage: (p) => { page = p; },
-      apply,
-      scrollTarget: () => null,
-    });
-    renderListPagers('products', page, totalPages, LABELS);
-    return { applied, page: () => page };
-  }
-  const gap = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>('[data-page-jump]')!;
-  const field = (): HTMLInputElement | null => document.querySelector<HTMLInputElement>('[data-page-jump-input]');
-  const press = (el: Element, key: string): void => { el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); };
-
-  it('says which pages it stands for', () => {
-    wire();
-    // Page 9 of 40 at 7 slots renders `1 … 7 8 9 10 11 … 40`, so the first marker is pages 2-6.
-    expect(gap().dataset.jumpFrom).toBe('2');
-    expect(gap().dataset.jumpTo).toBe('6');
-    expect(gap().getAttribute('aria-label')).toBe('jump to a page');
-  });
-
-  it('opens a field carrying that range, and lands anywhere in one action', () => {
-    const w = wire();
-    gap().click();
-    expect(field()!.placeholder).toBe('2–6');
-    field()!.value = '33';
-    press(field()!, 'Enter');
-    expect(w.page()).toBe(33);
-    expect(w.applied).toEqual([33]);
-    expect(field()).toBeNull();
-  });
-
-  it('clamps a page that does not exist instead of asking for a valid one', () => {
-    // A field that rejects rather than corrects makes the seller guess the ceiling.
-    const w = wire(40);
-    gap().click();
-    field()!.value = '999';
-    press(field()!, 'Enter');
-    expect(w.page()).toBe(40);
-  });
-
-  it('does nothing at all on Escape, or on nonsense', () => {
-    const w = wire();
-    gap().click();
-    field()!.value = '12';
-    press(field()!, 'Escape');
-    expect(field()).toBeNull();
-    expect(w.page()).toBe(9);
-
-    gap().click();
-    field()!.value = 'abc';
-    press(field()!, 'Enter');
-    expect(w.page()).toBe(9);
-    expect(w.applied).toEqual([]);
-  });
-
-  it('is not offered when nothing is hidden', () => {
-    mountNavs('products', 2, 4);
-    renderListPagers('products', 2, 4, LABELS);
-    expect(document.querySelector('[data-page-jump]')).toBeNull();
-  });
-});
-
-describe('there is one pager, not one per tab', () => {
-  // The three tabs each had their own copy, and all three carried all three complaints above —
-  // which is the point: a duplicated control accumulates a duplicated bug list. A tree scan, not a
-  // file list, so a fourth paged tab is covered the day it exists.
-  const ROOTS = ['src/scripts/dashboard', 'src/scripts', 'src/pages/seller', 'src/pages/buyer', 'src/components/dashboard'];
-  const files: string[] = [];
-  for (const root of ROOTS) {
-    for (const name of readdirSync(join(process.cwd(), root), { withFileTypes: true })) {
-      if (name.isFile() && /\.(ts|astro)$/.test(name.name)) files.push(join(root, name.name));
-    }
-  }
-
-  it('leaves the pager markup to list-pager.ts alone', () => {
-    const offenders = files
-      .filter((f) => !f.endsWith('list-pager.ts'))
-      .filter((f) => {
-        const src = readFileSync(join(process.cwd(), f), 'utf8');
-        // The BUTTONS, not the container: dashboard.astro legitimately renders the empty <nav>s.
-        return /data-page-prev\s*[$>"']/.test(src) || /data-page-go=/.test(src);
-      });
-    expect(offenders).toEqual([]);
-  });
-
-  it('scanned a set that actually contains the pager tabs', () => {
-    // Guards the guard: a renamed directory would otherwise make the scan above vacuously pass.
-    expect(files).toContain('src/scripts/dashboard/products.ts');
-    expect(files).toContain('src/scripts/dashboard/orders.ts');
-    expect(files).toContain('src/scripts/dashboard/messages.ts');
   });
 });
 
 describe('paging fast cannot rewind the list', () => {
   /**
-   * The reported bug (owner, 2026-08-15): pressing next quickly went 2 -> 3 -> back to 2. Every
+   * The reported bug (owner, 2026-08-15): pressing next quickly went 2 → 3 → back to 2. Every
    * press fires its own request, each answer wrote `currentPage = data.page` and repainted the
-   * strip, so the LAST answer to arrive won — and a slow page 2 landing after a fast page 3 rewound
-   * both the number and the rows. The clicks were never the problem; the network was being allowed
-   * to decide the order.
+   * control, so the LAST answer to arrive won — and a slow page 2 landing after a fast page 3
+   * rewound both the number and the rows. The clicks were never the problem; the network was being
+   * allowed to decide the order.
    */
   it('lets only the newest request write, whatever order the answers arrive in', () => {
     const gate = createFetchGate();
-    const first = gate.begin();   // "next" -> page 2
-    const second = gate.begin();  // "next" again, before page 2 answered -> page 3
+    const first = gate.begin();   // "next" → page 2
+    const second = gate.begin();  // "next" again, before page 2 answered → page 3
     // Page 2 answers LAST. It must not be allowed to touch anything.
     expect(first.isCurrent()).toBe(false);
     expect(second.isCurrent()).toBe(true);
@@ -387,5 +297,36 @@ describe('the wait is not silent', () => {
     markListBusy(el)();
     vi.advanceTimersByTime(1000);
     expect(el.className).toBe('');
+  });
+});
+
+describe('there is one pager, not one per tab', () => {
+  // The three tabs each had their own copy, and all three carried the same complaints — which is
+  // the point: a duplicated control accumulates a duplicated bug list. A tree scan, not a file
+  // list, so a fourth paged tab is covered the day it exists.
+  const ROOTS = ['src/scripts/dashboard', 'src/scripts', 'src/pages/seller', 'src/pages/buyer', 'src/components/dashboard'];
+  const files: string[] = [];
+  for (const root of ROOTS) {
+    for (const name of readdirSync(join(process.cwd(), root), { withFileTypes: true })) {
+      if (name.isFile() && /\.(ts|astro)$/.test(name.name)) files.push(join(root, name.name));
+    }
+  }
+
+  it('leaves the pager markup to list-pager.ts alone', () => {
+    const offenders = files
+      .filter((f) => !f.endsWith('list-pager.ts'))
+      .filter((f) => {
+        const src = readFileSync(join(process.cwd(), f), 'utf8');
+        // The BUTTONS, not the container: dashboard.astro legitimately renders the empty <nav>s.
+        return /data-page-prev\s*[$>"']/.test(src) || /data-page-select/.test(src);
+      });
+    expect(offenders).toEqual([]);
+  });
+
+  it('scanned a set that actually contains the pager tabs', () => {
+    // Guards the guard: a renamed directory would otherwise make the scan above vacuously pass.
+    expect(files).toContain('src/scripts/dashboard/products.ts');
+    expect(files).toContain('src/scripts/dashboard/orders.ts');
+    expect(files).toContain('src/scripts/dashboard/messages.ts');
   });
 });
