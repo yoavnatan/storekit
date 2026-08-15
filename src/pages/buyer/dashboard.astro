@@ -1238,8 +1238,6 @@ const STORES_NAMED = 2;
   data-pagination-prev={t.dashboard.paginationPrev}
   data-pagination-next={t.dashboard.paginationNext}
   data-pagination-page-info={t.dashboard.paginationPageInfo}
-  data-pagination-go-to-page={t.dashboard.paginationGoToPage}
-  data-pagination-jump={t.dashboard.paginationJump}
 ></div>
 
 <script>
@@ -1297,8 +1295,6 @@ const STORES_NAMED = 2;
     paginationPrev:    _i18nEl.dataset.paginationPrev    ?? 'Previous',
     paginationNext:    _i18nEl.dataset.paginationNext    ?? 'Next',
     paginationPageInfo:_i18nEl.dataset.paginationPageInfo ?? 'Page {page} of {total}',
-    paginationGoToPage:_i18nEl.dataset.paginationGoToPage ?? 'Go to page {page}',
-    paginationJump:    _i18nEl.dataset.paginationJump     ?? 'Jump to a page',
   };
 
   const navBtns = document.querySelectorAll<HTMLButtonElement>('.my-nav-btn[data-tab]');
@@ -2429,8 +2425,6 @@ const STORES_NAMED = 2;
     prev: I.paginationPrev,
     next: I.paginationNext,
     pageInfo: I.paginationPageInfo,
-    goToPage: I.paginationGoToPage,
-    jump: I.paginationJump,
   });
 
   function renderOrdersPaginationControls(totalPages: number): void {

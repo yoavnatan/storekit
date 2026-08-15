@@ -748,8 +748,6 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       prev: msgDashI18nDict.paginationPrev ?? 'הקודם',
       next: msgDashI18nDict.paginationNext ?? 'הבא',
       pageInfo: msgDashI18nDict.paginationPageInfo ?? 'עמוד {page} מתוך {total}',
-      goToPage: msgDashI18nDict.paginationGoToPage ?? 'מעבר לעמוד {page}',
-      jump: msgDashI18nDict.paginationJump ?? 'קפיצה לעמוד',
     };
   }
 

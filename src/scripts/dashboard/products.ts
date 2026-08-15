@@ -2456,8 +2456,6 @@ function pagerLabels(): PagerLabels {
     prev: i.paginationPrev ?? 'הקודם',
     next: i.paginationNext ?? 'הבא',
     pageInfo: i.paginationPageInfo ?? 'עמוד {page} מתוך {total}',
-    goToPage: i.paginationGoToPage ?? 'מעבר לעמוד {page}',
-    jump: i.paginationJump ?? 'קפיצה לעמוד',
   };
 }
 
