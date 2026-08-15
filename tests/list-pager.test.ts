@@ -23,7 +23,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from '../src/scripts/dashboard/list-pager.js';
-import { LOADING_CUE_DELAY_MS } from '../src/lib/loading-sweep.js';
 
 const LABELS: PagerLabels = { prev: 'prev', next: 'next', pageInfo: 'page {page} of {total}' };
 const labels = (): PagerLabels => LABELS;
@@ -245,58 +244,33 @@ describe('paging fast cannot rewind the list', () => {
   });
 
   it('leaves the dim to whichever request is still running', () => {
-    vi.useFakeTimers();
     const el = document.createElement('div');
     const endFirst = markListBusy(el);
     const endSecond = markListBusy(el);
-    // The superseded caller's cleanup must not lift the dim of the one that replaced it...
+    // The superseded caller's cleanup must not lift the dim of the one that replaced it — that is
+    // a list that looks settled while it is still loading...
     endFirst();
     expect(el.getAttribute('aria-busy')).toBe('true');
-    vi.advanceTimersByTime(LOADING_CUE_DELAY_MS + 1);
     expect(el.className).not.toBe('');
     // ...and the newest one still ends it cleanly.
     endSecond();
     expect(el.className).toBe('');
     expect(el.hasAttribute('aria-busy')).toBe(false);
   });
-
-  it('cannot leave a dim behind that nothing will clear', () => {
-    // The trap in the case above: a superseded request's TIMER is still pending. If it fires after
-    // the newest one finished, the list stays dimmed forever with no request running.
-    vi.useFakeTimers();
-    const el = document.createElement('div');
-    markListBusy(el);            // superseded, its cleanup never called (an aborted fetch)
-    const endSecond = markListBusy(el);
-    endSecond();
-    vi.advanceTimersByTime(LOADING_CUE_DELAY_MS * 3);
-    expect(el.className).toBe('');
-  });
 });
 
 describe('the wait is not silent', () => {
-  it('says busy immediately and dims only once the wait is worth showing', () => {
-    vi.useFakeTimers();
+  it('dims the outgoing rows immediately, not after a threshold', () => {
+    // Owner, 2026-08-15: with the dim behind the site's 450ms cue threshold it never appeared at
+    // all, because these fetches answer inside it — "עכשיו סתם מחכים". A dim is not a skeleton:
+    // nothing appears and nothing is displaced, so a short one costs a fade rather than a flicker.
     const el = document.createElement('div');
     const end = markListBusy(el);
     expect(el.getAttribute('aria-busy')).toBe('true');
-    expect(el.className).toBe('');
-    // Still nothing at the moment before the site's one threshold — the constant is the source,
-    // so this cannot drift into a second answer if the number is ever re-measured.
-    vi.advanceTimersByTime(LOADING_CUE_DELAY_MS - 1);
-    expect(el.className).toBe('');
-    vi.advanceTimersByTime(2);
     expect(el.className).not.toBe('');
     end();
     expect(el.className).toBe('');
     expect(el.hasAttribute('aria-busy')).toBe(false);
-  });
-
-  it('never dims for a fetch that answered quickly', () => {
-    vi.useFakeTimers();
-    const el = document.createElement('div');
-    markListBusy(el)();
-    vi.advanceTimersByTime(1000);
-    expect(el.className).toBe('');
   });
 });
 

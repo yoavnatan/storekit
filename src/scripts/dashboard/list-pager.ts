@@ -34,7 +34,6 @@
  * No language literals: every string arrives in `PagerLabels` from the caller, which is what lets
  * `orders.ts` (held to a stricter no-Hebrew rule by tests/orders-i18n.test.ts) share this file.
  */
-import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
 import { animateScrollTo, pinnedTopChrome } from './scroll-utils.js';
 import { COMPACT_TRIGGER_CLASS, initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
 
@@ -152,37 +151,46 @@ export function renderListPagers(name: string, page: number, totalPages: number,
 }
 
 /**
- * Dim the list while its next page is in flight — but only once the wait has earned the
- * right to say so, on the site's ONE threshold (`LOADING_CUE_DELAY_MS`, whose header
- * carries the measurement and the reasoning). These fetches normally answer inside it, so
- * normally nothing is drawn at all and the new rows are the feedback. A local number here
- * would be the third answer to a question that already has one.
+ * Dim the list while its next page is in flight — IMMEDIATELY, not after a threshold.
+ *
+ * It waited for `LOADING_CUE_DELAY_MS` (450ms, the site's one cue threshold) and these fetches
+ * normally answer inside that, so in practice the dim never appeared. The owner asked for it back
+ * (2026-08-15): "קודם זה היה יותר טוב, לפחות המוצרים לרגע הפכו לאפורים בין ההחלפות, עכשיו סתם
+ * מחכים".
+ *
+ * That is not a contradiction of the shared threshold, and the difference is worth stating because
+ * the next person will be tempted to "fix" this back. That constant governs a cue that REPLACES
+ * content — a skeleton standing where rows will be — and a skeleton that appears and vanishes
+ * inside a tenth of a second is the flicker it exists to prevent. This is the same rows at lower
+ * opacity: nothing appears, nothing is displaced, and the only thing a short one costs is a brief
+ * fade. What it buys is that a press is never answered by a completely still screen.
  *
  * Returns the function that ends it; call it on every exit path, failure included.
  *
- * `aria-busy` goes on immediately regardless: it costs nothing visually and it is the only
- * signal a screen reader gets that the rows are about to be replaced.
+ * `aria-busy` rides along: it costs nothing visually and it is the only signal a screen reader gets
+ * that the rows are about to be replaced.
  */
 const BUSY_CLASSES = 'opacity-[.45] pointer-events-none';
 
 /** The busy period each element is currently in. Fast paging starts several, and only the newest
  *  may end one — otherwise a superseded caller's cleanup lifts the dim of the request that replaced
- *  it, or worse, its own timer fires afterwards and leaves a dim nothing will ever clear. */
-const busyTimers = new WeakMap<HTMLElement, number>();
+ *  it, and the list looks settled while it is still loading. */
+const busyTokens = new WeakMap<HTMLElement, number>();
+let busySeq = 0;
 
 export function markListBusy(el: HTMLElement | null): () => void {
   if (!el) return () => {};
   const classes = BUSY_CLASSES.split(' ');
-  // A new period supersedes the previous one. The CLASS is deliberately left alone: if the list is
-  // already dimmed it is still loading, and taking the dim off to put it back would flash.
-  window.clearTimeout(busyTimers.get(el));
+  // A new period supersedes the previous one, and the token it hands back is what tells a
+  // superseded caller's cleanup to stand down — otherwise fast paging has one request lifting the
+  // dim of the request that replaced it.
+  const token = ++busySeq;
+  busyTokens.set(el, token);
   el.setAttribute('aria-busy', 'true');
-  const timer = window.setTimeout(() => el.classList.add(...classes), LOADING_CUE_DELAY_MS);
-  busyTimers.set(el, timer);
+  el.classList.add(...classes);
   return () => {
-    if (busyTimers.get(el) !== timer) return; // superseded — not ours to end
-    window.clearTimeout(timer);
-    busyTimers.delete(el);
+    if (busyTokens.get(el) !== token) return; // superseded — not ours to end
+    busyTokens.delete(el);
     el.classList.remove(...classes);
     el.removeAttribute('aria-busy');
   };
