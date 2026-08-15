@@ -35,11 +35,23 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const pageSize = Math.max(1, Math.min(100, parseInt(sp.get('psize') ?? '20', 10) || 20));
   const query = parseSellerProductQuery(sp);
 
-  const products = (await getProductsByStoreId(store.id)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const categories = await getCategoriesByStoreId(store.id);
+  // ONE round trip, not five. Every read below is independent of the other four, and they were
+  // sequential `await`s — which on this stack is five separate trips to the database, one after the
+  // other, on every single page change (AI_INSTRUCTIONS → Scalability: independent reads on a click
+  // path go in one `Promise.all`, and it only actually parallelises through the POOL). The owner
+  // reported paging as slow before anything else about it; this is most of the reason, and it was
+  // latency rather than work. `stockAlerts` is in here too — it used to be awaited inside the
+  // response literal, which is the same trip hiding in a place nobody reads as a query.
+  const [rawProducts, categories, wishlistCounts, purchasedCounts, stockAlerts] = await Promise.all([
+    getProductsByStoreId(store.id),
+    getCategoriesByStoreId(store.id),
+    getWishlistCountsForStore(store.id),
+    getPurchasedCountsByStoreSlug(store.slug),
+    countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
+  ]);
+
+  const products = [...rawProducts].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const categoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(categories, p.categoryId) : '']));
-  const wishlistCounts = await getWishlistCountsForStore(store.id);
-  const purchasedCounts = await getPurchasedCountsByStoreSlug(store.slug);
 
   const filtered = filterAndSortSellerProducts(products, categoryPaths, wishlistCounts, purchasedCounts, query);
   const { items, totalPages, total } = paginate(filtered, page, pageSize);
@@ -55,6 +67,6 @@ export const GET: APIRoute = async ({ url, cookies }) => {
     total,
     // Store-wide count (not page-scoped) so the Products-tab stock badge stays
     // accurate after any list re-fetch — add/delete/bulk all flow through here.
-    stockAlerts: await countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
+    stockAlerts,
   });
 };
