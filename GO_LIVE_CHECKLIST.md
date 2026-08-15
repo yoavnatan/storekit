@@ -1131,10 +1131,10 @@ PayPlus · Grow. **PayMe לא נפסלה** — היא פשוט כבר לא נד�
 - [ ] **למלא ב-`.env`: `ALERT_EMAIL`** — הכתובת שאליה יישלח מייל על **שגיאה קריטית** (`lib/critical-alert.ts`). בלי הכתובת הפיצ׳ר כבוי לגמרי. זה הדבר היחיד שמגיע אליך אקטיבית על תקלה בתוך האתר — ה-uptime של §1 יודע רק להגיד "האתר נפל".
 - [ ] **למלא ב-`.env`: `RESEND_API_KEY`** (מ-Resend) **ו-`EMAIL_FROM`** (כתובת על **תת-הדומיין** המאומת — `Dezabin <no-reply@send.dezabin.co.il>`, ולא על הדומיין הראשי; הסיבה בסעיף שמעל, התנגשות SPF).
 - [ ] **⚠️ תיבה נכנסת — היום אין כזאת, וזה נבדק ולא שוער (2026-08-14).** כל מייל יוצא עם
-  `replyTo: hello@dezabin.co.il` (`store.business.email`), ול-`dezabin.co.il` **אין רשומת MX** —
+  `replyTo: info@dezabin.co.il` (`store.business.email`), ול-`dezabin.co.il` **אין רשומת MX** —
   כלומר כל תשובה של קונה או של מוכר נדחית או נעלמת, בלי שאף אחד יידע. שתי דרכים, שתיהן פותרות:
   **(א) Cloudflare Email Routing — חינם, וזו ההמלצה.** להעביר את ה-nameservers של `dezabin.co.il`
-  מ-MyNames ל-Cloudflare ולהפנות `hello@` לתיבה האישית. ממילא נדרש ל-Redirect Rules (§1),
+  מ-MyNames ל-Cloudflare ולהפנות `info@` לתיבה האישית. ממילא נדרש ל-Redirect Rules (§1),
   לדחיסת סטטיים (§7), ל-Rate Limiting ולדומיינים מותאמים למוכרים. המחיר: עונים מהג'ימייל האישי
   ולא מהכתובת הממותגת. **⚠️ בהגדרה: Cloudflare מבקש `include` ל-SPF של הדומיין הראשי — רשומת SPF
   אחת בלבד, למחוק את רשומת myinbox הישנה ולא להוסיף שנייה לצידה** (אותה מלכודת מהסעיף למעלה).

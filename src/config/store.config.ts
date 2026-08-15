@@ -100,7 +100,12 @@ export const store: PlatformConfig = {
 
   business: {
     legalName: 'Dezabin',
-    email: 'hello@dezabin.co.il',
+    // Every mail the platform sends carries this as its reply-to (lib/email/index.ts), so it is not
+    // a decorative contact line — it is where a buyer's answer physically lands. It must therefore
+    // exist as a real, monitored destination before launch (owner's choice, 2026-08-14: `info@`,
+    // routed to his own inbox through Cloudflare Email Routing; GO_LIVE §4). An address here that
+    // nobody receives is worse than none: the buyer gets no error, and neither do we.
+    email: 'info@dezabin.co.il',
     // Owner-supplied 2026-08-06. These are not decoration: `/contact` publishes them, and the
     // first thing Merchant Center and Meta look for before approving a commerce account is who
     // stands behind the site and how to reach them (the "misrepresentation" suspension class).
