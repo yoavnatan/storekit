@@ -25,19 +25,14 @@
 // `.env` (and the local Claude permission overrides) are gitignored, so a worktree checkout has
 // neither. Without the first, the `db migrations` check and every seed script lose DATABASE_URL;
 // without the second, the new session re-asks for permissions this machine already granted.
-import { execFileSync } from 'node:child_process';
+import { git, run } from './lib/run.mjs';
 import { copyFileSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 
-// `stdio: 'inherit'` makes execFileSync return null rather than a string — the callers that stream
-// their output (npm ci, the warm-up verify) want the child's console, not its text, and only the
-// git callers read a value back.
-const run = (cmd, args, opts = {}) =>
-  // eslint-disable-next-line sonarjs/no-os-command-from-path
-  execFileSync(cmd, args, { encoding: 'utf8', stdio: 'pipe', ...opts })?.trim() ?? '';
-
-const git = (...args) => run('git', args);
+// Moved to scripts/lib/run.mjs when a second script needed it — its header says why the move
+// rather than a second copy. `stdio: 'inherit'` still makes it return '' for the callers that
+// stream their output (npm ci, the warm-up verify) instead of reading it.
 
 let ROOT;
 let COMMON;

@@ -96,8 +96,14 @@ function isBusy(panel: Element): boolean {
   // An open edit row / add-product box / bulk panel — untouched or not, its fields would
   // be swapped out mid-look.
   if (panel.querySelector('.edit-row:not([hidden])')) return true;
-  if (!document.getElementById('add-product-form')?.hidden) return true;
-  if (!document.getElementById('bulk-upload-panel')?.hidden) return true;
+  // `=== false`, not `!…?.hidden`. These two live in the PRODUCTS panel, and since panels arrive
+  // one fetch at a time (2026-08-11) they are absent for anyone who has not opened that tab — where
+  // `?.hidden` is `undefined` and the old negation read it as "the box is open, the seller is
+  // busy". So a cross-tab live refresh was declined, permanently and silently, for the ordinary
+  // seller sitting on Orders or Messages: the panel went stale and raised the notice instead of
+  // updating itself. Absent must mean NOT busy, and it has to be spelled that way.
+  if (document.getElementById('add-product-form')?.hidden === false) return true;
+  if (document.getElementById('bulk-upload-panel')?.hidden === false) return true;
   // A floating dropdown (filter/sort menus) or any modal: re-rendering the rows
   // underneath moves the ground the menu is anchored to.
   if (document.querySelector('.toolbar-portal')) return true;

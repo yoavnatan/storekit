@@ -26,6 +26,7 @@ cat >/dev/null 2>&1 || true   # drain the hook's stdin JSON
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 TABLE="$DIR/../skills/review-diff/SKILL.md"
+REPO="$DIR/../.."
 [ -r "$TABLE" ] || exit 0
 
 # A row is "open" when its Audited cell has no ✅. `partial` counts as open — row 3 has read half
@@ -55,4 +56,28 @@ bugs, the no-JS authorization holes and the 50,000-URL sitemap ceiling.
 
 Not a blocker and not today's task: do the user's work first. Take it when the session has room,
 and if you do, mark the row in the same session or say plainly that you did not.
+EOF
+
+# ── And the rows that WERE audited, whose code has moved since ────────────────────────────────
+#
+# A ✅ is a statement about the code that existed on that date, and the table has always said so in
+# prose while nothing acted on it. Row 7 audited the dashboard's forms on 2026-08-09; the panel
+# loading model under them was replaced on 08-11; the row still read ✅ while five bugs came out of
+# exactly that change, every one found by the owner (2026-08-16, asking whether the audits should
+# re-run periodically — they should not; they should re-open when their subject moves).
+#
+# One command, no pipes: an earlier version piped the JSON into `node -e` and the hook hung waiting
+# on stdin, which at session start is a start that never happens. Every failure path here exits
+# quietly for the same reason — a notice that can break the start is worse than an absent one.
+top="$(cd "$REPO" 2>/dev/null && node scripts/audit-drift.mjs --top 2>/dev/null)" || exit 0
+[ -n "$top" ] || exit 0
+
+cat <<EOF
+
+Already audited, but the code under them has MOVED since — ranked by how much:
+
+$top
+
+\`npm run audit:drift\` for the full list. Re-reading a drifted row is far cheaper than a fresh
+audit: only what changed since that date has to be read again.
 EOF

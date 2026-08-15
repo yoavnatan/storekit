@@ -1,0 +1,267 @@
+{
+  "_": [
+    "The machine half of the area-audit table in .claude/skills/review-diff/SKILL.md.",
+    "",
+    "WHY IT EXISTS (owner, 2026-08-16, asking whether audits should be re-run periodically):",
+    "a ✅ is a statement about code that existed ON THAT DATE, and the table says so in prose —",
+    "but nothing acted on it. Row 7 audited the dashboard on 08-09; its whole loading model was",
+    "replaced on 08-11; the row still read ✅ while five bugs came out of exactly that change.",
+    "",
+    "Re-running every audit on a schedule is the answer that never finishes and mostly re-reads",
+    "code nobody touched. The answer that does finish is: re-open a row when the code UNDER it",
+    "has moved since the day it was marked. `npm run audit:drift` asks git that question.",
+    "",
+    "`paths` is what the row is ABOUT — a handful of entries, not an exhaustive file list. Too",
+    "wide and every row is permanently stale (src/); too narrow and the change that matters slips",
+    "past. When an audit is done, write the paths the audit actually read.",
+    "",
+    "tests/audit-areas.test.ts keeps this file and the table in lockstep and checks every path",
+    "still exists, so a rename cannot quietly empty a row's watch list."
+  ],
+  "areas": [
+    {
+      "id": 1,
+      "title": "Feed + advertising — the Merchant/Catalog contract",
+      "audited": "2026-08-06",
+      "paths": [
+        "src/lib/product-feed.ts",
+        "src/lib/ad-item-id.ts",
+        "src/lib/product-labels.ts",
+        "src/lib/ad-campaign-health.ts",
+        "src/pages/api/feed/"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Money: orders, commissions, balances",
+      "audited": "2026-08-07",
+      "paths": [
+        "src/lib/money.ts",
+        "src/lib/orders.ts",
+        "src/lib/seller-balance.ts",
+        "src/lib/refund-owed.ts",
+        "src/lib/order-status-rules.ts",
+        "src/lib/money-events.ts",
+        "src/lib/reconcile.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Inventory + checkout",
+      "audited": "2026-08-12",
+      "paths": [
+        "src/lib/store-products.ts",
+        "src/lib/variant-combo.ts",
+        "src/pages/api/checkout.ts",
+        "src/pages/api/cart/",
+        "src/lib/checkout-idempotency.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Authorization — who may READ and who may WRITE what",
+      "audited": "2026-08-06",
+      "paths": [
+        "src/lib/store-ownership.ts",
+        "src/lib/seller-auth.ts",
+        "src/lib/safe-redirect.ts",
+        "src/middleware.ts",
+        "src/pages/api/"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Domains + the origin boundary",
+      "audited": null,
+      "paths": [
+        "src/lib/custom-domain.ts",
+        "src/lib/custom-domain-links.ts",
+        "src/lib/platform-routes.ts",
+        "src/lib/cross-origin-handoff.ts",
+        "src/lib/cart-handoff.ts",
+        "src/middleware.ts",
+        "src/pages/robots.txt.ts"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "SEO surfaces: sitemap, canonical, robots, structured data",
+      "audited": null,
+      "paths": [
+        "src/components/Seo.astro",
+        "src/pages/sitemap-content.xml.ts",
+        "src/pages/sitemap-content-[shard].xml.ts",
+        "src/pages/robots.txt.ts",
+        "src/lib/url-base.ts"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Dashboard: forms, parallel tabs, draft recovery",
+      "audited": "2026-08-09",
+      "paths": [
+        "src/components/dashboard/FormFallbackGuard.astro",
+        "src/scripts/dashboard/unsaved-guard.ts",
+        "src/scripts/dashboard/tab-sync.ts",
+        "src/lib/record-rev.ts"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Graceful degradation — no secondary service in a critical path",
+      "audited": null,
+      "paths": [
+        "src/lib/outbound-fetch.ts",
+        "src/lib/cdn.ts",
+        "src/lib/payment.ts",
+        "src/pages/api/health.ts"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Behaviour under load",
+      "audited": "2026-08-09",
+      "paths": [
+        "src/lib/db.ts",
+        "src/lib/shutdown.ts",
+        "src/lib/single-flight.ts",
+        "src/lib/artifacts.ts",
+        "src/lib/jobs/",
+        "src/lib/page-view-tap.ts"
+      ]
+    },
+    {
+      "id": 10,
+      "title": "RTL + i18n",
+      "audited": "2026-08-07",
+      "paths": [
+        "src/i18n/index.ts",
+        "src/lib/arrow-step.ts",
+        "src/layouts/BaseLayout.astro"
+      ]
+    },
+    {
+      "id": 11,
+      "title": "What a failure LOOKS like — every surface that can tell a user something went wrong",
+      "audited": "2026-08-10",
+      "paths": [
+        "src/lib/toast.ts",
+        "src/components/ConfirmModal.astro",
+        "src/lib/stream-errors.ts",
+        "src/scripts/error-reporter.ts",
+        "src/lib/critical-alert.ts"
+      ]
+    },
+    {
+      "id": 12,
+      "title": "The SCHEMA a migration actually produced",
+      "audited": "2026-08-10",
+      "paths": [
+        "migrations/",
+        "scripts/db-migrate.mjs"
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Payouts and the platform statement — money LEAVING the company",
+      "audited": null,
+      "paths": [
+        "src/lib/payouts.ts",
+        "src/lib/payout-run.ts",
+        "src/lib/payout-hold.ts",
+        "src/lib/payout-schedule.ts",
+        "src/lib/platform-ledger.ts",
+        "src/lib/platform-statement.ts"
+      ]
+    },
+    {
+      "id": 14,
+      "title": "The seller dashboard's LOADING model — one panel per request",
+      "audited": null,
+      "paths": [
+        "src/lib/panel-swap.ts",
+        "src/lib/panel-freshness.ts",
+        "src/components/dashboard/SellerPanelShell.astro",
+        "src/components/dashboard/DashTabsBoot.astro",
+        "src/pages/seller/dashboard.astro"
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Messaging — the only channel between two strangers",
+      "audited": null,
+      "paths": [
+        "src/lib/messages.ts",
+        "src/lib/seller-messages-query.ts",
+        "src/lib/message-flood.ts",
+        "src/lib/spam-filter.ts",
+        "src/lib/notification-copy.ts"
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Background jobs — what runs with nobody watching",
+      "audited": null,
+      "paths": [
+        "src/lib/jobs/"
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Notifications and the alert beacons — a dot is a promise",
+      "audited": null,
+      "paths": [
+        "src/lib/notifications.ts",
+        "src/lib/seller-alerts.ts",
+        "src/lib/notification-link.ts",
+        "src/scripts/dashboard/tab-alert-edges.ts"
+      ]
+    },
+    {
+      "id": 18,
+      "title": "The buyer's invoice — a document the platform does NOT issue",
+      "audited": null,
+      "paths": [
+        "src/lib/invoicing/",
+        "src/lib/order-invoice-row.ts",
+        "src/pages/terms.astro"
+      ]
+    },
+    {
+      "id": 19,
+      "title": "Every write path a stranger can reach without an account",
+      "audited": null,
+      "paths": [
+        "src/pages/api/report.ts",
+        "src/pages/api/log-client-error.ts",
+        "src/pages/api/analytics/",
+        "src/pages/api/cart/",
+        "src/pages/api/lang.ts",
+        "src/lib/request-body.ts"
+      ]
+    },
+    {
+      "id": 20,
+      "title": "What leaves the platform as a LINK somebody forwards",
+      "audited": null,
+      "paths": [
+        "src/components/ShareMenu.astro",
+        "src/scripts/share-menu.ts",
+        "src/components/Seo.astro"
+      ]
+    },
+    {
+      "id": 21,
+      "title": "The browser-side image pipeline — everything before the upload finishes",
+      "audited": null,
+      "paths": [
+        "src/scripts/dashboard/image-downscale.ts",
+        "src/scripts/dashboard/bg-worker.ts",
+        "src/workers/",
+        "src/scripts/dashboard/crop-modal.ts",
+        "src/scripts/dashboard/cleanup-modal.ts",
+        "src/scripts/dashboard/cloudinary.ts"
+      ]
+    }
+  ]
+}

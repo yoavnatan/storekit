@@ -7,6 +7,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
 import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.js';
 import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
+import { takePanelIntent } from './panel-intent.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
@@ -2642,6 +2643,10 @@ export function initPagination(): void {
   productsPageSize = parseInt(sizeSelect?.value ?? '20', 10) || 20;
   renderPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
 
+  // Arrived from the overview's "stock needs attention" tile? Apply it, once. The tile is bound by
+  // the overview's own module and records an intent rather than reaching in here (panel-intent.ts).
+  if (takePanelIntent('products')?.stockAttention) applyStockAttentionFilter();
+
   initListPager({
     name: 'products',
     labels: pagerLabels,
@@ -2922,8 +2927,10 @@ function refreshFilterUI(): void {
   if (!productsFilters.size) unlockTableColumns(productsTableEl());
 }
 
-// Programmatic entry point for the overview tab's "stock needs attention" card:
-// isolate the products list to the out-of-stock + low-stock buckets and reflect
+// The overview tab's "stock needs attention" card lands here — through an INTENT it records rather
+// than by calling this directly, so the tile works on a load where this module has not run yet
+// (panel-intent.ts). Also called by the stock badge's own shortcut.
+// Isolate the products list to the out-of-stock + low-stock buckets and reflect
 // the active funnel, exactly as if the seller had ticked those two boxes in the
 // stock filter themselves. Clears any other active filter so the jump lands on a
 // clean "only what needs attention" view.
