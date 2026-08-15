@@ -20,6 +20,10 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
 const strSaleBadge = t.store.saleBadge;
 const strSaleWas   = t.store.saleWas;
 const strHalted    = t.store.haltedTitle;
+// "מוצר לדוגמה". This modal is opened from the CART drawer, where a showcase item sits next to a
+// real one — so it is the surface furthest from the store page's own disclosure and the one where
+// the words matter most (`lib/demo-stores.ts`: never learn it at the checkout refusal).
+const strDemo      = t.demo.productBadge;
 ---
 
 <!-- Lightbox (native dialog → top-layer, opens above pqv-dialog).
@@ -68,6 +72,7 @@ const strHalted    = t.store.haltedTitle;
   data-str-sale-badge={strSaleBadge}
   data-str-halted={strHalted}
   data-str-sale-was={strSaleWas}
+  data-str-demo={strDemo}
   class="border-0 rounded-[var(--radius-lg)] p-0 w-[min(540px,94vw)] max-h-[90dvh] overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,.22)] [overscroll-behavior:contain] fixed inset-0 m-auto will-change-transform contain-layout open:animate-modal-in [&::backdrop]:bg-black/50 transition-opacity duration-150 data-[lightbox=open]:opacity-0"
 >
   <div class="relative max-h-[90dvh] flex flex-col overflow-hidden">
@@ -91,6 +96,7 @@ const strHalted    = t.store.haltedTitle;
   import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../lib/lightbox-image.js';
   import { arrowStep, wrapIndex } from '../lib/arrow-step.js';
   import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
+  import { demoProductBadgeHtml } from '../lib/demo-badge.js';
   import type { PriceView } from '../lib/discounts.js';
   import { escapeHtml as pqvEsc } from '../lib/html-escape.js';
   import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
@@ -115,6 +121,7 @@ const strHalted    = t.store.haltedTitle;
     saleBadge: pqvDialog?.dataset['strSaleBadge'] ?? 'מבצע',
     saleWas:   pqvDialog?.dataset['strSaleWas']   ?? 'מחיר קודם',
     halted:    pqvDialog?.dataset['strHalted']    ?? '',
+    demo:      pqvDialog?.dataset['strDemo']      ?? '',
   };
 
   interface PQVProduct {
@@ -126,6 +133,9 @@ const strHalted    = t.store.haltedTitle;
     /** The store stopped selling (see /api/store-product). Additive — an older payload without
      *  it behaves exactly as before, and /api/checkout refuses the purchase either way. */
     storeHalted?: boolean;
+    /** The store is a showcase store (same endpoint, same additive contract) — the item can be
+     *  added to the cart and will never be charged (lib/demo-stores.ts#splitDemoCarts). */
+    storeDemo?: boolean;
     variants: Array<{ name: string; options: string[] }>;
     variantImages?: Record<string, string>;
   }
@@ -230,6 +240,7 @@ const strHalted    = t.store.haltedTitle;
           <div class="pt-3.5 px-5 pb-5">
             <a href="/${pqvEsc(storeSlug)}" class="text-xs font-bold text-[color:var(--color-muted)] no-underline tracking-[.05em] uppercase inline-block mb-1.5 transition-colors duration-[140ms] hover:text-[color:var(--color-text)]">${pqvEsc(storeName)}</a>
             <div dir="auto">
+              ${p.storeDemo ? demoProductBadgeHtml(strings.demo, 'inline') : ''}
               <h2 class="text-[1.2rem] font-bold text-[color:var(--color-text)] mb-1.5" id="pqv-name">${pqvEsc(p.name)}</h2>
               <p class="text-[1.125rem] font-extrabold mb-2${pqvPriceView(p).isDiscounted ? '' : ' text-[color:var(--color-accent)]'}">${priceHtml(pqvPriceView(p), { saleLabel: strings.saleWas })}</p>
             </div>

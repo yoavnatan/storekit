@@ -4,6 +4,7 @@ import { getCategoryTranslations } from '../lib/category-translations.js';
 import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
+import ProductDemoBadge from '../components/ProductDemoBadge.astro';
 import { store as platform, formatPrice } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId, getStoresBySlugs } from '../lib/stores.js';
@@ -123,6 +124,7 @@ const jsonLd = {
                             </svg>
                           </div>
                         )}
+                      <ProductDemoBadge demo={p.demo} />
                     </div>
                     <div class="search-product-card__body">
                       <span class="search-product-card__name"><bdi>{p.name}</bdi></span>

@@ -14,6 +14,7 @@ import { resolvePrice, priceValidUntil } from '../../lib/discounts.js';
 import { offerShippingDetails } from '../../lib/shipping.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
+import ProductDemoBadge from '../../components/ProductDemoBadge.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
 import ShareMenu from '../../components/ShareMenu.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
@@ -455,15 +456,7 @@ const pmI18n = {
           <!-- Name + price — dir=auto on the wrapper so the price aligns to the same
                side as the (per-language) product name instead of staying pinned right. -->
           <div class="flex flex-col gap-2" dir="auto">
-            {isDemo && (
-              <span class="inline-flex items-center gap-1 mb-1.5 text-[0.72rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0">
-                  <circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/>
-                </svg>
-                {t.demo.productBadge}
-              </span>
-            )}
+            <ProductDemoBadge demo={isDemo} variant="inline" />
             <h1 id="product-name-heading" style="font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
             <p style="font-size:1.25rem;font-weight:800;line-height:1;margin:0" class={pv.isDiscounted ? undefined : '[color:var(--color-accent)]'}>
               <Fragment set:html={priceHtml(pv, { saleLabel: t.store.saleWas })} />
@@ -798,6 +791,10 @@ const pmI18n = {
                             </svg>
                           </div>
                       }
+                      {/* Same rule as the store page's own grid: the card carries it, not only the
+                          page. These cards also open the modal in place, so the badge on the card
+                          is what a shopper sees before deciding to. */}
+                      <ProductDemoBadge demo={isDemo} />
                     </div>
                     <div dir="auto" style="padding:0.5rem 0.6rem 0.6rem">
                       <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)">{p.name}</p>

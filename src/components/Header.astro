@@ -227,6 +227,7 @@ const strEmpty   = t.store.noProductsFound;
         data-str-view-all={t.search.viewAllResults}
         data-str-recents={strRecents}
         data-str-clear={strClear}
+        data-str-demo={t.demo.productBadge}
       >
         <form role="search" autocomplete="off" onsubmit="return false" style="display:contents">
           <label for="store-search" class="visually-hidden">{t.home.searchPlaceholder}</label>
@@ -1257,6 +1258,11 @@ const strEmpty   = t.store.noProductsFound;
   if (homeSearchIn && homeSearchDdEl) {
     const strStores   = homeSearchWrap?.dataset.strStores ?? 'חנויות';
     const strProducts = homeSearchWrap?.dataset.strProducts ?? 'מוצרים';
+    /** "מוצר לדוגמה" for a hit from a showcase store. A suggestion row is too small for the chip
+     *  the cards wear (`lib/demo-badge.ts`), so it rides the store line instead — but it does have
+     *  to be here: this dropdown is a shopper's shortest path from a search box to a demo product,
+     *  and the disclosure is meant to arrive before the click, not at the checkout refusal. */
+    const strDemo = homeSearchWrap?.dataset.strDemo ?? '';
     const strEmptyRes = homeSearchWrap?.dataset.strEmpty ?? 'לא נמצאו תוצאות';
     const strSearchFailed = homeSearchWrap?.dataset.strFailed ?? 'החיפוש אינו זמין כרגע';
     const strViewAll  = homeSearchWrap?.dataset.strViewAll ?? 'לכל התוצאות';
@@ -1322,7 +1328,7 @@ const strEmpty   = t.store.noProductsFound;
     }
 
     type SiteSearchStore = { name: string; slug: string; tagline: string; image: string };
-    type SiteSearchProduct = { name: string; slug: string; price: number; basePrice?: number; image: string; storeSlug: string; storeName: string };
+    type SiteSearchProduct = { name: string; slug: string; price: number; basePrice?: number; image: string; storeSlug: string; storeName: string; demo?: boolean };
 
     // Guards a slower, earlier fetch (e.g. a fast backspace-retype) from resolving
     // after a newer one and overwriting the dropdown with stale results.
@@ -1378,7 +1384,7 @@ const strEmpty   = t.store.noProductsFound;
                   }
                   <div class="hsd-result-text">
                     <span class="hsd-result-name">${escHtml(p.name)}</span>
-                    <span class="hsd-result-store">${escHtml(p.storeName)}</span>
+                    <span class="hsd-result-store">${escHtml(p.storeName)}${p.demo && strDemo ? ` · ${escHtml(strDemo)}` : ''}</span>
                   </div>
                   <span class="hsd-result-price price-now${p.basePrice ? ' price-now--sale' : ''}">${formatHomePrice(p.price)}</span>${p.basePrice ? `<s class="price-was">${formatHomePrice(p.basePrice)}</s>` : ''}
                 </a>

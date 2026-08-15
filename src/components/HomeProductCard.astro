@@ -25,11 +25,15 @@ import type { StoreProduct } from '../lib/store-products.js';
 import { formatPrice, cdnSrc, cdnSrcSet } from '../config/store.config.js';
 import { resolvePrice, type StoreSale } from '../lib/discounts.js';
 import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
+import ProductDemoBadge from './ProductDemoBadge.astro';
 
 interface Props {
   product: StoreProduct;
   /** Where the tile links — the store the product belongs to. */
   storeSlug: string;
+  /** Whether that store is a showcase store (`lib/demo-stores.ts`). Renders the per-product
+   *  disclosure chip; absent/false costs the tile nothing. */
+  demo?: boolean;
   /** That store's running sale, so a discounted tile shows the same price the store page does. */
   sale?: StoreSale;
   /** Accessible name of the carousel/row this tile sits in (for role="listitem"). */
@@ -40,7 +44,7 @@ interface Props {
   priority?: boolean;
 }
 
-const { product: p, storeSlug, sale, role, priority = false } = Astro.props;
+const { product: p, storeSlug, sale, role, priority = false, demo = false } = Astro.props;
 const pv = resolvePrice(p, sale);
 /** 220px tile; 440 covers 2x retina. Widths kept short on purpose — each distinct
  *  width is a separate CDN derivative. */
@@ -73,6 +77,10 @@ const WIDTHS = [220, 440];
         </span>
     }
     <Fragment set:html={saleBadgeHtml(pv)} />
+    {/* The spotlight already says "חנות לדוגמה" beside the store's name above the row, but a tile
+        is what a shopper actually clicks and it scrolls independently of that header — the
+        disclosure has to travel with the item, exactly as it does on the store page's own grid. */}
+    <ProductDemoBadge demo={demo} />
   </div>
   <div class="home-product-card__body">
     <!-- `<bdi>` not `dir="auto"`: dir would also flip the ALIGNMENT, so a Latin
