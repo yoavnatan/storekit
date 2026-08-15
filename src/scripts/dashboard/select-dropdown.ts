@@ -147,6 +147,14 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
     let left = rtl ? a.right - menuW : a.left;
     left = Math.max(margin, Math.min(left, window.innerWidth - menuW - margin));
     el.style.left = `${left}px`;
+
+    // Open ON the current value, not at the top. The portal caps itself at 320px and scrolls
+    // (toolbar-portal.ts), which is invisible for a five-option list and wrong for a long one: the
+    // pager's page-select can hold forty options, and opening it on page 37 used to show pages
+    // 1–10 and leave the seller to scroll for the one they are already on. `nearest` so a short
+    // list — where the selected option is on screen anyway — does not move at all.
+    const selected = el.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (selected && el.scrollHeight > el.clientHeight) selected.scrollIntoView({ block: 'nearest' });
   });
 
   // Keep the visible label in step with both a real user `change` and a
