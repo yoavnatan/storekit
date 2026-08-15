@@ -247,12 +247,18 @@ export async function writeCatalog(db, catalog) {
 
     await insertMany(db, 'stores', [
       'id', 'seller_id', 'slug', 'name', 'tagline', 'description', 'colors', 'categories',
-      'shipping', 'banner_image', 'profile_image', 'address', 'address_visible', 'hours',
-      'hours_visible', 'demo', 'created_at',
+      'shipping', 'banner_image', 'profile_image', 'header_logo', 'header_style', 'address',
+      'address_visible', 'hours', 'hours_visible', 'demo', 'created_at',
     ], stores.map((s) => [
       s.id, s.sellerId, s.slug, s.name, s.tagline ?? '', s.description ?? '',
       JSON.stringify(s.colors ?? {}), s.categories ?? [], JSON.stringify(s.shipping ?? {}),
-      s.bannerImage ?? null, s.profileImage ?? null, s.address ?? null,
+      s.bannerImage ?? null, s.profileImage ?? null, s.headerLogo ?? null,
+      // The column is NOT NULL DEFAULT 'name' (migration 0021) and an explicit column list turns
+      // that default off, so this must supply the default itself rather than pass null. 'logo' is
+      // only ever written alongside a `headerLogo`, because the two are one setting: the header
+      // reads the picture through `storeHeaderLogo()`, which returns nothing without both.
+      s.headerLogo && s.headerStyle === 'logo' ? 'logo' : 'name',
+      s.address ?? null,
       Boolean(s.addressVisible), s.hours ? JSON.stringify(s.hours) : null,
       Boolean(s.hoursVisible), Boolean(s.demo), s.createdAt ?? null,
     ]));

@@ -300,6 +300,18 @@ async function seed(db, clean) {
      * uploads nothing still gets something deliberate.
      */
     const logo = manifest[`${spec.slug}:__logo`];
+    /**
+     * The header lock-up — mark and name side by side, for the top bar (`identity.mjs`'s
+     * `lockupUrl`). Only some stores have one, and that asymmetry is the demonstration:
+     * `headerStyle` is a real seller's choice between his name as text and his own logo, so a set
+     * of showcase stores where all four chose the same thing shows one of the two options.
+     *
+     * The pair is written together and never separately. `stores.ts#storeHeaderLogo` only returns
+     * the image when `headerStyle === 'logo'`, so seeding the URL alone would store a picture that
+     * nothing renders, and seeding the style alone would select an option with nothing behind it —
+     * which is the state `HeaderStyleCard` disables its own radio for.
+     */
+    const headerLogo = manifest[`${spec.slug}:__headerlogo`];
 
     stores.push({
       id: storeId,
@@ -317,6 +329,7 @@ async function seed(db, clean) {
       // StoreDemoBanner.astro, so it stays crisp at every width and survives a rename.
       bannerImage: banner,
       profileImage: logo,
+      ...(headerLogo ? { headerLogo, headerStyle: 'logo' } : {}),
       shipping: { selfPickup: spec.selfPickup },
       address: spec.address,
       addressVisible: true,

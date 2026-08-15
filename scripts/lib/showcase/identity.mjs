@@ -495,6 +495,33 @@ export const SHOWCASE_STORES = [
      *  somewhere else, which is why the crescent is also described in words. */
     logoRefKey: '__banner',
     logoRefCrop: 'c_crop,x_0.852,y_0.24,w_0.095,h_0.44,g_north_west',
+    /**
+     * The header lock-up — see `lockupUrl`. The NAME is cut from the banner's wall sign, which is
+     * the only place it exists: this store is `logoNameless`, so its avatar is the bare crescent
+     * and the word has never been drawn anywhere else. The MARK is cut from that avatar rather
+     * than from the wall beside the word, even though the two sit together there, because the
+     * avatar is the flat vector one — and the two appear within 200px of each other in the store
+     * header, the mark in the tab strip and the lock-up in the bar. A photographed carved sign
+     * beside a flat mark reads as two logos.
+     *
+     * The word crop stops short of the tagline beneath it (`h_0.31` reaches y≈0.57, the sub-line
+     * starts at ≈0.60). It has to be cut geometrically rather than left to the trim, because the
+     * tagline is the same ink as the name and `e_trim` stops at ink, not at meaning.
+     *
+     * Tolerance 55 on the word: the wall is photographed limestone with real variation in it, and
+     * a tolerance tight enough for a flat colour leaves the stone behind as a grey haze. 25 on the
+     * mark, which sits on a printed flat off-white and needs no more.
+     */
+    lockup: {
+      word: { key: '__banner', crop: 'c_crop,x_0.57,y_0.25,w_0.28,h_0.335,g_north_west', tolerance: 55 },
+      // No crop: the avatar IS the bare crescent on an empty field, so there is nothing to cut out
+      // of it and a rectangle here would only be a thing to keep in step with a re-render.
+      mark: { key: '__logo', tolerance: 25 },
+      // Nearly equal: this mark is a crescent, so it is already taller than it is wide, and giving
+      // it the extra height a squarer mark wants would make it tower over its own name.
+      wordHeight: 240,
+      markHeight: 250,
+    },
     address: 'דיזנגוף 112, תל אביב',
     selfPickup: false,
     // Mutually exclusive on purpose: a product carries exactly ONE categoryId, so
@@ -1120,6 +1147,35 @@ export const SHOWCASE_STORES = [
       + 'or covers a letter. Never gold, never metallic, never with a shadow or an outline.',
     /** The logo, as a reference image — it is where the lettering has to come from. */
     bannerRefKey: '__logo',
+    /**
+     * The header lock-up — see `lockupUrl`. The two halves come from two different pictures, and
+     * that split is this store's own answer to the question the other one does not have to ask.
+     *
+     * Its logo holds BOTH the mark and a name, so it could have supplied both. It should not: that
+     * lettering is this hand at its roughest, and it is the version the banner was corrected AWAY
+     * from — `bannerLettering` above spends a paragraph on א closing up into מ, and the banner's
+     * name is the fixed one, bigger and evenly weighted and still the same brush. At 40px of header
+     * height a closed-up counter is not a slightly wrong letter, it is a different word. So the
+     * mark is cut from the logo and the name from the banner, which is also exactly what was asked
+     * for ("כתובית בפונט שמופיע בבאנר").
+     *
+     * The word crop is the central clearing and its edges are tight for a reason the trim cannot
+     * help with: foliage overhangs the clearing on both sides in the same greens as the ink, so a
+     * loose crop keeps a leaf and `e_trim` treats it as artwork. `w_0.2467` stops just past the א
+     * and short of the frond above it.
+     *
+     * Tolerance 40 on both: each sits on warm printed paper, flatter than סהר's photographed
+     * limestone and so needing less, but not flat enough for the 25 that suits a vector field.
+     */
+    lockup: {
+      word: { key: '__banner', crop: 'c_crop,x_0.385,y_0.26,w_0.2467,h_0.31,g_north_west', tolerance: 40 },
+      mark: { key: '__logo', crop: 'c_crop,x_0.25,y_0.12,w_0.50,h_0.48,g_north_west', tolerance: 40 },
+      // The mark gets the extra height here, unlike סהר's: a pot with leaves rising out of it is a
+      // tall shape whose visual weight is in its lower half, so matched to the letters it reads as
+      // smaller than them.
+      wordHeight: 200,
+      markHeight: 280,
+    },
     /** URBAN, and that word is doing the work. שקמה is already the warm-interior store, so a
      *  nursery shot on travertine and oak would read as the same shop with plants in it. Concrete,
      *  hard graphic daylight and sharp leaf shadows are a different world, and they are also the
@@ -1789,6 +1845,130 @@ export function logoPrompt(store) {
    a picture rather than a mark. The showcase stores draw their logos instead:
    `src/components/StoreDemoMark.astro`. Removed rather than left unused, so nobody re-wires it and
    re-learns this. */
+
+/**
+ * The HORIZONTAL LOCK-UP — the store's mark and its name side by side, for the header.
+ *
+ * **Why a third brand image exists at all.** `Header.astro` draws `headerLogo` into an 11rem × 40px
+ * box (14rem on desktop), a strip of roughly 4.4:1, and CONTAINS it. The avatar is square, so in
+ * that box it renders 40px wide and the shop reads as a dot; the banner is a 3:1 photograph of a
+ * room, and at 40px high its lettering is gone. Neither picture is wrong — they are not this
+ * shape, and a lock-up is the shape a header wants.
+ *
+ * **The name is on the LEFT of the mark** (owner, 2026-08-15), which for these two stores is not an
+ * arbitrary layout choice: it is what their own signage already does. סהר's banner hangs the word
+ * to the left of the crescent, so a lock-up that mirrored it would contradict the wall it came from.
+ *
+ * ── It is COMPOSED, not generated, and that is the whole design ─────────────────────────────────
+ * The first version of this asked Gemini for the lock-up, handing it the banner as a reference so
+ * the letterform would be the banner's ("כתובית בפונט שמופיע בבאנר" — the ask). Four paid attempts
+ * came back with the same two defects: the artwork bled to the frame and the outer letter was cut
+ * in half, and אדנית's brush lettering arrived blurred with the letters run together. Both are the
+ * known hard part of this pipeline — `bannerLettering` above spends a paragraph on א closing up
+ * into מ — and neither is worth re-fighting, because **the letters and the mark already exist**.
+ * The banner IS a picture of the name in the right letterform. The logo IS the mark.
+ *
+ * So this cuts them out and places them side by side: Cloudinary crops each source to the one
+ * element, `e_make_transparent` drops the wall or the paper it was standing on, `e_trim` tightens
+ * to the ink, and a layer overlay sets the two on one white strip. Every pixel of the result is the
+ * store's own existing artwork, which is a stronger guarantee than any prompt can give — the name
+ * cannot be misspelt because nothing redrew it, and the mark cannot drift from the avatar because
+ * it IS the avatar. It also costs nothing and is reproducible: re-running rebuilds the same image
+ * from the same two sources, where the generated version cost a paid image per attempt.
+ *
+ * The background is plain WHITE because of where this lands: `.site-header` is `--color-surface`,
+ * `#ffffff`. A paper tone or a stone wall arrives as a visible rectangle pasted into the bar, and
+ * the dashboard's own "הסר רקע" runs in a browser worker this script cannot reach.
+ *
+ * ── What a store has to declare ────────────────────────────────────────────────────────────────
+ * `lockup: { word, mark, wordHeight, markHeight }`, where `word` and `mark` are each
+ * `{ key, crop, tolerance }` naming one of the store's own manifest images and the rectangle to cut
+ * from it. The two heights are what set the optical balance — a mark is usually drawn a little
+ * taller than the letters — and they are per store because that balance is a judgement about these
+ * two shapes, not a constant.
+ *
+ * The crops are FRACTIONAL (`x_0.385,w_0.2467`), so they survive a source being re-delivered at
+ * another pixel size. They do NOT survive the source being REGENERATED — a new banner puts the name
+ * somewhere else and the crop then cuts empty wall. That is the same fragility `logoRefCrop`
+ * carries one level up and it is accepted for the same reason: the alternative is a saliency guess
+ * that cannot be argued with, and these four pictures change roughly never.
+ */
+/** White kept around the finished strip, and the gap between the name and the mark. Both are in
+ *  the same units as the per-store heights — the composite is built a few hundred pixels tall and
+ *  then contained into a 40px header box, so these are proportions written as numbers. The margin
+ *  survives into the delivered asset (the lock-up is NOT trimmed afterwards; see below), which is
+ *  the breathing room `.store-header__brand` does not supply itself. */
+const LOCKUP_MARGIN = 40;
+const LOCKUP_GAP = 70;
+
+/**
+ * The size one cut-out piece comes out at, asked of Cloudinary rather than guessed.
+ *
+ * This is the whole reason `lockupUrl` is async, and it is not optional. The canvas has to be
+ * exactly `word + gap + mark` wide, and a piece's width after `e_trim` is not predictable from its
+ * input — the trim's whole job is to find an edge nobody measured. The first version guessed a
+ * generous canvas and trimmed the result instead, which fails in a way worth recording: `e_trim`
+ * removes a uniform BORDER, so it took the outer white off and left the guess's surplus sitting in
+ * the MIDDLE, between the name and the mark. The lock-up came out as a word and a mark at opposite
+ * ends of a white bar.
+ *
+ * `fl_getinfo` returns the transformation's output dimensions as JSON without rendering the image
+ * for delivery, so two extra round trips buy an exact layout.
+ */
+async function measure(url, transform) {
+  const res = await fetch(url.replace('/upload/', `/upload/${transform}/fl_getinfo/`));
+  if (!res.ok) throw new Error(`could not measure a lock-up piece (${res.status})`);
+  const info = await res.json();
+  if (!info?.output?.width) throw new Error('fl_getinfo returned no output size');
+  return info.output;
+}
+
+/** Cut one piece out of one source: crop to it, drop the surface it was standing on, tighten to
+ *  the ink, scale to the height it is wanted at. */
+const cut = (part, height) =>
+  `${part.crop ? `${part.crop}/` : ''}e_make_transparent:${part.tolerance}/e_trim:10/c_scale,h_${height}`;
+
+/**
+ * The Cloudinary delivery URL that IS the finished lock-up, built from the store's own two images.
+ *
+ * Returns null when either source is missing from the manifest, which the caller treats exactly as
+ * it treats a missing reference image: the job is held back for a later run rather than failed.
+ *
+ * Reading it: the BASE is the word, cut and scaled and then padded out to the full canvas with the
+ * word sitting at the west edge inside its margin; the MARK arrives as a layer that gets the same
+ * cut-and-scale treatment before being applied at the east edge. Layer syntax puts the layer's own
+ * transformations between `l_<id>` and `fl_layer_apply`, which is why the mark's crop reads as if
+ * it belonged to the base until you reach that flag. `g_west`/`g_east` centre vertically, so the
+ * two sit on one centre line whatever their heights.
+ */
+export async function lockupUrl(store, manifest) {
+  const { lockup } = store;
+  if (!lockup) return null;
+  const wordUrl = manifest[`${store.slug}:${lockup.word.key}`];
+  const markUrl = manifest[`${store.slug}:${lockup.mark.key}`];
+  if (!wordUrl || !markUrl) return null;
+
+  // A layer is addressed by public id, which is what a Cloudinary URL's last path segment is
+  // without its extension. Deriving it rather than storing it keeps the manifest the single place
+  // an image URL lives — a second copy of the same id is a second thing to update after a re-render.
+  const publicId = markUrl.split('/').pop().replace(/\.[^.]+$/, '');
+
+  const [word, mark] = await Promise.all([
+    measure(wordUrl, cut(lockup.word, lockup.wordHeight)),
+    measure(markUrl, cut(lockup.mark, lockup.markHeight)),
+  ]);
+
+  const canvasW = LOCKUP_MARGIN * 2 + word.width + LOCKUP_GAP + mark.width;
+  const canvasH = LOCKUP_MARGIN * 2 + Math.max(word.height, mark.height);
+
+  return wordUrl.replace('/upload/', '/upload/'
+    + `${cut(lockup.word, lockup.wordHeight)}/`
+    + `c_lpad,w_${canvasW},h_${canvasH},b_white,g_west,x_${LOCKUP_MARGIN}/`
+    + `l_${publicId}/${cut(lockup.mark, lockup.markHeight)}/`
+    + `fl_layer_apply,g_east,x_${LOCKUP_MARGIN}/`
+    + 'f_png/');
+}
+
 
 export function storeBySlug(slug) {
   const store = SHOWCASE_STORES.find((s) => s.slug === slug);
