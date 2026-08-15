@@ -35,7 +35,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, BANNER_DELIVERED_RATIO, viewsForProduct } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, lockupUrl, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, BANNER_DELIVERED_RATIO, viewsForProduct } from './lib/showcase/identity.mjs';
 import { jsonlLine, uploadJsonl, createBatch, getBatch, downloadResults, readResults } from './lib/showcase/gemini-batch.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
@@ -113,7 +113,10 @@ const MODEL = MODELS[MODEL_KEY].id;
  *  checked against the live ListModels response rather than the docs. */
 const priceOf = (size, modelKey = MODEL_KEY) => MODELS[modelKey].price[size] * (BATCH ? 0.5 : 1);
 /** A job's own price: the eight lettering images run on Pro regardless of `--model`. */
-const jobPrice = (j) => priceOf(j.size ?? IMAGE_SIZE, j.modelKey ?? MODEL_KEY);
+/** A composed job is free — it is a Cloudinary transform of images already paid for, so it must
+ *  not be priced as generation. Pricing it would make `--cost` overstate the bill and, worse, make
+ *  a run that is entirely composition look like one worth postponing. */
+const jobPrice = (j) => (j.compose ? 0 : priceOf(j.size ?? IMAGE_SIZE, j.modelKey ?? MODEL_KEY));
 
 // ── Manifest ────────────────────────────────────────────────────────────────
 const loadManifest = () => (existsSync(MANIFEST_PATH) ? JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) : {});
@@ -324,6 +327,48 @@ async function cropToDeliveredRatio(url, ratio, cloud, preset) {
   return uploadToCloudinary(buffer, cloud, preset);
 }
 
+/**
+ * Cut the empty margin off a header lock-up, so what is stored IS the artwork.
+ *
+ * Same fetch-transform-reupload shape as `cropToDeliveredRatio` and the same reason for it (no
+ * image library in this project), but the opposite job: the banner is cropped to a shape the page
+ * fixes, and this is trimmed to a shape the picture chooses.
+ *
+ * It matters more than it sounds. `Header.astro` CONTAINS the logo in a 176×40 box, so the box's
+ * height is only reached by an image whose own ratio is at least 4.4:1. The generated frame is
+ * 21:9 — 2.33:1 — with the lock-up composed inside it and white all around, so stored as-is it
+ * would render about 93px wide and half the header's height would go to empty white. Trimming the
+ * white away leaves the strip the artwork actually is, which fills the box.
+ *
+ * `e_trim` removes a uniform border; the tolerance is what lets it survive JPEG noise in a "white"
+ * that is not bit-identical white, and 15 is low enough to stop at the first real stroke. PNG on
+ * the way out because trimming to a strip is exactly when a JPEG's ringing around dark lettering
+ * on white becomes visible, and this file is ~30KB either way.
+ */
+/**
+ * A COMPOSED image: one that never reaches the model at all.
+ *
+ * `job.compose` returns a Cloudinary delivery URL that already IS the finished picture, built out
+ * of images the manifest already holds — the header lock-up, cut from a store's own banner and
+ * logo (`lockupUrl` in identity.mjs says why). It is fetched and re-uploaded for the same reason
+ * `cropToDeliveredRatio` re-uploads: what the manifest points at has to be a stored asset, not a
+ * transform of one, or every consumer inherits a transform chain it cannot see and `cdn.ts` layers
+ * its own on top of it.
+ *
+ * Returns false when a source is still missing, which is the same "come back next run" answer a
+ * missing reference image gets — not an error.
+ */
+async function composeJob(job, cloud, preset, manifest) {
+  const built = await job.compose(manifest);
+  if (!built) return false;
+  const res = await fetch(built);
+  if (!res.ok) throw new Error(`could not fetch the composed image (${res.status})`);
+  const url = await uploadToCloudinary(Buffer.from(await res.arrayBuffer()), cloud, preset);
+  manifest[job.key] = url;
+  saveManifest(manifest);
+  return true;
+}
+
 /** Every image this catalog needs, as {key, prompt, label}. Banner and logo first: they are three
  *  of the ~306 and they are the two a person actually looks at, so a `--limit` run shows something
  *  worth judging instead of five handbags. */
@@ -357,6 +402,21 @@ function buildJobs() {
       refKey: store.logoRefKey ? `${store.slug}:${store.logoRefKey}` : null,
       refCrop: store.logoRefCrop ?? null,
     });
+    // The header lock-up, for the stores that declare one. Opt-in rather than automatic because
+    // `headerLogo` is itself opt-in on a real store — a seller who has not made one keeps the
+    // name-in-text header, and a showcase store with no `lockup` demonstrates exactly that.
+    //
+    // `compose` instead of `prompt`: this image is CUT OUT of the store's own banner and logo
+    // rather than generated, so it costs nothing and reproduces exactly. Why, at length, in
+    // `lockupUrl`'s note — the short version is that four paid attempts to generate it kept
+    // cutting a letter in half or blurring a brush-lettered name, and both the name and the mark
+    // already exist as artwork nobody has to redraw.
+    if (store.lockup) {
+      jobs.push({
+        key: `${store.slug}:__headerlogo`, label: `${store.name} — לוגו הדר`,
+        compose: (manifest) => lockupUrl(store, manifest),
+      });
+    }
   }
   for (const store of SHOWCASE_STORES) {
     if (ONLY_STORE && store.slug !== ONLY_STORE) continue;
@@ -554,9 +614,8 @@ async function runBatched(jobs, apiKey, cloud, preset, manifest) {
       try {
         const raw = await uploadToCloudinary(Buffer.from(b64, 'base64'), cloud, preset);
         const job = byKey.get(row.key);
-        const url = job?.deliverRatio
-          ? await cropToDeliveredRatio(raw, job.deliverRatio, cloud, preset)
-          : raw;
+        let url = raw;
+        if (job?.deliverRatio) url = await cropToDeliveredRatio(url, job.deliverRatio, cloud, preset);
         manifest[row.key] = url;
         saveManifest(manifest);   // after EVERY image, same as the interactive path
         done++;
@@ -644,7 +703,19 @@ async function main() {
     return;
   }
 
-  if (BATCH) { await runBatched(jobs, apiKey, cloud, preset, manifest); return; }
+  // `--batch` is a way of buying GENERATION at half price. A composed job buys nothing, has no
+  // prompt to put in a JSONL line, and takes a second — so it is done here on the spot and only
+  // what is left goes to the batch API. Without this split a composed job would be written into
+  // the request file with an empty prompt and come back as a picture of nothing.
+  if (BATCH) {
+    for (const job of jobs.filter((j) => j.compose)) {
+      process.stdout.write(`   ${job.label} … `);
+      try { console.log(await composeJob(job, cloud, preset, manifest) ? '✓ composed' : '— skipped: a source image does not exist yet'); }
+      catch (e) { console.log(`✗\n      ${e.message}`); }
+    }
+    await runBatched(jobs.filter((j) => !j.compose), apiKey, cloud, preset, manifest);
+    return;
+  }
 
   if (CHECK) {
     console.log('\n🔎 Check mode — one image, to prove the key and the billing tier are live.\n');
@@ -658,6 +729,15 @@ async function main() {
   for (const job of jobs) {
     process.stdout.write(`   ${job.label} … `);
     try {
+      if (job.compose) {
+        if (await composeJob(job, cloud, preset, manifest)) {
+          done++;
+          console.log('✓ composed from this store\'s own banner and logo — no generation');
+        } else {
+          console.log('— skipped: one of the images it is built from does not exist yet');
+        }
+        continue;
+      }
       const reference = await referenceFor(job, manifest);
       if (job.refKey && !reference) {
         console.log('— skipped: its main image does not exist yet');
