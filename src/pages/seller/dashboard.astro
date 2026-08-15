@@ -3664,9 +3664,16 @@ const orderStatusColors: Record<string, string> = {
       p.initLockedStockHint();
       p.initTagsEditor();
       p.initStockBreakdowns();
-      document.querySelectorAll<Element>('.gallery-widget').forEach((g) => gallery.initGalleryWidget(g));
+      // Panel-scoped for the same reason as the pickers below — every gallery widget happens to
+      // live in this panel today, so this changes nothing now and stops the sweep from becoming
+      // the reason a widget in some other panel appears to work.
+      document.querySelectorAll<Element>('#dash-panel-products .gallery-widget').forEach((g) => gallery.initGalleryWidget(g));
       p.bindExistingRows(CLOUD, PRESET);
-      document.querySelectorAll<HTMLElement>('.category-picker').forEach(picker.initCategoryPicker);
+      // Scoped to THIS panel, and that is part of the fix rather than a tidy-up: while it swept the
+      // whole document it also bound the pickers of two panels that wire none of their own, so
+      // those worked or did not depending on which tab the seller opened first — and in the
+      // ordinary order they did not (see category-picker.ts#bindCategoryPickersIn).
+      picker.bindCategoryPickersIn('dash-panel-products');
       p.initAddProduct(CLOUD, PRESET);
       p.initProductMenus();
       p.initDeleteProduct();

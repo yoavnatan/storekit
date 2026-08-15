@@ -64,6 +64,34 @@ function showError(message: string): void {
   (window as unknown as { showToast?: (title: string, body: string) => void }).showToast?.(message, '');
 }
 
+/**
+ * Bind every picker inside ONE dashboard panel.
+ *
+ * **Why a panel-scoped helper exists at all (owner, 2026-08-15: the sale's category menu "לא נותן
+ * לי לפתוח בכלל").** The seller dashboard renders one panel per request and fetches the other nine
+ * on the click that opens them (`SellerPanelShell` → `data-lazy`, SELLER_LAZY_PANELS_PLAN.md). The
+ * pickers were bound by a single `document.querySelectorAll('.category-picker')` sweep that ran
+ * when the PRODUCTS chunk loaded — so a picker in any other panel was wired only if that panel
+ * happened to have arrived before that sweep, and the sale-scope picker in Promotions never had.
+ * Its trigger was a dead button: no error, no console line, nothing to see. The boost picker in
+ * Advertising had the same hole.
+ *
+ * So the rule is now the one the loading model already implies: **a panel wires its own controls,
+ * from its own chunk, after its own HTML lands.** A sweep across the whole document is what let one
+ * panel work because of another panel's timing — which is also what kept this invisible.
+ *
+ * No panel element = nothing to bind. That is the admin's per-store advertising page, which shares
+ * `advertising.ts` but has no dashboard shells and binds its own picker directly.
+ *
+ * `initCategoryPicker` is idempotent (`data-pickerBound`), so a panel re-filled later costs one
+ * dataset read per picker.
+ */
+export function bindCategoryPickersIn(panelId: string): void {
+  document.getElementById(panelId)
+    ?.querySelectorAll<HTMLElement>('.category-picker')
+    .forEach(initCategoryPicker);
+}
+
 /** Wires up one .category-picker instance — a dashboard-native pill+panel dropdown (matches
  *  .order-status-dropdown's visual language) whose panel is itself a nested accordion, not a
  *  flat list: a category with subcategories expands in place. Each level also has its own
