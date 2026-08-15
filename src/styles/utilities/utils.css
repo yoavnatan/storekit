@@ -852,9 +852,19 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
    edge instead of between the two. This element inherits the banner's direction, so its inline-start
    is reliably the side facing the figure.
    `--color-border`, the site's own separator, not a green tint: on a white surface a coloured divider
-   is one more invented decision, and this one has nothing to say. */
-.store-sale__body {
-  min-width: 0;
+   is one more invented decision, and this one has nothing to say.
+
+   IT IS A SIBLING SELECTOR BECAUSE A DIVIDER WITH NOTHING ON ITS FAR SIDE IS NOT A DIVIDER (owner,
+   2026-08-15: "כשלא עושים אחוז על המבצע אז יש שם רק פס מפריד בלי שום דבר לפניו"). The percent is
+   optional — a store-wide sale may be pure announcement, and a coupon-code strip has no percent by
+   definition — and when it is absent the figure is not rendered at all, leaving this rule drawing a
+   line against the edge of the strip plus an indent nothing explained.
+   `:not([hidden])` and not just `+`: the dashboard preview keeps the figure in the DOM and toggles
+   `hidden` as the seller types, so an adjacency test alone would still match the element that is not
+   on screen — the preview would show the bare line the storefront no longer does, which is the
+   drift a preview exists to prevent. */
+.store-sale__body { min-width: 0; }
+.store-sale__pct:not([hidden]) + .store-sale__body {
   padding-inline-start: 0.85rem;
   border-inline-start: 1px solid var(--color-border);
 }
