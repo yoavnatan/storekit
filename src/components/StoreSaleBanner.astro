@@ -11,6 +11,7 @@
  *  prices don't give.
  */
 import { isStoreSaleLive, saleCoversProduct, type StoreSale } from '../lib/discounts.js';
+import { isolateLatinRunsHtml } from '../lib/bidi-isolate.js';
 
 interface Props {
   sale?: StoreSale;
@@ -41,6 +42,10 @@ const live = isStoreSaleLive(sale) && (!product || !sale || saleCoversProduct(sa
 // not as a chip. A chip carried its own padding, so its text started a few px in from the title
 // above it and the block read as misaligned; plain text sits on the title's own edge.
 const subtitle = [scopeLabel, sale?.text].filter(Boolean).join(' · ');
+// Both lines go out through `isolateLatinRunsHtml` — the copy is the seller's own, and a promotion
+// is exactly the Hebrew sentence that carries a coupon code and a number. See that module for what
+// the bidi algorithm does to "קוד DEZABIN 10%" without it, and for why isolating the whole line
+// (the platform's usual `<bdi>`) makes it worse rather than better.
 ---
 
 {/* The figure first, the copy after it: one cluster at the reading start. Source order IS the
@@ -59,8 +64,8 @@ const subtitle = [scopeLabel, sale?.text].filter(Boolean).join(' · ');
       <span class="store-sale__pct" dir="ltr" style={compact ? 'font-size:1.15rem' : undefined}>-{sale.percent}%</span>
     )}
     <span class="store-sale__body">
-      <span class="store-sale__title" style={compact ? 'font-size:0.9rem' : undefined}>{sale.title}</span>
-      {subtitle && <span class="store-sale__text" style="display:block">{subtitle}</span>}
+      <span class="store-sale__title" style={compact ? 'font-size:0.9rem' : undefined} set:html={isolateLatinRunsHtml(sale.title)} />
+      {subtitle && <span class="store-sale__text" style="display:block" set:html={isolateLatinRunsHtml(subtitle)} />}
     </span>
   </div>
 )}

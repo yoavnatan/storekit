@@ -10,6 +10,7 @@
 import { escapeHtml as esc } from '../../lib/html-escape.js';
 import { showToast, showErrorToast } from '../../lib/toast.js';
 import { resolvePrice, type ProductDiscount } from '../../lib/discounts.js';
+import { isolateLatinRunsHtml } from '../../lib/bidi-isolate.js';
 import { refreshDiscountFieldsIn } from './discount-field.js';
 import { dashStoreSale, syncPageProduct } from './products.js';
 import { selectedRowIds } from './bulk-selection.js';
@@ -236,11 +237,17 @@ function initSaleForm(): void {
       const on = !!active?.checked && !!title?.value.trim();
       if (preview) preview.hidden = !on;
       if (pvEmpty) pvEmpty.hidden = on;
-      if (pvTitle) pvTitle.textContent = title?.value.trim() ?? '';
+      // `innerHTML`, from the same builder the banner and the server-rendered preview use: each
+      // Latin run in the seller's copy has to arrive inside its own isolate, or a number typed
+      // after a coupon code lands on the wrong side of it (lib/bidi-isolate.ts). A plain text node
+      // here would leave the live preview as the one place still showing the old behaviour, which
+      // is the exact drift a preview exists to prevent.
+      // Escaped by that builder — this is text the seller is typing, going straight into the DOM.
+      if (pvTitle) pvTitle.innerHTML = isolateLatinRunsHtml(title?.value.trim() ?? '');
       if (pvText) {
         // Same join StoreSaleBanner uses, so the preview can't drift from the real banner.
         const subtitle = [scopeLabel(), text?.value.trim()].filter(Boolean).join(' · ');
-        pvText.textContent = subtitle;
+        pvText.innerHTML = isolateLatinRunsHtml(subtitle);
         pvText.hidden = !subtitle;
       }
       const pct = Math.round(Number(percent?.value ?? 0));
