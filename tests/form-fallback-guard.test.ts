@@ -591,6 +591,46 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     expect(a!.dataset.draftKey).not.toBe(b!.dataset.draftKey);
   });
 
+  it('names the tab without its count bubble', () => {
+    // "יש שינויים שלא שמרת במוצרים 3" (owner, 2026-08-15). A tab carries a badge — stock alerts on
+    // Products, new orders on Orders — and `textContent` swallows the number along with the label.
+    renderPanels([{ tab: 'tab-settings', label: 'Store settings', open: true,
+      form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` }]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    type('name', 'never saved');
+    vi.advanceTimersByTime(1000);
+
+    renderPanels([
+      { tab: 'tab-products', label: 'Products', open: true, form: '' },
+      { tab: 'tab-settings', label: 'Store settings', open: false,
+        form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` },
+    ]);
+    document.getElementById('tab-settings')!.insertAdjacentHTML('beforeend', '<span class="dash-tab-badge">3</span>');
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+
+    expect(noticeText()).toBe('unsaved work in Store settings');
+  });
+
+  it('forgets a draft the seller cancelled', () => {
+    // Pressing "בטל" in a product's editor is him answering the question already; offering the
+    // change back on the next load is the page arguing with him (owner, 2026-08-15). The cancel
+    // button announces `dash:discarded`, which is the site's existing word for it.
+    renderPanels([{ tab: 'tab-products', label: 'Products', open: true,
+      form: `<form ${NO_ID}>${PRODUCT_FIELDS}</form>` }]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    type('name', 'never saved');
+    vi.advanceTimersByTime(1000);
+
+    const form = document.querySelector('form')!;
+    form.dispatchEvent(new CustomEvent('dash:discarded', { bubbles: true }));
+
+    renderPanels([{ tab: 'tab-products', label: 'Products', open: true,
+      form: `<form ${NO_ID}>${PRODUCT_FIELDS}</form>` }]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    expect(document.querySelector('form [role="status"]')).toBeNull();
+    expect(noticeShown()).toBe(false);
+  });
+
   it('says nothing at all on the ordinary load, where there is no draft', () => {
     renderPanels([{ tab: 'tab-settings', label: 'Store settings', open: true,
       form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` }]);

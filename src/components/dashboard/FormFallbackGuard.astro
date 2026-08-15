@@ -492,7 +492,15 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
      *  translations.ts that could drift from the tab it describes (unsaved-guard.ts, same trick). */
     function sectionOf(form) {
       var tab = tabOf(form);
-      return tab ? (tab.textContent || '').trim() : '';
+      if (!tab) return '';
+      // The tab's own words, WITHOUT its badge. A tab carries a count bubble — stock alerts on
+      // Products, new orders on Orders — and `textContent` swallows the number with the label, so
+      // the notice read "יש שינויים שלא שמרת במוצרים 3" (owner, 2026-08-15). Cloned and stripped
+      // rather than read from a label span, because not every tab has one.
+      var copy = tab.cloneNode(true);
+      var badges = copy.querySelectorAll('.dash-tab-badge');
+      for (var i = 0; i < badges.length; i++) badges[i].remove();
+      return (copy.textContent || '').trim();
     }
 
     /**

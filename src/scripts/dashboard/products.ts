@@ -2044,6 +2044,15 @@ function bindEditFormInternals(display: HTMLTableRowElement, edit: HTMLTableRowE
 }
 
 function restoreEditRow(display: HTMLTableRowElement, edit: HTMLTableRowElement, cloud: string, preset: string): void {
+  // "בטל" is the seller SAYING he does not want this work — so the draft goes with it. Without
+  // this, editing a product, pressing cancel and reloading offered the cancelled change back
+  // (owner, 2026-08-15), which is the one case where the offer is not protection but noise: he
+  // already answered the question. `dash:discarded` is the site's existing word for exactly this
+  // ("thrown away on purpose", unsaved-guard.ts) and FormFallbackGuard deletes the stored draft on
+  // it; announced BEFORE the markup is replaced, or the form the event needs is already gone.
+  const form = edit.querySelector('form');
+  if (form) form.dispatchEvent(new CustomEvent('dash:discarded', { bubbles: true }));
+
   const original = originalEditHtml.get(edit);
   if (original !== undefined && edit.innerHTML !== original) {
     edit.innerHTML = original;
