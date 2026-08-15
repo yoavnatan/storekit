@@ -39,6 +39,10 @@ const i18n = {
   // Same sentence ProductQuickView shows in its own body when the fetch fails. This modal has
   // no body to put it in at that point — it has not opened yet — so it goes to the toast.
   loadError: lang === 'he' ? 'שגיאה בטעינת המוצר' : 'Error loading product',
+  // "מוצר לדוגמה" — shown only when /api/store-product says the store is a showcase one. The card
+  // this modal opens from already wears the chip, but the modal covers it, and a shopper can reach
+  // the modal from a "more from this store" card on a product page too.
+  demoBadge: t.demo.productBadge,
 };
 ---
 
@@ -99,6 +103,7 @@ const i18n = {
   import { markStoreScrollReturn } from '../lib/scroll-restore.js';
   import { initLiquidDots } from '../lib/carousel-dots.js';
   import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
+  import { demoProductBadgeHtml } from '../lib/demo-badge.js';
   import { showErrorToast } from '../lib/toast.js';
   import type { PriceView } from '../lib/discounts.js';
 
@@ -110,6 +115,9 @@ const i18n = {
     slug: string; name: string; price: number; description: string;
     basePrice?: number; isDiscounted?: boolean; percentOff?: number; showSaleBadge?: boolean;
     stock: number; images: string[]; category: string;
+    /** The store is a showcase store (see /api/store-product). Additive — an older payload
+     *  without it simply shows no badge, and /api/checkout refuses the purchase either way. */
+    storeDemo?: boolean;
     variants: Array<{ name: string; options: string[] }>;
     variantStock: Record<string, number>;
     variantImages: Record<string, string>;
@@ -456,6 +464,7 @@ const i18n = {
         ${mainImgHtml}
         <div style="padding:0.875rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:0.5rem">
           <div dir="auto">
+            ${product.storeDemo ? demoProductBadgeHtml(i18n.demoBadge ?? '', 'inline') : ''}
             <h2 id="pm-name" style="font-size:1.2rem;font-weight:700;color:var(--color-text);margin:0 0 0.4rem;line-height:1.35">${escHtml(name)}</h2>
             <p style="font-size:1.45rem;font-weight:700;margin:0"${pmPriceView(product).isDiscounted ? '' : ' class="[color:var(--color-accent)]"'}>${priceHtml(pmPriceView(product), { saleLabel: i18n.saleWas })}</p>
           </div>

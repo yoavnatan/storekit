@@ -1,4 +1,5 @@
 import { getShopperStores } from './stores.js';
+import { isDemoStore } from './demo-stores.js';
 import { isStoreReady } from './store-readiness.js';
 import { getProductCountsByStore, searchVisibleProducts } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
@@ -26,6 +27,11 @@ export interface ProductSearchHit {
   image: string;
   storeSlug: string;
   storeName: string;
+  /** The hit belongs to a showcase store (`demo-stores.ts`). Search lists those while the mall is
+   *  thin (see the comment on the store query below), so the result card has to carry the same
+   *  per-product disclosure the store's own grid does — this is where a shopper meets a demo
+   *  product without ever passing the store page. Present only when true, like `basePrice`. */
+  demo?: boolean;
 }
 
 const DEFAULT_STORE_LIMIT = 6;
@@ -117,6 +123,7 @@ export async function searchSite(rawQuery: string, options: SiteSearchOptions = 
       image: p.images?.[0] ? cdnSrc(p.images[0], imageWidth) : '',
       storeSlug: store.slug,
       storeName: store.name,
+      ...(isDemoStore(store) ? { demo: true } : {}),
     });
   }
 

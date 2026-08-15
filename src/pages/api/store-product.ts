@@ -1,6 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getStoreBySlugOrPrevious, isStoreVisible, canStoreSell } from '../../lib/stores.js';
+import { isDemoStore } from '../../lib/demo-stores.js';
 import { getProductBySlug, isProductVisible } from '../../lib/store-products.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { recordPageViewTap } from '../../lib/page-view-tap.js';
@@ -86,5 +87,12 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
     // different and untrue reason. An older client that ignores it still can't complete a
     // purchase — /api/checkout is the gate that actually refuses.
     storeHalted: !canStoreSell(store),
+    // Additive, same contract as `storeHalted`: the product belongs to a showcase store
+    // (lib/demo-stores.ts), so both modals show the "מוצר לדוגמה" line their surrounding cards and
+    // the full product page already show. Without it a quick-view was the one product surface that
+    // said nothing — and it is the surface a shopper on the store page actually reads before
+    // adding to the cart. An older client that ignores the field behaves exactly as before;
+    // /api/checkout is the gate that actually refuses either way.
+    storeDemo: isDemoStore(store),
   });
 };

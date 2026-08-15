@@ -719,7 +719,7 @@ const jsonLd = {
                                   load eagerly. Everything else stays native-lazy. */}
                               {(spotlightProducts.get(s.id) ?? []).map((p, tileIndex) => (
                                 <HomeProductCard product={p} storeSlug={s.slug} sale={s.sale} role="listitem"
-                                                 priority={slideIndex === 0 && tileIndex < 3} />
+                                                 demo={s.demo} priority={slideIndex === 0 && tileIndex < 3} />
                               ))}
                             </div>
                           </div>
