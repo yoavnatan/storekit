@@ -1164,12 +1164,21 @@ export const SHOWCASE_STORES = [
      * loose crop keeps a leaf and `e_trim` treats it as artwork. `w_0.2467` stops just past the א
      * and short of the frond above it.
      *
-     * Tolerance 40 on both: each sits on warm printed paper, flatter than סהר's photographed
-     * limestone and so needing less, but not flat enough for the 25 that suits a vector field.
+     * LOW tolerances, and the pot is why. `e_make_transparent` clears every colour within its
+     * tolerance of the corner pixel, in PARTIAL alpha — so on a warm cream ground a generous
+     * setting does not stop at the paper. At 40 (owner, 2026-08-15: "עציץ חיוור? לא חום ולא ירוק?
+     * נראה כמו משהו שעבר עשרות עיבודים") it had eaten into the olive greens and the terracotta
+     * stripe as well, and what came out was the drawing with its colour half dissolved. The paper
+     * here is flat enough that 12 removes all of it, which is the whole tolerance this needs.
+     *
+     * The rule generalises: a tolerance is bounded by the DISTANCE from the background to the
+     * nearest colour in the artwork, not by how stubborn the background is. סהר can afford 55
+     * because its ink is near-black navy on pale limestone; this store's mid-olive is much nearer
+     * its cream.
      */
     lockup: {
-      word: { key: '__banner', crop: 'c_crop,x_0.385,y_0.26,w_0.2467,h_0.31,g_north_west', tolerance: 40 },
-      mark: { key: '__logo', crop: 'c_crop,x_0.25,y_0.12,w_0.50,h_0.48,g_north_west', tolerance: 40 },
+      word: { key: '__banner', crop: 'c_crop,x_0.385,y_0.26,w_0.2467,h_0.31,g_north_west', tolerance: 18 },
+      mark: { key: '__logo', crop: 'c_crop,x_0.25,y_0.12,w_0.50,h_0.48,g_north_west', tolerance: 12 },
       // The mark gets the extra height here, unlike סהר's: a pot with leaves rising out of it is a
       // tall shape whose visual weight is in its lower half, so matched to the letters it reads as
       // smaller than them.
