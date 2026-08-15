@@ -17,6 +17,7 @@ import { getCategoryTree } from './category-tree-cache.js';
 import { NO_CATEGORY_TOKEN } from '../../lib/seller-products-query.js';
 import { armSelectAll, clearBulkSelection, disarmSelectAll, isSelectAllArmed, onBulkSelectionChange, selectedRowIds, setBulkSelected, syncBulkSelectionToRows } from './bulk-selection.js';
 import { initCategoryPicker } from './category-picker.js';
+import { initInfoTooltips } from '../tooltip.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { suggestTags } from '../../lib/tag-suggest.js';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
@@ -2406,6 +2407,31 @@ function thumbSrcOf(wrap: HTMLElement): string {
  *  this bundle ran, under a shimmer that had been animating since the first paint. See
  *  dashboard.css for what that cost and lib/img-skeleton.ts for why it is the module's job.
  *  Re-arm a wrap with `armThumbSkeleton()` before calling this again for it. */
+/**
+ * Give a category chip the site's tooltip — but ONLY when its text is actually cut off.
+ *
+ * The chip is one line with an ellipsis (`.product-cat-chip`), and a real category path is
+ * routinely longer than the column: "בית וגן › ריהוט › כיסאות" arrives as "בית וגן › ריה…", which
+ * is a label that has stopped labelling (owner, 2026-08-15). A `title` would have been the
+ * browser's own grey box, which this dashboard spent a session removing, so it is `data-tooltip` —
+ * the explicit opt-in that `tooltip.ts` binds — and `initInfoTooltips` is called on the same rows.
+ *
+ * Measured rather than assumed: a chip that FITS gets no tooltip at all, because a hover label
+ * repeating a word already on screen is noise (it is the same rule icon-tooltips.ts applies to
+ * every icon control). `+1` absorbs the sub-pixel difference a fractional layout leaves behind.
+ */
+export function initCategoryChipTips(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>('.product-cat-chip').forEach((chip) => {
+    const clipped = chip.scrollWidth > chip.clientWidth + 1;
+    if (!clipped) { delete chip.dataset.tooltip; return; }
+    if (chip.dataset.tooltip === chip.textContent) return;
+    chip.dataset.tooltip = chip.textContent ?? '';
+    // The binder marks what it has bound; a re-measured chip needs it dropped or it is skipped.
+    delete chip.dataset.tooltipBound;
+  });
+  initInfoTooltips(root);
+}
+
 export function initThumbs(root: ParentNode = document): void {
   initImageSkeletons('.thumb-wrap', root);
   // The rest of this panel's image boxes wear the shared marker instead of a class of their own
@@ -2574,6 +2600,8 @@ export async function applyPagination(): Promise<void> {
     initThumbs(display);
   });
   tbody.replaceChildren(rows);
+  // Chips can only be measured once they are in the document — see initCategoryChipTips.
+  initCategoryChipTips(tbody);
   // Every row above is brand new and therefore unticked — re-apply the live
   // selection so filtering or paging can't silently empty a selection, and so
   // an armed "select all" takes in the rows this view just brought up.
