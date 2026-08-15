@@ -189,6 +189,20 @@ export const REVENUE_PAYMENT_STATUSES = paymentWhere('countsAsRevenue');
 export const REVENUE_SHIPPING_STATUSES = shippingWhere('countsAsRevenue');
 
 /**
+ * Orders where a real person's money actually moved — the SQL side of `moneyWasTaken`.
+ *
+ * **Deliberately has NO shipping half, and that is the whole reason it is a separate list.** Every
+ * other money question on this platform ANDs the two: revenue that a cancellation takes back off
+ * the books. This one asks whether cash passed through the platform's hands, and a cancellation
+ * does not un-happen a charge — it obliges a refund, which is a second movement
+ * (`refund-owed.ts`). `licence-ceiling.ts` is what needs it: the licensing exemption is measured on
+ * funds RECEIVED, so an order charged and then cancelled counts, and pairing this with
+ * `REVENUE_SHIPPING_STATUSES` out of habit would quietly under-report the one number whose error
+ * direction matters.
+ */
+export const FUNDS_RECEIVED_PAYMENT_STATUSES = paymentWhere('moneyWasTaken');
+
+/**
  * The fulfilment pipeline in order — what "sort by status" means on the admin Orders tab, in both
  * the JS twin and the SQL that replaced it (`admin-orders-filter.ts`, `orders.ts`).
  *

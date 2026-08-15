@@ -61,8 +61,10 @@ import { reconcilePlatform } from '../../lib/reconcile.js';
 import { planPayouts } from '../../lib/payout-run.js';
 import { getPlatformAccrual, getHeldBreakdown, getHeldBySeller } from '../../lib/payouts.js';
 import { buildPlatformLedger } from '../../lib/platform-ledger.js';
+import { getLicenceCeiling } from '../../lib/licence-ceiling.js';
 import AdminPayoutPlanCard from '../../components/admin/AdminPayoutPlanCard.astro';
 import AdminLedgerCard from '../../components/admin/AdminLedgerCard.astro';
+import AdminCeilingCard from '../../components/admin/AdminCeilingCard.astro';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
 
@@ -304,6 +306,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 const [
   productCounts, reconciliation, payoutPlan, heldBreakdown, heldBySeller, platformAccrual, ordersPage, badgeCounts,
   perfViews, perfPlatformViews, perfSales, productNames, userReports, openReportCount, imageModerationState,
+  licenceCeiling,
 ] = await Promise.all([
   only(COUNT_PANELS, () => getProductCountsByStore(storeIds), new Map()),
   // Cross-check every money headline against a second, independent computation over the real
@@ -367,6 +370,11 @@ const [
   // and the Alerts tab shows it only when something is wrong — a healthy filter is not an alert.
   // AdminModerationStatus.astro carries the argument. With no add-on declared it needs no query.
   only(['overview', 'alerts'], () => getImageModerationState(), 'ok' as const),
+  // How much room is left under the licensing exemption (licence-ceiling.ts). Two aggregates, and
+  // Overview only — it belongs beside the money, and it is the one number here that nobody would
+  // think to go looking for, which is the whole reason it is on the landing tab rather than behind
+  // one. Cheap enough to run on every render of that tab; it is two SUMs with no per-seller work.
+  only(['overview'], () => getLicenceCeiling(), null),
 ]);
 
 const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
@@ -603,6 +611,9 @@ const badgeFor: Record<string, number> = badgeCounts;
           noBankHref={tabUrl('sellers', { spayout: 'no_bank' })}
           payoutsHref={tabUrl('payouts', {})}
         />}
+        {/* Under the money and not above it: this answers a question about the money's SIZE, so it
+            reads as a footnote to the card above until the day it stops being one. */}
+        {licenceCeiling && <AdminCeilingCard ceiling={licenceCeiling} />}
         <AdminOverviewPanel
           overview={overview}
           emptyStoreCount={storeEmptyCount}
