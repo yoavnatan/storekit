@@ -1,0 +1,29 @@
+---
+/**
+ * "מוצר לדוגמה" on one product, for every server-rendered surface that can show one.
+ *
+ * The per-STORE badge is `StoreDemoBadge.astro`; this is its per-product twin, and the two are
+ * separate components because they answer different questions in different places — "this shop is
+ * a demo" beside a store name, "this item cannot be bought" on the item itself. The markup lives in
+ * `lib/demo-badge.ts` so the client-side card renderer and the two product modals emit the same
+ * badge from the same string; see that module for why.
+ *
+ * Renders nothing for a real product, so a call site drops it in unconditionally.
+ *
+ * `variant="chip"` must be placed inside a positioned image wrapper — it is absolutely positioned
+ * on purpose (again, `lib/demo-badge.ts`).
+ */
+import { getLang, getT } from '../i18n/index.js';
+import { demoProductBadgeHtml, type DemoBadgeVariant } from '../lib/demo-badge.js';
+
+interface Props {
+  /** Whether the product's store is a showcase store (`lib/demo-stores.ts#isDemoStore`). */
+  demo?: boolean;
+  variant?: DemoBadgeVariant;
+}
+
+const { demo = false, variant = 'chip' } = Astro.props;
+const t = getT(getLang(Astro.cookies));
+---
+
+{demo && <Fragment set:html={demoProductBadgeHtml(t.demo.productBadge, variant)} />}
