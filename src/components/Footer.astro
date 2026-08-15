@@ -32,4 +32,18 @@ const nextLang = lang === 'he' ? 'en' : 'he';
       </ul>
     </nav>
   </div>
+
+  {/* ── The licensing disclosure, and why it is small on purpose ──
+      Required on every page by the exemption regulations (`lib/licence-ceiling.ts` carries which
+      ones, and the notice to רשות ניירות ערך that goes with them). It is set two steps down from
+      the footer's own type and in the muted colour because it is a legal statement rather than
+      something the reader is being asked to act on — a compliance line typeset like a message
+      competes with the links above it, and this footer sits under every page on the site. Its own
+      row rather than a fourth <li>: it is a sentence, and threading a sentence through a link list
+      wraps badly at 375px, which is where most of this platform is read. */}
+  <div class="container">
+    <p class="muted m-0 mt-2 text-[0.72rem] leading-snug">
+      {t.footer.licenceExemption.replace('{name}', store.name)}
+    </p>
+  </div>
 </footer>

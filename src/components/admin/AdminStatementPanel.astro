@@ -130,7 +130,12 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
       )}
       <li class="text-[0.85rem] leading-relaxed">
         <strong class="tabular-nums">{formatAgorot(s.closingBalanceAgorot)}</strong> — כסף של מוכרים שאנחנו מחזיקים בסוף התקופה.
-        ב־10 בחודש יוצא מתוכו התשלום למוכרים והעמלה שלנו נגבית באותו רגע: הסכום הזה קטן, ההכנסה שלך למעלה לא משתנה.
+        {/* Deliberately says WHEN-relative-to-what and not a date. The payout day is stated two
+            lines up, from `upcomingPayoutDayISO`, and it moved on 2026-08-16 (monthly → weekly)
+            while this sentence went on claiming "ב־10 בחודש" because it had the number typed into
+            it. A second copy of the schedule in prose is the drift `payout-schedule.ts` exists to
+            prevent — so this one names the EVENT and lets the date be said once. */}
+        בכל תשלום למוכרים יוצא מתוכו הסכום שלהם והעמלה שלנו נגבית באותו רגע: הסכום הזה קטן, ההכנסה שלך למעלה לא משתנה.
         {s.payouts > 0 && <> בתקופה הזו כבר יצאו <span class="tabular-nums">{formatAgorot(s.paidOutAgorot)}</span> ב־{s.payouts} תשלומים.</>}
         {/* The sentence he was actually asking for (owner, 2026-08-12: *"מתי אני מושך אליי את
             הכסף? מחשבון העסק לפרטי?"*). Nothing here models an owner's draw and nothing should:

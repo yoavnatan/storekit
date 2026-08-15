@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { query } from '../src/lib/db.js';
 import {
   getLicenceCeiling,
@@ -48,6 +49,37 @@ beforeEach(async () => {
   await query('DELETE FROM order_stores');
   await query('DELETE FROM orders');
   await query('DELETE FROM seller_payouts');
+});
+
+/**
+ * The exemption is not only a threshold — it is conditional on SAYING so. The regulations oblige an
+ * exempt body to disclose, on its site and in its marketing, that it is exempt from licensing and
+ * therefore unsupervised. A disclosure that quietly stops rendering does not fail any screen, any
+ * type-check or any other test: the site simply looks tidier, and the condition the platform relies
+ * on is no longer met. So it is pinned here, beside the number it belongs to.
+ */
+describe('the disclosure the exemption is conditional on', () => {
+  const footer = readFileSync('src/components/Footer.astro', 'utf8');
+  const dict = readFileSync('src/i18n/translations.ts', 'utf8');
+
+  it('the footer renders it, on every page', () => {
+    expect(footer).toContain('t.footer.licenceExemption');
+  });
+
+  it.each([
+    ['the regulator', 'רשות ניירות ערך'],
+    ['the law it is exempt from', 'שירותי תשלום'],
+    ['that it is not supervised', 'אינה מפוקחת'],
+  ])('the Hebrew wording names %s', (_what, phrase) => {
+    expect(dict).toContain(phrase);
+  });
+
+  /** Naming the platform through `{name}` rather than typing it: a rename must not leave a legal
+   *  clause attributing the statement to a business that no longer exists under that name. */
+  it('names the platform by interpolation, not by literal', () => {
+    expect(dict).toContain('licenceExemption');
+    expect(footer).toContain("replace('{name}', store.name)");
+  });
 });
 
 describe('funds received are measured as money, not as revenue', () => {

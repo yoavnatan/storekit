@@ -235,6 +235,14 @@ export const translations = {
     footer: {
       terms: 'תנאי שימוש',
       contact: 'צור קשר',
+      // ── A disclosure the law requires, worded the way the regulations word it ──
+      // `תקנות הסדרת העיסוק בשירותי תשלום וייזום תשלום (פטור מחובת רישוי), תשפ״ד-2024` oblige an
+      // exempt body to state, on its site and in its marketing, that it is exempt from licensing
+      // and therefore NOT supervised. It names the law rather than saying "פטור מרישיון" alone
+      // (owner, 2026-08-16): a bare "exempt from a licence" tells a reader nothing about WHICH
+      // licence, which is the only part of the sentence that carries information.
+      // `{name}` is the platform, interpolated so a rename cannot leave this clause naming nobody.
+      licenceExemption: '{name} פועלת בפטור מרישיון למתן שירותי תשלום לפי חוק הסדרת העיסוק בשירותי תשלום וייזום תשלום, ואינה מפוקחת על ידי רשות ניירות ערך.',
     },
     // The two pages a visitor lands on when the request could not be served. Same shape as the
     // store states above — one line and a way out — and for the same reason: a visitor here can
@@ -2183,6 +2191,7 @@ export const translations = {
     footer: {
       terms: 'Terms',
       contact: 'Contact',
+      licenceExemption: '{name} operates under an exemption from the payment-services licence under the Payment Services and Payment Initiation Regulation Law, and is not supervised by the Israel Securities Authority.',
     },
     errorPage: {
       notFoundTitle: 'Page not found',

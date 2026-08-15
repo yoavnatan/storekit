@@ -235,7 +235,7 @@ export interface ReleasableForSeller {
  * **Why this is not "load the orders and use `seller-account.ts`".** That module is the right shape
  * for one seller's own screen, where the per-order list is the point. The payout run asks about
  * every seller on the platform at once, and doing it in JS means pulling every order ever placed
- * into memory once a month — the shape `feedback_scalability` exists to reject. So the run
+ * into memory on every run — the shape `feedback_scalability` exists to reject. So the run
  * aggregates in SQL, and the hold rule has a second spelling for it (`RELEASABLE_SQL`, which lives
  * beside its JS twin so the two cannot drift unnoticed).
  *
