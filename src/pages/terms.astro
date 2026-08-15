@@ -22,7 +22,8 @@
  *  The hold/payout periods are interpolated from `lib/payout-schedule.ts` — the same constants the
  *  scheduler runs on — and are ⚠️ PLACEHOLDERS pending the owner's decision. They cannot be set
  *  independently of the returns window: a hold shorter than it pays a seller for goods the buyer
- *  may still send back, which is why `HOLD_DAYS_AFTER_DELIVERY` now exceeds the statutory 14 days.
+ *  may still send back, which is why `HOLD_DAYS_AFTER_DELIVERY` may never fall below the statutory
+ *  14 days — as of 2026-08-16 it IS that window exactly, with nothing added.
  *
  *  **The supply deadline is stated here because stating it is the legal duty.** Israeli law
  *  requires a distance seller to DISCLOSE the supply date and method (§14ג) and — checked
@@ -50,7 +51,7 @@ import { store as platform } from '../config/store.config.js';
 import {
   HOLD_DAYS_AFTER_DELIVERY,
   FALLBACK_DAYS_AFTER_PAYMENT,
-  PAYOUT_DAY_OF_MONTH,
+  payoutWeekdayName,
   MIN_PAYOUT_AGOROT,
   SHIP_DEADLINE_BUSINESS_DAYS,
   SHIP_AUTO_CANCEL_DAYS,
@@ -114,7 +115,7 @@ const clauses: { h: string; p: string[] }[] = [
       'פתיחת חנות פתוחה לעסק פעיל. המוכר אחראי לכך שהמוצרים שהוא מפרסם מותרים למכירה, שהתכנים והתמונות שהעלה הם שלו או שיש לו רשות להשתמש בהם, ושהפרטים שמסר נכונים.',
       'התשלום לפלטפורמה הוא לפי המסלול שהמוכר בחר — דמי מנוי חודשיים ועמלה מכל מכירה, כפי שהם מוצגים בעמוד המסלולים בעת ההצטרפות ובאזור האישי.',
       `המוכר ממנה את ${platform.name} לגבות בשמו את התמורה מהקונים. ${platform.name} מנכה מהתמורה את עמלת המכירה ומחזיקה את היתרה עבור המוכר עד למועד התשלום. היתרה שייכת למוכר ואינה הכנסה של ${platform.name}.`,
-      `תשלום מרוכז מבוצע ב-${PAYOUT_DAY_OF_MONTH} בכל חודש, על כל סכום ששוחרר עד אותו מועד. סכום משוחרר ${HOLD_DAYS_AFTER_DELIVERY} ימים לאחר שההזמנה סומנה כנמסרה, או ${FALLBACK_DAYS_AFTER_PAYMENT} ימים לאחר התשלום אם לא סומנה מסירה. יתרה הנמוכה מ-${formatAgorot(MIN_PAYOUT_AGOROT)} נצברת למועד התשלום הבא ואינה נגרעת.`,
+      `תשלום מרוכז מבוצע אחת לשבוע, בכל ${payoutWeekdayName('he')}, על כל סכום ששוחרר עד אותו מועד. סכום משוחרר ${HOLD_DAYS_AFTER_DELIVERY} ימים לאחר שההזמנה סומנה כנמסרה, או ${FALLBACK_DAYS_AFTER_PAYMENT} ימים לאחר התשלום אם לא סומנה מסירה. יתרה הנמוכה מ-${formatAgorot(MIN_PAYOUT_AGOROT)} נצברת למועד התשלום הבא ואינה נגרעת.`,
       'זיכוי, ביטול או חיוב-חוזר בהזמנה ששולמה כבר למוכר מקוזזים מהתשלום הבא. אין בכך כדי לגרוע מאחריות המוכר לעסקה מול הקונה.',
       'תשלום מותנה במסירת פרטי חשבון בנק ופרטי עסק תקינים באזור האישי. עד למסירתם היתרה נצברת ואינה נגרעת.',
       // The seller's half of the same fact as the "הזמנה ותשלום" section — both move together.

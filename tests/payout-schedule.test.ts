@@ -22,8 +22,9 @@ import {
   SHIP_DEADLINE_BUSINESS_DAYS,
   SHIP_WARNING_DAYS,
   SHIP_AUTO_CANCEL_DAYS,
-  PAYOUT_DAY_OF_MONTH,
+  PAYOUT_WEEKDAY,
   MIN_PAYOUT_AGOROT,
+  payoutWeekdayName,
 } from '../src/lib/payout-schedule.js';
 
 describe('the hold may never open inside the buyer\'s statutory window', () => {
@@ -37,6 +38,10 @@ describe('the hold may never open inside the buyer\'s statutory window', () => {
    */
   it('the delivered-order hold clears the statutory window, with room to spare', () => {
     expect(STATUTORY_RETURN_DAYS).toBe(14);
+    // STRICTLY greater, and the strictness is the test. `orderHold` releases INCLUSIVELY — a hold of
+    // N frees the money ON delivery-day + N — so a hold equal to the window pays the seller out on
+    // the last morning the buyer may still cancel. That is why the 2026-08-16 cut landed on 15 and
+    // not the 14 it was asked for; anyone shortening it again meets this line first.
     expect(
       HOLD_DAYS_AFTER_DELIVERY,
       'a hold at or below the statutory window releases money the buyer can still cancel',
@@ -62,11 +67,24 @@ describe('the hold may never open inside the buyer\'s statutory window', () => {
     expect(SHIP_AUTO_CANCEL_DAYS).toBeGreaterThan(SHIP_WARNING_DAYS);
   });
 
-  it('the payout day is a day every month actually has', () => {
-    // 29, 30 and 31 do not exist in every month, and `nextPayoutDayISO` builds a date string from
-    // this directly — a 31 would produce `2026-02-31`.
-    expect(PAYOUT_DAY_OF_MONTH).toBeGreaterThanOrEqual(1);
-    expect(PAYOUT_DAY_OF_MONTH).toBeLessThanOrEqual(28);
+  it('the payout weekday is one a week actually has', () => {
+    // Indexed the way `Date#getUTCDay` numbers it, because `payout-run.ts#weekdayOf` compares
+    // against exactly that. A 7 here would simply never match and the run would never fire —
+    // silently, since "not the payout day" is its normal answer on six days out of seven.
+    expect(Number.isInteger(PAYOUT_WEEKDAY)).toBe(true);
+    expect(PAYOUT_WEEKDAY).toBeGreaterThanOrEqual(0);
+    expect(PAYOUT_WEEKDAY).toBeLessThanOrEqual(6);
+  });
+
+  /**
+   * The seller-facing copy names the payout day in words, and those words are generated from
+   * `PAYOUT_WEEKDAY` rather than typed into two translation files. This is the same defect the
+   * module header describes for the numeric periods, wearing a weekday: change the constant, forget
+   * a dictionary, and the terms of use promise a different day from the one the scheduler fires on.
+   */
+  it('the weekday word is derived from the constant, in both languages', () => {
+    expect(payoutWeekdayName('he')).toBe('יום ראשון');
+    expect(payoutWeekdayName('en')).toBe('Sunday');
   });
 
   it('the minimum payout is a whole number of agorot and not zero', () => {
@@ -89,10 +107,23 @@ describe('the terms page quotes the constants instead of repeating them', () => 
     expect(terms).toMatch(/from\s+['"][^'"]*payout-schedule(\.js)?['"]/);
   });
 
+  /**
+   * The payout DAY is now a word rather than a digit, and a word is the easier one to leave behind:
+   * a clause reading "בכל יום ראשון" survives a change to `PAYOUT_WEEKDAY` looking perfectly
+   * correct, while a stale digit at least looks like a number somebody should check. So the clause
+   * must call the generator, and must not spell any weekday out.
+   */
+  it('names the payout day through payoutWeekdayName, never as a written weekday', () => {
+    expect(terms, 'terms.astro must interpolate payoutWeekdayName').toContain('payoutWeekdayName(');
+    for (const day of ['יום ראשון', 'יום שני', 'יום שלישי', 'יום רביעי', 'יום חמישי', 'יום שישי', 'שבת']) {
+      expect(terms, `terms.astro writes "${day}" as a literal — interpolate the weekday instead`)
+        .not.toContain(`בכל ${day}`);
+    }
+  });
+
   it.each([
     ['HOLD_DAYS_AFTER_DELIVERY', HOLD_DAYS_AFTER_DELIVERY],
     ['FALLBACK_DAYS_AFTER_PAYMENT', FALLBACK_DAYS_AFTER_PAYMENT],
-    ['PAYOUT_DAY_OF_MONTH', PAYOUT_DAY_OF_MONTH],
   ])('states %s by name, never as a bare digit', (name, value) => {
     expect(terms, `terms.astro must interpolate ${name}`).toContain(name);
     // The digit may legitimately appear inside an interpolated expression elsewhere; what must not

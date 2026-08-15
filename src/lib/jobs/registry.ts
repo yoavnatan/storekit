@@ -30,9 +30,8 @@ import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
 import { runMerchantStatusCheck } from '../merchant-status-check.js';
 import { rebuildCatalogArtifact, FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../catalog-artifacts.js';
-import { runPayouts, isPayoutDay } from '../payout-run.js';
+import { runPayouts, isPayoutDay, nextPayoutDayISO } from '../payout-run.js';
 import { runOrderSla } from '../order-sla-run.js';
-import { PAYOUT_DAY_OF_MONTH } from '../payout-schedule.js';
 import { businessTodayISO } from '../business-day.js';
 
 export interface Job {
@@ -368,7 +367,7 @@ const payoutRun: Job = {
   leaseSec: 30 * MINUTE,
   async run() {
     const today = businessTodayISO();
-    if (!isPayoutDay(today)) return `not the payout day (${today}); next on day ${PAYOUT_DAY_OF_MONTH}`;
+    if (!isPayoutDay(today)) return `not the payout day (${today}); next on ${nextPayoutDayISO(today)}`;
     const r = await runPayouts(today);
     return `period ${r.periodKey}: created ${r.created} payout(s) totalling ${r.totalAgorot} agorot; `
       + `skipped ${r.skippedBelowMinimum} below minimum, ${r.skippedNoBank} without bank details, `

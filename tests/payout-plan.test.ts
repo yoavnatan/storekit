@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import { query, rows } from '../src/lib/db.js';
 import { planPayouts, runPayouts, nextPayoutDayISO } from '../src/lib/payout-run.js';
 import { getPayoutsForSeller, recordAdjustment } from '../src/lib/payouts.js';
-import { MIN_PAYOUT_AGOROT, PAYOUT_DAY_OF_MONTH } from '../src/lib/payout-schedule.js';
+import { MIN_PAYOUT_AGOROT, PAYOUT_WEEKDAY } from '../src/lib/payout-schedule.js';
 
 const TODAY = '2026-08-10';
 const BANK = { code: '12', branch: '345', account: '99887766', holder: 'Payee' };
@@ -161,14 +161,26 @@ describe('the plan and the run are one answer', () => {
 });
 
 describe('the date the card names', () => {
-  it('is this month while the day is still ahead, and next month once it has passed', () => {
-    const day = String(PAYOUT_DAY_OF_MONTH).padStart(2, '0');
-    expect(nextPayoutDayISO('2026-08-01')).toBe(`2026-08-${day}`);
-    expect(nextPayoutDayISO(`2026-08-${day}`)).toBe(`2026-08-${day}`);  // on the day itself
-    expect(nextPayoutDayISO('2026-08-28')).toBe(`2026-09-${day}`);
+  /** 2026-08-16 is a Sunday, so the week either side of it pins every branch at once. */
+  it('is today when today IS the payout day, and the next one otherwise', () => {
+    expect(nextPayoutDayISO('2026-08-16')).toBe('2026-08-16');  // on the day itself
+    expect(nextPayoutDayISO('2026-08-17')).toBe('2026-08-23');  // the morning after: a full week
+    expect(nextPayoutDayISO('2026-08-22')).toBe('2026-08-23');  // the day before
   });
 
-  it('rolls the year, which is the case a month+1 gets wrong', () => {
-    expect(nextPayoutDayISO('2026-12-28')).toBe(`2027-01-${String(PAYOUT_DAY_OF_MONTH).padStart(2, '0')}`);
+  /** Month and year rollovers, which plain day arithmetic on a `YYYY-MM-DD` string gets wrong. */
+  it('crosses a month and a year without inventing a date', () => {
+    expect(nextPayoutDayISO('2026-08-30')).toBe('2026-08-30');  // itself a Sunday
+    expect(nextPayoutDayISO('2026-08-31')).toBe('2026-09-06');
+    expect(nextPayoutDayISO('2026-12-28')).toBe('2027-01-03');
+  });
+
+  /** Every day of one week resolves to a payout day that really is the configured weekday. */
+  it('always lands on the configured weekday', () => {
+    for (const d of ['2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21', '2026-08-22']) {
+      const next = nextPayoutDayISO(d);
+      expect(next >= d, `${d} resolved backwards to ${next}`).toBe(true);
+      expect(new Date(`${next}T12:00:00Z`).getUTCDay()).toBe(PAYOUT_WEEKDAY);
+    }
   });
 });

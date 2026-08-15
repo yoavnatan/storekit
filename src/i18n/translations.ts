@@ -931,7 +931,8 @@ export const translations = {
       // להכיל, בספק אם המוכר"*). A subtitle is read on the way to the numbers, not studied — the
       // hold rule, the return window and the minimum are details a seller wants ONCE, in one place
       // they can be sent to, rather than three sentences standing between them and their money.
-      paySubtitle: 'הכסף עובר אליכם בהעברה אחת ב-{day} לכל חודש.',
+      payDayName: 'יום ראשון',
+      paySubtitle: 'הכסף עובר אליכם בהעברה שבועית, כל {day}.',
       // Sits UNDER "פרטי בנק ופרטי עסק" and only for a seller with more than one shop (owner,
       // 2026-08-11). It replaced `payAllStores`, which said the same thing in the panel's SUBTITLE
       // — where it described the whole screen instead of the one card it is true of, and made a
@@ -1001,7 +1002,7 @@ export const translations = {
       // break.
       payHowTitle: 'איך זה עובד',
       payHowWhenQ: 'מתי הכסף מועבר?',
-      payHowWhenA: 'פעם בחודש, ב-{day} לחודש, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז.',
+      payHowWhenA: 'פעם בשבוע, כל {day}, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז.',
       // ⚠️ The owner read the first version and asked *"לא הבנתי… למה 21 מרגע המסירה ולא 15 למשל?"*
       // — which is the right question, and the answer is that the number is DERIVED and the sentence
       // was hiding that. Israeli consumer law gives a distance-sale buyer 14 days FROM RECEIVING the
@@ -1020,7 +1021,7 @@ export const translations = {
       // land on day 14 and the parcel is still in transit, so money paid out on day 14 has to be
       // clawed back from a seller who has already had it. The margin covers the RETURN, not the
       // notice.
-      payHowWhyA: 'לקונה יש {statutory} ימים מקבלת המוצר לבטל את העסקה ולהחזיר אותו — זו זכות שבחוק. ההודעה יכולה להגיע ביום האחרון והמוצר עוד בדרך חזרה, ולכן ההמתנה מוסיפה מרווח: כדי שלא נעביר לכם כסף על מכירה שחוזרת אחורה. אחרי שהוא עובר הכסף משתחרר לבד.',
+      payHowWhyA: 'לקונה יש {statutory} ימים מקבלת המוצר לבטל את העסקה ולהחזיר אותו — זו זכות שבחוק. ההמתנה היא יום אחד יותר, כדי שהכסף לא ישוחרר ביום שבו עוד אפשר לבטל. מיד אחריו הוא משתחרר לבד.',
       payHowMinQ: 'ומה אם הסכום קטן?',
       payHowMinA: 'מתחת ל-{min} הכסף מחכה לחודש הבא. שום דבר לא נגרע.',
       // The held-orders TABLE became a three-line split by reason (owner, סשן א׳ §4 — a second
@@ -2730,7 +2731,8 @@ export const translations = {
       tabAdvertising: 'Advertising',
       tabPayouts: 'Payments',
       payTitle: 'My payments',
-      paySubtitle: 'Your money reaches you in one transfer on the {day} of each month.',
+      payDayName: 'Sunday',
+      paySubtitle: 'Your money reaches you in a weekly transfer, every {day}.',
       payBankAllStores: 'These details apply to every store you own.',
       payAccountTotal: 'Next payment across all of your stores: {amount}.',
       payAccountHeld: 'Waiting across all of your stores: {amount}.',
@@ -2766,11 +2768,11 @@ export const translations = {
       payBusinessMissing: 'Not set',
       payHowTitle: 'How this works',
       payHowWhenQ: 'When is the money transferred?',
-      payHowWhenA: 'Once a month, on the {day}, in one transfer to your bank account — everything released by then.',
+      payHowWhenA: 'Once a week, every {day}, in one transfer to your bank account — everything released by then.',
       payHowHeldQ: 'When is it held?',
       payHowHeldA: 'From payment until the order is delivered, plus {delivery} days after that. Never marked it delivered? {payment} days from the payment date.',
       payHowWhyQ: 'Why {delivery} days?',
-      payHowWhyA: 'The buyer has {statutory} days from receiving the goods to cancel and return them — that is a right in law. The notice can land on the last of those days with the parcel still on its way back, so the hold adds room: we do not send you money for a sale that is travelling backwards. Once it passes, the money releases on its own.',
+      payHowWhyA: 'The buyer has {statutory} days from receiving the goods to cancel and return them — that is a right in law. The hold is one day longer, so your money is never released on a day the sale can still be cancelled. Right after that, it releases on its own.',
       payHowMinQ: 'What if the amount is small?',
       payHowMinA: 'Below {min} it waits for next month. Nothing is deducted.',
       payHeldTitle: 'Payments waiting',

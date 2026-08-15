@@ -46,7 +46,7 @@
  * Both write through `parsePayoutDetails`, so neither can half-save a bank account.
  */
 import { formatAgorot } from '../../lib/money.js';
-import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT, STATUTORY_RETURN_DAYS } from '../../lib/payout-schedule.js';
+import { MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT, STATUTORY_RETURN_DAYS } from '../../lib/payout-schedule.js';
 import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
 import { splitHeldByBasis, payableHeadlineAgorot } from '../../lib/order-payout-line.js';
 import type { SellerAccount } from '../../lib/seller-account.js';
@@ -188,7 +188,7 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
         STORE's dashboard, that sentence made the whole screen read as somebody else's — and it was
         only ever true of two things on it. It moved to the one place it is actually about, the bank
         card, and the two figures that really are account-wide say so on themselves. */}
-    <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle.replace('{day}', String(PAYOUT_DAY_OF_MONTH))}</p>
+    <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle.replace('{day}', d.payDayName)}</p>
   </div>
 
   {/* Two tiles, not four. "שולם בעבר" left for the Reports tab (§6) — it was the only backward-
@@ -454,7 +454,7 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
   <dl class="card card--flat p-4 md:p-5 gap-3 text-[0.85rem]">
     <div>
       <dt class="font-semibold m-0">{d.payHowWhenQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowWhenA.replace('{day}', String(PAYOUT_DAY_OF_MONTH))}</dd>
+      <dd class="muted m-0 mt-0.5">{d.payHowWhenA.replace('{day}', d.payDayName)}</dd>
     </div>
     <div>
       <dt class="font-semibold m-0">{d.payHowHeldQ}</dt>
@@ -462,7 +462,8 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
     </div>
     {/* Both the QUESTION and the answer carry the hold length, because the question the owner
         actually asked was *"למה 21 ולא 15?"* — a heading that says only "למה?" is answering a
-        different one. The statutory 14 is what makes the 21 checkable rather than arbitrary. */}
+        different one. Since 2026-08-16 the hold IS the statutory window, so the two numbers are the
+        same one; the answer still names the law, because "14 because 14" explains nothing. */}
     <div>
       <dt class="font-semibold m-0">{d.payHowWhyQ.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY))}</dt>
       <dd class="muted m-0 mt-0.5">{d.payHowWhyA.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY)).replace('{statutory}', String(STATUTORY_RETURN_DAYS))}</dd>

@@ -15,13 +15,21 @@
  * no bare digit for a period.
  *
  * ── ⚠️ PLACEHOLDERS, and which ones ──
- * `HOLD_DAYS_AFTER_DELIVERY` and `FALLBACK_DAYS_AFTER_PAYMENT` are NOT final. They are owner
- * decisions tied to the returns policy, which is itself still open (CURRENT_TASK §ג.11) — and the
- * two cannot be set independently: a hold shorter than the return window pays a seller for goods the
- * buyer may still send back, and the money is then gone. Same convention as the shipping prices in
- * `lib/shipping.ts`: a placeholder is named as one, in the code, so nobody later reads it as a
- * decision that was made. `PAYOUT_DAY_OF_MONTH` and `MIN_PAYOUT_AGOROT` are proposals awaiting the
- * same conversation.
+ * `FALLBACK_DAYS_AFTER_PAYMENT` and `MIN_PAYOUT_AGOROT` are NOT final. They are owner decisions
+ * tied to the returns policy, which is itself still open (GO_LIVE §5) — and the hold and the return
+ * window cannot be set independently: a hold shorter than the return window pays a seller for goods
+ * the buyer may still send back, and the money is then gone. Same convention as the shipping prices
+ * in `lib/shipping.ts`: a placeholder is named as one, in the code, so nobody later reads it as a
+ * decision that was made.
+ *
+ * ── DECIDED 2026-08-16 (owner): weekly payouts, and the hold cut to the statutory floor ──
+ * The two together, because they fix two halves of the same complaint and only one of them was
+ * about risk. A seller who received their goods on the 1st waited 21 days of hold and then up to
+ * another 19 for the 10th of the next month — **~40 days, of which only 21 protected anything.**
+ * The rest was the calendar. Weekly payouts remove that half outright at no risk cost, and the hold
+ * dropping 21 → 15 removes the week that never had a defence (see `HOLD_DAYS_AFTER_DELIVERY`, which
+ * also records why the answer is 15 and not the 14 that was asked for). Worst case is now ~21 days
+ * and the typical case ~15, which is where Amazon and Walmart sit.
  */
 
 /**
@@ -43,9 +51,28 @@ export const STATUTORY_RETURN_DAYS = 14;
 /**
  * How long a delivered order's money waits before it may be paid out.
  *
- * **21, and the number is derived rather than chosen** — `STATUTORY_RETURN_DAYS` + a week.
+ * **15 — the statutory window plus exactly one day (owner asked for 14, 2026-08-16).**
  *
- * ── ⚠️ THIS NUMBER IS A PROXY FOR A MECHANISM THAT DOES NOT EXIST (owner, 2026-08-11) ──
+ * It was 21, `STATUTORY_RETURN_DAYS` + a week, and the extra week is gone because **no argument for
+ * it ever survived** — the two that were made are recorded below and both were withdrawn. A number
+ * that protects against nothing costs a real seller a real week of cash flow, and cash flow is the
+ * reason a small business does or does not sign up. Keeping it "just in case" was choosing a cost we
+ * could name over a risk nobody could.
+ *
+ * **Why it is not the 14 that was asked for, which is a one-day correction and not a hedge.** The
+ * release comparison is INCLUSIVE (`orderHold`: `releaseDayISO <= todayISO`, and the SQL twin says
+ * the same) — so a hold of N releases the money ON delivery-day + N. At 14 that is the fourteenth
+ * day, which is still a day the buyer may cancel: the platform would be paying the seller out on the
+ * last morning the sale can legally travel backwards, and `refund-owed.ts` would open a debt against
+ * someone who already has the money. 15 is the first day that is wholly outside the window. Cutting
+ * the hold to the *shortest defensible* number was the decision; 14 was the shortest number that
+ * SOUNDED right, and the two differ by the inclusivity of one comparison.
+ *
+ * This is a FLOOR, not a preference: it may never sit at or below `STATUTORY_RETURN_DAYS`, because
+ * there the platform is paying out money for goods the buyer still has a statutory right to send
+ * back. `tests/payout-schedule.test.ts` pins exactly that and nothing else.
+ *
+ * ── ⚠️ THIS NUMBER IS STILL A PROXY FOR A MECHANISM THAT DOES NOT EXIST (owner, 2026-08-11) ──
  * Read this before defending, shortening or lengthening it, because two wrong arguments were made
  * for it in one day and the owner corrected both.
  *
@@ -69,8 +96,15 @@ export const STATUTORY_RETURN_DAYS = 14;
  *
  * ⚠️ Owner decision, tied to the returns policy AND to that mechanism. It may not go BELOW the
  * statutory window whatever either says. `tests/payout-schedule.test.ts` pins that floor.
+ *
+ * **Cutting to 15 raised the stake on that mechanism rather than lowering it.** At 21 the extra week
+ * was absorbing, by accident, some of the exposure a returns state machine is supposed to handle. At
+ * 15 there is no slack left: the day a buyer can declare a cancellation in-product, the money must
+ * be held by the OPEN CANCELLATION and not by the calendar, or a day-16 declaration meets a seller
+ * who was paid on day 15. That is not a reason to go back to 21 — 21 would not have covered a day-22
+ * declaration either — it is the reason the returns mechanism is the next thing on this surface.
  */
-export const HOLD_DAYS_AFTER_DELIVERY = 21;
+export const HOLD_DAYS_AFTER_DELIVERY = 15;
 
 /**
  * The backstop for an order the seller never marked delivered.
@@ -80,11 +114,12 @@ export const HOLD_DAYS_AFTER_DELIVERY = 21;
  *
  * **30, and the reason it is not 21 is a correction.** It was justified as "longer than the
  * delivery hold, so reporting is always the faster path". That does not follow: with a hold of H
- * and a fallback of F, reporting wins only while delivery happens within F − H days. At 14 and 21
- * that was a 7-day window — deliver on day 12 and staying silent paid SOONER, which is the exact
- * incentive the fallback was supposed to remove. 30 against a 21-day hold restores a 9-day margin,
- * and the real fix is not a bigger number: it is taking `delivered` from the courier's webhook
- * instead of the seller's click (GO_LIVE §5), after which the seller has nothing to withhold.
+ * and a fallback of F, reporting wins only while delivery happens within F − H days. At an earlier
+ * 14/21 pairing that was a 7-day window — deliver on day 12 and staying silent paid SOONER, which is
+ * the exact incentive the fallback was supposed to remove. Against today's 15-day hold the margin is
+ * 15 days, comfortably wider than any real delivery, and the real fix is still not a bigger number:
+ * it is taking `delivered` from the courier's webhook instead of the seller's click (GO_LIVE §5),
+ * after which the seller has nothing to withhold.
  *
  * ⚠️ PLACEHOLDER — owner decision, but it must stay above `HOLD_DAYS_AFTER_DELIVERY`.
  */
@@ -124,7 +159,21 @@ export const SHIP_WARNING_DAYS = 7;
  */
 export const SHIP_AUTO_CANCEL_DAYS = 14;
 
-export const PAYOUT_DAY_OF_MONTH = 10;
+/**
+ * The weekday the payout run goes out on, as `Date#getUTCDay` numbers it — 0 = Sunday.
+ *
+ * **Weekly, and Sunday, decided 2026-08-16.** Monthly was costing up to 19 days on top of a hold
+ * that was already the only thing protecting anyone; see this module's header for the arithmetic.
+ * Sunday because the Israeli business week opens on it, so a transfer initiated that morning lands
+ * inside the same working week rather than against a weekend.
+ *
+ * **What this does NOT change is the money arithmetic, and that is why the switch is safe.** A
+ * period key never bounded a sum: `getPayoutTotalsBySeller` sums a seller's payouts across ALL time
+ * and uses the key for one thing only — "does a payout for this run already exist" — so shortening
+ * the period cannot double-pay. Cutting the cadence would have been genuinely dangerous had that
+ * subtraction been period-scoped, which is worth checking again before anyone shortens it further.
+ */
+export const PAYOUT_WEEKDAY = 0;
 
 /**
  * Below this, a payout is not sent and the balance rolls into the next period.
@@ -133,6 +182,30 @@ export const PAYOUT_DAY_OF_MONTH = 10;
  * until it is worth making. A bank transfer has a real per-transfer cost and a 4₪ payout costs more
  * to send than it moves.
  *
+ * **Weekly runs make this constant do more work, and that is on purpose.** A quarter of a month's
+ * sales clears 100₪ less often, so a small seller now rolls over more weeks than they used to —
+ * which is the correct behaviour, not a regression: they are never worse off than under a monthly
+ * run (the same money arrives on the same date or sooner), and a seller busy enough to care is paid
+ * every week. Raising the cadence and the minimum together would have handed back the gain.
+ *
  * ⚠️ PLACEHOLDER — owner decision.
  */
 export const MIN_PAYOUT_AGOROT = 10_000; // 100₪
+
+/**
+ * The payout weekday as a word, in the caller's language — `'יום ראשון'` / `'Sunday'`.
+ *
+ * Exists so the seller-facing copy and the terms of use can NAME the day without either of them
+ * hard-coding it. This module's whole premise is that a number appearing in a legal clause and
+ * separately in a scheduler will eventually disagree with itself; a weekday spelled out in two
+ * translation files is the same defect wearing a different hat. Derived from `PAYOUT_WEEKDAY`
+ * against a reference week (1970-01-04 was a Sunday), so changing the constant changes the copy.
+ *
+ * Pure and I/O-free like the rest of this module, so it is safe from a client bundle. Not for use
+ * inside a loop — `Intl` construction is what took the admin dashboard from 700ms to 80ms when it
+ * was moved out of one.
+ */
+export function payoutWeekdayName(locale: string): string {
+  const reference = new Date(Date.UTC(1970, 0, 4 + PAYOUT_WEEKDAY));
+  return new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(reference);
+}

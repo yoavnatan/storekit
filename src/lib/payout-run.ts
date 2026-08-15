@@ -1,5 +1,6 @@
-import { businessTodayISO, businessMonthKey } from './business-day.js';
-import { MIN_PAYOUT_AGOROT, PAYOUT_DAY_OF_MONTH } from './payout-schedule.js';
+import { businessTodayISO } from './business-day.js';
+import { addDaysISO } from './date-range.js';
+import { MIN_PAYOUT_AGOROT, PAYOUT_WEEKDAY } from './payout-schedule.js';
 import {
   getReleasableBySeller,
   getPayoutTotalsBySeller,
@@ -12,7 +13,7 @@ import { planPlatformInvoice } from './invoicing/index.js';
 import { hasPayableBank, type PayoutDetails } from './payout-details.js';
 
 /**
- * The monthly payout run: turn every seller's released balance into a payout row.
+ * The weekly payout run: turn every seller's released balance into a payout row.
  *
  * ── What this does NOT do, and it is the important half ──
  * It does not move money. It creates `seller_payouts` rows in `pending`, and something else — a
@@ -26,21 +27,23 @@ import { hasPayableBank, type PayoutDetails } from './payout-details.js';
  * down for a week, the timer may have fired twice, two instances may run together. So this asks the
  * calendar what day it is, asks the database what is releasable, and lets a UNIQUE constraint
  * decide whether the answer has already been acted on (`project_scheduler`, and `createPayout`'s
- * header). "Has this month already been paid" is never a question this code asks; it inserts and
+ * header). "Has this run already been paid" is never a question this code asks; it inserts and
  * reads the affected-row count.
  *
  * ── The three reasons a seller is skipped, all of which accrue rather than forfeit ──
  *   1. Below `MIN_PAYOUT_AGOROT` — a transfer that costs more to send than it moves. Rolls over.
  *   2. No bank details — the seller has never filled them in. Rolls over, and their screen says so.
  *      They are never asked for these at registration (`feedback_seller_form_burden`), so this is a
- *      normal state for a seller's first month, not an error.
+ *      normal state for a seller's first weeks, not an error.
  *   3. A carried debt exceeds the balance — a chargeback larger than what is released. Nothing to
- *      send; the debt stays and reduces next month.
+ *      send; the debt stays and reduces the next run.
  * None of the three loses the seller a shekel, and `terms.astro` says so in those words.
  */
 
 export interface PayoutRunResult {
-  /** The period these payouts belong to, 'YYYY-MM' on the business calendar. */
+  /** The run these payouts belong to: the payout day itself, 'YYYY-MM-DD' on the business calendar.
+   *  Rows written before 2026-08-16 carry a 'YYYY-MM' month key from the monthly cadence — nothing
+   *  parses this, it is an identity for the run and a label on a report, so both shapes coexist. */
   periodKey: string;
   /** Sellers a payout row was created for. */
   created: number;
@@ -53,9 +56,21 @@ export interface PayoutRunResult {
   skippedAlreadyPaid: number;
 }
 
-/** Is today the day? Compared as the business calendar's day-of-month, never the server's. */
+/**
+ * The day-of-week of a business day key, 0 = Sunday.
+ *
+ * Read at NOON UTC rather than midnight, which is the same guard `planPayouts` already uses on this
+ * key: a `YYYY-MM-DD` parsed as midnight sits on a date boundary, and any offset at all — a DST
+ * transition, a negative zone — moves it onto the previous day. Noon has twelve hours of slack in
+ * both directions, so the weekday this returns is the weekday a person reading the key would say.
+ */
+function weekdayOf(dayISO: string): number {
+  return new Date(`${dayISO}T12:00:00Z`).getUTCDay();
+}
+
+/** Is today the day? Compared as the business calendar's weekday, never the server's. */
 export function isPayoutDay(todayISO: string = businessTodayISO()): boolean {
-  return Number(todayISO.slice(8, 10)) === PAYOUT_DAY_OF_MONTH;
+  return weekdayOf(todayISO) === PAYOUT_WEEKDAY;
 }
 
 /** The bank details a transfer needs, or null when the seller has not supplied them.
@@ -78,9 +93,10 @@ function bankOf(seller: PayoutDetails): BankSnapshot | null {
  * nothing. `runPayouts` is that answer plus the rows.
  *
  * They are split because the owner has to SEE the coming transfer before it happens — how much
- * leaves the company's account on the 10th, and which sellers are stuck on a form nobody has asked
- * them to fill in. A screen that computed that separately would be a second definition of who gets
- * paid, and when two definitions of that disagree, one of them is a number somebody acted on.
+ * leaves the company's account on the coming payout day, and which sellers are stuck on a form
+ * nobody has asked them to fill in. A screen that computed that separately would be a second
+ * definition of who gets paid, and when two definitions of that disagree, one of them is a number
+ * somebody acted on.
  */
 export type PayoutState =
   /** Would be transferred on the payout day. */
@@ -91,7 +107,7 @@ export type PayoutState =
   | 'no_bank'
   /** A payout for this period already exists. A re-run, and the normal case for a second tick. */
   | 'already_paid'
-  /** Everything released has already been sent. The steady state, and most rows most months. */
+  /** Everything released has already been sent. The steady state, and most rows most runs. */
   | 'settled';
 
 export interface PayoutPlanRow {
@@ -145,35 +161,41 @@ export interface PayoutPlan {
 }
 
 /**
- * The next occurrence of `PAYOUT_DAY_OF_MONTH` on or after `todayISO`, on the business calendar.
+ * The next occurrence of `PAYOUT_WEEKDAY` on or after `todayISO`, on the business calendar.
  *
- * String arithmetic on a `YYYY-MM-DD` key rather than `Date` maths, for the reason `business-day.ts`
- * exists: a `Date` carries a timezone this question does not have, and constructing one from a day
- * key is how a payout date lands on the 9th for anyone east of UTC.
+ * Returns `todayISO` itself when today IS the payout day — "next" here means "the day this money is
+ * going out", and a screen that says "next Sunday" on a Sunday morning while the run is about to
+ * fire is telling the seller to wait a week for money they are getting today.
+ *
+ * The month version of this walked `YYYY-MM-DD` as a string, deliberately, because a `Date` carries
+ * a timezone the question does not have. A weekday cannot be answered without real date arithmetic,
+ * so the two halves are each handed to code that already owns them: `weekdayOf` reads the weekday at
+ * noon UTC, and `addDaysISO` does the shift — the same helper the hold rule releases orders with.
+ * Rolling the date here by hand is what the money guard forbids, and it is right to: a day derived
+ * from `toISOString` is a UTC day, which is the one bug `business-day.ts` exists to have ended.
  */
 export function nextPayoutDayISO(todayISO: string = businessTodayISO()): string {
-  const day = String(PAYOUT_DAY_OF_MONTH).padStart(2, '0');
-  const thisMonth = `${todayISO.slice(0, 7)}-${day}`;
-  if (thisMonth >= todayISO) return thisMonth;
-  const year = Number(todayISO.slice(0, 4));
-  const month = Number(todayISO.slice(5, 7));
-  const nextYear = month === 12 ? year + 1 : year;
-  const nextMonth = month === 12 ? 1 : month + 1;
-  return `${nextYear}-${String(nextMonth).padStart(2, '0')}-${day}`;
+  const ahead = (PAYOUT_WEEKDAY - weekdayOf(todayISO) + 7) % 7;
+  return ahead === 0 ? todayISO : addDaysISO(todayISO, ahead);
 }
 
 /**
  * Who would be paid, how much, and why not — reading only.
  *
  * **Four queries, whatever the platform's size.** The two per-seller reads this replaced were fine
- * for a monthly job and are not fine for a SCREEN: a page costing 2N queries is the shape
+ * for a once-a-month job and are not fine for a SCREEN: a page costing 2N queries is the shape
  * `feedback_scalability` exists to reject. Both sums arrive as one aggregate each
  * (`payouts.ts#getPayoutTotalsBySeller`), which are plain `SUM`s keyed by `seller_id` with no join
  * to orders. `getReleasableBySeller` deliberately stays its own query — folding THAT one in is the
  * join that could silently under- or over-pay every seller at once.
  */
 export async function planPayouts(todayISO: string = businessTodayISO()): Promise<PayoutPlan> {
-  const periodKey = businessMonthKey(new Date(`${todayISO}T12:00:00Z`));
+  // ── The period key IS the payout day, and that is a change of meaning as well as of format ──
+  // It used to be the month `todayISO` fell in, which quietly answered a different question from the
+  // one beside it: viewed on the 15th, the plan was keyed to THIS month while `payoutDayISO` pointed
+  // at next month's run. Keying both to the same day makes the key say what it is used for — "the
+  // run this plan becomes" — and keeps `already_paid` honest across a re-tick.
+  const periodKey = nextPayoutDayISO(todayISO);
   const [releasable, totals, adjustments, sellers] = await Promise.all([
     getReleasableBySeller(todayISO),
     getPayoutTotalsBySeller(periodKey),
@@ -194,7 +216,7 @@ export async function planPayouts(todayISO: string = businessTodayISO()): Promis
     // ── The commission INCREMENT, and why it is not `row.commissionAgorot` ──
     // `getReleasableBySeller` is cumulative: it answers "commission on everything out of hold",
     // which still includes every earlier period, because a balance that sat below the minimum last
-    // month is still releasable this month. Harmless in a balance — prior payouts are subtracted
+    // run is still releasable in this one. Harmless in a balance — prior payouts are subtracted
     // above — and NOT harmless on the tax invoice, which would bill the seller a second time for
     // commission they were already invoiced for. So each payout records the slice it settled and
     // the next one subtracts them all. A failed payout is excluded here for the same reason it is
@@ -203,7 +225,7 @@ export async function planPayouts(todayISO: string = businessTodayISO()): Promis
     const bank = bankOf(seller);
 
     // The order of these tests IS the order of the reasons, and it matters on screen. `settled` is
-    // split out of `below_minimum` for one reason: a seller paid in full last month has a balance
+    // split out of `below_minimum` for one reason: a seller paid in full last run has a balance
     // of zero, zero is below the minimum, and listing them that way buries the handful of sellers
     // who are genuinely stuck among everyone who is perfectly fine.
     const state: PayoutState =
@@ -236,7 +258,7 @@ export async function planPayouts(todayISO: string = businessTodayISO()): Promis
 
   return {
     periodKey,
-    payoutDayISO: nextPayoutDayISO(todayISO),
+    payoutDayISO: periodKey,
     rows,
     payableAgorot: sum('payable'),
     payableSellers: count('payable'),
