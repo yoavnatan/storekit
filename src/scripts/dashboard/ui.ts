@@ -2,6 +2,7 @@ import { reportClientError } from '../error-reporter.js';
 import { arrowStep, wrapIndex } from '../../lib/arrow-step.js';
 import { markDashboardStale, conflictMessage } from './tab-sync.js';
 import { initTabAlertEdges } from './tab-alert-edges.js';
+import { setPanelIntent } from './panel-intent.js';
 
 const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
 
@@ -377,6 +378,17 @@ export function initGotoPanelLinks(): void {
   document.querySelectorAll<HTMLElement>('[data-goto-panel]').forEach((el) => {
     bindOnce(el, 'gotoBound', () => {
     el.addEventListener('click', () => {
+      // "…and arrive with this already applied." The overview's three attention tiles lead to a
+      // FILTERED list, and the code that filters lives in the target panel's module — which is
+      // usually not loaded yet when the tile is pressed. Recording an intent here is what makes
+      // that work: the target's own init collects it (panel-intent.ts). Binding the tiles from the
+      // target's module instead is what left all three dead on the landing page of a fresh load
+      // for any seller who had not already opened the tab they lead to (owner, 2026-08-16).
+      const intent = el.dataset.gotoIntent;
+      if (intent) {
+        const [kind, value] = intent.split(':');
+        setPanelIntent(el.dataset.gotoPanel ?? '', kind === 'status' ? { status: [value ?? ''] } : { stockAttention: true });
+      }
       document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${el.dataset.gotoPanel}"]`)?.click();
       // A source that names a control (data-goto-open) also opens it. The onboarding checklist's
       // "add your first product" step used to land the seller on the Products tab with the add

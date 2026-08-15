@@ -1226,11 +1226,11 @@ const orderStatusColors: Record<string, string> = {
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.tabOrders}</dt>
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrdersTotal}</dd>
           </button>
-          <button type="button" id="ov-new-orders" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
+          <button type="button" id="ov-new-orders" data-goto-panel="orders" data-goto-intent="status:pending" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovNewOrders}</dt>
             <dd class={`m-0 text-[1.15rem] font-bold ${newOrdersCount > 0 ? '[color:var(--color-accent)]' : '[color:var(--color-muted)]'}`}>{newOrdersCount}</dd>
           </button>
-          <button type="button" id="ov-unshipped" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
+          <button type="button" id="ov-unshipped" data-goto-panel="orders" data-goto-intent="status:processing" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovUnshipped}</dt>
             <dd class={`m-0 text-[1.15rem] font-bold ${unshippedOrdersCount > 0 ? '[color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>{unshippedOrdersCount}</dd>
           </button>
@@ -1242,7 +1242,7 @@ const orderStatusColors: Record<string, string> = {
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.inStock}</dt>
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{inStockCount}</dd>
           </button>
-          <button type="button" id="ov-stock-attention" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
+          <button type="button" id="ov-stock-attention" data-goto-panel="products" data-goto-intent="stockAttention" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovStockAttention}</dt>
             <dd class={`m-0 text-[1.15rem] font-bold ${stockAlertCount > 0 ? '[color:var(--color-danger)]' : '[color:var(--color-muted)]'}`}>{stockAlertCount}</dd>
           </button>

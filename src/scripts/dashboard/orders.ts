@@ -3,7 +3,7 @@ import { showActionFailedToast } from '../../lib/toast.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { CANCELLABLE_FROM } from '../../lib/order-status-rules.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
-import { applyStockAttentionFilter } from './products.js';
+import { takePanelIntent } from './panel-intent.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
@@ -1063,12 +1063,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     });
   }
 
-  // Overview "attention" cards (CURRENT_TASK items 3+4): jump to the relevant
-  // tab and pre-apply the matching filter so the click lands on exactly the
-  // counted rows. Orders cards drive the same ordersFilters state +
-  // applyOrdersFilter() the toolbar uses (so the funnel badge stays in sync);
-  // the stock card calls products.js's applyStockAttentionFilter(). Search is
-  // cleared first so a stale query can't hide the counted rows.
+  // Where an overview "attention" card lands: the same ordersFilters state + applyOrdersFilter()
+  // the toolbar uses, so the funnel badge stays in sync. Search is cleared first, or a stale query
+  // could hide the very rows that were counted. Reached through an intent the tile recorded, never
+  // by the tile calling in here — see panel-intent.ts for why that direction was wrong.
   function jumpToOrdersWithStatus(statuses: string[]): void {
     ordersSearchQuery = '';
     const searchEl = document.getElementById('orders-search-input') as HTMLInputElement | null;
@@ -1078,22 +1076,11 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     document.querySelector<HTMLButtonElement>('[role="tab"][data-panel="orders"]')?.click();
     applyOrdersFilter();
   }
-  // The OVERVIEW's three tiles, and they are delegated at the document rather than bound to the
-  // elements — because those elements are in a different panel from this module. Bound directly,
-  // they were only wired once the seller had opened the Orders tab, so on the landing page a
-  // freshly loaded dashboard had three dead tiles until he happened to visit the tab they lead to.
-  // Delegation asks the question at click time, which is the only moment at which the answer is
-  // reliably yes. Same class as the category tree island (tests/dashboard-shared-data.test.ts).
-  document.addEventListener('click', (e) => {
-    const tile = (e.target as Element | null)?.closest('#ov-new-orders, #ov-unshipped, #ov-stock-attention');
-    if (!tile) return;
-    if (tile.id === 'ov-stock-attention') {
-      document.querySelector<HTMLButtonElement>('[role="tab"][data-panel="products"]')?.click();
-      applyStockAttentionFilter();
-      return;
-    }
-    jumpToOrdersWithStatus([tile.id === 'ov-new-orders' ? 'pending' : 'processing']);
-  });
+  // Arrived here from an overview tile? Apply what it asked for, once. The tile itself is bound by
+  // the OVERVIEW's own module — it does not reach into this one, which is what stopped those tiles
+  // being dead for a seller who had never opened this tab (panel-intent.ts).
+  const intent = takePanelIntent('orders');
+  if (intent?.status) jumpToOrdersWithStatus(intent.status);
 
   const ordersSortTrigger = document.getElementById('orders-sort-trigger') as HTMLButtonElement | null;
   ordersSortTrigger?.addEventListener('click', () => {
