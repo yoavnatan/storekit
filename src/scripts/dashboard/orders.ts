@@ -1078,11 +1078,21 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     document.querySelector<HTMLButtonElement>('[role="tab"][data-panel="orders"]')?.click();
     applyOrdersFilter();
   }
-  document.getElementById('ov-new-orders')?.addEventListener('click', () => jumpToOrdersWithStatus(['pending']));
-  document.getElementById('ov-unshipped')?.addEventListener('click', () => jumpToOrdersWithStatus(['processing']));
-  document.getElementById('ov-stock-attention')?.addEventListener('click', () => {
-    document.querySelector<HTMLButtonElement>('[role="tab"][data-panel="products"]')?.click();
-    applyStockAttentionFilter();
+  // The OVERVIEW's three tiles, and they are delegated at the document rather than bound to the
+  // elements — because those elements are in a different panel from this module. Bound directly,
+  // they were only wired once the seller had opened the Orders tab, so on the landing page a
+  // freshly loaded dashboard had three dead tiles until he happened to visit the tab they lead to.
+  // Delegation asks the question at click time, which is the only moment at which the answer is
+  // reliably yes. Same class as the category tree island (tests/dashboard-shared-data.test.ts).
+  document.addEventListener('click', (e) => {
+    const tile = (e.target as Element | null)?.closest('#ov-new-orders, #ov-unshipped, #ov-stock-attention');
+    if (!tile) return;
+    if (tile.id === 'ov-stock-attention') {
+      document.querySelector<HTMLButtonElement>('[role="tab"][data-panel="products"]')?.click();
+      applyStockAttentionFilter();
+      return;
+    }
+    jumpToOrdersWithStatus([tile.id === 'ov-new-orders' ? 'pending' : 'processing']);
   });
 
   const ordersSortTrigger = document.getElementById('orders-sort-trigger') as HTMLButtonElement | null;

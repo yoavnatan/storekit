@@ -102,8 +102,19 @@ export function initCategoryPicker(root: HTMLElement): void {
   // undefined = no add-row open; null = adding a root category; string = adding under that parent id.
   let addingUnderId: string | null | undefined;
 
+  /**
+   * From `#upload-config`, which is in the page SHELL — not from the tree editor, which is in the
+   * settings panel.
+   *
+   * This picker runs wherever a category is chosen: a product's edit form, the sale scope, a boost.
+   * Since panels stopped being server-rendered (2026-08-11) the settings markup is absent until the
+   * seller opens that tab, so the old read returned `''` and creating a category from any of those
+   * places posted an empty store id. Same class as the category tree island itself
+   * (`dashboard-shared-data.test.ts`): data a client renderer needs belongs to the page, not to the
+   * panel that happens to edit it.
+   */
   function storeId(): string {
-    return document.getElementById('category-tree-editor')?.getAttribute('data-store-id') ?? '';
+    return document.getElementById('upload-config')?.getAttribute('data-store-id') ?? '';
   }
 
   /** Mirrors the banner's own rule (sale-scope-label.ts): one pick keeps its full path, several
