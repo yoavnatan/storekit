@@ -81,6 +81,7 @@ import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -154,7 +155,13 @@ function changedFiles() {
 // `CLAUDE.md` joined them on 2026-08-09, read by `tests/handoff-backup.test.ts`. It is the one page
 // a freshly cloned machine loads before it knows anything else, so its restore steps are pinned
 // against `.env.example` — and a pin whose check can be skipped from cache is not a pin.
-const CHECKED_DOCS = /(?:^|\/)(?:AI_INSTRUCTIONS|CLAUDE)\.md$|(?:^|\/)\.claude\/(?:hooks|skills)\//;
+// `MEMORY.md` joined on 2026-08-16, read by `tests/memory-index.test.ts`, and it is the one entry
+// here that git cannot supply: it lives in the private memory repo, which is gitignored and is not
+// this checkout at all, so it appears in no `ls-files` output and no amount of regex would reach it.
+// `memoryIndexHash()` below hashes it directly for that reason. Listing it here is still required —
+// `tests/verify-doc-inputs.test.ts` reads THIS regex to decide whether the doc is covered, and a
+// name missing from it reads as "no check depends on this file".
+const CHECKED_DOCS = /(?:^|\/)(?:AI_INSTRUCTIONS|CLAUDE|MEMORY)\.md$|(?:^|\/)\.claude\/(?:hooks|skills)\//;
 const IRRELEVANT = /(?:(?:^|\/)\.claude\/)|(?:\.md$)/;
 const relevant = (p) => p && (CHECKED_DOCS.test(p) || !IRRELEVANT.test(p));
 
@@ -163,9 +170,36 @@ const relevant = (p) => p && (CHECKED_DOCS.test(p) || !IRRELEVANT.test(p));
 // the index without changing one byte a check reads, and an earlier version keyed off the raw
 // `ls-files -s` text, so every commit threw the cache away and the pre-push gate paid the full
 // minute again for a tree it had already passed.
+/**
+ * The memory index's content hash, or null when there is no memory repo (a fresh clone, CI).
+ *
+ * It is a real input to `tests/memory-index.test.ts` and it is invisible to git, so without this the
+ * cache would report green on an index that had just grown past its ceiling. Two paths because a
+ * worktree has no `.claude-memory/` of its own — `worktree-setup.mjs` links the harness memory path
+ * at the main checkout's copy instead, and that link is the only handle a worktree has.
+ *
+ * It costs nothing in practice: a session that touched code has already changed the hash, and the
+ * one case where this adds a full run — a session that ONLY wrote memory — is exactly the case the
+ * budget test exists to catch.
+ */
+function memoryIndexHash() {
+  const slug = ROOT.replace(/[^A-Za-z0-9]/gu, '-');
+  const candidates = [
+    resolve(ROOT, '.claude-memory', 'MEMORY.md'),
+    resolve(homedir(), '.claude', 'projects', slug, 'memory', 'MEMORY.md'),
+  ];
+  for (const file of candidates) {
+    if (!existsSync(file)) continue;
+    return createHash('sha256').update(readFileSync(file)).digest('hex');
+  }
+  return null;
+}
+
 function treeHash() {
   try {
     const byPath = new Map();
+    const memory = memoryIndexHash();
+    if (memory) byPath.set('.claude-memory/MEMORY.md', memory);
     for (const line of git('ls-files', '-s').split('\n')) {
       // "<mode> <sha> <stage>\t<path>"
       const tab = line.indexOf('\t');
