@@ -917,6 +917,21 @@ const orderStatusColors: Record<string, string> = {
   ) : store ? (
   <Fragment>
   <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} draftNotice={d.draftNotice} goLabel={d.unsavedGo} />
+  {/* The store's category tree, for every client renderer that has to turn a `categoryId` back into
+      a readable path: the products table's chip, its category filter and sort, and the category
+      picker inside a product's edit form.
+
+      It sits HERE, in the page shell, and that is the whole point — it used to live inside the
+      SETTINGS panel, next to the tree editor that owns it. That was fine until panels stopped being
+      server-rendered (2026-08-11): from then on a seller who never opened Settings had no tree in
+      the DOM at all, `getCategoryTree()` returned `[]`, and every one of those renderers silently
+      resolved a real category to nothing. The symptom the owner hit (2026-08-15) was the edit form
+      showing "ללא קטגוריה" for a product that plainly had one — and the same emptiness was in the
+      chip of every row the table REBUILT (i.e. after any page change, filter or sort), while page
+      one still looked right because the server had rendered it.
+
+      Data a client renderer needs belongs to the page, not to the panel that happens to edit it. */}
+  <script type="application/json" id="category-tree-data" set:html={jsonForScript(categoryTree)} />
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-invoice-preset={cloudinaryInvoicePreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-host={platformHost} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section dash-section--bleed">
     <div id="dash-main-card" class="card seller-dash" style="margin-bottom:1.5rem">
@@ -2897,7 +2912,6 @@ const orderStatusColors: Record<string, string> = {
             </form>
           </div>
         )}
-        <script type="application/json" id="category-tree-data" set:html={jsonForScript(categoryTree)} />
 
         <!-- `platformHost`, not `.hostname`: the host keeps the port, and in dev the address without
              it is one nobody can reach. It must be the SAME expression the code elements below are
@@ -3662,6 +3676,8 @@ const orderStatusColors: Record<string, string> = {
       p.initBulkSelect(CLOUD, PRESET);
       csv.initCsvImport();
       p.initThumbs();
+      // The chips the SERVER rendered — the client sweep only covers rows it rebuilt itself.
+      p.initCategoryChipTips();
       p.initInlineEdit();
       p.initPagination();
       // Page-size native <select> → app dropdown (compact pill matching the
