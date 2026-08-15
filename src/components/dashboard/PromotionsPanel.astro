@@ -14,6 +14,7 @@
 import { formatPrice } from '../../config/store.config.js';
 import { isStoreSaleLive, resolvePrice, salePickedCategoryIds, type StoreSale } from '../../lib/discounts.js';
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
+import { isolateLatinRunsHtml } from '../../lib/bidi-isolate.js';
 import { SALE_TITLE_MAX, SALE_TEXT_MAX } from '../../lib/discount-input.js';
 import type { StoreProduct } from '../../lib/store-products.js';
 import type { Store } from '../../lib/stores.js';
@@ -178,8 +179,8 @@ const discounted = products
     <div class="store-sale" id="sale-preview" dir="rtl" hidden={!sale?.active || !sale?.title}>
       <span class="store-sale__pct" id="sale-preview-pct" dir="ltr" hidden={!sale?.percent}>-{sale?.percent ?? 0}%</span>
       <span class="store-sale__body">
-        <span class="store-sale__title" id="sale-preview-title">{sale?.title ?? ''}</span>
-        <span class="store-sale__text" id="sale-preview-text" style="display:block" data-selected-label={selectedScopeLabel} data-store-label={storeScopeLabel} hidden={!previewSubtitle}>{previewSubtitle}</span>
+        <span class="store-sale__title" id="sale-preview-title" set:html={isolateLatinRunsHtml(sale?.title ?? '')} />
+        <span class="store-sale__text" id="sale-preview-text" style="display:block" data-selected-label={selectedScopeLabel} data-store-label={storeScopeLabel} hidden={!previewSubtitle} set:html={isolateLatinRunsHtml(previewSubtitle)} />
       </span>
     </div>
     <p class="muted m-0 mt-2 text-[0.78rem]" id="sale-preview-empty" hidden={!!(sale?.active && sale?.title)}>{d.salePreviewEmpty}</p>
