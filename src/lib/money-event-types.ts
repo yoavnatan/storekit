@@ -116,6 +116,61 @@ export function isMoneyEventType(value: string): value is MoneyEventType {
 }
 
 /**
+ * The `from → to` line of a journal row, in Hebrew.
+ *
+ * The columns hold whatever the moving code passed, which for a status change is the database value
+ * — so the admin's Hebrew journal printed `delivered → cancelled` under a Hebrew heading, on the one
+ * screen that is read during a money incident (owner, 2026-08-16: *"יש שם טקסטים שאני לא מצליח
+ * להבין"*). The row said the right thing in the wrong language.
+ *
+ * **Keyed by EVENT TYPE, and that is not tidiness — a flat map is wrong here.** `'pending'` is a
+ * legal value of two different columns and means two different things: a shipping status of
+ * `pending` is an order that arrived and is waiting on the seller, a payment status of `pending` is
+ * money that has not been taken. One map has to pick one, so a `payment_status_changed` row would
+ * have rendered "התקבלה ← שולם" — a sentence about the wrong subject, on the screen read during a
+ * money incident, which is worse than the English it replaced. `'failed'` collides the same way
+ * between a payment and a payout.
+ *
+ * **A lookup with a passthrough, not a total `Record`.** `from`/`to` are free text by design and a
+ * future event may put something new there; an unknown value prints itself unchanged, which is the
+ * honest answer and the same one the column gave before.
+ *
+ * This is a DISPLAY vocabulary and holds no rule — nothing branches on it, so it is not the second
+ * definition of the status table that `money-guards.test.ts` exists to refuse. The gender follows
+ * the subject: an order is feminine (הזמנה), a payment and a payout are masculine (תשלום).
+ */
+const STATE_WORDS: Partial<Record<MoneyEventType, Record<string, string>>> = {
+  shipping_status_changed: {
+    pending: 'התקבלה',
+    processing: 'בטיפול',
+    ready: 'מוכנה',
+    shipped: 'נשלחה',
+    delivered: 'נמסרה',
+    cancelled: 'בוטלה',
+  },
+  payment_status_changed: {
+    pending: 'ממתין לתשלום',
+    paid: 'שולם',
+    failed: 'נכשל',
+  },
+  payout_sent: { sent: 'הועבר', failed: 'נכשל' },
+  payout_failed: { sent: 'הועבר', failed: 'נכשל' },
+  // Written by refund-owed.ts, which passes the SHIPPING statuses it moved between.
+  refund_due: {
+    pending: 'התקבלה',
+    processing: 'בטיפול',
+    ready: 'מוכנה',
+    shipped: 'נשלחה',
+    delivered: 'נמסרה',
+    cancelled: 'בוטלה',
+  },
+};
+
+export function moneyEventStateWord(type: MoneyEventType, value: string): string {
+  return STATE_WORDS[type]?.[value] ?? value;
+}
+
+/**
  * The three subjects the journal actually records, and the one place their membership is declared.
  *
  * It is a DISPLAY grouping — the admin's type menu renders a section per entry

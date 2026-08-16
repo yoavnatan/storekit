@@ -1,5 +1,6 @@
 import { businessTodayISO } from './business-day.js';
 import { addDaysISO } from './date-range.js';
+import { formatAgorot } from './money.js';
 import { MIN_PAYOUT_AGOROT, PAYOUT_WEEKDAY } from './payout-schedule.js';
 import {
   getReleasableBySeller,
@@ -306,7 +307,7 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
       amountAgorot: row.balanceAgorot,
       commissionAgorot: row.commissionAgorot,
       bankSnapshot: row.bank,
-      detail: `payable ${row.balanceAgorot}; commission settled ${row.commissionAgorot}`,
+      detail: `לתשלום ${formatAgorot(row.balanceAgorot)} · עמלה שנוכתה ${formatAgorot(row.commissionAgorot)}`,
     });
     // Null means the UNIQUE index caught a concurrent run. Not an error — the other run created it.
     if (!payout) { result.skippedAlreadyPaid++; continue; }

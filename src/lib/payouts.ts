@@ -68,6 +68,27 @@ export type AdjustmentKind =
   | 'setoff_ad'
   | 'manual';
 
+/**
+ * Each kind in the words the admin panel reads (owner, 2026-08-16: *"לשונית יומן כספי בפירוט מחזיקה
+ * בטקסטים שאני לא מצליח להבין"*).
+ *
+ * The journal's `detail` column is the only free text on that screen, and half of it was being
+ * written as debug output — `refund_clawback`, `period=2026-W33; payout=8f2c…`. A key nobody outside
+ * this file has seen is not a detail, it is a lookup the reader cannot perform, and the panel had no
+ * way to translate it because the string arrived pre-built.
+ *
+ * A `Record` rather than a function with a `default`, so adding a kind above without naming it here
+ * fails to compile instead of shipping an English key to the one screen that has to be readable
+ * during a money incident.
+ */
+export const ADJUSTMENT_KIND_LABELS: Record<AdjustmentKind, string> = {
+  refund_clawback: 'החזרת זיכוי ששולם כבר למוכר',
+  chargeback: 'חיוב-חוזר מחברת האשראי',
+  setoff_subscription: 'קיזוז דמי מנוי',
+  setoff_ad: 'קיזוז הוצאות פרסום',
+  manual: 'התאמה ידנית',
+};
+
 export interface LedgerAdjustment {
   id: string;
   sellerId: string;
@@ -774,7 +795,7 @@ export async function createPayout(input: {
     sellerId: input.sellerId,
     amountAgorot: payout.amountAgorot,
     actor: 'system',
-    detail: `period=${payout.periodKey}; payout=${payout.id}`,
+    detail: `תקופת תשלום ${payout.periodKey} · מזהה תשלום ${payout.id.slice(0, 8)}`,
   });
   return payout;
 }
@@ -816,7 +837,7 @@ export async function setPayoutStatus(
     amountAgorot: payout.amountAgorot,
     actor: 'system',
     to: status,
-    detail: `period=${payout.periodKey}; payout=${payout.id}${detail ? `; ${detail}` : ''}`,
+    detail: `תקופת תשלום ${payout.periodKey} · מזהה תשלום ${payout.id.slice(0, 8)}${detail ? ` · ${detail}` : ''}`,
   };
   if (status === 'failed') await recordMoneyEvent({ type: 'payout_failed', ...common });
   else await recordMoneyEvent({ type: 'payout_sent', ...common });
@@ -858,7 +879,7 @@ export async function recordAdjustment(input: {
     ...(input.orderId ? { orderId: input.orderId } : {}),
     amountAgorot: adjustment.amountAgorot,
     actor: 'system',
-    detail: `${adjustment.kind}${adjustment.detail ? `; ${adjustment.detail}` : ''}`,
+    detail: `${ADJUSTMENT_KIND_LABELS[adjustment.kind]}${adjustment.detail ? ` · ${adjustment.detail}` : ''}`,
   });
   return adjustment;
 }
