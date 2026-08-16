@@ -81,8 +81,16 @@ const cardMax = cardCount <= 1 ? '560px' : '100%';
 // `edge-fade` only on the scrolling variant — the grid has nothing to scroll, so
 // nothing to fade toward. The mask itself stays inert until initEdgeFade sets
 // `data-fade` (utilities/utils.css explains why the width is static, not a var).
+// ONE COLUMN ON A PHONE (owner, 2026-08-16). Two of these cards to a 375px row is
+// 166px each, and the four preview thumbs that make the card read as a stocked shop
+// come out ~30px — "בכלל לא רואים את תמונות המוצרים זה קטן מדי". At one column the
+// same card is 343px and its thumbs are ~73px, which is the size they were designed
+// at. It also costs nothing this shelf was trying to keep: a grid wraps, so the
+// invitation at the end is still on screen, and a longer scroll is what the launch
+// homepage wants anyway (his own note the same day: it reads thin on a phone).
+// The 2-up step comes back at 640px, where the card is ~298px and holds its own.
 const shelfClass = grid
-  ? 'home-shelf-grid grid grid-cols-2 gap-3 min-[900px]:grid-cols-3'
+  ? 'home-shelf-grid grid grid-cols-1 gap-3 min-[640px]:grid-cols-2 min-[900px]:grid-cols-3'
   : `home-shelf edge-fade${fillMobile ? ' home-shelf--fill-mobile' : ''}`;
 // The shelf the visitor actually lands on fades in as one block on first paint —
 // see `@keyframes shelf-arrive` in home.css for why it's the row and not the

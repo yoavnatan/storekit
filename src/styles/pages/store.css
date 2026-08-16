@@ -594,6 +594,24 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 }
 
 .category-filters-row {
+  /* THE SCROLLER'S OVERFLOW WAS REACHING THE DOCUMENT (owner, 2026-08-16 — /stores
+     on a phone: "אין בכלל מצב מובייל… ההדר מתעוות לצד"). Measured at a 375px
+     viewport: this row is 343px wide and holds 970px of chips, and the page's own
+     scrollWidth came out 877px. `overflow-x: auto` below is not enough on its own
+     — swapping it for `hidden` in the browser left the document at 877 too, so the
+     leak is the scrollable-overflow region being taken into the ancestors' own,
+     not a missing clip. `html { overflow-x: hidden }` (reset.css) then hides the
+     evidence on desktop: nothing scrolls sideways, so the only symptom is a
+     document 500px wider than the viewport — which is exactly what a phone reads
+     as "this page is 877px wide", zooming the whole layout out.
+     Paint containment is what stops the propagation. It costs nothing here: the
+     mask already forces this row into its own layer, and it clips to the padding
+     box — the same box `overflow-y: hidden` below already clips to, so the chips'
+     focus ring keeps the bleed budget the comment there buys it.
+     Only the DIRECTORY leaked, because a store page nests the same row inside
+     `.store-controls__row`, which happens to stop it. That is luck, not design —
+     the fix belongs on the row, so the next page to reuse it cannot reopen this. */
+  contain: paint;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;

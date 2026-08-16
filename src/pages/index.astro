@@ -155,16 +155,40 @@ const discoverHasContent = recentStores.length > 0 || categoryShelves.some((s) =
 // any store+product exists, unlike Liked/BuyAgain/New which can be empty
 // for a guest or new buyer.
 const requestedTab = Astro.url.searchParams.get('panel');
-const activeTab: TabId = (TAB_IDS as readonly string[]).includes(requestedTab ?? '')
-  ? (requestedTab as TabId)
-  : 'discover';
 
+// Under 5 live stores the Discover tab's SHELVES collapse to one placeholder-
+// padded row (the category rows would each hold a single card, which is what
+// actually reads as empty). The spotlight carousel and everything else about
+// the page — hero, tab strip, titles — stay exactly as they are: nothing on
+// screen announces that the mall is new. Between 5 and 10 stores the normal
+// page returns with one placeholder closing the discovery shelf.
+// Both thresholds count REAL stores only — the platform's own showcase stores
+// (lib/demo-stores.ts) are here to FILL launch mode, so counting them would make
+// three of them switch it off and hide themselves along with it.
+// Resolved HERE, above the tab list, because the strip itself depends on it.
+const liveStoreCount = countRealStores(storesWithProducts.map((s) => s.store));
+const launchMode = isLaunchMode(liveStoreCount);
+
+// THE NEW TAB IS NOT ON THE STRIP WHILE LAUNCH MODE IS ON (owner, 2026-08-16:
+// "גלה חנויות" ו"חנויות חדשות" בעצם נראות כמעט אותו הדבר וזה קצת בעייתי").
+// With four stores in the whole mall every tab necessarily shows the same four
+// cards — but "חדשות" is the only one where that is also meaningless: when the
+// entire place is new, "the new stores" IS the discovery shelf, and two tabs
+// rendering the same row read as a bug rather than as two places. The personal
+// tabs stay whatever the store count is: they are about this shopper, not about
+// the catalogue, and an empty one is an honest answer rather than a duplicate.
 const tabs: { id: TabId; label: string }[] = [
   { id: 'discover', label: t.home.discoverStores },
   { id: 'liked', label: t.home.shelfLiked },
   { id: 'buy-again', label: t.home.shelfBuyAgain },
-  { id: 'new', label: t.home.shelfNew },
+  ...(launchMode ? [] : [{ id: 'new' as TabId, label: t.home.shelfNew }]),
 ];
+
+// Validated against the tabs that EXIST, not against TAB_IDS: an old
+// `?panel=new` link opened during launch mode would otherwise hide every panel
+// and leave the strip with no active tab at all — a page that looks empty and
+// offers nothing to click back to.
+const activeTab: TabId = tabs.some((tb) => tb.id === requestedTab) ? (requestedTab as TabId) : 'discover';
 
 // The active tab's own first non-empty shelf gets the eager/high-priority
 // image load (today's real LCP element) — every other shelf, including ones
@@ -183,17 +207,6 @@ const firstEagerShelfId = activeTabShelves.find((s) => s.stores.length > 0)?.id;
 // eslint-disable-next-line sonarjs/pseudo-random -- picks one of three accent-dot colours
 const bgOffset = Math.floor(Math.random() * 3);
 
-// Under 5 live stores the Discover tab's SHELVES collapse to one placeholder-
-// padded row (the category rows would each hold a single card, which is what
-// actually reads as empty). The spotlight carousel and everything else about
-// the page — hero, tab strip, titles — stay exactly as they are: nothing on
-// screen announces that the mall is new. Between 5 and 10 stores the normal
-// page returns with one placeholder closing the discovery shelf.
-// Both thresholds count REAL stores only — the platform's own showcase stores
-// (lib/demo-stores.ts) are here to FILL launch mode, so counting them would make
-// three of them switch it off and hide themselves along with it.
-const liveStoreCount = countRealStores(storesWithProducts.map((s) => s.store));
-const launchMode = isLaunchMode(liveStoreCount);
 // The thin-but-not-launch band (5-9 real stores). It used to append one "open a store" card to
 // the tail of the discovery and New shelves — where, in a row that scrolls, it was the LAST card
 // of up to ten and effectively unreachable, while still being a recruitment tile sitting in a
@@ -471,20 +484,26 @@ const jsonLd = {
         }
       </div>
 
-      <div id="dash-panel-new" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-new" hidden={activeTab !== 'new'}>
-        <!-- Deliberately NOT `grid`, even in launch mode (user, 2026-07-29): the
-             discover tab's launch shelf is the grid, and when this tab used it too
-             the two panels rendered identically and the tabs stopped reading as
-             different places. This one stays the horizontal scroll row — the same
-             shelf every other tab uses — and only the placeholder cards are new
-             here. (Comment sits ABOVE the expression on purpose: a comment between
-             the condition and `?` makes the route fail to build, silently in dev.) -->
-        {feed.newStores.length > 0 || newTabInvites > 0
-          ? <HomeShelf categoryLabels={categoryTranslations} id="new" title={t.home.shelfNew} stores={feed.newStores} invites={newTabInvites}
-                       dotIndex={bgOffset} eagerFirst={activeTab === 'new'} hideHeading fillMobile />
-          : <HomeTabEmpty message={t.home.tabEmptyNew} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
-        }
-      </div>
+      <!-- No tab, no panel: `tabs` drops New during launch mode (see its note in the
+           frontmatter), and a panel whose tab is not on the strip is markup nothing
+           can ever open. `aria-labelledby` would also point at a #tab-new that does
+           not exist, which is a broken relationship, not merely a hidden one. -->
+      {tabs.some((tb) => tb.id === 'new') && (
+        <div id="dash-panel-new" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-new" hidden={activeTab !== 'new'}>
+          <!-- Deliberately NOT `grid` (user, 2026-07-29): the discover tab's launch
+               shelf is the grid, and when this tab used it too the two panels
+               rendered identically and the tabs stopped reading as different places.
+               This one stays the horizontal scroll row — the same shelf every other
+               tab uses — and only the placeholder cards are new here. (Comment sits
+               ABOVE the expression on purpose: a comment between the condition and
+               `?` makes the route fail to build, silently in dev.) -->
+          {feed.newStores.length > 0 || newTabInvites > 0
+            ? <HomeShelf categoryLabels={categoryTranslations} id="new" title={t.home.shelfNew} stores={feed.newStores} invites={newTabInvites}
+                         dotIndex={bgOffset} eagerFirst={activeTab === 'new'} hideHeading fillMobile />
+            : <HomeTabEmpty message={t.home.tabEmptyNew} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
+          }
+        </div>
+      )}
 
       <div id="dash-panel-discover" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-discover" hidden={activeTab !== 'discover'}>
         {launchMode || discoverHasContent ? (
