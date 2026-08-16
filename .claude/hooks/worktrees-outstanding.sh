@@ -74,7 +74,10 @@ tree — a session is working in it and a merge lands on top of unfinished work.
 orphan: its commits are somebody's abandoned mid-task work, the author who knew why is gone, and
 only he can say whether it should live. Report it and leave it.
 
-And never push. Merging locally is the standing approval; publishing the branch is not.
+Pushing main is standing too, once verify is green (2026-08-16). It was written here as "never push"
+on the reasoning that his 08-05 approval covered merging only; he asked whether he had ever actually
+said that, and he had not. `pre-push` runs verify and refuses a red tree, which is the real gate.
+What stays off-limits is pushing a BRANCH — an orphan or someone's live work is not yours to publish.
 
 The state can change while you work — another session may merge and remove a worktree mid-turn. Re-run
 `git worktree list` before telling the user a worktree still needs a decision.

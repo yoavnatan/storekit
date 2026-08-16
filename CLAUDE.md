@@ -45,9 +45,9 @@ He should not have to know any command for this. Do the work, then tell him only
 5. **Report in Hebrew, short.** What is already working, then the list of what only he can supply,
    with where to get each. `⚠️ דורש אותך` on top, per memory `feedback_language`.
 
-**Never**, in this flow or any other: invent or guess an `.env` value, commit `.env`, or push.
-Pushing is his call every time (memory `feedback_worktree_merge_authority`), and here it is also the
-thing that would send a half-restored state to the remote.
+**Never**, in this flow or any other: invent or guess an `.env` value, or commit `.env`. And in THIS
+flow specifically, do not push — a half-restored state is the one thing that must not reach the
+remote. Everywhere else pushing on green is standing (memory `feedback_worktree_merge_authority`).
 
 `tests/handoff-backup.test.ts` pins that the five variables named above still exist in
 `.env.example`, so a rename cannot leave this page quietly wrong. A restore note that has drifted is
