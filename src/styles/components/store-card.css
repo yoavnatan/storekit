@@ -475,7 +475,14 @@
 
   .home-shelf--fill-mobile {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* ONE column, like the launch shelf next door (owner, 2026-08-16 — the layout
+       he approved there "צריך לתפוס לכל לשונית שיש בה כרגע מצב של 2 כרטיסיות
+       לרוחב"). Two to a row is 166px of card, which shrinks the four preview
+       thumbs to ~30px: the photographs that make the card read as a stocked shop
+       stop being legible, which is the whole point of the row. At one column the
+       card is 343px and its thumbs are ~73px. The panel still fills — it fills
+       downward now, which is the direction a phone scrolls anyway. */
+    grid-template-columns: minmax(0, 1fr);
     overflow-x: visible;
     scroll-snap-type: none;
     /* No `mask-image: none` needed any more: the mask now only exists while
