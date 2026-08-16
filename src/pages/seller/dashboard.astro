@@ -543,6 +543,7 @@ const onboardingSteps = store
       // the checklist must not call the step done (see lib/store-readiness.ts).
       visibleProductCount: storeProductCounts.visible,
       hasProfileImage: !!store.profileImage,
+      hasBannerImage: !!store.bannerImage,
       tagline: store.tagline ?? '',
       description: store.description ?? '',
       categoryCount: storeCategoryList.length,

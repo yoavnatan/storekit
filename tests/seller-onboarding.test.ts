@@ -12,6 +12,7 @@ function empty(overrides: Partial<OnboardingInput> = {}): OnboardingInput {
   return {
     visibleProductCount: 0,
     hasProfileImage: false,
+    hasBannerImage: false,
     tagline: '',
     description: '',
     categoryCount: 0,
@@ -25,6 +26,7 @@ function full(overrides: Partial<OnboardingInput> = {}): OnboardingInput {
   return {
     visibleProductCount: 3,
     hasProfileImage: true,
+    hasBannerImage: true,
     tagline: 'קרמיקה בעבודת יד',
     description: 'סטודיו קטן בתל אביב',
     categoryCount: 2,
@@ -46,6 +48,15 @@ describe('buildOnboardingSteps', () => {
 
   it('marks nothing done for a brand-new store', () => {
     expect(doneIds(empty())).toEqual([]);
+  });
+
+  /** Added 2026-08-16. The store page suppresses the 56px mark beside the name when a banner
+   *  PICTURE exists, so the two pictures are one decision — and nothing had ever asked a seller
+   *  for the banner half of it. */
+  it('tracks the banner separately from the store image', () => {
+    expect(doneIds(empty({ hasProfileImage: true }))).toEqual(['image']);
+    expect(doneIds(empty({ hasBannerImage: true }))).toEqual(['banner']);
+    expect(doneIds(empty({ hasProfileImage: true, hasBannerImage: true }))).toEqual(['image', 'banner']);
   });
 
   it('marks everything done for a fully set-up store', () => {
@@ -75,18 +86,22 @@ describe('buildOnboardingSteps', () => {
 describe('onboardingProgress', () => {
   it('reports 0% and incomplete for a brand-new store', () => {
     const p = onboardingProgress(buildOnboardingSteps(empty()));
-    expect(p).toMatchObject({ doneCount: 0, total: 5, complete: false, percent: 0 });
+    expect(p).toMatchObject({ doneCount: 0, total: ONBOARDING_STEP_ORDER.length, complete: false, percent: 0 });
   });
 
   it('reports complete only when every step is done — the signal that hides the card', () => {
     const p = onboardingProgress(buildOnboardingSteps(full()));
-    expect(p).toMatchObject({ doneCount: 5, total: 5, complete: true, percent: 100 });
+    const n = ONBOARDING_STEP_ORDER.length;
+    expect(p).toMatchObject({ doneCount: n, total: n, complete: true, percent: 100 });
   });
 
   it('rounds the bar percentage from the real ratio', () => {
     const p = onboardingProgress(buildOnboardingSteps(empty({ visibleProductCount: 1, hasProfileImage: true })));
     expect(p.doneCount).toBe(2);
-    expect(p.percent).toBe(40);
+    // Literal, unlike the totals above, because ROUNDING is the whole subject here: 2/6 is 33.33,
+    // and a derived expectation would restate the implementation instead of checking it. Update it
+    // by hand when the step count changes — that is the assertion doing its job, not breaking.
+    expect(p.percent).toBe(33);
     expect(p.complete).toBe(false);
   });
 

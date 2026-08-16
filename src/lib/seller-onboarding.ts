@@ -13,7 +13,7 @@
  */
 
 /** Which checklist step. Stable ids — the UI maps them to translated copy. */
-export type OnboardingStepId = 'product' | 'image' | 'about' | 'categories' | 'address';
+export type OnboardingStepId = 'product' | 'image' | 'banner' | 'about' | 'categories' | 'address';
 
 /** Dashboard tab a step's CTA jumps to (matches `[role="tab"][data-panel]`). */
 export type OnboardingPanel = 'products' | 'settings';
@@ -37,6 +37,11 @@ export interface OnboardingInput {
    *  store is still undiscoverable. A catalog of hidden-only products does not count. */
   visibleProductCount: number;
   hasProfileImage: boolean;
+  /** A banner PICTURE, which is the same test the store page renders on — with one, the 56px mark
+   *  beside the name is suppressed as redundant; without one, the page opens straight on the details
+   *  box. Nothing ever asked a seller for this before (2026-08-16), so a store could sit indefinitely
+   *  with the plainest version of its own front page and no indication that a better one existed. */
+  hasBannerImage: boolean;
   tagline: string;
   description: string;
   categoryCount: number;
@@ -47,12 +52,16 @@ export interface OnboardingInput {
 const STEP_PANELS: Record<OnboardingStepId, OnboardingPanel> = {
   product: 'products',
   image: 'settings',
+  banner: 'settings',
   about: 'settings',
   categories: 'settings',
   address: 'settings',
 };
 
-export const ONBOARDING_STEP_ORDER: OnboardingStepId[] = ['product', 'image', 'about', 'categories', 'address'];
+/** `banner` sits right after `image` because they are the same job — the two pictures a shopper sees
+ *  before reading a word — and a seller who has just been sent to the settings panel for one should
+ *  find the other beside it rather than three steps later. */
+export const ONBOARDING_STEP_ORDER: OnboardingStepId[] = ['product', 'image', 'banner', 'about', 'categories', 'address'];
 
 /** The steps that gate discoverability. Must stay in sync with lib/store-readiness.ts' blockers —
  *  that file is what actually enforces them; this is only how the seller is told. */
@@ -62,6 +71,7 @@ export function buildOnboardingSteps(input: OnboardingInput): OnboardingStep[] {
   const done: Record<OnboardingStepId, boolean> = {
     product: input.visibleProductCount > 0,
     image: input.hasProfileImage,
+    banner: input.hasBannerImage,
     // Either field counts — both are "tell shoppers who you are" copy, and forcing a seller to
     // fill two free-text boxes before the checklist relents is nagging, not guidance.
     about: input.tagline.trim().length > 0 || input.description.trim().length > 0,
