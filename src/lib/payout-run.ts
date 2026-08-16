@@ -1,6 +1,5 @@
 import { businessTodayISO } from './business-day.js';
-import { addDaysISO } from './date-range.js';
-import { MIN_PAYOUT_AGOROT, PAYOUT_WEEKDAY } from './payout-schedule.js';
+import { MIN_PAYOUT_AGOROT, nextPayoutDayISO } from './payout-schedule.js';
 import {
   getReleasableBySeller,
   getPayoutTotalsBySeller,
@@ -54,23 +53,6 @@ export interface PayoutRunResult {
   skippedNoBank: number;
   /** Already had a payout for this period — a re-run, and the normal case for the second tick. */
   skippedAlreadyPaid: number;
-}
-
-/**
- * The day-of-week of a business day key, 0 = Sunday.
- *
- * Read at NOON UTC rather than midnight, which is the same guard `planPayouts` already uses on this
- * key: a `YYYY-MM-DD` parsed as midnight sits on a date boundary, and any offset at all — a DST
- * transition, a negative zone — moves it onto the previous day. Noon has twelve hours of slack in
- * both directions, so the weekday this returns is the weekday a person reading the key would say.
- */
-function weekdayOf(dayISO: string): number {
-  return new Date(`${dayISO}T12:00:00Z`).getUTCDay();
-}
-
-/** Is today the day? Compared as the business calendar's weekday, never the server's. */
-export function isPayoutDay(todayISO: string = businessTodayISO()): boolean {
-  return weekdayOf(todayISO) === PAYOUT_WEEKDAY;
 }
 
 /** The bank details a transfer needs, or null when the seller has not supplied them.
@@ -158,25 +140,6 @@ export interface PayoutPlan {
    *  opposed to earned. Excludes failed payouts, like `paidOutAgorot` beside it. */
   commissionSettledAgorot: number;
   adjustmentsAgorot: number;
-}
-
-/**
- * The next occurrence of `PAYOUT_WEEKDAY` on or after `todayISO`, on the business calendar.
- *
- * Returns `todayISO` itself when today IS the payout day — "next" here means "the day this money is
- * going out", and a screen that says "next Sunday" on a Sunday morning while the run is about to
- * fire is telling the seller to wait a week for money they are getting today.
- *
- * The month version of this walked `YYYY-MM-DD` as a string, deliberately, because a `Date` carries
- * a timezone the question does not have. A weekday cannot be answered without real date arithmetic,
- * so the two halves are each handed to code that already owns them: `weekdayOf` reads the weekday at
- * noon UTC, and `addDaysISO` does the shift — the same helper the hold rule releases orders with.
- * Rolling the date here by hand is what the money guard forbids, and it is right to: a day derived
- * from `toISOString` is a UTC day, which is the one bug `business-day.ts` exists to have ended.
- */
-export function nextPayoutDayISO(todayISO: string = businessTodayISO()): string {
-  const ahead = (PAYOUT_WEEKDAY - weekdayOf(todayISO) + 7) % 7;
-  return ahead === 0 ? todayISO : addDaysISO(todayISO, ahead);
 }
 
 /**

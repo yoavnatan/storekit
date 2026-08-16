@@ -11,7 +11,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 import { query, rows } from '../src/lib/db.js';
-import { planPayouts, runPayouts, nextPayoutDayISO } from '../src/lib/payout-run.js';
+import { planPayouts, runPayouts } from '../src/lib/payout-run.js';
+import { nextPayoutDayISO } from '../src/lib/payout-schedule.js';
 import { getPayoutsForSeller, recordAdjustment } from '../src/lib/payouts.js';
 import { MIN_PAYOUT_AGOROT, PAYOUT_WEEKDAY } from '../src/lib/payout-schedule.js';
 
