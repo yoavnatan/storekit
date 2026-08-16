@@ -15,6 +15,14 @@
   background: var(--color-surface);
   text-decoration: none;
   color: inherit;
+  /* The card is the query container for its own head — see the @container block
+     under `.store-card__tagline`, which is what reads this. Safe on every surface
+     that renders the card, because none of them size it from its contents: the
+     shelves give it an explicit flex-basis share plus `min-width: 0`, and both
+     grids (`.stores-directory__grid`, the launch shelf) size their columns
+     themselves. Inline-size containment would otherwise be the one thing that
+     could collapse a content-sized card to nothing. */
+  container-type: inline-size;
   transition: box-shadow 0.24s ease, border-color 0.24s ease, transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -78,6 +86,72 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── A NARROW CARD stacks its head, because side by side there is no room ──
+   Two cards to a row on a 375px phone is 166px of card, i.e. 132px inside the
+   padding — and a 56px avatar with its 12px gap takes 68 of it. What is left for
+   the name and the tagline is 64px, measured, on every surface that shows this
+   card at that width: the launch grid, the Liked/BuyAgain/New fill-grid, and the
+   ordinary scroll shelves, whose `--shelf-fit: 2` produces the same 166px card.
+   So EVERY tagline on a phone was cut mid-word ("אופנה יומ…" for a store whose
+   line needs 150px, "ירוק לבית …" for one needing 104px), and the invite cards —
+   whose label is the longest text on the shelf — rendered as "מתחם …" (owner,
+   2026-08-16). It reads as broken text, not as truncation. Note it was never a
+   launch-mode fault: launch mode only puts the WORST text in the narrowest slot,
+   and a normal category shelf clips its real stores exactly as hard.
+
+   Stacking hands the text the card's full width. Nothing else about the card
+   changes: same avatar, same order, same classes, same one-line name.
+
+   A CONTAINER QUERY, NOT A MEDIA QUERY, and that is the whole point of putting
+   `container-type` on the card above: what runs out is the CARD's width, not the
+   viewport's. The same 375px phone renders this card at 166px on a homepage shelf
+   and at 343px on /stores (its grid is one column there) — a `max-width: 640px`
+   media query stacked BOTH, i.e. it rebuilt the head on a card with 240px of
+   spare room. 260px is where the row form actually stops working: below it the
+   longest tagline on the shelf (161px) no longer fits beside the avatar.
+
+   THE TAGLINE'S HEIGHT IS FIXED, NOT MIN- (2 lines at 1.35 line-height, the same
+   clamp `.home-product-card__name` uses). That is the alignment contract of this
+   card, and it is load-bearing: heads of different heights put the picture rows of
+   two neighbouring cards at different heights, which is the misalignment the owner
+   photographed on 2026-08-14 (see StorePlaceholderCard's own note, which records
+   the override that caused it). A reserved two-line box costs one empty line under
+   a short tagline and keeps every head in the row exactly the same height.
+
+   The name steps down to 0.9rem for one measured reason: at 0.97rem the longest
+   invite label needs 139px against the 132px a 375px phone leaves, so it would
+   ellipsis even after all this. It is the smallest step that clears it (129px),
+   NOT a free knob — the type was stepped UP on 2026-08-05 because the card read
+   too quiet, and this rule only reaches cards under 260px wide. */
+@container (max-width: 260px) {
+  .store-card__head {
+    flex-direction: column;
+    /* flex-start, never the inherited `center` and never `stretch`: stretch would
+       blow the avatar up to the card's width, and centring leaves the name under a
+       circle that no longer sits above its own edge. */
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .store-card__title-group {
+    width: 100%;
+    gap: 0.1rem;
+  }
+
+  .store-card__name {
+    font-size: 0.9rem;
+  }
+
+  .store-card__tagline {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+    height: 2.7em;
+  }
 }
 
 /* Gentle/classic — plain-text label with a hairline border, no fill. Same
