@@ -14,7 +14,7 @@ import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
-import { orderPayoutLine, payoutWhyText, type PayoutWhyKey } from '../../lib/order-payout-line.js';
+import { orderPayoutLine, payoutLineText, payoutWhyText, type PayoutWhyKey, type PayoutTextMainKey, type PayoutTextWhyKey } from '../../lib/order-payout-line.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
 import type { OrderSellerOption } from '../../lib/order-reporting.js';
@@ -101,6 +101,32 @@ const PAYOUT_WHY: Record<PayoutWhyKey, string> = {
   payWhyPayment: 'ההזמנה לא סומנה כנמסרה — {n} ימים מיום התשלום',
   payWhyUnshipped: 'ההזמנה עוד לא נשלחה',
   payWhyUnknown: 'ההזמנה בבדיקה',
+};
+
+/**
+ * The same two halves the seller's own card prints (`order-payout-line.ts#payoutLineText`), in the
+ * admin's Hebrew literals rather than `getT` — same reason as `PAYOUT_WHY` above.
+ *
+ * **The date is the day the transfer LEAVES, not the day the hold ends** (owner, 2026-08-16). The
+ * old line here said "ישולם אחרי <release day>", which named a day on which nothing happens to
+ * anyone's money — the run that pays it out is the following Sunday. "צפוי" and not "ישולם" because
+ * two things can still move it: a balance under the minimum rolls over, and a חג on the payout
+ * weekday pushes the transfer to the next banking day.
+ *
+ * The reasons stay LONGER here than on the seller's card, deliberately: this screen is read when
+ * somebody is asking why a specific seller has not been paid, and the day counts are the answer.
+ */
+const PAYOUT_MAIN: Record<PayoutTextMainKey, string> = {
+  payFilter_none: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
+  payFilter_unshipped: 'ממתין לשליחה',
+  payWhyUnknown: 'בבדיקה',
+  orderPayoutExpected: 'צפוי ב{date}',
+};
+const PAYOUT_WHY_TEXT: Record<PayoutTextWhyKey, string> = {
+  orderPayoutUnshippedHint: 'תאריך התשלום ייקבע אחרי השליחה',
+  payFilter_undelivered: PAYOUT_WHY.payWhyPayment,
+  payFilter_window: PAYOUT_WHY.payWhyDelivery,
+  payFilter_released: 'אושר לתשלום',
 };
 
 const shippingLabel: Record<string, string> = {
@@ -328,20 +354,20 @@ const purchases = groupBuyerPurchases(orders);
                         deliveredAt: slice.order.deliveredAt ?? null,
                         deliveryMethod: slice.order.storeSubtotals[slice.storeSlug]?.deliveryMethod ?? null,
                       });
+                      const text = payoutLineText(line);
                       return (
                         <div class="mt-2 pt-2 border-t [border-color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.78rem]">
                           {/* "התשלום למוכר", not "סטטוס תשלום": this card carries TWO payment
                               facts — the buyer's charge and the seller's payout — and both were
-                              called תשלום, so neither could be read (owner, 2026-08-11). */}
+                              called תשלום, so neither could be read (owner, 2026-08-11). The
+                              seller's own card reached the same place from the other side and says
+                              "קבלת התשלום" (2026-08-16) — same rule, the side you stand on. */}
                           <span class="[color:var(--color-muted)]">התשלום למוכר/ת:</span>
                           <strong class="[color:var(--color-text)]">
-                            {line.state === 'not_payable' ? 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר'
-                              : line.state === 'releasable' ? 'אושר לתשלום'
-                              : line.releaseDayISO ? `ישולם אחרי ${formatBusinessDayLabel(line.releaseDayISO)}`
-                              : 'הספירה מתחילה כשההזמנה נשלחת'}
+                            {text.dateISO ? PAYOUT_MAIN[text.mainKey].replace('{date}', formatBusinessDayLabel(text.dateISO)) : PAYOUT_MAIN[text.mainKey]}
                           </strong>
-                          {line.state === 'held' && (
-                            <span class="[color:var(--color-muted)]">· {payoutWhyText(line, PAYOUT_WHY[line.whyKey])}</span>
+                          {text.whyKey && (
+                            <span class="[color:var(--color-muted)]">· {payoutWhyText(line, PAYOUT_WHY_TEXT[text.whyKey])}</span>
                           )}
                         </div>
                       );

@@ -7,7 +7,7 @@ import { takePanelIntent } from './panel-intent.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
-import { orderPayoutLine, payoutWhyText, payoutFilterValue, PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
+import { orderPayoutLine, payoutLineText, payoutFilterValue, PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { Order } from '../../lib/orders.js';
 import type { DeliveryMethod } from '../../lib/shipping.js';
@@ -80,6 +80,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // from bindOrderCard() which runs before that const is declared.
   const orderStatusPortal = createFloatingPortal('order-status-portal');
   const storeSlugForOrders = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeSlug ?? '';
+  /** For the payout line's link into the Payments tab — its no-JS `href` has to carry the shop the
+   *  dashboard is standing in, or a seller with two shops lands on the other one. */
+  const storeIdForOrders = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeId ?? '';
 
   function updateOrderTabBadge(): void {
     const remaining = document.querySelectorAll('.order-new-dot').length;
@@ -729,12 +732,15 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       deliveredAt: o.deliveredAt ?? null,
       deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
     });
-    const state = line.state === 'not_payable' ? tt('orderPayoutNone')
-      : line.state === 'releasable' ? tt('orderPayoutReleasable')
-      : line.releaseDayISO ? tt('orderPayoutOn').replace('{date}', formatBusinessDayLabel(line.releaseDayISO))
-      : tt('orderPayoutPending');
-    const why = line.state === 'held' ? `<span class="[color:var(--color-muted)]">· ${esc(payoutWhyText(line, tt(line.whyKey)))}</span>` : '';
-    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}</div>`;
+    const text = payoutLineText(line);
+    const state = text.dateISO
+      ? tt(text.mainKey).replace('{date}', formatBusinessDayLabel(text.dateISO))
+      : tt(text.mainKey);
+    const why = text.whyKey ? `<span class="[color:var(--color-muted)]">· ${esc(tt(text.whyKey))}</span>` : '';
+    // Same link, same markers as the SSR card (seller/dashboard.astro) — a card rebuilt by a page
+    // turn must not quietly lose the only route to the rules behind its own dates.
+    const how = `<a class="ms-auto text-[0.72rem] underline underline-offset-2 [color:var(--color-muted)] hover:[color:var(--color-accent)]" href="/seller/dashboard?store=${esc(storeIdForOrders)}&panel=payouts#pay-how" data-goto-panel="payouts" data-goto-anchor="pay-how">${esc(tt('orderPayoutHow'))}</a>`;
+    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}${how}</div>`;
   }
 
   function buildOrderCard(o: {
