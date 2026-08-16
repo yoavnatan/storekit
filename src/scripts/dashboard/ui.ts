@@ -3,6 +3,7 @@ import { arrowStep, wrapIndex } from '../../lib/arrow-step.js';
 import { markDashboardStale, conflictMessage } from './tab-sync.js';
 import { initTabAlertEdges } from './tab-alert-edges.js';
 import { setPanelIntent } from './panel-intent.js';
+import { scrollBelowPinnedChrome } from './scroll-utils.js';
 
 const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
 
@@ -374,10 +375,31 @@ export function initDashTabs(): void {
 // seller dashboard's overview tab) jump straight to their tab by clicking the
 // matching tab button — reuses initDashTabs()'s own click handler instead of
 // a real navigation, which would flash a full page reload.
+let gotoPanelBound = false;
 export function initGotoPanelLinks(): void {
-  document.querySelectorAll<HTMLElement>('[data-goto-panel]').forEach((el) => {
-    bindOnce(el, 'gotoBound', () => {
-    el.addEventListener('click', () => {
+  // DELEGATED, and that is the whole reason this is one listener rather than one per element
+  // (2026-08-16). The order card's "איך זה עובד" is rendered in the BROWSER too — `buildOrderCard`
+  // redraws every card on a page turn and on a polled new order — so a marker bound by a sweep at
+  // page load is a marker the second page of orders does not have. Delegation binds the behaviour to
+  // the document once and every card written afterwards inherits it. The `bound` flag is because two
+  // pages call this (the seller dashboard's init and admin `tab-nav.ts`); a second call must not
+  // install a second handler and fire everything twice.
+  if (gotoPanelBound) return;
+  gotoPanelBound = true;
+  document.addEventListener('click', (e) => {
+      const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-goto-panel]') : null;
+      if (!el) return;
+      // An ANCHOR carrying this marker is a real link first — its `href` is the same jump written
+      // as a URL, so the no-JS seller gets there by page load. With JS the page must not reload, so
+      // the default is cancelled here and only here: if the tab it names is not on this page, the
+      // navigation is left alone and the link still works. A <button> has no default to cancel.
+      // …and a modifier click on one is the browser's, not ours: cmd/ctrl-click opens a new tab and
+      // shift-click a new window, and a link the seller cannot open beside the page they are on is
+      // a link that has been turned back into a button behind their back.
+      if (el instanceof HTMLAnchorElement && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return;
+      const tab = document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${el.dataset.gotoPanel}"]`);
+      if (!tab) return;
+      if (el instanceof HTMLAnchorElement) e.preventDefault();
       // "…and arrive with this already applied." The overview's three attention tiles lead to a
       // FILTERED list, and the code that filters lives in the target panel's module — which is
       // usually not loaded yet when the tile is pressed. Recording an intent here is what makes
@@ -389,7 +411,7 @@ export function initGotoPanelLinks(): void {
         const [kind, value] = intent.split(':');
         setPanelIntent(el.dataset.gotoPanel ?? '', kind === 'status' ? { status: [value ?? ''] } : { stockAttention: true });
       }
-      document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${el.dataset.gotoPanel}"]`)?.click();
+      tab.click();
       // A source that names a control (data-goto-open) also opens it. The onboarding checklist's
       // "add your first product" step used to land the seller on the Products tab with the add
       // form still collapsed behind a toolbar of six buttons — the one step the checklist calls
@@ -399,7 +421,17 @@ export function initGotoPanelLinks(): void {
       // two drift. Re-clicking an already-open form is a no-op.
       const openId = el.dataset.gotoOpen;
       if (openId) document.getElementById(openId)?.click();
-    });
-    });
+      // …and a source that names a place inside the target panel scrolls to it. The order card's
+      // "איך זה עובד" needs this: the rules it points at are one section at the BOTTOM of the
+      // Payments tab, so landing on the tab's top is landing on the wrong screenful. Not the
+      // browser's own `#hash` jump — the panel was `hidden` when the click began, and an anchor
+      // jump parks the target under the fixed header (`scrollBelowPinnedChrome` is the same fix the
+      // Payments tab's own link uses). Deferred a frame because the tab click above may have just
+      // swapped the panel's contents in.
+      const anchorId = el.dataset.gotoAnchor;
+      if (anchorId) requestAnimationFrame(() => {
+        const target = document.getElementById(anchorId);
+        if (target) scrollBelowPinnedChrome(target);
+      });
   });
 }

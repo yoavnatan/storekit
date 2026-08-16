@@ -30,7 +30,8 @@ import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
 import { runMerchantStatusCheck } from '../merchant-status-check.js';
 import { rebuildCatalogArtifact, FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../catalog-artifacts.js';
-import { runPayouts, isPayoutDay, nextPayoutDayISO } from '../payout-run.js';
+import { runPayouts } from '../payout-run.js';
+import { isPayoutDay, nextPayoutDayISO } from '../payout-schedule.js';
 import { runOrderSla } from '../order-sla-run.js';
 import { businessTodayISO } from '../business-day.js';
 

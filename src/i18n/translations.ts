@@ -1010,7 +1010,13 @@ export const translations = {
       // break.
       payHowTitle: 'איך זה עובד',
       payHowWhenQ: 'מתי הכסף מועבר?',
-      payHowWhenA: 'פעם בשבוע, כל {day}, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז.',
+      // The חג clause is the answer to the owner's question of 2026-08-16 — what happens when the
+      // payout day is not a working day. Sunday can never fall on a weekend, so a holiday is the only
+      // collision there is, and today NOTHING in the code knows when the holidays are: the run would
+      // create its rows and the bank would move the money when it next opens. Stating it is honest;
+      // making it true needs a banking calendar and belongs with the bank integration (GO_LIVE §3).
+      // The dates a seller reads say "צפוי" for the same reason.
+      payHowWhenA: 'פעם בשבוע, כל {day}, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז. אם היום הזה חל בחג, ההעברה יוצאת ביום העסקים שלאחריו.',
       // ⚠️ The owner read the first version and asked *"לא הבנתי… למה 21 מרגע המסירה ולא 15 למשל?"*
       // — which is the right question, and the answer is that the number is DERIVED and the sentence
       // was hiding that. Israeli consumer law gives a distance-sale buyer 14 days FROM RECEIVING the
@@ -1020,7 +1026,7 @@ export const translations = {
       // The two constants stay interpolated from `payout-schedule.ts` — its header holds the full
       // derivation and the ⚠️ that the final value is still the owner's.
       payHowHeldQ: 'מתי הוא מוחזק?',
-      payHowHeldA: 'מרגע התשלום ועד שההזמנה נמסרת, ועוד {delivery} ימים אחריה. לא סימנתם מסירה? {payment} ימים מיום התשלום.',
+      payHowHeldA: 'מרגע התשלום ועד שההזמנה נמסרת, ועוד {delivery} ימים ממועד המסירה. לא סימנתם מסירה? {payment} ימים מיום התשלום.',
       payHowWhyQ: 'ולמה {delivery} ימים?',
       // ⚠️ "לבטל **ולהחזיר**" — the owner caught the first version leaving the second half out
       // (2026-08-11): *"אם הוא מבטל זה בתנאי שהוא החזיר את המוצר!!!!"*. He is right, and it changes
@@ -1029,9 +1035,16 @@ export const translations = {
       // land on day 14 and the parcel is still in transit, so money paid out on day 14 has to be
       // clawed back from a seller who has already had it. The margin covers the RETURN, not the
       // notice.
-      payHowWhyA: 'לקונה יש {statutory} ימים מקבלת המוצר לבטל את העסקה ולהחזיר אותו — זו זכות שבחוק. ההמתנה היא יום אחד יותר, כדי שהכסף לא ישוחרר ביום שבו עוד אפשר לבטל. מיד אחריו הוא משתחרר לבד.',
+      // "יאושר לתשלום", never "ישוחרר" (owner, 2026-08-16: *"מה הכוונה שהכסף לא ישוחרר?"*). Release
+      // is OUR word for it — the internal state `payout-hold.ts` computes — and the seller has
+      // already been taught a different one for the same event: the order card says "אושר לתשלום".
+      // Same class as "הספירה" two answers up: a sentence built on a model only we hold.
+      payHowWhyA: 'לקונה יש {statutory} ימים מקבלת המוצר לבטל את העסקה ולהחזיר אותו — זו זכות שבחוק. אנחנו ממתינים יום אחד יותר, כדי שהכסף לא יאושר לתשלום ביום שבו עוד אפשר לבטל. למחרת הוא מאושר אוטומטית ונכנס לתשלום הקרוב.',
       payHowMinQ: 'ומה אם הסכום קטן?',
-      payHowMinA: 'מתחת ל-{min} הכסף מחכה לחודש הבא. שום דבר לא נגרע.',
+      // "לתשלום הבא", not "לחודש הבא" — left behind by the move from a monthly run to a weekly one
+      // (2026-08-16). A seller below the minimum was being told to wait up to a month for money that
+      // now waits at most a week.
+      payHowMinA: 'מתחת ל-{min} הכסף מחכה לתשלום הבא. שום דבר לא נגרע.',
       // The held-orders TABLE became a three-line split by reason (owner, סשן א׳ §4 — a second
       // list of orders one tab away from the Orders tab read as a second place to manage them).
       // So the heading asks the question the split answers, instead of naming a list.
@@ -1479,16 +1492,35 @@ export const translations = {
       orderItems: 'פריטים',
       orderTotal: 'סה"כ',
       // The order card's payout line (owner, סשן א׳ §4 — the per-order answer moved here from the
-      // Payments tab's table). Four states, and each has to be a complete answer on its own: a
-      // seller reads one of them and nothing else.
-      // "סטטוס תשלום" and not "התשלום עליה" (owner, 2026-08-11) — the row sits beside a shipping
-      // status, and naming it the same way is what makes the pair read as two statuses of one order
-      // rather than as a sentence someone started.
-      orderPayoutLabel: 'התשלום עליה:',
-      orderPayoutReleasable: 'אושר לתשלום',
-      orderPayoutOn: 'ישולם אחרי {date}',
-      orderPayoutPending: 'הספירה מתחילה כשההזמנה נשלחת',
-      orderPayoutNone: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
+      // Payments tab's table). Assembled by `order-payout-line.ts#payoutLineText`, which picks these
+      // keys and the `payFilter_*` ones beside them, so the card and the toolbar filter say the same
+      // words about the same order.
+      //
+      // ── "קבלת התשלום" (owner, 2026-08-16), after "התשלום עליה" and "סטטוס תשלום" both failed ──
+      // The card carries TWO payment facts — the buyer's charge and the seller's payout — so a
+      // heading that only says "תשלום" names neither (the admin copy reached the same conclusion on
+      // 2026-08-11 and says "התשלום למוכר/ת"). "התשלום עליה" avoided that and read as a sentence
+      // someone had started and abandoned: *"אני לא הייתי מבין מה רוצים ממני"*. This one names the
+      // event from the side the seller stands on — money arriving to them.
+      orderPayoutLabel: 'קבלת התשלום:',
+      // The DAY THE TRANSFER GOES OUT, never the day the hold ends — see `payoutDayISO`. The old
+      // string said "ישולם אחרי {date}" against the release day, and "אחרי" was doing the work of
+      // the gap between the two (owner: *"למה ישולם אחרי? זה לא ברור"*).
+      //
+      // "צפוי" and not "ישולם", because two things can still move it and both are real: a balance
+      // under the minimum rolls to the next run, and a חג on the payout weekday pushes the transfer
+      // to the next banking day. Both are answered in `#pay-how`, which is what the link at the end
+      // of the line leads to.
+      orderPayoutExpected: 'צפוי ב{date}',
+      // The one state with no date to give, so it says what produces one. Never "הספירה מתחילה
+      // כש…" (owner, 2026-08-16): a seller does not have a mental model called "the count", and a
+      // sentence built on one is our vocabulary handed to them to decode.
+      // "לאחר", never "אחרי" (owner, 2026-08-16) — same word, and the formal register is the one a
+      // seller expects from a screen that is telling them when they get paid.
+      orderPayoutUnshippedHint: 'תאריך התשלום ייקבע לאחר השליחה',
+      // The link at the end of the line, into the Payments tab's `#pay-how`. Every rule behind the
+      // dates — the hold, the weekly run, the minimum — is answered there, once.
+      orderPayoutHow: 'איך זה עובד',
       orderShipping: 'משלוח',
       orderPaymentStatus: 'תשלום',
       orderShippingStatus: 'סטטוס הזמנה',
@@ -2779,13 +2811,13 @@ export const translations = {
       payBusinessMissing: 'Not set',
       payHowTitle: 'How this works',
       payHowWhenQ: 'When is the money transferred?',
-      payHowWhenA: 'Once a week, every {day}, in one transfer to your bank account — everything released by then.',
+      payHowWhenA: 'Once a week, every {day}, in one transfer to your bank account — everything released by then. If that day is a public holiday, the transfer goes out on the next business day.',
       payHowHeldQ: 'When is it held?',
-      payHowHeldA: 'From payment until the order is delivered, plus {delivery} days after that. Never marked it delivered? {payment} days from the payment date.',
+      payHowHeldA: 'From payment until the order is delivered, plus {delivery} days from the delivery date. Never marked it delivered? {payment} days from the payment date.',
       payHowWhyQ: 'Why {delivery} days?',
-      payHowWhyA: 'The buyer has {statutory} days from receiving the goods to cancel and return them — that is a right in law. The hold is one day longer, so your money is never released on a day the sale can still be cancelled. Right after that, it releases on its own.',
+      payHowWhyA: 'The buyer has {statutory} days from receiving the goods to cancel and return them — that is a right in law. We wait one day longer, so your money is never approved for payment on a day the sale can still be cancelled. The next day it is approved automatically and joins the next transfer.',
       payHowMinQ: 'What if the amount is small?',
-      payHowMinA: 'Below {min} it waits for next month. Nothing is deducted.',
+      payHowMinA: 'Below {min} it waits for the next payout. Nothing is deducted.',
       payHeldTitle: 'Payments waiting',
       ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
       ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
@@ -3179,11 +3211,10 @@ export const translations = {
       orderBuyer: 'Customer',
       orderItems: 'Items',
       orderTotal: 'Total',
-      orderPayoutLabel: 'Payment for it:',
-      orderPayoutReleasable: 'Approved for payment',
-      orderPayoutOn: 'Paid after {date}',
-      orderPayoutPending: 'The countdown starts when it ships',
-      orderPayoutNone: 'Not paid — order cancelled, or the money never arrived',
+      orderPayoutLabel: 'Getting paid:',
+      orderPayoutExpected: 'Expected {date}',
+      orderPayoutUnshippedHint: 'The date is set once you ship',
+      orderPayoutHow: 'How this works',
       orderShipping: 'Shipping',
       orderPaymentStatus: 'Payment',
       orderShippingStatus: 'Order status',
