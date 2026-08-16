@@ -33,6 +33,20 @@ export interface Discrepancy {
   check: string;
   /** Which order/store it concerns, when it is localised to one. */
   subject?: string;
+  /**
+   * The order id or checkout ref behind `subject`, so the panel can link the row to that order's
+   * own money trail.
+   *
+   * Its own field rather than parsing it back out of `subject` (owner, 2026-08-16: *"אין שם שום דבר
+   * לחיץ, אי אפשר להבין שום דבר מהרשימה הזאת"*). `subject` is a sentence written for a person — it
+   * carries a shortened id, a separator and sometimes a store slug — and a regex over prose is a
+   * second, silent definition of where the id lives. The journal's search matches either spelling
+   * (`moneylog-search.ts` is `ILIKE` over `checkout_ref` and `order_id`), so the short id is enough
+   * and this stays the same string the reader can see.
+   *
+   * Absent on the platform-wide checks, which are about no single order and must not pretend to be.
+   */
+  lookup?: string;
   /** All three are integer agorot, like everything else in the money pipeline (orders.ts).
    *  The panel that renders a discrepancy formats them with `money.ts#formatAgorot`. */
   expected: number;
@@ -90,6 +104,7 @@ function itemsVsSubtotalDiscrepancy(orderId: string, slug: string, fromItems: nu
     severity: 'error',
     check: 'שורות ההזמנה מול הסכום השמור',
     subject: `הזמנה ${shortId(orderId)} · ${slug}`,
+    lookup: shortId(orderId),
     expected: fromItems,
     actual: subtotal,
     drift: drift(fromItems, subtotal),
@@ -104,6 +119,7 @@ function totalVsPartsDiscrepancy(orderId: string, fromParts: number, total: numb
     severity: 'error',
     check: 'סכום ההזמנה מול מרכיביו',
     subject: `הזמנה ${shortId(orderId)}`,
+    lookup: shortId(orderId),
     expected: fromParts,
     actual: total,
     drift: drift(fromParts, total),
@@ -152,6 +168,7 @@ function negativeTotal(orderId: string, total: number): Discrepancy {
     severity: 'error',
     check: 'סכום שלילי',
     subject: `הזמנה ${shortId(orderId)}`,
+    lookup: shortId(orderId),
     expected: 0,
     actual: total,
     drift: drift(0, total),
@@ -192,6 +209,7 @@ function refundOwedOutstanding(orderId: string, slug: string | null, amount: num
     severity: 'error',
     check: JOURNAL_ONLY_CHECKS[0]!,
     subject: `הזמנה ${shortId(orderId)}${slug ? ` · ${slug}` : ''}`,
+    lookup: shortId(orderId),
     expected: 0,
     actual: amount,
     drift: drift(0, amount),
@@ -209,6 +227,7 @@ function stuckPending(orderId: string, amount: number, minutes: number): Discrep
     severity: 'error',
     check: JOURNAL_ONLY_CHECKS[1]!,
     subject: `הזמנה ${shortId(orderId)}`,
+    lookup: shortId(orderId),
     expected: 0,
     actual: amount,
     drift: drift(0, amount),
@@ -225,6 +244,7 @@ function chargeWithNoOrder(checkoutRef: string, amount: number): Discrepancy {
     severity: 'error',
     check: JOURNAL_ONLY_CHECKS[2]!,
     subject: `אסמכתא ${checkoutRef}`,
+    lookup: checkoutRef,
     expected: 0,
     actual: amount,
     drift: drift(0, amount),
@@ -241,6 +261,7 @@ function oversizedDiscount(orderId: string, slug: string, subtotal: number, appl
     severity: 'warning',
     check: 'הנחה גדולה מסכום המוצרים',
     subject: `הזמנה ${shortId(orderId)} · ${slug}`,
+    lookup: shortId(orderId),
     expected: subtotal,
     actual: applied,
     drift: drift(subtotal, applied),

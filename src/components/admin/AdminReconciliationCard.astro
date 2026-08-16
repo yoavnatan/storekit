@@ -1,6 +1,7 @@
 ---
 import { formatPrice } from '../../config/store.config.js';
 import type { ReconciliationReport } from '../../lib/reconcile.js';
+import { buildAdminUrl } from '../../lib/admin-nav.js';
 
 /**
  * Live cross-check for the money journal (lib/reconcile.ts) — every headline recomputed by a
@@ -29,6 +30,22 @@ interface Props {
 const { reconciliation } = Astro.props;
 
 const CLEAN_TITLE = 'כל מספר נבדק מול חישוב שני, עצמאי: שורות ההזמנה מול הסכום השמור, סכום ההזמנה מול מרכיביו, והמחזור הכללי מול סכום החנויות.';
+
+/**
+ * A row that names one order links to that order's own money trail.
+ *
+ * The gap this closes was reported as a whole (owner, 2026-08-16: *"אין שם שום דבר לחיץ, אי אפשר
+ * להבין שום דבר מהרשימה הזאת"*). A discrepancy row already said which order and by how much, and
+ * then left the reader to copy eight characters into a search box on another tab — so the screen
+ * that exists to be acted on was the one screen you could not act from.
+ *
+ * No date window, deliberately, and this is the one difference from `AdminOrdersPanel`'s version of
+ * the same link: there the purchase's own date is known and narrows the journal usefully, here the
+ * finding may be about an order the report never dated (an event with no order behind it has no
+ * order date to borrow). A window guessed from today would hide exactly the old rows a reconciliation
+ * is most likely to surface, so the journal's own default range applies and the search does the work.
+ */
+const trailHref = (lookup: string): string => buildAdminUrl('moneylog', { mq: lookup });
 ---
 
 {reconciliation.clean ? (
@@ -55,7 +72,9 @@ const CLEAN_TITLE = 'כל מספר נבדק מול חישוב שני, עצמאי
       <li class="text-[0.8rem] border-t border-[color:color-mix(in_srgb,var(--color-danger)_25%,transparent)] pt-2.5">
         <div class="flex flex-wrap items-baseline gap-x-2">
           <strong>{d.check}</strong>
-          {d.subject && <span class="[color:var(--color-muted)] text-[0.75rem]">{d.subject}</span>}
+          {d.subject && (d.lookup
+            ? <a href={trailHref(d.lookup)} class="text-[0.75rem] [color:var(--color-primary)] no-underline hover:underline">{d.subject}</a>
+            : <span class="[color:var(--color-muted)] text-[0.75rem]">{d.subject}</span>)}
         </div>
         <div class="mt-0.5 tabular-nums text-[0.78rem]">
           צפוי {formatPrice(d.expected)} · בפועל {formatPrice(d.actual)} · פער {formatPrice(d.drift)}
