@@ -333,7 +333,7 @@ describe('every way the money and the screens can disagree is reported', () => {
 
       const owed = (await findings()).filter((d) => d.check.includes('זיכוי'));
       expect(owed).toHaveLength(1);
-      expect(owed[0]!.actual).toBe(first!.totalAgorot);
+      expect(owed[0]!.actualAgorot).toBe(first!.totalAgorot);
       expect(owed[0]!.severity).toBe('error');
 
       // Nothing writes `refund_settled` yet — it needs the payment provider's refund call, and no
@@ -368,7 +368,7 @@ describe('every way the money and the screens can disagree is reported', () => {
       );
       const stuckFindings = (await findings()).filter((d) => d.check.includes('תקועה'));
       expect(stuckFindings).toHaveLength(1);
-      expect(stuckFindings[0]!.actual).toBe(first!.totalAgorot);
+      expect(stuckFindings[0]!.actualAgorot).toBe(first!.totalAgorot);
       expect(stuckFindings[0]!.severity).toBe('error');
     });
 
@@ -392,7 +392,7 @@ describe('every way the money and the screens can disagree is reported', () => {
       await query(`UPDATE money_events SET at = now() - interval '2 hours' WHERE checkout_ref = 'ORPHAN01'`);
       const orphaned = (await findings()).filter((d) => d.check.includes('בלי הזמנה'));
       expect(orphaned).toHaveLength(1);
-      expect(orphaned[0]!.actual).toBe(12345);
+      expect(orphaned[0]!.actualAgorot).toBe(12345);
     });
 
     it('is NOT reported once the hold was released', async () => {
@@ -437,10 +437,10 @@ describe('every way the money and the screens can disagree is reported', () => {
 
       const owed = (await findings()).filter((d) => d.check.includes('זיכוי'));
       expect(owed).toHaveLength(1);
-      expect(owed[0]!.actual).toBe(cancelledSlice!.totalAgorot);
+      expect(owed[0]!.actualAgorot).toBe(cancelledSlice!.totalAgorot);
       // …and specifically NOT the whole purchase. Refunding a buyer for a parcel that is on its way
       // is the mirror-image failure, and it is the one nobody would notice.
-      expect(owed[0]!.actual).toBeLessThan(cancelledSlice!.totalAgorot + liveSlice!.totalAgorot);
+      expect(owed[0]!.actualAgorot).toBeLessThan(cancelledSlice!.totalAgorot + liveSlice!.totalAgorot);
     });
   });
 

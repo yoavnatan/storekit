@@ -158,6 +158,66 @@ describe('money-moving endpoints are guarded', () => {
   });
 });
 
+/**
+ * An amount in agorot must never reach `formatPrice`, which takes SHEKELS.
+ *
+ * The bug (2026-08-16, found by driving a real cancellation rather than by reading anything):
+ * `AdminReconciliationCard` rendered `formatPrice(d.expected)` while every figure on a `Discrepancy`
+ * is integer agorot — so the admin's money alarm multiplied itself by a hundred, and a real ₪279
+ * refund debt was displayed as ₪27,900. Nothing failed and nothing could: money is a plain `number`
+ * here, so the two units add and pass without a word from the compiler (GO_LIVE §3 carries the
+ * branded-money work that would make it a compile error, and its trigger has not fired).
+ *
+ * The rule already existed — `lib/money.ts`'s own header spells out this exact failure, and
+ * `formatAgorot` exists to be the answer. Only the JOIN was wrong, which is why reading either file
+ * alone looked correct, and why this has to be a scan rather than a review habit.
+ *
+ * **The rename came first, and it is the load-bearing half.** The first version of this guard PASSED
+ * against the live bug: the fields were called `expected`/`actual`/`drift`, and a rule about agorot
+ * cannot see a value that does not say it holds agorot. Naming them `expectedAgorot` etc. — as
+ * `totalAgorot` and `balanceAgorot` already are everywhere else — is what makes the class detectable
+ * at all.
+ *
+ * **The roots deliberately include `.astro`.** The guards above scan `.ts` only, and the one place
+ * this class actually shipped was a component — a surface with no type error to catch it and no
+ * existing guard looking at it.
+ */
+describe('agorot never reach a shekel formatter', () => {
+  const PRESENTATION_ROOTS = ['src/components', 'src/pages'];
+
+  function walkAny(dir: string): string[] {
+    const abs = path.join(process.cwd(), dir);
+    if (!fs.existsSync(abs)) return [];
+    return fs.readdirSync(abs, { withFileTypes: true }).flatMap((entry) => {
+      const rel = path.join(dir, entry.name);
+      if (entry.isDirectory()) return walkAny(rel);
+      return entry.isFile() && /\.(ts|astro)$/.test(entry.name) ? [rel] : [];
+    });
+  }
+
+  const FILES = [...ALL_FILES, ...PRESENTATION_ROOTS.flatMap(walkAny)];
+
+  it('every formatPrice() of an agorot value converts first', () => {
+    // `formatPrice(` up to its closing paren, non-greedy — enough to see one argument, which is all
+    // this rule is about.
+    const CALL = /formatPrice\(([^)]*)\)/g;
+    for (const file of FILES) {
+      const src = code(file);
+      for (const [, arg] of src.matchAll(CALL)) {
+        if (!/agorot/i.test(arg)) continue;
+        expect(
+          /fromAgorot|\/\s*100/.test(arg),
+          `${file}: formatPrice(${arg.trim()}) — formatPrice takes SHEKELS and this argument is agorot, so it prints a figure 100× too large. Use formatAgorot() from lib/money.ts.`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('scans the presentation tree too, where the bug actually shipped', () => {
+    expect(FILES.some((f) => f.endsWith('.astro')), 'no .astro files scanned — a root was renamed').toBe(true);
+  });
+});
+
 describe('the guards cover the tree, not a hand-written list', () => {
   it('scans every source file under the roots', () => {
     // If this drops sharply, a root was renamed and the guards above went quiet

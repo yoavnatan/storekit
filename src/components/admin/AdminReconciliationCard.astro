@@ -1,5 +1,5 @@
 ---
-import { formatPrice } from '../../config/store.config.js';
+import { formatAgorot } from '../../lib/money.js';
 import type { ReconciliationReport } from '../../lib/reconcile.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 
@@ -77,7 +77,7 @@ const trailHref = (lookup: string): string => buildAdminUrl('moneylog', { mq: lo
             : <span class="[color:var(--color-muted)] text-[0.75rem]">{d.subject}</span>)}
         </div>
         <div class="mt-0.5 tabular-nums text-[0.78rem]">
-          צפוי {formatPrice(d.expected)} · בפועל {formatPrice(d.actual)} · פער {formatPrice(d.drift)}
+          צפוי {formatAgorot(d.expectedAgorot)} · בפועל {formatAgorot(d.actualAgorot)} · פער {formatAgorot(d.driftAgorot)}
         </div>
         <div class="mt-0.5 [color:var(--color-muted)] text-[0.76rem] leading-relaxed">{d.explanation}</div>
       </li>

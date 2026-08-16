@@ -49,10 +49,10 @@ export interface Discrepancy {
   lookup?: string;
   /** All three are integer agorot, like everything else in the money pipeline (orders.ts).
    *  The panel that renders a discrepancy formats them with `money.ts#formatAgorot`. */
-  expected: number;
-  actual: number;
+  expectedAgorot: number;
+  actualAgorot: number;
   /** expected − actual. The size of the problem. */
-  drift: number;
+  driftAgorot: number;
   /** What it means and what to do — this is read by someone who did not write it. */
   explanation: string;
 }
@@ -83,8 +83,8 @@ const MAX_ROW_DISCREPANCIES = 50;
  */
 export const STUCK_PENDING_MINUTES = 15;
 
-function drift(expected: number, actual: number): number {
-  return expected - actual;
+function drift(expectedAgorot: number, actualAgorot: number): number {
+  return expectedAgorot - actualAgorot;
 }
 
 /**
@@ -105,9 +105,9 @@ function itemsVsSubtotalDiscrepancy(orderId: string, slug: string, fromItems: nu
     check: 'שורות ההזמנה מול הסכום השמור',
     subject: `הזמנה ${shortId(orderId)} · ${slug}`,
     lookup: shortId(orderId),
-    expected: fromItems,
-    actual: subtotal,
-    drift: drift(fromItems, subtotal),
+    expectedAgorot: fromItems,
+    actualAgorot: subtotal,
+    driftAgorot: drift(fromItems, subtotal),
     explanation: 'סכום שורות המוצרים לא שווה לסכום החנות השמור על ההזמנה. אחד מהם עודכן בלי השני — הפירוט למוכר לא יסתדר מול ההכנסה.',
   };
 }
@@ -120,9 +120,9 @@ function totalVsPartsDiscrepancy(orderId: string, fromParts: number, total: numb
     check: 'סכום ההזמנה מול מרכיביו',
     subject: `הזמנה ${shortId(orderId)}`,
     lookup: shortId(orderId),
-    expected: fromParts,
-    actual: total,
-    drift: drift(fromParts, total),
+    expectedAgorot: fromParts,
+    actualAgorot: total,
+    driftAgorot: drift(fromParts, total),
     explanation: 'הסכום הכולל של ההזמנה לא שווה ל(סכום נטו + משלוח). הקונה חויב בסכום אחד והדוחות מציגים אחר.',
   };
 }
@@ -133,9 +133,9 @@ function gmvVsRows(rowSum: number, gmv: number): Discrepancy {
   return {
     severity: 'error',
     check: 'מחזור הפלטפורמה מול סכום החנויות',
-    expected: rowSum,
-    actual: gmv,
-    drift: drift(rowSum, gmv),
+    expectedAgorot: rowSum,
+    actualAgorot: gmv,
+    driftAgorot: drift(rowSum, gmv),
     explanation: 'הכותרת בלשונית "סקירה" לא שווה לסכום שורות החנויות. שני המספרים מתארים את אותו דבר ומחושבים בשני מקומות — אחד מהם השתנה.',
   };
 }
@@ -154,9 +154,9 @@ function byStoreVsByOrder(byOrder: number, byStore: number, orphans: string[]): 
   return {
     severity: 'error',
     check: 'הכנסות לפי חנות מול הכנסות לפי הזמנה',
-    expected: byOrder,
-    actual: byStore,
-    drift: drift(byOrder, byStore),
+    expectedAgorot: byOrder,
+    actualAgorot: byStore,
+    driftAgorot: drift(byOrder, byStore),
     explanation: orphans.length
       ? `יש הזמנות ששייכות לחנויות שלא קיימות ברשימה: ${orphans.join(', ')}. הכסף הזה נספר במחזור הכללי, לא מופיע באף חנות — ו**לא ישולם לאף מוכר**, כי התשלום המרוכז מאתר את המוכר לפי אותה כתובת חנות. כנראה שינוי כתובת חנות שלא עודכן בכל ההזמנות.`
       : 'סכום ההכנסות לפי חנות לא שווה לסכום לפי הזמנה, בלי חנות יתומה מזוהה. צריך בדיקה ידנית.',
@@ -169,9 +169,9 @@ function negativeTotal(orderId: string, total: number): Discrepancy {
     check: 'סכום שלילי',
     subject: `הזמנה ${shortId(orderId)}`,
     lookup: shortId(orderId),
-    expected: 0,
-    actual: total,
-    drift: drift(0, total),
+    expectedAgorot: 0,
+    actualAgorot: total,
+    driftAgorot: drift(0, total),
     explanation: 'הזמנה עם סכום שלילי. הנחה שגדולה מהסכום, או עריכה שהורידה פריטים בלי לעדכן את ההנחה.',
   };
 }
@@ -210,9 +210,9 @@ function refundOwedOutstanding(orderId: string, slug: string | null, amount: num
     check: JOURNAL_ONLY_CHECKS[0]!,
     subject: `הזמנה ${shortId(orderId)}${slug ? ` · ${slug}` : ''}`,
     lookup: shortId(orderId),
-    expected: 0,
-    actual: amount,
-    drift: drift(0, amount),
+    expectedAgorot: 0,
+    actualAgorot: amount,
+    driftAgorot: drift(0, amount),
     explanation: `ההזמנה בוטלה אחרי שהתשלום כבר נגבה, כך שהכסף הזה שייך לקונה ועדיין לא הוחזר${sinceDays > 0 ? ` (${sinceDays} ימים)` : ''}. אין עדיין ספק סליקה מחובר, ולכן ההחזר הוא פעולה ידנית — ראו GO_LIVE_CHECKLIST §3.`,
   };
 }
@@ -228,9 +228,9 @@ function stuckPending(orderId: string, amount: number, minutes: number): Discrep
     check: JOURNAL_ONLY_CHECKS[1]!,
     subject: `הזמנה ${shortId(orderId)}`,
     lookup: shortId(orderId),
-    expected: 0,
-    actual: amount,
-    drift: drift(0, amount),
+    expectedAgorot: 0,
+    actualAgorot: amount,
+    driftAgorot: drift(0, amount),
     explanation: `ההזמנה נוצרה לפני ${minutes} דקות ועדיין "ממתין לתשלום". החיוב לא הושלם ולא בוטל: המלאי ירד, המוכר לא קיבל התראה, והקונה לא יודע. צריך לבדוק מול ספק הסליקה אם נתפס כסף לפי האסמכתא שביומן.`,
   };
 }
@@ -245,9 +245,9 @@ function chargeWithNoOrder(checkoutRef: string, amount: number): Discrepancy {
     check: JOURNAL_ONLY_CHECKS[2]!,
     subject: `אסמכתא ${checkoutRef}`,
     lookup: checkoutRef,
-    expected: 0,
-    actual: amount,
-    drift: drift(0, amount),
+    expectedAgorot: 0,
+    actualAgorot: amount,
+    driftAgorot: drift(0, amount),
     explanation: 'ביומן יש אישור חיוב לאסמכתא שלא נוצרה עבורה אף הזמנה, וגם לא נרשם ביטול חיוב. ייתכן שנתפס כסף על כרטיס של קונה בלי שום הזמנה מאחוריו — צריך לבדוק מול ספק הסליקה.',
   };
 }
@@ -262,9 +262,9 @@ function oversizedDiscount(orderId: string, slug: string, subtotal: number, appl
     check: 'הנחה גדולה מסכום המוצרים',
     subject: `הזמנה ${shortId(orderId)} · ${slug}`,
     lookup: shortId(orderId),
-    expected: subtotal,
-    actual: applied,
-    drift: drift(subtotal, applied),
+    expectedAgorot: subtotal,
+    actualAgorot: applied,
+    driftAgorot: drift(subtotal, applied),
     explanation: 'ההנחה גדולה מסכום המוצרים בהזמנה — כנראה הנחה שחושבה גם על דמי המשלוח. ההכנסה מהחנות הזו מוצגת כאפס במקום כשלילית, אבל השורה עצמה שגויה.',
   };
 }
@@ -402,6 +402,8 @@ export async function reconcilePlatform(storeSlugs: string[]): Promise<Reconcili
     // carry CHECK constraints for both today, so a hit here means a constraint was dropped or the
     // rows predate it. That is exactly why the check stays: it costs nothing and it is the only
     // thing that would say so.
+    // `expected`/`actual` here are the SQL aliases of this query's own columns, NOT the Discrepancy
+    // fields — those carry their unit in the name and these are named by the statement below.
     rows<{ id: string; store_slug: string | null; kind: string; expected: string | number; actual: string | number }>(
       `SELECT id, NULL::text AS store_slug, 'negative' AS kind, 0 AS expected, total_agorot AS actual
          FROM orders WHERE total_agorot < 0

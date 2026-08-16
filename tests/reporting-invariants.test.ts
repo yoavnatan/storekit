@@ -1005,7 +1005,7 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     expect(shared.length === 0, 'clean verdict over the shared checks').toBe(fromJs.clean);
     // Compared as sets of (check, subject, drift): the two routes are free to report in a
     // different ORDER, and requiring one would be asserting an implementation detail.
-    const key = (d: { check: string; subject?: string; drift: number }) => `${d.check}|${d.subject ?? ''}|${d.drift}`;
+    const key = (d: { check: string; subject?: string; driftAgorot: number }) => `${d.check}|${d.subject ?? ''}|${d.driftAgorot}`;
     expect(new Set(shared.map(key))).toEqual(new Set(fromJs.discrepancies.map(key)));
   });
 
