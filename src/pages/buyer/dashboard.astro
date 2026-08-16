@@ -598,6 +598,9 @@ const STORES_NAMED = 2;
     }
     .o-return-why button:hover { background: var(--color-surface); border-color: var(--color-muted); }
     .o-return-why button:disabled { cursor: default; opacity: 0.6; }
+    .o-return-items { display: flex; flex-direction: column; gap: 0.25rem; width: 100%; margin-bottom: 0.3rem; }
+    .o-return-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; cursor: pointer; }
+    .o-return-item input { accent-color: var(--color-accent); }
     /* What the whole purchase came to — rendered only when there IS more than
        one store's total above it to add up. Heavier than .o-store-sub on
        purpose: those are parts, this is the number the card is about. */
@@ -1009,6 +1012,22 @@ const STORES_NAMED = 2;
                                   The reason is what decides who pays the return postage and how
                                   much comes back, so it is asked once, here, in the buyer's words. */}
                               <div class="o-return-why" data-return-why={s.order.id} hidden>
+                                {/* Which items — shown only when the order HAS more than one line.
+                                    On a single-item order there is nothing to choose and a checkbox
+                                    would be a decision invented for the buyer. Everything is ticked
+                                    to begin with, so the default gesture stays "send it all back"
+                                    and choosing less is the deliberate act. */}
+                                {s.order.items.length > 1 && (
+                                  <div class="o-return-items">
+                                    <span class="o-return-q">{t.buyerDashboard.returnWhat}</span>
+                                    {s.order.items.map((item, position) => (
+                                      <label class="o-return-item">
+                                        <input type="checkbox" checked data-return-line={position} data-return-line-for={s.order.id} data-return-qty={item.qty} />
+                                        <span>{item.productName}{item.qty > 1 ? ` ×${item.qty}` : ''}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
                                 <span class="o-return-q">{t.buyerDashboard.returnWhy}</span>
                                 <button type="button" data-return-reason="changed_mind" data-return-for={s.order.id}>{t.buyerDashboard.returnR1}</button>
                                 <button type="button" data-return-reason="damaged" data-return-for={s.order.id}>{t.buyerDashboard.returnR2}</button>
@@ -2200,7 +2219,14 @@ const STORES_NAMED = 2;
           const res = await fetch('/api/returns', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'open', orderId, reason }),
+            // Only the lines still ticked. An order with one line has no checkboxes at all, so
+            // this is empty and the server reads it as "the whole order" — the same answer.
+            body: JSON.stringify({
+              action: 'open', orderId, reason,
+              lines: [...document.querySelectorAll<HTMLInputElement>(`[data-return-line-for="${orderId}"]`)]
+                .filter((c) => c.checked)
+                .map((c) => ({ position: Number(c.dataset.returnLine), qty: Number(c.dataset.returnQty) })),
+            }),
           });
           if (!res.ok) {
             const said = await res.json().catch(() => null) as { error?: string } | null;

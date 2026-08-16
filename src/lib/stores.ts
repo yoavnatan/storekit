@@ -366,7 +366,7 @@ export const RESERVED_SLUGS = new Set<string>([
   // the slug `terms` would have had the whole platform linking "תנאי שימוש" to their storefront.
   // A reserved word and a real page are two halves of one fix: reserving alone leaves the 404 that
   // Merchant Center reads as a shop with no published terms (contact.astro).
-  'terms', 'contact',
+  'terms', 'contact', 'returns-policy',
 ]);
 
 const LONGEST_RESERVED_SLUG = Math.max(...[...RESERVED_SLUGS].map((s) => s.length));

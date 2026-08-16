@@ -859,17 +859,41 @@ export async function recordAdjustment(input: {
   kind: AdjustmentKind;
   amountAgorot: number;
   detail?: string;
+  /**
+   * The return request this debit belongs to, when it belongs to one.
+   *
+   * **It changes what "already recorded" means, and that is the point.** An order-scoped clawback is
+   * idempotent per (order, kind): one cancellation, one debit, however many times a webhook fires.
+   * A partial return breaks that assumption because one order can be returned MORE THAN ONCE — the
+   * lamp this week, the shade next month — and both would collide on the same (order, kind), leaving
+   * the second silently unrecorded while the buyer was refunded for it (migration 0032).
+   *
+   * So a row that names a request is idempotent on the REQUEST instead, and the two indexes do not
+   * overlap. Absent means the old behaviour, unchanged, for every existing caller.
+   */
+  returnRequestId?: string | null;
 }): Promise<LedgerAdjustment | null> {
   if (!isUuid(input.sellerId)) return null;
   if (!Number.isInteger(input.amountAgorot) || input.amountAgorot === 0) return null;
 
-  const created = await firstRow<AdjustmentRow>(
-    `INSERT INTO seller_ledger_adjustments (seller_id, order_id, kind, amount_agorot, detail)
-          VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (order_id, kind) WHERE order_id IS NOT NULL DO NOTHING
-       RETURNING *`,
-    [input.sellerId, input.orderId ?? null, input.kind, input.amountAgorot, input.detail ?? ''],
-  );
+  // Two INSERTs rather than one with a computed conflict target: the target is part of the statement
+  // and cannot be parameterised, and a string built by concatenation is how a conflict clause ends up
+  // naming an index that does not exist.
+  const created = input.returnRequestId
+    ? await firstRow<AdjustmentRow>(
+      `INSERT INTO seller_ledger_adjustments (seller_id, order_id, kind, amount_agorot, detail, return_request_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (return_request_id) WHERE return_request_id IS NOT NULL DO NOTHING
+         RETURNING *`,
+      [input.sellerId, input.orderId ?? null, input.kind, input.amountAgorot, input.detail ?? '', input.returnRequestId],
+    )
+    : await firstRow<AdjustmentRow>(
+      `INSERT INTO seller_ledger_adjustments (seller_id, order_id, kind, amount_agorot, detail)
+            VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (order_id, kind) WHERE order_id IS NOT NULL AND return_request_id IS NULL DO NOTHING
+         RETURNING *`,
+      [input.sellerId, input.orderId ?? null, input.kind, input.amountAgorot, input.detail ?? ''],
+    );
   if (!created) return null;
 
   const adjustment = toAdjustment(created);

@@ -51,6 +51,47 @@ export function buildOrderStatusNotification(
 }
 
 /**
+ * Tell the SELLER his order was cancelled by the buyer.
+ *
+ * **The order does not vanish, but it does leave his default view**, and that is the gap this
+ * closes (owner, 2026-08-16: *"יכול להיות שהוא ראה הזמנה, ואז פתאום היא נעלמה לו והוא לא מבין
+ * לאן"*). His Orders tab filters to live orders, so a cancelled one is still there under "בוטלה"
+ * and nowhere else — which from his side is indistinguishable from a row that disappeared.
+ *
+ * **A notification and not a mail, deliberately.** A cancellation before dispatch costs him nothing:
+ * he had not packed it, and the units are already back on the shelf by the time this runs. That is
+ * information, not an alarm — and a mail per cancellation is how a person learns to filter the
+ * sender, which would cost us the one message that has to arrive (the dispute alert, and the
+ * reasoning is the same one `returns-run.ts` records).
+ *
+ * Never throws: it is the last thing in a cancellation that has already succeeded, and a failed
+ * notification must not fail it (the rule `settleStatusChange` states for the same reason).
+ */
+export async function notifySellerOrderCancelled(
+  sellerId: string,
+  order: Order,
+  storeSlug: string,
+  storeName?: string,
+): Promise<void> {
+  try {
+    await createNotification({
+      userId: sellerId,
+      role: 'seller',
+      type: 'order_update',
+      title: 'הזמנה בוטלה על ידי הקונה',
+      // The number he knows the order by, and the fact that costs him nothing — said in the same
+      // breath, because "cancelled" alone reads as a problem and this one is not.
+      body: `הזמנה ${order.checkoutRef ?? order.id.slice(0, 8)} בוטלה לפני שיצאה למשלוח. המלאי חזר אליך.`,
+      relatedId: order.id,
+      storeSlug,
+      ...(storeName ? { storeName } : {}),
+    });
+  } catch {
+    // Swallowed on purpose — see the header. The cancellation itself is already done and journalled.
+  }
+}
+
+/**
  * Side-effecting entry point — call after an order's status is persisted.
  * Same signature for every trigger source (seller dashboard, future carrier
  * webhook). No-op when buildOrderStatusNotification decides there's nothing to

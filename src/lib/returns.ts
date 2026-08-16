@@ -1,6 +1,7 @@
 import { businessDayISO, businessTodayISO } from './business-day.js';
 import { addDaysISO } from './date-range.js';
 import { STATUTORY_RETURN_DAYS } from './payout-schedule.js';
+import { SHIPPING_STATUS_RULES, orderMoneyWasTaken } from './order-status-rules.js';
 import type { Order } from './orders.js';
 
 /**
@@ -27,6 +28,57 @@ import type { Order } from './orders.js';
 
 /** Why the buyer is sending it back. The closed list from decisions §1. */
 export type ReturnReason = 'changed_mind' | 'damaged' | 'wrong_item' | 'not_arrived';
+
+/**
+ * What the buyer may do with this order RIGHT NOW — the one function every surface asks.
+ *
+ * ── Why this exists, and it is a bug's headstone ──
+ * Decisions §1 gives the buyer two different rights, and the first build shipped only the second:
+ * **cancel** before the parcel leaves, and **return** after it arrives. The returns endpoint refused
+ * anything that was not `delivered`, which is the correct rule for a RETURN and silently deleted the
+ * cancellation — a buyer whose order had not shipped had no button at all. The owner caught it.
+ *
+ * They are not the same act and the difference is the whole of §0: a cancellation means nothing ever
+ * reached anybody, so there is nothing to send back, no postage to argue about and no seller
+ * discretion. A return means the sale completed and is being undone. Deciding which one applies is
+ * therefore a single question about the order's status, and it is answered HERE so that the button,
+ * the API and the copy cannot each answer it differently — which is exactly how the first version
+ * came to disagree with itself.
+ *
+ * `'none'` is the honest fourth answer and the reason the buyer's screen stays quiet: an order that
+ * is already cancelled, already returned, or still unpaid offers no action, and a button that
+ * appears and then fails is worse than no button (the owner: *"לשים לב שזה מופיע לקונה רק מתי שזה
+ * באמת אפשרי"*).
+ */
+export type BuyerOrderAction = 'cancel' | 'return' | 'none';
+
+export function buyerActionFor(
+  order: Pick<Order, 'paymentStatus' | 'shippingStatus'>,
+): BuyerOrderAction {
+  // Nothing was charged, so there is nothing to undo. A failed or still-pending checkout is not a
+  // purchase the buyer can cancel; it is one that never became one.
+  //
+  // Asked of the status table's `moneyWasTaken` column and never as `paymentStatus === 'paid'` —
+  // `money-guards.test.ts` refuses that comparison tree-wide, and it is right to: the column is the
+  // question "was a real person's money taken", which is what this branch means, while the literal
+  // is a spelling that has already drifted from its meaning once in this codebase.
+  if (!orderMoneyWasTaken(order)) return 'none';
+
+  // Asked of the status TABLE, never of the words 'cancelled'/'returned' — a status that stops
+  // holding stock has already been undone by somebody, and a future terminal status inherits this
+  // answer by filling in its row (`order-status-rules.ts`).
+  const rule = SHIPPING_STATUS_RULES[order.shippingStatus];
+  if (!rule || rule.terminal) return 'none';
+
+  // Delivered: the goods are with the buyer, so undoing it means sending them back.
+  if (order.shippingStatus === 'delivered') return 'return';
+
+  // `cancellableFrom` is the seller's own column and it says exactly what is needed here: the parcel
+  // has not been handed to a courier, so nothing is in motion and the order can simply stop. Once it
+  // is `shipped` neither action applies — there is a parcel travelling that nobody can recall, and
+  // the buyer's next move is to receive it and then return it.
+  return rule.cancellableFrom ? 'cancel' : 'none';
+}
 
 /** Where the case stands. Mirrors the CHECK on `return_requests.status` (migration 0030). */
 export type ReturnStatus =
@@ -138,6 +190,67 @@ export function refundAmountAgorot(
   const goodsAndShipping = order.totalAgorot;
   if (reason === 'changed_mind') return Math.max(0, goodsAndShipping - order.shippingAgorot);
   return goodsAndShipping;
+}
+
+/** One line of a partial return: which line of the order, and how many of it. */
+export interface ReturnedLine {
+  /** The line's place in the order (`order_items.position`), which is what makes a receipt read the
+   *  way it was bought. NOT a product id: one order can hold the same product twice at different
+   *  variants, and the variants are a JSONB blob whose equality is not an identity. */
+  position: number;
+  qty: number;
+}
+
+/**
+ * Is this a whole-order return, or a few lines out of it?
+ *
+ * `null`/empty means the whole thing — which is what every request written before partial returns
+ * existed meant, and what the buyer's screen offers by default.
+ */
+export function isPartialReturn(lines: ReturnedLine[] | null | undefined): boolean {
+  return Array.isArray(lines) && lines.length > 0;
+}
+
+/**
+ * What comes back on a PARTIAL return (decisions §4).
+ *
+ * **The original delivery charge is never in it, and that is the rule rather than an oversight.**
+ * On a whole-order return a faulty parcel refunds the postage too, because the buyer paid to receive
+ * something they are not keeping. On a partial one the delivery really was performed for the items
+ * they ARE keeping — the van came, the box arrived — so the charge stays even when the returned item
+ * was the broken one.
+ *
+ * Quantities are clamped to what the line actually holds, and unknown positions are ignored rather
+ * than trusted: this reads a list that arrived in a request body, and a line saying "position 4,
+ * quantity 900" must cost the seller nothing (`AI_INSTRUCTIONS` → bounds are checked on the server
+ * even when the UI already checks them).
+ */
+export function partialRefundAgorot(
+  order: Pick<Order, 'items'>,
+  lines: ReturnedLine[],
+): number {
+  let total = 0;
+  for (const line of lines) {
+    const item = order.items[line.position];
+    if (!item) continue;
+    const qty = Math.max(0, Math.min(Math.floor(line.qty), item.qty));
+    total += item.priceAgorot * qty;
+  }
+  return total;
+}
+
+/**
+ * The refund for a request, whichever kind it is — the one function every caller asks.
+ *
+ * Written as a single entry point on purpose: "how much comes back" is exactly the question two
+ * surfaces would answer differently if each decided for itself whether this was a partial.
+ */
+export function refundForRequest(
+  order: Pick<Order, 'items' | 'totalAgorot' | 'shippingAgorot'>,
+  reason: ReturnReason,
+  lines: ReturnedLine[] | null | undefined,
+): number {
+  return isPartialReturn(lines) ? partialRefundAgorot(order, lines!) : refundAmountAgorot(order, reason);
 }
 
 /**
