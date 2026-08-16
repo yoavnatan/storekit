@@ -147,7 +147,10 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 }
 
 /* Minor rhythm inside the details block: every gap between name / tagline /
-   description / actions is the same 0.5rem unit, instead of ad-hoc values. */
+   description / actions is the same 0.5rem unit, instead of ad-hoc values.
+   USUALLY A LONE h1 (2026-08-16). The 56px mark beside it renders only for a store with no banner
+   PICTURE — see the markup, which carries why. So `gap` applies to the minority case, and anything
+   added here has to look right as a single heading first. */
 .store-banner__identity {
   display: flex;
   align-items: center;

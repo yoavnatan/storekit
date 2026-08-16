@@ -562,12 +562,30 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       <div class="container">
         <div class="store-banner__info">
           <div class="store-banner__identity">
-            {/* A showcase store has a DRAWN mark rather than an uploaded picture or an initial —
-                see StoreDemoMark for the two versions that were rejected before it. A real seller
-                still gets StoreAvatar and their own logo. */}
-            {isDemo && !shopStore.profileImage
+            {/* THE MARK RENDERS ONLY WHEN THERE IS NO BANNER (owner, 2026-08-16: with a banner it
+                "breaks the rest of the design", and is "maybe redundant").
+                It is redundant, and measurably so on the page above it. A seller who uploads a
+                banner overwhelmingly uploads one carrying their own lockup — mark and name, drawn
+                at the size they designed it for — and every showcase banner does by construction
+                (identity.mjs#bannerPrompt paints the name INTO the photograph). So a 56px circle
+                repeating that mark 34px below it is the same identity stated a third time on one
+                screen: the site header's store lockup, the banner, then this. At 56px an uploaded
+                WORDMARK is also illegible, so what it actually prints beside a legible 2.75rem
+                name is a smudge — the "under renovation" failure StoreAvatar's own header records,
+                arrived at from the other direction.
+                With NO banner it stays, and that is the whole reason this is a condition rather
+                than a deletion: the page then opens on a bare heading, and the mark is the only
+                thing on it that says WHO before the products do.
+                The test is `bannerImage`, NOT "is a banner slot painted". A showcase store with no
+                picture still renders a pin — StoreDemoBanner falls back to a two-colour gradient —
+                and a gradient carries no lockup, so that store is a no-banner store for this
+                purpose and keeps its mark.
+                The h1 does NOT move — it is real text where the banner is a picture (SEO reads
+                one and not the other), it is `aria-labelledby="store-heading"`'s target, and the
+                page needs an h1. */}
+            {!shopStore.bannerImage && (isDemo && !shopStore.profileImage
               ? <StoreDemoMark slug={shopStore.slug} colors={shopStore.colors} size={56} />
-              : <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />}
+              : <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />)}
             <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
           </div>
           {/* EVERYTHING BELOW THE STORE NAME, IN ONE BOX (owner, 2026-08-12, arrived at over four
