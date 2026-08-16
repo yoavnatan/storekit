@@ -72,15 +72,19 @@
     {
       "id": 5,
       "title": "Domains + the origin boundary",
-      "audited": null,
+      "audited": "2026-08-16",
       "paths": [
         "src/lib/custom-domain.ts",
+        "src/lib/custom-domain-verify.ts",
         "src/lib/custom-domain-links.ts",
+        "src/lib/unclaimed-host.ts",
         "src/lib/platform-routes.ts",
         "src/lib/cross-origin-handoff.ts",
         "src/lib/cart-handoff.ts",
         "src/middleware.ts",
-        "src/pages/robots.txt.ts"
+        "src/pages/robots.txt.ts",
+        "src/pages/sitemap-content.xml.ts",
+        "migrations/0015_store_previous_domains.sql"
       ]
     },
     {

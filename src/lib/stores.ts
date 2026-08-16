@@ -649,12 +649,23 @@ export async function rememberPreviousCustomDomain(storeId: string, hostname: st
 }
 
 /**
- * A hostname is becoming somebody's ACTIVE domain — drop any memory of a previous owner.
+ * A hostname has BECOME somebody's active domain — drop any memory of a previous owner.
  *
  * Without this, a store that once used `shop.example` would keep 301-ing it away from the store
  * that owns it today: the redirect below looks up previous owners only when no active store claims
- * the host, but a lapsed domain and a re-registered one are the same string. One statement, run at
- * registration, and the ambiguity cannot exist.
+ * the host, but a lapsed domain and a re-registered one are the same string.
+ *
+ * **Called on the pending→active transition, and NOT when the seller types the hostname in
+ * (area audit row 5, 2026-08-16).** It used to run at registration, which made this one statement
+ * reachable by any logged-in seller with any string: type a competitor's OLD hostname into your own
+ * domain field and their row is deleted — every link, bookmark and indexed page that store earned
+ * on that domain stops being a 301 and becomes a 404, permanently, with no error on either side and
+ * nothing that restores the row. Typing a hostname is not evidence of owning it. Verification IS
+ * (custom-domain-verify.ts), so that is where the row may be taken.
+ *
+ * Nothing is lost by waiting: while the new claim is still `pending`, `getStoreByCustomDomain`
+ * matches only `'active'` and the middleware asks it FIRST, so the previous owner's 301 is both
+ * correct and already shadowed the moment the new domain goes live.
  */
 export async function claimCustomDomainHostname(hostname: string): Promise<void> {
   const h = hostname.toLowerCase().trim();
@@ -677,9 +688,24 @@ export async function getStoreByPreviousCustomDomain(hostname: string): Promise<
   );
 }
 
-/** True if ANY store other than `exceptStoreId` has already registered this hostname (pending OR
- *  active). A custom domain must be globally unique — two stores claiming the same host would make
- *  routing ambiguous (first-match wins). Enforced when a seller sets their domain (see /api/store.ts). */
+/**
+ * True if ANY store other than `exceptStoreId` has already registered this hostname (pending OR
+ * active). A custom domain must be globally unique — two stores claiming the same host would make
+ * routing ambiguous (first-match wins). Enforced when a seller sets their domain (see /api/store.ts).
+ *
+ * **This is the friendly face of a hard constraint, not the constraint itself** — `stores
+ * .custom_domain_hostname` is `citext UNIQUE` (0001), so a duplicate is refused by Postgres whatever
+ * this function says. Narrowing it to `'active'` was tried during the row-5 audit (2026-08-16) and
+ * is a bug, not a loosening: it turns the 409 a seller can act on into a duplicate-key 500.
+ *
+ * **Known and NOT fixable here: a pending claim squats the hostname (row 5, 2026-08-16).** Any
+ * logged-in seller can type a hostname they do not own; it stores as pending, can never verify, and
+ * its real owner is answered `domain-taken` from then on. The block lives in the schema, so the fix
+ * is a schema one — a partial unique index over `WHERE custom_domain_status = 'active'` — and it is
+ * the owner's call, not a quiet migration. The damage is bounded to *that* store not being
+ * re-connectable: the previous owner's 301s survive, because taking those is now gated on
+ * verification (`claimCustomDomainHostname`). Remedy today is an admin clearing the pending row.
+ */
 export async function isCustomDomainTaken(hostname: string, exceptStoreId: string): Promise<boolean> {
   const h = hostname.toLowerCase().trim();
   if (!h) return false;

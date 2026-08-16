@@ -2,7 +2,7 @@ export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { updateStore, addStoreBgColor, isCustomDomainTaken, rememberPreviousCustomDomain, claimCustomDomainHostname, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
+import { updateStore, addStoreBgColor, isCustomDomainTaken, rememberPreviousCustomDomain, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
 import { ownedStore } from '../../lib/store-ownership.js';
 import { renameStoreSlugInUserData } from '../../lib/user-carts.js';
 import { renameStoreSlugInOrders } from '../../lib/orders.js';
@@ -328,8 +328,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (target.customDomain && target.customDomain.hostname !== hostname) {
       await rememberPreviousCustomDomain(target.id, target.customDomain.hostname);
     }
-    // …and the hostname now being claimed must stop redirecting away for whoever used it before.
-    await claimCustomDomainHostname(hostname);
+    // The hostname is NOT claimed off its previous owner here — that happens when it verifies
+    // (custom-domain-verify.ts, area audit row 5). Typing a hostname is not evidence of owning it,
+    // and the row this used to delete belongs to a DIFFERENT store: the one whose old links 301 from
+    // that host. Deleting it turned all of them into 404s, permanently and silently, for any seller
+    // who typed the string.
     await updateStore(target.id, { customDomain: { hostname, status: 'pending', addedAt: new Date().toISOString() } });
     return json({ ok: true, hostname, verification });
   }

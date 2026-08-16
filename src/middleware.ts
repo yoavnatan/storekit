@@ -6,9 +6,9 @@ import { logError } from './lib/error-log.js';
 import { recordPageViewTap } from './lib/page-view-tap.js';
 import { isBotRequest } from './lib/bot-detect.js';
 import { getSellerSession } from './lib/seller-auth.js';
-import { getStoreBySlug, getStoreByCustomDomain, getStoreByPreviousCustomDomain, isReservedSlug } from './lib/stores.js';
-import { resolveCustomDomainRewrite, isUnclaimedCustomHost, previousDomainRedirectUrl, isPlatformHost, hostnameAlias } from './lib/custom-domain.js';
-import { machineUrl } from './lib/url-base.js';
+import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/stores.js';
+import { resolveCustomDomainRewrite, isUnclaimedCustomHost, isPlatformHost } from './lib/custom-domain.js';
+import { unclaimedHostRedirect } from './lib/unclaimed-host.js';
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
 import { HEALTH_PATH } from './pages/api/health.js';
@@ -25,36 +25,6 @@ import { isPlatformOwnedPath } from './lib/platform-routes.js';
 // registry (getStoreBySlug), and reserved routes are skipped up front. This single tap keeps the
 // seller dashboard's visitor + per-product view counts in one place.
 const STORE_PATH_RE = /^\/([^/]+)(?:\/([^/]+))?\/?$/;
-
-/**
- * Where a request on an external hostname that NO store claims today should be sent — or null,
- * meaning nobody here has ever answered to this name and it gets a 404.
- *
- * Two ways a live hostname stops matching a store, and both used to end the same way:
- *  1. **It moved.** The seller removed their domain or swapped it for another. Every link, bookmark
- *     and indexed page earned on it 404s — the worst outcome for the store that built the most
- *     audience, since the 301 onto that domain had deliberately consolidated its whole ranking
- *     there. Migration 0015 remembers the old hostname; this is what reads it.
- *  2. **It is the other spelling.** `www.` present when the store registered it absent, or the
- *     reverse — see `custom-domain.ts#hostnameAlias`. The seller pointed both at us because that is
- *     how domains are owned; only one is in our record.
- *
- * Ordered claimed-first: an active domain must never be shadowed by a stale row, and a store that
- * moved away answers about ITS OWN old host before we start guessing at spellings.
- */
-async function unclaimedHostRedirect(host: string, pathname: string, search: string): Promise<string | null> {
-  const previousOwner = await getStoreByPreviousCustomDomain(host);
-  if (previousOwner) return previousDomainRedirectUrl(previousOwner, pathname, search);
-
-  const alias = hostnameAlias(host);
-  if (!alias) return null;
-  const twin = await getStoreByCustomDomain(alias);
-  // The store sits at the ROOT of both spellings, so the path carries over untouched. `machineUrl`
-  // for the reason every redirect in this application uses it: a product slug is Hebrew here, and a
-  // raw one in a Location header throws a 500 instead of redirecting (url-base.ts).
-  if (twin) return machineUrl(`https://${alias}${pathname === '/' ? '' : pathname}${search}`);
-  return null;
-}
 
 // Pure observability tap — logs unexpected server errors so the admin
 // Alerts tab has something to show, but never changes what the caller

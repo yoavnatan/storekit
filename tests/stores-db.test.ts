@@ -27,8 +27,10 @@ import {
   getDemoStores,
   getIndexableStores,
   getStoreByCustomDomain,
+  claimCustomDomainHostname,
   getStoreByExportToken,
   getStoreById,
+  getStoreByPreviousCustomDomain,
   getStoreByPreviousSlug,
   getStoreBySellerId,
   getStoreBySlug,
@@ -37,6 +39,7 @@ import {
   getVisibleStores,
   isCustomDomainTaken,
   isSlugTaken,
+  rememberPreviousCustomDomain,
   renameStoreSlug,
   updateStore,
 } from '../src/lib/stores.js';
@@ -263,6 +266,33 @@ describe('updating a store', () => {
     expect(await getStoreByCustomDomain(hostname)).toBeNull();
     expect(await isCustomDomainTaken(hostname, crypto.randomUUID())).toBe(true);
     expect(await isCustomDomainTaken(hostname, store.id)).toBe(false);
+  });
+
+  /**
+   * Area audit row 5 (2026-08-16). The 301 memory of a store that MOVED lives in a different table
+   * from the hostname's uniqueness, so `stores.custom_domain_hostname UNIQUE` does not protect it:
+   * once a store has moved off `old.example`, nothing holds that string in `stores` and any seller
+   * could register it — which used to delete the previous owner's row on the spot, turning every
+   * link, bookmark and indexed page that store earned there into a 404, permanently and with no
+   * error anywhere. Typing a hostname is not evidence of owning it; verifying it is.
+   */
+  it('keeps a previous domain redirecting until someone actually verifies that hostname', async () => {
+    const mover = await createStore(DANA, { name: 'M', slug: freshBase() });
+    const hostname = `${freshBase()}.example.test`;
+    await updateStore(mover.id, { customDomain: { hostname, status: 'active', addedAt: '2026-02-01T00:00:00.000Z' } });
+    await rememberPreviousCustomDomain(mover.id, hostname);
+    await updateStore(mover.id, { customDomain: undefined });
+    expect((await getStoreByPreviousCustomDomain(hostname))?.id).toBe(mover.id);
+
+    // A second store now registers that hostname — allowed, since no store holds it any more. Its
+    // record is `pending` and nothing about the mover's redirect may change.
+    const claimer = await createStore(DANA, { name: 'C', slug: freshBase() });
+    await updateStore(claimer.id, { customDomain: { hostname, status: 'pending', addedAt: '2026-03-01T00:00:00.000Z' } });
+    expect((await getStoreByPreviousCustomDomain(hostname))?.id).toBe(mover.id);
+
+    // Only the proven claim takes it — which is what `custom-domain-verify.ts` calls on promotion.
+    await claimCustomDomainHostname(hostname);
+    expect(await getStoreByPreviousCustomDomain(hostname)).toBeNull();
   });
 
   it('resolves the export token, and rotating it invalidates the old URL at once', async () => {

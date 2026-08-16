@@ -14,7 +14,7 @@
 // The counterpart matters just as much: a seller who pointed their DNS and closed the tab was never
 // told it worked. Verification usually completes minutes to hours later, and nothing was watching.
 
-import { getStoreById, updateStore, type Store } from './stores.js';
+import { getStoreById, updateStore, claimCustomDomainHostname, type Store } from './stores.js';
 import { getCustomDomainProvider, type CustomDomainCheck } from './custom-domain.js';
 import { createNotification } from './notifications.js';
 import { logError } from './error-log.js';
@@ -52,8 +52,34 @@ export async function reverifyCustomDomain(store: Store): Promise<DomainCheckRes
     return { status, stored: cd.status, changed: false };
   }
 
+  // ── The promotion is where ownership of the hostname is actually established ──
+  // Everything before this point is a seller asserting a string: the dashboard field takes anything
+  // and every logged-in seller has one. `'active'` is the provider saying the DNS record resolves to
+  // us and the certificate issued, which only whoever controls the domain can arrange.
+  //
+  // So the one consequence that reaches ANOTHER store — the previous owner's 301 memory being
+  // deleted — is taken here, and not when the seller typed the hostname in (area audit row 5,
+  // 2026-08-16). It used to run at registration, and the store whose row was deleted is not the one
+  // performing the action: type a hostname some other store moved off, and every link, bookmark and
+  // indexed page it earned there stopped being a 301 and became a 404, permanently, with no error on
+  // either side. `stores.custom_domain_hostname` is UNIQUE, so this was reachable only for a
+  // hostname no store currently holds — which is exactly the set that `store_previous_domains`
+  // exists for.
+  //
+  // Waiting costs nothing: `getStoreByCustomDomain` matches `'active'` only and the middleware asks
+  // it before the previous-owner lookup, so a promoted domain shadows the old row from its first
+  // request either way.
   const changed = status !== cd.status;
   await updateStore(store.id, { customDomain: { ...cd, status, checkedAt } });
+
+  // AFTER the promotion is durable, and swallowing its own error, both for the same reason: of the
+  // two ways this pair can half-happen, only one is harmful. A claim that lands without the
+  // promotion is a store's 301s deleted for a domain that then did not go live — unrecoverable. A
+  // promotion whose claim is lost leaves a stale row that is already shadowed by the sentence above,
+  // and the next successful check clears it. So the destructive half goes second and may fail.
+  if (status === 'active' && cd.status !== 'active') {
+    await claimCustomDomainHostname(cd.hostname).catch(() => { /* shadowed anyway; retried next check */ });
+  }
 
   if (changed) await notifySeller(store, status).catch(() => { /* the status write stands */ });
   return { status, stored: status, changed };
