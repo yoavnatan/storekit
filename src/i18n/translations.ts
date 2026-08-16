@@ -1016,7 +1016,7 @@ export const translations = {
       // create its rows and the bank would move the money when it next opens. Stating it is honest;
       // making it true needs a banking calendar and belongs with the bank integration (GO_LIVE §3).
       // The dates a seller reads say "צפוי" for the same reason.
-      payHowWhenA: 'פעם בשבוע, כל {day}, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז. אם היום הזה חל בחג, ההעברה יוצאת ביום העסקים שאחריו.',
+      payHowWhenA: 'פעם בשבוע, כל {day}, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז. אם היום הזה חל בחג, ההעברה יוצאת ביום העסקים שלאחריו.',
       // ⚠️ The owner read the first version and asked *"לא הבנתי… למה 21 מרגע המסירה ולא 15 למשל?"*
       // — which is the right question, and the answer is that the number is DERIVED and the sentence
       // was hiding that. Israeli consumer law gives a distance-sale buyer 14 days FROM RECEIVING the
@@ -1511,7 +1511,9 @@ export const translations = {
       // The one state with no date to give, so it says what produces one. Never "הספירה מתחילה
       // כש…" (owner, 2026-08-16): a seller does not have a mental model called "the count", and a
       // sentence built on one is our vocabulary handed to them to decode.
-      orderPayoutUnshippedHint: 'תאריך התשלום ייקבע אחרי השליחה',
+      // "לאחר", never "אחרי" (owner, 2026-08-16) — same word, and the formal register is the one a
+      // seller expects from a screen that is telling them when they get paid.
+      orderPayoutUnshippedHint: 'תאריך התשלום ייקבע לאחר השליחה',
       // The link at the end of the line, into the Payments tab's `#pay-how`. Every rule behind the
       // dates — the hold, the weekly run, the minimum — is answered there, once.
       orderPayoutHow: 'איך זה עובד',
