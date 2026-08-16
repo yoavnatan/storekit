@@ -21,6 +21,8 @@ import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
 import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
+import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
+import { getReturnsForStore, countOpenReturns } from '../../lib/return-requests.js';
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import CopyButton from '../../components/dashboard/CopyButton.astro';
@@ -190,7 +192,7 @@ let error = '';
 // `hidden={!active}` and `active` is "is this the panel asked for", so an unknown value (a typo, a
 // stale bookmark, a link someone edited) hid ALL of them and served a dashboard with an empty body.
 // Fall back to the landing tab instead.
-const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
+const PANEL_NAMES = ['overview', 'products', 'orders', 'returns', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
 const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
 const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
 
@@ -813,6 +815,21 @@ const [ordersPage, orderStatusCounts] = store
     ])
   : [{ orders: [] as Order[], total: 0, page: 1, totalPages: 1 }, {} as Record<string, number>];
 const newOrdersCount = orderStatusCounts.pending ?? 0;
+
+// ── The returns tab's two reads ──
+//
+// The badge is a single indexed COUNT and runs on EVERY panel, because it is what tells a seller
+// there is something waiting on a tab he is not looking at — a badge that only appears once you
+// open the tab is not a badge. The list itself is behind `only`, so a store with no returns pays
+// one count and nothing else.
+//
+// Both are skipped entirely when there is no store selected: `store` is null on an account whose
+// shop was just deleted, and a query keyed on a slug that does not exist is a round trip whose
+// only possible answer is "none".
+const openReturnsCount = store ? await countOpenReturns(store.slug) : 0;
+const returnRequests = store
+  ? await only(['returns'], () => getReturnsForStore(store.slug), [])
+  : [];
 // Whether the seller has already provided each of these orders' buyer invoices. One query for the
 // page, after it, because the ids are its output — and skipped entirely when there are no orders,
 // so an empty store's first paint does not pay for a round trip that can only answer "none".
@@ -1082,6 +1099,20 @@ const orderStatusColors: Record<string, string> = {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>{d.tabOrders}
           {newOrdersCount > 0 && (
             <span class="dash-tab-badge" data-tab-alert="danger" aria-label={t.dashboard.orderNewCount.replace('{n}', String(newOrdersCount))}>{newOrdersCount}</span>
+          )}
+        </button>
+        <button
+          class={`dash-tab${initialPanel === 'returns' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-returns"
+          data-panel="returns"
+          aria-selected={initialPanel === 'returns'}
+          tabindex={initialPanel === 'returns' ? 0 : -1}
+          style="position:relative"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>{d.tabReturns}
+          {openReturnsCount > 0 && (
+            <span class="dash-tab-badge" data-tab-alert="danger" aria-label={t.dashboard.returnsOpenCount.replace('{n}', String(openReturnsCount))}>{openReturnsCount}</span>
           )}
         </button>
         <button
@@ -2717,6 +2748,13 @@ const orderStatusColors: Record<string, string> = {
       {/* Server-rendered rather than deferred like Reports/Performance: its numbers ARE the reason
           the tab is opened, and they cost three small indexed reads that the page has already made
           for the badge above. `data-hydrating` only because the details form needs its handler. */}
+      {/* ── Panel: Returns ──
+          Read only when this is the tab that was asked for: a store with no returns pays
+          nothing for the tab existing, and the badge above came from a single COUNT. */}
+      <SellerPanelShell panel="returns" active={shows('returns')}>
+        <ReturnsPanel requests={returnRequests} storeSlug={store?.slug ?? ''} />
+      </SellerPanelShell>
+
       <SellerPanelShell panel="payouts" active={shows('payouts')}>
         {payoutAccount && (
           <PayoutsPanel
@@ -3523,7 +3561,7 @@ const orderStatusColors: Record<string, string> = {
   // uses (`data-tab-alert`, lib/seller-alerts.ts). A dot in the switcher now means exactly what the
   // seller would see on that shop's tabs, which is also what makes it impossible for the two to
   // disagree.
-  const PER_STORE_TABS = ['tab-orders', 'tab-messages', 'tab-products', 'tab-advertising'];
+  const PER_STORE_TABS = ['tab-orders', 'tab-returns', 'tab-messages', 'tab-products', 'tab-advertising'];
   const TAB_RANK: Record<string, number> = { danger: 2, warning: 1 };
 
   /** The loudest live marker on this store's tabs, or null. */
@@ -3720,6 +3758,11 @@ const orderStatusColors: Record<string, string> = {
     orders: async () => {
       const { initOrdersTab } = await import('../../scripts/dashboard/orders.js');
       return () => initOrdersTab(updateSwitcherAlertDot);
+    },
+
+    returns: async () => {
+      const { initReturnsTab } = await import('../../scripts/dashboard/returns.js');
+      return () => initReturnsTab();
     },
 
     messages: async () => {

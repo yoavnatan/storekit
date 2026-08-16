@@ -46,14 +46,14 @@ const REASON: Record<ReturnReason, string> = {
 /** What the case IS, in the seller's words. Every status in the machine has one — a card that
  *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
 const STATUS: Record<ReturnStatus, string> = {
-  requested: 'ממתינה לתשובתך',
-  approved: 'אושרה — הקונה שולח',
+  requested: 'ממתין לך',
+  approved: 'אושר · הקונה שולח',
   in_transit: 'בדרך אליך',
-  received: 'הגיעה אליך',
-  disputed: 'במחלוקת — האדמין מכריע',
-  rejected: 'סורבה',
-  refunded: 'הוחזר וזוכה',
-  expired: 'פקעה — הקונה לא שלח',
+  received: 'הגיע אליך',
+  disputed: 'במחלוקת',
+  rejected: 'סורב',
+  refunded: 'זוכה',
+  expired: 'פקע · לא נשלח',
 };
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
@@ -66,30 +66,32 @@ const TONE: Record<ReturnStatus, string> = {
  *  in `returns.ts`; anything it does not allow simply has no button. */
 const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kind: string }[]>> = {
   requested: [
-    { to: 'approved', label: 'אשר החזרה', kind: 'accent' },
+    { to: 'approved', label: 'אשר', kind: 'accent' },
     { to: 'rejected', label: 'סרב', kind: 'ghost' },
   ],
-  approved:   [{ to: 'in_transit', label: 'סמן שנשלח אליי', kind: 'ghost' }],
-  in_transit: [{ to: 'received', label: 'קיבלתי את החבילה', kind: 'accent' }],
+  approved:   [{ to: 'in_transit', label: 'נשלח אליי', kind: 'ghost' }],
+  in_transit: [{ to: 'received', label: 'קיבלתי', kind: 'accent' }],
   received: [
-    { to: 'refunded', label: 'תקין — זכה את הקונה', kind: 'accent' },
-    { to: 'disputed', label: 'ריק או משומש — פתח מחלוקת', kind: 'ghost' },
+    { to: 'refunded', label: 'תקין · זכה את הקונה', kind: 'accent' },
+    { to: 'disputed', label: 'ריק או משומש', kind: 'ghost' },
   ],
 };
 
 /** The one line that says how long is left, per state. Null when no clock runs. */
 function deadlineLine(r: ReturnRequest): string | null {
-  if (r.status === 'requested' && !r.withinStatutory) {
-    return `יש לך זמן לענות עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))} — אחריו הבקשה נסגרת כמסורבת`;
+  if (r.status === 'requested') {
+    // Inside the statutory window there is nothing to answer — it was approved on arrival — so this
+    // branch only ever describes a request the seller may really refuse.
+    if (r.withinStatutory) return null;
+    return `לענות עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))}, אחרת נסגר`;
   }
-  if (r.status === 'requested') return 'בתוך חלון ההחזרה החוקי — הבקשה מאושרת אוטומטית';
   if (r.status === 'approved' || r.status === 'in_transit') {
     const d = handoverDeadlineISO(r.approvedAt);
-    return d ? `הקונה צריך למסור את החבילה עד ${formatBusinessDateShort(d)}` : null;
+    return d ? `הקונה צריך לשלוח עד ${formatBusinessDateShort(d)}` : null;
   }
   if (r.status === 'received') {
     const d = autoRefundDueISO(r.deliveredBackAt);
-    return d ? `אם לא תגיב, הקונה יזוכה אוטומטית ב-${formatBusinessDateShort(d)}` : null;
+    return d ? `בלי תגובה — הקונה יזוכה ב-${formatBusinessDateShort(d)}` : null;
   }
   return null;
 }
@@ -102,13 +104,13 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
   <h2 class="m-0 text-[1.05rem] font-bold">החזרות</h2>
   <p class="m-0 mt-1 text-[0.82rem] [color:var(--color-muted)]">
-    {open.length ? `${open.length} בקשות פתוחות` : 'אין בקשות פתוחות'}
+    {open.length ? `${open.length} ממתינות` : 'הכול סגור'}
   </p>
 </div>
 
 {requests.length === 0 && (
   <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">
-    עוד לא התקבלה אף בקשת החזרה.
+    אין בקשות החזר.
   </p>
 )}
 
@@ -123,9 +125,9 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
       </div>
 
       <p class="m-0 mt-2 text-[0.86rem]">
-        <span class="[color:var(--color-muted)]">סיבה:</span> {REASON[r.reason]}
-        <span class="[color:var(--color-muted)]"> · זיכוי:</span> <span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
-        <span class="[color:var(--color-muted)]"> · משלוח חזרה על:</span> {r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
+        {REASON[r.reason]}
+        <span class="[color:var(--color-muted)]"> · זיכוי </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
+        <span class="[color:var(--color-muted)]"> · משלוח חזרה על </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
       </p>
 
       {r.buyerNote && (
@@ -155,9 +157,9 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         </div>
       )}
 
-      {r.status === 'refunded' && (
+      {r.status === 'disputed' && (
         <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">
-          הסכום נרשם כזיכוי לקונה. ההעברה בפועל מתבצעת דרך ספק הסליקה.
+          נשלח להכרעה. הכסף עצור עד שתתקבל תשובה.
         </p>
       )}
     </article>
