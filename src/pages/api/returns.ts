@@ -102,7 +102,15 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       return json({ error: 'אפשר לבקש החזרה רק על הזמנה שנמסרה' }, 409);
     }
 
-    const slug = order.items[0]?.storeSlug ?? '';
+    // The store comes from `storeSubtotals`, which every order has by construction (checkout writes
+    // one order per store and one subtotal with it), and falls back to the first line only if that
+    // map is somehow empty. Refused outright when neither answers: a request stored with an empty
+    // slug is a request nothing can ever move — `getStoreBySlugOrPrevious('')` returns null, so every
+    // later approval, receipt and refund 404s, and the case sits open forever freezing the seller's
+    // money on an order nobody can act on. Failing at creation is the recoverable version.
+    const slug = Object.keys(order.storeSubtotals ?? {})[0] ?? order.items[0]?.storeSlug ?? '';
+    if (!slug) return json({ error: 'לא ניתן לזהות את החנות של ההזמנה' }, 409);
+
     const result = await openReturnRequest({
       order, storeSlug: slug, reason,
       buyerNote: String(data.note ?? '').slice(0, 2000),

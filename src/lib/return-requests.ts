@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { rows, firstRow, query } from './db.js';
 import { getOrderById, updateOrder, type Order } from './orders.js';
 import { settleStatusChange, type StatusChangeStore } from './order-status-change.js';
+import { canTransition } from './order-status-rules.js';
 import {
   autoApproved, canMove, refundAmountAgorot, returnShippingPayer, withinStatutoryWindow,
   type ReturnReason, type ReturnStatus,
@@ -240,7 +241,24 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
 
   if (input.to === 'refunded') {
     const before = await getOrderById(moved.orderId);
-    if (before) {
+    // Asked of the ORDER's own table before touching it, not merely of this request's state machine.
+    // Two machines guard two different things — this one says a case may be refunded, that one says
+    // an order may become `returned` — and only the second knows anything about the order.
+    //
+    // **What this does NOT prevent, stated because the first version of this comment claimed it
+    // did:** a double restock. `settleStatusChange` already tests `orderHoldsStock(before)` as well
+    // as the after status, so an order that has already released its units cannot release them
+    // twice, and `createsRefundObligation` likewise needs the BEFORE state to have counted as
+    // revenue, so no second debt is written either. Both were checked against the code rather than
+    // assumed, and the test below passes with this guard removed — it is a regression pin, not a
+    // bug fix.
+    //
+    // What it does prevent is a terminal order being moved at all: a journal row saying a cancelled
+    // order became returned, an order status rewritten out from under whatever made it terminal, and
+    // the buyer notified twice. `canTransition` refuses exactly that and says why in its own header
+    // ("a 200 on a repeat cancel is an invitation to whatever runs downstream of one"). Reaching it
+    // needs the order to change status behind an open request's back, which nothing today does.
+    if (before && canTransition(before.shippingStatus, 'returned').ok) {
       const after = await updateOrder(moved.orderId, { shippingStatus: 'returned' });
       if (after) {
         await settleStatusChange({
