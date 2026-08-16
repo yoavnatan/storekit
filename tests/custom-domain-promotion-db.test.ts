@@ -67,21 +67,29 @@ describe('a custom domain takes effect only when it verifies', () => {
   });
 
   /**
-   * Two stores can never HOLD one hostname — `stores.custom_domain_hostname` is `citext UNIQUE`
-   * (0001), so the registration 409 is a readable message in front of a constraint rather than the
-   * thing enforcing it. Pinned because the audit briefly "fixed" `isCustomDomainTaken` to ignore
-   * pending claims, which does not loosen anything: it just turns that 409 into a duplicate-key 500.
+   * The squat's other end (migration 0029): two stores may both CLAIM a hostname, so the promotion
+   * is what decides between them. Without this check the second one would hit 0029's partial unique
+   * index and throw, and `reverifyCustomDomain` is contractually a function that never throws — the
+   * hourly job runs it over every store in a loop.
    */
-  it('cannot store one hostname on two stores at all, pending or not', async () => {
+  it('refuses to promote a hostname another store is already served on', async () => {
     const seller = await freshSeller();
     const hostname = freshHost();
+
     const live = await createStore(seller, { name: 'L', slug: `l-${n++}-${Date.now().toString(36)}` });
     await updateStore(live.id, { customDomain: { hostname, status: 'active', addedAt: ADDED_AT } });
 
     const rival = await createStore(seller, { name: 'R', slug: `r-${n++}-${Date.now().toString(36)}` });
-    await expect(
-      updateStore(rival.id, { customDomain: { hostname, status: 'pending', addedAt: ADDED_AT } }),
-    ).rejects.toThrow(/unique|duplicate/i);
+    await updateStore(rival.id, { customDomain: { hostname, status: 'pending', addedAt: ADDED_AT } });
+
+    const result = await reverifyCustomDomain((await getStoreById(rival.id))!);
+    expect(result.stored).toBe('pending');
+    expect(result.changed).toBe(false);
+    expect((await getStoreById(rival.id))!.customDomain).toMatchObject({ hostname, status: 'pending' });
+    // `checkedAt` still moves — the job orders by it, and a store stuck here must not sit
+    // permanently at the front of the rotation.
+    expect((await getStoreById(rival.id))!.customDomain?.checkedAt).toBeTruthy();
+    // …and the store that was already live is untouched.
     expect((await getStoreById(live.id))!.customDomain).toMatchObject({ hostname, status: 'active' });
   });
 

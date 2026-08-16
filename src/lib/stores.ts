@@ -689,29 +689,28 @@ export async function getStoreByPreviousCustomDomain(hostname: string): Promise<
 }
 
 /**
- * True if ANY store other than `exceptStoreId` has already registered this hostname (pending OR
- * active). A custom domain must be globally unique — two stores claiming the same host would make
- * routing ambiguous (first-match wins). Enforced when a seller sets their domain (see /api/store.ts).
+ * True if another store is already **SERVED** on this hostname — the one conflict that is real.
  *
- * **This is the friendly face of a hard constraint, not the constraint itself** — `stores
- * .custom_domain_hostname` is `citext UNIQUE` (0001), so a duplicate is refused by Postgres whatever
- * this function says. Narrowing it to `'active'` was tried during the row-5 audit (2026-08-16) and
- * is a bug, not a loosening: it turns the 409 a seller can act on into a duplicate-key 500.
+ * **`pending` deliberately does not block (area audit row 5, 2026-08-16, with migration 0029).** It
+ * used to, because `custom_domain_hostname` was globally `UNIQUE`, and that made a squat free and
+ * permanent: type a hostname you do not own, it stores as pending, it can never verify (you do not
+ * control the DNS), and its real owner is answered `domain-taken` from then on with no way to see
+ * why or by whom. A pending claim is an assertion — the field takes any string — so it may not
+ * exclude anybody. 0029 narrows the constraint to `WHERE custom_domain_status = 'active'`, and this
+ * is the readable 409 in front of it.
  *
- * **Known and NOT fixable here: a pending claim squats the hostname (row 5, 2026-08-16).** Any
- * logged-in seller can type a hostname they do not own; it stores as pending, can never verify, and
- * its real owner is answered `domain-taken` from then on. The block lives in the schema, so the fix
- * is a schema one — a partial unique index over `WHERE custom_domain_status = 'active'` — and it is
- * the owner's call, not a quiet migration. The damage is bounded to *that* store not being
- * re-connectable: the previous owner's 301s survive, because taking those is now gated on
- * verification (`claimCustomDomainHostname`). Remedy today is an admin clearing the pending row.
+ * Two pending claims on one hostname conflict over nothing: `getStoreByCustomDomain` matches
+ * `'active'` only, so neither routes, and whichever verifies is the one that becomes real. The
+ * promotion asks this again before writing `'active'` (`custom-domain-verify.ts`) — that is where
+ * the answer stops being about intent and starts being about routing.
  */
 export async function isCustomDomainTaken(hostname: string, exceptStoreId: string): Promise<boolean> {
   const h = hostname.toLowerCase().trim();
   if (!h) return false;
   const row = await firstRow<{ one: number }>(
     `SELECT 1 AS one FROM stores
-      WHERE deleted_at IS NULL AND custom_domain_hostname = $1 AND id <> $2::uuid LIMIT 1`,
+      WHERE deleted_at IS NULL AND custom_domain_status = 'active'
+        AND custom_domain_hostname = $1 AND id <> $2::uuid LIMIT 1`,
     [h, isUuid(exceptStoreId) ? exceptStoreId : NO_SUCH_UUID],
   );
   return Boolean(row);

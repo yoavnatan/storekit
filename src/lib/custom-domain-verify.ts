@@ -14,7 +14,7 @@
 // The counterpart matters just as much: a seller who pointed their DNS and closed the tab was never
 // told it worked. Verification usually completes minutes to hours later, and nothing was watching.
 
-import { getStoreById, updateStore, claimCustomDomainHostname, type Store } from './stores.js';
+import { getStoreById, updateStore, claimCustomDomainHostname, isCustomDomainTaken, type Store } from './stores.js';
 import { getCustomDomainProvider, type CustomDomainCheck } from './custom-domain.js';
 import { createNotification } from './notifications.js';
 import { logError } from './error-log.js';
@@ -69,6 +69,26 @@ export async function reverifyCustomDomain(store: Store): Promise<DomainCheckRes
   // Waiting costs nothing: `getStoreByCustomDomain` matches `'active'` only and the middleware asks
   // it before the previous-owner lookup, so a promoted domain shadows the old row from its first
   // request either way.
+  const promoting = status === 'active' && cd.status !== 'active';
+
+  // **Two stores may CLAIM one hostname; only one may be served on it** (migration 0029). Since a
+  // pending claim no longer excludes anybody, this is the check that decides between them — asked
+  // here because here is where the answer stops being about what a seller typed and starts being
+  // about routing. Without it the promotion would hit 0029's partial unique index and throw, and
+  // this function's contract is that it never does.
+  if (promoting && await isCustomDomainTaken(cd.hostname, store.id)) {
+    // `checkedAt` still moves: it means "when we last asked", and the job orders by it, so a store
+    // stuck here must not sit permanently at the front of the rotation.
+    await updateStore(store.id, { customDomain: { ...cd, checkedAt } });
+    await logError({
+      source: 'server',
+      route: 'custom-domain:verify',
+      message: `${cd.hostname} verified for store ${store.slug} but another store is already served on it — promotion refused`,
+      resolutionHint: 'Two stores hold this hostname and both point DNS at us. Decide which one owns it and clear the other before it can go live.',
+    }).catch(() => { /* the held promotion stands */ });
+    return { status, stored: cd.status, changed: false };
+  }
+
   const changed = status !== cd.status;
   await updateStore(store.id, { customDomain: { ...cd, status, checkedAt } });
 
@@ -77,7 +97,7 @@ export async function reverifyCustomDomain(store: Store): Promise<DomainCheckRes
   // promotion is a store's 301s deleted for a domain that then did not go live — unrecoverable. A
   // promotion whose claim is lost leaves a stale row that is already shadowed by the sentence above,
   // and the next successful check clears it. So the destructive half goes second and may fail.
-  if (status === 'active' && cd.status !== 'active') {
+  if (promoting) {
     await claimCustomDomainHostname(cd.hostname).catch(() => { /* shadowed anyway; retried next check */ });
   }
 

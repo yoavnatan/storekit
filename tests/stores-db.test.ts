@@ -258,14 +258,41 @@ describe('updating a store', () => {
     expect(rows[0]!.custom_domain_status).toBeNull();
   });
 
-  it('serves a custom domain only once it is verified, and holds it against every other store', async () => {
+  it('serves a custom domain only once it is verified', async () => {
     const store = await createStore(DANA, { name: 'D', slug: freshBase() });
     const hostname = `${freshBase()}.example.test`;
     await updateStore(store.id, { customDomain: { hostname, status: 'pending', addedAt: '2026-02-01T00:00:00.000Z' } });
     // A pending domain must never route — an unverified hostname could otherwise hijack a store.
     expect(await getStoreByCustomDomain(hostname)).toBeNull();
-    expect(await isCustomDomainTaken(hostname, crypto.randomUUID())).toBe(true);
-    expect(await isCustomDomainTaken(hostname, store.id)).toBe(false);
+  });
+
+  /**
+   * Migration 0029. A pending claim is an ASSERTION — the settings field takes any string — so it
+   * may not exclude anybody. It used to, because the column was globally UNIQUE, which handed every
+   * seller a free permanent squat: type a hostname you do not own, it can never verify, and its real
+   * owner is answered `domain-taken` from then on. Only a hostname actually being SERVED conflicts,
+   * because only routing can be ambiguous.
+   */
+  it('lets two stores claim one hostname, and refuses only once one is served on it', async () => {
+    const squatter = await createStore(DANA, { name: 'S', slug: freshBase() });
+    const owner = await createStore(DANA, { name: 'O', slug: freshBase() });
+    const hostname = `${freshBase()}.example.test`;
+
+    await updateStore(squatter.id, { customDomain: { hostname, status: 'pending', addedAt: '2026-02-01T00:00:00.000Z' } });
+    expect(await isCustomDomainTaken(hostname, owner.id)).toBe(false);
+    // …and the schema agrees: the real owner can store their own claim on the same hostname.
+    await updateStore(owner.id, { customDomain: { hostname, status: 'pending', addedAt: '2026-02-02T00:00:00.000Z' } });
+    expect(await getStoreByCustomDomain(hostname)).toBeNull();
+
+    // Whichever one verifies is the one that becomes real, and from then on it is the other's to be
+    // refused — and the partial index refuses a second `active` row outright.
+    await updateStore(owner.id, { customDomain: { hostname, status: 'active', addedAt: '2026-02-02T00:00:00.000Z' } });
+    expect((await getStoreByCustomDomain(hostname))?.id).toBe(owner.id);
+    expect(await isCustomDomainTaken(hostname, squatter.id)).toBe(true);
+    expect(await isCustomDomainTaken(hostname, owner.id)).toBe(false);
+    await expect(
+      updateStore(squatter.id, { customDomain: { hostname, status: 'active', addedAt: '2026-02-01T00:00:00.000Z' } }),
+    ).rejects.toThrow(/unique|duplicate/i);
   });
 
   /**
