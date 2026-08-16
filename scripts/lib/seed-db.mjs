@@ -181,8 +181,28 @@ export async function purge(db, scopeName, opts = {}) {
  * Children first, because `order_items`/`order_stores` reference `orders` with `ON DELETE RESTRICT`
  * — the same rule that protects a real order from a careless cascade.
  *
+ * **`money_events` goes with them, and leaving it behind was a real bug (owner, 2026-08-16: "יש שם
+ * כרגע 48 אי-התאמות?!").** The journal names its order by TEXT with no foreign key, deliberately —
+ * an event can be recorded before any order row exists, and a payment attempt that never became an
+ * order still has to be recorded somewhere. So a purge that deleted orders and stopped there left
+ * every event pointing at an order id nothing answers to. The measured state on the owner's machine:
+ * 48 `refund_due` rows written by the fulfilment SLA job, all of them for orders a later
+ * `seed:demo --clean` had removed. `reconcile.ts` reads an unsettled `refund_due` as money owed to a
+ * real buyer — correctly — so the admin's integrity banner reported 48 debts totalling real shekels,
+ * none of which existed.
+ *
+ * That is worse than untidy. `AdminReconciliationCard`'s whole design rests on the alarm being rare:
+ * its clean state is one muted line precisely so the red state keeps its weight. An alarm that is
+ * permanently on after any re-seed teaches the owner to skip the one place a real discrepancy will
+ * appear — and the fix belongs HERE rather than in a filter over the journal, because a journal that
+ * quietly hides rows is no longer a journal.
+ *
+ * Deleted by `order_id` AND by `checkout_ref`: the pre-order events (`payment_attempted`,
+ * `duplicate_checkout_blocked`) carry only the ref, so an order-id sweep alone would strand exactly
+ * the rows that describe a checkout that never became one.
+ *
  * @param {'demo'|'showcase'} scopeName
- * @returns {Promise<{ deleted: number, keptShared: number }>}
+ * @returns {Promise<{ deleted: number, keptShared: number, journalRows: number }>}
  */
 export async function purgeOrdersOfStores(db, scopeName) {
   const scope = scopeOf(scopeName);
@@ -198,11 +218,62 @@ export async function purgeOrdersOfStores(db, scopeName) {
   );
   const ids = rows.filter((r) => !r.shared).map((r) => r.order_id);
   const keptShared = rows.length - ids.length;
-  if (!ids.length) return { deleted: 0, keptShared };
+  if (!ids.length) return { deleted: 0, keptShared, journalRows: 0 };
+  // Before the orders go: the refs are read OFF them, so this cannot run afterwards.
+  //
+  // **The checkout_ref half is narrowed to refs NO SURVIVING ORDER HOLDS, and that condition is the
+  // whole correctness of it.** One checkout writes one order per store and they all carry the same
+  // ref, so a cart mixing a demo store with a real one produces two orders sharing it — of which
+  // this function deletes the demo one and deliberately KEEPS the other (`keptShared`, and the
+  // paragraph above explains why that was once wrong at the order level). Sweeping by ref alone
+  // reintroduces exactly that bug one level down: the surviving real order would lose its journal,
+  // silently, and its money would then have an order and no record of how it got there.
+  const journal = await db.query(
+    `DELETE FROM money_events
+      WHERE order_id = ANY($1::text[])
+         OR (order_id IS NULL
+             AND checkout_ref IS NOT NULL
+             AND checkout_ref IN (SELECT checkout_ref FROM orders
+                                   WHERE id = ANY($1::uuid[]) AND checkout_ref IS NOT NULL)
+             AND NOT EXISTS (SELECT 1 FROM orders k
+                              WHERE k.checkout_ref = money_events.checkout_ref
+                                AND NOT (k.id = ANY($1::uuid[]))))`,
+    [ids],
+  );
   await db.query('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [ids]);
   await db.query('DELETE FROM order_stores WHERE order_id = ANY($1::uuid[])', [ids]);
   const res = await db.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [ids]);
-  return { deleted: res.rowCount ?? 0, keptShared };
+  return { deleted: res.rowCount ?? 0, keptShared, journalRows: journal.rowCount ?? 0 };
+}
+
+/**
+ * Journal rows whose order is already gone — the wreckage of every purge that ran before the one
+ * above learned to take them along.
+ *
+ * A one-time sweep rather than a migration, because it is data cleanup on a developer's machine and
+ * a migration would run against production.
+ *
+ * **Why deleting these is safe, stated rather than assumed — it is a DELETE on the money journal.**
+ * Every event carrying an `order_id` is written by code holding an Order (`recordRefundOwed` takes
+ * one, `settleStatusChange` has just persisted one), so the id being there means the order existed
+ * at write time. Nothing in the application deletes an order — `order_items`/`order_stores` are
+ * `ON DELETE RESTRICT` precisely so that cannot happen by accident — which leaves the seeders as the
+ * only thing that removes one. So "names an order that is not there" identifies a purge, not a state
+ * the platform can reach on its own.
+ *
+ * Events with NO order id are never touched, and that is the load-bearing half: a charge with no
+ * order behind it is the 0017 shape, a real failure `reconcile.ts` reports on purpose, and it is
+ * recorded against `checkout_ref` alone. This sweep must never be the thing that erases it.
+ *
+ * @returns {Promise<number>} rows removed
+ */
+export async function purgeOrphanJournalRows(db) {
+  const res = await db.query(
+    `DELETE FROM money_events e
+      WHERE e.order_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id::text = e.order_id)`,
+  );
+  return res.rowCount ?? 0;
 }
 
 /**

@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
-import { DEMO_EMAIL_SUFFIX, purge, writeCatalog } from '../scripts/lib/seed-db.mjs';
+import { DEMO_EMAIL_SUFFIX, purge, purgeOrdersOfStores, purgeOrphanJournalRows, writeCatalog } from '../scripts/lib/seed-db.mjs';
 import { getDatabase, query } from '../src/lib/db.js';
 import { getStoreBySlug, getVisibleStores } from '../src/lib/stores.js';
 import { getVisibleProductsByStoreId } from '../src/lib/store-products.js';
@@ -180,5 +180,119 @@ describe('purge', () => {
     }
     // The repo's own fixture stores are not seeded data and must survive.
     expect((await getVisibleStores()).length).toBe(realStores - 1);
+  });
+});
+
+/**
+ * The journal has to leave with the orders it describes (owner, 2026-08-16 — he opened the admin
+ * and found "48 אי-התאמות").
+ *
+ * `money_events.order_id` is TEXT with no foreign key, on purpose: an event can be recorded before
+ * an order row exists. The cost is that nothing in the database stops a purge from stranding one,
+ * and `reconcile.ts` reads a stranded `refund_due` as money a real buyer is still owed. The admin's
+ * integrity banner then reports a debt that does not exist — permanently, after any re-seed — which
+ * is the one failure that card is designed around: its clean state is deliberately quiet so the red
+ * state keeps its weight.
+ */
+describe('purgeOrdersOfStores', () => {
+  it('takes the money journal with the orders, by order id and by checkout ref', async () => {
+    const seeded = catalog({ demo: true });
+    const orderId = crypto.randomUUID();
+    const ref = `ref-${crypto.randomBytes(4).toString('hex')}`;
+    await writeCatalog(db, {
+      ...seeded,
+      orders: [{
+        id: orderId, checkoutRef: ref, buyerName: 'דנה', buyerEmail: 'dana@example.com',
+        buyerPhone: '050', buyerAddress: { city: 'תל אביב', street: 'הרצל 1' },
+        shippingAmount: 30, totalAmount: 109.9, paymentStatus: 'paid', shippingStatus: 'delivered',
+        items: [{ productId: seeded.ids.productId, productName: 'חולצה', storeSlug: seeded.ids.slug, price: 79.9, qty: 1 }],
+        storeSubtotals: { [seeded.ids.slug]: { storeName: 'סטודיו לבוש', subtotal: 79.9, shipping: 30 } },
+        createdAt: '2026-02-01T00:00:00.000Z',
+      }],
+    });
+
+    // One event that names the order, and one that only knows the checkout ref — the shape a
+    // payment attempt has before any order exists. Both have to go.
+    await query(
+      `INSERT INTO money_events (id, at, type, order_id, checkout_ref, amount_agorot, actor)
+       VALUES ($1, now(), 'refund_due', $2, $3, 10990, 'system'),
+              ($4, now(), 'payment_attempted', NULL, $3, 10990, 'system')`,
+      [crypto.randomUUID(), orderId, ref, crypto.randomUUID()],
+    );
+
+    const removed = await purgeOrdersOfStores(db, 'demo');
+    expect(removed.deleted).toBe(1);
+    expect(removed.journalRows).toBe(2);
+
+    const { rows } = await query<{ n: number }>(
+      'SELECT COUNT(*)::int AS n FROM money_events WHERE order_id = $1 OR checkout_ref = $2',
+      [orderId, ref],
+    );
+    expect(rows[0]!.n).toBe(0);
+  });
+
+  /**
+   * The shared-checkout case, one level down from the one the function already handled.
+   *
+   * A checkout writes one order PER STORE and they all carry the same `checkout_ref`, so a cart
+   * mixing a demo store with a real one leaves two orders sharing it. The purge keeps the real one
+   * — and a journal sweep written as "delete every event with this ref" would still take the kept
+   * order's rows with it, leaving real money with an order and no record of how it got there.
+   */
+  it('keeps the journal of an order it deliberately did NOT delete, even on a shared checkout ref', async () => {
+    const demo = catalog({ demo: true });
+    const real = catalog({ email: `real-${crypto.randomBytes(3).toString('hex')}@example.com` });
+    await writeCatalog(db, real);
+    const sharedRef = `ref-${crypto.randomBytes(4).toString('hex')}`;
+    const demoOrderId = crypto.randomUUID();
+    const realOrderId = crypto.randomUUID();
+    const order = (id: string, c: ReturnType<typeof catalog>) => ({
+      id, checkoutRef: sharedRef, buyerName: 'דנה', buyerEmail: 'dana@example.com',
+      buyerPhone: '050', buyerAddress: { city: 'תל אביב', street: 'הרצל 1' },
+      shippingAmount: 30, totalAmount: 109.9, paymentStatus: 'paid', shippingStatus: 'delivered',
+      items: [{ productId: c.ids.productId, productName: 'חולצה', storeSlug: c.ids.slug, price: 79.9, qty: 1 }],
+      storeSubtotals: { [c.ids.slug]: { storeName: 'חנות', subtotal: 79.9, shipping: 30 } },
+      createdAt: '2026-02-01T00:00:00.000Z',
+    });
+    await writeCatalog(db, { ...demo, orders: [order(demoOrderId, demo), order(realOrderId, real)] });
+
+    const keeper = crypto.randomUUID();
+    await query(
+      `INSERT INTO money_events (id, at, type, order_id, checkout_ref, amount_agorot, actor)
+       VALUES ($1, now(), 'refund_due', $2, $3, 10990, 'system'),
+              ($4, now(), 'payment_attempted', NULL, $3, 21980, 'system')`,
+      [crypto.randomUUID(), demoOrderId, sharedRef, keeper],
+    );
+
+    await purgeOrdersOfStores(db, 'demo');
+
+    // The real order survived, so the ref is still live and its pre-order event must stay.
+    const kept = await query<{ n: number }>('SELECT COUNT(*)::int AS n FROM money_events WHERE id = $1', [keeper]);
+    expect(kept.rows[0]!.n).toBe(1);
+    const survivor = await query<{ n: number }>('SELECT COUNT(*)::int AS n FROM orders WHERE id = $1', [realOrderId]);
+    expect(survivor.rows[0]!.n).toBe(1);
+
+    await query('DELETE FROM money_events WHERE checkout_ref = $1', [sharedRef]);
+  });
+});
+
+describe('purgeOrphanJournalRows', () => {
+  it('clears events whose order is already gone, and touches nothing else', async () => {
+    const orphanId = crypto.randomUUID();
+    const keeperId = crypto.randomUUID();
+    await query(
+      `INSERT INTO money_events (id, at, type, order_id, amount_agorot, actor)
+       VALUES ($1, now(), 'refund_due', $2, 5000, 'system'),
+              ($3, now(), 'payment_attempted', NULL, 5000, 'system')`,
+      [orphanId, crypto.randomUUID(), keeperId],
+    );
+
+    await purgeOrphanJournalRows(db);
+
+    const gone = await query<{ n: number }>('SELECT COUNT(*)::int AS n FROM money_events WHERE id = $1', [orphanId]);
+    expect(gone.rows[0]!.n).toBe(0);
+    // An event with no order id at all is a legitimate record of a checkout that never became one.
+    const kept = await query<{ n: number }>('SELECT COUNT(*)::int AS n FROM money_events WHERE id = $1', [keeperId]);
+    expect(kept.rows[0]!.n).toBe(1);
   });
 });

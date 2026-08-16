@@ -23,7 +23,7 @@
 import crypto from 'node:crypto';
 import {
   DEMO_EMAIL_SUFFIX, SEED_SCOPES,
-  openSeedClient, purge, purgeOrdersOfStores, writeCatalog,
+  openSeedClient, purge, purgeOrdersOfStores, purgeOrphanJournalRows, writeCatalog,
 } from './lib/seed-db.mjs';
 
 const uuid = () => crypto.randomUUID();
@@ -184,9 +184,17 @@ async function run(db) {
     // Orders first, while the demo stores still exist to identify them by slug.
     const removedOrders = await purgeOrdersOfStores(db, 'demo');
     const removed = await purge(db, 'demo');
+    // Every purge before 2026-08-16 left the journal behind, so a tree that has been seeded more
+    // than once still carries rows pointing at orders that no longer exist — and the admin's
+    // reconciliation banner reads them as unpaid refund debts. Swept once here, unconditionally,
+    // because the wreckage predates the fix that stops it accumulating.
+    const orphans = await purgeOrphanJournalRows(db);
     console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s), ${removedOrders.deleted} order(s). Real (non-${DEMO_EMAIL_SUFFIX}) data preserved.\n`);
     if (removedOrders.keptShared) {
       console.log(`   ${removedOrders.keptShared} order(s) kept: they also contain items from a store that is not demo data.\n`);
+    }
+    if (removedOrders.journalRows || orphans) {
+      console.log(`   ${removedOrders.journalRows + orphans} money-journal row(s) removed with them, so the admin cross-check stays honest.\n`);
     }
     return;
   }
