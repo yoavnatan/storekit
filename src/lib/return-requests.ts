@@ -264,6 +264,29 @@ export async function countOpenReturns(storeSlug?: string): Promise<number> {
   return r?.n ?? 0;
 }
 
+/**
+ * The latest request per order, for a list of orders — ONE query.
+ *
+ * The buyer's dashboard renders a page of orders and needs to know, for each, whether a return is
+ * already under way. Asking per order is a round trip per order on a page that already has its ids
+ * in hand (AI_INSTRUCTIONS → Scalability), and `DISTINCT ON` lets Postgres pick the newest per order
+ * in the same pass rather than making the caller sort.
+ *
+ * The NEWEST, not the open one: a buyer refused once may open another, and the row that answers
+ * "what is happening with my return" is always the most recent — including when it is closed, which
+ * is exactly when the screen has to say why.
+ */
+export async function getLatestReturnsByOrder(orderIds: string[]): Promise<Map<string, ReturnRequest>> {
+  if (!orderIds.length) return new Map();
+  const r = await rows<Row>(
+    `SELECT DISTINCT ON (order_id) * FROM return_requests
+      WHERE order_id = ANY($1::uuid[])
+      ORDER BY order_id, created_at DESC`,
+    [orderIds],
+  );
+  return new Map(r.map((row) => [row.order_id, toRequest(row)]));
+}
+
 /** Used by the tests and by nothing else — a case is closed by a transition, never by a delete. */
 export async function deleteReturnRequestsForOrder(orderId: string): Promise<void> {
   await query('DELETE FROM return_requests WHERE order_id = $1', [orderId]);

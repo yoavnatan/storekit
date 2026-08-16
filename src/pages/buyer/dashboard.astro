@@ -6,6 +6,8 @@ import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, getStoresByIds } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
 import { getBuyerInvoiceUrls } from '../../lib/invoicing/buyer-invoice.js';
+import { getLatestReturnsByOrder } from '../../lib/return-requests.js';
+import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
@@ -58,6 +60,12 @@ const ordersPageResult = paginate(filteredOrders, parsePage(Astro.url.searchPara
 const invoiceUrlByOrderId = await getBuyerInvoiceUrls(
   ordersPageResult.items.flatMap((p) => p.slices.map((s) => s.order.id)),
 );
+
+// One query for the whole page, keyed by order id — a per-order lookup here would be a round
+// trip per row on a list that already holds every id it needs.
+const returnByOrderId = await getLatestReturnsByOrder(
+  ordersPageResult.items.flatMap((p) => p.slices.map((s) => s.order.id)),
+);
 const ordersEmptyMessage = buyerOrderQuery.q
   ? t.buyerDashboard.ordersSearchEmpty
   : (buyerOrderQuery.history ? t.buyerDashboard.ordersEmptyHistory : t.buyerDashboard.ordersEmptyActive);
@@ -103,6 +111,25 @@ const shipLabel: Record<string, string> = {
   delivered: t.buyerDashboard.shippingDelivered,
   cancelled: t.buyerDashboard.shippingCancelled,
   returned: t.buyerDashboard.shippingReturned,
+};
+
+/**
+ * What a return looks like to the person who asked for it.
+ *
+ * Four states carry the journey the owner chose — sent, approved, on its way back, refunded — and
+ * the three closed ones say plainly what happened instead of leaving the row silent. `disputed` is
+ * deliberately vague to the buyer ("בבדיקה"): the seller's claim that the parcel was empty is an
+ * accusation, and a screen is not where it gets made.
+ */
+const returnLabel: Record<ReturnStatus, string> = {
+  requested: t.buyerDashboard.returnSent,
+  approved: t.buyerDashboard.returnApproved,
+  in_transit: t.buyerDashboard.returnBack,
+  received: t.buyerDashboard.returnAtSeller,
+  refunded: t.buyerDashboard.returnRefunded,
+  rejected: t.buyerDashboard.returnRejected,
+  expired: t.buyerDashboard.returnExpired,
+  disputed: t.buyerDashboard.returnChecking,
 };
 
 /** How many stores the collapsed card names before it starts counting. Two fits the narrowest
@@ -552,6 +579,25 @@ const STORES_NAMED = 2;
     }
     .o-store-sub strong { color: var(--color-text); font-size: 0.875rem; }
     .o-tracking { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; }
+    /* The return control. A link-weight button, because asking to return something is not the
+       primary action of this card and must not compete with it. */
+    .o-return { padding-top: 0.5rem; }
+    .o-return-btn {
+      background: none; border: 0; padding: 0; cursor: pointer;
+      font: inherit; font-size: 0.8rem; font-weight: 600;
+      color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px;
+    }
+    .o-return-why { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+    .o-return-q { font-size: 0.78rem; color: var(--color-muted); }
+    .o-return-why button {
+      font: inherit; font-size: 0.78rem; cursor: pointer;
+      background: var(--color-bg); color: var(--color-text);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      padding: 0.3rem 0.6rem;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .o-return-why button:hover { background: var(--color-surface); border-color: var(--color-muted); }
+    .o-return-why button:disabled { cursor: default; opacity: 0.6; }
     /* What the whole purchase came to — rendered only when there IS more than
        one store's total above it to add up. Heavier than .o-store-sub on
        purpose: those are parts, this is the number the card is about. */
@@ -940,6 +986,38 @@ const STORES_NAMED = 2;
                         {invoiceUrlByOrderId.get(s.order.id) && (
                           <p class="o-tracking">{t.buyerDashboard.invoiceLabel}: <a href={invoiceUrlByOrderId.get(s.order.id)} target="_blank" rel="noopener noreferrer"><strong>{t.buyerDashboard.invoiceView}</strong></a></p>
                         )}
+                        {/* A return: the status when one exists, the button when one may be opened.
+                            Never both, and never the button on an order that is not delivered —
+                            anything earlier is a CANCELLATION, a different thing entirely. */}
+                        {(() => {
+                          const rr = returnByOrderId.get(s.order.id);
+                          if (rr) {
+                            return (
+                              <p class="o-tracking">
+                                <strong>{returnLabel[rr.status]}</strong>
+                                {returnIsOpen(rr.status) ? '' : ` · ${fmtAgorot(rr.refundAgorot)}`}
+                              </p>
+                            );
+                          }
+                          if (s.order.shippingStatus !== 'delivered') return null;
+                          return (
+                            <div class="o-return">
+                              <button type="button" class="o-return-btn" data-return-open={s.order.id}>
+                                {t.buyerDashboard.returnAsk}
+                              </button>
+                              {/* Four taps' worth of choice and nothing else — no modal, no form.
+                                  The reason is what decides who pays the return postage and how
+                                  much comes back, so it is asked once, here, in the buyer's words. */}
+                              <div class="o-return-why" data-return-why={s.order.id} hidden>
+                                <span class="o-return-q">{t.buyerDashboard.returnWhy}</span>
+                                <button type="button" data-return-reason="changed_mind" data-return-for={s.order.id}>{t.buyerDashboard.returnR1}</button>
+                                <button type="button" data-return-reason="damaged" data-return-for={s.order.id}>{t.buyerDashboard.returnR2}</button>
+                                <button type="button" data-return-reason="wrong_item" data-return-for={s.order.id}>{t.buyerDashboard.returnR3}</button>
+                                <button type="button" data-return-reason="not_arrived" data-return-for={s.order.id}>{t.buyerDashboard.returnR4}</button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -1231,6 +1309,7 @@ const STORES_NAMED = 2;
   data-ship-delivered={t.buyerDashboard.shippingDelivered}
   data-ship-cancelled={t.buyerDashboard.shippingCancelled}
   data-ship-returned={t.buyerDashboard.shippingReturned}
+  data-return-failed={t.buyerDashboard.returnFailed}
   data-order-stores-more={t.buyerDashboard.orderStoresMore}
   data-order-total-all={t.buyerDashboard.orderTotalAll}
   data-orders-empty-active={t.buyerDashboard.ordersEmptyActive}
@@ -1268,6 +1347,7 @@ const STORES_NAMED = 2;
     msgYou:          _i18nEl.dataset.msgYou           ?? 'You',
     msgNewToast:     _i18nEl.dataset.msgNewToast       ?? 'You have a new message',
     msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
+    returnFailed:   _i18nEl.dataset.returnFailed    ?? 'The request was not sent. Try again.',
     msgDeleteOk:     _i18nEl.dataset.msgDeleteOk      ?? 'Delete conversation',
     msgColStore:     _i18nEl.dataset.msgColStore       ?? 'Store',
     msgColProduct:   _i18nEl.dataset.msgColProduct     ?? 'Product',
@@ -2091,6 +2171,54 @@ const STORES_NAMED = 2;
         }
       });
     }
+  });
+
+  /* ── Ask to return an order ──
+     Two taps and no form: the button reveals the reasons, a reason sends the request. The reason is
+     the only thing the server cannot work out for itself — it decides who pays the return postage
+     and whether the original delivery charge comes back — so it is the only thing asked. */
+  document.querySelectorAll<HTMLButtonElement>('[data-return-open]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const why = document.querySelector<HTMLElement>(`[data-return-why="${btn.dataset.returnOpen}"]`);
+      if (why) why.hidden = !why.hidden;
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-return-reason]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const orderId = btn.dataset.returnFor ?? '';
+      const reason = btn.dataset.returnReason ?? '';
+      // The whole row, not just the pressed button: four choices side by side, and a second tap
+      // while the first is in flight produces a refusal that reads like a fault.
+      const row = btn.parentElement;
+      const all = row ? [...row.querySelectorAll<HTMLButtonElement>('button')] : [btn];
+      all.forEach((b) => { b.disabled = true; });
+      void (async () => {
+        try {
+          const res = await fetch('/api/returns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'open', orderId, reason }),
+          });
+          if (!res.ok) {
+            const said = await res.json().catch(() => null) as { error?: string } | null;
+            // The server's own sentence when it sent one: it knows why (a request is already open,
+            // the order is not delivered) and this script does not.
+            showErrorToast(said?.error || I.returnFailed);
+            all.forEach((b) => { b.disabled = false; });
+            return;
+          }
+          // A reload rather than a patch: the row becomes a status, and on an order inside the
+          // statutory window the request is already APPROVED by the time the response lands.
+          location.reload();
+        } catch {
+          showErrorToast(I.returnFailed);
+          all.forEach((b) => { b.disabled = false; });
+        }
+      })();
+    });
   });
 
   /* ── Delete message thread ── */
