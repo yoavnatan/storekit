@@ -33,6 +33,7 @@ import { rebuildCatalogArtifact, FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFA
 import { runPayouts } from '../payout-run.js';
 import { isPayoutDay, nextPayoutDayISO } from '../payout-schedule.js';
 import { runOrderSla } from '../order-sla-run.js';
+import { runReturnsSweep } from '../returns-run.js';
 import { businessTodayISO } from '../business-day.js';
 
 export interface Job {
@@ -406,4 +407,28 @@ const orderSla: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, orderSla, purgeVisitorDetail];
+/**
+ * The returns mechanism closing its own cases (`returns-run.ts`).
+ *
+ * **This job is the reason the owner does not have to open the admin dashboard.** Seven of the eight
+ * states a return case can be in resolve on a clock; this is the clock. The eighth — `disputed` — is
+ * the only one that needs a person, and the run reports how many are waiting so he can be TOLD
+ * rather than have to look.
+ *
+ * *Daily:* every threshold it reads is a whole number of business days, so asking more often re-asks
+ * a question whose answer changes once a day. The lease is generous because a refunded case moves an
+ * order, which restocks its lines and writes to the money journal.
+ */
+const returnsSweep: Job = {
+  name: 'returns-sweep',
+  intervalSec: 24 * HOUR,
+  leaseSec: 30 * MINUTE,
+  async run() {
+    const r = await runReturnsSweep();
+    return `scanned ${r.scanned} · auto-rejected ${r.autoRejected} · expired ${r.expired} `
+      + `· auto-refunded ${r.autoRefunded} (${r.refundedAgorot} agorot) · failed ${r.failed} `
+      + `· awaiting a human ${r.awaitingAdmin}`;
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, orderSla, returnsSweep, purgeVisitorDetail];

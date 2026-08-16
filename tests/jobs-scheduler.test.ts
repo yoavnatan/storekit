@@ -238,7 +238,7 @@ describe('the registry itself', () => {
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'merchant-status', 'order-sla', 'payout-run', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'sitemap-artifact'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'merchant-status', 'order-sla', 'payout-run', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'sitemap-artifact'],
     );
   });
 });
