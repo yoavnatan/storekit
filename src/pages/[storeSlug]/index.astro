@@ -561,33 +561,6 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     <section class="store-banner" aria-labelledby="store-heading">
       <div class="container">
         <div class="store-banner__info">
-          <div class="store-banner__identity">
-            {/* THE MARK RENDERS ONLY WHEN THERE IS NO BANNER (owner, 2026-08-16: with a banner it
-                "breaks the rest of the design", and is "maybe redundant").
-                It is redundant, and measurably so on the page above it. A seller who uploads a
-                banner overwhelmingly uploads one carrying their own lockup — mark and name, drawn
-                at the size they designed it for — and every showcase banner does by construction
-                (identity.mjs#bannerPrompt paints the name INTO the photograph). So a 56px circle
-                repeating that mark 34px below it is the same identity stated a third time on one
-                screen: the site header's store lockup, the banner, then this. At 56px an uploaded
-                WORDMARK is also illegible, so what it actually prints beside a legible 2.75rem
-                name is a smudge — the "under renovation" failure StoreAvatar's own header records,
-                arrived at from the other direction.
-                With NO banner it stays, and that is the whole reason this is a condition rather
-                than a deletion: the page then opens on a bare heading, and the mark is the only
-                thing on it that says WHO before the products do.
-                The test is `bannerImage`, NOT "is a banner slot painted". A showcase store with no
-                picture still renders a pin — StoreDemoBanner falls back to a two-colour gradient —
-                and a gradient carries no lockup, so that store is a no-banner store for this
-                purpose and keeps its mark.
-                The h1 does NOT move — it is real text where the banner is a picture (SEO reads
-                one and not the other), it is `aria-labelledby="store-heading"`'s target, and the
-                page needs an h1. */}
-            {!shopStore.bannerImage && (isDemo && !shopStore.profileImage
-              ? <StoreDemoMark slug={shopStore.slug} colors={shopStore.colors} size={56} />
-              : <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />)}
-            <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
-          </div>
           {/* EVERYTHING BELOW THE STORE NAME, IN ONE BOX (owner, 2026-08-12, arrived at over four
               rounds — the rejected ones are recorded in store.css so they are not re-tried).
               It is one object because it is one subject: what this store is (tagline, description),
@@ -601,9 +574,40 @@ const bannerPreload = !isDemo && shopStore.bannerImage
               orphaning this whole exercise started from. Each section is separated by a hairline, so
               nothing inside needs a border of its own; `.store-sale` sheds its box here (store.css)
               rather than nesting one card inside another.
-              The identity row (avatar + h1) stays OUT: the name is the page's heading, not one of the
-              store's remarks about itself. */}
+              THE NAME IS IN THE BOX (owner, 2026-08-16, reversing the 08-12 decision that kept it out
+              — and reversing it on HIS observation, not on taste). The old reasoning was that the name
+              is the page's heading rather than one of the store's remarks about itself, and that a
+              heading outside the box therefore governs the product grid below it too. It does not: the
+              curtain scroll takes the banner, the name and this box off screen on the first gesture,
+              and from then on the FIXED SITE HEADER carries the store's identity over the grid. So the
+              heading never governed the products in the first place — it had one screen to work on,
+              and on that screen it was a line floating between the picture above it and the bounded
+              box below, which is what he kept reading as broken.
+              Semantically nothing moves: it is still the `<h1>`, still `aria-labelledby`'s target,
+              still the only place the store's name exists as TEXT rather than as pixels in a banner.
+              No hairline under it — name and tagline are one sentence ("אדנית — ירוק לבית ולמרפסת"),
+              and a divider between them would cut it in half. */}
           <div class="store-info" dir={dir}>
+              <div class="store-banner__identity">
+                {/* THE MARK RENDERS ONLY WHEN THERE IS NO BANNER PICTURE (owner, 2026-08-16: with a
+                    banner it "breaks the rest of the design", and is "maybe redundant").
+                    A seller who uploads a banner overwhelmingly uploads one carrying their own
+                    lockup, and every showcase banner does by construction (identity.mjs#bannerPrompt
+                    paints the name INTO the photograph) — so the circle was the same identity a third
+                    time on one screen: the site header's lockup, the banner, then this. At 56px an
+                    uploaded WORDMARK is illegible too, so beside a legible 2.75rem name it prints a
+                    smudge — the "under renovation" failure StoreAvatar's own header records, reached
+                    from the other direction.
+                    With no banner it stays, which is why this is a condition and not a deletion: it
+                    is then the only thing on the page that says WHO before the products do. The test
+                    is `bannerImage`, not "is a banner slot painted" — a showcase store with no
+                    picture still renders a pin, but StoreDemoBanner falls back to a two-colour
+                    gradient, and a gradient carries no lockup. */}
+                {!shopStore.bannerImage && (isDemo && !shopStore.profileImage
+                  ? <StoreDemoMark slug={shopStore.slug} colors={shopStore.colors} size={56} />
+                  : <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />)}
+                <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
+              </div>
               {shopStore.tagline && <p class="store-tagline">{shopStore.tagline}</p>}
               {showDesc && <p class="store-desc">{shopStore.description}</p>}
 

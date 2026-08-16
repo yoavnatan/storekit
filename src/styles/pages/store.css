@@ -146,19 +146,16 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   z-index: 1;
 }
 
-/* Minor rhythm inside the details block: every gap between name / tagline /
-   description / actions is the same 0.5rem unit, instead of ad-hoc values.
-   USUALLY A LONE h1 (2026-08-16). The 56px mark beside it renders only for a store with no banner
-   PICTURE — see the markup, which carries why. So `gap` applies to the minority case, and anything
-   added here has to look right as a single heading first. */
+/* The first section INSIDE `.store-info` since 2026-08-16 — see the markup for why the name moved in.
+   USUALLY A LONE h1: the 56px mark beside it renders only for a store with no banner PICTURE, so
+   `gap` serves the minority case and anything added here has to look right as a single heading first.
+   `margin-bottom` guarantees a gap after the title even when tagline AND description are both
+   missing and the actions row follows straight after — margin-collapse takes the larger of this and
+   the next element's own top margin, so the ordinary case (tagline present, 0.5rem) is untouched. */
 .store-banner__identity {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  /* Guarantees a minimum gap after the title even when tagline/description
-     are both missing and the next element (desc or actions) follows right
-     after — margin-collapse takes the larger of this and that element's own
-     top margin, so a normal case (tagline present) is untouched. */
   margin-bottom: 0.5rem;
 }
 
@@ -255,31 +252,27 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    Not converted to utilities: `.store-info > :first-child` selects whichever of the parts a store
    happens to have, which has no utility form. */
 .store-info {
-  /* 1rem, and it is the gap the owner asked about (2026-08-12): measured on the running site, the
-     name+avatar row sat 34.4px under the banner picture and 8px above this box, so the heading read
-     as glued to the box it is deliberately NOT part of (see the markup note: the name is the page's
-     heading, not one of the store's remarks about itself). 8px was also exactly the box's own
-     INTERNAL rhythm — tagline and description are 0.5rem apart — so the separator between heading
-     and box was the same size as the gaps inside it, which is the whole reason it disappeared.
-     Doubling the unit is the smallest step that clears that rhythm and still lands on the 0.5rem
-     grid this block is built on.
-     He offered the other half of the choice too — tightening the 34.4px above instead — and it is
-     the wrong one. That gap is not free: 1.25rem of it is `.store-banner-pin`'s padding-bottom,
-     which exists so the picture's bottom edge survives the first bit of the curtain scroll, and the
-     rest is `.store-banner`'s padding-top, deliberately placed there rather than on the pin so it
-     travels with the title instead of being eaten by the rising details. Tightening it would also
-     pull the heading toward the picture, making heading+box read as one slab under the photo —
-     the opposite of the structure. So the loose end is this one, and this is the number that moves. */
-  margin-top: 1rem;
+  /* NO top margin (2026-08-16). It was 1rem, and that number existed for one job: separating the
+     heading from this box while the heading stood between the picture and it. The heading is INSIDE
+     now, so nothing is left to separate — the 1rem became dead white between a photograph and a card,
+     which is precisely what made the first attempt at this move look worse than what it replaced.
+     What remains above is 34.4px and it is not free: 1.25rem is `.store-banner-pin`'s padding-bottom,
+     which keeps the picture's bottom edge visible through the first bit of the curtain scroll, and the
+     rest is `.store-banner`'s padding-top, deliberately on the details rather than the pin so it
+     travels with them instead of being eaten by the rising curtain. That is the gap between the two,
+     and it is the right one. */
+  margin-top: 0;
   padding: 0.9rem 1.1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
 }
 
-/* The tagline's 0.5rem top margin is the gap under the store NAME, which it no longer sits under —
-   inside the box that margin prints as uneven top padding. */
-.store-info > :first-child { margin-top: 0; }
+/* Deleted 2026-08-16, and worth recording rather than silently dropping: this existed because the
+   box's first child used to be whichever of tagline/description/sale a store happened to have, each
+   carrying a 0.5rem top margin meant as the gap under the store NAME — which, with the name outside
+   the box, printed as uneven top padding instead. The name is the first child now and always, and it
+   has no top margin, so the rule could only ever match an element that did not need it. */
 
 .store-tagline {
   margin: 0.5rem 0 0;
