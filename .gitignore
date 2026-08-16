@@ -76,3 +76,7 @@ showcase-prompts.csv
 
 # `npm run email:preview` output — rendered HTML of every mail, regenerated on demand.
 .email-preview/
+
+# Screenshots of a design option, rendered so the owner can compare two of them side by side
+# rather than read a description. Throwaway by definition — the chosen one becomes the code.
+.design-preview/
