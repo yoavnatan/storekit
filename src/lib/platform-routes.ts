@@ -33,7 +33,9 @@ export const PLATFORM_PAGE_SEGMENTS: readonly string[] = [
   'checkout', 'cart', 'wishlist', 'account',
   'buyer', 'seller', 'admin',
   'stores', 'search', 'store',
-  'terms', 'contact',
+  // 'returns-policy' is the platform's, like 'terms': it is ONE policy for every shop (decisions §2),
+  // so a buyer on a seller's custom domain must read the platform's copy and not a per-host one.
+  'terms', 'contact', 'returns-policy',
 ];
 
 /**

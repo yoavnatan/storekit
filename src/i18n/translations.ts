@@ -234,6 +234,7 @@ export const translations = {
     },
     footer: {
       terms: 'תנאי שימוש',
+      returns: 'ביטולים והחזרות',
       contact: 'צור קשר',
       // ── A disclosure the law requires, worded the way the regulations word it ──
       // `תקנות הסדרת העיסוק בשירותי תשלום וייזום תשלום (פטור מחובת רישוי), תשפ״ד-2024` oblige an
@@ -1591,6 +1592,7 @@ export const translations = {
       shippingCancelled: 'בוטלה',
       shippingReturned: 'הוחזרה',
       returnAsk: 'בקשת החזרה',
+      returnWhat: 'מה מחזירים?',
       returnWhy: 'מה הסיבה?',
       returnR1: 'התחרטתי',
       returnR2: 'הגיע פגום',
@@ -2001,6 +2003,7 @@ export const translations = {
       shippingCancelled: 'בוטלה',
       shippingReturned: 'הוחזרה',
       returnAsk: 'בקשת החזרה',
+      returnWhat: 'מה מחזירים?',
       returnWhy: 'מה הסיבה?',
       returnR1: 'התחרטתי',
       returnR2: 'הגיע פגום',
@@ -2261,6 +2264,7 @@ export const translations = {
     },
     footer: {
       terms: 'Terms',
+      returns: 'Returns',
       contact: 'Contact',
       licenceExemption: '{name} operates under an exemption from the payment-services licence under the Payment Services and Payment Initiation Regulation Law, and is not supervised by the Israel Securities Authority.',
     },
@@ -3311,6 +3315,7 @@ export const translations = {
       shippingCancelled: 'Cancelled',
       shippingReturned: 'Returned',
       returnAsk: 'Request a return',
+      returnWhat: 'What are you returning?',
       returnWhy: 'Why?',
       returnR1: 'Changed my mind',
       returnR2: 'Arrived damaged',
@@ -3675,6 +3680,7 @@ export const translations = {
       shippingCancelled: 'Cancelled',
       shippingReturned: 'Returned',
       returnAsk: 'Request a return',
+      returnWhat: 'What are you returning?',
       returnWhy: 'Why?',
       returnR1: 'Changed my mind',
       returnR2: 'Arrived damaged',

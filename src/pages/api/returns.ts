@@ -3,13 +3,15 @@ import type { APIContext } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { isAdminRequest } from '../../lib/admin-auth.js';
 import { getStoresBySellerId, getStoreBySlugOrPrevious } from '../../lib/stores.js';
-import { getOrderById, orderBelongsToStore } from '../../lib/orders.js';
+import { getOrderById, updateOrder, orderBelongsToStore } from '../../lib/orders.js';
+import { settleStatusChange } from '../../lib/order-status-change.js';
+import { notifySellerOrderCancelled } from '../../lib/order-notify.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import {
   openReturnRequest, moveReturnRequest, getReturnRequest, getReturnsForOrder,
   getReturnsForStore, getOpenReturns,
 } from '../../lib/return-requests.js';
-import type { ReturnReason, ReturnStatus } from '../../lib/returns.js';
+import { buyerActionFor, type ReturnedLine, type ReturnReason, type ReturnStatus } from '../../lib/returns.js';
 
 /**
  * Every move a return case can make, behind ONE route — and the authorization that decides who may
@@ -95,11 +97,41 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     const reason = String(data.reason ?? '') as ReturnReason;
     if (!REASONS.includes(reason)) return json({ error: 'סיבה לא מוכרת' }, 400);
 
-    // Only a delivered order can be returned — anything earlier is a CANCELLATION, which is a
-    // different flow with a different meaning (decisions §0). Asked of the status directly because
-    // this is the one place the distinction is created.
-    if (order.shippingStatus !== 'delivered') {
-      return json({ error: 'אפשר לבקש החזרה רק על הזמנה שנמסרה' }, 409);
+    // ── Which of the buyer's two rights is this? ──
+    //
+    // Decisions §1 gives them both, and the first build of this route implemented only the second:
+    // it refused everything that was not `delivered`, which is right for a RETURN and deleted the
+    // CANCELLATION entirely. `buyerActionFor` is now the single answer, shared with the screen, so
+    // the button and the endpoint cannot disagree about what is offered.
+    const action = buyerActionFor(order);
+    if (action === 'none') {
+      return json({ error: 'לא ניתן לבטל או להחזיר את ההזמנה הזאת' }, 409);
+    }
+
+    // ── Cancel: nothing left, so nothing comes back ──
+    //
+    // No request row, no clocks, no seller discretion — decisions §1 says immediate and automatic.
+    // It goes through `settleStatusChange` like every other cancellation, which is what restocks the
+    // units, writes the journal row, opens the refund obligation and tells the seller. Writing any
+    // of that here would be a second definition of what a cancellation costs.
+    if (action === 'cancel') {
+      const slug = Object.keys(order.storeSubtotals ?? {})[0] ?? order.items[0]?.storeSlug ?? '';
+      const store = slug ? await getStoreBySlugOrPrevious(slug) : null;
+      if (!store) return json({ error: 'לא ניתן לזהות את החנות של ההזמנה' }, 409);
+
+      const after = await updateOrder(order.id, { shippingStatus: 'cancelled' });
+      if (!after) return json({ error: 'הביטול לא בוצע' }, 409);
+      await settleStatusChange({
+        before: order, after,
+        store: { slug: store.slug, name: store.name, sellerId: store.sellerId },
+        actor: userId,
+        detail: 'בוטלה על ידי הקונה לפני שיצאה למשלוח',
+      });
+      // The seller has to be told, and by NOTIFICATION rather than mail: he had not packed anything,
+      // the stock is already back, and the order is still in his list under "בוטלה". A mail per
+      // cancellation is how a person learns to filter the sender (owner, 2026-08-16).
+      await notifySellerOrderCancelled(store.sellerId, order, store.slug);
+      return json({ cancelled: true }, 200);
     }
 
     // The store comes from `storeSubtotals`, which every order has by construction (checkout writes
@@ -111,9 +143,36 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     const slug = Object.keys(order.storeSubtotals ?? {})[0] ?? order.items[0]?.storeSlug ?? '';
     if (!slug) return json({ error: 'לא ניתן לזהות את החנות של ההזמנה' }, 409);
 
+    // The store is resolved here anyway, so the seller's id travels with the request and the
+    // notification cannot be silently skipped for want of it.
+    // ── Which lines, if this is a partial return ──
+    //
+    // Validated here and clamped again in `partialRefundAgorot`: this list arrives in a request body,
+    // so a position pointing at no line, a negative quantity or one larger than was bought must cost
+    // the seller nothing. A body naming no valid line at all falls through to a whole-order return,
+    // which is what the buyer's default button means anyway.
+    const asked = Array.isArray(data.lines) ? data.lines : [];
+    const returnedLines: ReturnedLine[] = asked
+      .map((raw) => {
+        const l = raw as { position?: unknown; qty?: unknown };
+        const position = Math.floor(Number(l.position));
+        const qty = Math.floor(Number(l.qty));
+        return { position, qty };
+      })
+      .filter((l) => Number.isInteger(l.position) && l.position >= 0 && l.position < order.items.length
+        && Number.isInteger(l.qty) && l.qty > 0 && l.qty <= (order.items[l.position]?.qty ?? 0));
+
+    // Naming every line at full quantity IS the whole order — stored as such so the settlement takes
+    // the status path rather than the adjustment one, and the two never disagree about the same act.
+    const wholeOrder = returnedLines.length === order.items.length
+      && returnedLines.every((l) => l.qty === order.items[l.position]!.qty);
+
+    const store = await getStoreBySlugOrPrevious(slug);
     const result = await openReturnRequest({
       order, storeSlug: slug, reason,
       buyerNote: String(data.note ?? '').slice(0, 2000),
+      returnedLines: wholeOrder ? null : returnedLines,
+      ...(store ? { sellerId: store.sellerId, storeName: store.name } : {}),
     });
     if ('error' in result) return json({ error: result.error }, 409);
     return json({ request: result }, 201);

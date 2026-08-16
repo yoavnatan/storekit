@@ -3,10 +3,16 @@ import { rows, firstRow, query } from './db.js';
 import { getOrderById, updateOrder, type Order } from './orders.js';
 import { settleStatusChange, type StatusChangeStore } from './order-status-change.js';
 import { canTransition } from './order-status-rules.js';
+import { notifyBuyerReturnStatus, notifySellerReturnOpened } from './return-notify.js';
 import {
-  autoApproved, canMove, refundAmountAgorot, returnShippingPayer, withinStatutoryWindow,
-  type ReturnReason, type ReturnStatus,
+  autoApproved, canMove, refundForRequest, returnShippingPayer, withinStatutoryWindow,
+  isPartialReturn, type ReturnedLine, type ReturnReason, type ReturnStatus,
 } from './returns.js';
+import { recordMoneyEvent } from './money-events.js';
+import { recordAdjustment } from './payouts.js';
+import { getSellerById } from './seller-auth.js';
+import { commissionOnAgorot, commissionPercentForTier } from './pricing.js';
+import { restockProduct } from './store-products.js';
 
 /**
  * A return request, stored — and the ONE place its status is allowed to move.
@@ -43,6 +49,8 @@ export interface ReturnRequest {
   returnShippingPayer: 'buyer' | 'seller';
   refundAgorot: number;
   partialOfferAgorot: number | null;
+  /** Which lines came back, or null for the whole order (migration 0031). */
+  returnedLines: ReturnedLine[] | null;
   trackingNumber: string | null;
   sellerNote: string;
   adminNote: string;
@@ -58,6 +66,7 @@ interface Row {
   buyer_note: string; buyer_photo_url: string | null; status: string;
   within_statutory: boolean; return_shipping_payer: string;
   refund_agorot: string | number; partial_offer_agorot: string | number | null;
+  returned_lines: ReturnedLine[] | null;
   tracking_number: string | null; seller_note: string; admin_note: string;
   created_at: Date | string; approved_at: Date | string | null;
   delivered_back_at: Date | string | null; closed_at: Date | string | null;
@@ -80,6 +89,7 @@ function toRequest(r: Row): ReturnRequest {
     returnShippingPayer: r.return_shipping_payer as 'buyer' | 'seller',
     refundAgorot: Number(r.refund_agorot),
     partialOfferAgorot: r.partial_offer_agorot === null ? null : Number(r.partial_offer_agorot),
+    returnedLines: r.returned_lines ?? null,
     trackingNumber: r.tracking_number,
     sellerNote: r.seller_note,
     adminNote: r.admin_note,
@@ -145,9 +155,15 @@ export async function ordersWithOpenReturns(orderIds: string[]): Promise<Set<str
 export interface OpenReturnInput {
   order: Order;
   storeSlug: string;
+  /** Whose shop this is. Optional only so a caller without it still creates the request — the
+   *  notification is an announcement and must never be what decides whether a request exists. */
+  sellerId?: string;
+  storeName?: string;
   reason: ReturnReason;
   buyerNote?: string;
   buyerPhotoUrl?: string | null;
+  /** Empty or absent = the whole order. */
+  returnedLines?: ReturnedLine[] | null;
   todayISO?: string;
 }
 
@@ -174,13 +190,18 @@ export async function openReturnRequest(input: OpenReturnInput): Promise<ReturnR
     const r = await firstRow<Row>(
       `INSERT INTO return_requests
          (id, order_id, store_slug, reason, buyer_note, buyer_photo_url, status,
-          within_statutory, return_shipping_payer, refund_agorot, approved_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CASE WHEN $7 = 'approved' THEN now() ELSE NULL END)
+          within_statutory, return_shipping_payer, refund_agorot, returned_lines, approved_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, CASE WHEN $7 = 'approved' THEN now() ELSE NULL END)
        RETURNING *`,
       [id, order.id, storeSlug, reason, input.buyerNote ?? '', input.buyerPhotoUrl ?? null, status,
-       within, returnShippingPayer(reason), refundAmountAgorot(order, reason)],
+       within, returnShippingPayer(reason), refundForRequest(order, reason, input.returnedLines),
+       isPartialReturn(input.returnedLines) ? JSON.stringify(input.returnedLines) : null],
     );
-    return toRequest(r!);
+    const created = toRequest(r!);
+    // The seller hears about it the moment it exists. Announced here rather than at the route so
+    // every future opener — an admin acting for a buyer, a support tool — cannot forget to.
+    if (input.sellerId) await notifySellerReturnOpened(input.sellerId, created, input.storeName);
+    return created;
   } catch (err) {
     // 23505 = unique_violation, i.e. the partial index above. The honest answer to the buyer is that
     // they already have one open, not that something went wrong.
@@ -239,7 +260,57 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
   );
   const moved = toRequest(r!);
 
-  if (input.to === 'refunded') {
+  if (input.to === 'refunded' && isPartialReturn(moved.returnedLines)) {
+    // ── A partial return settles WITHOUT touching the order (decisions §4) ──
+    //
+    // The order was delivered and most of it stayed delivered, so its status is still the truth. Using
+    // `returned` to describe a fraction of it would be the same conflation §0 exists to prevent, one
+    // level down — and it would take the whole order out of every revenue sum to give back a third of
+    // it, rewriting financial history to record a correction.
+    //
+    // So the money moves in its own row, which is what `seller_ledger_adjustments` is for and what
+    // already settles a chargeback: the buyer's debt is journalled, the seller's share of exactly
+    // those lines is deducted from his next payout, and the order keeps saying what happened.
+    const order = await getOrderById(moved.orderId);
+    if (order) {
+      await recordMoneyEvent({
+        type: 'refund_due',
+        orderId: order.id,
+        checkoutRef: order.checkoutRef,
+        storeSlug: input.store.slug,
+        amountAgorot: moved.refundAgorot,
+        actor: input.actor,
+        detail: `החזרה חלקית — ${moved.returnedLines!.length} שורות מתוך ${order.items.length}. הסכום מגיע בחזרה לקונה ועדיין לא הוחזר.`,
+      });
+
+      // The seller's share of the returned lines only — his commission on them was never earned, so
+      // it is not clawed back separately (the same reasoning `recordSellerClawback` records).
+      const seller = await getSellerById(input.store.sellerId);
+      const commission = commissionOnAgorot(moved.refundAgorot, commissionPercentForTier(seller?.tier));
+      const sellerShare = moved.refundAgorot - commission;
+      if (sellerShare > 0) {
+        await recordAdjustment({
+          sellerId: input.store.sellerId,
+          orderId: order.id,
+          kind: 'refund_clawback',
+          amountAgorot: -sellerShare,
+          detail: `החזרה חלקית בהזמנה ${order.id.slice(0, 8)}`,
+          // Keyed on the REQUEST: one order may be partially returned more than once, and a second
+          // debit keyed on the order would be dropped as a duplicate (migration 0032).
+          returnRequestId: moved.id,
+        });
+      }
+
+      // Only the lines that came back. `restockProduct` is the same call a whole-order return makes,
+      // so a returned variant lands in the bucket it was sold from.
+      for (const line of moved.returnedLines!) {
+        const item = order.items[line.position];
+        if (!item) continue;
+        const qty = Math.max(0, Math.min(Math.floor(line.qty), item.qty));
+        if (qty > 0) await restockProduct(item.productId, qty, item.selectedVariants);
+      }
+    }
+  } else if (input.to === 'refunded') {
     const before = await getOrderById(moved.orderId);
     // Asked of the ORDER's own table before touching it, not merely of this request's state machine.
     // Two machines guard two different things — this one says a case may be refunded, that one says
@@ -268,6 +339,12 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
       }
     }
   }
+
+  // The buyer hears about approval, refusal and the credit — and about nothing else (decisions §7).
+  // `notifyBuyerReturnStatus` decides which of those this is; calling it unconditionally is what
+  // keeps that list in ONE place instead of at every call site that moves a request.
+  const order = await getOrderById(moved.orderId);
+  if (order) await notifyBuyerReturnStatus(moved, order, input.store.name);
 
   return { request: moved };
 }

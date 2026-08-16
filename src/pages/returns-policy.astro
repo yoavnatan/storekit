@@ -1,0 +1,153 @@
+---
+/** מדיניות ביטולים והחזרות — the public page a buyer reads before they buy.
+ *
+ *  ── What this page is allowed to say, and it is a shorter list than the mechanism ──
+ *  Every clause here is either **the law itself** or **more generous than the law**. Nothing on it
+ *  narrows a buyer's rights, and that is what makes it publishable ahead of the legal review the rest
+ *  of the mechanism is waiting on (`docs/returns-lawyer-brief.md`): you cannot be caught out by
+ *  having promised more than you owed.
+ *
+ *  **Two things the mechanism does are therefore NOT on this page, on purpose:**
+ *
+ *    1. **The 7-day window for handing the parcel to the courier.** It is the one rule that could be
+ *       read as conditioning a right the statute says may not be conditioned. Internally it only ever
+ *       RELEASES money to the seller — an operational act, not a promise to the buyer — so leaving it
+ *       unstated costs the buyer nothing and claims nothing. Question 2 of the lawyer brief.
+ *    2. **"A lapsed request forfeits the refund."** Same reason, stated the other way round.
+ *
+ *  When the עו״ד answers, those two get their clauses and this note gets shorter. Until then the page
+ *  is complete for what it does say — and a buyer reading it is never told less than the law gives.
+ *
+ *  ── Why it exists NOW rather than after the review ──
+ *  Merchant Center defines a returns policy at ACCOUNT level and leans on one published on the site.
+ *  Without it a product is not shown as a full merchant listing, which is one platform-wide account
+ *  serving every seller's ads (GO_LIVE §2). The page is also what `hasMerchantReturnPolicy` in the
+ *  product JSON-LD will point at; that structured-data claim is deliberately still unwritten, because
+ *  it must carry the same numbers as this page and the numbers here are the statute's, not ours.
+ *
+ *  ── The numbers are interpolated, never typed ──
+ *  `STATUTORY_RETURN_DAYS` is the law's own figure and lives in `payout-schedule.ts` beside the hold
+ *  it constrains. A digit written into a legal clause AND separately into the code is a number that
+ *  will disagree with itself, and the version a buyer can hold us to is this one.
+ *
+ *  ⚠️ Accurate, not lawyered. `docs/returns-policy-decisions.md` is the source for every rule; the
+ *  eight open questions are in `docs/returns-lawyer-brief.md`.
+ *
+ *  Hebrew, in both UI languages, with the Hebrew binding — the same standard `terms.astro` sets and
+ *  for the same reason.
+ */
+export const prerender = false;
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang } from '../i18n/index.js';
+import { store as platform } from '../config/store.config.js';
+import { STATUTORY_RETURN_DAYS, SHIP_AUTO_CANCEL_DAYS } from '../lib/payout-schedule.js';
+
+const lang = getLang(Astro.cookies);
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+
+const title = lang === 'he' ? 'ביטולים והחזרות' : 'Cancellations and returns';
+
+/** Every clause, as data — one loop below, and a new rule is one entry. Same shape as
+ *  `terms.astro`, deliberately: these two pages are read together and edited together. */
+const clauses: { h: string; p: string[] }[] = [
+  {
+    h: 'ביטול לפני שההזמנה נשלחה',
+    p: [
+      'כל עוד ההזמנה לא נמסרה לחברת השילוח, אפשר לבטל אותה מיד ובלי לתת סיבה. הביטול מתבצע מהאזור האישי, בכפתור על ההזמנה עצמה.',
+      'הביטול מיידי ואינו מותנה באישור המוכר. התמורה מוחזרת במלואה, כולל דמי המשלוח.',
+    ],
+  },
+  {
+    h: 'החזרת מוצר שכבר הגיע',
+    p: [
+      `אפשר לבטל רכישה ולהחזיר מוצר בתוך ${STATUTORY_RETURN_DAYS} ימים ממועד קבלתו. זו זכות הקבועה בחוק הגנת הצרכן ובתקנותיו, והיא חלה על כל רכישה באתר.`,
+      'הבקשה נפתחת מהאזור האישי, בכפתור על ההזמנה. אפשר להחזיר את ההזמנה כולה או חלק מהפריטים שבה.',
+      'המוצר יוחזר כשלא נעשה בו שימוש ובאריזתו המקורית, ככל שהייתה.',
+    ],
+  },
+  {
+    h: 'בלי דמי ביטול',
+    p: [
+      // More generous than the regulations, which permit 5% or ₪100 — so it can be published today.
+      // The number is deliberately not quoted: naming what we could have charged reads as a favour
+      // being counted, and the owner's decision was that this is simply how the platform works.
+      `${platform.name} אינה גובה דמי ביטול, בשום מקרה. הסכום ששולם עבור המוצרים חוזר במלואו.`,
+    ],
+  },
+  {
+    h: 'דמי המשלוח',
+    p: [
+      'בביטול לפני שההזמנה נשלחה — דמי המשלוח חוזרים גם הם.',
+      'הגיע מוצר פגום, שאינו תקין או שאינו מה שהוזמן — דמי המשלוח חוזרים, והמשלוח בחזרה על חשבון המוכר.',
+      'ביטול מרצון אחרי שההזמנה הגיעה — דמי המשלוח ששולמו אינם מוחזרים, והמשלוח בחזרה על חשבון הקונה. כך קובעות התקנות.',
+    ],
+  },
+  {
+    h: 'מתי הכסף חוזר',
+    p: [
+      'הזיכוי מבוצע לאחר שהמוצר חוזר למוכר, ולאותו אמצעי תשלום שבו בוצעה הרכישה.',
+      'הזיכוי מתבצע במועד הביטול או בסמוך לו, ולא יאוחר מהמועד הקבוע בתקנות.',
+    ],
+  },
+  {
+    h: 'מוצרים שלא ניתן להחזיר',
+    p: [
+      'התקנות מוציאות מזכות הביטול סוגי מוצרים אחדים — בהם מזון, תוספי תזונה, תרופות, מוצרי הלבשה תחתונה ובגדי ים, ומוצר שיוצר במיוחד עבור הקונה לפי מידותיו או דרישותיו.',
+      'מוצר שאינו ניתן להחזרה מסומן ככזה בעמוד המוצר, לפני הרכישה.',
+    ],
+  },
+  {
+    h: 'ההזמנה לא הגיעה',
+    p: [
+      `לא נמסרה ההזמנה בתוך ${SHIP_AUTO_CANCEL_DAYS} ימים ממועד התשלום, היא מתבטלת אוטומטית והתמורה מוחזרת במלואה, בלי דמי ביטול ובלי שתצטרך לבקש.`,
+      'חבילה שיצאה ולא הגיעה — אפשר לדווח על כך מהאזור האישי, ואנחנו מבררים מול חברת השילוח. הבירור הוא שלנו ולא שלך.',
+    ],
+  },
+  {
+    h: 'מוצר פגום או לא תקין',
+    p: [
+      'מעבר לזכות הביטול, לקונה עומדות זכויותיו לפי חוק המכר ולפי כל דין בשל מוצר פגום, שאינו מתאים לתיאורו או שאינו מתאים למה שהוזמן. מדיניות זו אינה גורעת מהן.',
+    ],
+  },
+  {
+    h: 'איך פונים',
+    p: [
+      `כל בקשת ביטול או החזרה נפתחת מהאזור האישי, ואפשר לעקוב אחריה שם. אם משהו נתקע, אפשר לפנות אלינו ב-${platform.business.email}.`,
+    ],
+  },
+];
+---
+
+<BaseLayout
+  title={`${title} — ${platform.name}`}
+  description={lang === 'he'
+    ? `מדיניות הביטולים וההחזרות של ${platform.name} — ${STATUTORY_RETURN_DAYS} ימים להחזרה, בלי דמי ביטול.`
+    : `${platform.name} cancellation and returns policy.`}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <section class="section container" dir="rtl" style="max-width:70ch">
+    <h1 class="!text-[1.6rem] !font-semibold">ביטולים והחזרות</h1>
+    {lang !== 'he' && (
+      <p class="muted" style="margin-top:0.75rem">This policy is published in Hebrew, which is the binding version.</p>
+    )}
+
+    {clauses.map((c) => (
+      <>
+        <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">{c.h}</h2>
+        {c.p.map((line) => <p style="margin-top:0.5rem">{line}</p>)}
+      </>
+    ))}
+
+    <p style="margin-top:2rem">
+      <a href="/terms" class="muted">תנאי שימוש</a> · <a href="/contact" class="muted">יצירת קשר</a>
+    </p>
+  </section>
+</BaseLayout>
