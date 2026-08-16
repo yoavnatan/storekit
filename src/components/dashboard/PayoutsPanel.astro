@@ -139,11 +139,14 @@ const WHY: Record<string, string> = {
   delivery: d.payWhyDelivery,
   payment: d.payWhyPayment,
   unshipped: d.payWhyUnshipped,
+  return_open: d.payWhyReturnOpen,
 };
 const ACTION: Record<string, string> = {
   delivery: d.payActionNone,
   payment: d.payActionMarkDelivered,
   unshipped: d.payActionShip,
+  // Nothing for the seller to do — the case is with the buyer, the carrier or the admin.
+  return_open: d.payActionNone,
 };
 /** The one basis where the seller is BLOCKING their own money: no clock runs until they ship. It is
  *  the only action here that changes an outcome rather than a date, so it is the only one that
@@ -416,7 +419,7 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
                   `ordersHref` narrows the Orders tab to this shop AND to this reason's payout
                   status; the tab then says so, with a way back to the full list. */}
               <td class={`${CELL} ${g.basis === BLOCKING ? 'font-semibold [color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>
-                {g.basis === 'delivery' ? ACTION[g.basis] : (
+                {g.basis === 'delivery' || g.basis === 'return_open' ? ACTION[g.basis] : (
                   <a class="underline underline-offset-2 [color:inherit] hover:[color:var(--color-accent)]" href={ordersHref(g.basis, storeSlug)}>{ACTION[g.basis]}</a>
                 )}
               </td>

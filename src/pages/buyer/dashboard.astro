@@ -102,6 +102,7 @@ const shipLabel: Record<string, string> = {
   shipped: t.buyerDashboard.shippingShipped,
   delivered: t.buyerDashboard.shippingDelivered,
   cancelled: t.buyerDashboard.shippingCancelled,
+  returned: t.buyerDashboard.shippingReturned,
 };
 
 /** How many stores the collapsed card names before it starts counting. Two fits the narrowest
@@ -1229,6 +1230,7 @@ const STORES_NAMED = 2;
   data-ship-shipped={t.buyerDashboard.shippingShipped}
   data-ship-delivered={t.buyerDashboard.shippingDelivered}
   data-ship-cancelled={t.buyerDashboard.shippingCancelled}
+  data-ship-returned={t.buyerDashboard.shippingReturned}
   data-order-stores-more={t.buyerDashboard.orderStoresMore}
   data-order-total-all={t.buyerDashboard.orderTotalAll}
   data-orders-empty-active={t.buyerDashboard.ordersEmptyActive}
@@ -1286,6 +1288,7 @@ const STORES_NAMED = 2;
     shipShipped:     _i18nEl.dataset.shipShipped      ?? 'Shipped',
     shipDelivered:   _i18nEl.dataset.shipDelivered    ?? 'Delivered',
     shipCancelled:   _i18nEl.dataset.shipCancelled    ?? 'Cancelled',
+    shipReturned:    _i18nEl.dataset.shipReturned     ?? 'Returned',
     orderStoresMore: _i18nEl.dataset.orderStoresMore  ?? '+{count} more',
     orderTotalAll:   _i18nEl.dataset.orderTotalAll    ?? 'Order total',
     ordersEmptyActive: _i18nEl.dataset.ordersEmptyActive ?? 'No active orders right now.',
@@ -2245,6 +2248,7 @@ const STORES_NAMED = 2;
   const shipLabelClient: Record<string, string> = {
     pending: I.shipPending, processing: I.shipProcessing, ready: I.shipReady,
     shipped: I.shipShipped, delivered: I.shipDelivered, cancelled: I.shipCancelled,
+    returned: I.shipReturned,
   };
   /** Twin of the server's own badge markup — same class, same cancelled variant. */
   function shipBadge(status: string): string {

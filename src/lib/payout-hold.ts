@@ -81,8 +81,12 @@ export interface OrderHold {
    *  `'unshipped'` is the one that carries no date: the parcel has not left, so no clock has
    *  started. It is deliberately distinct from `null` (which means we could not date the order at
    *  all — an anomaly), because the two need opposite messages: one is "ship it and the countdown
-   *  begins", the other is "something is wrong with this record". */
-  basis: 'delivery' | 'payment' | 'unshipped' | null;
+   *  begins", the other is "something is wrong with this record".
+   *
+   *  `'return_open'` is the second dateless one, and it needs its own word for the same reason: the
+   *  seller's screen has to say "a return case is open on this order" rather than leave him reading
+   *  "ship it to start the countdown" about a parcel he shipped weeks ago. */
+  basis: 'delivery' | 'payment' | 'unshipped' | 'return_open' | null;
 }
 
 /** The order fields this rule reads. A projection rather than a full `Order` so a query may select
@@ -94,6 +98,15 @@ export type HoldableOrder = Pick<Order, 'paymentStatus' | 'shippingStatus'> & {
    *  gate one status earlier — `order-status-rules.ts`'s `pickupPayoutClockRuns` column. Absent
    *  takes the stricter courier answer, since orders predate the field. */
   deliveryMethod?: DeliveryMethod | null;
+  /**
+   * Is a return case open on this order (`return-requests.ts#hasOpenReturn`)?
+   *
+   * Absent means no, which is the right default for every caller that predates returns and for every
+   * order that has never had one — and it is safe in the only direction that matters, because a
+   * caller who forgets to pass it releases money on the ordinary schedule rather than freezing a
+   * seller's funds on a case that does not exist.
+   */
+  hasOpenReturn?: boolean;
 };
 
 /**
@@ -113,6 +126,19 @@ export function orderHold(order: HoldableOrder, todayISO: string = businessToday
   // have since been cancelled.
   if (!orderMoneyWasTaken(order)) return notPayable;
   if (!orderCountsAsRevenue(order)) return notPayable;
+
+  // ── An open return case freezes this order's money (decisions §4) ──
+  //
+  // The owner's answer, and it is the cheap half of the protection: while a case is open the
+  // platform is still HOLDING the money, so refusing to release it costs nothing and saves a
+  // clawback nobody has to chase. Release it on schedule and a case that resolves the next day
+  // becomes a debt against a seller who has already been paid.
+  //
+  // `held` rather than `not_payable`, and with no release date: nothing is lost — the moment the
+  // case closes the ordinary clock applies and may release it the same day — but there is genuinely
+  // no date to show, because it depends on something that has not happened yet. Same shape, and the
+  // same reasoning, as the `unshipped` arm below.
+  if (order.hasOpenReturn) return { state: 'held', releaseDayISO: null, basis: 'return_open' };
 
   // ── The parcel has to have LEFT before any clock starts ──
   //
@@ -197,6 +223,19 @@ export function isReleasable(order: HoldableOrder, todayISO: string = businessTo
 export const RELEASABLE_SQL = `
   o.payment_status = ANY($1::text[])
   AND o.shipping_status = ANY($2::text[])
+  -- An open return case freezes this order's money, exactly as the JS half does (decisions §4).
+  -- Written as NOT EXISTS rather than a join so an order with no case pays nothing for the rule, and
+  -- so two cases on one order — which the partial unique index already forbids — could not double a
+  -- row if it ever became possible.
+  --
+  -- The closed states are spelled out because they are the CHECK's own vocabulary (migration 0030)
+  -- and this is SQL: there is no import here. returns.ts#isOpen is the same rule in TypeScript, and
+  -- tests/returns-hold-parity.test.ts is what refuses to let the two drift.
+  -- (No backticks in this comment either — see the note above.)
+  AND NOT EXISTS (
+        SELECT 1 FROM return_requests rr
+         WHERE rr.order_id = o.id
+           AND rr.status NOT IN ('rejected', 'refunded', 'expired'))
   -- The seller has to have done their part. ANDed with the revenue list rather than replacing it:
   -- revenue excludes a cancelled order, this excludes one that was never sent, and they are
   -- different questions. Both lists come off the status table, so a new status propagates here by

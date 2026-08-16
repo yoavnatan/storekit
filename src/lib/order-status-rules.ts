@@ -131,7 +131,35 @@ export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> =
   shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
   delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
   cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: false },
+  returned:   { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: false },
 };
+
+/**
+ * ── Why `returned` reads identically to `cancelled` here, and is still not the same status ──
+ *
+ * Every column above asks "what is true of this order NOW", and once the goods are back on the shelf
+ * and the money is owed to the buyer, the answers genuinely coincide: no revenue, no stock held,
+ * nothing left to transition to, no payout clock, nothing the seller must do. Filling the row with
+ * the same values is the table working, not a redundancy — the alternative was a `=== 'cancelled'`
+ * somewhere that quietly excluded returns from a revenue sum or a restock.
+ *
+ * What the two statuses do NOT share is HISTORY, and that is why they are separate rows rather than
+ * one (owner, 2026-08-16; `docs/returns-policy-decisions.md` §0). A cancelled order never completed:
+ * nothing reached the buyer, and the seller did not do the work. A returned one did — packed,
+ * shipped, delivered, and only then sent back. Three things read that difference and none of them is
+ * a column here:
+ *
+ *   • **The seller's record.** Recording a return as a cancellation erases a fulfilment that really
+ *     happened, and would corrupt any future on-time measure built on this column.
+ *   • **The money.** Both owe a refund, but only one of them ever had a delivery behind it — which
+ *     is what decides whether the hold had already released and a clawback is due (`refund-owed.ts`).
+ *   • **The reports.** "Orders that failed to arrive" and "products people sent back" are different
+ *     business problems with different fixes, and one status makes them permanently
+ *     indistinguishable.
+ *
+ * So: read the COLUMNS for behaviour, never the status name — and keep the names apart for the
+ * questions the columns do not ask.
+ */
 
 export interface PaymentStatusRule {
   /** Did money actually arrive? Only 'paid' may contribute to any revenue figure. */

@@ -229,6 +229,8 @@ describe('the held split on the payments tab', () => {
       slice('delivery', 100),
       slice('payment', 200),
       slice('delivery', 300),
+      // A frozen slice — an open return case (decisions §4). Last in HELD_BASES on purpose.
+      slice('return_open', 700),
     ]);
     expect(split.groups.map((g) => g.basis)).toEqual([...HELD_BASES]);
     expect(split.groups.find((g) => g.basis === 'delivery')).toMatchObject({ orders: 2, agorot: 400 });

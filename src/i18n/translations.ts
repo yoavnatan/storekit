@@ -1094,6 +1094,7 @@ export const translations = {
       payWhyPayment: 'טרם נמסר',
       payActionMarkDelivered: 'סימון ״נמסר״ כשהחבילה מגיעה לקונה',
       payWhyUnshipped: 'טרם נשלח',
+      payWhyReturnOpen: 'בקשת החזרה פתוחה',
       payActionShip: 'שליחת הזמנה',
       payWhyUnknown: 'בבדיקה',
       payColPeriod: 'תקופה',
@@ -1586,6 +1587,7 @@ export const translations = {
       shippingShipped: 'נשלח',
       shippingDelivered: 'נמסר',
       shippingCancelled: 'בוטלה',
+      shippingReturned: 'הוחזרה',
       orderPhone: 'טלפון',
       orderAddress: 'כתובת',
       // The edit-order modal's own field labels, the messages table's two plain
@@ -1978,6 +1980,7 @@ export const translations = {
       shippingShipped: 'נשלח',
       shippingDelivered: 'נמסר',
       shippingCancelled: 'בוטלה',
+      shippingReturned: 'הוחזרה',
       freeShipping: 'חינם',
       // One order split across several stores. The collapsed card names two of them and counts
       // the rest — a deliberate cut, never a CSS ellipsis through the middle of a store's name.
@@ -2838,6 +2841,7 @@ export const translations = {
       payWhyPayment: 'Not yet delivered',
       payActionMarkDelivered: 'Mark as delivered when the parcel reaches the buyer',
       payWhyUnshipped: 'Not yet shipped',
+      payWhyReturnOpen: 'Return request open',
       payActionShip: 'Ship the order',
       payWhyUnknown: 'Under review',
       payColPeriod: 'Period',
@@ -3269,6 +3273,7 @@ export const translations = {
       shippingShipped: 'Shipped',
       shippingDelivered: 'Delivered',
       shippingCancelled: 'Cancelled',
+      shippingReturned: 'Returned',
       orderPhone: 'Phone',
       orderAddress: 'Address',
       eomTitle: 'Edit order details',
@@ -3615,6 +3620,7 @@ export const translations = {
       shippingShipped: 'Shipped',
       shippingDelivered: 'Delivered',
       shippingCancelled: 'Cancelled',
+      shippingReturned: 'Returned',
       freeShipping: 'Free',
       orderStoresMore: '+{count} more',
       orderTotalAll: 'Order total',

@@ -33,7 +33,7 @@ import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT, nextPayoutDayISO
 
 /** Keys into the `dashboard` translation table. Listed as unions so a typo is a compile error
  *  rather than an empty cell on a money screen. */
-export type PayoutWhyKey = 'payWhyDelivery' | 'payWhyPayment' | 'payWhyUnshipped' | 'payWhyUnknown';
+export type PayoutWhyKey = 'payWhyDelivery' | 'payWhyPayment' | 'payWhyUnshipped' | 'payWhyReturnOpen' | 'payWhyUnknown';
 export type PayoutActionKey = 'payActionNone' | 'payActionMarkDelivered' | 'payActionShip';
 
 export interface OrderPayoutLine {
@@ -61,7 +61,7 @@ export interface OrderPayoutLine {
    * started, so no run can be named.
    */
   payoutDayISO: string | null;
-  basis: 'delivery' | 'payment' | 'unshipped' | null;
+  basis: 'delivery' | 'payment' | 'unshipped' | 'return_open' | null;
   whyKey: PayoutWhyKey;
   /** The `{n}` inside `whyKey`'s sentence, or null when it has no `{n}`. */
   whyDays: number | null;
@@ -82,12 +82,17 @@ const WHY_BY_BASIS: Record<string, { key: PayoutWhyKey; days: number | null }> =
   delivery:  { key: 'payWhyDelivery',  days: HOLD_DAYS_AFTER_DELIVERY },
   payment:   { key: 'payWhyPayment',   days: FALLBACK_DAYS_AFTER_PAYMENT },
   unshipped: { key: 'payWhyUnshipped', days: null },
+  // A case is open on this order, so the money stays with the platform until it closes (decisions
+  // §4). No days: the date depends on something that has not happened yet.
+  return_open: { key: 'payWhyReturnOpen', days: null },
 };
 
 const ACTION_BY_BASIS: Record<string, PayoutActionKey> = {
   delivery:  'payActionNone',
   payment:   'payActionMarkDelivered',
   unshipped: 'payActionShip',
+  // Nothing for the seller to DO — the case is with the buyer, the carrier or the admin.
+  return_open: 'payActionNone',
 };
 
 /** The basis whose action changes an OUTCOME rather than a date. */
@@ -195,10 +200,12 @@ export function payoutFilterValue(line: OrderPayoutLine): PayoutFilterValue {
 
 /** The hold reasons that can be grouped, in the order the seller's screen shows them: the two they
  *  cannot influence first, their own last, because that is the one the eye should stop on. */
-export const HELD_BASES: readonly ('delivery' | 'payment' | 'unshipped')[] = ['delivery', 'payment', 'unshipped'];
+// 'return_open' sits last on purpose: it is the rarest, and the two ordinary clocks are what a
+// seller is looking for when they open this tab.
+export const HELD_BASES: readonly ('delivery' | 'payment' | 'unshipped' | 'return_open')[] = ['delivery', 'payment', 'unshipped', 'return_open'];
 
 export interface HeldGroup {
-  basis: 'delivery' | 'payment' | 'unshipped';
+  basis: 'delivery' | 'payment' | 'unshipped' | 'return_open';
   /** How many of the seller's order slices are waiting for this reason. */
   orders: number;
   /** Their share, commission already off — the same figure `heldAgorot` is the total of. */
@@ -208,7 +215,7 @@ export interface HeldGroup {
 /** One slice as the grouping needs it. A projection rather than `AccountSliceView`, so this module
  *  does not have to import `seller-account.ts` and a test can build a case from two literals. */
 export interface HeldSlice {
-  hold: { state: string; basis: 'delivery' | 'payment' | 'unshipped' | null };
+  hold: { state: string; basis: 'delivery' | 'payment' | 'unshipped' | 'return_open' | null };
   netOfCommissionAgorot: number;
   /** Which shop this slice was bought from. A payout pools every store the seller owns, but the
    *  ORDERS behind it are managed one store at a time, so the split has to be able to say which. */
