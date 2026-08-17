@@ -12,8 +12,11 @@ import {
   openReturnRequest, moveReturnRequest, getReturnRequest, getReturnsForOrder,
   getReturnsForStore, getOpenReturns,
 } from '../../lib/return-requests.js';
-import { buyerActionFor, type ReturnedLine, type ReturnReason, type ReturnStatus } from '../../lib/returns.js';
+import { buyerActionFor, RETURN_NOTE_MAX, type ReturnedLine, type ReturnReason, type ReturnStatus } from '../../lib/returns.js';
 import { returnableLinePositions } from '../../lib/return-eligibility-order.js';
+import { resolveOrderAccess } from '../../lib/order-access.js';
+import { clientIp } from '../../lib/client-ip.js';
+import { checkAuthRate, countAuthAttempt, orderHelpRules, retryAfterMinutes } from '../../lib/rate-limit.js';
 
 /**
  * Every move a return case can make, behind ONE route — and the authorization that decides who may
@@ -80,21 +83,38 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   return json({ error: 'Bad request' }, 400);
 }
 
-export async function POST({ request, cookies }: APIContext): Promise<Response> {
+export async function POST({ request, cookies, clientAddress }: APIContext): Promise<Response> {
   const body = await readJsonBody<Record<string, unknown>>(request, BODY_LIMIT.form);
   if (!body.ok) return json({ error: 'גוף הבקשה שגוי' }, body.status);
   const data = body.value ?? {};
 
   // ── A buyer opens a case ──
   if (data.action === 'open') {
-    const userId = getSellerSession(cookies);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
+    // **Who the caller is, and which order is theirs — one function, three credentials**
+    // (`order-access.ts`): a session, a signed link mailed to the buyer, or the order number plus
+    // the address it was placed with. A GUEST reaches this branch through the last two, which is
+    // the whole reason the resolver exists: a case is filed against an ORDER, and guest checkout is
+    // the default here, so requiring an account meant most buyers could not open one at all
+    // (owner, 2026-08-17). Nothing BELOW this line changed — what may be done, and to which lines,
+    // is the same code for everybody.
+    //
+    // The two credentials a guest can present are guessable in principle, so they are rate-limited
+    // on the way in. A signed-in buyer's session is not, and is not counted.
+    const rules = orderHelpRules(clientIp(request, clientAddress));
+    const guestAttempt = !getSellerSession(cookies);
+    if (guestAttempt) {
+      const gate = await checkAuthRate(rules);
+      if (!gate.allowed) {
+        return json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות', retryAfterMinutes: retryAfterMinutes(gate.retryAfterSec) }, 429);
+      }
+      await countAuthAttempt(rules);
+    }
 
-    const orderId = String(data.orderId ?? '');
-    const order = await getOrderById(orderId);
-    // Both halves: the order must exist AND be this buyer's. A guest order has `buyerId`
-    // undefined, which no session can equal — so it can never match here by accident.
-    if (!order || !order.buyerId || order.buyerId !== userId) return json({ error: 'Forbidden' }, 403);
+    const access = await resolveOrderAccess(data, cookies);
+    // ONE answer for "no such order", "wrong email" and "not yours". Three would make this an
+    // oracle for which order numbers exist, which an 8-character reference cannot afford.
+    if (!access) return json({ error: 'Forbidden' }, 403);
+    const { order, buyerId } = access;
 
     const reason = String(data.reason ?? '') as ReturnReason;
     if (!REASONS.includes(reason)) return json({ error: 'סיבה לא מוכרת' }, 400);
@@ -126,7 +146,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       await settleStatusChange({
         before: order, after,
         store: { slug: store.slug, name: store.name, sellerId: store.sellerId },
-        actor: userId,
+        // `buyerId` and not a session id — a guest cancelling their own order is still the buyer,
+        // and the journal should say so rather than name nobody.
+        actor: buyerId ?? 'buyer',
         detail: 'בוטלה על ידי הקונה לפני שיצאה למשלוח',
       });
       // The seller has to be told, and by NOTIFICATION rather than mail: he had not packed anything,
@@ -194,7 +216,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
     const result = await openReturnRequest({
       order, storeSlug: slug, reason,
-      buyerNote: String(data.note ?? '').slice(0, 2000),
+      // Capped at the field's own limit, not at some larger number here: the two would drift, and
+      // the bigger one silently wins for anything posted straight at the endpoint.
+      buyerNote: String(data.note ?? '').slice(0, RETURN_NOTE_MAX),
       // Through `sanitizeImageUrl`, never straight out of the body: it validates by SHAPE and stores
       // the URL parser's own serialisation, so quotes and angle brackets come back percent-encoded
       // and an attribute breakout is impossible even where a screen forgets to escape
@@ -230,11 +254,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // stopped. Checked before the seller branch, because a buyer is not a seller and would otherwise
   // fall through to a 403 on their own order.
   if (!admin && existing.status === 'offered' && (to === 'refunded' || to === 'approved')) {
-    const buyerId = getSellerSession(cookies);
-    const order = buyerId ? await getOrderById(existing.orderId) : null;
-    if (buyerId && order?.buyerId === buyerId) {
+    // Through the SAME resolver the open branch uses (`order-access.ts`), and for the same reason:
+    // a guest can now open a case, so a guest can be sent an offer — and an offer they cannot
+    // answer is the dead end this whole change exists to remove. The offer mail carries the signed
+    // link; the order number and the buying address work here too.
+    const access = await resolveOrderAccess({ ...data, orderId: existing.orderId }, cookies);
+    if (access) {
       const answered = await moveReturnRequest({
-        id, to, actor: buyerId,
+        id, to, actor: access.buyerId ?? 'buyer',
         store: { slug: store.slug, name: store.name, sellerId: store.sellerId },
       });
       if ('error' in answered) return json({ error: answered.error }, 409);

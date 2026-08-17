@@ -9,7 +9,7 @@ import {
   createReview, getReviewsForProduct, getProductRating, setReviewBlocked,
   getReviewedProductIds, getReviewableOrderForProduct, countPublishedReviews,
 } from '../src/lib/product-reviews.js';
-import { reviewToken } from '../src/lib/review-token.js';
+import { orderToken } from '../src/lib/order-token.js';
 
 /**
  * The review write path, against a real database.
@@ -167,7 +167,7 @@ describe('/api/review refuses everything it should', () => {
     const order = await shippedOrder();
     const pid = await productId('agartal');
     const res = await postReview(ctx({
-      orderId: order.id, productId: pid, rating: 5, body: 'מעולה', token: reviewToken(order.id),
+      orderId: order.id, productId: pid, rating: 5, body: 'מעולה', token: orderToken(order.id, 'review'),
     }) as never);
     expect(res.status).toBe(200);
     expect(await countPublishedReviews()).toBe(1);
@@ -187,7 +187,7 @@ describe('/api/review refuses everything it should', () => {
     const pid = await productId('agartal');
     const res = await postReview(ctx({
       orderId: order.id, productId: pid, rating: 5,
-      token: reviewToken('00000000-0000-4000-8000-000000000999'),
+      token: orderToken('00000000-0000-4000-8000-000000000999', 'review'),
     }) as never);
     expect(res.status).toBe(403);
   });
@@ -198,7 +198,7 @@ describe('/api/review refuses everything it should', () => {
     // check would have let through.
     const other = await productId('menora');
     const res = await postReview(ctx({
-      orderId: order.id, productId: other, rating: 5, token: reviewToken(order.id),
+      orderId: order.id, productId: other, rating: 5, token: orderToken(order.id, 'review'),
     }) as never);
     expect(res.status).toBe(403);
     expect(await getProductRating(other)).toEqual({ count: 0, sum: 0 });
@@ -210,7 +210,7 @@ describe('/api/review refuses everything it should', () => {
     for (const status of ['pending', 'cancelled'] as const) {
       await updateOrder(order.id, { shippingStatus: status });
       const res = await postReview(ctx({
-        orderId: order.id, productId: pid, rating: 5, token: reviewToken(order.id),
+        orderId: order.id, productId: pid, rating: 5, token: orderToken(order.id, 'review'),
       }) as never);
       expect(res.status, status).toBe(403);
     }
@@ -222,7 +222,7 @@ describe('/api/review refuses everything it should', () => {
     const pid = await productId('agartal');
     for (const rating of [0, 6, 4.5, '5']) {
       const res = await postReview(ctx({
-        orderId: order.id, productId: pid, rating, token: reviewToken(order.id),
+        orderId: order.id, productId: pid, rating, token: orderToken(order.id, 'review'),
       }) as never);
       expect(res.status, String(rating)).toBe(400);
     }
@@ -233,7 +233,7 @@ describe('/api/review refuses everything it should', () => {
     const order = await shippedOrder();
     const pid = await productId('agartal');
     const res = await postReview(ctx({
-      orderId: order.id, productId: pid, rating: 5, body: 'א'.repeat(1600), token: reviewToken(order.id),
+      orderId: order.id, productId: pid, rating: 5, body: 'א'.repeat(1600), token: orderToken(order.id, 'review'),
     }) as never);
     expect(res.status).toBe(400);
     expect(await countPublishedReviews()).toBe(0);
@@ -242,7 +242,7 @@ describe('/api/review refuses everything it should', () => {
   it('answers 409 for a purchase already reviewed', async () => {
     const order = await shippedOrder();
     const pid = await productId('agartal');
-    const body = { orderId: order.id, productId: pid, rating: 5, token: reviewToken(order.id) };
+    const body = { orderId: order.id, productId: pid, rating: 5, token: orderToken(order.id, 'review') };
     expect((await postReview(ctx(body) as never)).status).toBe(200);
     expect((await postReview(ctx(body) as never)).status).toBe(409);
     expect(await countPublishedReviews()).toBe(1);

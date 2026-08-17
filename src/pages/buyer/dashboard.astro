@@ -19,6 +19,7 @@ import { groupBuyerPurchases, countBuyerPurchases } from '../../lib/buyer-purcha
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { orderIsReviewable } from '../../lib/review-eligibility.js';
+import { RETURN_NOTE_MAX } from '../../lib/returns.js';
 
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
@@ -1092,6 +1093,16 @@ const STORES_NAMED = 2;
                                     ))}
                                   </div>
                                 )}
+                                {/* The buyer's own sentence — decisions §1's free-text field, which
+                                    the first build of this panel left out. Optional, capped, and
+                                    the ONE free-text field on this surface: "הגיע פגום" with
+                                    nothing beside it leaves the seller guessing what is broken,
+                                    and a guess is a slower case and often a wrong refusal.
+                                    `returns.ts#RETURN_NOTE_MAX` argues the number. */}
+                                <textarea class="o-return-note" data-return-note-for={s.order.id}
+                                          rows="2" maxlength={RETURN_NOTE_MAX}
+                                          placeholder={t.buyerDashboard.returnNote}
+                                          style="resize:none;width:100%;margin-bottom:0.4rem;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:0.4rem 0.55rem;font:inherit;font-size:0.82rem;background:var(--color-surface);color:var(--color-text)"></textarea>
                                 <span class="o-return-q">{t.buyerDashboard.returnWhy}</span>
                                 {/* Optional, and only under "פגום" or "לא מה שהזמנתי" — a photo of a
                                     change of mind is a question with no answer. The line says why it
@@ -1391,6 +1402,7 @@ const STORES_NAMED = 2;
   data-date-locale={dateLocale}
   data-order-items={t.buyerDashboard.orderItems}
   data-review-cta={t.reviews.writeCta}
+  data-return-note={t.buyerDashboard.returnNote}
   data-free-shipping={t.buyerDashboard.freeShipping}
   data-order-discount={t.buyerDashboard.orderDiscount}
   data-tracking-number={t.buyerDashboard.trackingNumber}
@@ -1453,6 +1465,7 @@ const STORES_NAMED = 2;
   import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
   import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
   import { orderIsReviewable } from '../../lib/review-eligibility.js';
+  import { RETURN_NOTE_MAX } from '../../lib/returns.js';
   import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
   import { markPanelFresh, isPanelStale, panelHoldsTypedText } from '../../lib/panel-freshness.js';
 
@@ -1499,6 +1512,7 @@ const STORES_NAMED = 2;
     dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
     orderItems:      _i18nEl.dataset.orderItems       ?? 'Items',
     reviewCta:       _i18nEl.dataset.reviewCta        ?? 'Rate this product',
+    returnNote:      _i18nEl.dataset.returnNote       ?? 'Anything else (optional)',
     freeShipping:    _i18nEl.dataset.freeShipping     ?? 'Free',
     orderDiscount:   _i18nEl.dataset.orderDiscount    ?? 'Discount',
     trackingNumber:  _i18nEl.dataset.trackingNumber   ?? 'Tracking number',
@@ -2488,6 +2502,9 @@ const STORES_NAMED = 2;
             // this is empty and the server reads it as "the whole order" — the same answer.
             body: JSON.stringify({
               action: 'open', orderId, reason,
+              // Trimmed here and capped again at the endpoint — the field's `maxlength` is a
+              // courtesy to the typist, never the rule.
+              note: (document.querySelector<HTMLTextAreaElement>(`[data-return-note-for="${orderId}"]`)?.value ?? '').trim(),
               // Already uploaded by the time this runs — the request carries a URL, never a file, so
               // a slow upload cannot hold the request open or fail it.
               ...(returnPhotoUrl.has(orderId) ? { photoUrl: returnPhotoUrl.get(orderId) } : {}),
@@ -2760,6 +2777,7 @@ const STORES_NAMED = 2;
               ${s.order.items.length > 1 ? `<div class="o-return-items"><span class="o-return-q">${escB(I.returnWhat)}</span>${
                 s.order.items.map((item, position) => `<label class="o-return-item"><input type="checkbox" checked data-return-line="${position}" data-return-line-for="${escB(s.order.id)}" data-return-qty="${item.qty}"><span>${escB(item.productName)}${item.qty > 1 ? ` ×${item.qty}` : ''}</span></label>`).join('')
               }</div>` : ''}
+              <textarea class="o-return-note" data-return-note-for="${escB(s.order.id)}" rows="2" maxlength="${RETURN_NOTE_MAX}" placeholder="${escB(I.returnNote)}" style="resize:none;width:100%;margin-bottom:0.4rem;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:0.4rem 0.55rem;font:inherit;font-size:0.82rem;background:var(--color-surface);color:var(--color-text)"></textarea>
               <span class="o-return-q">${escB(I.returnWhy)}</span>
               <button type="button" data-return-reason="changed_mind" data-return-for="${escB(s.order.id)}">${escB(I.returnR1)}</button>
               <button type="button" data-return-reason="damaged" data-return-for="${escB(s.order.id)}">${escB(I.returnR2)}</button>

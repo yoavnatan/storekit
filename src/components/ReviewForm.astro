@@ -23,7 +23,7 @@ import { getLang, getT } from '../i18n/index.js';
 interface Props {
   productId: string;
   orderId: string;
-  /** The guest's signed proof of purchase (`review-token.ts`). Absent for a signed-in buyer, whose
+  /** The guest's signed proof of purchase (`order-token.ts`). Absent for a signed-in buyer, whose
    *  session is the proof. */
   token?: string;
   /** Shown above the stars on the review page, where one form sits per purchased item. The product

@@ -2,6 +2,7 @@ import { createNotification } from './notifications.js';
 import { sendEmail } from './email/index.js';
 import { renderEmailShell, esc } from './email/template.js';
 import { ctaButton, SITE } from './email/parts.js';
+import { orderHelpUrl } from './order-token.js';
 import { formatAgorot } from './money.js';
 import type { Order } from './orders.js';
 import type { ReturnRequest } from './return-requests.js';
@@ -94,7 +95,12 @@ export async function notifyBuyerReturnStatus(
 <p style="margin:0 0 12px;">שלום ${esc(order.buyerName ?? '')},</p>
 <p style="margin:0 0 12px;">${esc(body)}</p>
 <p style="margin:0 0 12px;color:#6b7280;">הזמנה ${esc(ref)}</p>
-${ctaButton(`${SITE}/buyer/dashboard?tab=orders`, 'לפרטי ההזמנה')}`;
+${ctaButton(`${SITE}/buyer/dashboard?tab=orders`, 'לפרטי ההזמנה')}
+<!-- The decision mail is exactly where a buyer most wants to say something back, and a GUEST has
+     no dashboard to be sent to — that button is a dead link for them. The same neutral door as
+     every other mail: deliberately not "לא מסכים?", which puts them opposite the seller before
+     they have said anything (owner, 2026-08-17). A refused case does not block a new one. -->
+<p style="margin:16px 0 0;font-size:13px;"><a href="${orderHelpUrl(SITE, order.id)}" style="color:#5a6478;">פנייה בנוגע להזמנה</a></p>`;
       await sendEmail({
         to: order.buyerEmail,
         subject: `${copy.title} (${ref})`,

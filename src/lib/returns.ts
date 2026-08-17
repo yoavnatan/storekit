@@ -98,6 +98,21 @@ export type ReturnStatus =
  *
  * It applies ONLY outside the statutory window — inside it there is nothing to answer.
  */
+/**
+ * How much the buyer may write when opening a case.
+ *
+ * The case itself is STRUCTURED — a reason from a closed list, which lines, an optional photo — and
+ * that is the owner's rule for this whole surface: free text belongs to messaging, between people
+ * who are signed in. This one field is the exception decisions §1 already wrote down, and it earns
+ * it: "הגיע פגום" with nothing beside it leaves the seller guessing what is broken, and a guess is
+ * a slower case and often a wrong refusal.
+ *
+ * 500 characters is the shape of that exception. Long enough for the sentence or two that turns a
+ * category into a fact, short enough that the field cannot become a conversation — which would be
+ * the messaging channel arriving through a side door, on a surface with no reply.
+ */
+export const RETURN_NOTE_MAX = 500;
+
 export const RESPONSE_BUSINESS_DAYS = 2;
 
 /**

@@ -39,6 +39,16 @@ const dir = lang === 'he' ? 'rtl' : 'ltr';
 // Both are request-supplied values this page RENDERS, so both go through the shared validators
 // (Hard rules → Security review gate); a referrer from another origin degrades to nothing.
 const reportKind = Astro.url.searchParams.get('report') ?? 'fault';
+/**
+ * "פנייה בנוגע להזמנה" arriving from a mailed link (`order-token.ts#orderHelpUrl`).
+ *
+ * Passed through UNVERIFIED and that is deliberate: `/api/returns` re-checks the signature before
+ * anything is written, so verifying here as well would be a second copy of the rule — and one that
+ * would then have to be kept in step with it. All this decides is whether the form asks for the
+ * order number, or already knows it.
+ */
+const helpOrderId = Astro.url.searchParams.get('order') ?? '';
+const helpToken = Astro.url.searchParams.get('t') ?? '';
 const cameFrom = safeRedirectPath(Astro.url.searchParams.get('from'), '')
   || safeRefererPath(Astro.request.headers.get('referer'), Astro.url.origin, '');
 // Arriving here from this page itself says nothing about what is being reported.
@@ -104,7 +114,7 @@ const description = lang === 'he'
         page's header). */}
     <h2 id="report" class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">{t.report.title}</h2>
     <p class="muted" style="max-width:60ch">{t.report.lede}</p>
-    <ReportForm kind={reportKind} page={reportPage} />
+    <ReportForm kind={reportKind} page={reportPage} orderId={helpOrderId} orderToken={helpToken} />
 
     <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
       {lang === 'he' ? 'פרטי המפעיל' : 'Operator'}

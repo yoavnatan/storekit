@@ -6,7 +6,7 @@ import { checkAuthRate, countAuthAttempt, reviewRules, retryAfterMinutes } from 
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getOrderById } from '../../lib/orders.js';
 import { orderCoversProduct } from '../../lib/review-eligibility.js';
-import { verifyReviewToken } from '../../lib/review-token.js';
+import { verifyOrderToken } from '../../lib/order-token.js';
 import { createReview } from '../../lib/product-reviews.js';
 import { isValidRating, normalizeReviewBody, REVIEW_BODY_MAX } from '../../lib/reviews.js';
 import { findSpamKeyword, findKeywordStuffing } from '../../lib/spam-filter.js';
@@ -16,7 +16,7 @@ import { findSpamKeyword, findKeywordStuffing } from '../../lib/spam-filter.js';
  *
  * ── The authorization, in the order it has to happen ──
  * 1. The caller must produce an ORDER they own — either a session whose `buyerId` is on the row, or
- *    the signed link that was mailed to a guest (`review-token.ts`).
+ *    the signed link that was mailed to a guest (`order-token.ts`).
  * 2. That order must be in a state where its buyer may review (`review-eligibility.ts`, which reads
  *    the `buyerMayReview` column and not a status name).
  * 3. The product must be a LINE IN that order. **An id in a request body is a claim, never a
@@ -80,7 +80,7 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
 
   const userId = getSellerSession(cookies);
   const ownsBySession = !!userId && order.buyerId === userId;
-  const ownsByToken = verifyReviewToken(orderId, token);
+  const ownsByToken = verifyOrderToken(orderId, 'review', token);
   if (!ownsBySession && !ownsByToken) return json({ ok: false, reason: 'not-allowed' }, 403);
 
   if (!orderCoversProduct(order, productId)) return json({ ok: false, reason: 'not-allowed' }, 403);

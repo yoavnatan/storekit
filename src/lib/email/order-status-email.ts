@@ -15,7 +15,8 @@ import { STATUS_MESSAGES, isEmailedStatus, type NotifiableStatus } from '../orde
 import { logError } from '../error-log.js';
 import type { EmailMessage } from './adapter.js';
 import { renderEmailShell, esc } from './template.js';
-import { storeMeta, storefrontUrl, storeHeader, itemsTable, refLine, ctaButton } from './parts.js';
+import { SITE, storeMeta, storefrontUrl, storeHeader, itemsTable, refLine, ctaButton } from './parts.js';
+import { orderHelpUrl } from '../order-token.js';
 import { sendEmail } from './index.js';
 
 /**
@@ -42,7 +43,8 @@ export function buildOrderStatusEmail(order: Order, status: string): EmailMessag
 ${refLine(ref)}
 ${storeHeader(order)}
 ${itemsTable(order.items)}
-${cancelled ? '' : ctaButton(storefrontUrl(slug), 'לצפייה בחנות')}`;
+${cancelled ? '' : ctaButton(storefrontUrl(slug), 'לצפייה בחנות')}
+<p style="margin:16px 0 0;font-size:13px;"><a href="${orderHelpUrl(SITE, order.id)}" style="color:#5a6478;">פנייה בנוגע להזמנה</a></p>`;
 
   return {
     to: order.buyerEmail,

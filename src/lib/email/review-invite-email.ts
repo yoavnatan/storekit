@@ -5,7 +5,7 @@
 // (AI_INSTRUCTIONS → Checkout), so without this mail the majority of buyers would never be asked,
 // and a purchase-verified review system that nobody is invited to is an empty one.
 //
-// The link carries the proof (`review-token.ts`): no password, no account, one tap. What it
+// The link carries the proof (`order-token.ts`): no password, no account, one tap. What it
 // authorises is bounded by the order — see that file for why a leaked link is no worse than a
 // forwarded order confirmation.
 //
@@ -19,7 +19,7 @@ import type { EmailMessage } from './adapter.js';
 import { renderEmailShell, esc } from './template.js';
 import { storeMeta, refLine, ctaButton } from './parts.js';
 import { sendEmail } from './index.js';
-import { reviewInviteUrl } from '../review-token.js';
+import { reviewInviteUrl } from '../order-token.js';
 import { orderIsReviewable } from '../review-eligibility.js';
 
 /**
