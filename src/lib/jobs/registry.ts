@@ -29,11 +29,12 @@ import { syncStoreFeed, syncedRowCount } from '../store-feed-sync.js';
 import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
 import { runMerchantStatusCheck } from '../merchant-status-check.js';
-import { rebuildCatalogArtifact, FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../catalog-artifacts.js';
+import { rebuildCatalogArtifact, FEED_ARTIFACT, REVIEW_FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../catalog-artifacts.js';
 import { runPayouts } from '../payout-run.js';
 import { isPayoutDay, nextPayoutDayISO } from '../payout-schedule.js';
 import { runOrderSla } from '../order-sla-run.js';
 import { runReturnsSweep } from '../returns-run.js';
+import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { businessTodayISO } from '../business-day.js';
 
 export interface Job {
@@ -333,6 +334,45 @@ const feedArtifact: Job = {
   },
 };
 
+/**
+ * The Google product-reviews feed (`review-feed-document.ts`).
+ *
+ * Its own entry for the same reason the two above are two: an independent document that can fail on
+ * its own. Rebuilt on the same interval as the others even though Merchant Center only needs the
+ * reviews feed refreshed MONTHLY — the freshness that matters is not Google's schedule but the gap
+ * between a shopper writing a review and the platform being able to prove it exists, and a document
+ * that is rebuilt on a different rhythm from its own catalogue is one that can name a product the
+ * product feed has already dropped.
+ */
+const reviewFeedArtifact: Job = {
+  name: 'review-feed-artifact',
+  intervalSec: CATALOG_ARTIFACT_INTERVAL_SEC,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    return rebuildCatalogArtifact(REVIEW_FEED_ARTIFACT);
+  },
+};
+
+/**
+ * Ask buyers how it was, a few days after the parcel left (`review-invite-run.ts`).
+ *
+ * *Idempotent:* `orders.review_invited_at` is stamped before the send and is the query's own
+ * filter, so an order this job has touched is not a candidate on the next pass — migration 0034
+ * argues why the stamp goes first.
+ *
+ * *Every six hours:* the thing being waited for is measured in DAYS, so a tighter interval would
+ * only re-run the same empty query. Six hours means an invitation goes out within a quarter of a
+ * day of becoming due, which is well inside the precision this has.
+ */
+const reviewInvites: Job = {
+  name: 'review-invites',
+  intervalSec: 6 * HOUR,
+  leaseSec: 15 * MINUTE,
+  async run() {
+    return reviewInviteRunLine(await runReviewInvites());
+  },
+};
+
 const sitemapArtifact: Job = {
   name: 'sitemap-artifact',
   intervalSec: CATALOG_ARTIFACT_INTERVAL_SEC,
@@ -431,4 +471,4 @@ const returnsSweep: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, orderSla, returnsSweep, purgeVisitorDetail];
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, payoutRun, orderSla, returnsSweep, purgeVisitorDetail];
