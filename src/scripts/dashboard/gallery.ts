@@ -4,6 +4,7 @@ import { cloudinaryUpload } from './cloudinary.js';
 import { openCropModal } from './crop-modal.js';
 import { openCleanupModal } from './cleanup-modal.js';
 import { announceValueChange } from './unsaved-guard.js';
+import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { outboundFetch } from '../../lib/outbound-fetch.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
 
@@ -599,6 +600,48 @@ function markSlotRejected(slot: Element): void {
   slot.classList.add(...REJECTED_SLOT_RING);
 }
 
+/**
+ * **Say it at the photo, not at the top of the page** (owner, 2026-08-17, asking where the message
+ * actually lands: *"האם היא די ברורה?"* — it was not).
+ *
+ * `showStatus` inserts after `.products-header`, which on the Products tab is ABOVE the whole table,
+ * and it scrolls the page there. So a refusal on a product low in the list threw the seller to the
+ * top of the tab, hundreds of pixels from the form they were working in — and from the ringed slot
+ * the previous commit added, which they now could not see at all. Both Save buttons behaved
+ * identically, so pressing the one at the BOTTOM of a long form was the worst case: maximum
+ * distance travelled to read one sentence about a photo left behind.
+ *
+ * The site's own rule for this (memory `feedback_no_standing_screen_prose`): say it on the row it is
+ * about. So the message goes directly under the widget that owns the photo, and the ringed slot is
+ * what gets scrolled to.
+ *
+ * Marked on the error so the caller knows not to ALSO raise a page-level banner — one refusal, one
+ * sentence, in the place that identifies it.
+ */
+export interface ShownAtField { shownAtField?: boolean }
+
+function showRefusalAtGallery(gallery: Element, slot: Element, message: string): void {
+  let note = gallery.parentElement?.querySelector<HTMLElement>('[data-gallery-refusal]');
+  if (!note) {
+    note = document.createElement('p');
+    note.dataset.galleryRefusal = '1';
+    // The site's error treatment, matching `showStatus`'s own so a seller does not learn two
+    // different-looking reds for the same kind of news.
+    note.className = 'dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] '
+      + 'rounded-[var(--radius)] border border-[#fecaca] text-sm mt-3';
+    // `role=alert` because this appears in response to a press and must be announced without the
+    // seller having to go looking for it — the visual equivalent of the scroll below.
+    note.setAttribute('role', 'alert');
+    gallery.after(note);
+  }
+  note.textContent = message;
+  scrollBelowPinnedChrome(slot as HTMLElement);
+}
+
+function clearRefusalNote(gallery: Element): void {
+  gallery.parentElement?.querySelector('[data-gallery-refusal]')?.remove();
+}
+
 function clearSlotRejections(gallery: Element): void {
   gallery.querySelectorAll<HTMLElement>('[data-upload-rejected]').forEach((slot) => {
     delete slot.dataset.uploadRejected;
@@ -632,6 +675,7 @@ export async function resolveGalleryUrls(
   // ran on exactly the path that needed it most, and the ring stayed on the innocent slot that
   // shifted into its place. (Found by `gallery-upload-refusal.test.ts` while it was being written.)
   clearSlotRejections(gallery);
+  clearRefusalNote(gallery);
 
   const pending: { slot: Element; blob: Blob }[] = [];
   if (cloud && preset) {
@@ -654,7 +698,11 @@ export async function resolveGalleryUrls(
       // uploaded keep the URLs written below, so nothing is lost and nothing half-saved. What
       // changes is that the seller is told WHICH photo, in the sentence and on the slot.
       markSlotRejected(slot);
-      if (err instanceof Error) err.message = `${err.message} (${slotPositionLabel(slot)})`;
+      if (err instanceof Error) {
+        err.message = `${err.message} (${slotPositionLabel(slot)})`;
+        showRefusalAtGallery(gallery, slot, err.message);
+        (err as Error & ShownAtField).shownAtField = true;
+      }
       throw err;
     }
     const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
