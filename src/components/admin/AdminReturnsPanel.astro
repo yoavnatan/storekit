@@ -31,14 +31,14 @@ const REASON: Record<ReturnReason, string> = {
 };
 
 const STATUS: Record<ReturnStatus, string> = {
-  requested: 'ממתין למוכר',
-  approved: 'אושר · הקונה שולח',
-  in_transit: 'בדרך למוכר',
-  received: 'הגיע למוכר',
-  disputed: 'ממתין להכרעה שלך',
-  rejected: 'סורב',
-  refunded: 'זוכה',
-  expired: 'פקע',
+  requested: 'מחכה לתשובת המוכר',
+  approved: 'המוכר אישר — הקונה שולח',
+  in_transit: 'המוצר בדרך למוכר',
+  received: 'המוצר הגיע למוכר',
+  disputed: 'מחכה להחלטה שלך',
+  rejected: 'המוכר סירב',
+  refunded: 'הקונה קיבל את כספו',
+  expired: 'הקונה לא שלח — נסגר',
 };
 
 const disputes = requests.filter((r) => r.status === 'disputed');
@@ -50,14 +50,14 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
 
 <h2 class="m-0 mb-1 text-[1.05rem] font-bold">החזרות</h2>
 <p class="m-0 mb-5 text-[0.8rem] [color:var(--color-muted)]">
-  המנגנון סוגר את עצמו. כאן רק מה שממתין להכרעה, ומה שרץ ברקע.
+  רוב הבקשות נסגרות לבד. כאן מופיע רק מה שמחכה להחלטה שלך, ומה שעדיין בתהליך.
 </p>
 
 {disputes.length > 0 && (
   <div class="rounded-[var(--radius)] border border-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)] p-3.5 mb-5">
     <strong class="text-[0.9rem]">⚠ {disputes.length} ממתינות להכרעה שלך</strong>
     <p class="m-0 mt-1 text-[0.78rem] [color:var(--color-muted)] leading-relaxed">
-      המוכר טוען שהחבילה שחזרה ריקה או משומשת. הכסף עצור עד שתחליט.
+      המוכר אומר שהחבילה שחזרה אליו הייתה ריקה, או שהמוצר היה משומש. הכסף לא זז עד שתחליט מי צודק.
     </p>
     <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-2.5">
       {disputes.map((r) => (
@@ -71,8 +71,8 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
           </div>
           {r.sellerNote && <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">המוכר: "{r.sellerNote}"</div>}
           <div class="flex gap-2 mt-2">
-            <button type="button" class="btn btn--sm btn--accent" data-admin-return={r.id} data-admin-to="refunded">זכה את הקונה</button>
-            <button type="button" class="btn btn--sm" data-admin-return={r.id} data-admin-to="rejected">לטובת המוכר</button>
+            <button type="button" class="btn btn--sm btn--accent" data-admin-return={r.id} data-admin-to="refunded">החזר לקונה</button>
+            <button type="button" class="btn btn--sm" data-admin-return={r.id} data-admin-to="rejected">סגור בלי החזר</button>
           </div>
         </li>
       ))}
@@ -81,12 +81,12 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
 )}
 
 {running.length === 0 && disputes.length === 0 && (
-  <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">אין בקשות פתוחות.</p>
+  <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">אין בקשות החזר פתוחות.</p>
 )}
 
 {running.length > 0 && (
   <Fragment>
-    <p class="m-0 mb-2 text-[0.76rem] [color:var(--color-muted)]">{running.length} רצות ברקע — לא נדרשת פעולה</p>
+    <p class="m-0 mb-2 text-[0.76rem] [color:var(--color-muted)]">{running.length} בקשות בתהליך — אין מה לעשות איתן</p>
     <div class="flex flex-col gap-2" data-admin-returns>
       {running.map((r) => (
         <div class={`${CARD} flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[0.82rem]`}>

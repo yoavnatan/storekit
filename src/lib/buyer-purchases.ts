@@ -61,7 +61,24 @@ function pipelineRank(status: ShippingStatus): number {
  * no `checkoutRef` — nothing writes one today, but rows predate the field — is
  * its own purchase keyed by its id, which renders exactly as it did before.
  */
-export function groupBuyerPurchases(orders: readonly Order[]): BuyerPurchase[] {
+export function groupBuyerPurchases(
+  orders: readonly Order[],
+  /**
+   * Orders with a return request still open (`return-requests.ts#ordersWithOpenReturns`).
+   *
+   * **Why the status table cannot answer this on its own.** `buyerAwaiting` is a column about the
+   * SHIPPING status, and a delivered order is correctly `false` there — the parcel arrived and the
+   * seller owes nothing more. But a buyer who has asked to send it back is waiting again, on their
+   * own money, while the order's status has not changed and will not change until the refund lands.
+   * So the purchase sat under "היסטוריה", which is where the buyer would never think to look for the
+   * one thing they are actually waiting on (owner, 2026-08-17).
+   *
+   * Passed in rather than queried here so this stays pure and the page pays for one batched read.
+   * Absent = nobody has an open request, which is the ordinary case and the answer every caller
+   * written before returns existed meant.
+   */
+  ordersWithOpenReturn: ReadonlySet<string> = new Set(),
+): BuyerPurchase[] {
   const byKey = new Map<string, Order[]>();
   for (const o of orders) {
     // The rule moved to `checkout-group.ts` on 2026-08-07, when the admin Orders tab started
@@ -103,7 +120,11 @@ export function groupBuyerPurchases(orders: readonly Order[]): BuyerPurchase[] {
       totalAgorot: rows.reduce((sum, o) => sum + o.totalAgorot, 0),
       status: headline,
       slices,
-      awaiting: statuses.some((s) => SHIPPING_STATUS_RULES[s].buyerAwaiting),
+      // Either half is enough: the seller still owes a parcel, OR the buyer is owed money back.
+      // Two different reasons to be waiting, and a purchase under only the second one is exactly the
+      // case the status table cannot see.
+      awaiting: statuses.some((s) => SHIPPING_STATUS_RULES[s].buyerAwaiting)
+        || rows.some((o) => ordersWithOpenReturn.has(o.id)),
     };
   });
 }

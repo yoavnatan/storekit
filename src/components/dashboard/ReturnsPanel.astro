@@ -46,14 +46,14 @@ const REASON: Record<ReturnReason, string> = {
 /** What the case IS, in the seller's words. Every status in the machine has one — a card that
  *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
 const STATUS: Record<ReturnStatus, string> = {
-  requested: 'ממתין לך',
-  approved: 'אושר · הקונה שולח',
-  in_transit: 'בדרך אליך',
-  received: 'הגיע אליך',
-  disputed: 'במחלוקת',
-  rejected: 'סורב',
-  refunded: 'זוכה',
-  expired: 'פקע · לא נשלח',
+  requested: 'מחכה לתשובה שלך',
+  approved: 'אישרת — הקונה שולח את המוצר',
+  in_transit: 'המוצר בדרך אליך',
+  received: 'המוצר הגיע אליך',
+  disputed: 'אנחנו מכריעים',
+  rejected: 'סירבת',
+  refunded: 'הקונה קיבל את כספו',
+  expired: 'הקונה לא שלח — הבקשה נסגרה',
 };
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
@@ -69,11 +69,11 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
     { to: 'approved', label: 'אשר', kind: 'accent' },
     { to: 'rejected', label: 'סרב', kind: 'ghost' },
   ],
-  approved:   [{ to: 'in_transit', label: 'נשלח אליי', kind: 'ghost' }],
-  in_transit: [{ to: 'received', label: 'קיבלתי', kind: 'accent' }],
+  approved:   [{ to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' }],
+  in_transit: [{ to: 'received', label: 'המוצר הגיע אליי', kind: 'accent' }],
   received: [
-    { to: 'refunded', label: 'תקין · זכה את הקונה', kind: 'accent' },
-    { to: 'disputed', label: 'ריק או משומש', kind: 'ghost' },
+    { to: 'refunded', label: 'המוצר תקין — החזר לו את הכסף', kind: 'accent' },
+    { to: 'disputed', label: 'הגיע ריק או משומש', kind: 'ghost' },
   ],
 };
 
@@ -83,15 +83,15 @@ function deadlineLine(r: ReturnRequest): string | null {
     // Inside the statutory window there is nothing to answer — it was approved on arrival — so this
     // branch only ever describes a request the seller may really refuse.
     if (r.withinStatutory) return null;
-    return `לענות עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))}, אחרת נסגר`;
+    return `יש לך זמן לענות עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))}. אם לא תענה, הבקשה תיסגר`;
   }
   if (r.status === 'approved' || r.status === 'in_transit') {
     const d = handoverDeadlineISO(r.approvedAt);
-    return d ? `הקונה צריך לשלוח עד ${formatBusinessDateShort(d)}` : null;
+    return d ? `הקונה צריך לשלוח את המוצר עד ${formatBusinessDateShort(d)}` : null;
   }
   if (r.status === 'received') {
     const d = autoRefundDueISO(r.deliveredBackAt);
-    return d ? `בלי תגובה — הקונה יזוכה ב-${formatBusinessDateShort(d)}` : null;
+    return d ? `אם לא תסמן כלום, הקונה יקבל את כספו בחזרה ב-${formatBusinessDateShort(d)}` : null;
   }
   return null;
 }
@@ -104,13 +104,13 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
   <h2 class="m-0 text-[1.05rem] font-bold">החזרות</h2>
   <p class="m-0 mt-1 text-[0.82rem] [color:var(--color-muted)]">
-    {open.length ? `${open.length} ממתינות` : 'הכול סגור'}
+    {open.length ? `${open.length} בקשות מחכות לך` : 'אין בקשות פתוחות'}
   </p>
 </div>
 
 {requests.length === 0 && (
   <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">
-    אין בקשות החזר.
+    עוד לא ביקשו ממך להחזיר שום דבר.
   </p>
 )}
 
@@ -159,7 +159,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
       {r.status === 'disputed' && (
         <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">
-          נשלח להכרעה. הכסף עצור עד שתתקבל תשובה.
+          העברנו את זה להכרעה שלנו. הכסף לא זז עד שנחליט.
         </p>
       )}
     </article>
