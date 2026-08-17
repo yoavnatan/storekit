@@ -1696,16 +1696,49 @@ export function buildEditRow(p: ProductData): HTMLTableRowElement {
  * this, the seller's OWN inline edit would make his next save from that row look like
  * someone else's conflict, and a warning he caused himself is exactly what teaches him
  * to click straight through the real one.
+ *
+ * **`images` is not optional decoration — without it this function is a data-loss bug** (found
+ * 2026-08-17). The sentence above assumes the row's FIELDS were patched alongside the rev, and for
+ * every caller but the image save that holds. The image save patches the display row's thumbnail
+ * and `data-images`, and leaves the open edit form's gallery — a set of `name="images"` hidden
+ * inputs, which `FormData(form)` submits in full — showing the list from before the save. Stamping
+ * the new rev on top then *removes the last defence*: the server's per-field merge no longer sees a
+ * conflict, so the stale list is written back as a deliberate edit and the images the seller just
+ * uploaded are gone with no warning anywhere. (Memory `project_hidden_input_silent_writes`: a field
+ * nobody can see still writes.) So a caller that changed images says so, and the gallery is rebuilt
+ * from what the server actually stored.
  */
-function syncEditRowRev(displayRow: Element | null | undefined, rev: string | undefined): void {
+function syncEditRowRev(displayRow: Element | null | undefined, rev: string | undefined, images?: string[]): void {
   if (!rev) return;
   const form = displayRow?.nextElementSibling?.querySelector<HTMLFormElement>('form.inline-edit-form');
-  if (form) form.dataset.baseRev = rev;
+  if (form) {
+    form.dataset.baseRev = rev;
+    if (images) repaintFormGallery(form, images);
+  }
   // …and the same, for a row whose form does not exist yet. A pending row is built later from the
   // page's product island, which is a snapshot taken when the document was served — so a change
   // made here and not written back would come out of that island as the OLD value the next time the
   // seller opens the form, and their next save would put it back. See `syncPageProductFromRow`.
   syncPageProductFromRow(displayRow, rev);
+}
+
+/**
+ * Rebuild an open edit form's gallery from the image list the server confirmed.
+ *
+ * Replaced whole rather than patched: the widget keeps per-slot state (the original upload, a
+ * background-removed variant, crop flags) in a `WeakMap` keyed by the slot element, and there is no
+ * honest way to reconcile that against a list this form did not produce. A fresh element carries no
+ * `data-gallery-init`, so `initGalleryWidget` wires it exactly as it wires a newly built row.
+ */
+function repaintFormGallery(form: HTMLFormElement, images: string[]): void {
+  const gallery = form.querySelector<HTMLElement>('.gallery-widget');
+  if (!gallery) return;
+  const holder = document.createElement('div');
+  holder.innerHTML = galleryWidgetHtml(images, getGalleryI18n());
+  const fresh = holder.firstElementChild;
+  if (!fresh) return;
+  gallery.replaceWith(fresh);
+  initGalleryWidget(fresh);
 }
 
 /**
@@ -3509,8 +3542,93 @@ export function initBulkSelect(cloud: string, preset: string): void {
 
   const bulkSep = document.getElementById('bulk-sep') as HTMLElement | null;
 
+  /**
+   * **The image panel is a snapshot, so while it is open the selection it was built from is
+   * frozen** (owner, 2026-08-17: *"שיהיה ברור. לא צריך בחירה אחרי זה"*).
+   *
+   * `renderUploadPanel` reads `selectedRowIds()` once, at open time, and never again. Before this
+   * lock the table underneath stayed fully live, and the three ways that came apart were all
+   * silent: ticking a third product left it out of the panel while the toolbar counted it;
+   * UNticking one left it IN, so "שמור הכל" wrote images to a product the seller had just
+   * dropped — the one thing `bulk-selection.ts` promises never happens ("nothing is ever deleted,
+   * discounted or edited outside what the seller can see"); and clearing the selection tripped
+   * `updateBar`'s `empty` branch, which hid the panel outright and took every unsaved pick with it.
+   *
+   * **And the same freeze closes a data-loss bug, which is why it locks the row edit too.** A
+   * product can hold two gallery widgets at once — one in the panel, one in its inline edit row —
+   * and both post the whole `images` list. Last save wins, silently. The per-field revision merge
+   * that normally catches exactly this is *defeated* here rather than merely absent:
+   * `saveProductImages` calls `syncEditRowRev`, which stamps the fresh rev onto the open form
+   * WITHOUT refreshing its gallery, so the form then submits a stale image list under a current rev
+   * and the server reads it as a deliberate edit. (`syncEditRowRev` now repaints the gallery too —
+   * belt and braces, since an inline cell edit can stamp a rev by a route this lock never sees.)
+   *
+   * Everything that acts on the frozen selection goes with it: bulk edit opens the very galleries
+   * that conflict, and bulk delete/discount would act on a list the seller can no longer correct.
+   * What is left is the panel's own "שמור הכל" and "סגור", which is the whole point — one mode,
+   * one way out.
+   */
+  function imagePanelOpen(): boolean {
+    return !!uploadPanel && !uploadPanel.hidden;
+  }
+
+  /** The products the panel is actually working on, read back off the panel it rendered — so the
+   *  frozen list has one home rather than a copy that can fall out of step with it. */
+  function panelProductIds(): string[] {
+    return Array.from(uploadPanel?.querySelectorAll<HTMLElement>('[data-upload-product]') ?? [])
+      .map((el) => el.dataset.uploadProduct ?? '')
+      .filter(Boolean);
+  }
+
+  /** Re-applied from `updateBar`, because every filter/sort/page rebuild of the tbody hands back
+   *  fresh, enabled checkboxes and fresh row menus that know nothing about the lock. */
+  function applyImagePanelLock(): void {
+    const locked = imagePanelOpen();
+    getCheckboxes().forEach((box) => { box.disabled = locked; });
+    selectAllChks.forEach((chk) => { chk.disabled = locked; });
+    if (locked) {
+      if (bulkDeleteBtn) bulkDeleteBtn.hidden = true;
+      if (bulkEditBtn) bulkEditBtn.hidden = true;
+      if (bulkDiscountBtn) bulkDiscountBtn.hidden = true;
+    }
+    // The row menu's own "ערוך". Disabled rather than removed: the seller looking for it should
+    // find it and be told why, not wonder where it went. A disabled <button> fires no click, so
+    // this is the enforcement and not only the hint — `attachListeners` needs no guard.
+    document.querySelectorAll<HTMLButtonElement>('[data-edit-toggle]').forEach((btn) => {
+      const inPanel = locked && !!uploadPanel?.querySelector(
+        `[data-upload-product="${CSS.escape(btn.dataset.editToggle ?? '')}"]`,
+      );
+      btn.disabled = inPanel;
+      if (inPanel) btn.title = i.bulkUploadLocked ?? 'סגרו קודם את עריכת התמונות';
+      else btn.removeAttribute('title');
+    });
+  }
+
+  /** Opening the panel over an ALREADY-open edit row would leave the same two galleries the lock
+   *  exists to prevent, so those rows are closed first. Nothing is discarded that the seller has
+   *  not seen: an inline form saves only on its own button, so an unsaved edit was never going to
+   *  survive anyway, and `originalEditHtml` restores the row's fields when it reopens. */
+  function closeEditRowsFor(ids: string[]): void {
+    ids.forEach((productId) => {
+      const editRow = document.querySelector<HTMLElement>(`[data-product-edit="${CSS.escape(productId)}"]`);
+      const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(productId)}"]`);
+      if (editRow && !editRow.hidden) {
+        editRow.hidden = true;
+        if (displayRow) displayRow.hidden = false;
+      }
+    });
+    refreshBulkEditLabel();
+  }
+
   function updateBar(): void {
-    const count = selectedRowIds().length;
+    // **While the panel is open the toolbar describes the PANEL, not the table.** `selectedRowIds`
+    // counts rows that are ticked *and currently rendered*, so filtering to a category that holds
+    // none of them used to drop the count to zero — and the `empty` branch below then hid the panel
+    // and took every unsaved pick with it. Reading the frozen list instead makes browsing the table
+    // underneath harmless, which is the other half of the freeze: the seller can still look, and
+    // what looking does to the count is now nothing.
+    const locked = imagePanelOpen();
+    const count = locked ? panelProductIds().length : selectedRowIds().length;
     const empty = count === 0;
     if (bulkCountEl) bulkCountEl.textContent = String(count);
     if (bulkCountBadge) bulkCountBadge.hidden = empty;
@@ -3526,7 +3644,10 @@ export function initBulkSelect(cloud: string, preset: string): void {
     if (bulkDiscountBtn) bulkDiscountBtn.hidden = empty;
     if (bulkSep) bulkSep.hidden = empty;
     header?.classList.toggle('products-header--selecting', !empty);
-    if (empty && uploadPanel) uploadPanel.hidden = true;
+    // `!locked` is redundant while `count` reads the panel (an open panel is never empty), and it
+    // stays as the statement that this branch is about a selection the seller cleared — never
+    // about a panel that is open and holding work.
+    if (empty && !locked && uploadPanel) uploadPanel.hidden = true;
     // Clearing the selection leaves the discount dialog with nothing to act on — close it.
     if (empty && discountPanel?.open) discountPanel.close();
     if (empty && bulkEditLabel) bulkEditLabel.textContent = i.bulkEdit ?? 'ערוך';
@@ -3542,6 +3663,11 @@ export function initBulkSelect(cloud: string, preset: string): void {
       chk.checked = armed;
       chk.indeterminate = !armed && count > 0;
     });
+
+    // Last, and deliberately after every `hidden = empty` above: while the image panel is open this
+    // re-hides the delete/edit/discount buttons those lines just brought back, and re-disables
+    // checkboxes a tbody rebuild handed back live. See `applyImagePanelLock`.
+    applyImagePanelLock();
   }
 
   // A re-render of the table (filter/sort/search/page) re-ticks the rows from
@@ -3569,6 +3695,9 @@ export function initBulkSelect(cloud: string, preset: string): void {
     if (!id) return;
     const chk = document.querySelector<HTMLInputElement>(`[data-bulk-check="${id}"]`);
     if (!chk) return;
+    // `disabled` stops a real click on the box but not this, which sets `.checked` in code — so
+    // the one shortcut into the selection has to ask the same question the box was asked.
+    if (chk.disabled) return;
     chk.checked = !chk.checked;
     chk.dispatchEvent(new Event('change', { bubbles: true }));
   });
@@ -3658,20 +3787,39 @@ export function initBulkSelect(cloud: string, preset: string): void {
   // Bulk image upload — toggle: open (render + scroll its sticky header into view, same
   // pattern as opening a single product's edit row) or close if already open.
   bulkUploadBtn?.addEventListener('click', () => {
-    if (!uploadPanel || !selectedRowIds().length) return;
-    const isOpen = !uploadPanel.hidden;
-    if (isOpen) {
-      uploadPanel.hidden = true;
-      if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
-      bulkUploadBtn.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
-      return;
-    }
+    if (!uploadPanel) return;
+    // **Closing is answered before the "is there anything to act on" guard, and the order is the
+    // fix** (found by `bulk-image-panel-lock.test.ts`, 2026-08-17). That guard reads
+    // `selectedRowIds`, which counts ticked rows *currently rendered* — so with the panel open and
+    // a filter applied that renders none of them, the toggle returned early and refused to close
+    // the very panel it had opened. The seller was left with one exit, the panel's own ✕, and no
+    // way to tell that the button they pressed twice was doing nothing.
+    if (!uploadPanel.hidden) { closeUploadPanel(); return; }
+    const ids = selectedRowIds();
+    if (!ids.length) return;
+    // Order matters: the edit rows go first, because `renderUploadPanel` reads each product's
+    // images off its DISPLAY row and an open edit row leaves that row hidden but current — while
+    // leaving a second live gallery behind is the thing the lock exists to prevent.
+    closeEditRowsFor(ids);
     renderUploadPanel();
     uploadPanel.hidden = false;
     if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadClose ?? 'סגור העלאת תמונות';
     bulkUploadBtn.setAttribute('aria-label', i.bulkUploadClose ?? 'סגור העלאת תמונות');
+    // Freezes the selection and takes the competing actions off the toolbar. It runs through
+    // `updateBar` rather than being called directly so there is ONE order of operations for
+    // "panel open" and "panel closed", instead of two that can drift.
+    updateBar();
     scrollBulkUploadPanelIntoView(uploadPanel);
   });
+
+  /** The single way out — the toolbar toggle and the panel's own ✕ both land here, so the lock
+   *  cannot be left on by a route that forgot to lift it. */
+  function closeUploadPanel(): void {
+    if (uploadPanel) uploadPanel.hidden = true;
+    if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
+    bulkUploadBtn?.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
+    updateBar();
+  }
 
   // Bulk edit — toggle: if any selected edit row is open → close all; else open all
   bulkEditBtn?.addEventListener('click', () => {
@@ -3741,11 +3889,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
         }).join('')}
       </div>`;
 
-    document.getElementById('bulk-upload-close')?.addEventListener('click', () => {
-      if (uploadPanel) uploadPanel.hidden = true;
-      if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
-      bulkUploadBtn?.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
-    });
+    document.getElementById('bulk-upload-close')?.addEventListener('click', closeUploadPanel);
 
     // Init all gallery widgets inside the panel
     uploadPanel.querySelectorAll<Element>('.gallery-widget').forEach((gEl) => {
@@ -3782,7 +3926,9 @@ export function initBulkSelect(cloud: string, preset: string): void {
           if (data.ok) {
             const savedImages = data.images ?? urls;
             const row = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
-            syncEditRowRev(row, data.rev);
+            // The images go WITH the rev — see `syncEditRowRev`. Sending the rev alone is what
+            // made an open edit row overwrite this save silently.
+            syncEditRowRev(row, data.rev, savedImages);
             if (row && savedImages.length) {
               row.dataset.images = JSON.stringify(savedImages);
               const firstUrl = savedImages[0];
