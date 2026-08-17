@@ -47,18 +47,19 @@ const REASON: Record<ReturnReason, string> = {
  *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
 const STATUS: Record<ReturnStatus, string> = {
   requested: 'הקונה מחכה לתשובה שלך',
-  approved: 'אישרת, והקונה אמור לשלוח את המוצר',
-  in_transit: 'הקונה שלח, והמוצר בדרך אליך',
+  approved: 'אישרת. הקונה אמור לשלוח את המוצר',
+  in_transit: 'הקונה שלח. המוצר בדרך אליך',
   received: 'המוצר הגיע אליך וממתין שתבדוק אותו',
-  disputed: 'העברת את זה אלינו, ואנחנו מכריעים',
+  disputed: 'העברת את זה אלינו. אנחנו מכריעים',
+  offered: 'הצעת לו כסף במקום החזרה. מחכים לתשובתו',
   rejected: 'סירבת לבקשה',
   refunded: 'הקונה קיבל את כספו בחזרה',
-  expired: 'הקונה לא שלח את המוצר, והבקשה נסגרה',
+  expired: 'הקונה לא שלח את המוצר. הבקשה נסגרה',
 };
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
 const TONE: Record<ReturnStatus, string> = {
-  requested: 'danger', approved: 'warning', in_transit: 'muted', received: 'danger',
+  requested: 'danger', approved: 'warning', in_transit: 'muted', received: 'danger', offered: 'muted',
   disputed: 'warning', rejected: 'muted', refunded: 'success', expired: 'muted',
 };
 
@@ -69,7 +70,10 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
     { to: 'approved', label: 'אשר', kind: 'accent' },
     { to: 'rejected', label: 'סרב', kind: 'ghost' },
   ],
-  approved:   [{ to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' }],
+  approved:   [
+    { to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' },
+    { to: 'offered', label: 'הצע כסף במקום החזרה', kind: 'ghost' },
+  ],
   in_transit: [{ to: 'received', label: 'המוצר הגיע אליי', kind: 'accent' }],
   received: [
     { to: 'refunded', label: 'המוצר תקין — החזר לו את הכסף', kind: 'accent' },
@@ -155,6 +159,29 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
             >{m.label}</button>
           ))}
         </div>
+      )}
+
+      {/* The offer's amount. Hidden until "הצע כסף במקום החזרה" is pressed — a field asking for a
+          number the seller has not decided to give is a question on every card that does not need
+          one. In shekels, because that is what a person types; the script converts at the boundary. */}
+      {MOVES[r.status]?.some((m) => m.to === 'offered') && (
+        <label class="flex items-center gap-2 mt-2 text-[0.85rem]" data-offer-wrap>
+          <span class="[color:var(--color-muted)]">כמה להציע לו?</span>
+          <input
+            type="number" min="1" step="1" inputmode="numeric"
+            class="w-24 px-2 py-1 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)]"
+            data-offer-amount
+            hidden
+            placeholder="₪"
+          />
+        </label>
+      )}
+
+      {r.status === 'offered' && r.partialOfferAgorot !== null && (
+        <p class="m-0 mt-2 text-[0.82rem]">
+          הצעת לקונה <strong class="tabular-nums">{formatAgorot(r.partialOfferAgorot)}</strong> כדי שישאיר את המוצר אצלו.
+          מחכים לתשובתו.
+        </p>
       )}
 
       {r.status === 'disputed' && (

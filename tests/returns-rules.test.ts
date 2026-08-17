@@ -171,15 +171,41 @@ describe('the state machine', () => {
     expect(freezesPayout('disputed')).toBe(true);
   });
 
+  it('an offer can only be made from an APPROVED return', () => {
+    // Declining an offer returns the case to `approved`. Offering from `requested` would therefore
+    // hand the buyer an approval the seller may still have been entitled to withhold — an offer is a
+    // shortcut through a return that is already granted, never a way around the decision.
+    expect(canMove('requested', 'offered').ok).toBe(false);
+    expect(canMove('approved', 'offered').ok).toBe(true);
+  });
+
+  it('leaves an offer answerable only by accepting or declining', () => {
+    // Two answers and no third. Anything else would be a state the buyer was never asked about.
+    expect(RETURN_TRANSITIONS.offered).toEqual(['refunded', 'approved']);
+  });
+
   it('covers every status the database allows', () => {
-    // The CHECK in migration 0030 and this table must not drift — a status the machine has never
-    // heard of would be un-transitionable and would strand a real case.
-    const sql = fs.readFileSync('migrations/0030_returns.sql', 'utf8');
-    const inCheck = [...sql.matchAll(/'(requested|approved|rejected|in_transit|received|refunded|disputed|expired)'/g)]
-      .map((m) => m[1]!);
-    for (const status of Object.keys(RETURN_TRANSITIONS)) {
-      expect(inCheck, `${status} is in the state machine but not in the database CHECK`).toContain(status);
+    // The CHECK and this table must not drift — a status the machine has never heard of would be
+    // un-transitionable and would strand a real case, and one the CHECK does not allow is a write
+    // that throws at 3am.
+    //
+    // Reads the LAST migration that redefines the constraint rather than naming 0030: the vocabulary
+    // moved when `offered` was added (0035), and a test pinned to the file that happened to declare
+    // it first stops checking anything the moment it is extended — silently, which is the failure
+    // mode a guard must not have.
+    const files = fs.readdirSync('migrations').filter((f) => f.endsWith('.sql')).sort();
+    let statuses: string[] = [];
+    for (const f of files) {
+      const sql = fs.readFileSync(`migrations/${f}`, 'utf8');
+      const check = [...sql.matchAll(/status\s+IN\s*\(([^)]*)\)/gi)]
+        .filter((m) => /requested/.test(m[1]!))
+        .pop();
+      if (check) statuses = [...check[1]!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
     }
-    expect(new Set(inCheck).size).toBe(Object.keys(RETURN_TRANSITIONS).length);
+    expect(statuses.length, 'no return-status CHECK found in migrations/').toBeGreaterThan(0);
+    for (const status of Object.keys(RETURN_TRANSITIONS)) {
+      expect(statuses, `${status} is in the state machine but not in the database CHECK`).toContain(status);
+    }
+    expect(new Set(statuses).size).toBe(Object.keys(RETURN_TRANSITIONS).length);
   });
 });

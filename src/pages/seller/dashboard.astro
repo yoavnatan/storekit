@@ -837,6 +837,7 @@ const RETURN_CHIP: Record<ReturnStatus, string> = {
   in_transit: d.returnChipOnTheWay,
   received: d.returnChipArrived,
   disputed: d.returnChipDeciding,
+  offered: d.returnChipOffered,
   // Closed states carry no chip: the order is no longer in the middle of anything, and a chip that
   // says "finished" on a row is one more thing to read past.
   rejected: '',

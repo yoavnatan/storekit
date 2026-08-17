@@ -36,12 +36,34 @@ export function initReturnsTab(): void {
     const buttons = card ? [...card.querySelectorAll<HTMLButtonElement>('button')] : [btn];
     buttons.forEach((b) => { b.disabled = true; });
 
+    // An offer needs a number, and it is the only move on this screen that does. Asked with a
+    // prompt-free inline field rather than `prompt()`, which is banned platform-wide — the field is
+    // already on the card, hidden until this button is pressed.
+    let partialOfferAgorot: number | undefined;
+    if (to === 'offered') {
+      const field = card?.querySelector<HTMLInputElement>('[data-offer-amount]');
+      if (field && field.hidden) {
+        field.hidden = false;
+        field.focus();
+        buttons.forEach((b) => { b.disabled = false; });
+        return;
+      }
+      const shekels = Number(field?.value ?? '');
+      if (!Number.isFinite(shekels) || shekels <= 0) {
+        showToast('לא בוצע', 'צריך לכתוב סכום גדול מאפס');
+        buttons.forEach((b) => { b.disabled = false; });
+        return;
+      }
+      // Agorot at the boundary, like every other amount that crosses into the server (money.ts).
+      partialOfferAgorot = Math.round(shekels * 100);
+    }
+
     void (async () => {
       try {
         const res = await fetch('/api/returns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, to }),
+          body: JSON.stringify({ id, to, ...(partialOfferAgorot ? { partialOfferAgorot } : {}) }),
         });
         if (!res.ok) {
           const said = await res.json().catch(() => null) as { error?: string } | null;
