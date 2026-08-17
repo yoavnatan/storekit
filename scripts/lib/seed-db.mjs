@@ -297,12 +297,12 @@ export async function purgeOrphanJournalRows(db) {
  *
  * @param {{ purge?: 'demo'|'showcase'|{ scope: 'demo'|'showcase', includeSellers?: boolean },
  *           sellers?: any[], stores?: any[], categories?: any[], products?: any[],
- *           orders?: any[] }} catalog
+ *           orders?: any[], reviews?: any[] }} catalog
  */
 export async function writeCatalog(db, catalog) {
   const {
     purge: scope, sellers = [], stores = [], categories = [], products = [], orders = [],
-    pageViews = [], favorites = [], wishlists = [],
+    reviews = [], pageViews = [], favorites = [], wishlists = [],
   } = catalog;
   const scopeName = typeof scope === 'string' ? scope : scope?.scope;
   await db.query('BEGIN');
@@ -415,6 +415,27 @@ export async function writeCatalog(db, catalog) {
     await insertMany(db, 'order_stores', [
       'order_id', 'store_slug', 'store_name', 'subtotal_agorot', 'shipping_agorot', 'delivery_method',
     ], orderStores);
+
+    // Reviews, after the orders they hang off — `product_reviews.order_id` references `orders`.
+    // They need no purge line of their own: the products cascade them away (migration 0033), and
+    // the orders are already gone by the time this runs on a re-seed.
+    await insertMany(db, 'product_reviews', [
+      'id', 'product_id', 'store_slug', 'order_id', 'buyer_id', 'reviewer_name', 'rating', 'body', 'created_at',
+    ], reviews.map((r) => [
+      r.id ?? randomUUID(), r.productId, r.storeSlug, r.orderId, null,
+      r.reviewerName ?? '', Math.max(1, Math.min(5, Number(r.rating) || 5)), r.body ?? '', r.createdAt ?? null,
+    ]));
+    // The cached score is a CACHE and is rebuilt from the rows, exactly as
+    // `product-reviews.ts#recomputeProductRating` does it — never counted up while inserting. A
+    // seeder that maintained the number itself would be the second definition of the aggregate,
+    // and it would be the one that gets it wrong on the day someone changes what counts.
+    if (reviews.length) {
+      await db.query(`UPDATE store_products p
+                         SET review_count = agg.n, review_rating_sum = agg.total
+                        FROM (SELECT product_id, count(*)::int AS n, sum(rating)::int AS total
+                                FROM product_reviews WHERE NOT blocked GROUP BY product_id) agg
+                       WHERE p.id = agg.product_id`);
+    }
 
     // Traffic history. Keyed by store ID (DB_MIGRATION_PLAN.md §5), so the purge above — which
     // deletes the stores, and cascades to both of these — has already cleared the previous run's.
