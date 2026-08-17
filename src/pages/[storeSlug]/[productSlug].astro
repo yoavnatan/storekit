@@ -22,6 +22,7 @@ import { getLang, getT } from '../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
+import { nonReturnableNotice } from '../../lib/return-eligibility.js';
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { jsonForScript } from '../../lib/json-script.js';
 import { machineUrl } from '../../lib/url-base.js';
@@ -219,6 +220,11 @@ const productCategoryPathStr = product.categoryId ? categoryPath(storeCategories
 // Every sale names its scope on the banner, the store-wide one included — same rule as the
 // store page, and here it also tells the shopper the sale reaches beyond the product they are
 // looking at (StoreSaleBanner still hides itself entirely on a product a scoped sale misses).
+/** The regulations' own exclusion, when it applies to this shop's goods. Shown BEFORE the purchase,
+ *  which is the only moment it can change a decision — `return-eligibility.ts` holds the list and
+ *  `/api/returns` enforces the same answer. */
+const noReturnNotice = nonReturnableNotice(shopStore.categories);
+
 const saleScopeLabel = saleScopeCategoryLabel(storeCategoriesForProduct, shopStore.sale, t.store.saleAndMore)
   || (shopStore.sale?.productIds?.length ? t.store.saleOnSelected : t.store.saleOnWholeStore);
 
@@ -762,6 +768,9 @@ const pmI18n = {
                   more important of the two. Same renderer-drift class as
                   memory `project_client_renderer_i18n_drift`. */}
               <p dir="auto" id="product-desc" class="text-base leading-relaxed whitespace-pre-line" style="color:var(--color-muted);text-align:justify;overflow-wrap:break-word">{product.description}</p>
+              {noReturnNotice && (
+                <p class="text-[0.85rem] mt-3" style="color:var(--color-muted)">{noReturnNotice}</p>
+              )}
             </div>
           )}
 

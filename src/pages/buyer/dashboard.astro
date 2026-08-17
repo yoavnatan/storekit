@@ -6,8 +6,10 @@ import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, getStoresByIds } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
 import { getBuyerInvoiceUrls } from '../../lib/invoicing/buyer-invoice.js';
-import { getLatestReturnsByOrder } from '../../lib/return-requests.js';
-import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
+import { getLatestReturnsByOrder, ordersWithOpenReturns } from '../../lib/return-requests.js';
+import { isReturnable } from '../../lib/return-eligibility.js';
+import { getStoresBySlugs } from '../../lib/stores.js';
+import { isOpen as returnIsOpen, buyerActionFor, type ReturnStatus } from '../../lib/returns.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
@@ -47,7 +49,21 @@ const hasStore = storesOfSeller.length > 0;
 
 // One card per PURCHASE, not per store — a two-store basket was one click and one payment, so it
 // is one order here even though checkout writes a row per store (buyer-purchases.ts).
-const purchases = groupBuyerPurchases(orders);
+// Which of these have a return still running. One batched read for the whole list, and it feeds the
+// active/history split: an order whose parcel arrived is finished by its STATUS, and not finished at
+// all if the buyer is waiting on money back (buyer-purchases.ts explains why the status table cannot
+// see that).
+const openReturnOrderIds = await ordersWithOpenReturns(orders.map((o) => o.id));
+// Which shops on this page sell something the regulations take out of the return right
+// (return-eligibility.ts). Read here so the BUTTON can be withheld — the endpoint refuses these
+// anyway, and a button that appears and then fails is worse than no button at all.
+// One query for every shop on the page, not one per row.
+const nonReturnableSlugs = new Set(
+  (await getStoresBySlugs([...new Set(orders.flatMap((o) => Object.keys(o.storeSubtotals ?? {})))]))
+    .filter((st) => !isReturnable(st.categories))
+    .map((st) => st.slug),
+);
+const purchases = groupBuyerPurchases(orders, openReturnOrderIds);
 // The same function `/api/buyer/orders` answers with, so the figures this paints cannot disagree
 // with the ones a tab refresh writes over them (buyer-purchases.ts#countBuyerPurchases).
 const { active: activeOrdersCount, history: historyOrdersCount } = countBuyerPurchases(purchases);
@@ -1013,16 +1029,18 @@ const STORES_NAMED = 2;
                               </p>
                             );
                           }
-                          if (s.order.shippingStatus !== 'delivered') return null;
+                          const act = buyerActionFor(s.order);
+                          if (act === 'none') return null;
+                          if (act === 'return' && nonReturnableSlugs.has(s.storeSlug)) return null;
                           return (
                             <div class="o-return">
                               <button type="button" class="o-return-btn" data-return-open={s.order.id}>
-                                {t.buyerDashboard.returnAsk}
+                                {act === 'cancel' ? t.buyerDashboard.cancelAsk : t.buyerDashboard.returnAsk}
                               </button>
                               {/* Four taps' worth of choice and nothing else — no modal, no form.
                                   The reason is what decides who pays the return postage and how
                                   much comes back, so it is asked once, here, in the buyer's words. */}
-                              <div class="o-return-why" data-return-why={s.order.id} hidden>
+                              <div class="o-return-why" data-return-why={s.order.id} hidden data-return-act={act}>
                                 {/* Which items — shown only when the order HAS more than one line.
                                     On a single-item order there is nothing to choose and a checkbox
                                     would be a decision invented for the buyer. Everything is ticked
