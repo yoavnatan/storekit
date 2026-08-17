@@ -6,16 +6,23 @@
  *   npm run seed:reviews             # add them
  *   npm run seed:reviews -- --clean  # remove them and everything they needed
  *
- * ── Why this is its own script and NOT part of `seed:showcase` ──
+ * ── Its own script, AND run automatically at the end of `seed:showcase` (2026-08-17) ──
  * A review cannot exist without a purchase — that is the whole feature (`review-eligibility.ts`),
  * and a seeder does not get a shortcut the product does not have. So this writes ORDERS, and those
  * orders are money: they land in the platform statement, in the reconciliation card and in the
- * seller's own balance, none of which filter demo stores today.
+ * seller's own balance, none of which filter demo stores today. That is why it stayed out of
+ * `seed:showcase` at first.
  *
- * The showcase stores are meant to be LIVE on day one (GO_LIVE §6.2), so folding fabricated orders
- * into `seed:showcase` would carry fake revenue into production on the day the site opens. Keeping
- * it separate is what makes that impossible: the launch procedure runs `seed:showcase`, never this,
- * and `--clean` removes every row this wrote in one command.
+ * It could not stay out. `product_reviews` cascades from `store_products`, so every `seed:showcase`
+ * — which purges and rewrites those stores — silently deleted every seeded review with them. It
+ * happened twice in one afternoon from parallel sessions, and each time the ratings simply vanished
+ * from the site with nothing to say so. A demo whose content evaporates whenever somebody reseeds
+ * is not a demo.
+ *
+ * So `seedShowcaseReviews` is exported and the showcase seeder calls it last, after the stores it
+ * depends on exist. What keeps the fabricated money out of production is not the separation any
+ * more — it is the ⚠️ line in GO_LIVE §2.7: `npm run seed:reviews -- --clean` before the site opens,
+ * which removes every row this wrote in one command.
  *
  * ── The purge gate ──
  * Everything written here is tagged by the buyer's email suffix, and `--clean` deletes by exactly
@@ -24,6 +31,7 @@
  */
 import crypto from 'node:crypto';
 import pg from 'pg';
+import { pathToFileURL } from 'node:url';
 import { SEEDED_REVIEW_EMAIL_SUFFIX as SUFFIX, purgeSeededReviews } from './lib/seed-db.mjs';
 
 const CLEAN = process.argv.includes('--clean');
@@ -66,7 +74,23 @@ async function main() {
   if (!url) { console.error('\n❌ DATABASE_URL is not set.\n'); process.exit(1); }
   const db = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
   await db.connect();
+  try {
+    await seedShowcaseReviews(db, { clean: CLEAN });
+  } finally {
+    await db.end();
+  }
+}
 
+/**
+ * The work, on a client somebody else opened — so `seed-showcase-stores.mjs` can run it inside its
+ * own connection right after writing the stores, and the ratings are never left behind by a reseed.
+ *
+ * Its own transaction: the showcase seeder has already committed by the time this runs, and a
+ * failure here must not take those stores down with it. Worst case is stores with no ratings, which
+ * is exactly the state a re-run fixes.
+ */
+export async function seedShowcaseReviews(db, { clean = false, quiet = false } = {}) {
+  const say = (...a) => { if (!quiet) console.log(...a); };
   try {
     await db.query('BEGIN');
 
@@ -75,10 +99,10 @@ async function main() {
     // own WHERE (tests/seed-purge-gate.test.ts).
     const removed = await purgeSeededReviews(db);
 
-    if (CLEAN) {
+    if (clean) {
       await recompute(db);
       await db.query('COMMIT');
-      console.log(`\n✅ Removed ${removed} seeded order(s) and every review on them.\n`);
+      say(`\n✅ Removed ${removed} seeded order(s) and every review on them.\n`);
       return;
     }
 
@@ -89,8 +113,9 @@ async function main() {
         WHERE demo = true AND NOT blocked AND deleted_at IS NULL
         ORDER BY slug`);
     if (!stores.length) {
-      console.error('\n❌ No showcase stores found. Run `npm run seed:showcase` first.\n');
-      process.exit(1);
+      await db.query('ROLLBACK');
+      say('\n⚠️  No showcase stores found — nothing to review. Run `npm run seed:showcase` first.\n');
+      return;
     }
 
     let orderN = 0;
@@ -163,18 +188,15 @@ async function main() {
     await recompute(db);
     await db.query('COMMIT');
 
-    console.log(`\n✅ ${reviewN} reviews across ${rated.length} products in ${stores.length} showcase stores.\n`);
-    console.log('   Most reviewed, per store:');
+    say(`\n✅ ${reviewN} reviews across ${rated.length} products in ${stores.length} showcase stores.`);
     for (const store of stores) {
       const top = rated.filter((r) => r.store === store.slug).sort((a, b) => b.count - a.count)[0];
-      if (top) console.log(`     /${top.store}/${top.product}   — ${top.count} reviews`);
+      if (top) say(`     /${top.store}/${top.product}   — ${top.count} reviews`);
     }
-    console.log('\n   Remove it all with:  npm run seed:reviews -- --clean\n');
+    say('\n   Remove it all with:  npm run seed:reviews -- --clean\n');
   } catch (error) {
     await db.query('ROLLBACK');
     throw error;
-  } finally {
-    await db.end();
   }
 }
 
@@ -190,4 +212,9 @@ async function recompute(db) {
                    WHERE p.id = all_p.id`);
 }
 
-main().catch((e) => { console.error('review seed failed:', e); process.exit(1); });
+// Only when run directly — importing this file must not seed anything by itself. Through
+// `pathToFileURL`, because argv[1] is whatever the caller typed (`./scripts/…`) and comparing a
+// relative path against an absolute URL silently never matches, which is a script that does nothing.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => { console.error('review seed failed:', e); process.exit(1); });
+}
