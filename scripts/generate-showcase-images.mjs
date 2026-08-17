@@ -35,7 +35,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, lockupUrl, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, BANNER_DELIVERED_RATIO, viewsForProduct } from './lib/showcase/identity.mjs';
+import { SHOWCASE_STORES, imagePrompt, bannerPrompt, logoPrompt, lockupUrl, markCutUrl, IMAGE_SIZE, BANNER_IMAGE_SIZE, IMAGE_ASPECT, BANNER_ASPECT, BANNER_DELIVERED_RATIO, viewsForProduct } from './lib/showcase/identity.mjs';
 import { jsonlLine, uploadJsonl, createBatch, getBatch, downloadResults, readResults } from './lib/showcase/gemini-batch.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
@@ -393,15 +393,24 @@ function buildJobs() {
       // held back for the next one, which is what `refKey` already means everywhere else.
       refKey: store.bannerRefKey ? `${store.slug}:${store.bannerRefKey}` : null,
     });
-    jobs.push({
-      key: `${store.slug}:__logo`, prompt: logoPrompt(store), label: `${store.name} — לוגו`,
-      aspect: IMAGE_ASPECT, size: IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
-      // A logo may be drawn FROM the store's banner — סהר's mark lives on the banner wall and the
-      // avatar is redrawn from it (`logoRefKey`). The pair is directional on purpose: exactly one
-      // of `logoRefKey`/`bannerRefKey` may be set per store, or neither picture is the source.
-      refKey: store.logoRefKey ? `${store.slug}:${store.logoRefKey}` : null,
-      refCrop: store.logoRefCrop ?? null,
-    });
+    // A store whose mark already exists inside its own banner does not draw a second one: it CUTS.
+    // `compose` instead of `prompt`, exactly like the header lock-up below and for the same reason —
+    // a generation from a reference is a redraw, and the owner asked three times for the avatar and
+    // the banner's mark to be "*בדיוק* אותו הדבר", which no redraw can promise. `markCutUrl` in
+    // identity.mjs carries the four rounds of evidence and the one thing that can break it.
+    jobs.push(store.logoCut
+      ? {
+        key: `${store.slug}:__logo`, label: `${store.name} — לוגו`,
+        compose: (manifest) => markCutUrl(store, manifest),
+      }
+      : {
+        key: `${store.slug}:__logo`, prompt: logoPrompt(store), label: `${store.name} — לוגו`,
+        aspect: IMAGE_ASPECT, size: IMAGE_SIZE, model: MODELS.pro.id, modelKey: 'pro',
+        // A logo may be drawn FROM the store's banner. The pair is directional on purpose: exactly
+        // one of `logoRefKey`/`bannerRefKey` may be set per store, or neither picture is the source.
+        refKey: store.logoRefKey ? `${store.slug}:${store.logoRefKey}` : null,
+        refCrop: store.logoRefCrop ?? null,
+      });
     // The header lock-up, for the stores that declare one. Opt-in rather than automatic because
     // `headerLogo` is itself opt-in on a real store — a seller who has not made one keeps the
     // name-in-text header, and a showcase store with no `lockup` demonstrates exactly that.

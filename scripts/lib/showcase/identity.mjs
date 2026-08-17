@@ -315,6 +315,30 @@ export const GHOST_PRESENTATION =
   + 'is attached to it: no washing line, no rope, no string, no wire, no pegs, no clips, no hook, '
   + 'no hanger, no rail, no stand, no mannequin and no hands';
 
+/**
+ * How a thing that is not clothing sits in a sky.
+ *
+ * The case that had no clause at all, and the one the owner found: *"יש לי שם כמה תמונות עם רקע
+ * שחור נוראי (מגפי קרסול עם עקב, סניקרס פלטפורמה) זה לא שמיים. צריך להיות עקבי."*
+ *
+ * It is a contradiction, like the others, rather than an omission. `PRODUCT_VIEWS.main` says the
+ * product "stands alone on a plain, simple surface" — the staging that stopped this catalog cropping
+ * its own products — and `backdrop` now says there is no surface anywhere. A garment resolves it by
+ * being worn or filled out. A boot cannot be worn by nobody, so the model resolved it the only way
+ * left: it built a plinth and put a dark wall behind it, which is what a product photographer does.
+ *
+ * A sweep of all 112 heroes (top-strip average colour, brightness and blue-dominance) found 22 that
+ * had drifted this way — dark grey walls, an olive field, a cream room with a wooden table. Five
+ * were egregious; the rest were quietly not-sky, which is exactly the kind of thing that is only
+ * visible once someone scrolls the whole grid.
+ */
+export const OBJECT_PRESENTATION =
+  'The product FLOATS in the open sky, held up by nothing and resting on nothing. There is no '
+  + 'surface under it of any kind — no table, no plinth, no pedestal, no block, no box, no ledge, '
+  + 'no shelf, no stand and no floor — and no wall behind it. It hovers, upright and clearly '
+  + 'presented, with a soft shadow of its own beneath it in the air. Sky fills the entire frame '
+  + 'behind and below it';
+
 /** The garment worn by a cropped figure — the other half of `presentationFor`. */
 export const WORN_PRESENTATION =
   'It is WORN by a cropped figure so the cut and the drape read on a real body. The figure is '
@@ -349,9 +373,42 @@ export const WORN_PRESENTATION =
  */
 const LONG_GARMENT = /trouser|jean|chino|jogger|skirt|dress|short|legging|swim/i;
 const UPPER_GARMENT = /shirt|top|tee|t-shirt|sweater|sweatshirt|hoodie|jacket|blazer|coat|cardigan|knit|polo|henley|jumper/i;
+/**
+ * The hero staging, for a store whose backdrop has no surface in it.
+ *
+ * **This is where three rounds of fixes were quietly losing.** `PRODUCT_VIEWS.main` opens by saying
+ * the product "stands alone on a plain, simple surface, with a plain wall of flat colour softly out
+ * of focus behind it" — the staging, copied from the owner's own reference photograph, that stopped
+ * this catalog cropping its products. סהר's backdrop then says there is no surface and no wall
+ * anywhere, only sky. Every clause added to resolve that (`GHOST_PRESENTATION`,
+ * `OBJECT_PRESENTATION`) was arguing with the view modifier from further down the prompt, and the
+ * modifier kept winning where the product was small and heavy: after the object rule went in, a
+ * boot still came back on concrete and a signet ring on a linen cloth.
+ *
+ * A contradiction is not fixed by adding a third voice. The store now REPLACES the sentence.
+ * Everything else about the staging — half the frame, generous margin, the whole product inside the
+ * edges, nothing else in the picture — is why that modifier exists and is repeated here word for
+ * word, because those clauses are load-bearing against cropping and are not what went wrong.
+ */
+const SURFACELESS_MAIN =
+  'CAMERA POSITION: eye level, straight on or at a gentle three-quarter angle. '
+  + 'The primary catalog shot, staged simply and deliberately: the product hangs ALONE IN OPEN AIR '
+  + 'with nothing under it and nothing behind it — no surface, no table, no plinth, no ledge, no '
+  + 'ground and no wall of any kind, anywhere in the frame. The product is centred and takes up '
+  + 'roughly HALF the frame — no more — with clear empty space above it, below it and on both '
+  + 'sides. The ENTIRE product is inside the frame; stand further back rather than closer, and if '
+  + 'in doubt zoom OUT. Nothing else is in the picture: no props, no objects, no room, no scenery';
+
+/** The main view's modifier for this store — the shared one, or the surfaceless replacement. */
+const mainModifier = (store, view) =>
+  (view.key === 'main' && store.backdropSurfaceless ? SURFACELESS_MAIN : view.modifier);
+
 export function presentationFor(subject) {
   if (LONG_GARMENT.test(subject)) return ` ${GHOST_PRESENTATION}.`;
-  if (!UPPER_GARMENT.test(subject)) return '';
+  // Everything that is not clothing — shoes, bags, jewellery, hats, belts — used to return '' and
+  // fall through to whatever the model made of "a plain, simple surface" in an empty sky. It made
+  // plinths. See `OBJECT_PRESENTATION`.
+  if (!UPPER_GARMENT.test(subject)) return ` ${OBJECT_PRESENTATION}.`;
   return hashOf(`${subject}#worn`) % 2 === 0 ? ` ${WORN_PRESENTATION}.` : ` ${GHOST_PRESENTATION}.`;
 }
 
@@ -635,6 +692,9 @@ export const SHOWCASE_STORES = [
      * כפות רגליים"). A sky has no floor and no horizon, so there is no place for a body to be cut
      * off against — see `LIMB_SAFETY` for the half of that fix that is not the backdrop's job.
      */
+    /** There is no surface in this store's hero, so the shared staging sentence — which names one —
+     *  is replaced rather than argued with. See `SURFACELESS_MAIN`. */
+    backdropSurfaceless: true,
     backdrop: 'open SKY and nothing else — a soft pale sky blue, washed-out and light like a hazy '
       + 'morning, going almost white toward the bottom of the frame, with one or two thin wisps of '
       + 'high white cloud. There is no wall, no floor, no ground, no horizon line and no surface of '
@@ -800,11 +860,25 @@ export const SHOWCASE_STORES = [
      *  only then regenerate the logo and recompose the lock-up. Skipping the middle step produces a
      *  logo that is a blurry piece of wall, which is exactly what happened on 2026-08-14 and cost
      *  three paid attempts to work out. */
-    logoRefKey: '__banner',
-    // Re-measured 2026-08-17 against the new banner, exactly as the ⚠️ above says to. The old
-    // numbers (x_0.852,y_0.24,w_0.095,h_0.44) were 3% too far right and cut the crescent's left
-    // edge off — checked by eye at two candidate rectangles before this one was written down.
-    logoRefCrop: 'c_crop,x_0.820,y_0.20,w_0.125,h_0.54,g_north_west',
+    // `logoRefKey`/`logoRefCrop` stood here and are deliberately GONE. This store's avatar is no
+    // longer GENERATED from a reference at all — it is cut straight out of the banner, which is the
+    // only construction under which "exactly the same mark" is a property rather than a hope. Four
+    // rounds of evidence for that are in `markCutUrl`.
+    //
+    // The rectangle survives, because measuring it was the one part of the old route that worked.
+    // Re-measured twice on 2026-08-17, once per banner — which is the point of the ⚠️ above:
+    //   original  x_0.852,y_0.24 ,w_0.095,h_0.44   the banner this store launched with
+    //   sky v1    x_0.820,y_0.20 ,w_0.125,h_0.54   the plain-sky banner
+    //   sky v2    below                            the stained-glass banner
+    // The reliable way to find them, rather than guessing: crop the whole sign area wide
+    // (x_0.60,y_0.10,w_0.40,h_0.85), read the mark's edges off THAT at a known scale, convert back.
+    logoCut: {
+      key: '__banner',
+      crop: 'c_crop,x_0.860,y_0.272,w_0.101,h_0.436,g_north_west',
+      tolerance: 35,
+      /** The banner wall's own cream, so the avatar still reads as the sign it was cut from. */
+      pad: 'f7f3ee',
+    },
     /**
      * The header lock-up — see `lockupUrl`. The NAME is cut from the banner's wall sign, which is
      * the only place it exists: this store is `logoNameless`, so its avatar is the bare crescent
@@ -823,12 +897,12 @@ export const SHOWCASE_STORES = [
      * mark, which sits on a printed flat off-white and needs no more.
      */
     lockup: {
-      // Re-measured 2026-08-17 with the new banner, and the right edge is the whole difficulty:
-      // the old rectangle ended at x=0.85 and the mark's first coloured pane begins around 0.835,
-      // so it carried a sliver of light blue that `e_trim` would have trimmed TO. Pulling the edge
-      // in to 0.832 clears it; pulling it to 0.818 starts cutting the ס. There is that little room
-      // between the word and the mark, which is why this is measured by eye and not estimated.
-      word: { key: '__banner', crop: 'c_crop,x_0.565,y_0.245,w_0.267,h_0.315,g_north_west', tolerance: 55 },
+      // Re-measured with the stained-glass banner, and the right edge is the whole difficulty every
+      // time this picture is remade: the ס ends around x=0.866 and the crescent's navy tip begins
+      // around 0.872, so the rectangle has six thousandths of the frame to land in. Narrower clips
+      // the ס; wider pulls in a navy sliver of the mark, which `e_trim` would then trim TO. Measured
+      // by eye at five candidates, never estimated.
+      word: { key: '__banner', crop: 'c_crop,x_0.617,y_0.285,w_0.251,h_0.310,g_north_west', tolerance: 55 },
       // No crop: the avatar IS the bare crescent on an empty field, so there is nothing to cut out
       // of it and a rectangle here would only be a thing to keep in step with a re-render.
       //
@@ -893,9 +967,33 @@ export const SHOWCASE_STORES = [
     // the omission was structural rather than careless: "a rail of clothes" is read by an image
     // model as womenswear every time, so a store that sells both had a banner that advertised
     // half of itself. The catalog has had a גברים category since 2026-08-13.
+    /**
+     * ── Round two, 2026-08-17: the stained glass comes back, and this time as the banner's ──
+     *
+     * Three notes in one breath, and they are one note: *"בבאנר תוסיף לי כן ויטראז׳ שם מאחורה,
+     * משהו חסר לי"*, *"חסר לי אפקט וואו"*, *"משהו בבאנר ובלוגו מרגיש לי מעט מת מבחינת סטורציה"*.
+     *
+     * He is not contradicting the earlier ruling. Stained glass was pulled OUT of the product
+     * photographs because a coloured pool on grey marble read as a church behind a single garment
+     * ("קונוטציות לא טובות"), and it stays out of them. A banner is the opposite case: it is one
+     * picture, seen once, whose whole job is to be the thing you remember about this shop — and the
+     * one time he volunteered enthusiasm about anything here, it was for stained glass in exactly
+     * this frame (2026-08-14). The room is what carries it safely, because there is a rail of
+     * clothes and a sunlit doorway in the picture and the colour is an event inside a shop rather
+     * than the entire world of a boot.
+     *
+     * The saturation note is the same instruction from the other side, and it belongs here rather
+     * than in the products: the rack stays a step calmer than this picture ON PURPOSE
+     * (`colorwayTone`), so raising the banner does not raise the clothes with it.
+     */
     bannerSubject:
-      'a bright, cheerful fashion room: a long rail of clothes hung close together against a pale '
-      + 'stone wall, with a wide open doorway or window at the far end showing clear pale SKY. '
+      'a bright, cheerful fashion room, RICH and saturated in colour, with a real wow factor: a '
+      + 'long rail of clothes hung close together against a pale stone wall, and at the far end a '
+      + 'tall STAINED-GLASS window in deep cobalt, violet, amber and emerald, lit from behind by '
+      + 'the sun so that it glows and throws broad pools of coloured light across the pale stone '
+      + 'floor and up the wall. The coloured light is the drama of the picture and it is generous — '
+      + 'but it falls on the FLOOR and the far wall, never washing over the clothes on the rail, '
+      + 'which stay true to their own colours. Beyond the window, clear pale SKY. '
       + 'On the rail, the shop\'s actual range and all of it MODEST — a floral midi dress with '
       + 'short sleeves, a soft unstructured blazer, a long trench coat, an oversized heavy shirt, a '
       + 'denim jacket, a fine knit sweater and wide-leg cargo trousers — with a definite section of '
@@ -904,7 +1002,8 @@ export const SHOWCASE_STORES = [
       + 'cropped, nothing low-cut. The colours are rich but WEARABLE and a step calmer than a '
       + 'poster: indigo, dusty brick red, emerald, soft lilac, olive, warm gold and cream. Below, '
       + 'a few bags and shoes set out on a simple pale wooden bench, and a striped rug on the '
-      + 'floor. Clean bright daylight from the open end, alive and inviting — never grey, never '
+      + 'floor. Clean bright daylight from the open end, alive and inviting, with deep saturated '
+      + 'colour and real contrast — never washed out, never pale and flat, never grey, never '
       + 'monochrome, never austere, never empty, and no marble anywhere',
     /** The banner's own medium. Photographic, like the products, because this is a clothes shop and
      *  a shopper wants to see cloth — but the raking-daylight-and-atmosphere language that used to
@@ -949,8 +1048,13 @@ export const SHOWCASE_STORES = [
       // moved onto the sky's own colours: the blue of it, the violet of its shadows, the gold of
       // its last hour. The navy body does not move; it is the mark's identity and the app's
       // `colors.primary`.
-      + 'ink navy blue, and inside its own shape it carries flat blocks of light sky blue, soft '
-      + 'violet and warm gold, divided by crisp straight edges. Cut as a solid panel and fixed to '
+      // Deepened 2026-08-17: "משהו בבאנר ובלוגו מרגיש לי מעט מת מבחינת סטורציה". The panes were
+      // written as "light" and "soft" to sit beside a pale sky, and pale beside pale is what read
+      // as dead. Same three hues, at full strength — the sky family is the constraint, not the
+      // paleness, and a mark is 56px in a header where a washed-out colour is simply not seen.
+      + 'ink navy blue, and inside its own shape it carries flat blocks of vivid sky blue, rich '
+      + 'violet and deep warm gold — clean saturated colour, never pale, washed out or pastel — '
+      + 'divided by crisp straight edges. Cut as a solid panel and fixed to '
       + 'the wall. Exactly one crescent, and it and the name read as one sign together. '
       + 'Both are real, physical signage inside the scene — cut or painted letters mounted on the '
       + 'wall, lit by the same light as everything else and casting its own small shadow, never '
@@ -1701,6 +1805,10 @@ export const PRODUCT_VIEWS = [
      * reference reads as a brand rather than as a room.
      */
     modifier: 'CAMERA POSITION: eye level, straight on or at a gentle three-quarter angle. '
+      // ⚠️ "stands alone on a plain, simple surface, with a plain wall … behind it" is the sentence
+      // a store with a SURFACELESS backdrop must not be sent — see `mainModifier` below. Two rounds
+      // of new clauses lost to it before anyone noticed the contradiction was inside the staging
+      // itself, and not in what was being added around it.
       + 'The primary catalog shot, staged simply and deliberately: the product stands alone '
       + 'on a plain, simple surface, with a plain wall of flat colour softly out of focus behind '
       + 'it. The product is centred and takes up roughly HALF the frame — no more — with clear '
@@ -1982,7 +2090,7 @@ export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0], name = '') 
    */
   const body = `${MODESTY}. ${PRESSED}.${presentationFor(subject)} ${LIMB_SAFETY}`;
   return `${PURPOSE_DIRECTION} ${opening} `
-    + `${view.modifier}. ${FIDELITY}. `
+    + `${mainModifier(store, view)}. ${FIDELITY}. `
     + `${regionFor(store)}. ${life}. ${QUALITY_DIRECTION}. ${world} ${body}. ${NEGATIVE_PROMPT}.`;
 }
 
@@ -2344,6 +2452,41 @@ const cut = (part, height) =>
  * it belonged to the base until you reach that flag. `g_west`/`g_east` centre vertically, so the
  * two sit on one centre line whatever their heights.
  */
+/**
+ * The store's avatar, CUT out of its own banner instead of drawn again.
+ *
+ * **Why this exists at all, after four rounds of trying to make generation match.** The owner has
+ * asked three separate times for the avatar and the banner's mark to agree, ending in *"הלוגו לא
+ * זהה למה שיש על הבאנר, זה צריך להיות *בדיוק* אותו הדבר"* (2026-08-17). Every previous answer
+ * tightened the words or the reference: describe the direction, attach the logo, attach a CROP of
+ * the banner. Each got closer and none arrived, and none ever could — a generation from a reference
+ * is a redraw, and a redraw of a five-wedge crescent is a different five-wedge crescent. The banner
+ * came back with three stacked panes and the redraw made four radial ones.
+ *
+ * So the avatar stops being a picture OF the mark and becomes the mark: the same rectangle
+ * `logoRefCrop` used to hand the model, cut out with `e_make_transparent`, trimmed to its own ink
+ * and padded square. Identical is not a quality this can achieve badly, because nothing redraws.
+ * It is the same reasoning that made the header lock-up a composition (`lockupUrl`), and the same
+ * saving: no generation, nothing to pay for, and it reproduces exactly on every future run.
+ *
+ * **The tolerance is the whole risk, and it is a function of the palette rather than the shape.**
+ * `e_make_transparent` keys on ONE colour — the corner — so panes close to the wall in luminance go
+ * transparent with it. Tried first while the panes were "light sky blue, soft violet, warm gold" on
+ * cream: at 45 the whole mark came back as a bare navy crescent with its panes punched out, at 30
+ * only a ragged gold one survived. What made this viable was the owner's own next note, that the
+ * palette felt "מת מבחינת סטורציה" — vivid panes are far from cream, and at 35 they all survive.
+ * If the mark is ever repainted pale again, this route stops working and the note above is why.
+ */
+export function markCutUrl(store, manifest) {
+  const spec = store.logoCut;
+  if (!spec) return null;
+  const src = manifest[`${store.slug}:${spec.key}`];
+  if (!src) return null;                        // held back for a later run, like any missing ref
+  return src.replace('/upload/', '/upload/'
+    + `${spec.crop}/e_make_transparent:${spec.tolerance}/e_trim:8/`
+    + `c_pad,w_1024,h_1024,b_rgb:${spec.pad}/f_png/`);
+}
+
 export async function lockupUrl(store, manifest) {
   const { lockup } = store;
   if (!lockup) return null;
