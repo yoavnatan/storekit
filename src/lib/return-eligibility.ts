@@ -31,26 +31,32 @@ import { normalizeCategory } from './store-taxonomy.js';
  * תקנה 6 names goods; this names Hebrew shelf labels. Where the two meet needs confirming, and until
  * it is confirmed the list stays short and obvious rather than clever.
  */
-export const NON_RETURNABLE_TERMS: readonly string[] = [
-  // הלבשה תחתונה ובגדי ים — named by the regulation.
-  'הלבשה תחתונה',
-  'תחתונים',
-  'תחתוני',
-  'הלבשה אינטימית',
-  'בגדי ים',
-  'בגד ים',
-  'בגדי-ים',
-  // מוצרי מזון, תוספי תזונה ותרופות — also named by it.
-  'מזון',
-  'מאכל',
-  'תוספי תזונה',
-  'ויטמינים',
-  'תרופות',
-  // Food by another name, on the shelves where it actually appears.
-  'מזון לתינוק',
-  'מזון לחיות',
-  'אוכל לחיות',
+/**
+ * The exclusions, as SUBJECTS — each with the spellings a seller might actually shelve it under.
+ *
+ * Two lists in one on purpose, and the split is what makes both halves checkable. `subject` is the
+ * thing the regulation names and the thing the published policy has to mention; `match` is the
+ * spelling variants a Hebrew shop label arrives in. Flattened to one array they are indistinguishable
+ * — which is how a guard comparing the code against the policy page ended up comparing "מאכל" (a
+ * matcher) with prose that says "מזון" (the subject) and reporting a gap that was not one.
+ *
+ * `tests/returns-wired.test.ts` asserts the policy page names every SUBJECT. Adding a subject
+ * therefore fails the suite until the page says it, which is the join that matters: a right removed
+ * in code and not in the page is a right removed in silence.
+ */
+export const NON_RETURNABLE_SUBJECTS: readonly { subject: string; match: readonly string[] }[] = [
+  { subject: 'הלבשה תחתונה', match: ['הלבשה תחתונה', 'תחתונים', 'תחתוני', 'הלבשה אינטימית'] },
+  { subject: 'בגדי ים',      match: ['בגדי ים', 'בגד ים', 'בגדי-ים'] },
+  { subject: 'מזון',         match: ['מזון', 'מאכל', 'מזון לתינוק', 'מזון לחיות', 'אוכל לחיות'] },
+  { subject: 'תוספי תזונה',  match: ['תוספי תזונה', 'ויטמינים'] },
+  { subject: 'תרופות',       match: ['תרופות'] },
 ];
+
+/** Every spelling, for the matcher. Derived, so a variant added above cannot be forgotten here — and
+ *  NOT exported: nothing outside this file has a use for a matcher, and an export nothing calls is
+ *  the exact shape `tests/returns-wired.test.ts` refuses. */
+const NON_RETURNABLE_TERMS: readonly string[] =
+  NON_RETURNABLE_SUBJECTS.flatMap((s) => s.match);
 
 const TERMS = NON_RETURNABLE_TERMS.map((t) => normalizeCategory(t));
 

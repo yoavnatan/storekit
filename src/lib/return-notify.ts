@@ -153,10 +153,14 @@ export async function notifySellerReturnDeadline(
       userId: sellerId,
       role: 'seller',
       type: 'order_update',
-      title: 'בקשת החזרה נסגרת מחר',
+      title: what === 'answer' ? 'בקשת החזרה — היום היום האחרון לענות' : 'המוצר חזר אליך ומחכה לך',
       body: what === 'answer'
-        ? 'לא ענית לבקשת ההחזרה. אם לא תענה מחר, היא תיסגר כמסורבת.'
-        : 'החבילה הגיעה אליך ולא סימנת. אם לא תגיב מחר, הקונה יזוכה אוטומטית.',
+        // Why he MAY refuse, then what happens if he says nothing, then the thing he might actually
+        // want: silence works in his favour here, so a warning that only states the default has
+        // nothing in it for him.
+        ? 'הקונה ביקש להחזיר מוצר אחרי שחלף חלון ההחזרה, ולכן ההחלטה שלך. היום היום האחרון לענות. אם לא תענה, הבקשה תידחה והקונה לא יקבל כסף בחזרה. אם רצית לאשר את ההחזרה — זה היום.'
+        // He already marked it as arrived; the missing step is saying what condition it is in.
+        : 'המוצר חזר אליך ועוד לא סימנת מה מצבו — תקין, או ריק ומשומש. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.',
       relatedId: request.orderId,
       storeSlug: request.storeSlug,
     });

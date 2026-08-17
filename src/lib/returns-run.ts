@@ -1,11 +1,13 @@
 import { rows } from './db.js';
 import { businessTodayISO } from './business-day.js';
 import { getStoreBySlugOrPrevious } from './stores.js';
-import { moveReturnRequest, type ReturnRequest } from './return-requests.js';
+import { moveReturnRequest, getReturnRequest, type ReturnRequest } from './return-requests.js';
 import {
   dueForAutoRefund, handoverExpired, responseOverdue, type ReturnStatus,
 } from './returns.js';
 import { alertOnCriticalError } from './critical-alert.js';
+import { notifySellerReturnDeadline } from './return-notify.js';
+import { addDaysISO } from './date-range.js';
 
 /**
  * The returns mechanism, running itself.
@@ -49,6 +51,8 @@ export interface ReturnsRunResult {
   expired: number;
   /** Parcels the seller received and left alone — the buyer is credited. */
   autoRefunded: number;
+  /** Sellers told today that something closes against them tomorrow. */
+  warned: number;
   refundedAgorot: number;
   failed: number;
   /** Cases sitting in `disputed`, which is the ONE state a person has to resolve. Reported so the
@@ -72,7 +76,7 @@ const iso = (v: Date | string | null): string | null =>
 
 export async function runReturnsSweep(todayISO: string = businessTodayISO()): Promise<ReturnsRunResult> {
   const result: ReturnsRunResult = {
-    scanned: 0, autoRejected: 0, expired: 0, autoRefunded: 0,
+    scanned: 0, autoRejected: 0, expired: 0, autoRefunded: 0, warned: 0,
     refundedAgorot: 0, failed: 0, awaitingAdmin: 0,
   };
 
@@ -95,6 +99,26 @@ export async function runReturnsSweep(todayISO: string = businessTodayISO()): Pr
   for (const row of candidates) {
     const status = row.status as ReturnStatus;
     let to: ReturnStatus | null = null;
+
+    // ── One day's warning, before anything closes against him ──
+    //
+    // Asked by running the SAME predicates against TOMORROW: if a case would be overdue then but is
+    // not now, today is the last day he can act. That is the whole rule, and it needs no second
+    // definition of a deadline — which is the mistake this codebase pays for every time it is made.
+    const tomorrowISO = addDaysISO(todayISO, 1);
+    if (!responseOverdue(status, row.within_statutory, iso(row.created_at)!, todayISO)
+        && responseOverdue(status, row.within_statutory, iso(row.created_at)!, tomorrowISO)) {
+      const store = await getStoreBySlugOrPrevious(row.store_slug);
+      const req = store ? await getReturnRequest(row.id) : null;
+      if (store && req) await notifySellerReturnDeadline(store.sellerId, req, 'answer');
+      result.warned++;
+    } else if (!dueForAutoRefund(status, iso(row.delivered_back_at), todayISO)
+        && dueForAutoRefund(status, iso(row.delivered_back_at), tomorrowISO)) {
+      const store = await getStoreBySlugOrPrevious(row.store_slug);
+      const req = store ? await getReturnRequest(row.id) : null;
+      if (store && req) await notifySellerReturnDeadline(store.sellerId, req, 'open_parcel');
+      result.warned++;
+    }
 
     if (responseOverdue(status, row.within_statutory, iso(row.created_at)!, todayISO)) {
       to = 'rejected';
