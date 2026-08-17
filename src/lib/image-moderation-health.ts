@@ -61,8 +61,19 @@ export async function getImageModerationState(): Promise<ImageModerationState> {
   if (!moderationDeclaredOn()) return 'off';
   try {
     const row = await firstRow<{ n: string | number }>(
+      // `NOT resolved` is what gives this card an OFF switch, and it had none (found 2026-08-17,
+      // the day the add-on was actually enabled). The report from before the fix kept the card
+      // saying "נעצר" over a filter that was demonstrably running, with no way to dismiss it — the
+      // window would have expired on its own three weeks later, which is not a mechanism, it is a
+      // wait. The Alerts tab already has "סמן כטופל" on every row (`api/admin/errors.ts` →
+      // `setErrorResolved`); this is the query finally listening to it.
+      //
+      // It does NOT weaken the alarm: resolving is per-row, so the NEXT upload that comes back
+      // unjudged writes a new, unresolved row and the card returns. That is the property that
+      // matters — a condition that can be dismissed but not silenced.
       `SELECT count(*) AS n FROM error_log
         WHERE message LIKE $1
+          AND NOT resolved
           AND created_at > now() - make_interval(days => $2)`,
       [`${MODERATION_MISSING_MARKER}%`, MODERATION_STALE_DAYS],
     );

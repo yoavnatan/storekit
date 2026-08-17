@@ -15,11 +15,11 @@ import { getAdminTabBadges } from '../src/lib/admin-tab-badges.js';
 
 const original = process.env.PUBLIC_IMAGE_MODERATION_ON;
 
-async function logMissing(daysAgo: number) {
+async function logMissing(daysAgo: number, resolved = false) {
   await query(
-    `INSERT INTO error_log (id, source, message, created_at)
-     VALUES (gen_random_uuid(), 'client', $1, now() - make_interval(days => $2))`,
-    [`${MODERATION_MISSING_MARKER} the upload came back with no moderation verdict`, daysAgo],
+    `INSERT INTO error_log (id, source, message, resolved, created_at)
+     VALUES (gen_random_uuid(), 'client', $1, $3, now() - make_interval(days => $2))`,
+    [`${MODERATION_MISSING_MARKER} the upload came back with no moderation verdict`, daysAgo, resolved],
   );
 }
 
@@ -110,6 +110,34 @@ describe('what the Alerts tab badge counts', () => {
     process.env.PUBLIC_IMAGE_MODERATION_ON = 'false';
     await logMissing(1);
     expect((await getAdminTabBadges(views)).alerts).toBe(0);
+  });
+
+  it('is dismissible: a report marked "טופל" stops holding the card and the badge open', async () => {
+    /**
+     * The card had no OFF switch, and it showed (2026-08-17): the add-on was enabled, an upload
+     * came back judged, and the card still said "נעצר" because of the one report from before the
+     * fix. The only thing that would have cleared it was the 21-day window expiring — a wait, not
+     * a mechanism. The Alerts tab has carried "סמן כטופל" on every row all along
+     * (`api/admin/errors.ts` → `setErrorResolved`); the query simply never read it.
+     */
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'true';
+    await logMissing(1, true);
+    expect(await getImageModerationState()).toBe('ok');
+    // The badge answers the same question — a "(1)" over a dismissed card is the same bug wearing
+    // a different hat.
+    expect((await getAdminTabBadges(views)).alerts).toBe(0);
+  });
+
+  it('a dismissal silences the report, never the condition', async () => {
+    // The property that makes dismissal safe: `resolved` is per ROW, so the next upload that comes
+    // back unjudged writes a new one and the card is back. Nothing here can turn the alarm off for
+    // good.
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'true';
+    await logMissing(1, true);
+    expect(await getImageModerationState()).toBe('ok');
+    await logMissing(0);
+    expect(await getImageModerationState()).toBe('stopped');
+    expect((await getAdminTabBadges(views)).alerts).toBe(1);
   });
 
   it('still counts ordinary errors beside it, and does not double-count the reports', async () => {

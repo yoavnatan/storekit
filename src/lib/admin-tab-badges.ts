@@ -64,8 +64,12 @@ export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBad
        -- Deliberately NOT measured against newSince: every other badge counts things that ARRIVED,
        -- and opening the tab is a complete answer to them. This is a condition that is still true
        -- after it has been read, so it clears when the filter comes back — not when it is looked at.
+       -- NOT resolved, in step with image-moderation-health.ts: the badge and the section it
+       -- carries the admin to must answer the same question, or the tab shows "(1)" over a card
+       -- that has already been dismissed. See that file for why dismissal is allowed at all.
        (SELECT count(*) FROM error_log
-         WHERE message LIKE $5 AND created_at > now() - make_interval(days => $6)) AS moderation_reports,
+         WHERE message LIKE $5 AND NOT resolved
+           AND created_at > now() - make_interval(days => $6)) AS moderation_reports,
        (SELECT count(*) FROM admin_messages WHERE from_role = 'seller' AND NOT read_by_admin) AS messages`,
     [newSince.sellers, newSince.stores, newSince.orders, newSince.alerts,
      `${MODERATION_MISSING_MARKER}%`, MODERATION_STALE_DAYS],
