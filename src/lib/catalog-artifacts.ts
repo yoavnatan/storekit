@@ -15,6 +15,7 @@ import {
   ArtifactWriter,
 } from './artifacts.js';
 import { feedDocumentChunks } from './feed-document.js';
+import { reviewFeedChunks } from './review-feed-document.js';
 import { platformSitemapEntries } from './sitemap-document.js';
 import {
   buildSitemapIndexXml,
@@ -31,6 +32,9 @@ import { store as platform } from '../config/store.config.js';
 import { stripTrailingSlashes } from './url-base.js';
 
 export const FEED_ARTIFACT = 'feed:products.xml';
+/** The Google **product reviews** feed (`review-feed-document.ts`) — a different programme from the
+ *  product feed above and a different document, fetched on its own schedule by Merchant Center. */
+export const REVIEW_FEED_ARTIFACT = 'feed:product-reviews.xml';
 /** The sitemap INDEX — what `/sitemap-content.xml` serves and robots.txt names. */
 export const SITEMAP_ARTIFACT = 'sitemap:content.xml';
 /** Every shard's name starts with this, which is how a rebuild prunes the ones it did not write. */
@@ -79,6 +83,7 @@ export const CATALOG_ARTIFACT_INTERVAL_SEC = 30 * 60;
  */
 export async function rebuildCatalogArtifact(name: string): Promise<string> {
   if (name === FEED_ARTIFACT) return rebuildFeedArtifact();
+  if (name === REVIEW_FEED_ARTIFACT) return rebuildReviewFeedArtifact();
   if (name === SITEMAP_ARTIFACT) return rebuildSitemapArtifacts();
   throw new Error(`unknown catalog artifact "${name}"`);
 }
@@ -86,6 +91,12 @@ export async function rebuildCatalogArtifact(name: string): Promise<string> {
 async function rebuildFeedArtifact(): Promise<string> {
   const stats = newBuildStats();
   const meta = await writeArtifact(FEED_ARTIFACT, feedDocumentChunks(stats), () => `${stats.stores} stores · ${stats.items} items`);
+  return `${meta.detail} · ${meta.partCount} parts · ${meta.byteSize} bytes`;
+}
+
+async function rebuildReviewFeedArtifact(): Promise<string> {
+  const stats = newBuildStats();
+  const meta = await writeArtifact(REVIEW_FEED_ARTIFACT, reviewFeedChunks(stats), () => `${stats.stores} stores · ${stats.items} reviews`);
   return `${meta.detail} · ${meta.partCount} parts · ${meta.byteSize} bytes`;
 }
 

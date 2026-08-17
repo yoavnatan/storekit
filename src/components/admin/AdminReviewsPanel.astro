@@ -1,0 +1,68 @@
+---
+/**
+ * Product reviews, with a takedown button — under the visitor reports on the Alerts tab.
+ *
+ * **Why the platform needs this at all, when nothing else here is moderated by hand.** A review is
+ * the only text on the site written by somebody who is neither the seller nor us. The automatic
+ * gates do most of the work — a review needs a paid, shipped order line (`review-eligibility.ts`)
+ * and its text goes through the same spam/keyword filter as seller copy — but neither of those can
+ * catch a real buyer writing something defamatory, and there is no version of a public review
+ * system that has no way to take one down.
+ *
+ * **Not a queue, and deliberately not.** Nothing here waits for approval: a review is published the
+ * moment it is written, and this screen exists for the complaint that arrives afterwards — which
+ * lands two panels up, in `AdminReportsPanel`. A pre-moderation queue would be the manual
+ * gatekeeping the zero-touch rule forbids, and it would also mean every review sits invisible until
+ * someone happens to log in.
+ *
+ * Newest first, blocked ones included — an admin who hid something has to be able to find it again.
+ */
+import { formatHeDateTime } from '../../lib/format-date.js';
+import { starRowHtml } from '../../lib/star-html.js';
+import type { AdminReviewRow } from '../../lib/product-reviews.js';
+
+interface Props {
+  reviews: AdminReviewRow[];
+}
+const { reviews } = Astro.props;
+const hiddenCount = reviews.filter((r) => r.blocked).length;
+---
+
+<section class="admin-card" aria-labelledby="admin-reviews-heading">
+  <h3 id="admin-reviews-heading" class="admin-card__title">
+    ביקורות מוצרים
+    {hiddenCount > 0 && <span class="admin-badge admin-badge--failed">{hiddenCount} מוסתרות</span>}
+  </h3>
+
+  {reviews.length === 0
+    ? <p class="admin-empty">עדיין אין ביקורות.</p>
+    : (
+      <div class="flex flex-col" style="gap:0.6rem">
+        {reviews.map((r) => (
+          <article class="admin-review-row" data-review-row={r.id}
+                   style={`display:flex;gap:0.75rem;align-items:flex-start;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);opacity:${r.blocked ? 0.55 : 1}`}>
+            <div class="min-w-0" style="flex:1 1 auto">
+              <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
+                <Fragment set:html={starRowHtml(r.rating, { px: 13 })} />
+                <a href={`/${r.storeSlug}/${r.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
+                   style="font-size:0.82rem;font-weight:600;color:var(--color-text);text-decoration:none">{r.productName}</a>
+                <span style="font-size:0.75rem;color:var(--color-muted)">{r.storeName}</span>
+                <span style="font-size:0.75rem;color:var(--color-muted)">·</span>
+                <span style="font-size:0.75rem;color:var(--color-muted)">{r.reviewerName || '—'}</span>
+                <time datetime={r.createdAt} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">
+                  {formatHeDateTime(r.createdAt)}
+                </time>
+              </div>
+              {r.body
+                ? <p dir="auto" class="whitespace-pre-line" style="margin:0;font-size:0.85rem;line-height:1.5;color:var(--color-muted);overflow-wrap:break-word">{r.body}</p>
+                : <p style="margin:0;font-size:0.8rem;color:var(--color-muted)">דירוג ללא טקסט</p>}
+            </div>
+            <button type="button" class={`btn btn--sm admin-review-toggle${r.blocked ? '' : ' btn--ghost'}`}
+                    data-review-id={r.id} data-blocked={r.blocked ? '1' : ''} style="flex:0 0 auto">
+              {r.blocked ? 'החזר לפרסום' : 'הסתר'}
+            </button>
+          </article>
+        ))}
+      </div>
+    )}
+</section>

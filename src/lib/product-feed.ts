@@ -148,6 +148,28 @@ function salePriceEffectiveDate(endsAt: string, startsAt: string | undefined, to
   return `${from}T00:00${businessOffsetForDay(from)}/${endsAt}T23:59${businessOffsetForDay(endsAt)}`;
 }
 
+/**
+ * The two identifiers Google matches a product on, derived ONCE for every feed that names it.
+ *
+ * Split out of `buildProductFeedAttributes` (2026-08-17) when the product REVIEWS feed arrived and
+ * needed the same two values. A review is joined to a product by `brand` + `mpn` + `product_url`,
+ * so a review feed that derived them independently would attach a store's reviews to nothing the
+ * moment either rule moved — and would do it silently, which is this project's known feed failure
+ * mode (memory `project_feed_silent_rejection_class`). Same reasoning as `ad-item-id.ts`: one
+ * product, one identity, whoever is asking.
+ */
+export function feedBrand(product: Pick<StoreProduct, 'brand'>, storeName: string): string {
+  // The seller's own brand field when they filled one in (a reseller listing someone else's
+  // product), else the store name. Merchant Center matches listings across the market on brand,
+  // so getting this wrong doesn't just mislabel the item — it stops it joining the real product.
+  return clampText((product.brand?.trim() || storeName).trim(), BRAND_MAX);
+}
+
+/** Over-length → no mpn at all, not a cut one (see MPN_MAX). */
+export function feedMpn(product: Pick<StoreProduct, 'sku'>): string | undefined {
+  return product.sku && product.sku.length <= MPN_MAX ? product.sku : undefined;
+}
+
 export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedContext): FeedAttributes {
   const inferText = [ctx.categoryPath, product.name, ...(product.tags ?? [])];
   const g = inferAudienceGender(inferText);
@@ -155,12 +177,8 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   const a = inferAgeGroup(inferText);
   const ageGroup: FeedAttributes['ageGroup'] = a === 'infant' ? 'infant' : a === 'kids' ? 'kids' : 'adult';
 
-  // The seller's own brand field when they filled one in (a reseller listing someone else's
-  // product), else the store name. Merchant Center matches listings across the market on brand,
-  // so getting this wrong doesn't just mislabel the item — it stops it joining the real product.
-  const brand = clampText((product.brand?.trim() || ctx.storeName).trim(), BRAND_MAX);
-  // Over-length → no mpn at all, not a cut one (see MPN_MAX).
-  const mpn = product.sku && product.sku.length <= MPN_MAX ? product.sku : undefined;
+  const brand = feedBrand(product, ctx.storeName);
+  const mpn = feedMpn(product);
   const gtin = undefined; // no barcode field yet — optional in the feed spec
   const identifierExists = Boolean(gtin || (mpn && brand));
 

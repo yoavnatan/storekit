@@ -1,0 +1,101 @@
+---
+/**
+ * Writing one review: five stars and an optional sentence.
+ *
+ * ONE component for both places a review can be written — the product page (for a signed-in buyer
+ * who bought it) and `/review/[orderId]` (the link a guest gets by mail). Two renderers of the same
+ * form is the drift class this project has already paid for (memory
+ * `project_client_renderer_i18n_drift`), and here the two copies would have been a star picker and
+ * an eligibility message, i.e. exactly the parts that must never disagree.
+ *
+ * **Everything it needs travels on the element**, including the strings: `src/scripts/review-form.ts`
+ * reads them off `data-str-*` and never holds a literal, so a wording pass through
+ * `scripts/copy-review.mjs` reaches the client messages too.
+ *
+ * The textarea is optional on purpose — a rating alone is a complete review (`reviews.ts`). The
+ * friction of demanding a paragraph is what leaves review systems empty, and the star is the part
+ * that actually gets read.
+ */
+import { RATING_MAX, REVIEW_BODY_MAX } from '../lib/reviews.js';
+import { STAR_PATH } from '../lib/star-html.js';
+import { getLang, getT } from '../i18n/index.js';
+
+interface Props {
+  productId: string;
+  orderId: string;
+  /** The guest's signed proof of purchase (`review-token.ts`). Absent for a signed-in buyer, whose
+   *  session is the proof. */
+  token?: string;
+  /** Shown above the stars on the review page, where one form sits per purchased item. The product
+   *  page omits it — the product's own name is already the `<h1>`. */
+  productName?: string;
+  /** Small print under the button. Off inside the product page's modal, which says it elsewhere. */
+  showVerifiedNote?: boolean;
+}
+
+const { productId, orderId, token, productName, showVerifiedNote = true } = Astro.props;
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const stars = Array.from({ length: RATING_MAX }, (_, i) => i + 1);
+---
+
+<form
+  class="review-form flex flex-col gap-3"
+  data-product-id={productId}
+  data-order-id={orderId}
+  data-token={token}
+  data-str-sending={t.reviews.sending}
+  data-str-submit={t.reviews.submit}
+  data-str-thanks={t.reviews.thanks}
+  data-str-already={t.reviews.alreadyReviewed}
+  data-str-failed={t.reviews.failed}
+  data-str-spam={t.reviews.spam}
+  data-str-too-long={t.reviews.tooLong}
+  data-str-throttled={t.reviews.throttled}
+  data-str-pick={t.reviews.pickStar}
+>
+  {productName && (
+    <p dir="auto" style="font-size:0.9rem;font-weight:600;color:var(--color-text);margin:0">{productName}</p>
+  )}
+
+  <div class="flex flex-col gap-1.5">
+    <span id={`rating-label-${productId}`} style="font-size:0.78rem;font-weight:600;color:var(--color-muted)">
+      {t.reviews.yourRating}
+    </span>
+    {/* `dir="ltr"`, like every other star row on the site — StarRating.astro's header argues it. */}
+    <div class="review-stars inline-flex" dir="ltr" role="radiogroup"
+         aria-labelledby={`rating-label-${productId}`} style="gap:0.25rem">
+      {stars.map((n) => (
+        <button type="button" class="review-star" role="radio" aria-checked="false" data-rating={n}
+                tabindex={n === 1 ? 0 : -1}
+                aria-label={`${n} / ${RATING_MAX}`}
+                style="background:none;border:none;padding:0.1rem;cursor:pointer;line-height:0;color:var(--color-border);transition:color 0.12s,transform 0.12s">
+          {/* The same outline the display stars use — imported, never re-typed, or the picker and
+              the score it produces slowly stop being the same star (lib/star-html.ts). */}
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d={STAR_PATH}/>
+          </svg>
+        </button>
+      ))}
+    </div>
+  </div>
+
+  <label class="flex flex-col gap-1.5">
+    <span style="font-size:0.78rem;font-weight:600;color:var(--color-muted)">{t.reviews.yourWords}</span>
+    {/* `resize:none` is a site-wide ban, not a choice here (AI_INSTRUCTIONS → Micro-interactions). */}
+    <textarea class="review-body" rows="3" maxlength={REVIEW_BODY_MAX} dir="auto"
+              style="resize:none;width:100%;border:1px solid var(--color-border);border-radius:var(--radius);padding:0.55rem 0.7rem;font:inherit;font-size:0.9rem;background:var(--color-surface);color:var(--color-text)"></textarea>
+  </label>
+
+  <div class="flex items-center gap-3 flex-wrap">
+    <button type="submit" class="btn review-submit" disabled>{t.reviews.submit}</button>
+    {showVerifiedNote && (
+      <span style="font-size:0.72rem;color:var(--color-muted)">{t.reviews.verifiedPurchase}</span>
+    )}
+  </div>
+
+  {/* `aria-live`, because the outcome of pressing the button is a sentence that appears here and
+      nowhere else — a sighted user sees it, and without this nobody else would. */}
+  <p class="review-msg" role="status" aria-live="polite"
+     style="margin:0;font-size:0.82rem;min-height:1.1em;color:var(--color-muted)"></p>
+</form>

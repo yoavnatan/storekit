@@ -367,6 +367,11 @@ export const RESERVED_SLUGS = new Set<string>([
   // A reserved word and a real page are two halves of one fix: reserving alone leaves the 404 that
   // Merchant Center reads as a shop with no published terms (contact.astro).
   'terms', 'contact', 'returns-policy',
+  // The review link the order mail and the buyer's own order list both point at (`/review/<id>`).
+  // Reserved for the same reason as the two above — an unreserved segment falls through to the
+  // store router, so a seller registering the slug `review` would answer for everyone's review
+  // links. `tests/external-contract.test.ts` is what caught it.
+  'review',
 ]);
 
 const LONGEST_RESERVED_SLUG = Math.max(...[...RESERVED_SLUGS].map((s) => s.length));

@@ -122,6 +122,19 @@ export interface StoreProduct {
    *  leaked through /api/store-product, the feed, or JSON-LD (CURRENT_TASK.md, seller
    *  dashboard item 2). Free text, length-capped on write. */
   sellerNote?: string;
+  /**
+   * The product's rating, CACHED from `product_reviews` (migration 0033) — count and the sum of
+   * the scores, never an average. Absent means no published review, which is not the same as a
+   * score of zero: `reviews.ts#averageRating` returns null for it and every surface renders
+   * nothing rather than an empty star.
+   *
+   * Read directly off the product row on purpose. The stars belong on every card — spotlight,
+   * store grid, search, the related strip — and as a join those would be an aggregate scan on the
+   * platform's hottest queries. Written only by `product-reviews.ts#recomputeProductRating`, which
+   * recomputes from the reviews rather than adjusting by a delta; the migration says why.
+   */
+  reviewCount?: number;
+  reviewRatingSum?: number;
   createdAt: string;
 }
 
@@ -140,7 +153,7 @@ const COLUMNS = `p.id, p.store_id, p.slug, p.name, p.description, p.price_agorot
     p.discount_type, p.discount_percent, p.discount_amount_agorot, p.discount_show_badge,
     to_char(p.discount_starts_at, 'YYYY-MM-DD') AS discount_starts_at,
     to_char(p.discount_ends_at, 'YYYY-MM-DD') AS discount_ends_at,
-    p.created_at,
+    p.created_at, p.review_count, p.review_rating_sum,
     (SELECT array_agg(i.url ORDER BY i.position)
        FROM product_images i WHERE i.product_id = p.id) AS images,
     (SELECT jsonb_object_agg(v.combo_key, v.stock)
@@ -188,6 +201,8 @@ interface ProductRow {
   discount_starts_at: string | null;
   discount_ends_at: string | null;
   created_at: Date | string | null;
+  review_count: number | null;
+  review_rating_sum: number | null;
   images: string[] | null;
   variant_stock: Record<string, number> | null;
   variant_sku: Record<string, string> | null;
@@ -254,6 +269,12 @@ function toProduct(row: ProductRow): StoreProduct {
   const discount = toDiscount(row);
   if (discount) product.discount = discount;
   if (row.seller_note) product.sellerNote = row.seller_note;
+  // Absent when nothing has been rated, like every other optional above — so "no reviews" reads as
+  // no key rather than as a zero score anywhere downstream (reviews.ts#averageRating).
+  if (row.review_count) {
+    product.reviewCount = Number(row.review_count);
+    product.reviewRatingSum = Number(row.review_rating_sum ?? 0);
+  }
   return product;
 }
 

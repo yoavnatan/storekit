@@ -1,0 +1,54 @@
+---
+/**
+ * A product's rating, as stars.
+ *
+ * A thin wrapper over `lib/star-html.ts`, which holds the markup and the two rules behind it (the
+ * clipped half star, and why the row is `dir="ltr"` on an RTL page). The markup lives there and not
+ * here because the store grid and the homepage shelf each render their cards a SECOND time in
+ * JavaScript, and a component cannot serve that half — so stars written only here would disappear
+ * from every card past the first page of "טען עוד", silently.
+ *
+ * What this adds is the localised wording: the count label and the accessible name, which the
+ * string helper deliberately refuses to hold so that no client twin can drift from `translations.ts`
+ * (memory `project_client_renderer_i18n_drift`).
+ */
+import { starRowHtml } from '../lib/star-html.js';
+import { ratingDisplay } from '../lib/reviews.js';
+import { REVIEWS_SECTION_ANCHOR } from '../lib/reviews-anchor.js';
+import { getLang, getT } from '../i18n/index.js';
+
+interface Props {
+  /** The average, or null when there are none — null renders nothing at all. */
+  value: number | null;
+  /** How many published reviews the average is built from. */
+  count: number;
+  /** `sm` for a product card, `md` for a review row, `lg` for the summary under a product title. */
+  size?: 'sm' | 'md' | 'lg';
+  /** Show the numeric average beside the stars. */
+  showValue?: boolean;
+  /** Show "12 ביקורות". Off inside a single review row, where the count means nothing. */
+  showCount?: boolean;
+  /** Make it a link down to the reviews section of the current page. */
+  linkToReviews?: boolean;
+  /** A single review's own score rather than a product average — no count, no link. */
+  standalone?: boolean;
+}
+
+const { value, count, size = 'md', showValue = false, showCount = false, linkToReviews = false, standalone = false } = Astro.props;
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+
+const STAR_PX: Record<NonNullable<Props['size']>, number> = { sm: 13, md: 15, lg: 18 };
+const countLabel = count === 1 ? t.reviews.countOne : `${count} ${t.reviews.countMany}`;
+
+const html = starRowHtml(value, {
+  px: STAR_PX[size],
+  showValue,
+  ...(showCount && !standalone ? { countLabel } : {}),
+  ariaLabel: value === null ? '' : `${t.reviews.starsAria}: ${ratingDisplay(value)} ${t.reviews.outOf}`,
+  ...(linkToReviews ? { href: `#${REVIEWS_SECTION_ANCHOR}` } : {}),
+});
+---
+
+<Fragment set:html={html} />

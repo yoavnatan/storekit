@@ -177,6 +177,26 @@ export function passwordResetRules(email: string, ip: string): RateLimitRule[] {
   ];
 }
 
+/** Reviews one source may ATTEMPT per window. */
+const REVIEW_ATTEMPTS_PER_WINDOW = 20;
+
+/**
+ * Writing a product review (`/api/review`).
+ *
+ * A second lock on a door whose real bolt is elsewhere: a review needs a paid, shipped order line
+ * that has not been reviewed yet (`review-eligibility.ts`), and one purchase earns exactly one
+ * review by database constraint. So there is no volume of requests that produces a wall of reviews,
+ * and this limiter is not what makes the feature safe.
+ *
+ * What it does stop is the cheap thing a limiter is for: a script hammering the endpoint with
+ * guessed order ids to find one that answers differently. Failures count as well as successes —
+ * the guessing IS the traffic — and the number is far above any real person, who writes at most a
+ * handful of reviews after one delivery.
+ */
+export function reviewRules(ip: string): RateLimitRule[] {
+  return [{ bucket: `review:${ip.slice(0, 120)}`, limit: REVIEW_ATTEMPTS_PER_WINDOW, windowSec: WINDOW_SEC }];
+}
+
 export interface RateVerdict {
   allowed: boolean;
   /** Whole seconds until the blocking window expires; 0 when allowed. The UI turns this into
