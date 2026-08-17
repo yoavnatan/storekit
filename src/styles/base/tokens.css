@@ -361,6 +361,18 @@
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+/* A row that just changed, said WITHOUT moving anything (owner, 2026-08-17).
+   The campaign cards first announced a pause with a banner inserted above the card, which pushed
+   every card below it down for three seconds — a confirmation that makes the list jump is a worse
+   answer than the silence it replaced. This says the same thing in place: the card's own status
+   chip already flips to "מושהה" and its button to "המשך", so the words are there; this only draws
+   the eye to them. `box-shadow` and not `outline` or a border, because a shadow is drawn outside
+   the box and changes no layout, and it fades to transparent rather than being removed, so nothing
+   has to clean it up. Runs once — never `infinite`. */
+@keyframes row-settled {
+  from { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 60%, transparent); }
+  to   { box-shadow: 0 0 0 2px transparent; }
+}
 /* Shared by category-picker__menu (Tailwind, animate-status-pop). */
 @keyframes status-pop {
   from { opacity: 0; transform: translateY(-5px) scale(0.97); }
