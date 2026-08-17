@@ -31,6 +31,7 @@ import { isStoreFavorited } from '../../lib/user-carts.js';
 import { jsonForScript } from '../../lib/json-script.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
+import { cardStarRowHtml } from '../../lib/star-html.js';
 import { demoProductBadgeHtml } from '../../lib/demo-badge.js';
 
 const { storeSlug: slug } = Astro.params;
@@ -385,6 +386,7 @@ const pmI18n = {
   badgeNew: t.store.badgeNew,
   saleBadge: t.store.saleBadge,
   saleWas: t.store.saleWas,
+  starsAria: t.reviews.starsAria,
   loadingMore: t.store.loadingMore,
   filterAll: t.store.filterAll,
   filterByCategory: t.store.filterByCategory,
@@ -1002,6 +1004,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                        style="color:inherit;text-decoration:none;display:block">
                       <h3 class="product-card__name">{p.name}</h3>
                     </a>
+                    {/* Stars sit between the name and the price: it is what a shopper scans a grid
+                        for, and it renders nothing at all on an unrated product rather than a row
+                        of grey stars. Same helper the "טען עוד" builder below calls — one markup,
+                        two renderers (lib/star-html.ts). */}
+                    <Fragment set:html={cardStarRowHtml({ count: p.reviewCount ?? 0, sum: p.reviewRatingSum ?? 0 }, t.reviews.starsAria)} />
                     <div class="product-card__footer">
                       <span class="product-card__price-wrap"><Fragment set:html={priceHtml(pv, { className: 'product-card__price', saleLabel: t.store.saleWas })} /></span>
                       {p.stock <= 0
@@ -1145,6 +1152,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   import { initStickyBar } from '../../lib/sticky-bar.js';
   import { resolvePrice, type StoreSale } from '../../lib/discounts.js';
   import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
+  import { cardStarRowHtml } from '../../lib/star-html.js';
   import { showErrorToast } from '../../lib/toast.js';
 
   // Parsed once — the store's sale never changes within a page view.
@@ -2045,6 +2053,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         <a href="/${escHtml(storeSlug)}/${escHtml(p.slug)}" class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150" style="color:inherit;text-decoration:none;display:block">
           <h3 class="product-card__name">${escHtml(p.name)}</h3>
         </a>
+        ${cardStarRowHtml({ count: p.reviewCount ?? 0, sum: p.reviewRatingSum ?? 0 }, pi.starsAria)}
         <div class="product-card__footer">
           <span class="product-card__price-wrap">${priceHtml(pv, { className: 'product-card__price', saleLabel: pi.saleWas })}</span>
           ${stockHtml}

@@ -16,6 +16,7 @@ import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } fro
 import { groupBuyerPurchases, countBuyerPurchases } from '../../lib/buyer-purchases.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { orderIsReviewable } from '../../lib/review-eligibility.js';
 
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
@@ -989,6 +990,16 @@ const STORES_NAMED = 2;
                         {invoiceUrlByOrderId.get(s.order.id) && (
                           <p class="o-tracking">{t.buyerDashboard.invoiceLabel}: <a href={invoiceUrlByOrderId.get(s.order.id)} target="_blank" rel="noopener noreferrer"><strong>{t.buyerDashboard.invoiceView}</strong></a></p>
                         )}
+                        {/* "How was it?" — the signed-in buyer's way in, and the same destination
+                            the emailed link opens. Shown whenever the slice is at a status a buyer
+                            may review from (`buyerMayReview`), without asking whether anything is
+                            left to rate: that costs a query per slice on every page load, and the
+                            review page itself answers it in one sentence when there is nothing. */}
+                        {orderIsReviewable(s.order) && (
+                          <p class="o-tracking">
+                            <a href={`/review/${s.order.id}`}><strong>{t.reviews.writeCta}</strong></a>
+                          </p>
+                        )}
                         {/* A return: the status when one exists, the button when one may be opened.
                             Never both, and never the button on an order that is not delivered —
                             anything earlier is a CANCELLATION, a different thing entirely. */}
@@ -1317,6 +1328,7 @@ const STORES_NAMED = 2;
   data-prof-error-network={t.buyerDashboard.profErrorNetwork}
   data-date-locale={dateLocale}
   data-order-items={t.buyerDashboard.orderItems}
+  data-review-cta={t.reviews.writeCta}
   data-free-shipping={t.buyerDashboard.freeShipping}
   data-order-discount={t.buyerDashboard.orderDiscount}
   data-tracking-number={t.buyerDashboard.trackingNumber}
@@ -1354,6 +1366,7 @@ const STORES_NAMED = 2;
   import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
   import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
   import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+  import { orderIsReviewable } from '../../lib/review-eligibility.js';
   import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
   import { markPanelFresh, isPanelStale, panelHoldsTypedText } from '../../lib/panel-freshness.js';
 
@@ -1377,6 +1390,7 @@ const STORES_NAMED = 2;
     profErrorNetwork:_i18nEl.dataset.profErrorNetwork ?? 'Network error, try again',
     dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
     orderItems:      _i18nEl.dataset.orderItems       ?? 'Items',
+    reviewCta:       _i18nEl.dataset.reviewCta        ?? 'Rate this product',
     freeShipping:    _i18nEl.dataset.freeShipping     ?? 'Free',
     orderDiscount:   _i18nEl.dataset.orderDiscount    ?? 'Discount',
     trackingNumber:  _i18nEl.dataset.trackingNumber   ?? 'Tracking number',
@@ -2389,7 +2403,7 @@ const STORES_NAMED = 2;
   // search + an active/history split, not a sort menu.
   interface BuyerOrderJson {
     id: string; createdAt: string; totalAgorot: number;
-    shippingStatus: string; trackingNumber?: string;
+    shippingStatus: string; paymentStatus: string; trackingNumber?: string;
     items: { storeSlug: string; storeName: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
     storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { appliedAgorot: number } }>;
   }
@@ -2444,6 +2458,10 @@ const STORES_NAMED = 2;
         </div>` : '';
       const trackingHtml = s.order.trackingNumber
         ? `<p class="o-tracking">${escB(I.trackingNumber)}: <strong>${escB(s.order.trackingNumber)}</strong></p>` : '';
+      // The server twin's rule, read from the same table — never a status comparison written
+      // here, which is how the two renderers of this card come to disagree.
+      const reviewHtml = orderIsReviewable(s.order)
+        ? `<p class="o-tracking"><a href="/review/${encodeURIComponent(s.order.id)}"><strong>${escB(I.reviewCta)}</strong></a></p>` : '';
       return `
         <div class="o-store-group">
           <div class="o-store-head">
@@ -2453,6 +2471,7 @@ const STORES_NAMED = 2;
           <ul class="o-item-list">${itemsHtml}</ul>
           ${subHtml}
           ${trackingHtml}
+          ${reviewHtml}
         </div>`;
     }).join('');
     const grandTotalHtml = split ? `

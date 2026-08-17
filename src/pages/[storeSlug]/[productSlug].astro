@@ -26,6 +26,12 @@ import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { jsonForScript } from '../../lib/json-script.js';
 import { machineUrl } from '../../lib/url-base.js';
 import { toAbsoluteImageUrl } from '../../lib/image-url.js';
+import StarRating from '../../components/StarRating.astro';
+import { cardStarRowHtml } from '../../lib/star-html.js';
+import ReviewForm from '../../components/ReviewForm.astro';
+import { getReviewsForProduct, getRatingCountsForProduct, getReviewableOrderForProduct } from '../../lib/product-reviews.js';
+import { averageRating, ratingDisplay, ratingHistogram, RATING_MAX } from '../../lib/reviews.js';
+import { REVIEWS_SECTION_ANCHOR } from '../../lib/reviews-anchor.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -106,6 +112,10 @@ const dashboardHref = shopStore.customDomain?.status === 'active'
 
 const isNew = new Date(product.createdAt).toDateString() === new Date().toDateString();
 const images = product.images ?? [];
+
+/** How many reviews the page renders. Everything past this is a scroll nobody does and bytes every
+ *  shopper pays for; the score and the histogram are computed over ALL of them regardless. */
+const REVIEWS_PAGE_SIZE = 8;
 
 // Used only as a heuristic for each option button's own availability preview
 // (combined with the first option of every *other* dimension) — no dimension
@@ -188,9 +198,17 @@ const checkoutHref = `/checkout?store=${encodeURIComponent(shopStore.slug)}`;
 // Together, not one after the other: neither needs the other's answer, only the store, and in
 // series they were two round trips on the platform's most-indexed page type. The store page and
 // the homepage had the same shape (DB_MIGRATION_PLAN.md §8).
-const [allStoreProducts, storeCategoriesForProduct] = await Promise.all([
+// The reviews join this group rather than sitting after it: the list, the histogram and "may this
+// visitor write one" depend on nothing but the product and the session, both already in hand, and
+// awaited one by one they would be three more round trips on the platform's most-indexed page type.
+// `reviewableOrderId` is skipped entirely for a signed-out visitor — the common case, and the query
+// has no answer without an account.
+const [allStoreProducts, storeCategoriesForProduct, productReviews, productRatingCounts, reviewableOrderId] = await Promise.all([
   getVisibleProductsByStoreId(shopStore.id),
   getCategoriesByStoreId(shopStore.id),
+  (product.reviewCount ?? 0) > 0 ? getReviewsForProduct(product.id, REVIEWS_PAGE_SIZE) : Promise.resolve([]),
+  (product.reviewCount ?? 0) > 0 ? getRatingCountsForProduct(product.id) : Promise.resolve([]),
+  userId ? getReviewableOrderForProduct(userId, product.id) : Promise.resolve(null),
 ]);
 const relatedProducts = allStoreProducts
   .filter((p) => p.slug !== product.slug)
@@ -210,9 +228,59 @@ const pv = resolvePrice(product, shopStore.sale);
 // The day this price stops holding, when a dated sale is what produced it (discounts.ts).
 const saleEndsAfter = priceValidUntil(product, shopStore.sale);
 
+// The product's score, from the cached aggregate on the row (migration 0033). `null` when nothing
+// has been rated — and null is rendered as NOTHING, never as five empty stars or a `ratingValue`
+// of 0, which Google would read as a real and terrible score (reviews.ts#averageRating).
+const ratingAggregate = { count: product.reviewCount ?? 0, sum: product.reviewRatingSum ?? 0 };
+const ratingAvg = averageRating(ratingAggregate);
+const ratingBars = ratingHistogram(productRatingCounts);
+// The form is offered only to someone who has an unreviewed, reviewable purchase of THIS product.
+// The same question the API re-asks before it writes — this half only decides what is on screen.
+const canReview = !!reviewableOrderId;
+
+/**
+ * `aggregateRating` + the reviews themselves, when there are any.
+ *
+ * This is the whole SEO payoff of the feature and the only route ratings have to META (their
+ * catalog feed has no rating field at all — `review-feed.ts` carries the check): a star rating in a
+ * Google product rich result, and a landing page an AI shopping answer can read a score off.
+ *
+ * **`ratingValue` is the true average, not the rounded half the stars draw.** Structured data that
+ * disagrees with the visible page is the mismatch Google penalises, and what is visible here is the
+ * one-decimal number beside the stars — so both come from `ratingDisplay` and cannot drift.
+ *
+ * Only reviews with TEXT are emitted as `review` entries: a `Review` with an empty `reviewBody` is
+ * an invalid entity, while a rating-only review still counts in the aggregate. Same split the
+ * Google reviews feed makes, for the same reason.
+ */
+const reviewsWithText = productReviews.filter((r) => r.body.trim());
+// Constructed ONCE, not per row. Building an `Intl` formatter inside a loop is what took the admin
+// dashboard from 700ms to 80ms when it was removed (memory `project_admin_dashboard_render_cost`);
+// eight rows is not that page, but the shape is how it got there.
+const reviewDateFormat = new Intl.DateTimeFormat(lang === 'he' ? 'he-IL' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const ratingJsonLd = ratingAvg === null ? {} : {
+  aggregateRating: {
+    '@type': 'AggregateRating',
+    ratingValue: ratingDisplay(ratingAvg),
+    reviewCount: ratingAggregate.count,
+    bestRating: RATING_MAX,
+    worstRating: 1,
+  },
+  ...(reviewsWithText.length ? {
+    review: reviewsWithText.map((r) => ({
+      '@type': 'Review',
+      reviewRating: { '@type': 'Rating', ratingValue: r.rating, bestRating: RATING_MAX, worstRating: 1 },
+      author: { '@type': 'Person', name: r.reviewerName || t.reviews.anonymous },
+      datePublished: r.createdAt.slice(0, 10),
+      reviewBody: r.body,
+    })),
+  } : {}),
+};
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Product',
+  ...ratingJsonLd,
   name: product.name,
   ...(product.description ? { description: product.description } : {}),
   // Absolute, like the feed's `image_link` — `sanitizeImageUrl` accepts a site-relative path by
@@ -458,6 +526,10 @@ const pmI18n = {
           <div class="flex flex-col gap-2" dir="auto">
             <ProductDemoBadge demo={isDemo} variant="inline" />
             <h1 id="product-name-heading" style="font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
+            {/* Between the name and the price, which is where a shopper looks for it — and a link
+                rather than a decoration, because the one thing anyone wants from a star row is to
+                read what is behind it. Renders nothing at all when there are no reviews. */}
+            <StarRating value={ratingAvg} count={ratingAggregate.count} size="lg" showValue showCount linkToReviews />
             <p style="font-size:1.25rem;font-weight:800;line-height:1;margin:0" class={pv.isDiscounted ? undefined : '[color:var(--color-accent)]'}>
               <Fragment set:html={priceHtml(pv, { saleLabel: t.store.saleWas })} />
             </p>
@@ -756,6 +828,84 @@ const pmI18n = {
         </div>
       )}
 
+      <!--
+        Reviews.
+
+        Above the related strip on purpose: what other buyers said about THIS product outranks four
+        other products from the same shop, and a shopper who has scrolled this far is deciding, not
+        browsing.
+
+        The whole section renders only when there is something in it OR the visitor may write one.
+        An empty "0 reviews · be the first" block on every product of a new catalogue is a page
+        announcing what it does not have, on every product page, forever — and it is the exact
+        pattern the standing rule against prose above a screen exists to stop (memory
+        `feedback_no_standing_screen_prose`).
+      -->
+      {(ratingAggregate.count > 0 || canReview) && (
+        <section id={REVIEWS_SECTION_ANCHOR} style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border);scroll-margin-top:5rem" aria-labelledby="reviews-heading">
+          <p id="reviews-heading" style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
+            {t.reviews.title}
+          </p>
+
+          {ratingAggregate.count > 0 && (
+            <div class="flex flex-wrap items-center gap-x-8 gap-y-4" style="margin-bottom:1.25rem">
+              <div class="flex flex-col gap-1" dir="auto">
+                <span style="font-size:2rem;font-weight:800;line-height:1;color:var(--color-text)">{ratingDisplay(ratingAvg!)}</span>
+                <StarRating value={ratingAvg} count={ratingAggregate.count} size="md" showCount />
+              </div>
+              {/* The distribution, five rows always — a histogram that hides its empty rows
+                  re-scales itself on every new review and stops being comparable. */}
+              <ul class="flex flex-col" style="gap:0.2rem;margin:0;padding:0;list-style:none;min-width:11rem;flex:1 1 11rem;max-width:20rem"
+                  aria-label={t.reviews.distribution}>
+                {ratingBars.map((bar) => (
+                  <li class="flex items-center" style="gap:0.5rem;font-size:0.75rem;color:var(--color-muted)">
+                    <span style="width:1.6rem;text-align:end;flex:0 0 auto" dir="ltr">{bar.rating}★</span>
+                    <span style="flex:1 1 auto;height:6px;border-radius:9999px;background:var(--color-bg);overflow:hidden">
+                      <span style={`display:block;height:100%;border-radius:9999px;background:var(--color-warning);width:${ratingAggregate.count ? Math.round((bar.count / ratingAggregate.count) * 100) : 0}%`}></span>
+                    </span>
+                    <span style="width:1.8rem;flex:0 0 auto">{bar.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {canReview && (
+            <div style="border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:1rem;margin-bottom:1.25rem">
+              <ReviewForm productId={product.id} orderId={reviewableOrderId!} />
+            </div>
+          )}
+
+          <ul class="flex flex-col" style="gap:1rem;margin:0;padding:0;list-style:none">
+            {productReviews.map((r) => (
+              <li style="border-top:1px solid var(--color-border);padding-top:1rem">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1" style="margin-bottom:0.35rem">
+                  <StarRating value={r.rating} count={1} size="sm" standalone />
+                  <span dir="auto" style="font-size:0.82rem;font-weight:600;color:var(--color-text)">{r.reviewerName || t.reviews.anonymous}</span>
+                  <span style="font-size:0.72rem;color:var(--color-muted)">·</span>
+                  {/* Every review here IS one, by construction — nobody can write one without a
+                      paid, shipped order line. It is a fact about the platform, not a badge some
+                      reviews earn (review-eligibility.ts). */}
+                  <span style="font-size:0.72rem;color:var(--color-success);font-weight:600">{t.reviews.verifiedPurchase}</span>
+                  <time datetime={r.createdAt.slice(0, 10)} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">
+                    {reviewDateFormat.format(new Date(r.createdAt))}
+                  </time>
+                </div>
+                {r.body && (
+                  <p dir="auto" class="whitespace-pre-line" style="margin:0;font-size:0.9rem;line-height:1.6;color:var(--color-muted);overflow-wrap:break-word">{r.body}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          {ratingAggregate.count > productReviews.length && (
+            <p style="margin:0.875rem 0 0;font-size:0.78rem;color:var(--color-muted)">
+              {`${productReviews.length} / ${ratingAggregate.count}`}
+            </p>
+          )}
+        </section>
+      )}
+
       <!-- Related products -->
       {relatedProducts.length > 0 && (
         <section style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border)" aria-labelledby="related-heading">
@@ -798,6 +948,7 @@ const pmI18n = {
                     </div>
                     <div dir="auto" style="padding:0.5rem 0.6rem 0.6rem">
                       <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)">{p.name}</p>
+                      <Fragment set:html={cardStarRowHtml({ count: p.reviewCount ?? 0, sum: p.reviewRatingSum ?? 0 }, t.reviews.starsAria)} />
                       <p style="font-size:0.75rem;font-weight:700;margin:0.2rem 0 0;color:var(--color-accent)"><Fragment set:html={priceHtml(resolvePrice(p, shopStore.sale), { saleLabel: t.store.saleWas })} /></p>
                     </div>
                   </a>
@@ -887,6 +1038,11 @@ const pmI18n = {
   import { spawnHeartBurst } from '../../lib/burst.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
   import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary, refreshCheckoutCartFragment } from '../../lib/custom-domain-links.js';
+  import { initReviewForms } from '../../scripts/review-form.js';
+
+  // No-op on every product page that does not render a form — which is most of them, since the
+  // form only appears for a buyer with an unreviewed purchase of this exact product.
+  initReviewForms();
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
