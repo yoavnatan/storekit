@@ -210,8 +210,31 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const store = await getStoreBySlugOrPrevious(existing.storeSlug);
   if (!store) return json({ error: 'החנות לא נמצאה' }, 404);
 
+  // What an offer may not exceed — the order's own total. Read once for both branches below.
+  const targetOrder = await getOrderById(existing.orderId);
+  const offerCeilingAgorot = targetOrder?.totalAgorot ?? 0;
+
   const admin = isAdminRequest(cookies);
   let actor = 'admin';
+
+  // ── The buyer answering an offer ──
+  //
+  // The only move that belongs to the buyer, and it exists because the offer was a QUESTION: accept
+  // and keep the goods for a smaller refund, or decline and the ordinary return resumes where it
+  // stopped. Checked before the seller branch, because a buyer is not a seller and would otherwise
+  // fall through to a 403 on their own order.
+  if (!admin && existing.status === 'offered' && (to === 'refunded' || to === 'approved')) {
+    const buyerId = getSellerSession(cookies);
+    const order = buyerId ? await getOrderById(existing.orderId) : null;
+    if (buyerId && order?.buyerId === buyerId) {
+      const answered = await moveReturnRequest({
+        id, to, actor: buyerId,
+        store: { slug: store.slug, name: store.name, sellerId: store.sellerId },
+      });
+      if ('error' in answered) return json({ error: answered.error }, 409);
+      return json({ request: answered.request });
+    }
+  }
 
   if (!admin) {
     const sellerId = getSellerSession(cookies);
@@ -219,6 +242,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     const owned = await getStoresBySellerId(sellerId);
     if (!owned.some((s) => s.id === store.id)) return json({ error: 'Forbidden' }, 403);
     if (!SELLER_MOVES.includes(to)) return json({ error: 'הפעולה הזאת אינה של המוכר' }, 403);
+    // An offer is a QUESTION put to the buyer, so only the buyer (or an admin) may answer it. Without
+    // this a seller could accept his own offer and force a partial refund in place of the full return
+    // the buyer is entitled to — the machine allows the transition, and only the ROLE forbids it.
+    if (existing.status === 'offered') {
+      return json({ error: 'רק הקונה יכול לענות על ההצעה' }, 403);
+    }
     // Belt and braces: the case names a store, and the order must really belong to it. A case row
     // whose slug drifted from its order would otherwise let the wrong seller act.
     const order = await getOrderById(existing.orderId);
@@ -232,8 +261,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     trackingNumber: typeof data.trackingNumber === 'string' ? data.trackingNumber.slice(0, 120) : undefined,
     sellerNote: typeof data.sellerNote === 'string' ? data.sellerNote.slice(0, 2000) : undefined,
     adminNote: admin && typeof data.adminNote === 'string' ? data.adminNote.slice(0, 2000) : undefined,
-    partialOfferAgorot: typeof data.partialOfferAgorot === 'number' && data.partialOfferAgorot > 0
-      ? Math.round(data.partialOfferAgorot) : undefined,
+    // Capped at what the buyer actually paid: an offer is an alternative to refunding the order, so
+    // it can never exceed it. Unbounded, this writes a debt bigger than the sale and a ledger row to
+    // match — and both are real money on a screen somebody acts on.
+    partialOfferAgorot: typeof data.partialOfferAgorot === 'number'
+      && Number.isFinite(data.partialOfferAgorot) && data.partialOfferAgorot > 0
+      ? Math.min(Math.round(data.partialOfferAgorot), offerCeilingAgorot) : undefined,
   });
   if ('error' in moved) return json({ error: moved.error }, 409);
   return json({ request: moved.request });

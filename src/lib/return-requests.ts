@@ -260,7 +260,42 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
   );
   const moved = toRequest(r!);
 
-  if (input.to === 'refunded' && isPartialReturn(moved.returnedLines)) {
+  // ── An accepted OFFER: money moves, goods do not ──
+  //
+  // The buyer keeps the item, so there is no restock and no return postage — the only thing that
+  // happens is a smaller refund. Settled through the same adjustment path a partial return uses,
+  // for the same reason: the order was delivered and stays delivered, and a status describing the
+  // whole order must not be used to record a discount on part of it.
+  const acceptedOffer = input.to === 'refunded' && current.status === 'offered';
+
+  if (acceptedOffer) {
+    const order = await getOrderById(moved.orderId);
+    const amount = moved.partialOfferAgorot ?? 0;
+    if (order && amount > 0) {
+      await recordMoneyEvent({
+        type: 'refund_due',
+        orderId: order.id,
+        checkoutRef: order.checkoutRef,
+        storeSlug: input.store.slug,
+        amountAgorot: amount,
+        actor: input.actor,
+        detail: 'החזר חלקי בהסכמה — הקונה שומר את המוצר. הסכום מגיע לו ועדיין לא הוחזר.',
+      });
+      const seller = await getSellerById(input.store.sellerId);
+      const commission = commissionOnAgorot(amount, commissionPercentForTier(seller?.tier));
+      const sellerShare = amount - commission;
+      if (sellerShare > 0) {
+        await recordAdjustment({
+          sellerId: input.store.sellerId,
+          orderId: order.id,
+          kind: 'refund_clawback',
+          amountAgorot: -sellerShare,
+          detail: `החזר חלקי בהסכמה בהזמנה ${order.id.slice(0, 8)}`,
+          returnRequestId: moved.id,
+        });
+      }
+    }
+  } else if (input.to === 'refunded' && isPartialReturn(moved.returnedLines)) {
     // ── A partial return settles WITHOUT touching the order (decisions §4) ──
     //
     // The order was delivered and most of it stayed delivered, so its status is still the truth. Using
