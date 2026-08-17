@@ -4,6 +4,7 @@ import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
   isOpen, handoverDeadlineISO, autoRefundDueISO, responseDeadlineISO,
+  inTransitReviewDueISO, offerAnswerDueISO,
   type ReturnStatus, type ReturnReason,
 } from '../../lib/returns.js';
 import type { ReturnRequest } from '../../lib/return-requests.js';
@@ -34,8 +35,17 @@ import type { ReturnRequest } from '../../lib/return-requests.js';
 interface Props {
   requests: ReturnRequest[];
   storeSlug: string;
+  /**
+   * Does this shop take returns over the counter?
+   *
+   * True for every shop that offers collection in person — the owner's rule (2026-08-17), and not a
+   * setting the seller gets to switch off: he already invites people to his address to pick things up.
+   * When it is true he gets a button for the handover he can see happening in front of him, which is
+   * the strongest proof of return in the whole mechanism and needs no carrier at all.
+   */
+  acceptsInStoreReturns?: boolean;
 }
-const { requests } = Astro.props;
+const { requests, acceptsInStoreReturns = false } = Astro.props;
 
 const REASON: Record<ReturnReason, string> = {
   changed_mind: 'התחרט',
@@ -49,13 +59,13 @@ const REASON: Record<ReturnReason, string> = {
 const STATUS: Record<ReturnStatus, string> = {
   requested: 'הקונה מחכה לתשובה שלך',
   approved: 'אישרת. הקונה אמור לשלוח את המוצר',
-  in_transit: 'הקונה שלח. המוצר בדרך אליך',
+  in_transit: 'הקונה מסר שהוא שלח את המוצר. הוא בדרך אליך',
   received: 'המוצר הגיע אליך וממתין שתבדוק אותו',
   disputed: 'העברת את זה אלינו. אנחנו מכריעים',
   offered: 'הצעת החזר חלקי במקום החזרה. מחכים לתשובת הקונה',
   rejected: 'סירבת לבקשה',
   refunded: 'ההחזר אושר. הכסף בדרך לקונה',
-  expired: 'הקונה לא שלח את המוצר. הבקשה נסגרה',
+  expired: 'הבקשה נסגרה והמוצר לא הוחזר',
 };
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
@@ -71,8 +81,13 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
     { to: 'approved', label: 'אשר', kind: 'accent' },
     { to: 'rejected', label: 'סרב', kind: 'ghost' },
   ],
+  // ⚠️ 'הקונה שלח את המוצר' USED to be here, and it was two bugs in one button. It 403'd, because
+  // `in_transit` is not in `/api/returns`' list of seller moves — but the deeper fault is why nobody
+  // noticed: only the buyer can know he posted a parcel, so asking the seller to declare it put the
+  // buyer's whole protection in the hands of the person with the opposite interest. A seller who
+  // pressed nothing let the case expire on day 7 and kept the money AND the product. It is the
+  // buyer's button now (`lib/return-buyer-cta.ts`).
   approved:   [
-    { to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' },
     { to: 'offered', label: 'הצע החזר חלקי במקום החזרה', kind: 'ghost' },
   ],
   in_transit: [{ to: 'received', label: 'המוצר הגיע אליי', kind: 'accent' }],
@@ -82,6 +97,22 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
   ],
 };
 
+/**
+ * The moves for THIS shop — `MOVES`, plus the counter handover where the shop has a counter.
+ *
+ * `approved → received` skips the whole postal journey, and it is the only place in the mechanism
+ * where "the product came back" is a fact somebody watched happen rather than a claim about a parcel.
+ * Nothing else here needs to change for it: `received` already starts the 2-business-day clock and
+ * already offers both answers, so an in-store return is refunded or disputed exactly like a posted one.
+ */
+function movesFor(status: ReturnStatus): { to: ReturnStatus; label: string; kind: string }[] {
+  const base = MOVES[status] ?? [];
+  if (status === 'approved' && acceptsInStoreReturns) {
+    return [{ to: 'received', label: 'הקונה הביא את המוצר לחנות', kind: 'accent' }, ...base];
+  }
+  return base;
+}
+
 /** The one line that says how long is left, per state. Null when no clock runs. */
 function deadlineLine(r: ReturnRequest): string | null {
   if (r.status === 'requested') {
@@ -90,9 +121,22 @@ function deadlineLine(r: ReturnRequest): string | null {
     if (r.withinStatutory) return null;
     return `יש לך זמן לענות עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))}. אם לא תענה, הבקשה תיסגר`;
   }
-  if (r.status === 'approved' || r.status === 'in_transit') {
+  if (r.status === 'approved') {
     const d = handoverDeadlineISO(r.approvedAt);
-    return d ? `הקונה צריך לשלוח את המוצר עד ${formatBusinessDateShort(d)}` : null;
+    return d ? `הקונה צריך לשלוח את המוצר עד ${formatBusinessDateShort(d)}. אם לא ישלח, הבקשה תיסגר` : null;
+  }
+  // A separate clock now, and a separate SENTENCE, because the two used to share both: an approved
+  // request that the buyer never posted closes in the seller's favour on day 7, but once the buyer has
+  // said he posted it, nothing closes in anybody's favour — we decide it ourselves. Telling the seller
+  // that plainly is also the honest warning: if the parcel really did arrive, marking it received is
+  // how he keeps the case out of our hands.
+  if (r.status === 'in_transit') {
+    const d = inTransitReviewDueISO(r.sentAt);
+    return d ? `אם המוצר יגיע, סמן שקיבלת אותו. אם לא תסמן עד ${formatBusinessDateShort(d)}, נבדוק את המקרה בעצמנו` : null;
+  }
+  if (r.status === 'offered') {
+    const d = offerAnswerDueISO(r.offeredAt);
+    return d ? `הקונה צריך לענות עד ${formatBusinessDateShort(d)}. אם לא יענה, הבקשה תיסגר` : null;
   }
   if (r.status === 'received') {
     const d = autoRefundDueISO(r.deliveredBackAt);
@@ -201,9 +245,9 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">מספר מעקב: <span class="tabular-nums">{r.trackingNumber}</span></p>
       )}
 
-      {MOVES[r.status] && (
+      {movesFor(r.status).length > 0 && (
         <div class="flex gap-2 mt-3 flex-wrap">
-          {MOVES[r.status]!.map((m) => (
+          {movesFor(r.status).map((m) => (
             <button
               type="button"
               class={`btn btn--sm ${m.kind === 'accent' ? 'btn--accent' : ''}`}
@@ -217,7 +261,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
       {/* The offer's amount. Hidden until "הצע כסף במקום החזרה" is pressed — a field asking for a
           number the seller has not decided to give is a question on every card that does not need
           one. In shekels, because that is what a person types; the script converts at the boundary. */}
-      {MOVES[r.status]?.some((m) => m.to === 'offered') && (
+      {movesFor(r.status).some((m) => m.to === 'offered') && (
         <label class="flex items-center gap-2 mt-2 text-[0.85rem]" data-offer-wrap>
           <span class="[color:var(--color-muted)]">סכום ההחזר המוצע, בשקלים</span>
           <input

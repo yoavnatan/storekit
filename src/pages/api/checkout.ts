@@ -7,7 +7,7 @@ import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, 
 import { createOrder, updateOrder } from '../../lib/orders.js';
 import type { Order, OrderItem, StoreSubtotal } from '../../lib/orders.js';
 import { paymentProvider } from '../../lib/payment.js';
-import { normalizeDeliveryMethod, shippingPrice } from '../../lib/shipping.js';
+import { normalizeDeliveryMethod, shippingPrice, offersSelfPickup } from '../../lib/shipping.js';
 import { sendOrderConfirmationEmails } from '../../lib/email/order-confirmation.js';
 import { createNotification } from '../../lib/notifications.js';
 import { getSellerByEmail, getSellerSession } from '../../lib/seller-auth.js';
@@ -457,8 +457,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const now = new Date();
   for (const [storeSlug, data] of Object.entries(storeSubtotals)) {
     const store = await getStoreBySlug(storeSlug);
-    const offersSelfPickup = !!store?.shipping?.selfPickup && !!store?.address;
-    const method = normalizeDeliveryMethod(clientMethods[storeSlug], offersSelfPickup);
+    const method = normalizeDeliveryMethod(clientMethods[storeSlug], offersSelfPickup(store));
     data.deliveryMethod = method;
     // `shippingPrice` is a config rate in ILS — the last ILS number to enter the pipeline, and it
     // converts here rather than being trusted to already be whole agorot.
