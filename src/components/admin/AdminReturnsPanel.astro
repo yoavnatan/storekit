@@ -31,14 +31,14 @@ const REASON: Record<ReturnReason, string> = {
 };
 
 const STATUS: Record<ReturnStatus, string> = {
-  requested: 'מחכה לתשובת המוכר',
-  approved: 'המוכר אישר — הקונה שולח',
-  in_transit: 'המוצר בדרך למוכר',
-  received: 'המוצר הגיע למוכר',
+  requested: 'מחכה לתשובה של המוכר',
+  approved: 'המוכר אישר, והקונה אמור לשלוח את המוצר',
+  in_transit: 'הקונה שלח, והמוצר בדרך למוכר',
+  received: 'המוצר הגיע למוכר וממתין שיבדוק אותו',
   disputed: 'מחכה להחלטה שלך',
-  rejected: 'המוכר סירב',
-  refunded: 'הקונה קיבל את כספו',
-  expired: 'הקונה לא שלח — נסגר',
+  rejected: 'המוכר סירב לבקשה',
+  refunded: 'הקונה קיבל את כספו בחזרה',
+  expired: 'הקונה לא שלח את המוצר, והבקשה נסגרה',
 };
 
 const disputes = requests.filter((r) => r.status === 'disputed');
@@ -86,7 +86,7 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
 
 {running.length > 0 && (
   <Fragment>
-    <p class="m-0 mb-2 text-[0.76rem] [color:var(--color-muted)]">{running.length} בקשות בתהליך — אין מה לעשות איתן</p>
+    <p class="m-0 mb-2 text-[0.76rem] [color:var(--color-muted)]">{running.length} בקשות בתהליך. אין מה לעשות איתן — הן ייסגרו לבד</p>
     <div class="flex flex-col gap-2" data-admin-returns>
       {running.map((r) => (
         <div class={`${CARD} flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[0.82rem]`}>

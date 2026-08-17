@@ -76,6 +76,16 @@ export const DEMO_EMAIL_SUFFIX = '@demo.local';
 export const SHOWCASE_OWNER_EMAIL = 'showcase@dezabin.co.il';
 
 /**
+ * The buyer-email suffix every row `scripts/seed-reviews.mjs` writes carries.
+ *
+ * It is the whole purge gate for that script: the delete below matches on THIS and on nothing else
+ * — never on a store, never on a date — so there is no argument under which it could reach an order
+ * a real person placed. Same guarantee the scope predicates above give, expressed the one way that
+ * works for rows whose subject is an order rather than a store.
+ */
+export const SEEDED_REVIEW_EMAIL_SUFFIX = '@reviews.demo';
+
+/**
  * These predicates are composed — a scope clause and the disposable clause meet inside one
  * statement — so a bind parameter is the wrong tool: the placeholder numbers of two independently
  * written fragments would have to agree, and a fragment that happens not to mention `$2` makes
@@ -204,6 +214,28 @@ export async function purge(db, scopeName, opts = {}) {
  * @param {'demo'|'showcase'} scopeName
  * @returns {Promise<{ deleted: number, keptShared: number, journalRows: number }>}
  */
+/**
+ * Remove everything `seed-reviews.mjs` wrote — its reviews, its orders, and the two child tables
+ * those orders own.
+ *
+ * **It lives HERE and not in that script**, because `tests/seed-purge-gate.test.ts` refuses a
+ * `DELETE` written anywhere else under `scripts/` — the rule being that a seeder NAMES what it is
+ * disposing of and never composes its own `WHERE`. That guard caught this function's first draft
+ * sitting in the caller, which is exactly what it is for.
+ *
+ * Children first: `order_items`, `order_stores` and `product_reviews` all reference `orders` with
+ * `ON DELETE RESTRICT`, so the parent cannot go first. Returns the number of orders removed.
+ */
+export async function purgeSeededReviews(db) {
+  const owned = `SELECT id FROM orders WHERE buyer_email LIKE '%' || $1`;
+  await db.query(`DELETE FROM product_reviews WHERE order_id IN (${owned})`, [SEEDED_REVIEW_EMAIL_SUFFIX]);
+  await db.query(`DELETE FROM order_items WHERE order_id IN (${owned})`, [SEEDED_REVIEW_EMAIL_SUFFIX]);
+  await db.query(`DELETE FROM order_stores WHERE order_id IN (${owned})`, [SEEDED_REVIEW_EMAIL_SUFFIX]);
+  const gone = await db.query(
+    `DELETE FROM orders WHERE buyer_email LIKE '%' || $1`, [SEEDED_REVIEW_EMAIL_SUFFIX]);
+  return gone.rowCount ?? 0;
+}
+
 export async function purgeOrdersOfStores(db, scopeName) {
   const scope = scopeOf(scopeName);
   await assertSubsetOfDisposable(db, 'stores', scope.stores, DISPOSABLE_STORE);

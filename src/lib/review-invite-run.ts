@@ -11,7 +11,7 @@ import { sendReviewInviteEmail } from './email/review-invite-email.js';
  * The moment a seller presses "נשלח" is the moment the parcel LEAVES, not the moment it arrives.
  * Asking then produces an invitation that lands days before the product does, which is both useless
  * and the kind of mail that teaches a person to ignore the sender. So the invitation waits — see
- * `REVIEW_INVITE_DELAY_DAYS` — and something has to be awake to send it later.
+ * the constants below — and something has to be awake to send it later.
  *
  * ── Idempotent ──
  * `orders.review_invited_at` is stamped before the send and is the query's own filter (migration
@@ -30,19 +30,36 @@ import { sendReviewInviteEmail } from './email/review-invite-email.js';
  */
 
 /**
- * How long after an order becomes reviewable the invitation goes out.
+ * ── Two clocks, and NEITHER of them is `updated_at` (corrected 2026-08-17, owner asked) ──
  *
- * Measured from `updated_at`, i.e. from the status change that made it reviewable — `shipped` for a
- * courier order, `delivered` for a collected one. Five days is a delivery time plus a day to open
- * the box, and it is deliberately generous: an invitation that arrives too early gets ignored once
- * and the buyer is never asked again.
+ * The first version waited five days from `updated_at`. That is the exact mistake migration 0023
+ * had already written down for the payout hold, in the same table: `updated_at` is the last time
+ * ANY field changed, so a seller fixing a tracking number a week later silently pushed the
+ * invitation a week out, and a status corrected `delivered → shipped → delivered` restarted it.
+ * A clock that can move is not a clock. Both columns below are stamped ONCE and never cleared.
  *
- * ⚠️ A guess until real delivery times exist. It is the same class of number as the hold periods in
- * `payout-schedule.ts` and should be revisited against the carrier's actual transit times once one
- * is connected (GO_LIVE §5) — not a placeholder that blocks anything, but not a measured value
- * either.
+ * They also answer two different questions, which is why there are two of them:
+ *
+ *   `delivered_at` — the buyer HAS it. Two days is long enough to have opened the box and used the
+ *                    thing, short enough that the purchase is still the thing they were thinking
+ *                    about. This is the good case and it is the one that should fire.
+ *
+ *   `paid_at`      — nobody ever marked it delivered. The seller is not obliged to touch that
+ *                    dropdown and many will not, so without a fallback those buyers are simply
+ *                    never asked. Ten days from PAYMENT (not from dispatch — there is no
+ *                    `shipped_at` column, and inventing one to hold a guess would be worse) is
+ *                    comfortably past an Israeli courier's transit for an order that shipped
+ *                    promptly, and an order still sitting unshipped is excluded by the status
+ *                    filter anyway. Same shape as `FALLBACK_DAYS_AFTER_PAYMENT` in
+ *                    `payout-schedule.ts`, and for the same reason: a seller's silence must not
+ *                    freeze something the buyer is owed.
+ *
+ * ⚠️ Both numbers are judgement, not measurement, and the delivered one is the one worth revisiting
+ * against the carrier's real transit times once one is connected (GO_LIVE §5). An invitation that
+ * arrives too early is ignored once and the buyer is never asked again, so both err late.
  */
-export const REVIEW_INVITE_DELAY_DAYS = 5;
+export const REVIEW_INVITE_DAYS_AFTER_DELIVERY = 2;
+export const REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT = 10;
 
 /** How many invitations one pass may send. Announced in the run's line rather than applied
  *  quietly — a job that truncates in silence reads as "nothing left to do". */
@@ -56,18 +73,27 @@ export interface ReviewInviteRunResult {
   capped: boolean;
 }
 
-export async function runReviewInvites(nowMs: number = Date.now()): Promise<ReviewInviteRunResult> {
-  const cutoff = new Date(nowMs - REVIEW_INVITE_DELAY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+const DAY_MS = 24 * 60 * 60 * 1000;
 
+export async function runReviewInvites(nowMs: number = Date.now()): Promise<ReviewInviteRunResult> {
+  const deliveredCutoff = new Date(nowMs - REVIEW_INVITE_DAYS_AFTER_DELIVERY * DAY_MS).toISOString();
+  const paidCutoff = new Date(nowMs - REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT * DAY_MS).toISOString();
+
+  // **The two clocks are exclusive, not alternatives** — `CASE`, never `OR`. An order paid six
+  // weeks ago and delivered this morning satisfies the payment clock, so an `OR` would ask about a
+  // parcel the buyer opened an hour earlier; `COALESCE` into one column has the same fault from the
+  // other side, since the two deadlines are different lengths. Knowing the delivery date REPLACES
+  // the fallback rather than joining it, which is the whole point of having a fallback at all.
   const candidates = await rows<{ id: string }>(
     `SELECT id FROM orders
       WHERE review_invited_at IS NULL
-        AND updated_at <= $1
-        AND payment_status = ANY($2)
-        AND shipping_status = ANY($3)
-      ORDER BY updated_at
-      LIMIT $4`,
-    [cutoff, REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES, INVITE_BATCH],
+        AND payment_status = ANY($3)
+        AND shipping_status = ANY($4)
+        AND (CASE WHEN delivered_at IS NOT NULL THEN delivered_at <= $1
+                  ELSE paid_at IS NOT NULL AND paid_at <= $2 END)
+      ORDER BY COALESCE(delivered_at, paid_at)
+      LIMIT $5`,
+    [deliveredCutoff, paidCutoff, REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES, INVITE_BATCH],
   );
 
   let sent = 0;
