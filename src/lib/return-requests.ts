@@ -150,8 +150,12 @@ export async function getClosedReturns(
   opts: { q?: string; page?: number; pageSize?: number } = {},
 ): Promise<{ items: ReturnRequest[]; total: number; page: number; totalPages: number }> {
   const pageSize = Math.min(100, Math.max(5, Math.floor(opts.pageSize ?? 20)));
-  const q = (opts.q ?? '').trim().toLowerCase();
-  const where = `status IN ('rejected','refunded','expired')${q ? ' AND lower(order_id::text) LIKE $1' : ''}`;
+  // `%` and `_` are LIKE wildcards. Parameterised, so nothing can be injected — but an admin typing
+  // `%` would match every row and read it as "these are the matches", which on a history screen is a
+  // search box lying about what it found. Escaped with a backslash, declared to Postgres explicitly
+  // so the behaviour does not depend on the server's default.
+  const q = (opts.q ?? '').trim().toLowerCase().replace(/([%_\\])/g, '\\$1');
+  const where = `status IN ('rejected','refunded','expired')${q ? " AND lower(order_id::text) LIKE $1 ESCAPE '\\\\'" : ''}`;
   const params = q ? [`${q}%`] : [];
 
   const counted = await firstRow<{ n: number }>(
