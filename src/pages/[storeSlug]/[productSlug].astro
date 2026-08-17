@@ -33,6 +33,7 @@ import ReviewForm from '../../components/ReviewForm.astro';
 import { getReviewsForProduct, getRatingCountsForProduct, getReviewableOrderForProduct } from '../../lib/product-reviews.js';
 import { averageRating, ratingDisplay, ratingHistogram, RATING_MAX } from '../../lib/reviews.js';
 import { REVIEWS_SECTION_ANCHOR } from '../../lib/reviews-anchor.js';
+import { storeMark, storeMarkGradient } from '../../lib/store-mark.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -862,6 +863,12 @@ const pmI18n = {
               <div class="flex flex-col gap-1" dir="auto">
                 <span style="font-size:2rem;font-weight:800;line-height:1;color:var(--color-text)">{ratingDisplay(ratingAvg!)}</span>
                 <StarRating value={ratingAvg} count={ratingAggregate.count} size="md" showCount />
+                {/* Said ONCE, about the whole set, and it used to sit on every single row (owner,
+                    2026-08-17: "יש תגובה שזה לא יופיע שם? אז למה צריך את זה?"). He is right and it
+                    is the standing rule against furniture: a label that is true of every row is not
+                    information, it is decoration repeated N times. As a claim about ALL of them it
+                    is the opposite — the strongest thing this page can say, and one line long. */}
+                <span style="font-size:0.75rem;color:var(--color-success);font-weight:600">{t.reviews.allVerified}</span>
               </div>
               {/* The distribution, five rows always — a histogram that hides its empty rows
                   re-scales itself on every new review and stops being comparable. */}
@@ -894,22 +901,29 @@ const pmI18n = {
 
           <ul class="flex flex-col" style="gap:1rem;margin:0;padding:0;list-style:none">
             {productReviews.map((r) => (
-              <li style="border-top:1px solid var(--color-border);padding-top:1rem">
-                <div class="flex flex-wrap items-center gap-x-2 gap-y-1" style="margin-bottom:0.35rem">
+              <li class="flex" style="gap:0.7rem;border-top:1px solid var(--color-border);padding-top:1rem">
+                {/* The reviewer's mark. `storeMark` is the site's ONE deterministic-identity rule —
+                    hash a seed to one of five tile hues, build the gradient, take an initial — and
+                    a reviewer is simply another thing that needs one. Seeded on the review id
+                    rather than the name, so two people called דנה do not share a colour and one
+                    person's mark never changes. No new palette: `MARK_HUES` mirrors
+                    `--color-tile-*` in tokens.css. */}
+                <span aria-hidden="true" class="flex items-center justify-center"
+                      style={`flex:0 0 auto;width:34px;height:34px;border-radius:50%;color:#fff;font-size:0.85rem;font-weight:700;line-height:1;background:${storeMarkGradient(storeMark(r.id, r.reviewerName || t.reviews.anonymous))}`}>
+                  {storeMark(r.id, r.reviewerName || t.reviews.anonymous).initial}
+                </span>
+                <div class="min-w-0" style="flex:1 1 auto">
+                  <div class="flex flex-wrap items-center gap-x-2 gap-y-1" style="margin-bottom:0.2rem">
+                    <span dir="auto" style="font-size:0.82rem;font-weight:600;color:var(--color-text)">{r.reviewerName || t.reviews.anonymous}</span>
+                    <time datetime={r.createdAt.slice(0, 10)} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">
+                      {reviewDateFormat.format(new Date(r.createdAt))}
+                    </time>
+                  </div>
                   <StarRating value={r.rating} count={1} size="sm" standalone />
-                  <span dir="auto" style="font-size:0.82rem;font-weight:600;color:var(--color-text)">{r.reviewerName || t.reviews.anonymous}</span>
-                  <span style="font-size:0.72rem;color:var(--color-muted)">·</span>
-                  {/* Every review here IS one, by construction — nobody can write one without a
-                      paid, shipped order line. It is a fact about the platform, not a badge some
-                      reviews earn (review-eligibility.ts). */}
-                  <span style="font-size:0.72rem;color:var(--color-success);font-weight:600">{t.reviews.verifiedPurchase}</span>
-                  <time datetime={r.createdAt.slice(0, 10)} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">
-                    {reviewDateFormat.format(new Date(r.createdAt))}
-                  </time>
+                  {r.body && (
+                    <p dir="auto" class="whitespace-pre-line" style="margin:0.3rem 0 0;font-size:0.9rem;line-height:1.6;color:var(--color-muted);overflow-wrap:break-word">{r.body}</p>
+                  )}
                 </div>
-                {r.body && (
-                  <p dir="auto" class="whitespace-pre-line" style="margin:0;font-size:0.9rem;line-height:1.6;color:var(--color-muted);overflow-wrap:break-word">{r.body}</p>
-                )}
               </li>
             ))}
           </ul>
