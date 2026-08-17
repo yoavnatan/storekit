@@ -4,6 +4,8 @@ import { REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES } from './order-
 import { orderIsReviewable } from './review-eligibility.js';
 import { sendReviewInviteEmail } from './email/review-invite-email.js';
 import { hasOpenReturn } from './return-requests.js';
+// The two numbers live in a file with no imports, because a PAGE reads them too — see there.
+import { REVIEW_INVITE_DAYS_AFTER_DELIVERY, REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT } from './review-timing.js';
 
 /**
  * The job that asks buyers how it was.
@@ -30,37 +32,6 @@ import { hasOpenReturn } from './return-requests.js';
  * everything it lists), so each order is isolated and the run reports counts.
  */
 
-/**
- * ── Two clocks, and NEITHER of them is `updated_at` (corrected 2026-08-17, owner asked) ──
- *
- * The first version waited five days from `updated_at`. That is the exact mistake migration 0023
- * had already written down for the payout hold, in the same table: `updated_at` is the last time
- * ANY field changed, so a seller fixing a tracking number a week later silently pushed the
- * invitation a week out, and a status corrected `delivered → shipped → delivered` restarted it.
- * A clock that can move is not a clock. Both columns below are stamped ONCE and never cleared.
- *
- * They also answer two different questions, which is why there are two of them:
- *
- *   `delivered_at` — the buyer HAS it. Two days is long enough to have opened the box and used the
- *                    thing, short enough that the purchase is still the thing they were thinking
- *                    about. This is the good case and it is the one that should fire.
- *
- *   `paid_at`      — nobody ever marked it delivered. The seller is not obliged to touch that
- *                    dropdown and many will not, so without a fallback those buyers are simply
- *                    never asked. Ten days from PAYMENT (not from dispatch — there is no
- *                    `shipped_at` column, and inventing one to hold a guess would be worse) is
- *                    comfortably past an Israeli courier's transit for an order that shipped
- *                    promptly, and an order still sitting unshipped is excluded by the status
- *                    filter anyway. Same shape as `FALLBACK_DAYS_AFTER_PAYMENT` in
- *                    `payout-schedule.ts`, and for the same reason: a seller's silence must not
- *                    freeze something the buyer is owed.
- *
- * ⚠️ Both numbers are judgement, not measurement, and the delivered one is the one worth revisiting
- * against the carrier's real transit times once one is connected (GO_LIVE §5). An invitation that
- * arrives too early is ignored once and the buyer is never asked again, so both err late.
- */
-export const REVIEW_INVITE_DAYS_AFTER_DELIVERY = 2;
-export const REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT = 10;
 
 /** How many invitations one pass may send. Announced in the run's line rather than applied
  *  quietly — a job that truncates in silence reads as "nothing left to do". */

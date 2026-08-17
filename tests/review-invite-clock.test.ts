@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'node:crypto';
 import { query, firstRow } from '../src/lib/db.js';
+import { runReviewInvites } from '../src/lib/review-invite-run.js';
 import {
-  runReviewInvites,
   REVIEW_INVITE_DAYS_AFTER_DELIVERY,
   REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT,
-} from '../src/lib/review-invite-run.js';
+} from '../src/lib/review-timing.js';
 
 /**
  * WHEN the "how was it?" mail goes out.
