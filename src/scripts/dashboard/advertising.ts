@@ -2,6 +2,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { formatAgorot, fromAgorot } from '../../lib/money.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { showStatus } from './status.js';
+import { flashConfirmed } from './btn-confirm.js';
 import { showActionFailedToast } from '../../lib/toast.js';
 import { initInfoTooltips } from '../tooltip.js';
 import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
@@ -572,15 +573,17 @@ export function initAdvertisingTab(): void {
             showStatus(errorText(data.error, i18n), true, cardNow());
             return;
           }
-          // **Success says nothing in words, and that is the point.** A banner above the card
-          // pushed every card below it down for three seconds (owner, 2026-08-17) — a list that
-          // jumps is a worse answer than the silence this replaced. The refetch has already
-          // redrawn this card with its status chip flipped to "מושהה"/"פעיל" and its button to
-          // "המשך"/"השהה", so the confirmation is on the card in the seller's own language; all
-          // that was missing was something to draw the eye to it. `row-settled` is a shadow, so it
-          // is painted outside the box and moves nothing, and it fades itself out.
+          // **The confirmation goes on the button the seller just pressed.** Two earlier answers
+          // were both wrong and both for the same reason: a banner at the top of the panel is
+          // somewhere he is not looking, and a banner above the card pushes every card below it
+          // down. The refetch has already flipped this card's status chip and relabelled its
+          // button, so the words are on the card; the ✓ is what draws the eye, and it moves
+          // nothing (owner, 2026-08-17).
+          //
+          // The button is re-queried after the refetch — the one that was clicked is detached by
+          // then, and decorating it would decorate nothing.
           await refetch();
-          cardNow()?.classList.add('animate-[row-settled_1.4s_ease-out]');
+          flashConfirmed(cardNow()?.querySelector<HTMLButtonElement>('[data-ad-action="toggle"]'));
         } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
       };
 
@@ -652,7 +655,11 @@ export function initAdvertisingTab(): void {
           });
           const data = await res.json() as { ok?: boolean; error?: string };
           if (!data.ok) { showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true); if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('btn--busy'); } return; }
-          showStatus(i18n.adBudgetSaved ?? 'Budget updated.');
+          // ✓ on the Save button the seller is looking at, not a notice somewhere else — same
+          // reasoning as the pause/resume toggle above. Held BEFORE the refetch, because this
+          // button belongs to the inline editor that the refetch tears down; there is no
+          // re-queried twin to move it onto afterwards.
+          flashConfirmed(saveBtn, { label: i18n.adBudgetSaved ?? 'Budget updated.' });
           await refetch();
         } catch {
           showStatus(i18n.errorSaving ?? 'Error saving.', true);

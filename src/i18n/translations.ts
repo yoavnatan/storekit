@@ -1501,7 +1501,7 @@ export const translations = {
       // who reads "nothing more will be charged" and then sees a charge has been misled by us, on
       // the screen where he was being careful.
       adConfirmPauseTitle: 'להשהות את הקמפיין?',
-      adConfirmPauseMsg: 'המודעות יפסיקו להופיע ולא ייצבר חיוב נוסף. מה שכבר הוצא ייגבה כרגיל. ניתן להחזיר לפעילות בכל רגע.',
+      adConfirmPauseMsg: 'המודעות יפסיקו להופיע ולא ייצבר חיוב נוסף. הוצאה שנצברה תיגבה כרגיל. ניתן להחזיר לפעילות בכל רגע.',
       adConfirmPauseOk: 'השהה',
       adPausing: 'משהה…',
       ordersTitle: 'הזמנות',
@@ -3339,7 +3339,7 @@ export const translations = {
       adConfirmDeleteTitle: 'Cancel this campaign?',
       adConfirmDeleteMsg: 'The campaign stops immediately and moves to "Past campaigns" with the numbers it accrued. You only pay for what actually ran — e.g. if you picked a week and cancel after two days, you\'re charged only for those two days. The rest of the budget won\'t be charged, and no more money comes out from here on.',
       adConfirmPauseTitle: 'Pause this campaign?',
-      adConfirmPauseMsg: 'Your ads stop being shown and nothing more is charged. The campaign stays saved — you can resume it at any time.',
+      adConfirmPauseMsg: 'Your ads stop being shown and no further charges accrue. Spend already accrued is still charged. You can resume at any time.',
       adConfirmPauseOk: 'Pause',
       adPausing: 'Pausing…',
       ordersTitle: 'Orders',

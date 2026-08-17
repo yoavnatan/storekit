@@ -78,7 +78,14 @@
     busy = true;
     okBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = true;
-    okBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${workingLabel}<span class="dot-pulse" role="status" aria-label="${workingLabel}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+    // **Six dots, and it was on every confirm dialog in the app** (owner, 2026-08-17). Every
+    // `workingLabel` in the codebase is written with a trailing ellipsis — "מוחק…", "מבטל…",
+    // "משהה…" — and the `.dot-pulse` beside it draws three more that actually animate. So the
+    // button read "משהה… ⋯". Stripped HERE and not in the twenty call sites: the dots belong to
+    // this component, so the fact that the label must not carry its own is this component's to
+    // know. A caller that never sees the dots keeps its ellipsis where it wrote it.
+    const label = workingLabel.replace(/[\s.…]+$/, '');
+    okBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${label}<span class="dot-pulse" role="status" aria-label="${label}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
     try {
       await action();
     } catch {
