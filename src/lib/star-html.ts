@@ -62,15 +62,33 @@ export const STAR_PATH = 'M12 2.6l2.9 5.88 6.5.95-4.7 4.58 1.11 6.47L12 17.43 6.
  * exactly what memory `project_svg_height_auto_trap` already describes. `max-width:none` is the
  * half of the fix that is easy to leave out.
  */
-function starHtml(fill: 'full' | 'half' | 'empty', px: number): string {
+function starHtml(fill: 'full' | 'half' | 'empty', px: number, tint: string): string {
   const svg = (color: string) =>
     `<svg viewBox="0 0 24 24" fill="currentColor" style="display:block;width:${px}px;height:${px}px;max-width:none;color:${color}"><path d="${STAR_PATH}"/></svg>`;
   const base = `<span style="position:absolute;inset:0;line-height:0">${svg('var(--color-rating-empty)')}</span>`;
   const filled = fill === 'empty' ? '' :
     `<span style="position:absolute;inset:0;overflow:hidden;width:${fill === 'half' ? '50%' : '100%'};line-height:0">`
-    + svg('var(--color-rating)')
+    + svg(tint)
     + '</span>';
   return `<span style="position:relative;display:inline-block;width:${px}px;height:${px}px;flex:0 0 auto">${base}${filled}</span>`;
+}
+
+/**
+ * The gradient, one star at a time.
+ *
+ * The site's own `.btn` pair (`--color-rating-from` → `--color-rating-to`) walked across the row in
+ * five steps, so a row of stars reads as ONE gradient rather than five identical marks. Five
+ * discrete stops rather than a real `linear-gradient`, and the reason is the same one that keeps
+ * the half star a clip instead of an SVG gradient: a gradient inside an `fill` needs a
+ * document-unique id, and this renders a dozen times on a page of cards. At 13-18px the eye cannot
+ * tell five steps from a continuous ramp across ~70px.
+ *
+ * `color-mix` does the interpolation in the browser, so the two ends stay tokens — swapping the
+ * whole site's stars to a gold is those two lines in `tokens.css` and nothing here.
+ */
+function starTint(index: number, total: number): string {
+  const pct = total <= 1 ? 0 : Math.round((index / (total - 1)) * 100);
+  return `color-mix(in srgb, var(--color-rating-to) ${pct}%, var(--color-rating-from))`;
 }
 
 /** `avg` is the AVERAGE (`reviews.ts#averageRating`), or null for a product nobody has rated —
@@ -80,7 +98,8 @@ export function starRowHtml(avg: number | null, options: StarRowOptions = {}): s
   if (avg === null) return '';
   const { px = 15, showValue = false, countLabel, ariaLabel, href } = options;
 
-  const stars = starFills(avg).map((fill) => starHtml(fill, px)).join('');
+  const fills = starFills(avg);
+  const stars = fills.map((fill, i) => starHtml(fill, px, starTint(i, fills.length))).join('');
   const value = showValue
     ? `<span style="font-size:${px}px;font-weight:700;color:var(--color-text);line-height:1">${escapeHtml(ratingDisplay(avg))}</span>`
     : '';

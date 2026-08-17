@@ -7,6 +7,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { verifyReviewToken } from '../../lib/review-token.js';
 import { reviewableLines, orderIsReviewable } from '../../lib/review-eligibility.js';
 import { getReviewedProductIds } from '../../lib/product-reviews.js';
+import { REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/review-timing.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
 
@@ -58,19 +59,41 @@ const doneCount = usable ? reviewed.length : 0;
  * frustration is legitimate; the star is simply the wrong place to put it.
  *
  * The platform already has the right place: a return request with reason `not_arrived`, which the
- * returns decisions doc §8 puts on US rather than on the seller. So the page names the situation
- * and points at that door instead of pretending it is a rating.
+ * returns decisions doc §8 puts on US rather than on the seller.
  *
- * **Prominent when nobody has confirmed delivery, quiet when someone has.** `deliveredAt` is the
- * seller saying it arrived, so the invitation is then an ordinary one and leading with "didn't get
- * it?" would be planting a doubt. Where the mail went out on the FALLBACK clock
- * (`review-invite-run.ts`) nothing has confirmed anything — that is the case this exists for.
+ * ── One button, and the paragraph around it was DELETED (owner, 2026-08-17) ──
+ * The first cut was a heading, a sentence of explanation and a button. "לא קיבלתי את ההזמנה" is
+ * the whole thought; a person who did not receive their order does not need it explained to them,
+ * and prose above a screen is a standing ban here (memory `feedback_no_standing_screen_prose`).
+ *
+ * ── WHEN it appears, which is the part that stops it being noise ──
+ * Not while a parcel could reasonably still be in transit — offering "didn't arrive?" on day two is
+ * the platform inviting a case that does not exist yet, and the owner's own bar is the right one:
+ * a week and a half with nothing confirmed is strange, three days is not.
+ *
+ *   · Delivery CONFIRMED (`deliveredAt`) — a quiet line under the forms. The seller has said it
+ *     arrived; leading with doubt would be planting one. But the buyer may still disagree, so the
+ *     door is never absent.
+ *   · Nothing confirmed, and payment older than the fallback window — the button, on its own,
+ *     above the stars. This is precisely the state the invitation mail was sent in
+ *     (`review-invite-run.ts`'s fallback clock), so the page and the mail agree by construction:
+ *     the same constant decides both.
+ *   · Nothing confirmed and recent — NOTHING. The buyer reached this page from their orders list
+ *     rather than from the mail, and the parcel is simply still on its way.
+ *
+ * Measured from `paid_at` because there is no `shipped_at` column and inventing one to hold a guess
+ * would be worse — dispatch follows payment by a day or two, so the two differ by less than the
+ * precision this has.
  *
  * Where it points depends on who holds the link, because opening a return needs an account: a
  * signed-in buyer goes to their orders list, where the button already is; a guest goes to
  * `/contact`, which is unauthenticated by design and lands in the admin's alerts tab.
  */
 const deliveryConfirmed = !!order?.deliveredAt;
+const paidAgeDays = order?.paidAt
+  ? (Date.now() - new Date(order.paidAt).getTime()) / (24 * 60 * 60 * 1000)
+  : 0;
+const notArrivedIsLikely = !deliveryConfirmed && paidAgeDays >= REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT;
 const notArrivedHref = userId ? '/buyer/dashboard?tab=orders' : '/contact';
 ---
 
@@ -90,12 +113,10 @@ const notArrivedHref = userId ? '/buyer/dashboard?tab=orders' : '/contact';
       <>
         <p style="color:var(--color-muted);font-size:0.95rem;margin:0 0 1rem">{t.reviews.pageIntro}</p>
 
-        {!deliveryConfirmed && (
-          <div style="border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:0.8rem 0.9rem;margin:0 0 1.5rem">
-            <p style="margin:0 0 0.15rem;font-size:0.9rem;font-weight:600;color:var(--color-text)">{t.reviews.notArrivedQ}</p>
-            <p style="margin:0 0 0.6rem;font-size:0.85rem;color:var(--color-muted)">{t.reviews.notArrivedBody}</p>
+        {notArrivedIsLikely && (
+          <p style="margin:0 0 1.5rem">
             <a href={notArrivedHref} class="btn btn--ghost btn--sm">{t.reviews.notArrivedCta}</a>
-          </div>
+          </p>
         )}
 
         <div class="flex flex-col gap-4">
@@ -123,9 +144,8 @@ const notArrivedHref = userId ? '/buyer/dashboard?tab=orders' : '/contact';
           ))}
         </div>
         {deliveryConfirmed && (
-          <p style="margin:1.25rem 0 0;font-size:0.82rem;color:var(--color-muted)">
-            {t.reviews.notArrivedQ}{' '}
-            <a href={notArrivedHref} style="color:var(--color-accent);text-decoration:underline;text-underline-offset:3px">{t.reviews.notArrivedCta}</a>
+          <p style="margin:1.25rem 0 0;font-size:0.82rem">
+            <a href={notArrivedHref} style="color:var(--color-muted);text-decoration:underline;text-underline-offset:3px">{t.reviews.notArrivedCta}</a>
           </p>
         )}
 
