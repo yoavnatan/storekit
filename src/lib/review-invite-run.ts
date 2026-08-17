@@ -3,6 +3,7 @@ import { getOrderById, type Order } from './orders.js';
 import { REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES } from './order-status-rules.js';
 import { orderIsReviewable } from './review-eligibility.js';
 import { sendReviewInviteEmail } from './email/review-invite-email.js';
+import { hasOpenReturn } from './return-requests.js';
 
 /**
  * The job that asks buyers how it was.
@@ -108,6 +109,17 @@ export async function runReviewInvites(nowMs: number = Date.now()): Promise<Revi
       continue;
     }
     if (!order || !orderIsReviewable(order)) { skipped++; continue; }
+
+    // **A buyer with an open case is not asked how it was** (owner, 2026-08-17). The status columns
+    // cannot see this: a return sits in its own table and does not move the ORDER until it is
+    // refunded, so an order whose parcel never arrived — the buyer has already told us so, under
+    // reason `not_arrived` — still satisfies every clock above. "איך היה?" landing in that inbox is
+    // the platform asking a frustrated person to rate a product they never received, and the star
+    // it earns is about us rather than about the goods.
+    //
+    // Left UN-stamped on purpose: the case will close, and when it does this order becomes an
+    // ordinary one that deserves the question. Skipping is not the same as deciding never to ask.
+    if (await hasOpenReturn(id)) { skipped++; continue; }
 
     // Stamped first, and only for a row still un-stamped — so two overlapping runs cannot both
     // claim the same order. The affected-row count IS the claim, the same shape `decrementStock`

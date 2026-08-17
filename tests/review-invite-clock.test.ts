@@ -64,6 +64,7 @@ beforeEach(async () => {
   await query('DELETE FROM product_reviews');
   await query('DELETE FROM order_items');
   await query('DELETE FROM order_stores');
+  await query('DELETE FROM return_requests');
   await query('DELETE FROM orders');
   // The console adapter prints; nothing here needs to read it.
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -134,6 +135,23 @@ describe('what it refuses to ask about at all', () => {
     expect(result.sent).toBe(0);
     expect(await invitedAt(pending)).toBeNull();
     expect(await invitedAt(cancelled)).toBeNull();
+  });
+
+  it('says nothing to a buyer with an OPEN case', async () => {
+    // The status columns cannot see this: a return lives in its own table and does not move the
+    // order until it is refunded, so a parcel the buyer has already told us never arrived still
+    // satisfies every clock. "איך היה?" in that inbox earns a one-star about US.
+    const disputed = await order({ deliveredAt: daysAgo(10) });
+    await query(
+      `INSERT INTO return_requests (id, order_id, store_slug, reason, within_statutory, refund_agorot, status)
+       VALUES ($1, $2, 'keramika', 'not_arrived', true, 0, 'requested')`,
+      [crypto.randomUUID(), disputed],
+    );
+    const result = await runReviewInvites(NOW);
+    expect(result.sent).toBe(0);
+    // Left UN-stamped: the case will close, and then this is an ordinary order that deserves the
+    // question. Skipping is not deciding never to ask.
+    expect(await invitedAt(disputed)).toBeNull();
   });
 
   it('asks once and never again', async () => {

@@ -1889,6 +1889,10 @@ export const translations = {
       pageDone: 'דירגתם כבר את כל מה שבהזמנה הזאת. תודה!',
       pageInvalid: 'הקישור אינו תקין, או שההזמנה עדיין בדרך אליכם',
       rated: 'דורג',
+      // The way OUT of the review page, for the buyer whose parcel never came. See the page.
+      notArrivedQ: 'לא קיבלתם את ההזמנה?',
+      notArrivedBody: 'אל תדרגו — זה לא על המוצר. פתחו פנייה ונטפל בזה.',
+      notArrivedCta: 'ההזמנה לא הגיעה',
     },
     checkout: {
       title: 'תשלום',
@@ -3639,6 +3643,9 @@ export const translations = {
       pageDone: 'You have rated everything in this order. Thank you!',
       pageInvalid: 'This link is not valid, or the order is still on its way',
       rated: 'Rated',
+      notArrivedQ: 'Order never arrived?',
+      notArrivedBody: "Don't rate it — that isn't about the product. Open a case and we'll handle it.",
+      notArrivedCta: 'My order did not arrive',
     },
     checkout: {
       title: 'Checkout',

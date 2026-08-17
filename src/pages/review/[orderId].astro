@@ -47,6 +47,31 @@ const usable = allowed && orderIsReviewable(order!);
 const reviewed = usable ? await getReviewedProductIds(orderId!) : [];
 const lines = usable ? reviewableLines(order!, reviewed) : [];
 const doneCount = usable ? reviewed.length : 0;
+
+/**
+ * The way OUT, for the buyer whose parcel never came (owner asked, 2026-08-17).
+ *
+ * Without it this page offers exactly one thing to do with a bad experience — press one star — and
+ * a buyer who never received the goods will press it, because it is the only button in front of
+ * them. That review says nothing about the product, it is permanent, it drags the seller's average
+ * down for a failure that may not even be theirs, and it goes out in the Google feed. The
+ * frustration is legitimate; the star is simply the wrong place to put it.
+ *
+ * The platform already has the right place: a return request with reason `not_arrived`, which the
+ * returns decisions doc §8 puts on US rather than on the seller. So the page names the situation
+ * and points at that door instead of pretending it is a rating.
+ *
+ * **Prominent when nobody has confirmed delivery, quiet when someone has.** `deliveredAt` is the
+ * seller saying it arrived, so the invitation is then an ordinary one and leading with "didn't get
+ * it?" would be planting a doubt. Where the mail went out on the FALLBACK clock
+ * (`review-invite-run.ts`) nothing has confirmed anything — that is the case this exists for.
+ *
+ * Where it points depends on who holds the link, because opening a return needs an account: a
+ * signed-in buyer goes to their orders list, where the button already is; a guest goes to
+ * `/contact`, which is unauthenticated by design and lands in the admin's alerts tab.
+ */
+const deliveryConfirmed = !!order?.deliveredAt;
+const notArrivedHref = userId ? '/buyer/dashboard?tab=orders' : '/contact';
 ---
 
 <BaseLayout title={t.reviews.pageTitle} description={t.reviews.pageIntro} noindex={true} isLoggedIn={!!userId} storeMode={true}>
@@ -63,7 +88,16 @@ const doneCount = usable ? reviewed.length : 0;
 
     {usable && lines.length > 0 && (
       <>
-        <p style="color:var(--color-muted);font-size:0.95rem;margin:0 0 1.5rem">{t.reviews.pageIntro}</p>
+        <p style="color:var(--color-muted);font-size:0.95rem;margin:0 0 1rem">{t.reviews.pageIntro}</p>
+
+        {!deliveryConfirmed && (
+          <div style="border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:0.8rem 0.9rem;margin:0 0 1.5rem">
+            <p style="margin:0 0 0.15rem;font-size:0.9rem;font-weight:600;color:var(--color-text)">{t.reviews.notArrivedQ}</p>
+            <p style="margin:0 0 0.6rem;font-size:0.85rem;color:var(--color-muted)">{t.reviews.notArrivedBody}</p>
+            <a href={notArrivedHref} class="btn btn--ghost btn--sm">{t.reviews.notArrivedCta}</a>
+          </div>
+        )}
+
         <div class="flex flex-col gap-4">
           {lines.map((line) => (
             <section class="flex flex-col gap-3"
@@ -88,6 +122,13 @@ const doneCount = usable ? reviewed.length : 0;
             </section>
           ))}
         </div>
+        {deliveryConfirmed && (
+          <p style="margin:1.25rem 0 0;font-size:0.82rem;color:var(--color-muted)">
+            {t.reviews.notArrivedQ}{' '}
+            <a href={notArrivedHref} style="color:var(--color-accent);text-decoration:underline;text-underline-offset:3px">{t.reviews.notArrivedCta}</a>
+          </p>
+        )}
+
         {doneCount > 0 && (
           <p style="color:var(--color-muted);font-size:0.8rem;margin:1rem 0 0">
             {`${doneCount} · ${t.reviews.rated}`}
