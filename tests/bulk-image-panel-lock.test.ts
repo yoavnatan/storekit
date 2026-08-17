@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { clearBulkSelection, syncBulkSelectionToRows } from '../src/scripts/dashboard/bulk-selection.js';
-import { initBulkSelect } from '../src/scripts/dashboard/products.js';
+import { bindExistingRows, initBulkSelect } from '../src/scripts/dashboard/products.js';
 
 /**
  * **The bulk image panel freezes the selection it was built from, and nothing else may open a
@@ -43,10 +45,21 @@ import { initBulkSelect } from '../src/scripts/dashboard/products.js';
   disconnect(): void {}
 };
 
+/** The image every product starts with — what a stale gallery would still be showing. */
+const ORIGINAL_IMAGE = 'https://res.cloudinary.com/x/image/upload/before-save.jpg';
+
 /** The parts of the Products tab this behaviour touches, in the shapes the page really renders. */
 function renderTab(productIds: string[]): void {
+  const island = productIds.map((id) => ({
+    id, storeId: 's1', name: id, description: '', price: 10, stock: 5,
+    images: [ORIGINAL_IMAGE], rev: 'rev-served',
+  }));
   document.body.innerHTML = `
     <script type="application/json" id="i18n-data">{"dashboard":{},"gallery":{}}</script>
+    <!-- The snapshot buildEditRow reads for a row nobody has opened yet. Its staleness on images
+         is the whole subject of "what a panel save leaves behind" below. -->
+    <script type="application/json" id="dash-products-page">${JSON.stringify(island)}</script>
+    <div id="upload-config" data-store-id="s1"></div>
     <div class="products-header">
       <input type="checkbox" class="bulk-select-all">
       <span id="bulk-count-badge" hidden><span id="bulk-count">0</span></span>
@@ -60,7 +73,7 @@ function renderTab(productIds: string[]): void {
     <div id="bulk-upload-panel" hidden></div>
     <table><tbody id="products-tbody">
       ${productIds.map((id) => `
-        <tr data-product-display="${id}" data-images='["https://res.cloudinary.com/x/image/upload/a.jpg"]'>
+        <tr data-product-display="${id}" data-images='["${ORIGINAL_IMAGE}"]'>
           <td class="row-num">1</td>
           <td class="thumb-col"></td>
           <td><span class="product-name">${id}</span></td>
@@ -119,6 +132,11 @@ beforeEach(() => {
   document.querySelectorAll<HTMLElement>('[data-product-edit]').forEach((r) => { r.hidden = true; });
   document.querySelectorAll<HTMLElement>('[data-product-display]').forEach((r) => { r.hidden = false; });
   clearBulkSelection();
+  // Wires the per-ROW listeners onto the rows just rendered — including the row menu's "ערוך",
+  // which is where `editToggleBlocked` runs. These are element-scoped, so unlike `initBulkSelect`'s
+  // document-level ones they cannot accumulate: each rebuild produces new buttons.
+  bindExistingRows('demo-cloud', 'demo-preset');
+  document.getElementById('ajax-status')?.remove();
   // Re-ticks the fresh checkboxes from the (now empty) selection and repaints the toolbar.
   syncBulkSelectionToRows();
 });
@@ -166,10 +184,44 @@ describe('opening the panel freezes the selection it was built from', () => {
   it('blocks the row menu\'s own edit for a product the panel holds, and only for those', () => {
     tick('p1');
     openPanel();
-    expect(editToggle('p1').disabled).toBe(true);
+    // `aria-disabled`, never the `disabled` attribute — the first version used `disabled` and the
+    // owner could see neither the greying nor the message (2026-08-17). A `disabled` button takes
+    // no pointer events, so the browser refuses to show its `title`; and the menu item is styled
+    // by utilities that carry no `:disabled` variant, so it looked untouched: same pointer cursor,
+    // same hover highlight, on a control that did nothing.
+    expect(editToggle('p1').getAttribute('aria-disabled')).toBe('true');
+    expect(editToggle('p1').hasAttribute('disabled')).toBe(false);
     expect(editToggle('p1').title).not.toBe('');
     // A product outside the panel has no second gallery to conflict with.
-    expect(editToggle('p3').disabled).toBe(false);
+    expect(editToggle('p3').hasAttribute('aria-disabled')).toBe(false);
+    expect(editToggle('p3').title).toBe('');
+  });
+
+  it('greys the blocked item through the markup, in both renderers', () => {
+    // `aria-disabled` only greys anything if the class list says so, and the button is rendered
+    // twice — server-side by dashboard.astro and client-side by `productRowHtml` for every rebuilt
+    // row. The twin that was missed is the one the seller meets after a sort (memory
+    // `project_brand_boost_twin_drift`).
+    const NEEDED = ['aria-disabled:opacity-45', 'aria-disabled:cursor-not-allowed', 'aria-disabled:hover:bg-transparent'];
+    const client = fs.readFileSync(path.join(process.cwd(), 'src/scripts/dashboard/products.ts'), 'utf8');
+    const page = fs.readFileSync(path.join(process.cwd(), 'src/pages/seller/dashboard.astro'), 'utf8');
+    for (const source of [client, page]) {
+      const line = source.split('\n').find((l) => l.includes('data-edit-toggle=') && l.includes('product-menu__item'))!;
+      expect(line).toBeTruthy();
+      NEEDED.forEach((cls) => expect(line).toContain(cls));
+    }
+  });
+
+  it('a click on the blocked item explains itself instead of doing nothing', () => {
+    // The tooltip needs a hover. A seller who clicked has already decided not to wait for one, and
+    // a control that swallows a click silently is the thing this whole change is against
+    // (memory `feedback_noop_interactions_invisible`).
+    tick('p1');
+    openPanel();
+    editToggle('p1').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.getElementById('ajax-status')?.textContent ?? '').not.toBe('');
+    // …and the row did NOT open.
+    expect(document.querySelector<HTMLElement>('[data-product-edit="p1"]')!.hidden).toBe(true);
   });
 
   it('closes an edit row that was ALREADY open before the panel opened', () => {
@@ -188,6 +240,60 @@ describe('opening the panel freezes the selection it was built from', () => {
     // Disabling the menu item only stops the NEXT one; a row already open is the same two galleries.
     expect(editRow.hidden).toBe(true);
     expect(displayRow.hidden).toBe(false);
+  });
+});
+
+describe('what a panel save leaves behind for the edit form', () => {
+  /**
+   * Owner's question, 2026-08-17: *"אם ערכתי מהסקשן זה יופיע בטופס עריכה? בלי לעשות רענן"*. There
+   * are two answers because there are two states an edit row can be in, and only one of them was
+   * right before this:
+   *
+   *  · a form that already EXISTS gets repainted by `syncEditRowRev` — pinned in
+   *    `bulk-image-rev-sync.test.ts`;
+   *  · a row still marked `data-edit-pending` has no form yet, and `buildEditRow` builds it from the
+   *    page's product island. The island is a snapshot of the served document, so unless the save
+   *    writes images back into it, opening that form afterwards shows the PRE-SAVE gallery — and
+   *    saving it posts that stale list back over what was just uploaded.
+   *
+   * This drives the whole chain through the real save and then opens the form, because the failure
+   * was an ORDER of operations (the revision was copied into the island before the row's
+   * `data-images` moved), and no assertion on one function alone would have caught it.
+   */
+  const NEW_IMAGE = 'https://res.cloudinary.com/x/image/upload/after-save.jpg';
+
+  it('an edit form opened AFTER the save shows the saved images, with no reload', async () => {
+    const fetchCalls: string[] = [];
+    globalThis.fetch = ((url: string, init?: { body?: FormData }) => {
+      fetchCalls.push(String(url));
+      const action = init?.body instanceof FormData ? String(init.body.get('_action')) : '';
+      expect(action).toBe('patch-product-images');
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, images: [NEW_IMAGE], rev: 'rev-after-save' }),
+      });
+    }) as unknown as typeof fetch;
+
+    tick('p1');
+    openPanel();
+    document.getElementById('bulk-upload-save-all')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // The save is a promise chain with no hook to await; one macrotask turn is enough for a fetch
+    // that resolves immediately.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchCalls).toHaveLength(1);
+
+    // The row itself followed…
+    const row = document.querySelector<HTMLElement>('[data-product-display="p1"]')!;
+    expect(JSON.parse(row.dataset.images!)).toEqual([NEW_IMAGE]);
+
+    // …and so did the island, which is the half that was missing: closing the panel lifts the lock,
+    // and the form built on the next click must carry the saved list.
+    openPanel();
+    editToggle('p1').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const built = document.querySelector<HTMLElement>('[data-product-edit="p1"]')!;
+    const urls = Array.from(built.querySelectorAll<HTMLInputElement>('input[name="images"]'))
+      .map((inp) => inp.value).filter(Boolean);
+    expect(urls).toEqual([NEW_IMAGE]);
   });
 });
 
