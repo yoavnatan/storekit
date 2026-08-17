@@ -272,6 +272,21 @@ export async function purgeOrdersOfStores(db, scopeName) {
                                 AND NOT (k.id = ANY($1::uuid[]))))`,
     [ids],
   );
+  // `product_reviews` references `orders` with ON DELETE RESTRICT and is deleted here for the same
+  // reason `order_items` is — but it was ADDED to the schema (0033) after this function was
+  // written, and nothing pointed the two at each other. `npm run seed:showcase` therefore built all
+  // four stores correctly and then died on the purge:
+  //
+  //     update or delete on table "orders" violates RESTRICT setting of foreign key constraint
+  //     "product_reviews_order_id_fkey" on table "product_reviews"
+  //
+  // `purgeSeededReviews` does clear reviews, but only the ones whose buyer_email carries the
+  // seeded-review suffix — a review on a demo order from any other source is invisible to it and
+  // holds the whole purge. Deleting by ORDER ID is what actually matches this function's scope.
+  //
+  // ⚠️ The general rule this is the second instance of: a new child table with a RESTRICT FK onto
+  // `orders` must be added here, or the seeder breaks the next time a demo order has one.
+  await db.query('DELETE FROM product_reviews WHERE order_id = ANY($1::uuid[])', [ids]);
   await db.query('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [ids]);
   await db.query('DELETE FROM order_stores WHERE order_id = ANY($1::uuid[])', [ids]);
   const res = await db.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [ids]);

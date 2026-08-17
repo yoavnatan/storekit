@@ -801,7 +801,10 @@ export const SHOWCASE_STORES = [
      *  logo that is a blurry piece of wall, which is exactly what happened on 2026-08-14 and cost
      *  three paid attempts to work out. */
     logoRefKey: '__banner',
-    logoRefCrop: 'c_crop,x_0.852,y_0.24,w_0.095,h_0.44,g_north_west',
+    // Re-measured 2026-08-17 against the new banner, exactly as the ⚠️ above says to. The old
+    // numbers (x_0.852,y_0.24,w_0.095,h_0.44) were 3% too far right and cut the crescent's left
+    // edge off — checked by eye at two candidate rectangles before this one was written down.
+    logoRefCrop: 'c_crop,x_0.820,y_0.20,w_0.125,h_0.54,g_north_west',
     /**
      * The header lock-up — see `lockupUrl`. The NAME is cut from the banner's wall sign, which is
      * the only place it exists: this store is `logoNameless`, so its avatar is the bare crescent
@@ -820,10 +823,22 @@ export const SHOWCASE_STORES = [
      * mark, which sits on a printed flat off-white and needs no more.
      */
     lockup: {
-      word: { key: '__banner', crop: 'c_crop,x_0.57,y_0.25,w_0.28,h_0.335,g_north_west', tolerance: 55 },
+      // Re-measured 2026-08-17 with the new banner, and the right edge is the whole difficulty:
+      // the old rectangle ended at x=0.85 and the mark's first coloured pane begins around 0.835,
+      // so it carried a sliver of light blue that `e_trim` would have trimmed TO. Pulling the edge
+      // in to 0.832 clears it; pulling it to 0.818 starts cutting the ס. There is that little room
+      // between the word and the mark, which is why this is measured by eye and not estimated.
+      word: { key: '__banner', crop: 'c_crop,x_0.565,y_0.245,w_0.267,h_0.315,g_north_west', tolerance: 55 },
       // No crop: the avatar IS the bare crescent on an empty field, so there is nothing to cut out
       // of it and a rectangle here would only be a thing to keep in step with a re-render.
-      mark: { key: '__logo', tolerance: 25 },
+      //
+      // Tolerance 25 → 10 on 2026-08-17, and the cause is the repalette rather than the number.
+      // 25 was measured against a mark whose panes were cobalt, violet and tangerine — all far from
+      // the off-white ground. The sky palette put LIGHT sky blue next to that ground, and
+      // `e_make_transparent` at 25 took it for background: the first lock-up composed after the
+      // repalette had a crescent with the blue and violet panes punched out of it and only the gold
+      // left. A cut-out's tolerance belongs to the colours it is cutting, not to the shape.
+      mark: { key: '__logo', tolerance: 10 },
       // Nearly equal: this mark is a crescent, so it is already taller than it is wide, and giving
       // it the extra height a squarer mark wants would make it tower over its own name.
       wordHeight: 240,
