@@ -43,16 +43,24 @@ describe('the parts that can be driven', () => {
     expect(gallery.querySelector('[data-upload-rejected]')).toBeNull();
   });
 
-  it('clears a previous attempt\'s ring before trying again', async () => {
+  it('clears a previous attempt\'s ring AND message before trying again', async () => {
     // A mark that survives the fix points at the wrong picture — the seller has already replaced
     // that photo, and the ring would now be sitting on its innocent replacement.
     const gallery = document.querySelector('.gallery-widget')!;
     const slot = gallery.querySelector('.gallery-slot')! as HTMLElement;
     slot.dataset.uploadRejected = '1';
     slot.classList.add('outline', 'outline-2');
+    const stale = document.createElement('p');
+    stale.dataset.galleryRefusal = '1';
+    gallery.after(stale);
+
     await resolveGalleryUrls(gallery, 'cloud', 'preset');
+
     expect(gallery.querySelector('[data-upload-rejected]')).toBeNull();
     expect(slot.classList.contains('outline')).toBe(false);
+    // Cleared on the path that matters most: removing the offending photo leaves nothing to upload,
+    // so this runs BEFORE the "nothing pending" return or it never runs at all.
+    expect(document.querySelector('[data-gallery-refusal]')).toBeNull();
   });
 
   it('numbers the slots from one, not from `data-slot`', () => {
@@ -78,6 +86,46 @@ describe('the failure path, pinned against the source', () => {
     // clip — memory `project_focus_ring_clipped_by_scroller`.
     expect(GALLERY).toContain("'-outline-offset-2'");
     expect(GALLERY).not.toContain("'outline-offset-2'");
+  });
+});
+
+describe('the message lands at the photo, not at the top of the tab', () => {
+  /**
+   * Owner, 2026-08-17: *"האם היא די ברורה?"* — asked about a message that appeared, for both Save
+   * buttons alike, in `#ajax-status` right under `.products-header`. On the Products tab that is
+   * ABOVE the whole table, and `showStatus` scrolls the page to it. So a refusal on a product low
+   * in the list threw the seller to the top of the tab, away from the form they were in and from
+   * the ringed slot the message was about — worst of all from the Save button at the BOTTOM of a
+   * long form, which is the one a seller actually reaches for.
+   */
+  it('renders the refusal next to the widget that owns the photo', () => {
+    expect(GALLERY).toContain('gallery.after(note)');
+    expect(GALLERY).toContain("note.dataset.galleryRefusal = '1'");
+    // Announced, not just drawn: it appears in response to a press, and the seller may be looking
+    // anywhere on a tall form.
+    expect(GALLERY).toContain("note.setAttribute('role', 'alert')");
+  });
+
+  it('scrolls the RINGED SLOT into view, not the message', () => {
+    // The slot is the answer to "which photo"; the sentence is only the explanation. Landing on the
+    // sentence would put the picture back off-screen, which is the bug being fixed.
+    expect(GALLERY).toContain('scrollBelowPinnedChrome(slot as HTMLElement)');
+  });
+
+  it('marks the error so the caller does not repeat it at the top of the page', () => {
+    expect(GALLERY).toContain('shownAtField = true');
+    const products = SRC('src/scripts/dashboard/products.ts');
+    // Both form submits — the edit form and the add form — check before falling back to the banner.
+    const guarded = products.match(/if \(!refusalShownAtField\(err\)\) showStatus\(uploadErrorText\(err, i18n\), true\);/g) ?? [];
+    expect(guarded).toHaveLength(2);
+  });
+
+  it('a non-refusal still goes to the page banner, because it is about no photo in particular', () => {
+    // A dropped connection or a provider 500 is not about a picture, and "try again" is the whole
+    // instruction — so nothing marks it and the fallback runs.
+    expect(GALLERY).toMatch(/shownAtField = true;[\s\S]{0,40}\}\s*\n\s*throw err;/);
+    expect(SRC('src/scripts/dashboard/products.ts'))
+      .toContain('return !!(err as { shownAtField?: boolean } | null)?.shownAtField;');
   });
 });
 

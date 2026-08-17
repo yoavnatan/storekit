@@ -3,7 +3,7 @@
 export { cdnThumb as thumbUrl } from '../../lib/cdn.js';
 
 import { downscaleForUpload, MAX_UPLOAD_BYTES } from './image-downscale.js';
-import { moderationRefusal, moderationWentMissing } from '../../lib/image-moderation.js';
+import { moderationRefusal, moderationWentMissing, wasModerated } from '../../lib/image-moderation.js';
 import { reportClientError } from '../error-reporter.js';
 
 /** Whether an image-moderation add-on is expected to be running on the upload preset. A `PUBLIC_`
@@ -18,6 +18,11 @@ const MODERATION_EXPECTED = import.meta.env.PUBLIC_IMAGE_MODERATION_ON === 'true
  *  JavaScript error on the same page ends up unrecorded. The badge counts the condition as 1 for
  *  the same reason (`admin-tab-badges.ts`); this keeps the LOG from lying about it too. */
 let moderationAlreadyReported = false;
+
+/** The same cap on the other direction. A bulk upload of a hundred photos proves the filter is
+ *  running exactly as well on the first one as on the hundredth, and a hundred writes to close the
+ *  same report is a hundred round trips inside a seller's save. */
+let moderationOkReported = false;
 
 /**
  * Cloudinary's unsigned-upload ceiling on the free tier, and now a LAST resort rather than the
@@ -118,6 +123,21 @@ export async function cloudinaryUpload(original: Blob, cloud: string, preset: st
   if (missing && !moderationAlreadyReported) {
     moderationAlreadyReported = true;
     reportClientError(missing);
+  }
+
+  // **And the signal that turns the alarm back OFF.** Without it the admin's card knew about
+  // failures only: an unjudged upload raised it, a judged one said nothing, and silence cannot clear
+  // a warning — so it sat there until somebody clicked "סמן כטופל" or the report aged out three
+  // weeks later (owner, 2026-08-17: *"הוא לא יתעדכן אוטומטית בשום מצב?!"*). This is the missing half,
+  // reported through the same mechanism as the fault and with the same once-per-page cap: the
+  // uploads are the sampling, and one is enough to prove the filter ran.
+  if (MODERATION_EXPECTED && !missing && wasModerated(json) && !moderationOkReported) {
+    moderationOkReported = true;
+    // silent: nothing was lost — this closes a stale admin note, and the seller it is fired from is
+    // not the person it is for. A dropped request leaves the card up, which is the safe direction to
+    // fail in, and the next upload asks again. A seller's save must never wait on, or fail because
+    // of, our own bookkeeping.
+    void fetch('/api/seller/moderation-ok', { method: 'POST', keepalive: true }).catch(() => {});
   }
 
   return json.secure_url;

@@ -30,7 +30,7 @@
  * reworded message fails the suite instead of silently emptying this card.
  */
 
-import { firstRow } from './db.js';
+import { firstRow, query } from './db.js';
 import { MODERATION_MISSING_MARKER } from './image-moderation.js';
 
 /** How far back a "the filter stopped" report still describes NOW. Exported because the tab badge
@@ -48,6 +48,59 @@ export type ImageModerationState = 'ok' | 'off' | 'stopped';
  *  build time for the client and available through `process.env` on the server. */
 export function moderationDeclaredOn(): boolean {
   return (process.env.PUBLIC_IMAGE_MODERATION_ON ?? '').trim() === 'true';
+}
+
+/**
+ * **The card closes itself when the filter is demonstrably working again** (owner, 2026-08-17:
+ * *"הוא לא יתעדכן אוטומטית בשום מצב?!"* — and until this, no: it cleared only by hand, or by the
+ * report ageing out of the 21-day window three weeks later).
+ *
+ * The asymmetry that caused it is worth naming, because it is the whole design. The card knew about
+ * FAILURES only: an upload with no verdict writes a row, an upload WITH a verdict wrote nothing, and
+ * silence is not evidence of health — so there was no signal that could ever turn the alarm off.
+ *
+ * This is that missing signal, and it is the cheapest possible one: an upload that came back judged
+ * marks the outstanding reports `resolved`. No new table, no heartbeat column, no scheduled job —
+ * the uploads are still the sampling, exactly as `moderationWentMissing` argued, and the `resolved`
+ * column the Alerts tab already writes by hand is what gets written automatically instead.
+ *
+ * **Why this cannot silence a real alarm.** It resolves only rows that exist NOW. The next upload
+ * that comes back unjudged writes a fresh, unresolved one and the card is back within a page load.
+ * The most a caller can do — including a caller lying about a judged upload — is dismiss a report
+ * about a condition that has since stopped being true, which is what dismissal means.
+ *
+ * **And the limit of that, stated because it is real and cannot be closed from here.** Our server
+ * never sees the upload — the bytes go from the seller's browser straight to Cloudinary — so the
+ * claim "an upload came back judged" can only ever come FROM the browser, and a browser can lie.
+ * A determined seller could call the route repeatedly while the filter is genuinely off and keep the
+ * card down. Two things bound that and neither is a fix: they must keep doing it, because every
+ * unjudged upload by anyone writes a new row; and it takes a seller session, so it is a named
+ * account rather than the internet. What closes the gap properly is the provider's own quota, read
+ * through the Admin API with credentials we deliberately do not hold (`moderationWentMissing`
+ * argues why polling it was the wrong first answer) — so instead of pretending, every automatic
+ * dismissal writes `resolution_hint`. An admin reading the Alerts tab can see that a report was
+ * closed by an upload rather than by a person, which is the difference between a suppressed warning
+ * and an audited one.
+ *
+ * Returns how many reports it closed, so the route can stay silent on 0 rather than claiming work.
+ */
+export const MODERATION_AUTO_RESOLVE_HINT =
+  'נסגר אוטומטית: העלאה חזרה עם פסק דין מודרציה, כלומר התוסף רץ שוב.';
+
+export async function clearModerationMissingReports(): Promise<number> {
+  try {
+    const { rowCount } = await query(
+      `UPDATE error_log SET resolved = true, resolution_hint = $3
+        WHERE message LIKE $1
+          AND NOT resolved
+          AND created_at > now() - make_interval(days => $2)`,
+      [`${MODERATION_MISSING_MARKER}%`, MODERATION_STALE_DAYS, MODERATION_AUTO_RESOLVE_HINT],
+    );
+    return rowCount;
+  } catch {
+    // Same reasoning as the read below: a database hiccup must not become a story about the filter.
+    return 0;
+  }
 }
 
 /**
