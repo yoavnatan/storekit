@@ -99,7 +99,7 @@ export async function cloudinaryUpload(original: Blob, cloud: string, preset: st
   fd.append('upload_preset', preset);
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/image/upload`, { method: 'POST', body: fd });
-  if (!res.ok) throw new Error(await uploadErrorMessage(res));
+  if (!res.ok) throw await uploadFailure(res);
   const json = await res.json() as { secure_url: string };
 
   // Content moderation, when the preset has an add-on on it: a judged-unusable asset must not
@@ -172,17 +172,72 @@ export async function cloudinaryUploadInvoice(file: File, cloud: string, preset:
   fd.append('file', file);
   fd.append('upload_preset', preset);
 
+  // Same account-level detection as the image path — an exhausted quota takes the whole Cloudinary
+  // account down, so it blocks a seller's invoice exactly as readily as their product photo.
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/raw/upload`, { method: 'POST', body: fd });
-  if (!res.ok) throw new Error(await uploadErrorMessage(res));
+  if (!res.ok) throw await uploadFailure(res);
   const json = await res.json() as { secure_url: string };
   return json.secure_url;
 }
 
-/** Cloudinary's own words where it sent any, the status where it did not. */
-async function uploadErrorMessage(res: Response): Promise<string> {
+/** Once per page, for the same reason as `moderationAlreadyReported`: an exhausted account quota is
+ *  ONE condition, and a seller mid-bulk-upload would otherwise file one report per photo. */
+let accountFailureReported = false;
+
+/**
+ * Turn a failed upload into the right error — and tell OUR fault apart from the seller's.
+ *
+ * Found the hard way on 2026-08-17, generating סהר's catalog: every upload started coming back
+ *
+ *     420 — Rate Limit Exceeded. Limit of 50 Rekognition AI Moderation operations reached.
+ *           Try again on the next monthly billing usage date.
+ *
+ * because the preset had the moderation add-on on it and the free monthly allowance was spent. When
+ * Cloudinary cannot run an add-on the preset demands, it refuses the whole upload — so a spent
+ * add-on quota does not degrade image moderation, it takes DOWN image uploading.
+ *
+ * That message was going straight to sellers, in English, and the owner spotted what it means:
+ * "אם זה ייחסם אז אין למוכרים איך להעלות תמונות". Every seller at once, with vendor wording that
+ * blames nothing and advises waiting a month. It is the same account-wide blast radius as
+ * `project_ad_platform_account_risk`, arriving through the image pipeline instead of the ad feed.
+ *
+ * So an account-level failure is now: a Hebrew sentence that says it is not their file, a REFUSAL
+ * (`products.ts#uploadErrorText` would otherwise wrap it in "נסה שוב", and retrying a spent quota
+ * is the one thing guaranteed not to work), and a report, because nobody but us can fix it and no
+ * seller is going to describe it accurately.
+ *
+ * Everything else keeps the old behaviour — Cloudinary's own words where it sent any, which is what
+ * turns a mystery 400 into a fixable one.
+ */
+async function uploadFailure(res: Response): Promise<Error> {
+  let vendor = '';
   try {
     const body = await res.json() as { error?: { message?: string } };
-    if (body?.error?.message) return body.error.message;
-  } catch { /* not JSON — fall through to the status */ }
-  return `Upload failed: ${res.status}`;
+    vendor = body?.error?.message ?? '';
+  } catch { /* not JSON — the status is all there is */ }
+
+  // 420 is Cloudinary's own rate-limit status and 429 the standard one. The text test catches a
+  // quota refusal arriving under some other status, which is likelier than the reverse: the wording
+  // is what Cloudinary's docs and its response agreed on, the status is an implementation detail.
+  const accountLevel = res.status === 420 || res.status === 429
+    || /rate limit|quota|operations reached|usage date/i.test(vendor);
+
+  if (accountLevel) {
+    if (!accountFailureReported) {
+      accountFailureReported = true;
+      reportClientError(`Cloudinary upload blocked account-wide (${res.status}): ${vendor || 'no message'}`);
+    }
+    // Owner's wording, 2026-08-17, replacing "מסיבה שאצלנו — לא בקובץ שלך": a seller does not need
+    // to know whose fault it is, only what to do. Worth recording the caveat he was given and
+    // accepted, because it is the one case where this sentence is wrong: a spent MONTHLY quota is
+    // weeks, not a moment. It is the right copy anyway, because with the moderation add-on off the
+    // realistic cause is a momentary rate limit — and if a monthly quota is ever hit again, the
+    // report below is what actually resolves it, not the seller's next attempt.
+    //
+    // It stays a REFUSAL even though it now advises retrying: `products.ts#uploadErrorText` appends
+    // its own "נסה שוב" to everything that is not one, and the sentence must not say it twice.
+    return refuse('תקלה זמנית בהעלאת תמונות, אנא נסה שוב בעוד רגע.');
+  }
+
+  return new Error(vendor || `Upload failed: ${res.status}`);
 }
