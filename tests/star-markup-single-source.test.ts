@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { STAR_PATH, starRowHtml } from '../src/lib/star-html.js';
+import { STAR_PATH, starRowHtml, cardStarRowHtml } from '../src/lib/star-html.js';
 
 /**
  * There is ONE star on this site, and it is `lib/star-html.ts`'s.
@@ -73,6 +73,23 @@ describe('the half star is CLIPPED, not shrunk', () => {
     // single colour this fails, and the row silently stops being the site's own gradient.
     expect(row).toContain('var(--color-rating-to) 0%');
     expect(row).toContain('var(--color-rating-to) 100%');
+  });
+
+  it('draws ONE star on a card and five in a row — the grid and the page are different jobs', () => {
+    const card = cardStarRowHtml({ count: 6, sum: 27 });
+    expect(card.match(/<svg/g) ?? []).toHaveLength(1);
+    expect(card).toContain('4.5');
+    expect(card).toContain('(6)');
+    // Whole, never half: the number beside it is the measurement, so a half icon would be the same
+    // fact drawn twice.
+    expect(card).not.toContain('width:50%');
+    // The five-star row stacks a pale base under each fill, so it is many more elements —
+    // the assertion is that the two forms are not the same drawing, not an exact count.
+    expect((starRowHtml(4.5, { px: 15 }).match(/<svg/g) ?? []).length).toBeGreaterThan(5);
+  });
+
+  it('draws nothing on a card with no rating', () => {
+    expect(cardStarRowHtml({ count: 0, sum: 0 })).toBe('');
   });
 });
 

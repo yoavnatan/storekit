@@ -1915,6 +1915,8 @@ export const translations = {
       tooLong: 'הביקורת ארוכה מדי',
       throttled: 'יותר מדי בקשות. נסו שוב עוד כמה דקות',
       verifiedPurchase: 'רכישה מאומתת',
+      // Said once about the whole set, never per row — see the product page for why.
+      allVerified: 'כולן מרכישות מאומתות',
       anonymous: 'קונה',
       starsAria: 'דירוג ממוצע',
       pickStar: 'דירוג',
@@ -3730,6 +3732,7 @@ export const translations = {
       tooLong: 'That review is too long',
       throttled: 'Too many requests. Try again in a few minutes',
       verifiedPurchase: 'Verified purchase',
+      allVerified: 'All from verified purchases',
       anonymous: 'Buyer',
       starsAria: 'Average rating',
       pickStar: 'Rating',
