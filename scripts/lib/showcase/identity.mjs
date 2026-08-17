@@ -541,7 +541,15 @@ export const SHOWCASE_STORES = [
      */
     colors: { primary: '#1c3f6e', accent: '#d99a3f' },
     /** סהר is the crescent moon, so the mark is the word's own meaning — the one logo idea that
-     *  needs no explaining to an Israeli and cannot be mistaken for another shop's. */
+     *  needs no explaining to an Israeli and cannot be mistaken for another shop's.
+     *
+     *  ⚠️ **This and `logoStyle` below are no longer READ for this store.** They feed `logoPrompt`,
+     *  and since `logoCut` arrived the avatar is cut out of the banner rather than generated, so
+     *  `buildJobs` never calls it here. They are kept rather than deleted for one reason: the cut
+     *  depends on the mark's panes staying far enough from the wall colour for
+     *  `e_make_transparent` to tell them apart (see `markCutUrl`), and if the palette ever goes
+     *  pale again the generated route is the way back — with the wording that produced the mark
+     *  everybody liked still intact. Delete `logoCut` and both of these are live again. */
     logoConcept:
       'a single elegant crescent moon, drawn as one clean curved shape with a tapering tip, '
       + 'geometric and calm, no face, no stars, no ornament',

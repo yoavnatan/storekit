@@ -148,6 +148,52 @@ describe('showcase catalogs', () => {
     }
   });
 
+  /**
+   * `logoCut` is the OTHER way an avatar can come to exist — cut out of the banner instead of drawn
+   * again (`markCutUrl`, added 2026-08-17 after four rounds of trying to make a redraw match). It
+   * arrived with no guard at all, which is what this session's own close-out audit found.
+   *
+   * Two ways it can be wrong, both silent:
+   *
+   *   **Both routes at once.** `buildJobs` branches on `logoCut` and simply ignores `logoRefKey`, so
+   *   a store carrying both would keep a reference that nothing reads — the same class of dead
+   *   declaration that made the mark and the banner disagree for three rounds, since the file would
+   *   claim a relationship the pipeline no longer has.
+   *
+   *   **A cycle.** The cut reads FROM the banner. If that same store also drew its banner from its
+   *   logo (`bannerRefKey`), neither picture would be the source and a regeneration of either would
+   *   redefine the other — the exact hazard the bannerRefKey/logoRefKey test above exists for,
+   *   reachable again through the new field.
+   */
+  it('a logo that is CUT names one source, and never also a drawn one', () => {
+    type Cutter = {
+      slug: string;
+      bannerRefKey?: string;
+      logoRefKey?: string;
+      logoCut?: { key?: string; crop?: string; tolerance?: number; pad?: string };
+    };
+    for (const store of SHOWCASE_STORES as Cutter[]) {
+      const { logoCut } = store;
+      if (!logoCut) continue;
+
+      expect(['__logo', '__banner'], `${store.slug}.logoCut.key`).toContain(logoCut.key);
+      expect(logoCut.crop, `${store.slug}.logoCut.crop`).toMatch(/^c_crop,/);
+      // `e_make_transparent` takes 0–100 and the value is the whole risk of this route: too high
+      // and the mark's own pale panes go transparent with the wall behind it.
+      expect(typeof logoCut.tolerance, `${store.slug}.logoCut.tolerance`).toBe('number');
+      expect(logoCut.pad, `${store.slug}.logoCut.pad`).toMatch(/^[0-9a-f]{6}$/);
+
+      expect(
+        Boolean(store.logoRefKey),
+        `${store.slug}: logoCut and logoRefKey are both set — buildJobs reads only logoCut, so the reference is dead`,
+      ).toBe(false);
+      expect(
+        logoCut.key === '__banner' && Boolean(store.bannerRefKey),
+        `${store.slug}: the logo is cut FROM the banner while the banner is drawn from the logo — neither is the source`,
+      ).toBe(false);
+    }
+  });
+
   it('a banner that names a reference image names one that exists', () => {
     // `bannerRefKey` is resolved against the manifest as `<slug>:<key>` and a miss means the banner
     // is silently HELD BACK rather than generated — a run that reports success and produces
