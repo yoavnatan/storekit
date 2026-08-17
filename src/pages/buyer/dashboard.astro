@@ -2637,6 +2637,35 @@ const STORES_NAMED = 2;
   }
   document.querySelectorAll<HTMLElement>('.o-card').forEach(bindOrderCard);
 
+  /**
+   * `?return=<orderId>` — arrive with the case already open.
+   *
+   * The review page sends a buyer here when their parcel never came, and it KNOWS which order they
+   * mean. Landing them on the list and letting them find it again is three taps to say one thing,
+   * on the screen of somebody who is already annoyed. The link carries `oq` as well, so the server
+   * has already filtered the list down to that purchase and it is on the first page — no client
+   * paging, no "not on this page" case to handle.
+   *
+   * Deliberately does NOT open a case by itself: the reason is the one thing the server cannot work
+   * out, it decides who pays return postage, and a URL that filed a request on load would be a
+   * request anyone could cause by sending a link. This opens the CHOOSER; the buyer still presses.
+   *
+   * Silent when the card is not on screen — a stale link, or a case already closed. Nothing is
+   * worse here than a page that scrolls somewhere and then apologises.
+   */
+  (function openRequestedReturn(): void {
+    const wanted = new URLSearchParams(location.search).get('return');
+    if (!wanted) return;
+    const opener = document.querySelector<HTMLElement>(`[data-return-open="${CSS.escape(wanted)}"]`);
+    const card = opener?.closest<HTMLElement>('.o-card');
+    if (!opener || !card) return;
+    if (!card.classList.contains('o-card--open')) card.querySelector<HTMLElement>('.o-card__hd')?.click();
+    opener.click();
+    // `nearest`, like every other scroll on this page: `center`/`start` move a screen that was
+    // already showing the right thing, which reads as the page fighting the reader.
+    opener.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  })();
+
   // ── Orders: server-fetched page/search/sub-tab (AJAX) ──────────────
   // Mirrors the seller dashboard's own Orders-tab pagination pattern
   // (buyer-orders-query.ts is the server-side counterpart of

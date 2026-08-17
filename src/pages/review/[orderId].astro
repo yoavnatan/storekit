@@ -87,9 +87,17 @@ const doneCount = usable ? reviewed.length : 0;
  * into transit. An order with no dispatch stamp — self-pickup, which never passes through
  * `shipped`, or a row older than 0036 — falls through to the more patient payment clock.
  *
- * Where it points depends on who holds the link, because opening a return needs an account: a
- * signed-in buyer goes to their orders list, where the button already is; a guest goes to
- * `/contact`, which is unauthenticated by design and lands in the admin's alerts tab.
+ * ── Where it points ──
+ * A signed-in buyer goes STRAIGHT to the case, not to their orders list: `oq` filters the list
+ * server-side to this purchase and `return` opens that card's reason chooser on arrival
+ * (`buyer/dashboard.astro`). This page knows which order they mean, so making them find it again
+ * was three taps to say one thing.
+ *
+ * ⚠️ A GUEST goes to `/contact`, and that is the weak half of this: `/api/returns` requires a
+ * session, so a guest cannot open a case at all and lands on a generic fault form with no order
+ * attached. The signed link that let them onto this page would be proof enough to do better — it
+ * already establishes which order is theirs — but whether a guest may open a case is a decision
+ * the owner has not made (raised 2026-08-17). Until then this at least reaches a human.
  */
 const deliveryConfirmed = !!order?.deliveredAt;
 const ageDays = (iso: string | undefined): number =>
@@ -100,7 +108,10 @@ const overdue = order?.shippedAt
   ? ageDays(order.shippedAt) >= REVIEW_INVITE_DAYS_AFTER_DISPATCH
   : ageDays(order?.paidAt) >= REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT;
 const notArrivedIsLikely = !deliveryConfirmed && overdue;
-const notArrivedHref = userId ? '/buyer/dashboard?tab=orders' : '/contact';
+const notArrivedRef = order?.checkoutRef ?? orderId ?? '';
+const notArrivedHref = userId
+  ? `/buyer/dashboard?oq=${encodeURIComponent(notArrivedRef)}&return=${encodeURIComponent(orderId ?? '')}`
+  : '/contact';
 ---
 
 <BaseLayout title={t.reviews.pageTitle} description={t.reviews.pageIntro} noindex={true} isLoggedIn={!!userId} storeMode={true}>
