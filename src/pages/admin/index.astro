@@ -302,8 +302,13 @@ const [
   // three-step chain (permalink → window → page) is stated once, in admin-moneylog-panel.ts.
   only(['moneylog'], () => loadMoneyLogPanel(sp), null),
   only(['returns'], () => getOpenReturns(), []),
-  only(['returns'], () => returnRateByStore(), { stores: [], platformRate: 0, outliers: [] }),
-  only(['returns'], () => getClosedReturns(), []),
+  only(['returns'], () => returnRateByStore(), { stores: [], platformRate: 0, outliers: [], disputeOutliers: [] }),
+  // The history reads its OWN params, so a search and a page survive a reload and can be linked —
+  // which is the whole difference between a history and a list that resets under you.
+  only(['returns'], () => getClosedReturns({
+    q: sp.get('rq') ?? '',
+    page: Number(sp.get('rpage')) || 1,
+  }), { items: [], total: 0, page: 1, totalPages: 1 }),
   // The accounting statement — five aggregates in one wave (admin-statement-load.ts), and the SAME
   // function `/api/admin/statement` serves the CSV from, so the screen and the downloaded file
   // cannot be two statements of one month.
@@ -867,7 +872,7 @@ const badgeFor: Record<string, number> = badgeCounts;
       {/* Returns. Its normal state is empty — the sweep closes seven of the eight states on
           its own, and the one that needs a person arrives by mail before anyone opens this. */}
       <AdminPanelShell panel="returns" active={shows('returns')}>
-        <AdminReturnsPanel requests={openReturns} outliers={returnRates.outliers} platformRate={returnRates.platformRate} closed={closedReturns} />
+        <AdminReturnsPanel requests={openReturns} outliers={returnRates.outliers} platformRate={returnRates.platformRate} disputeOutliers={returnRates.disputeOutliers} closed={closedReturns} closedQuery={sp.get('rq') ?? ''} tabUrl={tabUrl} />
       </AdminPanelShell>
 
       <AdminPanelShell panel="moneylog" active={!!moneyLog && !!reconciliation}>

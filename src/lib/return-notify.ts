@@ -166,7 +166,11 @@ export async function notifySellerReturnDeadline(
         // nothing in it for him.
         ? 'הקונה ביקש להחזיר מוצר אחרי שחלף חלון ההחזרה, ולכן ההחלטה שלך. היום היום האחרון לענות. אם לא תענה, הבקשה תידחה והקונה לא יקבל כסף בחזרה. אם רצית לאשר את ההחזרה — זה היום.'
         // He already marked it as arrived; the missing step is saying what condition it is in.
-        : 'המוצר חזר אליך ועוד לא סימנת מה מצבו — תקין, או ריק ומשומש. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.',
+        // Deliberately does NOT list the answers. Naming "ריק ומשומש" in a reminder teaches the
+        // option to a seller who had not considered it, and it is the one claim in this mechanism
+        // that nothing can verify (owner, 2026-08-17: "לא מזמין בעיות?"). The button is still on the
+        // card for the seller who genuinely needs it; the nudge only names the step he owes.
+        : 'המוצר חזר אליך ועוד לא סימנת שבדקת אותו. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.',
       relatedId: request.orderId,
       storeSlug: request.storeSlug,
     });

@@ -3,6 +3,7 @@ import { resolveVisitorId } from './lib/visitor.js';
 import { gzipResponse } from './lib/http-compress.js';
 import { reportStreamErrors } from './lib/stream-errors.js';
 import { logError } from './lib/error-log.js';
+import { contentSecurityPolicy } from './lib/csp.js';
 import { recordPageViewTap } from './lib/page-view-tap.js';
 import { isBotRequest } from './lib/bot-detect.js';
 import { getSellerSession } from './lib/seller-auth.js';
@@ -236,6 +237,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // page's frontmatter finished, so everything the template renders after that — including every
     // component's frontmatter, `BaseLayout` included — throws outside the block below and was
     // reaching the socket as a bare "Internal server error" with nothing written to the log.
+    // The security policy, on the document and only on the document. It governs what a PAGE may
+    // load, so putting it on an API JSON response or an asset says nothing and only makes the
+    // header harder to read in a browser's network tab. Set here rather than per route for the
+    // reason every rule in this file is here: one place, so a new page cannot be born without it.
+    if ((response.headers.get('content-type') ?? '').includes('text/html')) {
+      response.headers.set('Content-Security-Policy', contentSecurityPolicy());
+    }
+
     return gzipResponse(
       context.request,
       reportStreamErrors(response, (err) => {

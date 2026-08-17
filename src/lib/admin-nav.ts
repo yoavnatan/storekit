@@ -32,9 +32,12 @@ export function buildAdminUrl(panel: string, params: Record<string, string | und
 // start leaking again.
 export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   overview: [],
-  // The returns queue takes no filters: it shows every open request, and its normal length is
-  // near zero because the sweep closes seven of the eight states on its own.
-  returns: [],
+  // The open queue takes no filters — it shows every open request, and its normal length is near
+  // zero because the sweep closes seven of the eight states on its own. The two params belong to the
+  // HISTORY underneath it, which is paged and searchable over every case that ever closed: a
+  // decision an admin cannot look up is one he cannot defend, and the case somebody rings back about
+  // is exactly the one a cap would have dropped.
+  returns: ['rq', 'rpage'],
   data: ['datapreset'],
   // `spayout` arrived when the payouts tab's per-seller table was folded into these cards
   // (סשן א׳ §3): the tiles there are counts, and this is what turns one back into the names.
