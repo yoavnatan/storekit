@@ -23,13 +23,26 @@
 import crypto from 'node:crypto';
 import {
   DEMO_EMAIL_SUFFIX, SEED_SCOPES,
-  openSeedClient, purge, purgeOrdersOfStores, writeCatalog,
+  openSeedClient, purge, purgeOrdersOfStores, purgeOrphanJournalRows, writeCatalog,
 } from './lib/seed-db.mjs';
 
 const uuid = () => crypto.randomUUID();
 const iso = (d) => new Date(d).toISOString();
 
 const DEMO_PASSWORD = 'demo1234';
+
+/** What a demo review says. Deliberately ordinary sentences — a demo whose reviews all rave reads
+ *  as marketing copy, which is the one thing a review must never look like. */
+const REVIEW_BODIES = [
+  'הגיע מהר ובאריזה טובה. בדיוק כמו בתמונות.',
+  'איכות מצוינת ביחס למחיר. אקנה שוב.',
+  'יפה מאוד, אבל קצת יותר קטן ממה שציפיתי.',
+  'שירות אדיב והמוצר תקין. ממליץ.',
+  'סביר. לא רע, לא מדהים.',
+  'הגיע יומיים אחרי ההזמנה, ארוז יפה.',
+  'המידה קצת גדולה, שווה לבדוק לפני שמזמינים.',
+  'בדיוק מה שחיפשתי לבית.',
+];
 const NOW = Date.now();
 const DAY = 86_400_000;
 
@@ -171,6 +184,11 @@ async function run(db) {
   // the demo stores' orders and leaves every other order untouched, which is the same guarantee
   // the filter used to provide and one the database can actually enforce.
   const orders = [];
+  // Reviews, written against the seeded orders — the only way to have any, since a review needs a
+  // real purchase behind it (`review-eligibility.ts`) and the seeder is not allowed a shortcut the
+  // product does not have. Which means a demo catalogue's ratings are as sparse as its order
+  // history, and that is the honest picture rather than a decorative one.
+  const reviews = [];
   // Traffic is rows now, keyed by store id — deleting the demo stores cascades to it, so unlike the
   // counters below there is nothing to carry across and rewrite.
   const pageViews = [];
@@ -184,9 +202,17 @@ async function run(db) {
     // Orders first, while the demo stores still exist to identify them by slug.
     const removedOrders = await purgeOrdersOfStores(db, 'demo');
     const removed = await purge(db, 'demo');
+    // Every purge before 2026-08-16 left the journal behind, so a tree that has been seeded more
+    // than once still carries rows pointing at orders that no longer exist — and the admin's
+    // reconciliation banner reads them as unpaid refund debts. Swept once here, unconditionally,
+    // because the wreckage predates the fix that stops it accumulating.
+    const orphans = await purgeOrphanJournalRows(db);
     console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s), ${removedOrders.deleted} order(s). Real (non-${DEMO_EMAIL_SUFFIX}) data preserved.\n`);
     if (removedOrders.keptShared) {
       console.log(`   ${removedOrders.keptShared} order(s) kept: they also contain items from a store that is not demo data.\n`);
+    }
+    if (removedOrders.journalRows || orphans) {
+      console.log(`   ${removedOrders.journalRows + orphans} money-journal row(s) removed with them, so the admin cross-check stays honest.\n`);
     }
     return;
   }
@@ -306,6 +332,26 @@ async function run(db) {
           trackingNumber: shipped === 'shipped' || shipped === 'delivered' ? `IL${int(100000000, 999999999)}` : '',
         });
         orderTotal++;
+
+        // A rating on some of what actually shipped. Skewed high on purpose — a real catalogue's
+        // ratings are, and a demo that averages 3.0 makes every screen look like a failing shop —
+        // but not uniformly 5, or the half star and the distribution bar never render at all,
+        // which is exactly the case a person looking at demo data needs to see.
+        const last = orders[orders.length - 1];
+        if (shipped === 'shipped' || shipped === 'delivered') {
+          for (const it of items) {
+            if (rnd() >= 0.45) continue;
+            reviews.push({
+              productId: it.productId,
+              storeSlug,
+              orderId: last.id,
+              reviewerName: `${fullName().split(' ')[0]} ${pick(['א׳', 'ב׳', 'כ׳', 'ל׳', 'מ׳', 'ש׳'])}`,
+              rating: pick([5, 5, 5, 4, 4, 4, 3, 2]),
+              body: rnd() < 0.75 ? pick(REVIEW_BODIES) : '',
+              createdAt: iso(created + int(3, 20) * DAY),
+            });
+          }
+        }
       }
     }
   }
@@ -317,11 +363,11 @@ async function run(db) {
   // with no demo data at all.
   await writeCatalog(db, {
     purge: 'demo',
-    sellers, stores, categories, products, orders, pageViews, favorites, wishlists,
+    sellers, stores, categories, products, orders, reviews, pageViews, favorites, wishlists,
   });
 
   console.log(`\n✅ Demo seed complete — real product photos from DummyJSON.`);
-  console.log(`   stores: +${storeN}   products: +${prodTotal}   orders: +${orderTotal}`);
+  console.log(`   stores: +${storeN}   products: +${prodTotal}   orders: +${orderTotal}   reviews: +${reviews.length}`);
   console.log(`   login as any demo seller — email sellerN@demo.local  /  password ${DEMO_PASSWORD}`);
   console.log(`   remove it all later with:  npm run seed:demo -- --clean\n`);
 }

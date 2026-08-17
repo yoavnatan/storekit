@@ -85,8 +85,16 @@ export async function recordRefundOwed(
     from: before.shippingStatus,
     to: after.shippingStatus,
     actor,
-    // Written for whoever reads the journal months later, which is the only audience it has.
-    detail: `payment was captured (ref=${after.paymentRef ?? '—'}) and the order was ${after.shippingStatus}; this amount is owed back to the buyer and no refund has been recorded`,
+    // Written for whoever reads the journal months later, which is the only audience it has — and
+    // that audience reads Hebrew. It said all of this in English until 2026-08-16, on a screen whose
+    // every other column is Hebrew, which is how the row that names real money owed to a real person
+    // became the least readable row on it.
+    //
+    // The status itself is deliberately NOT spelled out in words here. The row already carries it
+    // in its own `from`/`to` columns, which the panel renders beside this text — and a Hebrew word
+    // per status written at this call site would be a second copy of a vocabulary that belongs to
+    // `order-status-rules.ts`, drifting the first time a `returned` status is added.
+    detail: `הכסף נגבה בפועל (אסמכתה ${after.paymentRef ?? '—'}) וההזמנה יצאה מהמכירות. הסכום הזה מגיע בחזרה לקונה, ועדיין לא הוחזר.`,
   });
   if (sellerId) await recordSellerClawback(before, after, storeSlug, sellerId);
   return amountAgorot;
@@ -144,7 +152,7 @@ export async function recordSellerClawback(
     orderId: after.id,
     kind: 'refund_clawback',
     amountAgorot: -sellerShare,
-    detail: `order ${after.id} (${storeSlug}) was ${after.shippingStatus} after its hold had expired; the seller's share is recovered from the next payout`,
+    detail: `הזמנה ${after.id.slice(0, 8)} (${storeSlug}) יצאה מהמכירות אחרי שהכסף כבר שוחרר למוכר. חלקו של המוכר מקוזז מהתשלום הבא.`,
   });
   return sellerShare;
 }

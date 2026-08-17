@@ -9,6 +9,7 @@ import { initAdminAdvertisingPanel } from './advertising-platform.js';
 import { initAdminPlatformPerformance } from './platform-performance.js';
 import { initAdminDataPanel } from './data-panel.js';
 import { initAdminMoneyLogPanel } from './moneylog.js';
+import { initAdminReturnsPanel } from './returns.js';
 import { initAdminPayoutsPanel } from './payouts.js';
 import { initAdminStatementPanel } from './statement.js';
 import { initPerformanceTab } from '../dashboard/performance.js';
@@ -48,6 +49,7 @@ const INIT: Record<string, () => void> = {
   payouts: initAdminPayoutsPanel,
   statement: initAdminStatementPanel,
   moneylog: initAdminMoneyLogPanel,
+  returns: initAdminReturnsPanel,
   performance: () => { initPerformanceTab(); initAdminPlatformPerformance(); },
 };
 

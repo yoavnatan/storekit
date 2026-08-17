@@ -7,6 +7,7 @@ import { createAdminThread } from '../../../lib/admin-messages.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { createNotification } from '../../../lib/notifications.js';
 import { withTransaction } from '../../../lib/db.js';
+import { setReviewBlocked } from '../../../lib/product-reviews.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -51,7 +52,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  const read = await readJsonBody<{ action?: string; storeSlug?: string; productId?: string }>(request, BODY_LIMIT.control);
+  const read = await readJsonBody<{ action?: string; storeSlug?: string; productId?: string; reviewId?: string }>(request, BODY_LIMIT.control);
   const body = read.ok ? read.value : null;
   const action = body?.action ?? '';
 
@@ -73,6 +74,20 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     await updateProduct(product.id, { blocked });
     await notifySellerOfModeration(store.sellerId, product.name, 'product', blocked);
     return new Response(JSON.stringify({ ok: true, blocked }), { headers: json });
+  }
+
+  // A published review is the one thing on this platform written by somebody who is neither the
+  // seller nor us, so it is the one thing an admin may have to take down on a complaint. The row
+  // is KEPT and flagged, never deleted: the buyer's `UNIQUE (order_id, product_id)` still has to
+  // hold, and a deleted review would silently hand that purchase a second attempt.
+  //
+  // No seller notice here, unlike a block above. A hidden review is not an accusation against the
+  // seller — it is usually in their favour — and mailing them about it would turn every takedown
+  // into a conversation about a review the shopper can no longer see.
+  if (action === 'hide-review' || action === 'show-review') {
+    const updated = body?.reviewId ? await setReviewBlocked(body.reviewId, action === 'hide-review') : null;
+    if (!updated) return new Response(JSON.stringify({ error: 'Review not found' }), { status: 404, headers: json });
+    return new Response(JSON.stringify({ ok: true, blocked: updated.blocked }), { headers: json });
   }
 
   return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400, headers: json });

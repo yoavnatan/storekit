@@ -7,7 +7,7 @@ import type { MoneyEventType } from './money-event-types.js';
 // The vocabulary and its Hebrew labels live in `money-event-types.ts` — the SQL builder above needs
 // them and this module needs the SQL builder, so the shared half is its own module rather than a
 // cycle. Re-exported here because this has always been where the rest of the app imports them from.
-export { MONEY_EVENT_TYPES, MONEY_EVENT_LABELS, moneyActorLabel, isMoneyEventType, type MoneyEventType } from './money-event-types.js';
+export { MONEY_EVENT_TYPES, MONEY_EVENT_LABELS, moneyActorLabel, moneyEventStateWord, isMoneyEventType, type MoneyEventType } from './money-event-types.js';
 
 /**
  * Append-only journal of every event that moves, or claims to move, money.

@@ -223,7 +223,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
     // in the reconciler or in the reporting — not in the data.
     for (const seed of SEEDS) {
       const report = reconcileOrders(makeBatch(seed, 25), STORES);
-      expect(report.discrepancies.map((d) => `${d.check}: ${d.subject ?? ''} (${d.drift})`), `seed ${seed}`).toEqual([]);
+      expect(report.discrepancies.map((d) => `${d.check}: ${d.subject ?? ''} (${d.driftAgorot})`), `seed ${seed}`).toEqual([]);
     }
   });
 

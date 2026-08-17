@@ -1,7 +1,7 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
 import { formatBusinessTime, formatBusinessDateShort, formatBusinessDayLabel } from '../../lib/format-date.js';
-import { MONEY_EVENT_LABELS, moneyActorLabel, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
+import { MONEY_EVENT_LABELS, moneyActorLabel, moneyEventStateWord, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
 import { businessDayISO } from '../../lib/business-day.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 import { hasActiveMoneyLogFilters, MONEY_LOG_DEFAULT_DAYS, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
@@ -176,7 +176,7 @@ const highlightId = targetMissing ? '' : query.eventId;
                         {MONEY_EVENT_LABELS[e.type] ?? e.type}
                       </span>
                       {e.from && e.to && (
-                        <span class="block mt-1 text-[0.72rem] [color:var(--color-muted)]">{e.from} → {e.to}</span>
+                        <span class="block mt-1 text-[0.72rem] [color:var(--color-muted)]">{moneyEventStateWord(e.type, e.from)} ← {moneyEventStateWord(e.type, e.to)}</span>
                       )}
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap font-medium tabular-nums">

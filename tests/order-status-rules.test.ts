@@ -21,6 +21,20 @@ import { countsAsRevenue } from '../src/lib/orders.js';
  * from the table rather than from a call site's local opinion.
  */
 
+/**
+ * The statuses where the sale did not stay made — no revenue, no stock held.
+ *
+ * Two of them, by two different routes, and the tests below assert against this list rather than
+ * against the word 'cancelled' they used to name. `cancelled` never completed; `returned` completed
+ * and came back (`docs/returns-policy-decisions.md` §0). Both leave the money owed to the buyer and
+ * the units on the shelf, which is what these assertions are about — while staying separate statuses,
+ * because what they say about the seller's history is not the same.
+ *
+ * Written out rather than derived from `countsAsRevenue` itself: a test that computes its expectation
+ * from the table it is checking asserts nothing.
+ */
+const UNSOLD: string[] = ['cancelled', 'returned'];
+
 /** Parsed out of the Order type itself, so the check can't drift from the source. */
 function statusesFromOrderType(field: 'paymentStatus' | 'shippingStatus'): string[] {
   const src = fs.readFileSync(path.join(process.cwd(), 'src/lib/orders.ts'), 'utf8');
@@ -54,11 +68,12 @@ describe('the table covers every status that exists', () => {
 });
 
 describe('the rules say what the business actually means', () => {
-  it('only a cancelled order stops counting as revenue', () => {
+  it('an order that did not stay sold stops counting as revenue', () => {
     // Cancelling deliberately leaves paymentStatus at 'paid' — the charge happened —
-    // so the shipping side is the only thing that can take it out of a total.
+    // so the shipping side is the only thing that can take it out of a total. 'returned' joins
+    // 'cancelled' here for the same reason and by a different route: the goods came back.
     for (const [status, rule] of Object.entries(SHIPPING_STATUS_RULES) as Array<[ShippingStatus, typeof SHIPPING_STATUS_RULES[ShippingStatus]]>) {
-      expect(rule.countsAsRevenue, status).toBe(status !== 'cancelled');
+      expect(rule.countsAsRevenue, status).toBe(!UNSOLD.includes(status));
     }
   });
 
@@ -138,7 +153,7 @@ describe('the whole matrix, both fields at once', () => {
     // example — the combination nobody thinks to test is the one that bites.
     for (const paymentStatus of Object.keys(PAYMENT_STATUS_RULES) as PaymentStatus[]) {
       for (const shippingStatus of Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[]) {
-        const expected = paymentStatus === 'paid' && shippingStatus !== 'cancelled';
+        const expected = paymentStatus === 'paid' && !UNSOLD.includes(shippingStatus);
         expect(orderCountsAsRevenue({ paymentStatus, shippingStatus }), `${paymentStatus}/${shippingStatus}`).toBe(expected);
         // orders.ts#countsAsRevenue is the name the codebase calls; it must agree.
         expect(countsAsRevenue({ paymentStatus, shippingStatus }), `orders.ts ${paymentStatus}/${shippingStatus}`).toBe(expected);
@@ -148,7 +163,7 @@ describe('the whole matrix, both fields at once', () => {
 
   it('stock is held for exactly the non-cancelled statuses', () => {
     for (const shippingStatus of Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[]) {
-      expect(orderHoldsStock({ shippingStatus }), shippingStatus).toBe(shippingStatus !== 'cancelled');
+      expect(orderHoldsStock({ shippingStatus }), shippingStatus).toBe(!UNSOLD.includes(shippingStatus));
     }
   });
 

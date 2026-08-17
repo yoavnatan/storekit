@@ -60,13 +60,16 @@
     {
       "id": 4,
       "title": "Authorization — who may READ and who may WRITE what",
-      "audited": "2026-08-06",
+      "audited": "2026-08-16",
       "paths": [
         "src/lib/store-ownership.ts",
         "src/lib/seller-auth.ts",
+        "src/lib/password-reset.ts",
         "src/lib/safe-redirect.ts",
         "src/middleware.ts",
-        "src/pages/api/"
+        "src/pages/api/",
+        "src/pages/seller/reset-password.astro",
+        "src/pages/seller/forgot-password.astro"
       ]
     },
     {

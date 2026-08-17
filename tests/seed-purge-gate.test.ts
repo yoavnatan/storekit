@@ -216,7 +216,7 @@ describe('orders — deleted only when every store on them is disposable', () =>
     await store(demoSeller, 'demo-shop-2');
     const id = await order(['demo-shop', 'demo-shop-2']);
 
-    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 1, keptShared: 0 });
+    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 1, keptShared: 0, journalRows: 0 });
 
     const { rows } = await db.query('SELECT id FROM orders WHERE id = $1', [id]);
     expect(rows).toHaveLength(0);
@@ -228,7 +228,7 @@ describe('orders — deleted only when every store on them is disposable', () =>
     await threeWorlds();
     const shared = await order(['demo-shop', 'keramika']);
 
-    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 0, keptShared: 1 });
+    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 0, keptShared: 1, journalRows: 0 });
 
     const { rows } = await db.query('SELECT id FROM orders WHERE id = $1', [shared]);
     expect(rows).toHaveLength(1);
@@ -238,7 +238,7 @@ describe('orders — deleted only when every store on them is disposable', () =>
     await threeWorlds();
     await order(['demo-shop', 'store-that-was-deleted']);
 
-    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 0, keptShared: 1 });
+    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 0, keptShared: 1, journalRows: 0 });
   });
 
   it('a demo order and a shared one in the same run: one goes, one stays', async () => {
@@ -247,7 +247,7 @@ describe('orders — deleted only when every store on them is disposable', () =>
     const alone = await order(['demo-shop-2']);
     const shared = await order(['demo-shop', 'keramika']);
 
-    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 1, keptShared: 1 });
+    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 1, keptShared: 1, journalRows: 0 });
 
     const { rows } = await db.query<{ id: string }>('SELECT id FROM orders');
     expect(rows.map((r) => r.id)).toEqual([shared]);
@@ -258,6 +258,6 @@ describe('orders — deleted only when every store on them is disposable', () =>
     await threeWorlds();
     await order(['keramika']);
 
-    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 0, keptShared: 0 });
+    expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 0, keptShared: 0, journalRows: 0 });
   });
 });

@@ -6,6 +6,10 @@ import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, getStoresByIds } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
 import { getBuyerInvoiceUrls } from '../../lib/invoicing/buyer-invoice.js';
+import { getLatestReturnsByOrder, ordersWithOpenReturns } from '../../lib/return-requests.js';
+import { isReturnable } from '../../lib/return-eligibility.js';
+import { getStoresBySlugs } from '../../lib/stores.js';
+import { isOpen as returnIsOpen, buyerActionFor, type ReturnStatus } from '../../lib/returns.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
@@ -14,6 +18,7 @@ import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } fro
 import { groupBuyerPurchases, countBuyerPurchases } from '../../lib/buyer-purchases.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { orderIsReviewable } from '../../lib/review-eligibility.js';
 
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
@@ -44,7 +49,21 @@ const hasStore = storesOfSeller.length > 0;
 
 // One card per PURCHASE, not per store — a two-store basket was one click and one payment, so it
 // is one order here even though checkout writes a row per store (buyer-purchases.ts).
-const purchases = groupBuyerPurchases(orders);
+// Which of these have a return still running. One batched read for the whole list, and it feeds the
+// active/history split: an order whose parcel arrived is finished by its STATUS, and not finished at
+// all if the buyer is waiting on money back (buyer-purchases.ts explains why the status table cannot
+// see that).
+const openReturnOrderIds = await ordersWithOpenReturns(orders.map((o) => o.id));
+// Which shops on this page sell something the regulations take out of the return right
+// (return-eligibility.ts). Read here so the BUTTON can be withheld — the endpoint refuses these
+// anyway, and a button that appears and then fails is worse than no button at all.
+// One query for every shop on the page, not one per row.
+const nonReturnableSlugs = new Set(
+  (await getStoresBySlugs([...new Set(orders.flatMap((o) => Object.keys(o.storeSubtotals ?? {})))]))
+    .filter((st) => !isReturnable(st.categories))
+    .map((st) => st.slug),
+);
+const purchases = groupBuyerPurchases(orders, openReturnOrderIds);
 // The same function `/api/buyer/orders` answers with, so the figures this paints cannot disagree
 // with the ones a tab refresh writes over them (buyer-purchases.ts#countBuyerPurchases).
 const { active: activeOrdersCount, history: historyOrdersCount } = countBuyerPurchases(purchases);
@@ -56,6 +75,12 @@ const ordersPageResult = paginate(filteredOrders, parsePage(Astro.url.searchPara
 // query for the page rather than one per slice, and only for the ids actually being rendered — the
 // buyer's list is paginated, so the other pages' documents are nobody's business here either.
 const invoiceUrlByOrderId = await getBuyerInvoiceUrls(
+  ordersPageResult.items.flatMap((p) => p.slices.map((s) => s.order.id)),
+);
+
+// One query for the whole page, keyed by order id — a per-order lookup here would be a round
+// trip per row on a list that already holds every id it needs.
+const returnByOrderId = await getLatestReturnsByOrder(
   ordersPageResult.items.flatMap((p) => p.slices.map((s) => s.order.id)),
 );
 const ordersEmptyMessage = buyerOrderQuery.q
@@ -102,6 +127,26 @@ const shipLabel: Record<string, string> = {
   shipped: t.buyerDashboard.shippingShipped,
   delivered: t.buyerDashboard.shippingDelivered,
   cancelled: t.buyerDashboard.shippingCancelled,
+  returned: t.buyerDashboard.shippingReturned,
+};
+
+/**
+ * What a return looks like to the person who asked for it.
+ *
+ * Four states carry the journey the owner chose — sent, approved, on its way back, refunded — and
+ * the three closed ones say plainly what happened instead of leaving the row silent. `disputed` is
+ * deliberately vague to the buyer ("בבדיקה"): the seller's claim that the parcel was empty is an
+ * accusation, and a screen is not where it gets made.
+ */
+const returnLabel: Record<ReturnStatus, string> = {
+  requested: t.buyerDashboard.returnSent,
+  approved: t.buyerDashboard.returnApproved,
+  in_transit: t.buyerDashboard.returnBack,
+  received: t.buyerDashboard.returnAtSeller,
+  refunded: t.buyerDashboard.returnRefunded,
+  rejected: t.buyerDashboard.returnRejected,
+  expired: t.buyerDashboard.returnExpired,
+  disputed: t.buyerDashboard.returnChecking,
 };
 
 /** How many stores the collapsed card names before it starts counting. Two fits the narrowest
@@ -551,6 +596,28 @@ const STORES_NAMED = 2;
     }
     .o-store-sub strong { color: var(--color-text); font-size: 0.875rem; }
     .o-tracking { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; }
+    /* The return control. A link-weight button, because asking to return something is not the
+       primary action of this card and must not compete with it. */
+    .o-return { padding-top: 0.5rem; }
+    .o-return-btn {
+      background: none; border: 0; padding: 0; cursor: pointer;
+      font: inherit; font-size: 0.8rem; font-weight: 600;
+      color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px;
+    }
+    .o-return-why { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+    .o-return-q { font-size: 0.78rem; color: var(--color-muted); }
+    .o-return-why button {
+      font: inherit; font-size: 0.78rem; cursor: pointer;
+      background: var(--color-bg); color: var(--color-text);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+      padding: 0.3rem 0.6rem;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .o-return-why button:hover { background: var(--color-surface); border-color: var(--color-muted); }
+    .o-return-why button:disabled { cursor: default; opacity: 0.6; }
+    .o-return-items { display: flex; flex-direction: column; gap: 0.25rem; width: 100%; margin-bottom: 0.3rem; }
+    .o-return-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; cursor: pointer; }
+    .o-return-item input { accent-color: var(--color-accent); }
     /* What the whole purchase came to — rendered only when there IS more than
        one store's total above it to add up. Heavier than .o-store-sub on
        purpose: those are parts, this is the number the card is about. */
@@ -939,6 +1006,66 @@ const STORES_NAMED = 2;
                         {invoiceUrlByOrderId.get(s.order.id) && (
                           <p class="o-tracking">{t.buyerDashboard.invoiceLabel}: <a href={invoiceUrlByOrderId.get(s.order.id)} target="_blank" rel="noopener noreferrer"><strong>{t.buyerDashboard.invoiceView}</strong></a></p>
                         )}
+                        {/* "How was it?" — the signed-in buyer's way in, and the same destination
+                            the emailed link opens. Shown whenever the slice is at a status a buyer
+                            may review from (`buyerMayReview`), without asking whether anything is
+                            left to rate: that costs a query per slice on every page load, and the
+                            review page itself answers it in one sentence when there is nothing. */}
+                        {orderIsReviewable(s.order) && (
+                          <p class="o-tracking">
+                            <a href={`/review/${s.order.id}`}><strong>{t.reviews.writeCta}</strong></a>
+                          </p>
+                        )}
+                        {/* A return: the status when one exists, the button when one may be opened.
+                            Never both, and never the button on an order that is not delivered —
+                            anything earlier is a CANCELLATION, a different thing entirely. */}
+                        {(() => {
+                          const rr = returnByOrderId.get(s.order.id);
+                          if (rr) {
+                            return (
+                              <p class="o-tracking">
+                                <strong>{returnLabel[rr.status]}</strong>
+                                {returnIsOpen(rr.status) ? '' : ` · ${fmtAgorot(rr.refundAgorot)}`}
+                              </p>
+                            );
+                          }
+                          const act = buyerActionFor(s.order);
+                          if (act === 'none') return null;
+                          if (act === 'return' && nonReturnableSlugs.has(s.storeSlug)) return null;
+                          return (
+                            <div class="o-return">
+                              <button type="button" class="o-return-btn" data-return-open={s.order.id}>
+                                {act === 'cancel' ? t.buyerDashboard.cancelAsk : t.buyerDashboard.returnAsk}
+                              </button>
+                              {/* Four taps' worth of choice and nothing else — no modal, no form.
+                                  The reason is what decides who pays the return postage and how
+                                  much comes back, so it is asked once, here, in the buyer's words. */}
+                              <div class="o-return-why" data-return-why={s.order.id} hidden data-return-act={act}>
+                                {/* Which items — shown only when the order HAS more than one line.
+                                    On a single-item order there is nothing to choose and a checkbox
+                                    would be a decision invented for the buyer. Everything is ticked
+                                    to begin with, so the default gesture stays "send it all back"
+                                    and choosing less is the deliberate act. */}
+                                {s.order.items.length > 1 && (
+                                  <div class="o-return-items">
+                                    <span class="o-return-q">{t.buyerDashboard.returnWhat}</span>
+                                    {s.order.items.map((item, position) => (
+                                      <label class="o-return-item">
+                                        <input type="checkbox" checked data-return-line={position} data-return-line-for={s.order.id} data-return-qty={item.qty} />
+                                        <span>{item.productName}{item.qty > 1 ? ` ×${item.qty}` : ''}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                                <span class="o-return-q">{t.buyerDashboard.returnWhy}</span>
+                                <button type="button" data-return-reason="changed_mind" data-return-for={s.order.id}>{t.buyerDashboard.returnR1}</button>
+                                <button type="button" data-return-reason="damaged" data-return-for={s.order.id}>{t.buyerDashboard.returnR2}</button>
+                                <button type="button" data-return-reason="wrong_item" data-return-for={s.order.id}>{t.buyerDashboard.returnR3}</button>
+                                <button type="button" data-return-reason="not_arrived" data-return-for={s.order.id}>{t.buyerDashboard.returnR4}</button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -1219,6 +1346,7 @@ const STORES_NAMED = 2;
   data-prof-error-network={t.buyerDashboard.profErrorNetwork}
   data-date-locale={dateLocale}
   data-order-items={t.buyerDashboard.orderItems}
+  data-review-cta={t.reviews.writeCta}
   data-free-shipping={t.buyerDashboard.freeShipping}
   data-order-discount={t.buyerDashboard.orderDiscount}
   data-tracking-number={t.buyerDashboard.trackingNumber}
@@ -1229,6 +1357,8 @@ const STORES_NAMED = 2;
   data-ship-shipped={t.buyerDashboard.shippingShipped}
   data-ship-delivered={t.buyerDashboard.shippingDelivered}
   data-ship-cancelled={t.buyerDashboard.shippingCancelled}
+  data-ship-returned={t.buyerDashboard.shippingReturned}
+  data-return-failed={t.buyerDashboard.returnFailed}
   data-order-stores-more={t.buyerDashboard.orderStoresMore}
   data-order-total-all={t.buyerDashboard.orderTotalAll}
   data-orders-empty-active={t.buyerDashboard.ordersEmptyActive}
@@ -1254,6 +1384,7 @@ const STORES_NAMED = 2;
   import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
   import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
   import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+  import { orderIsReviewable } from '../../lib/review-eligibility.js';
   import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
   import { markPanelFresh, isPanelStale, panelHoldsTypedText } from '../../lib/panel-freshness.js';
 
@@ -1266,6 +1397,7 @@ const STORES_NAMED = 2;
     msgYou:          _i18nEl.dataset.msgYou           ?? 'You',
     msgNewToast:     _i18nEl.dataset.msgNewToast       ?? 'You have a new message',
     msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
+    returnFailed:   _i18nEl.dataset.returnFailed    ?? 'The request was not sent. Try again.',
     msgDeleteOk:     _i18nEl.dataset.msgDeleteOk      ?? 'Delete conversation',
     msgColStore:     _i18nEl.dataset.msgColStore       ?? 'Store',
     msgColProduct:   _i18nEl.dataset.msgColProduct     ?? 'Product',
@@ -1276,6 +1408,7 @@ const STORES_NAMED = 2;
     profErrorNetwork:_i18nEl.dataset.profErrorNetwork ?? 'Network error, try again',
     dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
     orderItems:      _i18nEl.dataset.orderItems       ?? 'Items',
+    reviewCta:       _i18nEl.dataset.reviewCta        ?? 'Rate this product',
     freeShipping:    _i18nEl.dataset.freeShipping     ?? 'Free',
     orderDiscount:   _i18nEl.dataset.orderDiscount    ?? 'Discount',
     trackingNumber:  _i18nEl.dataset.trackingNumber   ?? 'Tracking number',
@@ -1286,6 +1419,7 @@ const STORES_NAMED = 2;
     shipShipped:     _i18nEl.dataset.shipShipped      ?? 'Shipped',
     shipDelivered:   _i18nEl.dataset.shipDelivered    ?? 'Delivered',
     shipCancelled:   _i18nEl.dataset.shipCancelled    ?? 'Cancelled',
+    shipReturned:    _i18nEl.dataset.shipReturned     ?? 'Returned',
     orderStoresMore: _i18nEl.dataset.orderStoresMore  ?? '+{count} more',
     orderTotalAll:   _i18nEl.dataset.orderTotalAll    ?? 'Order total',
     ordersEmptyActive: _i18nEl.dataset.ordersEmptyActive ?? 'No active orders right now.',
@@ -2090,6 +2224,61 @@ const STORES_NAMED = 2;
     }
   });
 
+  /* ── Ask to return an order ──
+     Two taps and no form: the button reveals the reasons, a reason sends the request. The reason is
+     the only thing the server cannot work out for itself — it decides who pays the return postage
+     and whether the original delivery charge comes back — so it is the only thing asked. */
+  document.querySelectorAll<HTMLButtonElement>('[data-return-open]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const why = document.querySelector<HTMLElement>(`[data-return-why="${btn.dataset.returnOpen}"]`);
+      if (why) why.hidden = !why.hidden;
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-return-reason]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const orderId = btn.dataset.returnFor ?? '';
+      const reason = btn.dataset.returnReason ?? '';
+      // The whole row, not just the pressed button: four choices side by side, and a second tap
+      // while the first is in flight produces a refusal that reads like a fault.
+      const row = btn.parentElement;
+      const all = row ? [...row.querySelectorAll<HTMLButtonElement>('button')] : [btn];
+      all.forEach((b) => { b.disabled = true; });
+      void (async () => {
+        try {
+          const res = await fetch('/api/returns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // Only the lines still ticked. An order with one line has no checkboxes at all, so
+            // this is empty and the server reads it as "the whole order" — the same answer.
+            body: JSON.stringify({
+              action: 'open', orderId, reason,
+              lines: [...document.querySelectorAll<HTMLInputElement>(`[data-return-line-for="${orderId}"]`)]
+                .filter((c) => c.checked)
+                .map((c) => ({ position: Number(c.dataset.returnLine), qty: Number(c.dataset.returnQty) })),
+            }),
+          });
+          if (!res.ok) {
+            const said = await res.json().catch(() => null) as { error?: string } | null;
+            // The server's own sentence when it sent one: it knows why (a request is already open,
+            // the order is not delivered) and this script does not.
+            showErrorToast(said?.error || I.returnFailed);
+            all.forEach((b) => { b.disabled = false; });
+            return;
+          }
+          // A reload rather than a patch: the row becomes a status, and on an order inside the
+          // statutory window the request is already APPROVED by the time the response lands.
+          location.reload();
+        } catch {
+          showErrorToast(I.returnFailed);
+          all.forEach((b) => { b.disabled = false; });
+        }
+      })();
+    });
+  });
+
   /* ── Delete message thread ── */
   document.querySelectorAll<HTMLButtonElement>('[data-delete-bmsg-id]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -2232,7 +2421,7 @@ const STORES_NAMED = 2;
   // search + an active/history split, not a sort menu.
   interface BuyerOrderJson {
     id: string; createdAt: string; totalAgorot: number;
-    shippingStatus: string; trackingNumber?: string;
+    shippingStatus: string; paymentStatus: string; trackingNumber?: string;
     items: { storeSlug: string; storeName: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
     storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { appliedAgorot: number } }>;
   }
@@ -2245,6 +2434,7 @@ const STORES_NAMED = 2;
   const shipLabelClient: Record<string, string> = {
     pending: I.shipPending, processing: I.shipProcessing, ready: I.shipReady,
     shipped: I.shipShipped, delivered: I.shipDelivered, cancelled: I.shipCancelled,
+    returned: I.shipReturned,
   };
   /** Twin of the server's own badge markup — same class, same cancelled variant. */
   function shipBadge(status: string): string {
@@ -2286,6 +2476,10 @@ const STORES_NAMED = 2;
         </div>` : '';
       const trackingHtml = s.order.trackingNumber
         ? `<p class="o-tracking">${escB(I.trackingNumber)}: <strong>${escB(s.order.trackingNumber)}</strong></p>` : '';
+      // The server twin's rule, read from the same table — never a status comparison written
+      // here, which is how the two renderers of this card come to disagree.
+      const reviewHtml = orderIsReviewable(s.order)
+        ? `<p class="o-tracking"><a href="/review/${encodeURIComponent(s.order.id)}"><strong>${escB(I.reviewCta)}</strong></a></p>` : '';
       return `
         <div class="o-store-group">
           <div class="o-store-head">
@@ -2295,6 +2489,7 @@ const STORES_NAMED = 2;
           <ul class="o-item-list">${itemsHtml}</ul>
           ${subHtml}
           ${trackingHtml}
+          ${reviewHtml}
         </div>`;
     }).join('');
     const grandTotalHtml = split ? `

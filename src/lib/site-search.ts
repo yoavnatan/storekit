@@ -32,6 +32,10 @@ export interface ProductSearchHit {
    *  per-product disclosure the store's own grid does — this is where a shopper meets a demo
    *  product without ever passing the store page. Present only when true, like `basePrice`. */
   demo?: boolean;
+  /** The product's rating, present only when it HAS one — same "absent is not zero" rule as
+   *  `StoreProduct.reviewCount`, so a search card renders no stars rather than five grey ones. */
+  reviewCount?: number;
+  reviewRatingSum?: number;
 }
 
 const DEFAULT_STORE_LIMIT = 6;
@@ -124,6 +128,7 @@ export async function searchSite(rawQuery: string, options: SiteSearchOptions = 
       storeSlug: store.slug,
       storeName: store.name,
       ...(isDemoStore(store) ? { demo: true } : {}),
+      ...(p.reviewCount ? { reviewCount: p.reviewCount, reviewRatingSum: p.reviewRatingSum ?? 0 } : {}),
     });
   }
 

@@ -32,6 +32,9 @@ export function buildAdminUrl(panel: string, params: Record<string, string | und
 // start leaking again.
 export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   overview: [],
+  // The returns queue takes no filters: it shows every open request, and its normal length is
+  // near zero because the sweep closes seven of the eight states on its own.
+  returns: [],
   data: ['datapreset'],
   // `spayout` arrived when the payouts tab's per-seller table was folded into these cards
   // (סשן א׳ §3): the tiles there are counts, and this is what turns one back into the names.

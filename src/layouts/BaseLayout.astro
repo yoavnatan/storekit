@@ -36,7 +36,7 @@ import '../styles/main.css';
 const {
   title, description, image, type, noindex, jsonLd, canonical,
   isLoggedIn, hasStore, storeMode, storeName, storeSlug, storeLogo, storeDemo, storeHeaderLogo, sellerMode, hideNav, showSearch, isHome,
-  dataLayer, productPrice, productCurrency, preloadImage,
+  dataLayer, productPrice, productCurrency, preloadImage, noTracking,
 } = Astro.props;
 
 const lang = getLang(Astro.cookies);
@@ -113,8 +113,27 @@ function sanitizePixelId(id?: string): string {
   return /^\d{1,20}$/.test(id ?? '') ? (id ?? '') : '';
 }
 
-const platformGtm   = sanitizeTagId(platform.ads?.googleTagId);
-const platformPixel = sanitizePixelId(platform.ads?.metaPixelId);
+/**
+ * `noTracking` — this page's URL is allowed to carry a CREDENTIAL, so no third party may read it.
+ *
+ * Found in the row-4 re-audit, 2026-08-16, and it is latent rather than live only because both tag
+ * ids are still empty (`store.config.ts`; wiring them is GO_LIVE §2.5, a launch blocker). The
+ * password-reset link has to arrive as `?token=<64 hex>` — a mail can only carry a link — and every
+ * page on this site loads GTM and the Meta Pixel, both of which report the FULL page location in
+ * their payload. Not the `Referer` header, which modern browsers already trim to the origin
+ * cross-site: GA4's `page_location` and the Pixel's `dl` are the page's own href, query string
+ * included. So the day ads go live, every reset token would be copied into Google's and Meta's logs
+ * inside its own 60-minute lifetime, readable by anyone with access to those accounts — an account
+ * takeover path that leaves no trace on our side.
+ *
+ * It suppresses the dataLayer push too. That one is ours and harmless while GTM is absent, but it
+ * exists to be READ by GTM, and a page that must not be reported on must not stage a report either.
+ *
+ * `tests/credential-url-tracking.test.ts` scans every page for the shape rather than for this file:
+ * read a credential out of the URL, and the layout call has to say `noTracking`.
+ */
+const platformGtm   = noTracking ? '' : sanitizeTagId(platform.ads?.googleTagId);
+const platformPixel = noTracking ? '' : sanitizePixelId(platform.ads?.metaPixelId);
 
 function gtmHeadScript(id: string): string {
   return `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${id}');`;
@@ -126,7 +145,7 @@ function metaPixelScript(id: string): string {
 // The one blob that lands in EXECUTABLE JS rather than a JSON island, so it needs
 // jsonForScript's U+2028/2029 escapes as much as its `</script>` ones. Carries
 // seller-supplied product names (dataLayer ecommerce items) to every visitor.
-const dlJson = dataLayer ? jsonForScript(dataLayer) : null;
+const dlJson = dataLayer && !noTracking ? jsonForScript(dataLayer) : null;
 const sessionUserId = getSellerSession(Astro.cookies) ?? '';
 const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUserId) : 0;
 ---

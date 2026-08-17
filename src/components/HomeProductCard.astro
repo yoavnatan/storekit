@@ -25,6 +25,8 @@ import type { StoreProduct } from '../lib/store-products.js';
 import { formatPrice, cdnSrc, cdnSrcSet } from '../config/store.config.js';
 import { resolvePrice, type StoreSale } from '../lib/discounts.js';
 import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
+import { cardStarRowHtml } from '../lib/star-html.js';
+import { getLang, getT } from '../i18n/index.js';
 import ProductDemoBadge from './ProductDemoBadge.astro';
 
 interface Props {
@@ -46,6 +48,7 @@ interface Props {
 
 const { product: p, storeSlug, sale, role, priority = false, demo = false } = Astro.props;
 const pv = resolvePrice(p, sale);
+const t = getT(getLang(Astro.cookies));
 /** 220px tile; 440 covers 2x retina. Widths kept short on purpose — each distinct
  *  width is a separate CDN derivative. */
 const WIDTHS = [220, 440];
@@ -88,6 +91,7 @@ const WIDTHS = [220, 440];
          and card edge below it, and truncated from the wrong side. Same fix and
          same reasoning as StoreCard's own name. -->
     <span class="home-product-card__name"><bdi>{p.name}</bdi></span>
+    <Fragment set:html={cardStarRowHtml({ count: p.reviewCount ?? 0, sum: p.reviewRatingSum ?? 0 }, t.reviews.starsAria)} />
     <span class="home-product-card__price-row"><Fragment set:html={priceHtml(pv, { className: 'home-product-card__price' })} /></span>
   </div>
 </a>

@@ -68,6 +68,27 @@ export type AdjustmentKind =
   | 'setoff_ad'
   | 'manual';
 
+/**
+ * Each kind in the words the admin panel reads (owner, 2026-08-16: *"לשונית יומן כספי בפירוט מחזיקה
+ * בטקסטים שאני לא מצליח להבין"*).
+ *
+ * The journal's `detail` column is the only free text on that screen, and half of it was being
+ * written as debug output — `refund_clawback`, `period=2026-W33; payout=8f2c…`. A key nobody outside
+ * this file has seen is not a detail, it is a lookup the reader cannot perform, and the panel had no
+ * way to translate it because the string arrived pre-built.
+ *
+ * A `Record` rather than a function with a `default`, so adding a kind above without naming it here
+ * fails to compile instead of shipping an English key to the one screen that has to be readable
+ * during a money incident.
+ */
+export const ADJUSTMENT_KIND_LABELS: Record<AdjustmentKind, string> = {
+  refund_clawback: 'החזרת זיכוי ששולם כבר למוכר',
+  chargeback: 'חיוב-חוזר מחברת האשראי',
+  setoff_subscription: 'קיזוז דמי מנוי',
+  setoff_ad: 'קיזוז הוצאות פרסום',
+  manual: 'התאמה ידנית',
+};
+
 export interface LedgerAdjustment {
   id: string;
   sellerId: string;
@@ -774,7 +795,7 @@ export async function createPayout(input: {
     sellerId: input.sellerId,
     amountAgorot: payout.amountAgorot,
     actor: 'system',
-    detail: `period=${payout.periodKey}; payout=${payout.id}`,
+    detail: `תקופת תשלום ${payout.periodKey} · מזהה תשלום ${payout.id.slice(0, 8)}`,
   });
   return payout;
 }
@@ -816,7 +837,7 @@ export async function setPayoutStatus(
     amountAgorot: payout.amountAgorot,
     actor: 'system',
     to: status,
-    detail: `period=${payout.periodKey}; payout=${payout.id}${detail ? `; ${detail}` : ''}`,
+    detail: `תקופת תשלום ${payout.periodKey} · מזהה תשלום ${payout.id.slice(0, 8)}${detail ? ` · ${detail}` : ''}`,
   };
   if (status === 'failed') await recordMoneyEvent({ type: 'payout_failed', ...common });
   else await recordMoneyEvent({ type: 'payout_sent', ...common });
@@ -838,17 +859,41 @@ export async function recordAdjustment(input: {
   kind: AdjustmentKind;
   amountAgorot: number;
   detail?: string;
+  /**
+   * The return request this debit belongs to, when it belongs to one.
+   *
+   * **It changes what "already recorded" means, and that is the point.** An order-scoped clawback is
+   * idempotent per (order, kind): one cancellation, one debit, however many times a webhook fires.
+   * A partial return breaks that assumption because one order can be returned MORE THAN ONCE — the
+   * lamp this week, the shade next month — and both would collide on the same (order, kind), leaving
+   * the second silently unrecorded while the buyer was refunded for it (migration 0032).
+   *
+   * So a row that names a request is idempotent on the REQUEST instead, and the two indexes do not
+   * overlap. Absent means the old behaviour, unchanged, for every existing caller.
+   */
+  returnRequestId?: string | null;
 }): Promise<LedgerAdjustment | null> {
   if (!isUuid(input.sellerId)) return null;
   if (!Number.isInteger(input.amountAgorot) || input.amountAgorot === 0) return null;
 
-  const created = await firstRow<AdjustmentRow>(
-    `INSERT INTO seller_ledger_adjustments (seller_id, order_id, kind, amount_agorot, detail)
-          VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (order_id, kind) WHERE order_id IS NOT NULL DO NOTHING
-       RETURNING *`,
-    [input.sellerId, input.orderId ?? null, input.kind, input.amountAgorot, input.detail ?? ''],
-  );
+  // Two INSERTs rather than one with a computed conflict target: the target is part of the statement
+  // and cannot be parameterised, and a string built by concatenation is how a conflict clause ends up
+  // naming an index that does not exist.
+  const created = input.returnRequestId
+    ? await firstRow<AdjustmentRow>(
+      `INSERT INTO seller_ledger_adjustments (seller_id, order_id, kind, amount_agorot, detail, return_request_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (return_request_id) WHERE return_request_id IS NOT NULL DO NOTHING
+         RETURNING *`,
+      [input.sellerId, input.orderId ?? null, input.kind, input.amountAgorot, input.detail ?? '', input.returnRequestId],
+    )
+    : await firstRow<AdjustmentRow>(
+      `INSERT INTO seller_ledger_adjustments (seller_id, order_id, kind, amount_agorot, detail)
+            VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (order_id, kind) WHERE order_id IS NOT NULL AND return_request_id IS NULL DO NOTHING
+         RETURNING *`,
+      [input.sellerId, input.orderId ?? null, input.kind, input.amountAgorot, input.detail ?? ''],
+    );
   if (!created) return null;
 
   const adjustment = toAdjustment(created);
@@ -858,7 +903,7 @@ export async function recordAdjustment(input: {
     ...(input.orderId ? { orderId: input.orderId } : {}),
     amountAgorot: adjustment.amountAgorot,
     actor: 'system',
-    detail: `${adjustment.kind}${adjustment.detail ? `; ${adjustment.detail}` : ''}`,
+    detail: `${ADJUSTMENT_KIND_LABELS[adjustment.kind]}${adjustment.detail ? ` · ${adjustment.detail}` : ''}`,
   });
   return adjustment;
 }

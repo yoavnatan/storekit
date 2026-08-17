@@ -10,6 +10,7 @@ import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId, getStoresBySlugs } from '../lib/stores.js';
 import { getStorePreviews, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
 import { searchSite } from '../lib/site-search.js';
+import { cardStarRowHtml } from '../lib/star-html.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId   = getSellerSession(Astro.cookies);
@@ -129,6 +130,7 @@ const jsonLd = {
                     <div class="search-product-card__body">
                       <span class="search-product-card__name"><bdi>{p.name}</bdi></span>
                       <span class="search-product-card__store"><bdi>{p.storeName}</bdi></span>
+                      <Fragment set:html={cardStarRowHtml({ count: p.reviewCount ?? 0, sum: p.reviewRatingSum ?? 0 }, t.reviews.starsAria)} />
                       <span class="search-product-card__price-row block mt-[0.15rem]">
                         <span class={`search-product-card__price price-now${p.basePrice ? ' price-now--sale' : ''}`}>{formatPrice(p.price)}</span>
                         {p.basePrice && <s class="price-was">{formatPrice(p.basePrice)}</s>}

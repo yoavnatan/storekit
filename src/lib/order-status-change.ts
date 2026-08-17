@@ -85,7 +85,7 @@ export async function settleStatusChange(input: {
   // record of why a seller's reported revenue dropped between two views of the same period.
   const restocking = !orderHoldsStock(after);
   const said = [
-    restocking ? 'cancelled — items restocked, order leaves every revenue sum (countsAsRevenue)' : '',
+    restocking ? 'המלאי הוחזר למדף וההזמנה יצאה מכל חישובי ההכנסה' : '',
     input.detail ?? '',
   ].filter(Boolean).join('; ');
   await recordMoneyEvent({

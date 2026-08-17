@@ -16,9 +16,10 @@
  *      dropped, unattributable slices reported rather than swallowed).
  */
 import { describe, it, expect } from 'vitest';
-import { orderPayoutLine, payoutWhyText, splitHeldByBasis, storesWithHeldMoney, payableHeadlineAgorot, HELD_BASES, type HeldSlice } from '../src/lib/order-payout-line.js';
-import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../src/lib/payout-schedule.js';
+import { orderPayoutLine, payoutLineText, payoutWhyText, splitHeldByBasis, storesWithHeldMoney, payableHeadlineAgorot, HELD_BASES, type HeldSlice } from '../src/lib/order-payout-line.js';
+import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT, PAYOUT_WEEKDAY, nextPayoutDayISO } from '../src/lib/payout-schedule.js';
 import { addDaysISO } from '../src/lib/date-range.js';
+import { translations } from '../src/i18n/translations.js';
 
 const TODAY = '2026-08-10';
 const at = (dayISO: string) => `${dayISO}T12:00:00.000Z`;
@@ -95,11 +96,123 @@ describe('the payout line an order card shows', () => {
     expect(line.actionKey).toBe('payActionNone');
   });
 
+  /**
+   * ── The date the card prints is the day the TRANSFER goes out (owner, 2026-08-16) ──
+   * It used to print the release day under the word "אחרי", and he asked what "אחרי" meant. Nothing
+   * good: the hold can end on a Tuesday while the run that pays it leaves on the following Sunday,
+   * so the date on the card was a day on which nothing happened to anyone's money. These pin that
+   * the two dates are genuinely different and that the one shown is the payout run's.
+   */
+  it('names the payout RUN, not the day the hold ends', () => {
+    const line = orderPayoutLine({
+      paymentStatus: 'paid',
+      shippingStatus: 'delivered',
+      paidAt: at(daysAgo(20)),
+      deliveredAt: at(daysAgo(1)),
+    }, TODAY);
+    expect(line.payoutDayISO).toBe(nextPayoutDayISO(line.releaseDayISO!));
+    expect(new Date(`${line.payoutDayISO}T12:00:00Z`).getUTCDay()).toBe(PAYOUT_WEEKDAY);
+    // Not a rename of the same field: the release day here is a Tuesday, five days before the run.
+    expect(line.payoutDayISO).not.toBe(line.releaseDayISO);
+    expect(line.payoutDayISO! > line.releaseDayISO!).toBe(true);
+  });
+
+  it('counts released money from TODAY — the run its own release day caught may already be gone', () => {
+    // Delivered long ago: released weeks back, and the runs since then may have skipped it (below
+    // the minimum, no bank details). The seller's question is which run is next, never which it
+    // missed — a date in the past on a "when do I get paid" line is worse than no date at all.
+    const line = orderPayoutLine({
+      paymentStatus: 'paid',
+      shippingStatus: 'delivered',
+      paidAt: at(daysAgo(90)),
+      deliveredAt: at(daysAgo(60)),
+    }, TODAY);
+    expect(line.state).toBe('releasable');
+    expect(line.payoutDayISO).toBe(nextPayoutDayISO(TODAY));
+    expect(line.payoutDayISO! >= TODAY).toBe(true);
+  });
+
+  it('has no payout day where no clock has started', () => {
+    const unshipped = orderPayoutLine({ paymentStatus: 'paid', shippingStatus: 'pending', paidAt: at(daysAgo(9)), deliveredAt: null }, TODAY);
+    expect(unshipped.payoutDayISO).toBeNull();
+    const cancelled = orderPayoutLine({ paymentStatus: 'paid', shippingStatus: 'cancelled', paidAt: at(daysAgo(40)), deliveredAt: at(daysAgo(30)) }, TODAY);
+    expect(cancelled.payoutDayISO).toBeNull();
+  });
+
   it('fills {n} only where the sentence has one', () => {
     const withN = orderPayoutLine({ paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: at(daysAgo(20)), deliveredAt: at(daysAgo(1)) }, TODAY);
     expect(payoutWhyText(withN, 'window of {n} days')).toBe(`window of ${HOLD_DAYS_AFTER_DELIVERY} days`);
     const withoutN = orderPayoutLine({ paymentStatus: 'paid', shippingStatus: 'pending', paidAt: at(daysAgo(9)), deliveredAt: null }, TODAY);
     expect(payoutWhyText(withoutN, 'not shipped yet')).toBe('not shipped yet');
+  });
+});
+
+/**
+ * The two strings the card prints, which three renderers now take from one function rather than
+ * each writing the same four-branch ternary (the admin's had already drifted from the other two).
+ * The branch that has to hold is the undateable one: an order `payout-hold.ts` could not date is
+ * `held`, so a renderer keyed on the state alone reaches for a null date and prints "צפוי ב" with
+ * nothing after it, on a money screen.
+ */
+describe('the two halves of the sentence a card prints', () => {
+  const textFor = (order: Parameters<typeof orderPayoutLine>[0]) => payoutLineText(orderPayoutLine(order, TODAY));
+
+  it('answers with a date and a reason once a clock is running', () => {
+    const delivered = textFor({ paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: at(daysAgo(20)), deliveredAt: at(daysAgo(1)) });
+    expect(delivered.mainKey).toBe('orderPayoutExpected');
+    expect(delivered.dateISO).not.toBeNull();
+    expect(delivered.whyKey).toBe('payFilter_window');
+
+    const shipped = textFor({ paymentStatus: 'paid', shippingStatus: 'shipped', paidAt: at(daysAgo(2)), deliveredAt: null });
+    expect(shipped.whyKey).toBe('payFilter_undelivered');
+
+    const released = textFor({ paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: at(daysAgo(90)), deliveredAt: at(daysAgo(60)) });
+    expect(released.mainKey).toBe('orderPayoutExpected');
+    expect(released.whyKey).toBe('payFilter_released');
+  });
+
+  it('says what produces a date when there is none to give', () => {
+    const unshipped = textFor({ paymentStatus: 'paid', shippingStatus: 'pending', paidAt: at(daysAgo(9)), deliveredAt: null });
+    expect(unshipped).toMatchObject({ mainKey: 'payFilter_unshipped', dateISO: null, whyKey: 'orderPayoutUnshippedHint' });
+  });
+
+  it('never reaches for a date it does not have — the undateable order says so instead', () => {
+    // `paidAt` missing on a paid, delivered order: held, no basis, no release day. The old
+    // state-only ternary printed the "ישולם אחרי {date}" branch here with an empty date.
+    const anomaly = textFor({ paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: null, deliveredAt: null });
+    expect(anomaly).toMatchObject({ mainKey: 'payWhyUnknown', dateISO: null, whyKey: null });
+  });
+
+  it('offers no reason beside an answer that already carries one', () => {
+    const cancelled = textFor({ paymentStatus: 'paid', shippingStatus: 'cancelled', paidAt: at(daysAgo(40)), deliveredAt: at(daysAgo(30)) });
+    expect(cancelled).toMatchObject({ mainKey: 'payFilter_none', whyKey: null });
+  });
+
+  /**
+   * The keys are looked up dynamically (`tt(text.mainKey)`), so `orders-i18n.test.ts`'s literal
+   * `tt('key')` scan cannot see them — a key missing from a dictionary would render as an empty
+   * string on the money line rather than fail anything. Both dictionaries, both halves.
+   */
+  it('only names keys both languages define', () => {
+    const he = translations.he.dashboard as unknown as Record<string, string>;
+    const en = translations.en.dashboard as unknown as Record<string, string>;
+    const keys = ['payFilter_none', 'payFilter_unshipped', 'payWhyUnknown', 'orderPayoutExpected',
+      'orderPayoutUnshippedHint', 'payFilter_undelivered', 'payFilter_window', 'payFilter_released',
+      'orderPayoutLabel', 'orderPayoutHow'];
+    expect(keys.filter((k) => !he[k] || !en[k])).toEqual([]);
+    // All five of the toolbar filter's options are among them, and that is the point rather than a
+    // coincidence: the card renders the string the seller filtered by, so the two cannot drift into
+    // separate vocabularies again ("טרם נמסר" on a card the filter called "בדרך ללקוח").
+    expect(keys.filter((k) => k.startsWith('payFilter_'))).toHaveLength(5);
+  });
+
+  it('interpolates a date only into the string that has a slot for it', () => {
+    const he = translations.he.dashboard as unknown as Record<string, string>;
+    const withDate = textFor({ paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: at(daysAgo(20)), deliveredAt: at(daysAgo(1)) });
+    expect(he[withDate.mainKey]).toContain('{date}');
+    for (const key of ['payFilter_none', 'payFilter_unshipped', 'payWhyUnknown']) {
+      expect(he[key], `${key} has no date to fill`).not.toContain('{date}');
+    }
   });
 });
 
@@ -116,6 +229,8 @@ describe('the held split on the payments tab', () => {
       slice('delivery', 100),
       slice('payment', 200),
       slice('delivery', 300),
+      // A frozen slice — an open return case (decisions §4). Last in HELD_BASES on purpose.
+      slice('return_open', 700),
     ]);
     expect(split.groups.map((g) => g.basis)).toEqual([...HELD_BASES]);
     expect(split.groups.find((g) => g.basis === 'delivery')).toMatchObject({ orders: 2, agorot: 400 });

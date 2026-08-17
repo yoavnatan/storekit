@@ -4,6 +4,7 @@ import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { getOrdersByBuyer } from '../../../lib/orders.js';
 import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../../lib/buyer-orders-query.js';
 import { groupBuyerPurchases, countBuyerPurchases } from '../../../lib/buyer-purchases.js';
+import { ordersWithOpenReturns } from '../../../lib/return-requests.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 
@@ -38,7 +39,11 @@ export const GET: APIRoute = async ({ request, cookies }) => {
 
   const query = parseBuyerOrderQuery(url.searchParams);
   // Grouped BEFORE filtering and paging: a page is five purchases (buyer-orders-query.ts).
-  const allPurchases = groupBuyerPurchases(orders);
+  // The SAME open-return set the page reads (buyer/dashboard.astro). Without it a tab refresh would
+  // rewrite the list with a different active/history split than the one that was painted, and an
+  // order with a live return would jump between tabs on every poll.
+  const openReturnOrderIds = await ordersWithOpenReturns(orders.map((o) => o.id));
+  const allPurchases = groupBuyerPurchases(orders, openReturnOrderIds);
   const filtered = filterBuyerPurchases(allPurchases, query);
   const page = paginate(filtered, parsePage(url.searchParams, 'page'), BUYER_ORDER_PAGE_SIZE);
 

@@ -112,7 +112,9 @@ export interface Order {
   totalAgorot: number;
   paymentRef?: string;
   paymentStatus: 'pending' | 'paid' | 'failed';
-  shippingStatus: 'pending' | 'processing' | 'ready' | 'shipped' | 'delivered' | 'cancelled';
+  /** 'returned' is NOT a flavour of 'cancelled' — see `order-status-rules.ts`'s row for it, and
+   *  `docs/returns-policy-decisions.md` §0 for why conflating them corrupts three separate things. */
+  shippingStatus: 'pending' | 'processing' | 'ready' | 'shipped' | 'delivered' | 'cancelled' | 'returned';
   trackingNumber?: string;
   /** Private seller-only handling notes, keyed by storeSlug so each seller's notes on a
    *  (possibly multi-store) order stay private from the other stores' sellers. A LIST per

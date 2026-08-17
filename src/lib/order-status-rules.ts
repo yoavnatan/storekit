@@ -122,16 +122,73 @@ export interface ShippingStatusRule {
    * has something to do — and reading one for the other would silently mis-sort that day.
    */
   sellerOwesAction: boolean;
+  /**
+   * May the buyer publish a review of what they bought from here?
+   *
+   * A column and not a `=== 'delivered'` at the review API, for the reason this whole table
+   * exists — and this one is a facet nothing else asks: it is neither "is the money real"
+   * (`countsAsRevenue`, true from `pending`) nor "did the parcel leave" (`payoutClockRuns`), but
+   * "has this person actually had the product in their hands".
+   *
+   * `shipped` is TRUE and it is the row worth arguing about. The strict answer is `delivered`
+   * only — but delivered is a status the SELLER sets by hand today (the courier's webhook is
+   * GO_LIVE §5), and a seller who never touches the dropdown would silently mean nobody may ever
+   * review anything they sold. The same asymmetry `payoutClockRuns` documents, arriving at the
+   * opposite conclusion, because the consequences are opposite: there, a status nobody
+   * corroborated releases MONEY, so the bar is high; here it lets a person who has already paid
+   * say what they think, and the buyer knows whether the parcel arrived far better than the
+   * status column does. A buyer who has not received it yet simply does not write one.
+   *
+   * `returned` is TRUE. Someone who sent the product back has the most informed opinion of it on
+   * the platform, and a system that silences exactly the unhappy buyers is not a review system.
+   *
+   * `cancelled` is FALSE: nothing ever reached anyone, so there is nothing to have an opinion
+   * about, and `paymentStatus` was left at 'paid' — which is the trapdoor a bare payment check
+   * would have fallen through.
+   *
+   * `ready` is FALSE for both delivery methods, self-pickup included: the parcel is packed and
+   * waiting on the counter, and the buyer has not walked in yet. Collection moves it to
+   * `delivered`, which is the row that opens this.
+   */
+  buyerMayReview: boolean;
 }
 
 export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> = {
-  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true  },
-  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true  },
-  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: true , sellerOwesAction: true  },
-  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
-  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false },
-  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: false },
+  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true , buyerMayReview: false },
+  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: true , buyerMayReview: false },
+  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: true , sellerOwesAction: true , buyerMayReview: false },
+  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false, buyerMayReview: true  },
+  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true , pickupPayoutClockRuns: true , sellerOwesAction: false, buyerMayReview: true  },
+  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: false, buyerMayReview: false },
+  returned:   { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false, sellerOwesAction: false, buyerMayReview: true  },
 };
+
+/**
+ * ── Why `returned` reads identically to `cancelled` here, and is still not the same status ──
+ *
+ * Every column above asks "what is true of this order NOW", and once the goods are back on the shelf
+ * and the money is owed to the buyer, the answers genuinely coincide: no revenue, no stock held,
+ * nothing left to transition to, no payout clock, nothing the seller must do. Filling the row with
+ * the same values is the table working, not a redundancy — the alternative was a `=== 'cancelled'`
+ * somewhere that quietly excluded returns from a revenue sum or a restock.
+ *
+ * What the two statuses do NOT share is HISTORY, and that is why they are separate rows rather than
+ * one (owner, 2026-08-16; `docs/returns-policy-decisions.md` §0). A cancelled order never completed:
+ * nothing reached the buyer, and the seller did not do the work. A returned one did — packed,
+ * shipped, delivered, and only then sent back. Three things read that difference and none of them is
+ * a column here:
+ *
+ *   • **The seller's record.** Recording a return as a cancellation erases a fulfilment that really
+ *     happened, and would corrupt any future on-time measure built on this column.
+ *   • **The money.** Both owe a refund, but only one of them ever had a delivery behind it — which
+ *     is what decides whether the hold had already released and a clawback is due (`refund-owed.ts`).
+ *   • **The reports.** "Orders that failed to arrive" and "products people sent back" are different
+ *     business problems with different fixes, and one status makes them permanently
+ *     indistinguishable.
+ *
+ * So: read the COLUMNS for behaviour, never the status name — and keep the names apart for the
+ * questions the columns do not ask.
+ */
 
 export interface PaymentStatusRule {
   /** Did money actually arrive? Only 'paid' may contribute to any revenue figure. */
@@ -223,6 +280,13 @@ export const PAYOUT_CLOCK_SHIPPING_STATUSES = shippingWhere('payoutClockRuns');
 /** The same list for an order the buyer collects — `ready` and later. See the column's own doc
  *  for why self-pickup has a different milestone and why weaker evidence is acceptable there. */
 export const PICKUP_PAYOUT_CLOCK_SHIPPING_STATUSES = shippingWhere('pickupPayoutClockRuns');
+
+/** The shipping statuses a buyer may review from (`buyerMayReview`), for the SQL half of the
+ *  eligibility rule — `product-reviews.ts#getReviewableOrderForProduct`, which asks it of the
+ *  database rather than reading every order of a buyer into memory to filter. ANDed with
+ *  `REVENUE_PAYMENT_STATUSES`, never instead of it: `returned` is reviewable and is NOT revenue,
+ *  and a cancelled order is still `paid`. */
+export const REVIEWABLE_SHIPPING_STATUSES = shippingWhere('buyerMayReview');
 
 /**
  * Has the seller done everything they control, so money may release on a timer?

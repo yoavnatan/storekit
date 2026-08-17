@@ -1,5 +1,6 @@
+import { businessTodayISO } from './business-day.js';
 import { orderHold, type HoldableOrder, type HoldState } from './payout-hold.js';
-import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from './payout-schedule.js';
+import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT, nextPayoutDayISO } from './payout-schedule.js';
 
 /**
  * One order's payout status, as a screen has to say it: **when, why, and whether it is on you.**
@@ -32,7 +33,7 @@ import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from './payout-
 
 /** Keys into the `dashboard` translation table. Listed as unions so a typo is a compile error
  *  rather than an empty cell on a money screen. */
-export type PayoutWhyKey = 'payWhyDelivery' | 'payWhyPayment' | 'payWhyUnshipped' | 'payWhyUnknown';
+export type PayoutWhyKey = 'payWhyDelivery' | 'payWhyPayment' | 'payWhyUnshipped' | 'payWhyReturnOpen' | 'payWhyUnknown';
 export type PayoutActionKey = 'payActionNone' | 'payActionMarkDelivered' | 'payActionShip';
 
 export interface OrderPayoutLine {
@@ -40,7 +41,27 @@ export interface OrderPayoutLine {
   /** Business day the money is released. Null when there is no date to show — either nothing is
    *  coming (`not_payable`) or the thing the date depends on has not happened (`unshipped`). */
   releaseDayISO: string | null;
-  basis: 'delivery' | 'payment' | 'unshipped' | null;
+  /**
+   * Business day the money actually LEAVES — the payout run that `releaseDayISO` catches, and the
+   * only one of the two dates a seller has any use for.
+   *
+   * ── Why the screen shows this and not the release day (owner, 2026-08-16) ──
+   * It used to show the release day, worded "ישולם אחרי {date}", and he asked what "אחרי" meant.
+   * Nothing good: a hold ends on a Tuesday and the transfer goes out on the following Sunday, so the
+   * date on the card was a day on which, by design, nothing happened to the seller's money. The
+   * vaguer word was carrying the five-day gap. Naming the run's own day closes it.
+   *
+   * **It is an ESTIMATE and the copy says so ("צפוי").** Two things can still move it, both of them
+   * honest: a balance under `MIN_PAYOUT_AGOROT` rolls into the next run, and a חג falling on the
+   * payout weekday moves the transfer to the next banking day (`nextPayoutDayISO`'s header — that
+   * one is not implemented, and cannot be until there is a bank). A screen that promised the date
+   * would be wrong for the small seller every time.
+   *
+   * Null exactly where `releaseDayISO` is null AND the money is not already released: no clock has
+   * started, so no run can be named.
+   */
+  payoutDayISO: string | null;
+  basis: 'delivery' | 'payment' | 'unshipped' | 'return_open' | null;
   whyKey: PayoutWhyKey;
   /** The `{n}` inside `whyKey`'s sentence, or null when it has no `{n}`. */
   whyDays: number | null;
@@ -61,31 +82,88 @@ const WHY_BY_BASIS: Record<string, { key: PayoutWhyKey; days: number | null }> =
   delivery:  { key: 'payWhyDelivery',  days: HOLD_DAYS_AFTER_DELIVERY },
   payment:   { key: 'payWhyPayment',   days: FALLBACK_DAYS_AFTER_PAYMENT },
   unshipped: { key: 'payWhyUnshipped', days: null },
+  // A case is open on this order, so the money stays with the platform until it closes (decisions
+  // §4). No days: the date depends on something that has not happened yet.
+  return_open: { key: 'payWhyReturnOpen', days: null },
 };
 
 const ACTION_BY_BASIS: Record<string, PayoutActionKey> = {
   delivery:  'payActionNone',
   payment:   'payActionMarkDelivered',
   unshipped: 'payActionShip',
+  // Nothing for the seller to DO — the case is with the buyer, the carrier or the admin.
+  return_open: 'payActionNone',
 };
 
 /** The basis whose action changes an OUTCOME rather than a date. */
 const BLOCKING_BASIS = 'unshipped';
 
-export function orderPayoutLine(order: HoldableOrder, todayISO?: string): OrderPayoutLine {
+export function orderPayoutLine(order: HoldableOrder, todayISO: string = businessTodayISO()): OrderPayoutLine {
   const hold = orderHold(order, todayISO);
   // `basis: null` is an anomaly, not a state — `payout-hold.ts` uses it for an order it could not
   // date at all. It gets "we are looking into this order" rather than a fabricated reason, and no
   // action, because there is none the seller could take.
   const why = WHY_BY_BASIS[hold.basis ?? ''] ?? { key: 'payWhyUnknown' as PayoutWhyKey, days: null };
+  // Released money catches the run that today's date reaches, not the one its own release day did:
+  // that run may already have gone out (below the minimum, or no bank details on file), and the
+  // seller's question is which run is next, never which one it missed.
+  const payoutFrom = hold.state === 'releasable' ? todayISO : hold.releaseDayISO;
   return {
     state: hold.state,
     releaseDayISO: hold.releaseDayISO,
+    payoutDayISO: payoutFrom ? nextPayoutDayISO(payoutFrom) : null,
     basis: hold.basis,
     whyKey: why.key,
     whyDays: why.days,
     actionKey: ACTION_BY_BASIS[hold.basis ?? ''] ?? 'payActionNone',
     blocking: hold.state === 'held' && hold.basis === BLOCKING_BASIS,
+  };
+}
+
+/**
+ * The two halves of the sentence a card prints, as translation KEYS — a bold answer to *when*, and
+ * a muted answer to *why then*.
+ *
+ * ── Why this is a function and not a ternary in each card (2026-08-16) ──
+ * It was a ternary in each card: the `.astro` one, `buildOrderCard`'s, and the admin panel's, three
+ * copies of the same four-branch decision. They had already drifted — the admin's read
+ * `state === 'releasable'` where the others also had a date to show — and the branch that matters
+ * most is the one nobody writes twice the same way: an order `payout-hold.ts` could not date at all
+ * (`basis: null`) is `held`, so a card keyed on the state alone reaches for a date that is null and
+ * prints "צפוי ב" followed by nothing, on a money screen.
+ *
+ * ── Why the words are the FILTER's words ──
+ * `payFilter_*` are the five options in the Orders toolbar's payment-status filter, and the card now
+ * renders those exact strings. The seller filters by "בדרך ללקוח" and reads "בדרך ללקוח" on every
+ * row that comes back. They were two vocabularies for one set of states until now (the card said
+ * "טרם נמסר" where the filter said "בדרך ללקוח"), which is a drift that cannot be tested for —
+ * sharing the key is what ends it.
+ */
+export type PayoutTextMainKey = 'payFilter_none' | 'payFilter_unshipped' | 'payWhyUnknown' | 'orderPayoutExpected';
+export type PayoutTextWhyKey = 'orderPayoutUnshippedHint' | 'payFilter_undelivered' | 'payFilter_window' | 'payFilter_released';
+
+export interface PayoutLineText {
+  mainKey: PayoutTextMainKey;
+  /** The business day to interpolate into `{date}`. Non-null exactly when `mainKey` carries one. */
+  dateISO: string | null;
+  /** The muted half, or null where the answer stands alone and a second clause would only repeat it
+   *  ("לא ישולם — ההזמנה בוטלה" needs no reason beside it). */
+  whyKey: PayoutTextWhyKey | null;
+}
+
+export function payoutLineText(line: OrderPayoutLine): PayoutLineText {
+  if (line.state === 'not_payable') return { mainKey: 'payFilter_none', dateISO: null, whyKey: null };
+  if (line.basis === 'unshipped') return { mainKey: 'payFilter_unshipped', dateISO: null, whyKey: 'orderPayoutUnshippedHint' };
+  // Held, and undateable — the `basis: null` anomaly. It says so instead of naming a run, because
+  // the only honest answer here is that a person is looking at it.
+  if (!line.payoutDayISO) return { mainKey: 'payWhyUnknown', dateISO: null, whyKey: null };
+  const filterValue = payoutFilterValue(line);
+  return {
+    mainKey: 'orderPayoutExpected',
+    dateISO: line.payoutDayISO,
+    whyKey: filterValue === 'released' ? 'payFilter_released'
+      : filterValue === 'undelivered' ? 'payFilter_undelivered'
+      : 'payFilter_window',
   };
 }
 
@@ -122,10 +200,12 @@ export function payoutFilterValue(line: OrderPayoutLine): PayoutFilterValue {
 
 /** The hold reasons that can be grouped, in the order the seller's screen shows them: the two they
  *  cannot influence first, their own last, because that is the one the eye should stop on. */
-export const HELD_BASES: readonly ('delivery' | 'payment' | 'unshipped')[] = ['delivery', 'payment', 'unshipped'];
+// 'return_open' sits last on purpose: it is the rarest, and the two ordinary clocks are what a
+// seller is looking for when they open this tab.
+export const HELD_BASES: readonly ('delivery' | 'payment' | 'unshipped' | 'return_open')[] = ['delivery', 'payment', 'unshipped', 'return_open'];
 
 export interface HeldGroup {
-  basis: 'delivery' | 'payment' | 'unshipped';
+  basis: 'delivery' | 'payment' | 'unshipped' | 'return_open';
   /** How many of the seller's order slices are waiting for this reason. */
   orders: number;
   /** Their share, commission already off — the same figure `heldAgorot` is the total of. */
@@ -135,7 +215,7 @@ export interface HeldGroup {
 /** One slice as the grouping needs it. A projection rather than `AccountSliceView`, so this module
  *  does not have to import `seller-account.ts` and a test can build a case from two literals. */
 export interface HeldSlice {
-  hold: { state: string; basis: 'delivery' | 'payment' | 'unshipped' | null };
+  hold: { state: string; basis: 'delivery' | 'payment' | 'unshipped' | 'return_open' | null };
   netOfCommissionAgorot: number;
   /** Which shop this slice was bought from. A payout pools every store the seller owns, but the
    *  ORDERS behind it are managed one store at a time, so the split has to be able to say which. */

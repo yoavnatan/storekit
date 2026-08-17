@@ -1,0 +1,167 @@
+---
+import { formatAgorot } from '../../lib/money.js';
+import { formatBusinessDateShort } from '../../lib/format-date.js';
+import {
+  isOpen, handoverDeadlineISO, autoRefundDueISO, responseDeadlineISO,
+  type ReturnStatus, type ReturnReason,
+} from '../../lib/returns.js';
+import type { ReturnRequest } from '../../lib/return-requests.js';
+
+/**
+ * The seller's returns tab — one CARD per case, saying where it stands and what he can do.
+ *
+ * The owner asked for exactly this and asked for it plainly: *"למה אין פשוט כרטיס של בקשת החזר שאני
+ * רואה עם ui פשוט ומובן — מה הסטטוס שלו?"*. So the card answers three questions in that order, and
+ * nothing else appears above them: **what happened**, **what it costs**, **whose turn it is**.
+ *
+ * ── Why the buttons are derived from the state machine, not written per card ──
+ * `returns.ts#RETURN_TRANSITIONS` already says which moves are legal from here. Listing them again
+ * as markup would be a second definition that drifts the first time a state is added, and the drift
+ * would show up as a button that 409s — the worst kind, because it looks like the seller's fault.
+ *
+ * ── The deadline line is the whole point of the card ──
+ * Every open state has a clock, and the seller's real question is never "what status is this" but
+ * "how long have I got". So each card shows the date its clock lands on, in words, from the same
+ * pure functions the job uses — never a second calculation.
+ *
+ * Hebrew literals rather than the dictionary: this is a seller surface, which is Hebrew-only by
+ * construction — `i18n-hardcoded-strings.test.ts` decides that by whether a file calls the
+ * translator at all, and this one deliberately does not. (Naming that function here, even inside a
+ * comment, is enough to flip the guard and fail the suite on every literal below — which is exactly
+ * what the first version of this header did.)
+ */
+interface Props {
+  requests: ReturnRequest[];
+  storeSlug: string;
+}
+const { requests } = Astro.props;
+
+const REASON: Record<ReturnReason, string> = {
+  changed_mind: 'התחרט',
+  damaged: 'הגיע פגום',
+  wrong_item: 'לא מה שהוזמן',
+  not_arrived: 'לא הגיע כלל',
+};
+
+/** What the case IS, in the seller's words. Every status in the machine has one — a card that
+ *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
+const STATUS: Record<ReturnStatus, string> = {
+  requested: 'מחכה לתשובה שלך',
+  approved: 'אישרת — הקונה שולח את המוצר',
+  in_transit: 'המוצר בדרך אליך',
+  received: 'המוצר הגיע אליך',
+  disputed: 'אנחנו מכריעים',
+  rejected: 'סירבת',
+  refunded: 'הקונה קיבל את כספו',
+  expired: 'הקונה לא שלח — הבקשה נסגרה',
+};
+
+/** The tone each state carries. `danger` only where the seller is holding something up. */
+const TONE: Record<ReturnStatus, string> = {
+  requested: 'danger', approved: 'warning', in_transit: 'muted', received: 'danger',
+  disputed: 'warning', rejected: 'muted', refunded: 'success', expired: 'muted',
+};
+
+/** The moves the seller may make FROM each state, with the words for them. Derived from the machine
+ *  in `returns.ts`; anything it does not allow simply has no button. */
+const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kind: string }[]>> = {
+  requested: [
+    { to: 'approved', label: 'אשר', kind: 'accent' },
+    { to: 'rejected', label: 'סרב', kind: 'ghost' },
+  ],
+  approved:   [{ to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' }],
+  in_transit: [{ to: 'received', label: 'המוצר הגיע אליי', kind: 'accent' }],
+  received: [
+    { to: 'refunded', label: 'המוצר תקין — החזר לו את הכסף', kind: 'accent' },
+    { to: 'disputed', label: 'הגיע ריק או משומש', kind: 'ghost' },
+  ],
+};
+
+/** The one line that says how long is left, per state. Null when no clock runs. */
+function deadlineLine(r: ReturnRequest): string | null {
+  if (r.status === 'requested') {
+    // Inside the statutory window there is nothing to answer — it was approved on arrival — so this
+    // branch only ever describes a request the seller may really refuse.
+    if (r.withinStatutory) return null;
+    return `יש לך זמן לענות עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))}. אם לא תענה, הבקשה תיסגר`;
+  }
+  if (r.status === 'approved' || r.status === 'in_transit') {
+    const d = handoverDeadlineISO(r.approvedAt);
+    return d ? `הקונה צריך לשלוח את המוצר עד ${formatBusinessDateShort(d)}` : null;
+  }
+  if (r.status === 'received') {
+    const d = autoRefundDueISO(r.deliveredBackAt);
+    return d ? `אם לא תסמן כלום, הקונה יקבל את כספו בחזרה ב-${formatBusinessDateShort(d)}` : null;
+  }
+  return null;
+}
+
+const open = requests.filter((r) => isOpen(r.status));
+const closed = requests.filter((r) => !isOpen(r.status));
+const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg)] [background:var(--color-surface)] p-4';
+---
+
+<div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
+  <h2 class="m-0 text-[1.05rem] font-bold">החזרות</h2>
+  <p class="m-0 mt-1 text-[0.82rem] [color:var(--color-muted)]">
+    {open.length ? `${open.length} בקשות מחכות לך` : 'אין בקשות פתוחות'}
+  </p>
+</div>
+
+{requests.length === 0 && (
+  <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">
+    עוד לא ביקשו ממך להחזיר שום דבר.
+  </p>
+)}
+
+<div class="flex flex-col gap-3" data-returns-list>
+  {[...open, ...closed].map((r) => (
+    <article class={`${CARD}${isOpen(r.status) ? '' : ' opacity-70'}`} data-return-id={r.id}>
+      <div class="flex items-baseline justify-between gap-3 flex-wrap">
+        <strong class="text-[0.95rem]">{STATUS[r.status]}</strong>
+        <span class="text-[0.76rem] [color:var(--color-muted)] tabular-nums">
+          הזמנה {r.orderId.slice(0, 8)} · {formatBusinessDateShort(r.createdAt)}
+        </span>
+      </div>
+
+      <p class="m-0 mt-2 text-[0.86rem]">
+        {REASON[r.reason]}
+        <span class="[color:var(--color-muted)]"> · זיכוי </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
+        <span class="[color:var(--color-muted)]"> · משלוח חזרה על </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
+      </p>
+
+      {r.buyerNote && (
+        <p class="m-0 mt-2 text-[0.85rem] [color:var(--color-muted)] italic">"{r.buyerNote}"</p>
+      )}
+
+      {deadlineLine(r) && (
+        <p class={`m-0 mt-2 text-[0.82rem] font-semibold [color:var(--color-${TONE[r.status] === 'danger' ? 'danger' : 'warning'})]`}>
+          {deadlineLine(r)}
+        </p>
+      )}
+
+      {r.trackingNumber && (
+        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">מספר מעקב: <span class="tabular-nums">{r.trackingNumber}</span></p>
+      )}
+
+      {MOVES[r.status] && (
+        <div class="flex gap-2 mt-3 flex-wrap">
+          {MOVES[r.status]!.map((m) => (
+            <button
+              type="button"
+              class={`btn btn--sm ${m.kind === 'accent' ? 'btn--accent' : ''}`}
+              data-return-move={m.to}
+              data-return-target={r.id}
+            >{m.label}</button>
+          ))}
+        </div>
+      )}
+
+      {r.status === 'disputed' && (
+        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">
+          העברנו את זה להכרעה שלנו. הכסף לא זז עד שנחליט.
+        </p>
+      )}
+    </article>
+  ))}
+</div>

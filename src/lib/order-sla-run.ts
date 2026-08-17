@@ -214,7 +214,7 @@ export async function runOrderSla(todayISO: string = businessTodayISO()): Promis
         to: 'cancelled',
         store: candidate.store,
         actor: 'system',
-        detail: `auto-cancelled by the fulfilment SLA: ${candidate.store.slug} did not reach its own milestone within ${SHIP_AUTO_CANCEL_DAYS} days of payment (order-sla.ts). The buyer is owed the full amount and no cancellation fee applies`,
+        detail: `בוטלה אוטומטית: החנות ${candidate.store.slug} לא מסרה את ההזמנה תוך ${SHIP_AUTO_CANCEL_DAYS} ימים מהתשלום. לקונה מגיע הסכום המלא, בלי דמי ביטול.`,
       });
       if (!moved.ok) { result.failed++; continue; }
 

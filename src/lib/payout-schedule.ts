@@ -1,3 +1,5 @@
+import { addDaysISO } from './date-range.js';
+
 /**
  * The payout POLICY — four numbers, and the single place they are allowed to exist.
  *
@@ -191,6 +193,53 @@ export const PAYOUT_WEEKDAY = 0;
  * ⚠️ PLACEHOLDER — owner decision.
  */
 export const MIN_PAYOUT_AGOROT = 10_000; // 100₪
+
+/**
+ * The day-of-week of a business day key, 0 = Sunday.
+ *
+ * Read at NOON UTC rather than midnight, which is the same guard `planPayouts` uses on this key: a
+ * `YYYY-MM-DD` parsed as midnight sits on a date boundary, and any offset at all — a DST transition,
+ * a negative zone — moves it onto the previous day. Noon has twelve hours of slack in both
+ * directions, so the weekday this returns is the weekday a person reading the key would say.
+ */
+function weekdayOf(dayISO: string): number {
+  return new Date(`${dayISO}T12:00:00Z`).getUTCDay();
+}
+
+/**
+ * The next occurrence of `PAYOUT_WEEKDAY` on or after `dayISO` — **the day money released on
+ * `dayISO` actually goes out.**
+ *
+ * Returns `dayISO` itself when that day IS the payout day: "next" here means "the run this money
+ * catches", and a screen that says "next Sunday" on a Sunday morning while the run is about to fire
+ * is telling the seller to wait a week for money they are getting today.
+ *
+ * ── Why it lives in the POLICY module and not with the run (moved 2026-08-16) ──
+ * The seller's order card answers "when do I get paid for this order" with it, and that card is
+ * rebuilt in the BROWSER (`scripts/dashboard/orders.ts`). Its old home, `payout-run.ts`, reaches the
+ * database three imports down, so asking this question from a client bundle was impossible — which
+ * is why the card used to show the RELEASE day with the word "אחרי" in front of it and never named
+ * the day the transfer leaves. This module is pure and client-safe by construction, and that is the
+ * property being relied on: don't give it an import that is not.
+ *
+ * ⚠️ **It answers a weekday, not a banking calendar.** `PAYOUT_WEEKDAY` is Sunday, so a weekend can
+ * never collide with it — but a חג that falls on a Sunday can, and nothing in this codebase knows
+ * when the holidays are. The seller-facing copy therefore says "צפוי" rather than promising the
+ * date, and `#pay-how` says the transfer moves to the next business day. Making that true rather
+ * than merely stated needs a real banking calendar and belongs with the bank integration, not here
+ * (GO_LIVE §3) — and when it is built, the run must move to the next business day, never skip to the
+ * following week: skipping costs the seller seven days to avoid one.
+ */
+export function nextPayoutDayISO(dayISO: string): string {
+  const ahead = (PAYOUT_WEEKDAY - weekdayOf(dayISO) + 7) % 7;
+  return ahead === 0 ? dayISO : addDaysISO(dayISO, ahead);
+}
+
+/** Is this day the day the run goes out on? Compared as the business calendar's weekday, never the
+ *  server's. */
+export function isPayoutDay(dayISO: string): boolean {
+  return weekdayOf(dayISO) === PAYOUT_WEEKDAY;
+}
 
 /**
  * The payout weekday as a word, in the caller's language — `'יום ראשון'` / `'Sunday'`.
