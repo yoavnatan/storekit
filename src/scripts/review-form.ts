@@ -32,7 +32,7 @@ function paint(form: HTMLFormElement, state: FormState, hovered: number): void {
   form.querySelectorAll<HTMLButtonElement>('.review-star').forEach((btn) => {
     const n = Number(btn.dataset.rating);
     const on = n <= shown;
-    btn.style.color = on ? 'var(--color-warning)' : 'var(--color-border)';
+    btn.style.color = on ? 'var(--color-rating)' : 'var(--color-rating-empty)';
     // The picker fills whole stars only: a half star is a thing an AVERAGE can be, never a thing
     // one person chooses. Offering ten steps would also make the tap target 13px wide on a phone.
     btn.setAttribute('aria-checked', String(n === state.rating));

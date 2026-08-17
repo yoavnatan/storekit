@@ -69,10 +69,13 @@ const stars = Array.from({ length: RATING_MAX }, (_, i) => i + 1);
         <button type="button" class="review-star" role="radio" aria-checked="false" data-rating={n}
                 tabindex={n === 1 ? 0 : -1}
                 aria-label={`${n} / ${RATING_MAX}`}
-                style="background:none;border:none;padding:0.1rem;cursor:pointer;line-height:0;color:var(--color-border);transition:color 0.12s,transform 0.12s">
+                style="background:none;border:none;padding:0.1rem;cursor:pointer;line-height:0;color:var(--color-rating-empty);transition:color 0.12s,transform 0.12s">
           {/* The same outline the display stars use — imported, never re-typed, or the picker and
               the score it produces slowly stop being the same star (lib/star-html.ts). */}
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          {/* Dimensions pinned inline: reset.css's `svg { height:auto; max-width:100% }` beats the
+              width/height attributes, which is the trap that broke the display stars. */}
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+               style="display:block;width:26px;height:26px;max-width:none">
             <path d={STAR_PATH}/>
           </svg>
         </button>

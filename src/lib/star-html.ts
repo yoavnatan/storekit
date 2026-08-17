@@ -46,14 +46,31 @@ export interface StarRowOptions {
  *  `tests/star-markup-single-source.test.ts`, which fails on a second literal in `src/`. */
 export const STAR_PATH = 'M12 2.6l2.9 5.88 6.5.95-4.7 4.58 1.11 6.47L12 17.43 6.19 20.48 7.3 14.01 2.6 9.43l6.5-.95z';
 
-/** One star: an outline, plus a clipped fill when it is whole or half. */
+/**
+ * One star: a pale SOLID star, with a gold one laid over the filled fraction and clipped to it.
+ *
+ * **Both layers are solid fills, and the first version's outline was a mistake.** A 1.5px stroke at
+ * 13px — the size on a product card — renders as a smudge rather than a star, and the boundary of a
+ * HALF star has to be unmistakable or the half-star rule may as well not exist. Two solid shapes
+ * are crisp at every size this is used at.
+ *
+ * **Every dimension is pinned INLINE, and that is not belt-and-braces.** `reset.css` sets
+ * `svg { max-width: 100%; height: auto }` for the whole site, which beats the `width`/`height`
+ * ATTRIBUTES — so inside the 50%-wide clipping box the overlay SVG obeyed `max-width` and shrank to
+ * half size, then `height:auto` scaled it down to match. The half star rendered as a small whole
+ * star sitting on top of a big one, which is exactly what the owner reported (2026-08-17) and
+ * exactly what memory `project_svg_height_auto_trap` already describes. `max-width:none` is the
+ * half of the fix that is easy to leave out.
+ */
 function starHtml(fill: 'full' | 'half' | 'empty', px: number): string {
-  const outline = `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" style="position:absolute;inset:0;color:var(--color-border)"><path d="${STAR_PATH}"/></svg>`;
+  const svg = (color: string) =>
+    `<svg viewBox="0 0 24 24" fill="currentColor" style="display:block;width:${px}px;height:${px}px;max-width:none;color:${color}"><path d="${STAR_PATH}"/></svg>`;
+  const base = `<span style="position:absolute;inset:0;line-height:0">${svg('var(--color-rating-empty)')}</span>`;
   const filled = fill === 'empty' ? '' :
     `<span style="position:absolute;inset:0;overflow:hidden;width:${fill === 'half' ? '50%' : '100%'};line-height:0">`
-    + `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="currentColor" style="display:block;color:var(--color-warning)"><path d="${STAR_PATH}"/></svg>`
+    + svg('var(--color-rating)')
     + '</span>';
-  return `<span style="position:relative;display:inline-block;width:${px}px;height:${px}px;flex:0 0 auto">${outline}${filled}</span>`;
+  return `<span style="position:relative;display:inline-block;width:${px}px;height:${px}px;flex:0 0 auto">${base}${filled}</span>`;
 }
 
 /** `avg` is the AVERAGE (`reviews.ts#averageRating`), or null for a product nobody has rated —
