@@ -1,124 +1,73 @@
 // @vitest-environment jsdom
 /**
- * The seller's confirmation banner must actually reach the page.
+ * The dashboard's notice must reach the seller WITHOUT moving the page.
  *
- * It stopped doing so at some point and nobody noticed for as long as it took the owner to press
- * "pause campaign" and report that the page twitched and nothing happened. The cause was a single
- * `?.` : `document.querySelector('.products-header')?.after(el)` against a class that no longer
- * exists in any markup. The banner was built, never inserted, and then scrolled to — so every
- * "saved" / "updated" / "deleted" message in five dashboard modules, 56 call sites, was invisible
- * while every one of the operations behind them succeeded.
+ * Both halves of that sentence are scar tissue. The notice used to be a coloured strip inserted
+ * into the panel's flow, anchored to `.products-header` — a class nothing renders any more. `?.`
+ * swallowed the miss, so the strip was built, never inserted, and then scrolled to: the page
+ * twitched toward a node with no parent and 56 call sites across five modules said nothing at all
+ * while every operation behind them succeeded. Fixed by anchoring it properly, it was worse — a
+ * strip above a campaign card pushed every card below it down for three seconds. The owner's
+ * verdict (2026-08-17) is the contract this file now pins: a notice that reflows the page is the
+ * wrong shape wherever it is put, so it is a toast, which floats.
  *
- * Two guards, because the bug had two halves:
- *   1. behaviour — the banner ends up IN the document, whatever the surrounding markup looks like;
- *   2. the class — a selector that JS anchors to must exist in the markup it anchors to, which is
- *      the half that rots silently during a redesign and the half no behaviour test can see.
+ * The second describe is the half that rots without any test failing: a script anchoring to a
+ * class the markup stopped rendering. `.products-header` still exists in `dashboard.css`, so
+ * reading the stylesheet would not have revealed the original bug either — only the MARKUP counts.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const scrolled = vi.hoisted(() => ({ targets: [] as Element[] }));
-vi.mock('../src/scripts/dashboard/scroll-utils.js', () => ({
-  scrollBelowPinnedChrome: (el: Element) => { scrolled.targets.push(el); },
+const toasts = vi.hoisted(() => ({ ok: [] as string[], errors: [] as string[] }));
+vi.mock('../src/lib/toast.js', () => ({
+  showToast: (title: string) => { toasts.ok.push(title); },
+  showErrorToast: (title: string) => { toasts.errors.push(title); },
+  showActionFailedToast: () => { toasts.errors.push('action-failed'); },
 }));
 
 const { showStatus } = await import('../src/scripts/dashboard/status.js');
 
-/** jsdom gives every element `offsetParent === null`; the module uses it to mean "on screen". */
-function makeVisible(...els: (Element | null)[]): void {
-  for (const el of els) {
-    if (el) Object.defineProperty(el, 'offsetParent', { value: document.body, configurable: true });
-  }
-}
+beforeEach(() => { document.body.innerHTML = ''; toasts.ok = []; toasts.errors = []; });
 
-beforeEach(() => { document.body.innerHTML = ''; scrolled.targets = []; });
-
-describe('the dashboard status banner', () => {
-  it('lands under the header of the panel the seller is looking at', () => {
-    document.body.innerHTML = `
-      <main class="dash-main">
-        <div id="dash-panel-products"><div class="dash-panel-head">A</div></div>
-        <div id="dash-panel-advertising"><div class="dash-panel-head">B</div></div>
-      </main>`;
-    const advertising = document.getElementById('dash-panel-advertising');
-    makeVisible(advertising, advertising!.querySelector('.dash-panel-head'));
-
+describe('the dashboard notice', () => {
+  it('speaks through the one toast surface the rest of the site uses', () => {
     showStatus('נשמר');
-
-    const banner = document.getElementById('ajax-status');
-    expect(banner, 'the banner was never inserted').not.toBeNull();
-    expect(banner!.isConnected).toBe(true);
-    expect(banner!.textContent).toBe('נשמר');
-    // Under the VISIBLE panel's header — not the first one in the document.
-    expect(banner!.previousElementSibling?.textContent).toBe('B');
+    expect(toasts.ok).toEqual(['נשמר']);
+    expect(toasts.errors).toEqual([]);
   });
 
-  it('still appears when the visible panel has no header at all', () => {
-    document.body.innerHTML = `<main class="dash-main"><div id="dash-panel-reports">rows</div></main>`;
-    makeVisible(document.getElementById('dash-panel-reports'));
-    showStatus('נשמר');
-    expect(document.getElementById('ajax-status')?.isConnected).toBe(true);
-  });
-
-  it('falls back to the shell when no panel is on screen', () => {
-    document.body.innerHTML = `<main><p>x</p></main>`;
-    showStatus('נשמר');
-    expect(document.getElementById('ajax-status')?.isConnected).toBe(true);
-  });
-
-  it('still shows the banner on a page with no panels and no main at all', () => {
-    // The last resort has to SUCCEED. An earlier version of this fix gave up here, which
-    // recreated the original bug on any surface shaped differently from the one it was written
-    // against — and a real test elsewhere in the suite caught exactly that.
-    document.body.innerHTML = '<div>bare</div>';
-    showStatus('נשמר');
-    expect(document.getElementById('ajax-status')?.isConnected).toBe(true);
-  });
-
-  it('never scrolls toward a banner that is not in the document', () => {
-    // This is the exact shape of the reported bug: a page twitching toward nothing.
-    document.body.innerHTML = '';
-    showStatus('נשמר');
-    expect(scrolled.targets.length).toBeGreaterThan(0);
-    for (const target of scrolled.targets) expect(target.isConnected).toBe(true);
-  });
-
-  it('announces itself, so an error is not only a colour', () => {
-    document.body.innerHTML = `<main class="dash-main"><div id="dash-panel-orders">x</div></main>`;
-    makeVisible(document.getElementById('dash-panel-orders'));
+  it('tells an error from a confirmation, because they are not the same event', () => {
     showStatus('שגיאה', true);
-    const banner = document.getElementById('ajax-status')!;
-    expect(banner.getAttribute('role')).toBe('alert');
-    expect(banner.getAttribute('aria-live')).toBe('assertive');
+    expect(toasts.errors).toEqual(['שגיאה']);
+    expect(toasts.ok).toEqual([]);
   });
 
-  it('re-anchors instead of staying attached to a panel that has been swapped away', () => {
-    document.body.innerHTML = `
-      <main class="dash-main">
-        <div id="dash-panel-products"><div class="dash-panel-head">A</div></div>
-        <div id="dash-panel-orders"><div class="dash-panel-head">B</div></div>
-      </main>`;
-    const products = document.getElementById('dash-panel-products')!;
-    makeVisible(products, products.querySelector('.dash-panel-head'));
-    showStatus('first');
+  it('puts NOTHING into the page — the whole point is that the content does not move', () => {
+    document.body.innerHTML = '<main><div id="dash-panel-products">rows</div></main>';
+    const before = document.body.innerHTML;
+    showStatus('נשמר');
+    showStatus('שגיאה', true);
+    expect(document.body.innerHTML).toBe(before);
+    // Belt and braces: the strip this replaced had a known id, and nothing may bring it back.
+    expect(document.getElementById('ajax-status')).toBeNull();
+  });
 
-    // The seller switches tabs: the old panel is hidden, a new one is shown.
-    Object.defineProperty(products.querySelector('.dash-panel-head')!, 'offsetParent', { value: null, configurable: true });
-    Object.defineProperty(document.getElementById('ajax-status')!.parentElement!, 'offsetParent', { value: null, configurable: true });
-    const orders = document.getElementById('dash-panel-orders')!;
-    makeVisible(orders, orders.querySelector('.dash-panel-head'));
+  it('still works on a page with no dashboard markup at all', () => {
+    // The old implementation depended on finding an anchor and gave up when it could not, which
+    // silently recreated the original bug on any surface shaped differently. A toast has no anchor.
+    showStatus('נשמר');
+    expect(toasts.ok).toEqual(['נשמר']);
+  });
 
-    showStatus('second');
-    expect(document.getElementById('ajax-status')!.previousElementSibling?.textContent).toBe('B');
+  it('accepts the anchor argument its callers still pass, and needs none', () => {
+    document.body.innerHTML = '<main><p id="row">x</p></main>';
+    showStatus('נשמר', false, document.getElementById('row'));
+    expect(toasts.ok).toEqual(['נשמר']);
+    expect(document.getElementById('row')!.previousElementSibling).toBeNull();
   });
 });
 
-/**
- * The half that rots without any test failing: JS anchoring to a class the markup stopped
- * rendering. `.products-header` lived on in `dashboard.css` long after nothing rendered it, which
- * is why reading the stylesheet would not have revealed the bug either — only the MARKUP counts.
- */
 describe('dashboard scripts anchor to classes the markup actually renders', () => {
   const MARKUP_DIRS = ['src/pages', 'src/components', 'src/layouts'];
   /** Classes written by scripts at runtime rather than rendered by a template. */
@@ -130,24 +79,25 @@ describe('dashboard scripts anchor to classes the markup actually renders', () =
     for (const entry of entries) {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) walk(path, test, out);
-      else if (test.test(path)) out.push(path);
+      // A `.ts` under `src/pages` is an ENDPOINT by Astro's routing convention — server code that
+      // renders no markup, so it is not a source of classes and its outbound URLs are not the
+      // page's business.
+      else if (dir.startsWith('src/pages') ? path.endsWith('.astro') : test.test(path)) out.push(path);
     }
     return out;
   }
 
   it('has no querySelector class that no template renders', () => {
     // A script rendering its own markup with `innerHTML` is a perfectly good source of a class —
-    // `orders.ts` both writes and queries `.order-note-del-yes`. So the corpus is everything, and
-    // what is REMOVED from it is every `querySelector` argument: a class that appears only inside
-    // a query is a class nothing renders, which is exactly the failure being hunted. Without this
+    // `orders.ts` both writes and queries `.order-note-del-yes` — and so is `src/lib`, which builds
+    // the chart's `.line-dot` and the invoice chip. So the corpus is everything, and what is
+    // REMOVED from it is every `querySelector` argument: a class that appears only inside a query
+    // is a class nothing renders, which is exactly the failure being hunted. Without that
     // subtraction the test proves only that the string appears somewhere, which it always does.
     const QUERY = /querySelector(?:All)?\(\s*'[^']*'/g;
     const corpus = [
       ...MARKUP_DIRS.flatMap((d) => walk(d, /\.astro$/)),
       ...walk('src/scripts', /\.ts$/),
-      // `src/lib` builds markup too — `chart-svg.ts` emits the chart's `.line-dot`, and
-      // `order-invoice-row.ts` the invoice chip — so a corpus without it reports classes that are
-      // rendered on every page load.
       ...walk('src/lib', /\.ts$/),
     ].map((f) => readFileSync(f, 'utf8').replace(QUERY, '')).join('\n');
 
@@ -166,5 +116,24 @@ describe('dashboard scripts anchor to classes the markup actually renders', () =
       '',
       ...missing,
     ].join('\n')).toEqual([]);
+  });
+});
+
+describe('the confirm dialog does not draw two sets of dots', () => {
+  it('strips the ellipsis every workingLabel is written with', () => {
+    // Reported by the owner (2026-08-17): the pause button read "משהה… ⋯" — the copy's three dots
+    // plus the three animated ones. Every workingLabel in the tree is written with an ellipsis, so
+    // the fix belongs to the component that adds the animation, not to twenty call sites.
+    const modal = readFileSync('src/components/ConfirmModal.astro', 'utf8');
+    expect(modal).toMatch(/workingLabel\.replace\(/);
+    // And the interpolation must use the stripped label, or the strip is decorative.
+    expect(modal).not.toMatch(/gap:0\.5em">\$\{workingLabel\}/);
+  });
+
+  it('leaves no confirm caller passing a label the dots will duplicate', () => {
+    // Belt and braces on the layer above: if the strip is ever removed, this still fails.
+    const stripped = readFileSync('src/components/ConfirmModal.astro', 'utf8')
+      .match(/const label = workingLabel\.replace\(([^)]*)\)/);
+    expect(stripped, 'ConfirmModal no longer strips the trailing ellipsis').not.toBeNull();
   });
 });
