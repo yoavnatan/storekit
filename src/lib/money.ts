@@ -121,3 +121,26 @@ export function allocateAgorot(totalAgorot: number, weights: readonly number[]):
 export function formatAgorot(agorot: number): string {
   return formatPrice(fromAgorot(agorot));
 }
+
+/**
+ * Agorot → the plain decimal string a MACHINE reads: `1015` → `"10.15"`.
+ *
+ * The third case, and it is genuinely distinct from the two above rather than a convenience over
+ * them. `fromAgorot` answers a NUMBER, and `String(fromAgorot(1015))` is
+ * `"10.149999999999999"` — binary floating point, handed to a payment gateway as an amount.
+ * `formatAgorot` answers a string but a HUMAN's one: a ₪ sign and locale separators, which an API
+ * rejects. So neither can serve a wire format, and the alternative to this function is every
+ * integration inventing its own — which is the shape this module exists to prevent.
+ *
+ * Built by integer arithmetic on purpose: the quotient and the remainder are both exact, so there
+ * is no division to drift and no rounding decision to disagree with `toAgorot` about.
+ *
+ * Its first caller is `lib/payment-hyp.ts`, where the same request carries an amount in shekels
+ * and another in agorot; the next gateway will need it too, and none of them should re-derive it.
+ */
+export function agorotToDecimalString(agorot: number): string {
+  if (!Number.isInteger(agorot)) throw new Error('agorotToDecimalString: amount must be integer agorot');
+  const sign = agorot < 0 ? '-' : '';
+  const abs = Math.abs(agorot);
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
