@@ -1,0 +1,104 @@
+---
+export const prerender = false;
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ReviewForm from '../../components/ReviewForm.astro';
+import { getOrderById } from '../../lib/orders.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
+import { verifyReviewToken } from '../../lib/review-token.js';
+import { reviewableLines, orderIsReviewable } from '../../lib/review-eligibility.js';
+import { getReviewedProductIds } from '../../lib/product-reviews.js';
+import { getLang, getT } from '../../i18n/index.js';
+import { cdnThumb } from '../../lib/cdn.js';
+
+/**
+ * "How was it?" — the page a buyer lands on from the review link in their order mail.
+ *
+ * **The one screen a guest can review from**, which is what makes the whole feature reachable by
+ * the majority of buyers (guest checkout is the default here — `review-eligibility.ts` argues the
+ * decision). A signed-in buyer reaches the same page from their orders list, and it behaves
+ * identically; the only difference is which proof let them in.
+ *
+ * **`noindex`, and not because it is secret** — it is a personal, single-use screen with no content
+ * worth a search result, and letting Google hold a URL that carries a signature is how a signature
+ * ends up in a log somebody reads. It is excluded from the sitemap by the private-route filter for
+ * the same reason.
+ *
+ * One form per purchased item, all on one screen: an order of three things is one visit and three
+ * ratings, not three pages. Items already reviewed stay listed and marked — seeing "דורג" beside
+ * the shirt is the answer to "did I already do this", and hiding them would make a returning buyer
+ * think the link had broken.
+ */
+
+const { orderId } = Astro.params;
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+
+const order = orderId ? await getOrderById(orderId) : null;
+const userId = getSellerSession(Astro.cookies);
+// Either proof will do, and neither is trusted further than "this person holds this order":
+// everything about WHAT may be reviewed is re-derived below, and re-derived again by /api/review.
+const allowed = !!order
+  && (verifyReviewToken(orderId!, Astro.url.searchParams.get('t')) || (!!userId && order.buyerId === userId));
+
+// One message for "no such order", "wrong signature" and "not yet delivered". They are the same
+// thing to the person holding the link — nothing to do here yet — and three different oracles to
+// anyone probing for a real order id.
+const usable = allowed && orderIsReviewable(order!);
+const reviewed = usable ? await getReviewedProductIds(orderId!) : [];
+const lines = usable ? reviewableLines(order!, reviewed) : [];
+const doneCount = usable ? reviewed.length : 0;
+---
+
+<BaseLayout title={t.reviews.pageTitle} description={t.reviews.pageIntro} noindex={true} isLoggedIn={!!userId} storeMode={true}>
+  <div class="mx-auto w-full px-4 py-8" style="max-width:44rem">
+    <h1 style="font-size:1.35rem;font-weight:700;color:var(--color-text);margin:0 0 0.35rem">{t.reviews.pageTitle}</h1>
+
+    {!usable && (
+      <p style="color:var(--color-muted);font-size:0.95rem;margin:0.75rem 0 0">{t.reviews.pageInvalid}</p>
+    )}
+
+    {usable && lines.length === 0 && (
+      <p style="color:var(--color-muted);font-size:0.95rem;margin:0.75rem 0 0">{t.reviews.pageDone}</p>
+    )}
+
+    {usable && lines.length > 0 && (
+      <>
+        <p style="color:var(--color-muted);font-size:0.95rem;margin:0 0 1.5rem">{t.reviews.pageIntro}</p>
+        <div class="flex flex-col gap-4">
+          {lines.map((line) => (
+            <section class="flex flex-col gap-3"
+                     style="border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:1rem">
+              <div class="flex items-center gap-3">
+                {line.image && (
+                  <img src={cdnThumb(line.image, 96, 96)} alt="" width="48" height="48" loading="lazy" decoding="async"
+                       style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius-sm);flex:0 0 auto;background:var(--color-surface)" />
+                )}
+                <div dir="auto" class="min-w-0">
+                  <a href={`/${line.storeSlug}/${line.productSlug}`}
+                     style="font-size:0.95rem;font-weight:600;color:var(--color-text);text-decoration:none;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{line.productName}</a>
+                  <span style="font-size:0.78rem;color:var(--color-muted)">{line.storeName}</span>
+                </div>
+              </div>
+              <ReviewForm
+                productId={line.productId}
+                orderId={orderId!}
+                token={Astro.url.searchParams.get('t') ?? undefined}
+                showVerifiedNote={false}
+              />
+            </section>
+          ))}
+        </div>
+        {doneCount > 0 && (
+          <p style="color:var(--color-muted);font-size:0.8rem;margin:1rem 0 0">
+            {`${doneCount} · ${t.reviews.rated}`}
+          </p>
+        )}
+      </>
+    )}
+  </div>
+
+  <script>
+    import { initReviewForms } from '../../scripts/review-form.js';
+    initReviewForms();
+  </script>
+</BaseLayout>

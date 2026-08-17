@@ -64,7 +64,7 @@ export default defineConfig({
     // the note above describes, waiting in Search Console on the day it gets connected. They are
     // status pages a shopper is redirected to, never destinations to arrive at from a search.
     sitemap({
-      filter: (page) => !/\/(admin|checkout|seller|buyer|search|store-gone|store-unavailable)(\/|$)/.test(new URL(page).pathname),
+      filter: (page) => !/\/(admin|checkout|seller|buyer|review|search|store-gone|store-unavailable)(\/|$)/.test(new URL(page).pathname),
     }),
   ],
 
