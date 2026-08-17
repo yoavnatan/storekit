@@ -35,9 +35,10 @@ import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { seedShowcaseReviews } from './seed-reviews.mjs';
 import {
   SEED_SCOPES, SHOWCASE_OWNER_EMAIL,
-  openSeedClient, purge, writeCatalog,
+  openSeedClient, purge, writeCatalog, purgeSeededReviews,
 } from './lib/seed-db.mjs';
 import { SHOWCASE_STORES, PRODUCT_VIEWS } from './lib/showcase/identity.mjs';
 import { variantsFor } from './lib/showcase/variants.mjs';
@@ -351,12 +352,29 @@ async function seed(db, clean) {
     process.exit(1);
   }
 
+  // BEFORE the purge, and the order is the whole point: `writeCatalog` deletes these stores'''
+  // orders, and `product_reviews` references `orders` with ON DELETE RESTRICT — so a seeded review
+  // still pointing at one blocks the delete and the whole reseed fails. Taking the ratings down
+  // first (reviews, then their order lines, then the orders) leaves nothing holding a reference.
+  // They are written again at the end of this run.
+  await purgeSeededReviews(db);
+
   await writeCatalog(db, {
     // `includeSellers: false` — the owner row is reused when it already exists, so this purge must
     // not delete it out from under the stores about to be written.
     purge: { scope: 'showcase', includeSellers: false },
     sellers, stores, categories, products,
   });
+
+  // The ratings, last — they hang off the products this run has just written, and a reseed
+  // cascade-deletes the previous set with the old products (scripts/seed-reviews.mjs says why this
+  // stopped being a separate manual step). Never fatal: showcase stores with no ratings is a
+  // recoverable state, stores that failed to write is not.
+  try {
+    await seedShowcaseReviews(db, { quiet: true });
+  } catch (e) {
+    console.warn(`   ⚠️  ratings not seeded (${e.message}) — run \`npm run seed:reviews\``);
+  }
 
   console.log(`\n✅ ${stores.length} showcase store(s), ${products.length} products.`);
   if (missingImages) {
