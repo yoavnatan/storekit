@@ -250,6 +250,32 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
   const admin = isAdminRequest(cookies);
   let actor = 'admin';
 
+  // ── A decision on a dispute must say WHY, and may award part ──
+  //
+  // Both come from the owner reading his own screen (2026-08-17). The reason first: `admin_note` was a
+  // column the panel never sent, so a decision that moved real money left the status behind and
+  // nothing else. A month later, when a seller argues he was treated unfairly, there was no answer —
+  // and a note that is optional is empty exactly on the case somebody eventually disputes. Enforced
+  // here rather than only in the form, because the form is not the rule.
+  //
+  // The award second: the decision was all-or-nothing, and the case that most needs a middle is
+  // exactly the one that reaches a person. A product returned USED is neither "as sold" nor "never
+  // returned", so two buttons could only ever serve one side of it. Capped at what a full refund
+  // would have been — an award larger than the refund is money the buyer never paid.
+  let adminAwardAgorot: number | undefined;
+  if (admin && existing.status === 'disputed') {
+    const note = typeof data.adminNote === 'string' ? data.adminNote.trim() : '';
+    if (note.length < 3) {
+      return json({ error: 'צריך לכתוב למה החלטת. ההחלטה הזאת מזיזה כסף אמיתי ואי אפשר לשחזר אותה בלי הסבר.' }, 400);
+    }
+    data.adminNote = note;
+    if (to === 'refunded' && typeof data.adminAwardAgorot === 'number' && Number.isFinite(data.adminAwardAgorot)) {
+      const asked = Math.round(data.adminAwardAgorot);
+      if (asked < 0) return json({ error: 'סכום ההחזר לא יכול להיות שלילי' }, 400);
+      adminAwardAgorot = Math.min(asked, existing.refundAgorot);
+    }
+  }
+
   // ── The three moves that belong to the BUYER ──
   //
   // Checked before the seller branch, because a buyer is not a seller and would otherwise fall
@@ -339,6 +365,7 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     trackingNumber: typeof data.trackingNumber === 'string' ? data.trackingNumber.slice(0, 120) : undefined,
     sellerNote: typeof data.sellerNote === 'string' ? data.sellerNote.slice(0, 2000) : undefined,
     adminNote: admin && typeof data.adminNote === 'string' ? data.adminNote.slice(0, 2000) : undefined,
+    adminAwardAgorot,
     // Capped at what the buyer actually paid: an offer is an alternative to refunding the order, so
     // it can never exceed it. Unbounded, this writes a debt bigger than the sale and a ledger row to
     // match — and both are real money on a screen somebody acts on.

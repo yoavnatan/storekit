@@ -16,6 +16,8 @@ import {
   type ReturnStatus,
 } from '../src/lib/returns.js';
 import { buyerReturnCta } from '../src/lib/return-buyer-cta.js';
+import { POST as returnsRoute } from '../src/pages/api/returns.js';
+import { setAdminCookie } from '../src/lib/admin-auth.js';
 
 /**
  * ═══ EVERY WAY A RETURN CAN END, DRIVEN END TO END AGAINST A REAL DATABASE ═══
@@ -127,6 +129,31 @@ async function somebodyCanStillAct(r: ReturnRequest): Promise<boolean> {
   await runReturnsSweep(at(400));
   const after = (await getReturnRequest(r.id))!.status;
   return after !== before;
+}
+
+/**
+ * The admin's own decision, driven through the REAL route rather than through `moveReturnRequest`.
+ *
+ * That is deliberate: both rules added here — a reason is required, an award may be partial — live in
+ * the route, because that is where "who is deciding" is known. A test that called the store directly
+ * would walk straight past both and prove nothing about the screen the owner actually presses.
+ */
+async function adminDecides(body: Record<string, unknown>): Promise<Response> {
+  const jar = new Map<string, string>();
+  const cookies = {
+    get: (n: string) => (jar.has(n) ? { value: jar.get(n)! } : undefined),
+    set: (n: string, v: string) => { jar.set(n, v); },
+    delete: (n: string) => { jar.delete(n); },
+    has: (n: string) => jar.has(n),
+  } as unknown as AstroCookies;
+  setAdminCookie(cookies);
+  return returnsRoute({
+    request: new Request('http://localhost/api/returns', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }),
+    cookies,
+    clientAddress: '127.0.0.1',
+  } as unknown as APIContext);
 }
 
 beforeEach(async () => {
@@ -413,5 +440,89 @@ describe('no case can be left with nobody able to move it', () => {
       expect(await hasOpenReturn(order.id)).toBe(false);
       expect(orderHold({ ...(await getOrderById(order.id))!, hasOpenReturn: false }).basis).not.toBe('return_open');
     }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+describe('what the ADMIN decides, and what he has to say while deciding it', () => {
+  /** A case sitting on the admin's desk, reached the way a real one gets there. */
+  async function disputed() {
+    const order = await deliveredOrder();
+    const req = await open(order);
+    await move(req.id, 'in_transit', BUYER);
+    await move(req.id, 'received');
+    await move(req.id, 'disputed', STORE.sellerId, { sellerNote: 'החבילה הגיעה ריקה' });
+    return { order, req };
+  }
+
+  it('refuses a decision with no reason — the money moves and nothing would say why', async () => {
+    const { req } = await disputed();
+    const res = await adminDecides({ id: req.id, to: 'refunded' });
+    expect(res.status).toBe(400);
+    // Refused, and NOTHING moved: a rejected decision that had already half-settled would be worse
+    // than the gap it closes.
+    expect((await getReturnRequest(req.id))!.status).toBe('disputed');
+
+    const blank = await adminDecides({ id: req.id, to: 'rejected', adminNote: '   ' });
+    expect(blank.status).toBe(400);
+    expect((await getReturnRequest(req.id))!.status).toBe('disputed');
+  });
+
+  it('records the reason on the case, so a decision can be defended a month later', async () => {
+    const { req } = await disputed();
+    const res = await adminDecides({ id: req.id, to: 'rejected', adminNote: 'התמונות של המוכר ברורות' });
+    expect(res.status).toBe(200);
+    const decided = (await getReturnRequest(req.id))!;
+    expect(decided.status).toBe('rejected');
+    expect(decided.adminNote).toBe('התמונות של המוכר ברורות');
+  });
+
+  it('awards PART of it — the middle answer a used product actually needs', async () => {
+    const { order, req } = await disputed();
+    const full = (await getReturnRequest(req.id))!.refundAgorot;
+    const stockBefore = await stockOf();
+
+    // Derived from the case's OWN refund rather than a round number: the fixture's product is cheap,
+    // and a hardcoded amount above the full refund is clamped to it — which would silently make this
+    // a whole-return test wearing a partial-return name.
+    const half = Math.floor(full / 2);
+    expect(half).toBeGreaterThan(0);
+    const res = await adminDecides({
+      id: req.id, to: 'refunded', adminNote: 'המוצר חזר משומש', adminAwardAgorot: half,
+    });
+    expect(res.status).toBe(200);
+    const decided = (await getReturnRequest(req.id))!;
+    expect(decided.status).toBe('refunded');
+    expect(decided.adminAwardAgorot).toBe(half);
+
+    // Settled like an accepted offer and NOT like a whole return: the order was delivered and stays
+    // delivered, so it must not leave every revenue figure to record a correction to part of it.
+    expect(countsAsRevenue((await getOrderById(order.id))!)).toBe(true);
+    expect(await stockOf()).toBe(stockBefore);
+
+    // The debt is the awarded amount, not the full refund — the whole point of the field.
+    const owed = await query<{ amount_agorot: string | number }>(
+      `SELECT amount_agorot FROM money_events WHERE order_id = $1 AND type = 'refund_due'`, [order.id]);
+    expect(owed.rows.map((r) => Number(r.amount_agorot))).toContain(half);
+    expect(Number(full)).toBeGreaterThan(half);
+    expect(await hasOpenReturn(order.id)).toBe(false);
+  });
+
+  it('caps an award at what the buyer actually paid, and refuses a negative one', async () => {
+    const { req } = await disputed();
+    const full = (await getReturnRequest(req.id))!.refundAgorot;
+
+    const negative = await adminDecides({ id: req.id, to: 'refunded', adminNote: 'בדיקה', adminAwardAgorot: -500 });
+    expect(negative.status).toBe(400);
+    expect((await getReturnRequest(req.id))!.status).toBe('disputed');
+
+    // Over the top is CLAMPED rather than refused: it is a typo, not an attack, and the ceiling is
+    // the honest answer to it. An award above the refund would be money the buyer never paid.
+    const tooMuch = await adminDecides({ id: req.id, to: 'refunded', adminNote: 'בדיקה', adminAwardAgorot: full * 10 });
+    expect(tooMuch.status).toBe(200);
+    const decided = (await getReturnRequest(req.id))!;
+    expect(decided.adminAwardAgorot).toBe(full);
+    // Clamped to the full amount, so it is an ordinary whole return — the order really did come back.
+    expect(decided.status).toBe('refunded');
   });
 });

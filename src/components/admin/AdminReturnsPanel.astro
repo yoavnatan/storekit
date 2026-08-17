@@ -127,8 +127,31 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
                 class="rounded-[var(--radius-sm)] border [border-color:var(--color-border)] object-cover" />
             </a>
           )}
+          {/* ── The two things a decision needs, on the card and not in the dialog ──
+
+              The REASON is required, and the API refuses without it. A decision that moves real money
+              used to leave nothing behind but a status, so a month later — when a seller says he was
+              treated unfairly — there was no answer to give him. It is asked here rather than in the
+              confirm dialog because a person writes a sentence before he is sure, not after.
+
+              The AMOUNT is optional, and empty means the whole refund. The case that reaches a person
+              is often the one where neither extreme is true — a product that came back USED is not "as
+              sold" and not "never returned" — and two buttons could only ever serve one side of it. */}
+          <label class="block mt-2">
+            <span class="[color:var(--color-muted)] text-[0.76rem]">למה החלטת ככה (חובה — יישמר בתיק)</span>
+            <textarea rows="2" maxlength="2000" data-admin-note-for={r.id}
+              class="w-full mt-1 px-2 py-1.5 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)] text-[0.8rem] resize-none"
+            ></textarea>
+          </label>
+          <label class="flex items-center gap-2 mt-2 text-[0.8rem]">
+            <span class="[color:var(--color-muted)]">כמה להחזיר לקונה, בשקלים</span>
+            <input type="number" min="0" step="1" inputmode="numeric" data-admin-award-for={r.id}
+              placeholder={`הכל — ${formatAgorot(r.refundAgorot)}`}
+              class="w-32 px-2 py-1 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)]" />
+          </label>
           <div class="flex gap-2 mt-2">
-            <button type="button" class="btn btn--sm btn--accent" data-admin-return={r.id} data-admin-to="refunded">החזר לקונה</button>
+            <button type="button" class="btn btn--sm btn--accent" data-admin-return={r.id}
+              data-admin-to="refunded" data-admin-full={String(r.refundAgorot)}>החזר לקונה</button>
             <button type="button" class="btn btn--sm" data-admin-return={r.id} data-admin-to="rejected">סגור בלי החזר</button>
           </div>
         </li>
@@ -175,7 +198,19 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
           <strong>{STATUS[r.status]}</strong>
           <span class="[color:var(--color-muted)]">{REASON[r.reason]}</span>
           <span class="[color:var(--color-muted)] tabular-nums">{formatBusinessDateShort(r.createdAt)}</span>
-          <span class="tabular-nums font-semibold ms-auto">{formatAgorot(r.refundAgorot)}</span>
+          {/* What was actually PAID, which is not always the case's full refund since the admin may
+              award part of it. Both are shown when they differ — the awarded figure alone would look
+              like a case that was simply worth less. */}
+          <span class="tabular-nums font-semibold ms-auto">
+            {r.adminAwardAgorot !== null && r.adminAwardAgorot < r.refundAgorot
+              ? `${formatAgorot(r.adminAwardAgorot)} מתוך ${formatAgorot(r.refundAgorot)}`
+              : formatAgorot(r.refundAgorot)}
+          </span>
+          {/* The reason he decided. This is the entire point of requiring it: a decision you cannot
+              look up months later is a decision you cannot defend. */}
+          {r.adminNote && (
+            <div class="basis-full [color:var(--color-muted)] text-[0.78rem]">ההכרעה שלך: "{r.adminNote}"</div>
+          )}
         </div>
       ))}
     </div>
