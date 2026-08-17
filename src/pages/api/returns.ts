@@ -12,6 +12,7 @@ import {
   getReturnsForStore, getOpenReturns,
 } from '../../lib/return-requests.js';
 import { buyerActionFor, type ReturnedLine, type ReturnReason, type ReturnStatus } from '../../lib/returns.js';
+import { isReturnable } from '../../lib/return-eligibility.js';
 
 /**
  * Every move a return case can make, behind ONE route — and the authorization that decides who may
@@ -168,6 +169,17 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       && returnedLines.every((l) => l.qty === order.items[l.position]!.qty);
 
     const store = await getStoreBySlugOrPrevious(slug);
+
+    // The law's own exclusions, held by the platform (decisions §2). Enforced on the SERVER even
+    // though the product page already says so — a disabled button is not a rule, and this endpoint
+    // is directly callable.
+    //
+    // A CANCELLATION is never blocked by this and never reaches here: nothing was supplied yet, so
+    // there is nothing the exclusion is about. It is the return that the regulation removes.
+    if (store && !isReturnable(store.categories)) {
+      return json({ error: 'על פי תקנות הגנת הצרכן, מוצר מסוג זה אינו ניתן להחזרה' }, 409);
+    }
+
     const result = await openReturnRequest({
       order, storeSlug: slug, reason,
       buyerNote: String(data.note ?? '').slice(0, 2000),
