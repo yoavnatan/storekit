@@ -134,8 +134,47 @@ function wireAlertsToolbar(): void {
   });
 }
 
+/**
+ * The review takedown buttons (`AdminReviewsPanel.astro`).
+ *
+ * Delegated off the panel rather than bound per row, so it survives `swapPanel` re-rendering the
+ * tab. Optimistic in the same shape as the product-block toggle in `stores.ts`: the server's answer
+ * is what the button ends up reflecting, never the click.
+ *
+ * No `ConfirmModal` here, unlike blocking a store: hiding a review is instantly reversible from the
+ * same button, and a confirm dialog on a two-way switch is friction with nothing behind it.
+ */
+function wireReviewToggles(): void {
+  const panel = document.getElementById(PANEL_ID);
+  panel?.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('.admin-review-toggle');
+    if (!btn) return;
+    const wasBlocked = btn.dataset.blocked === '1';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/moderation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: wasBlocked ? 'show-review' : 'hide-review', reviewId: btn.dataset.reviewId }),
+      });
+      if (!res.ok) throw new Error('request failed');
+      const { blocked } = await res.json() as { blocked: boolean };
+      btn.dataset.blocked = blocked ? '1' : '';
+      btn.textContent = blocked ? 'החזר לפרסום' : 'הסתר';
+      btn.classList.toggle('btn--ghost', !blocked);
+      const row = btn.closest<HTMLElement>('[data-review-row]');
+      if (row) row.style.opacity = blocked ? '0.55' : '1';
+    } catch {
+      showErrorToast('הפעולה נכשלה, נסו שוב');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 export function initAdminAlertsPanel(): void {
   wireAlertsToolbar();
+  wireReviewToggles();
   wirePanelLinks(PANEL_ID, () => initAdminAlertsPanel());
   wirePopstateReload();
 

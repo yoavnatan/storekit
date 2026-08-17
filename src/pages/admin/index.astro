@@ -22,6 +22,7 @@ import { getAdminThreadsPage } from '../../lib/admin-messages.js';
 import { parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames, MAX_ENTRIES as MAX_ERROR_ENTRIES } from '../../lib/error-log.js';
 import { getRecentReports, countOpenReports } from '../../lib/user-reports.js';
+import { getRecentReviews } from '../../lib/product-reviews.js';
 import { getImageModerationState } from '../../lib/image-moderation-health.js';
 import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
 import { getPlatformAdSettings } from '../../lib/platform-ads.js';
@@ -50,6 +51,7 @@ import AdminOrdersPanel from '../../components/admin/AdminOrdersPanel.astro';
 import AdminMessagesPanel from '../../components/admin/AdminMessagesPanel.astro';
 import AdminAlertsPanel from '../../components/admin/AdminAlertsPanel.astro';
 import AdminReportsPanel from '../../components/admin/AdminReportsPanel.astro';
+import AdminReviewsPanel from '../../components/admin/AdminReviewsPanel.astro';
 import AdminModerationStatus from '../../components/admin/AdminModerationStatus.astro';
 import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.astro';
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
@@ -310,8 +312,8 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
   productCounts, reconciliation, payoutPlan, heldBreakdown, heldBySeller, platformAccrual, ordersPage, badgeCounts,
-  perfViews, perfPlatformViews, perfSales, productNames, userReports, openReportCount, imageModerationState,
-  licenceCeiling,
+  perfViews, perfPlatformViews, perfSales, productNames, userReports, openReportCount, recentReviews,
+  imageModerationState, licenceCeiling,
 ] = await Promise.all([
   only(COUNT_PANELS, () => getProductCountsByStore(storeIds), new Map()),
   // Cross-check every money headline against a second, independent computation over the real
@@ -368,6 +370,9 @@ const [
   // the list is bounded, and "N פתוחים" has to stay true past the end of it.
   only(['alerts'], () => getRecentReports(), []),
   only(['alerts'], () => countOpenReports(), 0),
+  // The review takedown list, on the same tab and for the same reason as the reports above it: a
+  // complaint about a review arrives there, and the button that acts on it has to be within reach.
+  only(['alerts'], () => getRecentReviews(), []),
   // Is anybody checking uploaded pictures right now (image-moderation-health.ts). Overview only —
   // it is a card on the landing tab, and with no add-on declared it answers without a query at all.
   // Is anybody checking uploaded pictures right now (image-moderation-health.ts). BOTH tabs, and
@@ -768,6 +773,7 @@ const badgeFor: Record<string, number> = badgeCounts;
       <AdminPanelShell panel="alerts" active={shows('alerts')}>
         <AdminModerationStatus state={imageModerationState} placement="alerts" />
         <AdminReportsPanel reports={userReports} openCount={openReportCount} newSince={newSince.alerts} />
+        <AdminReviewsPanel reviews={recentReviews} />
         <AdminAlertsPanel
           errors={alertsPageResult.items}
           totalAll={errorsAll.length}
