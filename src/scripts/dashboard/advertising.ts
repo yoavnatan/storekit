@@ -2,6 +2,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { formatAgorot, fromAgorot } from '../../lib/money.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { showStatus } from './status.js';
+import { flashConfirmed } from './btn-confirm.js';
 import { showActionFailedToast } from '../../lib/toast.js';
 import { initInfoTooltips } from '../tooltip.js';
 import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
@@ -550,25 +551,62 @@ export function initAdvertisingTab(): void {
       const card = btn.closest<HTMLElement>('[data-status]');
       const currentStatus = card?.dataset.status;
       const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
-      // btn--busy: keep the double-submit guard (disabled) but show a "working"
-      // cursor, not the "no-entry" not-allowed, for this brief in-flight moment.
-      btn.disabled = true;
-      btn.classList.add('btn--busy');
-      try {
-        const res = await fetch(endpoint, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: campaignId, storeSlug, status: nextStatus }),
-        });
-        const data = await res.json() as { ok?: boolean; error?: string };
-        if (!data.ok) {
-          showStatus(errorText(data.error, i18n), true);
-          await refetch(); // the card's own note explains it too
-          return;
-        }
-        showStatus(i18n.adCampaignUpdated ?? 'Campaign updated.');
-        await refetch();
-      } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
+
+      /** The card as it exists NOW — after a refetch has replaced the list, the element captured
+       *  before it is detached and anchoring to it would put the message nowhere. */
+      const cardNow = (): Element | null => list.querySelector(`[data-campaign-id="${CSS.escape(campaignId)}"]`);
+
+      const apply = async (): Promise<void> => {
+        // btn--busy: keep the double-submit guard (disabled) but show a "working"
+        // cursor, not the "no-entry" not-allowed, for this brief in-flight moment.
+        btn.disabled = true;
+        btn.classList.add('btn--busy');
+        try {
+          const res = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: campaignId, storeSlug, status: nextStatus }),
+          });
+          const data = await res.json() as { ok?: boolean; error?: string };
+          if (!data.ok) {
+            await refetch(); // the card's own note explains it too
+            showStatus(errorText(data.error, i18n), true, cardNow());
+            return;
+          }
+          // **The confirmation goes on the button the seller just pressed.** Two earlier answers
+          // were both wrong and both for the same reason: a banner at the top of the panel is
+          // somewhere he is not looking, and a banner above the card pushes every card below it
+          // down. The refetch has already flipped this card's status chip and relabelled its
+          // button, so the words are on the card; the ✓ is what draws the eye, and it moves
+          // nothing (owner, 2026-08-17).
+          //
+          // The button is re-queried after the refetch — the one that was clicked is detached by
+          // then, and decorating it would decorate nothing.
+          await refetch();
+          flashConfirmed(cardNow()?.querySelector<HTMLButtonElement>('[data-ad-action="toggle"]'));
+        } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
+      };
+
+      // **Pausing asks; resuming does not.** Stopping the ads is the direction with a cost a seller
+      // cannot see — the campaign keeps its dates while nothing is being shown — so it gets a
+      // sentence saying so before it happens. Turning them back ON needs no defence, and a
+      // confirmation there would only be a tax on the fix. `tone:'primary'` because a pause is
+      // reversible: the red button belongs to the cancel below it, and spending red on both makes
+      // neither mean anything.
+      if (nextStatus === 'paused') {
+        window.dispatchEvent(new CustomEvent('confirm:open', {
+          detail: {
+            title: i18n.adConfirmPauseTitle ?? 'Pause this campaign?',
+            message: i18n.adConfirmPauseMsg ?? 'Your ads stop being shown and nothing more is charged. The campaign stays saved — you can resume it at any time.',
+            okLabel: i18n.adConfirmPauseOk ?? 'Pause',
+            workingLabel: i18n.adPausing ?? 'Pausing…',
+            tone: 'primary',
+            onConfirm: apply,
+          },
+        }));
+        return;
+      }
+      await apply();
       return;
     }
 
@@ -617,7 +655,11 @@ export function initAdvertisingTab(): void {
           });
           const data = await res.json() as { ok?: boolean; error?: string };
           if (!data.ok) { showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true); if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('btn--busy'); } return; }
-          showStatus(i18n.adBudgetSaved ?? 'Budget updated.');
+          // ✓ on the Save button the seller is looking at, not a notice somewhere else — same
+          // reasoning as the pause/resume toggle above. Held BEFORE the refetch, because this
+          // button belongs to the inline editor that the refetch tears down; there is no
+          // re-queried twin to move it onto afterwards.
+          flashConfirmed(saveBtn, { label: i18n.adBudgetSaved ?? 'Budget updated.' });
           await refetch();
         } catch {
           showStatus(i18n.errorSaving ?? 'Error saving.', true);

@@ -1829,6 +1829,22 @@ function clearBusy(btns: HTMLButtonElement[]): void {
  * Cloudinary's own sentence (or its own pre-flight one); this puts it in front of the person who
  * can act on it, and keeps the generic line only for a thrown value that carries no message.
  */
+/**
+ * Has the gallery already said this, next to the photo it is about?
+ *
+ * `resolveGalleryUrls` shows a refusal under the widget and scrolls the ringed slot into view, which
+ * is the right place for it (memory `feedback_no_standing_screen_prose`: say it on the row it is
+ * about). `showStatus` would then repeat the same sentence at the TOP of the tab and scroll there
+ * instead — undoing both halves, and teaching the seller that the important message is the one far
+ * away from their work.
+ *
+ * Only refusals are ever marked. A dropped connection or a provider 500 still goes to the page-level
+ * banner, because it is not about any particular photo and "try again" is the whole instruction.
+ */
+function refusalShownAtField(err: unknown): boolean {
+  return !!(err as { shownAtField?: boolean } | null)?.shownAtField;
+}
+
 function uploadErrorText(err: unknown, i18n: Record<string, string>): string {
   const reason = err instanceof Error ? err.message : '';
   // A REFUSAL is shown on its own, because the generic wording ends in "try again" and that is the
@@ -1868,7 +1884,11 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     } catch (err) {
       clearBusy(submitBtns);
       submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
-      showStatus(uploadErrorText(err, i18n), true);
+      // Both Save buttons — the one in the form header and the one at the bottom — submit this same
+      // form, so they land here identically. That is exactly why the message must not be at the top
+      // of the tab: pressing the lower one on a long form used to scroll the seller the furthest
+      // away from the photo the sentence was about.
+      if (!refusalShownAtField(err)) showStatus(uploadErrorText(err, i18n), true);
       return;
     }
 
@@ -2279,7 +2299,8 @@ export function initAddProduct(cloud: string, preset: string): void {
         if (submitBtn) submitBtn.textContent = i18n.saving ?? 'Saving…';
       } catch (err) {
         clearBusy(btns);
-        showStatus(uploadErrorText(err, i18n), true);
+        // Same reasoning as the edit form — see `refusalShownAtField`.
+        if (!refusalShownAtField(err)) showStatus(uploadErrorText(err, i18n), true);
         return;
       }
 

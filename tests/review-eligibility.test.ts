@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { orderIsReviewable, reviewableLines, orderCoversProduct } from '../src/lib/review-eligibility.js';
 import { SHIPPING_STATUS_RULES, PAYMENT_STATUS_RULES, REVIEWABLE_SHIPPING_STATUSES, type ShippingStatus } from '../src/lib/order-status-rules.js';
-import { reviewToken, verifyReviewToken, reviewInviteUrl } from '../src/lib/review-token.js';
+import { orderToken, verifyOrderToken, reviewInviteUrl } from '../src/lib/order-token.js';
 import crypto from 'node:crypto';
 import { requiredSecret } from '../src/lib/runtime-env.js';
 
@@ -121,18 +121,18 @@ describe('the guest link proves one order and nothing else', () => {
   const ORDER_B = '00000000-0000-4000-8000-00000000000b';
 
   it('verifies the order it was minted for', () => {
-    expect(verifyReviewToken(ORDER_A, reviewToken(ORDER_A))).toBe(true);
+    expect(verifyOrderToken(ORDER_A, 'review', orderToken(ORDER_A, 'review'))).toBe(true);
   });
 
   it('does not verify any other order', () => {
-    expect(verifyReviewToken(ORDER_B, reviewToken(ORDER_A))).toBe(false);
+    expect(verifyOrderToken(ORDER_B, 'review', orderToken(ORDER_A, 'review'))).toBe(false);
   });
 
   it('refuses a missing, empty or non-string token', () => {
-    expect(verifyReviewToken(ORDER_A, '')).toBe(false);
-    expect(verifyReviewToken(ORDER_A, undefined)).toBe(false);
-    expect(verifyReviewToken(ORDER_A, 42)).toBe(false);
-    expect(verifyReviewToken('', reviewToken(ORDER_A))).toBe(false);
+    expect(verifyOrderToken(ORDER_A, 'review', '')).toBe(false);
+    expect(verifyOrderToken(ORDER_A, 'review', undefined)).toBe(false);
+    expect(verifyOrderToken(ORDER_A, 'review', 42)).toBe(false);
+    expect(verifyOrderToken('', 'review', orderToken(ORDER_A, 'review'))).toBe(false);
   });
 
   it('is namespaced, so no other signature on this site can be replayed as one', () => {
@@ -143,12 +143,12 @@ describe('the guest link proves one order and nothing else', () => {
     const secret = requiredSecret('AUTH_SECRET', 'dev-insecure-secret');
     const bare = crypto.createHmac('sha256', secret).update(ORDER_A).digest('base64url').slice(0, 32);
     const otherNs = crypto.createHmac('sha256', `${secret}::csrf`).update(ORDER_A).digest('base64url').slice(0, 32);
-    expect(verifyReviewToken(ORDER_A, bare)).toBe(false);
-    expect(verifyReviewToken(ORDER_A, otherNs)).toBe(false);
+    expect(verifyOrderToken(ORDER_A, 'review', bare)).toBe(false);
+    expect(verifyOrderToken(ORDER_A, 'review', otherNs)).toBe(false);
   });
 
   it('builds a link with exactly one slash between origin and path', () => {
     expect(reviewInviteUrl('https://dezabin.co.il/', ORDER_A))
-      .toBe(`https://dezabin.co.il/review/${ORDER_A}?t=${reviewToken(ORDER_A)}`);
+      .toBe(`https://dezabin.co.il/review/${ORDER_A}?t=${orderToken(ORDER_A, 'review')}`);
   });
 });

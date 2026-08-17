@@ -19,6 +19,7 @@
  */
 import { getLang, getT } from '../i18n/index.js';
 import { MAX_REPORT_LEN, REPORT_KINDS, type ReportKind } from '../lib/user-reports.js';
+import { RETURN_NOTE_MAX } from '../lib/returns.js';
 
 interface Props {
   /** Preselected `kind`, so an in-context "report this" link arrives on the right option. */
@@ -26,8 +27,14 @@ interface Props {
   /** The page being reported, when the visitor came from one. Site-relative; the server validates
    *  it again on arrival and does not trust this value either. */
   page?: string;
+  /** A visitor who arrived from a mailed "פנייה בנוגע להזמנה" link: the order is already known and
+   *  the signature already checked, so the two identifying fields are not asked for. The server
+   *  re-verifies the token — this only decides what the form shows. */
+  orderId?: string;
+  orderToken?: string;
 }
-const { kind = 'fault', page = '' } = Astro.props;
+const { kind = 'fault', page = '', orderId = '', orderToken = '' } = Astro.props;
+const identified = !!(orderId && orderToken);
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
@@ -44,7 +51,22 @@ const KIND_LABELS: Record<ReportKind, string> = {
   other: r.kindOther,
 };
 const KINDS = REPORT_KINDS.map((value) => ({ value, label: KIND_LABELS[value] }));
-const selected = (REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fault';
+/** `order` is NOT a `ReportKind` — it is the branch that opens a CASE rather than filing a report,
+ *  so it deliberately has no row in `user_reports`'s CHECK constraint. It is the form's own option,
+ *  and the script below sends it to a different endpoint. */
+const ORDER_KIND = 'order';
+const selected = identified || kind === ORDER_KIND
+  ? ORDER_KIND
+  : ((REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fault');
+
+/** The closed list from the returns decisions doc §1, in the order it is written there. Values are
+ *  `ReturnReason`; labels are the buyer's words. */
+const REASONS = [
+  { value: 'changed_mind', label: r.orderReasonChanged },
+  { value: 'damaged', label: r.orderReasonDamaged },
+  { value: 'wrong_item', label: r.orderReasonWrong },
+  { value: 'not_arrived', label: r.orderReasonMissing },
+];
 ---
 
 <form
@@ -55,16 +77,61 @@ const selected = (REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fa
   data-str-error={r.error}
   data-str-error-empty={r.errorEmpty}
   data-str-throttled={r.throttled}
+  data-order-kind={ORDER_KIND}
+  data-order-id={orderId}
+  data-order-token={orderToken}
+  data-str-order-submit={r.orderSubmit}
+  data-str-order-sent={r.orderSent}
+  data-str-order-sent-body={r.orderSentBody}
   style="max-width:44rem;margin-top:1rem"
 >
   <label class="field">
     <span>{r.kind}</span>
     <select id="report-kind" name="kind" class="input">
+      <option value={ORDER_KIND} selected={selected === ORDER_KIND}>{r.kindOrder}</option>
       {KINDS.map((k) => <option value={k.value} selected={k.value === selected}>{k.label}</option>)}
     </select>
   </label>
 
-  <label class="field">
+
+  {/* ── The order branch ──
+      Shown only for "פנייה בנוגע להזמנה", and it is a different KIND of submission: it opens a
+      case against an order (`/api/returns`) instead of filing a report. The two identifying fields
+      disappear entirely for a visitor who arrived from the mailed link — they have already proved
+      which order is theirs, and asking again would be the form doubting its own credential. */}
+  <div id="order-fields" hidden={selected !== ORDER_KIND}>
+    {identified
+      ? <p class="muted" style="font-size:0.85rem;margin:0 0 1rem">{r.orderIdentified}</p>
+      : (
+        <>
+          <label class="field">
+            <span>{r.orderRef}</span>
+            <input id="order-ref" class="input" maxlength="8" dir="ltr" autocomplete="off" style="text-transform:uppercase" />
+            <span class="muted" style="display:block;margin-top:0.35rem;font-size:0.82rem">{r.orderRefHint}</span>
+          </label>
+          <label class="field">
+            <span>{r.orderEmail}</span>
+            <input id="order-email" type="email" class="input" maxlength="200" autocomplete="email" />
+          </label>
+        </>
+      )}
+
+    <label class="field">
+      <span>{r.orderReason}</span>
+      <select id="order-reason" class="input">
+        {REASONS.map((o) => <option value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
+
+    {/* The ONE free-text field on this surface, and it is capped rather than open — `returns.ts`
+        argues why it exists at all and why 500. `resize:none` is a site-wide ban, not a choice. */}
+    <label class="field">
+      <span>{r.orderNote}</span>
+      <textarea id="order-note" class="input" rows="3" maxlength={RETURN_NOTE_MAX} style="resize:none"></textarea>
+    </label>
+  </div>
+
+  <label class="field" id="report-message-field">
     <span>{r.message}</span>
     <textarea
       id="report-message"
@@ -78,7 +145,7 @@ const selected = (REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fa
     ></textarea>
   </label>
 
-  <label class="field">
+  <label class="field" id="report-email-field">
     <span>{r.email}</span>
     <input id="report-email" name="email" type="email" class="input" maxlength="200" autocomplete="email" />
     <span class="muted" style="display:block;margin-top:0.35rem;font-size:0.82rem">{r.emailHint}</span>
@@ -120,7 +187,31 @@ const selected = (REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fa
       error: d.strError ?? 'הדיווח לא נשלח. נסו שוב.',
       empty: d.strErrorEmpty ?? 'צריך לכתוב מה קרה',
       throttled: d.strThrottled ?? 'נשלחו כבר כמה דיווחים מהכתובת הזו. אפשר לנסות שוב בעוד {n} דקות.',
+      orderSubmit: d.strOrderSubmit ?? 'שליחת הפנייה',
+      orderSent: d.strOrderSent ?? 'הפנייה התקבלה',
+      orderSentBody: d.strOrderSentBody ?? 'נטפל בה ונעדכן אתכם במייל.',
     };
+    const ORDER_KIND = d.orderKind ?? 'order';
+    const kindEl = document.getElementById('report-kind') as HTMLSelectElement;
+    const orderFields = document.getElementById('order-fields');
+    const messageField = document.getElementById('report-message-field');
+    const emailField = document.getElementById('report-email-field');
+    const messageEl = document.getElementById('report-message') as HTMLTextAreaElement;
+
+    /** One switch: the order branch swaps which fields exist, so the visitor is never looking at a
+     *  form half of which does not apply to them. `required` moves with it — a hidden required
+     *  field blocks submission with a validation bubble pointing at nothing. */
+    const isOrder = () => kindEl.value === ORDER_KIND;
+    const syncKind = () => {
+      const order = isOrder();
+      if (orderFields) orderFields.hidden = !order;
+      if (messageField) messageField.hidden = order;
+      if (emailField) emailField.hidden = order;
+      messageEl.required = !order;
+      submit.textContent = order ? str.orderSubmit : str.submit;
+    };
+    kindEl.addEventListener('change', syncKind);
+    syncKind();
 
     const say = (text: string, bad: boolean) => {
       if (!status) return;
@@ -128,16 +219,60 @@ const selected = (REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fa
       status.style.color = bad ? 'var(--color-danger)' : 'var(--color-muted)';
     };
 
+    /** The order branch — a CASE, not a report.
+     *
+     * The credential is whatever the visitor has: the signed link they arrived on, or the order
+     * number plus the address they bought with. The server decides which, and answers the SAME
+     * thing either way (`order-access.ts`) — so this function cannot tell the difference between
+     * "opened a case" and "no such order", and deliberately does not try. */
+    const submitOrderCase = async (): Promise<void> => {
+      const res = await fetch('/api/returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'open',
+          reason: (document.getElementById('order-reason') as HTMLSelectElement).value,
+          note: (document.getElementById('order-note') as HTMLTextAreaElement).value.trim(),
+          ...(d.orderId
+            ? { orderId: d.orderId, token: d.orderToken }
+            : {
+                orderRef: (document.getElementById('order-ref') as HTMLInputElement).value.trim(),
+                email: (document.getElementById('order-email') as HTMLInputElement).value.trim(),
+              }),
+        }),
+      });
+      if (res.status === 429) {
+        const body = await res.json() as { retryAfterMinutes?: number };
+        say(str.throttled.replace('{n}', String(body.retryAfterMinutes ?? 60)), true);
+        submit.disabled = false; submit.textContent = str.orderSubmit;
+        return;
+      }
+      // **Every other outcome shows the same screen, including 403.** A form that says "we could
+      // not find that order" is a way to discover which order numbers exist, and the reference is
+      // only eight characters. A real 5xx is caught by the caller and says so.
+      if (res.status >= 500) throw new Error('failed');
+      const done2 = document.getElementById('report-done');
+      if (done2) {
+        const [h, b] = done2.querySelectorAll('p');
+        if (h) h.textContent = str.orderSent;
+        if (b) b.textContent = str.orderSentBody;
+        done2.hidden = false;
+      }
+      form.hidden = true;
+    };
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const message = (document.getElementById('report-message') as HTMLTextAreaElement).value.trim();
-      if (!message) { say(str.empty, true); return; }
+      const orderBranch = isOrder();
+      const message = messageEl.value.trim();
+      if (!orderBranch && !message) { say(str.empty, true); return; }
 
       submit.disabled = true;
       submit.textContent = str.sending;
       say('', false);
 
       try {
+        if (orderBranch) { await submitOrderCase(); return; }
         const res = await fetch('/api/report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -162,7 +297,7 @@ const selected = (REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fa
       } catch {
         say(str.error, true);
         submit.disabled = false;
-        submit.textContent = str.submit;
+        submit.textContent = isOrder() ? str.orderSubmit : str.submit;
       }
     });
   }

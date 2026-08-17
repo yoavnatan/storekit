@@ -26,7 +26,7 @@ import { PAYMENT_STATUS_RULES, SHIPPING_STATUS_RULES, type PaymentStatus, type S
  *   3. **Guests still review**, and they are most of the buyers: guest checkout is the default
  *      (AI_INSTRUCTIONS → Checkout), so a login wall would have silently excluded the majority and
  *      left the feature permanently empty. The proof travels in a signed link instead
- *      (`review-token.ts`) — no password, no account, one tap from the email.
+ *      (`order-token.ts`) — no password, no account, one tap from the email.
  *
  * The cost is honest and worth stating: nobody can review a product they did not buy HERE, so the
  * catalogue starts at zero and fills at the rate the platform actually sells. That is the correct

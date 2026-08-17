@@ -4,7 +4,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import ReviewForm from '../../components/ReviewForm.astro';
 import { getOrderById } from '../../lib/orders.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { verifyReviewToken } from '../../lib/review-token.js';
+import { verifyOrderToken, orderHelpUrl } from '../../lib/order-token.js';
 import { reviewableLines, orderIsReviewable } from '../../lib/review-eligibility.js';
 import { getReviewedProductIds } from '../../lib/product-reviews.js';
 import { REVIEW_INVITE_DAYS_AFTER_DISPATCH, REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/review-timing.js';
@@ -39,7 +39,7 @@ const userId = getSellerSession(Astro.cookies);
 // Either proof will do, and neither is trusted further than "this person holds this order":
 // everything about WHAT may be reviewed is re-derived below, and re-derived again by /api/review.
 const allowed = !!order
-  && (verifyReviewToken(orderId!, Astro.url.searchParams.get('t')) || (!!userId && order.buyerId === userId));
+  && (verifyOrderToken(orderId!, 'review', Astro.url.searchParams.get('t')) || (!!userId && order.buyerId === userId));
 
 // One message for "no such order", "wrong signature" and "not yet delivered". They are the same
 // thing to the person holding the link — nothing to do here yet — and three different oracles to
@@ -93,11 +93,12 @@ const doneCount = usable ? reviewed.length : 0;
  * (`buyer/dashboard.astro`). This page knows which order they mean, so making them find it again
  * was three taps to say one thing.
  *
- * ⚠️ A GUEST goes to `/contact`, and that is the weak half of this: `/api/returns` requires a
- * session, so a guest cannot open a case at all and lands on a generic fault form with no order
- * attached. The signed link that let them onto this page would be proof enough to do better — it
- * already establishes which order is theirs — but whether a guest may open a case is a decision
- * the owner has not made (raised 2026-08-17). Until then this at least reaches a human.
+ * A GUEST goes to the same form with a `help` token MINTED HERE. This page has already verified
+ * their `review` token, so it knows whose order it is — and the two purposes are separate keys on
+ * purpose (`order-token.ts`), so a link inviting somebody to rate a product cannot itself open a
+ * case that ends in money. Issuing the second credential from a verified first one is a statement
+ * about the same fact, not an escalation; the form then opens a real case (`order-access.ts`)
+ * rather than dropping them on a generic report they have to describe everything into.
  */
 const deliveryConfirmed = !!order?.deliveredAt;
 const ageDays = (iso: string | undefined): number =>
@@ -111,7 +112,7 @@ const notArrivedIsLikely = !deliveryConfirmed && overdue;
 const notArrivedRef = order?.checkoutRef ?? orderId ?? '';
 const notArrivedHref = userId
   ? `/buyer/dashboard?oq=${encodeURIComponent(notArrivedRef)}&return=${encodeURIComponent(orderId ?? '')}`
-  : '/contact';
+  : orderHelpUrl('', orderId ?? '');
 ---
 
 <BaseLayout title={t.reviews.pageTitle} description={t.reviews.pageIntro} noindex={true} isLoggedIn={!!userId} storeMode={true}>

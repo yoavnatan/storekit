@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { query } from '../src/lib/db.js';
 import { MODERATION_MISSING_MARKER } from '../src/lib/image-moderation.js';
-import { getImageModerationState, moderationDeclaredOn } from '../src/lib/image-moderation-health.js';
+import {
+  clearModerationMissingReports, getImageModerationState, moderationDeclaredOn, MODERATION_STALE_DAYS,
+} from '../src/lib/image-moderation-health.js';
 import { getAdminTabBadges } from '../src/lib/admin-tab-badges.js';
 
 /**
@@ -138,6 +140,48 @@ describe('what the Alerts tab badge counts', () => {
     await logMissing(0);
     expect(await getImageModerationState()).toBe('stopped');
     expect((await getAdminTabBadges(views)).alerts).toBe(1);
+  });
+
+  it('closes itself when an upload comes back judged — no click, no waiting', async () => {
+    /**
+     * The asymmetry this removes (owner, 2026-08-17: *"הוא לא יתעדכן אוטומטית בשום מצב?!"*). The card
+     * knew about FAILURES only: an unjudged upload wrote a row, a judged one wrote nothing, and
+     * silence cannot clear a warning — so the alarm's only exits were a person clicking "סמן כטופל"
+     * or the report ageing out of the 21-day window three weeks later.
+     *
+     * `clearModerationMissingReports` is the missing signal, called from the browser the first time
+     * an upload comes back with a verdict. The uploads were always the sampling; this is the same
+     * sampling finally reporting the good news too.
+     */
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'true';
+    await logMissing(1);
+    await logMissing(3);
+    expect(await getImageModerationState()).toBe('stopped');
+
+    expect(await clearModerationMissingReports()).toBe(2);
+
+    expect(await getImageModerationState()).toBe('ok');
+    expect((await getAdminTabBadges(views)).alerts).toBe(0);
+  });
+
+  it('cannot silence the condition, only the reports that exist now', async () => {
+    // The property that makes an automatic dismissal safe at all. It resolves rows, never a rule —
+    // so the next unjudged upload writes a fresh one and the card is back on the next page load.
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'true';
+    await logMissing(1);
+    await clearModerationMissingReports();
+    expect(await getImageModerationState()).toBe('ok');
+
+    await logMissing(0);
+    expect(await getImageModerationState()).toBe('stopped');
+  });
+
+  it('writes nothing when there is nothing outstanding', async () => {
+    // Every upload calls this once per page, so the common case is a no-op — it must not report work
+    // it did not do, and must not touch rows outside the window it claims to be about.
+    process.env.PUBLIC_IMAGE_MODERATION_ON = 'true';
+    await logMissing(MODERATION_STALE_DAYS + 5);
+    expect(await clearModerationMissingReports()).toBe(0);
   });
 
   it('still counts ordinary errors beside it, and does not double-count the reports', async () => {

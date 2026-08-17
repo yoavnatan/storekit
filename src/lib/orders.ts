@@ -393,6 +393,31 @@ async function selectOrders(where: string, params: readonly unknown[] = [], tx?:
   return result.map(toOrder);
 }
 
+/**
+ * One order by the human REFERENCE printed on the confirmation — the number a buyer can read off a
+ * mail and type back (`order-access.ts`).
+ *
+ * **Returns at most one order, and a multi-store checkout has several sharing this ref.** That is
+ * deliberate rather than a limitation: a case is filed against ONE order, because each store's half
+ * is fulfilled, cancelled and refunded on its own (`checkout.ts` writes a row per store). Handing
+ * back "the checkout" would mean asking the buyer which shop they mean before they have said what
+ * is wrong. The oldest is the first store in their basket, which is the one their screen showed
+ * first; the other halves are reachable from it.
+ *
+ * Refs are 8 uppercase hex characters. Anything else cannot match one, and is refused before it
+ * reaches Postgres — the same shape as `getOrderById`'s uuid guard, and here it also keeps a long
+ * request-supplied string out of an indexed comparison.
+ */
+const CHECKOUT_REF_RE = /^[0-9A-F]{8}$/;
+
+export async function getOrderByRef(ref: string): Promise<Order | null> {
+  if (!CHECKOUT_REF_RE.test(ref)) return null;
+  const row = await firstRow<OrderRow>(// `o.id` breaks the tie for the same reason `ORDER` above does: the rows of one checkout
+    // share a `created_at` to the microsecond, and without it they swap places between loads.
+    `${SELECT_ORDERS} WHERE o.checkout_ref = $1 ORDER BY o.created_at, o.id LIMIT 1`, [ref]);
+  return row ? toOrder(row) : null;
+}
+
 export async function getOrderById(id: string): Promise<Order | null> {
   // Postgres REJECTS a malformed uuid literal rather than simply not matching it, so an order id
   // out of a stale link would be a 500 on a page whose honest answer is "not found".

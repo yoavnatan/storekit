@@ -1485,11 +1485,25 @@ export const translations = {
       ],
       adDemoDataNote: 'הנתונים המוצגים כאן הם נתוני הדגמה עד לחיבור חשבונות Google Ads / Meta בפועל — המבנה מוכן לחיבור אמיתי.',
       adCampaignCreated: 'הקמפיין הופעל.',
-      adCampaignUpdated: 'הקמפיין עודכן.',
       adBudgetSaved: 'התקציב עודכן.',
       adBudgetInvalid: 'יש להזין תקציב בין {min} ל-{max}.',
       adConfirmDeleteTitle: 'לבטל את הקמפיין?',
       adConfirmDeleteMsg: 'הקמפיין ייעצר מיד ויעבור ל״קמפיינים קודמים״ עם המספרים שצבר. משלמים רק על מה שכבר רץ בפועל — למשל אם בחרת שבוע וביטלת אחרי יומיים, תחויב רק על היומיים. שאר התקציב לא ייגבה, ומכאן לא יירד עוד כסף.',
+      // Pausing is reversible and cancelling is not, so this asks in the calm tone
+      // (`tone:'primary'` — no red button) while the delete above keeps the danger one. What it
+      // must still say is the thing a seller cannot see: the ad stops being shown, which is not
+      // the same as the campaign ending.
+      //
+      // **The middle sentence is the one that has to be there.** A first draft said "no more money
+      // will be charged", and that is false in the direction that costs the seller trust: pausing
+      // stops FUTURE spend, and what the campaign already spent is still billed — the platform
+      // pays Google and Meta for it either way (GO_LIVE §2.5, the boost billing model). A seller
+      // who reads "nothing more will be charged" and then sees a charge has been misled by us, on
+      // the screen where he was being careful.
+      adConfirmPauseTitle: 'להשהות את הקמפיין?',
+      adConfirmPauseMsg: 'המודעות יפסיקו להופיע ולא ייצבר חיוב נוסף. הוצאה שנצברה תיגבה כרגיל. ניתן להחזיר לפעילות בכל רגע.',
+      adConfirmPauseOk: 'השהה',
+      adPausing: 'משהה…',
       ordersTitle: 'הזמנות',
       noOrders: 'עדיין לא נכנסו הזמנות.',
       // Shown when orders exist but none match the toolbar's search/filter — distinct from
@@ -2071,6 +2085,7 @@ export const translations = {
       returnR1: 'התחרטתי',
       returnR2: 'הגיע פגום',
       returnR3: 'לא מה שהזמנתי',
+      returnNote: 'משהו שיעזור לנו לטפל בזה (לא חובה)',
       returnR4: 'לא קיבלתי',
       returnPhotoHint: 'תמונה של המוצר תעזור לנו לטפל מהר יותר. לא חובה.',
       returnPhotoSending: 'התמונה נשלחת…',
@@ -2198,7 +2213,9 @@ export const translations = {
       kind: 'סוג הפנייה',
       kindFault: 'תקלה באתר — משהו לא עובד',
       kindContent: 'תוכן פוגעני או לא ראוי',
-      kindStore: 'בעיה עם חנות, מוכר או הזמנה',
+      kindStore: 'בעיה עם חנות או מוכר',
+      // "פנייה בנוגע להזמנה" — ONE label, wherever this door appears (order-token.ts#orderHelpUrl).
+      kindOrder: 'פנייה בנוגע להזמנה',
       kindOther: 'אחר',
       message: 'מה קרה?',
       messagePlaceholder: 'תארו מה ראיתם ומה ציפיתם שיקרה. אם זו תקלה — מה עשיתם רגע לפני.',
@@ -2214,6 +2231,21 @@ export const translations = {
       errorEmpty: 'צריך לכתוב מה קרה',
       error: 'הדיווח לא נשלח. נסו שוב.',
       throttled: 'נשלחו כבר כמה דיווחים מהכתובת הזו. אפשר לנסות שוב בעוד {n} דקות.',
+      orderRef: 'מספר הזמנה',
+      orderRefHint: 'מופיע במייל אישור ההזמנה, 8 תווים.',
+      orderEmail: 'האימייל שאיתו בוצעה ההזמנה',
+      orderReason: 'מה קרה?',
+      orderReasonChanged: 'התחרטתי',
+      orderReasonDamaged: 'הגיע פגום',
+      orderReasonWrong: 'לא מה שהזמנתי',
+      orderReasonMissing: 'לא קיבלתי את ההזמנה',
+      orderNote: 'פרטים נוספים (לא חובה)',
+      orderIdentified: 'זיהינו את ההזמנה שלכם. אין צורך למלא פרטים.',
+      orderSubmit: 'שליחת הפנייה',
+      // The SAME sentence whether a case was opened or a report was filed. Two answers would let
+      // the form be used to discover which order numbers exist.
+      orderSent: 'הפנייה התקבלה',
+      orderSentBody: 'נטפל בה ונעדכן אתכם במייל.',
     },
     /** ShareMenu.astro. The network names stay in Latin script — a WhatsApp menu item that says
      *  "ווטסאפ" is harder to scan than the name every Israeli reads on the app itself. */
@@ -3320,11 +3352,14 @@ export const translations = {
       ],
       adDemoDataNote: 'The data shown here is demo data until real Google Ads / Meta accounts are connected — the structure is ready for a real integration.',
       adCampaignCreated: 'Campaign launched.',
-      adCampaignUpdated: 'Campaign updated.',
       adBudgetSaved: 'Budget updated.',
       adBudgetInvalid: 'Enter a budget between {min} and {max}.',
       adConfirmDeleteTitle: 'Cancel this campaign?',
       adConfirmDeleteMsg: 'The campaign stops immediately and moves to "Past campaigns" with the numbers it accrued. You only pay for what actually ran — e.g. if you picked a week and cancel after two days, you\'re charged only for those two days. The rest of the budget won\'t be charged, and no more money comes out from here on.',
+      adConfirmPauseTitle: 'Pause this campaign?',
+      adConfirmPauseMsg: 'Your ads stop being shown and no further charges accrue. Spend already accrued is still charged. You can resume at any time.',
+      adConfirmPauseOk: 'Pause',
+      adPausing: 'Pausing…',
       ordersTitle: 'Orders',
       noOrders: 'No orders yet.',
       ordersFilterEmpty: 'No orders match your search or filters.',
@@ -3817,6 +3852,7 @@ export const translations = {
       returnR1: 'Changed my mind',
       returnR2: 'Arrived damaged',
       returnR3: 'Not what I ordered',
+      returnNote: 'Anything that helps us handle it (optional)',
       returnR4: 'Never arrived',
       returnPhotoHint: 'A photo of the item helps us handle this faster. Optional.',
       returnPhotoSending: 'Uploading the photo…',
@@ -3923,7 +3959,8 @@ export const translations = {
       kind: 'What is this about',
       kindFault: 'A fault on the site — something does not work',
       kindContent: 'Offensive or improper content',
-      kindStore: 'A problem with a store, seller or order',
+      kindStore: 'Problem with a store or seller',
+      kindOrder: 'About an order',
       kindOther: 'Something else',
       message: 'What happened?',
       messagePlaceholder: 'Describe what you saw and what you expected. If it is a fault — what you did just before.',
@@ -3937,6 +3974,19 @@ export const translations = {
       errorEmpty: 'Please describe what happened',
       error: 'The report was not sent. Please try again.',
       throttled: 'Several reports have already been sent from this address. Try again in {n} minutes.',
+      orderRef: 'Order number',
+      orderRefHint: 'On your order confirmation email, 8 characters.',
+      orderEmail: 'The email the order was placed with',
+      orderReason: 'What happened?',
+      orderReasonChanged: 'Changed my mind',
+      orderReasonDamaged: 'Arrived damaged',
+      orderReasonWrong: 'Not what I ordered',
+      orderReasonMissing: 'My order did not arrive',
+      orderNote: 'Anything else (optional)',
+      orderIdentified: 'We recognised your order. Nothing to fill in.',
+      orderSubmit: 'Send',
+      orderSent: 'We have your message',
+      orderSentBody: "We'll handle it and update you by email.",
     },
     share: {
       button: 'Share',

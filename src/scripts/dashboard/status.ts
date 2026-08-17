@@ -1,86 +1,37 @@
-import { scrollBelowPinnedChrome } from './scroll-utils.js';
-
-let statusTimer: ReturnType<typeof setTimeout>;
+import { showToast, showErrorToast } from '../../lib/toast.js';
 
 /**
- * Where the confirmation banner goes.
+ * The dashboard's "saved / updated / deleted" notice.
  *
- * **This used to be `document.querySelector('.products-header')?.after(el)`, and that class had
- * stopped existing.** Nothing in `src/` renders it any more — the dashboard's panel headers are
- * `.dash-panel-head` — so `?.` swallowed the miss, the banner was created and never inserted, and
- * `scrollBelowPinnedChrome` was then handed a node with no parent. The symptom, reported by the
- * owner on the advertising tab (2026-08-17): pause or resume a campaign and the page twitches a
- * few pixels while nothing else happens at all. It was never about campaigns — **all 56 call
- * sites across five dashboard modules had been silently invisible**, which is every "saved",
- * "updated" and "deleted" confirmation the seller was supposed to get. This is the
- * no-op-interaction class exactly: the work succeeded every time, and the screen said nothing.
+ * **It is a TOAST now, and the banner it replaced was the odd one out all along.** AI_INSTRUCTIONS
+ * already names one mechanism for a notice — `showToast`/`showErrorToast` over the single
+ * `ToastContainer` surface — and this module was quietly running a second one: a coloured strip
+ * inserted into the panel's own flow.
  *
- * So the anchor is now resolved by what is ON SCREEN rather than by a class name that a redesign
- * can quietly retire:
- *   1. the header of the panel the seller is actually looking at,
- *   2. that panel itself, if it has no header,
- *   3. the dashboard shell.
- * `offsetParent` is the test for "visible", because the dashboard keeps every panel in the
- * document and only shows one — asking the DOM which one is rendered needs no knowledge of the
- * mechanism that hides the others, and survives the next change to it.
+ * Two failures came out of that, one after the other, and both are answered by deleting the
+ * mechanism rather than by improving it:
  *
- * And the banner is only scrolled to once it is really in the document, so the worst case is a
- * message the seller has to look for — never a page that jumps toward nothing.
+ *  1. **It anchored to `.products-header`, a class nothing renders any more.** `?.after(el)`
+ *     swallowed the miss, so the strip was built, never inserted, and then scrolled to — the page
+ *     twitching toward a node with no parent. All 56 call sites across five modules had been
+ *     silently invisible while every operation behind them succeeded.
+ *  2. **Fixed, it was worse.** Inserted above the campaign card it belonged to, it pushed every
+ *     card below it down for three seconds; put back at the top of the panel, it was a message
+ *     somewhere the seller was not looking. The owner's verdict (2026-08-17), and it is the right
+ *     one: *"כל מקום שיש הודעה מעצבנת כזאת למעלה — זו לא הדרך."* A notice that reflows the page is
+ *     the wrong shape no matter where it is put, because the content moving under the eye costs
+ *     more than the words are worth.
+ *
+ * A toast floats: it moves nothing, it is the same surface the rest of the site already uses, and
+ * it needs no anchor — so there is no class name left here to rot. The signature stays as it was
+ * so that all 56 callers keep working unchanged; the third argument is accepted and ignored,
+ * because an anchor is exactly what a toast does not need.
+ *
+ * **Where a toast is still not the best answer**: an action with a button of its own says it
+ * better ON the button — the ✓ hold in `btn-confirm.ts`. Prefer that for a save or a toggle the
+ * seller is looking straight at, and keep this for anything with no obvious control to speak from.
  */
-function insertStatus(el: HTMLElement): boolean {
-  const visible = (node: Element | null): boolean => !!node && !!(node as HTMLElement).offsetParent;
-
-  const heads = [...document.querySelectorAll<HTMLElement>('[id^="dash-panel-"] .dash-panel-head')];
-  const head = heads.find(visible);
-  if (head) { head.after(el); return true; }
-
-  const panel = [...document.querySelectorAll<HTMLElement>('[id^="dash-panel-"]')].find(visible);
-  if (panel) { panel.prepend(el); return true; }
-
-  // `<main>`, deliberately, and not a dashboard class: BaseLayout renders it on every page, so it
-  // is the one anchor that cannot be retired by a redesign — which is the entire bug above.
-  const shell = document.querySelector('main');
-  if (shell) { shell.prepend(el); return true; }
-
-  // **The last resort always succeeds, and that is the point of it.** An earlier version of this
-  // function returned false here and `showStatus` gave up — which quietly recreated the bug it was
-  // written to fix, in the one case where the page is not shaped the way it was expected to be.
-  // `document.body` is the floor: a banner at the top of the document is a message the seller may
-  // have to look for, and that is strictly better than no message at all. There is no branch below
-  // this one, so a caller can rely on the banner existing.
-  document.body.prepend(el);
-  return true;
-}
-
-export function showStatus(msg: string, isError = false): void {
-  let el = document.getElementById('ajax-status');
-  if (!el) {
-    el = document.createElement('p');
-    el.id = 'ajax-status';
-  }
-  el.className = isError
-    ? 'dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#fecaca] text-sm mb-4'
-    : 'dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm mb-4';
-  el.textContent = msg;
-  // Announced, not merely drawn: the banner appears somewhere the seller may not be looking, and
-  // for an error especially, a screen reader has to hear it without moving focus.
-  el.setAttribute('role', isError ? 'alert' : 'status');
-  el.setAttribute('aria-live', isError ? 'assertive' : 'polite');
-
-  // Re-anchored on every call, not only when created. A panel swap can leave the banner attached
-  // to a panel that is no longer on screen, which is the same invisibility in a slower form.
-  if (!el.isConnected || !(el.parentElement as HTMLElement | null)?.offsetParent) insertStatus(el);
-
-  // **Bring the message to the seller, do not hope it is already there (reported 2026-08-03).**
-  // Two things were wrong with `scrollIntoView({block:'nearest'})` here. `nearest` does nothing
-  // when the element is technically "in view" — including when it is sitting UNDER the products
-  // table's sticky header, which is exactly where it lands — so after adding a product the form
-  // collapsed and the confirmation was never seen; the seller had to scroll up to find out whether
-  // it had worked at all. And native `behavior:'smooth'` is banned on this RTL site: it drifts
-  // `scrollX` off 0 mid-animation and cannot be corrected (see scroll-utils.ts / animateScrollTo).
-  // `scrollBelowPinnedChrome` exists for precisely this — it parks the target clear of every
-  // pinned layer above it.
-  scrollBelowPinnedChrome(el);
-  clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => el?.remove(), 3000);
+export function showStatus(msg: string, isError = false, _anchor?: Element | null): void {
+  if (isError) showErrorToast(msg);
+  else showToast(msg);
 }

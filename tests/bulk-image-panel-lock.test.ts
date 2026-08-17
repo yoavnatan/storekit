@@ -218,8 +218,16 @@ describe('opening the panel freezes the selection it was built from', () => {
     // (memory `feedback_noop_interactions_invisible`).
     tick('p1');
     openPanel();
+    // The notice is a TOAST since 2026-08-17 — it used to be a coloured strip inserted into the
+    // panel, and a notice that reflows the page under the seller's eye was the wrong shape wherever
+    // it was put. What this test cares about is unchanged and is the only thing worth pinning: the
+    // click SAID something.
+    const spoken: string[] = [];
+    const listener = (e: Event): void => { spoken.push((e as CustomEvent<{ title?: string }>).detail?.title ?? ''); };
+    window.addEventListener('toast:show', listener);
     editToggle('p1').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(document.getElementById('ajax-status')?.textContent ?? '').not.toBe('');
+    window.removeEventListener('toast:show', listener);
+    expect(spoken.join('')).not.toBe('');
     // …and the row did NOT open.
     expect(document.querySelector<HTMLElement>('[data-product-edit="p1"]')!.hidden).toBe(true);
   });

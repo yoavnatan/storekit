@@ -19,6 +19,7 @@ import { formatAgorot } from '../money.js';
 import type { EmailMessage } from './adapter.js';
 import { renderEmailShell, esc, emailColors as C } from './template.js';
 import { SITE, storefrontUrl, storeMeta, storeHeader, itemsTable, refLine, ctaButton } from './parts.js';
+import { orderHelpUrl } from '../order-token.js';
 
 /** Buyer view of one store: named + linked header, its items, its own shipping. */
 function storeSection(order: Order): string {
@@ -76,7 +77,13 @@ ${orders.length > 1 ? `<p style="margin:12px 0 0;color:${C.muted};font-size:13px
 ${addressBlock(first)}
 <p style="margin:20px 0 0;color:${C.muted};font-size:13px;">נעדכן אותך במייל כשההזמנה יוצאת אליך.</p>
 <p style="margin:8px 0 0;color:${C.muted};font-size:12px;">זהו אישור הזמנה בלבד ואינו מהווה חשבונית מס. חשבונית תישלח בנפרד.</p>
-${ctaButton(SITE, `להמשך קנייה ב-${store.name}`)}`;
+${ctaButton(SITE, `להמשך קנייה ב-${store.name}`)}
+<!-- The one door for anything to do with this order, from the moment it is placed — the same four
+     words, in every mail (order-token.ts#orderHelpUrl). Before this the confirmation's only link
+     was "keep shopping", so a GUEST whose parcel never came had nothing to click and no order page
+     to reach: their whole route was a generic contact form they had to describe everything into.
+     The link carries the signature, so the form arrives already knowing which order. -->
+<p style="margin:16px 0 0;font-size:13px;"><a href="${orderHelpUrl(SITE, orders[0]!.id)}" style="color:#5a6478;">פנייה בנוגע להזמנה</a></p>`;
   return {
     to: first.buyerEmail,
     subject: `אישור הזמנה · ${store.name} (${ref})`,

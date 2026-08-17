@@ -177,6 +177,26 @@ export function passwordResetRules(email: string, ip: string): RateLimitRule[] {
   ];
 }
 
+/** Attempts per window at opening a case WITHOUT a session. */
+const ORDER_HELP_ATTEMPTS_PER_WINDOW = 10;
+
+/**
+ * A buyer with no account opening a case on their own order (`/api/returns`, `order-access.ts`).
+ *
+ * The credential is an order number plus the address it was placed with — 8 random hex characters
+ * and an email, so guessing means landing two unrelated secrets at once and the reference space is
+ * not walkable. This bounds the trying anyway, because that is the cheap half and the endpoint
+ * answers identically whether or not a pair matched: without a limiter, identical answers are still
+ * a channel if you can ask fast enough.
+ *
+ * Counted on ATTEMPTS rather than failures, like `reportRules`: the guessing IS the traffic. Only a
+ * caller with no session is counted — a signed-in buyer proved who they are before asking, and
+ * their own returns must not be throttled by someone else's NAT.
+ */
+export function orderHelpRules(ip: string): RateLimitRule[] {
+  return [{ bucket: `order-help:${ip.slice(0, 120)}`, limit: ORDER_HELP_ATTEMPTS_PER_WINDOW, windowSec: WINDOW_SEC }];
+}
+
 /** Reviews one source may ATTEMPT per window. */
 const REVIEW_ATTEMPTS_PER_WINDOW = 20;
 
