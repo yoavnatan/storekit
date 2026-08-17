@@ -7,7 +7,7 @@ import { getStoresBySellerId, getStoresByIds } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
 import { getBuyerInvoiceUrls } from '../../lib/invoicing/buyer-invoice.js';
 import { getLatestReturnsByOrder, ordersWithOpenReturns } from '../../lib/return-requests.js';
-import { isReturnable } from '../../lib/return-eligibility.js';
+import { orderHasNothingReturnable } from '../../lib/return-eligibility-order.js';
 import { getStoresBySlugs } from '../../lib/stores.js';
 import { isOpen as returnIsOpen, buyerActionFor, type ReturnStatus } from '../../lib/returns.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
@@ -53,14 +53,25 @@ const hasStore = storesOfSeller.length > 0;
 // all if the buyer is waiting on money back (buyer-purchases.ts explains why the status table cannot
 // see that).
 const openReturnOrderIds = await ordersWithOpenReturns(orders.map((o) => o.id));
-// Which shops on this page sell something the regulations take out of the return right
-// (return-eligibility.ts). Read here so the BUTTON can be withheld — the endpoint refuses these
-// anyway, and a button that appears and then fails is worse than no button at all.
-// One query for every shop on the page, not one per row.
-const nonReturnableSlugs = new Set(
+// Orders where the regulations take EVERY line out of the return right, so the button can be
+// withheld rather than shown and then refused (`return-eligibility-order.ts`). Asked per product,
+// never per shop: a fashion store is not a store you cannot return from — it has one shelf you
+// cannot (owner, 2026-08-17).
+//
+// One store lookup for the page, then two batched reads per order that HAS a store. Only orders the
+// buyer could otherwise act on are asked about; a shipped or cancelled one offers nothing either
+// way, so it never pays for the question.
+const storeBySlug = new Map(
   (await getStoresBySlugs([...new Set(orders.flatMap((o) => Object.keys(o.storeSubtotals ?? {})))]))
-    .filter((st) => !isReturnable(st.categories))
-    .map((st) => st.slug),
+    .map((st) => [st.slug, st]),
+);
+const nothingReturnable = new Set(
+  (await Promise.all(orders.map(async (o) => {
+    if (buyerActionFor(o) !== 'return') return null;
+    const st = storeBySlug.get(Object.keys(o.storeSubtotals ?? {})[0] ?? '');
+    if (!st) return null;
+    return (await orderHasNothingReturnable(o, st.id)) ? o.id : null;
+  }))).filter((id): id is string => id !== null),
 );
 const purchases = groupBuyerPurchases(orders, openReturnOrderIds);
 // The same function `/api/buyer/orders` answers with, so the figures this paints cannot disagree
@@ -1020,7 +1031,7 @@ const STORES_NAMED = 2;
                           }
                           const act = buyerActionFor(s.order);
                           if (act === 'none') return null;
-                          if (act === 'return' && nonReturnableSlugs.has(s.storeSlug)) return null;
+                          if (act === 'return' && nothingReturnable.has(s.order.id)) return null;
                           return (
                             <div class="o-return">
                               <button type="button" class="o-return-btn" data-return-open={s.order.id}>

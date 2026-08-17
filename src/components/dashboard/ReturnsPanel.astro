@@ -46,14 +46,14 @@ const REASON: Record<ReturnReason, string> = {
 /** What the case IS, in the seller's words. Every status in the machine has one — a card that
  *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
 const STATUS: Record<ReturnStatus, string> = {
-  requested: 'מחכה לתשובה שלך',
-  approved: 'אישרת — הקונה שולח את המוצר',
-  in_transit: 'המוצר בדרך אליך',
-  received: 'המוצר הגיע אליך',
-  disputed: 'אנחנו מכריעים',
-  rejected: 'סירבת',
-  refunded: 'הקונה קיבל את כספו',
-  expired: 'הקונה לא שלח — הבקשה נסגרה',
+  requested: 'הקונה מחכה לתשובה שלך',
+  approved: 'אישרת, והקונה אמור לשלוח את המוצר',
+  in_transit: 'הקונה שלח, והמוצר בדרך אליך',
+  received: 'המוצר הגיע אליך וממתין שתבדוק אותו',
+  disputed: 'העברת את זה אלינו, ואנחנו מכריעים',
+  rejected: 'סירבת לבקשה',
+  refunded: 'הקונה קיבל את כספו בחזרה',
+  expired: 'הקונה לא שלח את המוצר, והבקשה נסגרה',
 };
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
@@ -126,8 +126,8 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
       <p class="m-0 mt-2 text-[0.86rem]">
         {REASON[r.reason]}
-        <span class="[color:var(--color-muted)]"> · זיכוי </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
-        <span class="[color:var(--color-muted)]"> · משלוח חזרה על </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
+        <span class="[color:var(--color-muted)]"> · צריך להחזיר לו </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
+        <span class="[color:var(--color-muted)]"> · המשלוח בחזרה על חשבון </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
       </p>
 
       {r.buyerNote && (
