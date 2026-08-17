@@ -192,7 +192,12 @@ export const NEGATIVE_PROMPT = [
   // catalog look alive. Only the face is excluded, and for a specific reason rather than squeamish-
   // ness: a generated face that resembles a real person is a likeness problem on a live commercial
   // domain, and it buys nothing a hand does not.
-  'no visible faces, crop above the shoulders if a person appears',
+  // "crop above the shoulders" meant "cut the person off above the shoulder line", and reads just
+  // as easily as "leave everything above the shoulders in" — which is how it was read, on two shots
+  // out of four on 2026-08-17 (a jaw, then a mouth). It names the cut LINE now instead of a
+  // direction, and says the same thing `LIMB_SAFETY` says.
+  'no visible faces: if a person appears, the top edge of the frame cuts their head off at the chin '
+  + 'or lower, so no mouth, nose, eyes or hair are in the picture',
   // Owner, 2026-08-12: "יש בן אדם שחסר לו איברים! זה לא תקין", and separately a product "מחובר עקום
   // לחשמל". Both are the ordinary generative-image failure — a limb that dissolves at the frame
   // edge, a plug entering a socket at an angle no plug enters a socket. They are worth naming
@@ -227,6 +232,148 @@ export const NEGATIVE_PROMPT = [
   'not flat, not evenly lit, not dead-centre, not sterile',
   'no collage, no split frame, single product only',
 ].join(', ');
+
+/**
+ * Where a figure may be cut, so that nothing is ever cut BADLY.
+ *
+ * The anatomy line in `NEGATIVE_PROMPT` has been there since 2026-08-12, written for this exact
+ * complaint, and on 2026-08-17 the owner reported it again from the new sample: "יש דוגמנים שחסרים
+ * להם איברים! פתאום אין כפות רגליים או משהו כזה... נראה נורא". Restating a prohibition that has
+ * already failed once is not a fix.
+ *
+ * The prohibition fails because it is unachievable as posed. A cropped figure must end SOMEWHERE,
+ * and every generated limb approaching the frame edge is a chance to end wrong — a foot half in
+ * frame, an ankle fading into the floor. Told "no missing limbs" while also being told to crop a
+ * person, the model has to resolve a contradiction, and it resolves it at random.
+ *
+ * So this names the crop instead of banning the failure: the cut happens at a JOINT and well
+ * inside the frame, and the parts most often mangled — feet, ankles, hands at the very edge — are
+ * simply never in the picture. What is in frame is whole because there is less of it.
+ */
+export const LIMB_SAFETY =
+  // "crop above the shoulders" in NEGATIVE_PROMPT turned out to be read as "anywhere above them",
+  // so the first sky sample came back with a jaw and a mouth in frame on two shots out of four. A
+  // partial face is the likeness problem the face rule exists to avoid, only harder to notice.
+  'The head is cut off by the top of the frame at or below the CHIN: no mouth, no nose, no eyes and '
+  + 'no part of a face is ever visible. '
+  + 'If a person appears, they are cropped DELIBERATELY and cleanly: the frame cuts them off at the '
+  + 'upper thigh, the waist or the chest, and the cut edge is a clean straight edge of the '
+  + 'photograph, not a body part that fades, dissolves or tapers away. Feet, ankles and lower legs '
+  + 'are NEVER in the picture at all — not partly, not blurred, not at the bottom edge. Whatever '
+  + 'part of the body IS shown is complete and correctly formed within the frame, with both hands '
+  + 'either fully visible and whole or entirely outside the picture. Never a stump, never a limb '
+  + 'that ends in nothing, never a foot without a leg';
+
+/**
+ * The garment is presented, not discarded.
+ *
+ * Owner, 2026-08-17, on the first sky-adjacent sample: "יש בגדים מקומטים או שיושבים לא טוב על
+ * האנשים". Both halves are one failure — a model asked for "real" and "natural" produces cloth
+ * that has been sat in. A shop photographs stock, and stock has been steamed.
+ */
+export const PRESSED =
+  'The garment is shop-fresh and perfectly presented: freshly steamed and pressed, clean and '
+  + 'straight with no creases, no wrinkles, no rumpling, no bunching and no fold lines anywhere. '
+  + 'It FITS the body it is on properly — the shoulder seam sits on the shoulder, the sleeves are '
+  + 'the right length, the waist sits where it should, nothing is twisted, pulling, gaping, '
+  + 'sagging or hanging off. Every fastening is done up as it is meant to be worn. '
+  // ── How an UNWORN garment is held up, added 2026-08-17 with the sky ──────────────────────────
+  // Told only that there is no floor and no surface, the model solved the problem the way a person
+  // would: it pegged the trousers to a washing line strung across the sky. Owner: "לא בגדים תלויים
+  // על חוט, לא בגדים מקומטים, ברורים, זה אמור להיות תמונה מאוד מחמיאה למוצר." A garment on a line
+  // is laundry, and laundry is the one thing a catalogue photograph must never look like.
+  // The positive half of the same note. "Flattering" is a real instruction to a photographer and
+  // the model responds to it, where "no wrinkles" only tells it what to avoid.
+  + 'The photograph FLATTERS the product: it is the most appealing, most desirable version of this '
+  + 'item, crisp and clearly lit, every seam, button and texture sharp and easy to read, and it '
+  + 'makes someone want to own it. '
+  // ── "חייב שהבגדים יהיו יותר יפים" (2026-08-17), and what that turned out to mean ──────────────
+  // Said after a sample of quiet, correct, entirely unremarkable basics — a grey tee, a grey knit,
+  // a plain sweatshirt. It is the fourth pass on this axis and the first one that is not about
+  // colour: loud was rejected, then muted was "משעמם", then the colours were fixed and the clothes
+  // were still dull. What was missing was never saturation, it was DESIGN. A plain grey tee in a
+  // prettier grey is still a plain grey tee.
+  + 'The garment itself is BEAUTIFUL and clearly designed — a piece someone chose, not a blank '
+  + 'basic. It is cut with intent and finished with care: a considered neckline or collar, a real '
+  + 'sleeve shape, a soft pleat or gather where it flatters, a neat cuff or hem, a well-placed '
+  + 'seam, a quality trim. The fabric looks expensive and hangs beautifully, with a soft natural '
+  + 'drape and a subtle richness to its surface. Elegant and desirable, never plain, never cheap, '
+  + 'never a flat shapeless rectangle of jersey';
+
+/**
+ * The garment on an invisible body — see `presentationFor` for when this is chosen.
+ *
+ * Written after a model, told only that there was no floor and no surface, hung the trousers from
+ * a washing line strung across the sky. Owner: "לא בגדים תלויים על חוט". A garment with nothing
+ * under it has to be told what holds its shape, or the model invents something that does.
+ */
+export const GHOST_PRESENTATION =
+  'NOBODY is wearing it and no person appears anywhere in the picture. It is presented on an '
+  + 'INVISIBLE body: filled out and holding its exact worn shape in mid-air — shoulders square, '
+  + 'sleeves rounded, trouser legs full — as if the person inside it had been erased. It is never '
+  + 'flat, never limp, never folded and never draped over anything. Nothing holds it up and nothing '
+  + 'is attached to it: no washing line, no rope, no string, no wire, no pegs, no clips, no hook, '
+  + 'no hanger, no rail, no stand, no mannequin and no hands';
+
+/** The garment worn by a cropped figure — the other half of `presentationFor`. */
+export const WORN_PRESENTATION =
+  'It is WORN by a cropped figure so the cut and the drape read on a real body. The figure is '
+  + 'cropped tightly: the picture holds the garment and little else, and whatever the person is '
+  + 'wearing below it is plain and quiet so it never competes';
+
+/**
+ * Worn by somebody, or worn by nobody — decided per product rather than per store.
+ *
+ * Owner, 2026-08-17, shown the two side by side: "גם וגם, חלק עם גוף וחלק בלי גוף, רק שהפריטים לא
+ * יצאו מהפריים." Both readings of that are load-bearing and they pull opposite ways, so the split
+ * is a rule rather than a preference:
+ *
+ *   **The mix** is real and deterministic — a hash, like `colorwayFor` and `backdropFor`, so the
+ *   same product is presented the same way every run and the ratio is a known one rather than
+ *   whatever the model felt like that call.
+ *
+ *   **The frame** decides who is eligible. A full-length garment worn by a person is a person from
+ *   the chin to the shoes, and that picture cannot both fit the product in frame and keep feet out
+ *   of it — the attempt on 2026-08-17 put legs, shoes, ground and a horizon back in a picture that
+ *   is supposed to be sky. So anything reaching past the knee is never worn, and the coin is only
+ *   tossed for garments that end at the hip.
+ *
+ * Matching on the English subject is deliberate: `s` in the catalog always names the garment type
+ * in plain words, and it is the same string every other hash here keys on. A garment this misses
+ * simply falls through to the object case and is photographed as an object, which is safe.
+ *
+ * MEASURED over סהר's 112 rows, the way `companionFor` and `backdropFor` record theirs: 17 worn by
+ * a figure, 46 on the invisible body, 49 photographed as plain objects (every shoe, bag, hat and
+ * piece of jewellery, which was never a candidate). So one garment in four is on a person — a real
+ * mix, weighted to the safe side by the frame rule rather than by taste.
+ */
+const LONG_GARMENT = /trouser|jean|chino|jogger|skirt|dress|short|legging|swim/i;
+const UPPER_GARMENT = /shirt|top|tee|t-shirt|sweater|sweatshirt|hoodie|jacket|blazer|coat|cardigan|knit|polo|henley|jumper/i;
+export function presentationFor(subject) {
+  if (LONG_GARMENT.test(subject)) return ` ${GHOST_PRESENTATION}.`;
+  if (!UPPER_GARMENT.test(subject)) return '';
+  return hashOf(`${subject}#worn`) % 2 === 0 ? ` ${WORN_PRESENTATION}.` : ` ${GHOST_PRESENTATION}.`;
+}
+
+/**
+ * Modest dress, absolutely and everywhere.
+ *
+ * Owner, 2026-08-17: "בלי מחשופים, בלי דברים לא צנועים וחושפניים מדי. אני אדם דתי", and the frame
+ * he gave for the whole catalog — "בגדים שמתאימים לאנשים שומרי מסורת".
+ *
+ * It is stated as a property of the GARMENT rather than of the photograph on purpose. A styling
+ * rule can be satisfied by choosing an angle; this has to hold from every angle, in every gallery
+ * view, on every model, which means it is really a rule about what the shop sells. Its other half
+ * therefore lives in `catalog-fashion.mjs`, where the products that could not satisfy it were
+ * replaced rather than re-shot.
+ */
+export const MODESTY =
+  'MODEST dress throughout, without exception: necklines are high and closed, shoulders and upper '
+  + 'arms are covered, hems fall below the knee, and the midriff, back, chest and cleavage are '
+  + 'never exposed or suggested. Nothing sheer, nothing see-through, nothing tight-fitting or '
+  + 'body-hugging, nothing cropped short, nothing low-cut, nothing with an open back and nothing '
+  + 'with thin or bare straps. If a person wears or holds the item they are dressed modestly by '
+  + 'the same rule, including whatever else they have on';
 
 /** Every image is generated square and delivered through `lib/cdn.ts`, which
  *  crops per surface. 2K rather than 1K because the banner and the product-page
@@ -316,11 +463,26 @@ export const SHOWCASE_STORES = [
     slug: 'showcase-fashion',
     name: 'סהר',
     tag: 'אופנה',
-    tagline: 'אופנה יומיומית שכיף ללבוש',
+    /** Was "אופנה יומיומית שכיף ללבוש" — owner, 2026-08-17: "משפט מאוד מטומטם". It is painted into
+     *  the banner photograph rather than laid over it, so this line and that picture change
+     *  together or the shop says two different things. */
+    tagline: 'בגדים שטוב ללבוש',
     description:
       'חנות לדוגמה של Dezabin — כך נראית חנות אופנה מלאה בפלטפורמה: מידה וצבע לכל דגם, '
       + 'קטגוריות מסודרות, גלריית תמונות לכל מוצר ומלאי שמתעדכן לפי הצירוף שנבחר.',
-    colors: { primary: '#2b2118', accent: '#c4622d' },
+    /**
+     * The shop's colour in the APP — header, badges, the wordmark drawn over the banner.
+     *
+     * It was `#2b2118` / `#c4622d`, a warm near-black and a terracotta, and it had been wrong
+     * since 2026-08-12 without anybody noticing: that was the day this store was corrected OFF
+     * warm plaster, and its own `region` clause has banned terracotta by name ever since. שקמה got
+     * the matching repalette the same day (see its `colors`) and סהר did not, so the header wore
+     * a colour its own photographs were forbidden to contain.
+     *
+     * Now it follows the sky the pictures are made of: the deep blue of the mark against the pale
+     * field, and the warm gold that is the only other colour in that sky at the end of the day.
+     */
+    colors: { primary: '#1c3f6e', accent: '#d99a3f' },
     /** סהר is the crescent moon, so the mark is the word's own meaning — the one logo idea that
      *  needs no explaining to an Israeli and cannot be mistaken for another shop's. */
     logoConcept:
@@ -336,36 +498,156 @@ export const SHOWCASE_STORES = [
      * דוגמאות מעניינות, מודרניות, צורות, משהו יותר מעוצבי").
      *
      * Same mechanism as שקמה's, opposite register, and the difference is the point: שקמה's list is
-     * folk craft — hand-painted, woven, traditional — while these are contemporary print and
-     * colour-blocking, the things a 2026 label actually puts on a garment. Two stores using one
-     * mechanism to arrive at two unmistakably different racks is exactly what the mechanism is for.
+     * folk craft — hand-painted, woven, traditional — while these are what a 2026 label actually
+     * puts on a garment. Two stores using one mechanism to arrive at two unmistakably different
+     * racks is exactly what the mechanism is for.
      *
-     * The cool stone backdrop is what makes this safe: strong colour against a grey field reads as
-     * designed, where the same colour in a warm room would read as busy.
+     * ── Rewritten 2026-08-17, and the swing between the two rounds is the lesson ──
+     *
+     * The first list answered "more colour" with PRINT: an op-art spiral, a hand-drawn
+     * checkerboard, a large-scale geometric, a graphic wave, a watercolour floral. The owner
+     * looked at the finished rack and said the clothes themselves were the worst part of it —
+     * "כל מיני פאטרנים לא הגיוניים ולא לבישים… צעקני מדי" — and named the register he wanted
+     * instead: "אופנה של סקייטרים: דגמחים, חולצות אוברסייז, מחויטות ספורט אלגנט, לא גרפיטי ולא
+     * פסיכדלי מדי".
+     *
+     * The correction to that was then over-corrected in turn, and he caught it in one word:
+     * a rack of quiet solids is "משעמם". The brief that survived both is narrow and worth
+     * stating exactly, because either edge of it has now been walked off once:
+     * young and hipster-ADJACENT rather than hipster, stripes and a 90s memory read through
+     * 2026, a LIGHT illustration on some pieces and not most, wearable throughout — and
+     * "שעדיין יזכיר קצת את הבגדים שכן ישנם", so eight of the sixteen below are the wearable
+     * half of the old list, kept verbatim, and the rack does not become a different shop.
+     *
+     * The counts are the brief made countable, and are the thing to preserve in any future
+     * edit: 3 illustration entries (one printed, one embroidered, one repeating small), 4
+     * stripes of different widths and eras, 9 plain colours carried by finish and trim rather
+     * than by pattern. Nothing here is a full-surface graphic, because that is what "צעקני"
+     * turned out to mean.
      */
     colorways: [
-      'a bold abstract brushstroke print in cobalt and cream',
+      // ── Kept from the first list: the wearable half, so the rack still reads as סהר ──
       'colour-blocked panels of rust and soft grey',
       'a fine tonal stripe in ink blue and white',
-      'a large-scale geometric print in ochre, black and ivory',
-      'a single saturated colour — deep emerald green',
-      'an irregular hand-drawn checkerboard in charcoal and bone',
-      'a soft watercolour floral in dusty rose and sage, painterly rather than pretty',
-      'a saturated tangerine, plain and confident',
-      'a graphic wave pattern in navy and pale blue',
+      'deep emerald green, plain — rich and grown-up, never bright or neon',
       'a warm terracotta with a contrast topstitch in ecru',
-      'a monochrome op-art spiral in black and white',
       'a muted lilac with a single wide cream stripe',
-      'a scattered small-scale dot print in mustard on slate',
       'deep plum, plain, with a tonal sheen to the fabric',
-      'a bright cherry red with a clean white collar or trim',
       'an earthy olive with a subtle woven herringbone texture',
+      // ── The 90s memory: two more stripe widths, and one clean contrast trim ──
+      // ⚠️ None of these may describe the cloth as faded, washed, worn or vintage, however well it
+      // reads as a brief: `NEGATIVE_PROMPT` bans exactly those words ("no fading, no patina,
+      // nothing worn, aged, vintage") to keep the catalog looking like new stock, and a colourway
+      // that fights it is resolved by the model at random. Say it as the DYE and the finish.
+      'a wide 90s rugby stripe in soft forest green and bone, the green chalky and low in saturation',
+      'a narrow vertical pinstripe in charcoal and chalk, the cloth relaxed and unstructured rather than formal',
+      // Was "a bright cherry red with a clean white collar or trim" and it is gone for cause: it
+      // landed on מכנסי מטען רחבים, which is one of the four products the HOMEPAGE store card
+      // draws, and the owner's verdict on the result was "צבע אדום מזעזע … צבעים לא אנושיים כאלו"
+      // (2026-08-17). The trim idea survives; the shout does not.
+      'a dusty brick red, low in saturation and matte rather than bright, with a clean bone-white trim',
+      // ── Light illustration, on three of sixteen — the owner asked for "איורים קלים על חלק מהבגדים" ──
+      'soft cream with ONE small hand-drawn line illustration printed high on the chest — a crescent '
+        + 'moon and a few loose lines, no more than a palm wide — in a single ink-blue colour, the '
+        + 'rest of the garment completely plain',
+      // Was "a soft grey marl …" and grey marl is what a sample of it looked like: correct, quiet
+      // and forgettable. Same embroidery idea, on a colour worth photographing.
+      'a soft powder blue with one small line drawing embroidered at the chest in thread-thin '
+        + 'single-colour stitching, small enough to be missed at a glance',
+      'a bone ground with a small hand-drawn 90s motif repeating quietly across it — a simple five-petal '
+        + 'flower, drawn by hand and printed small enough to read as texture from a step away, never as a print',
+      // ── Plain, but each one carrying a reason to look: a wash, a trim, a sheen ──
+      'a deep soft charcoal in a heavy cotton with a low sheen, plain but beautifully cut',
+      'a mid indigo blue, plain, with the seams and topstitching a shade lighter than the cloth',
+      'soft chalky butter yellow, plain and low in saturation, with a fine cream rib at the collar and cuffs',
     ],
-    /** The hero backdrop — see `PRODUCT_VIEWS.main`. Cool pale stone-grey: this is the store that
-     *  was corrected off warm plaster, and a colour field states that in one look. */
-    backdrop: 'a plain wall of deep cool graphite grey, like dark honed stone, softly out of focus '
-      + 'and noticeably darker than the product, with a pale grey marble ledge to stand on — the '
-      + 'contrast between the dark field and the light stone is the point',
+    /**
+     * What the colour clause says AFTER naming the colourway — see `colorwayFor`, whose default
+     * ends "genuinely saturated and cheerful rather than muted".
+     *
+     * That default is right for שקמה and wrong here, and it is half of why this rack went loud:
+     * every colourway, however quiet its wording, arrived with an instruction to push it. סהר
+     * needs the opposite pressure — the colour is real, the piece stays wearable — so it says so
+     * in its own data rather than by editing a sentence three other stores depend on.
+     */
+    colorwayTone:
+      'let it read as a real chosen colour rather than a beige default, but the piece must stay '
+      + 'genuinely WEARABLE — nothing psychedelic, no graffiti, no full-surface graphic and no '
+      + 'busy all-over print. Skate-adjacent and sport-elegant: cargo trousers, oversized shirts, '
+      + 'relaxed unstructured tailoring. '
+      // The other half of the same correction, and the one that produced the worst single image in
+      // the store: the colour must be a colour a person actually wears, not the pure hue the model
+      // reaches for when a colour is merely named.
+      + 'The colour itself must be HUMAN and wearable — dyed cloth that has been washed and worn, '
+      + 'slightly muted and slightly dusty. Never neon, never fluorescent, never a pure primary at '
+      + 'full strength, never the loud saturated version of the colour named. '
+      // The rack has to look like it came from the shop in the banner and was made by the label the
+      // logo belongs to — owner, 2026-08-17: "אהבתי את הבאנר והלוגו, אז שאיכשהו הבגדים כן יתכתבו
+      // איתם". The mark is flat blocks of cobalt, deep navy, orange and violet on cream, so those
+      // are the colours the rack should keep answering, whatever the individual colourway says.
+      + 'This label\'s own colours are cobalt blue, deep navy, warm orange and violet on cream, and '
+      // He drew the line himself, and it is the whole difficulty of this store in one sentence:
+      // "הבאנר הוא על תקן קונספט, כלומר הבגדים צריכים להיות פחות צעקניים ממה שיש בו באמת, אבל יותר
+      // מזכירים אותו" (2026-08-17). The banner is a rail of twenty saturated pieces seen together
+      // from across a room, which is a mood; one of them alone, filling half a frame, is a shout.
+      + 'this piece should clearly belong to that family — but ONE garment on its own is seen much '
+      + 'closer and much larger than a whole rail of them, so it wears a calmer, softer version of '
+      + 'those colours than the rail does. Related to them, never as loud as them',
+    /**
+     * The hero backdrop — see `PRODUCT_VIEWS.main`.
+     *
+     * It was "deep cool graphite grey, like dark honed stone … noticeably darker than the product,
+     * with a pale grey marble ledge to stand on", and 98 of this store's 112 hero shots are that
+     * wall. The owner's reaction to the finished shop, 2026-08-17, was "סהר נראה בעצם כמו בית
+     * קברות" — which is a fair reading of the specification rather than a failure to follow it: a
+     * dark stone field, a pale stone slab, one object centred on it, and `PRODUCT_VIEWS.main`'s own
+     * "nothing else is in the picture". Every element of a headstone was asked for by name.
+     *
+     * Marble is out for the same reason and in his words — "הויטראז׳ והשיש מזכירים לי קונוטציות לא
+     * טובות".
+     *
+     * What replaces it is not invented, and that is the point of this round. In the same breath he
+     * said the one thing he DID like: "דווקא *כן* אהבתי את הבאנר והלוגו, אז שאיכשהו הבגדים כן
+     * יתכתבו איתם". So the hero is now taken FROM the banner instead of designed against it — the
+     * banner is a rail of clothes against a pale sunlit limestone-block wall, bright and warm and
+     * cheerful, and it is the only picture of this store that has ever survived a review.
+     *
+     * The limestone that replaced it lasted one sample. It read as אדנית — "רקע של אור יום, חום,
+     * אבנים ואדמה. אני חייב שהחנות הזאת תהיה מאוד שונה מאדנית, מאוד" — which is true and was
+     * predictable: אדנית's own backdrop is warm sand plaster in bright daylight, and two stores
+     * cannot both be the sunlit stone one.
+     *
+     * ── Sky, and why it is the answer to four separate complaints at once ──
+     *
+     * His idea, 2026-08-17: "אולי רקעים של שמיים, כחול יותר, עננים. משהו על גבול הלא אמיתי", then
+     * "שמיים נקיים" when asked to choose. It is the only field left that no other showcase store
+     * can be confused with, and each of the four is now taken by something incompatible:
+     *
+     *   אדנית  warm sand plaster, daylight, stone   → the graveyard's replacement collided here
+     *   שקמה   deep teal, saturated, painted plaster → ⚠️ THE ONE TO STAY AWAY FROM, in his words
+     *          "*שלא יהיה דומה לשקמה!!!!*" — so this sky is PALE and washed out, never a rich or
+     *          saturated blue, and never anything that could be called teal or blue-green
+     *   Teklar seamless white studio sweep          → rules out the plain white he also considered
+     *   סהר    ← open sky
+     *
+     * It also answers the missing feet. The hero had a floor, a figure stood on it, and the model
+     * kept ending legs where the floor met the frame ("יש דוגמנים שחסרים להם איברים! פתאום אין
+     * כפות רגליים"). A sky has no floor and no horizon, so there is no place for a body to be cut
+     * off against — see `LIMB_SAFETY` for the half of that fix that is not the backdrop's job.
+     */
+    backdrop: 'open SKY and nothing else — a soft pale sky blue, washed-out and light like a hazy '
+      + 'morning, going almost white toward the bottom of the frame, with one or two thin wisps of '
+      + 'high white cloud. There is no wall, no floor, no ground, no horizon line and no surface of '
+      + 'any kind: the product simply hangs in clear open sky with a soft shadow of its own beneath '
+      + 'it. Clean and quiet like a studio, but the studio is the sky — slightly dreamlike, just on '
+      + 'the edge of unreal. The blue is PALE and airy: never a deep, rich or saturated blue, never '
+      + 'turquoise, never teal, never blue-green, and never a dark or dramatic sky. '
+      // Measured on the first sky sample, 2026-08-17: the flat-lay shots obeyed "no horizon"
+      // perfectly and the WORN ones put the model on a hilltop, because a person standing against
+      // sky is a person standing somewhere and the model supplies the somewhere. Naming the sky is
+      // not the same as banning the ground.
+      + 'Sky is the ONLY thing behind the product: no hills, no mountains, no landscape, no rooftops, '
+      + 'no trees, no scenery and no ground of any kind, not even far away and out of focus',
     /**
      * The stained-glass room, on roughly one hero shot in nine (owner, 2026-08-14, about his own
      * banner: "זה גם כל כך יפה שעשית מאחורה עם הויטראז׳ … אי אפשר לעשות מעט מוצרים עם כזאת אווירה
@@ -377,9 +659,18 @@ export const SHOWCASE_STORES = [
      * cropping its own products. Coloured light falling across a plain wall adds no object to the
      * frame, cannot crowd the garment and cannot be cut off. The wall is still a plain wall.
      *
-     * "מעט" is the whole brief, so it is one in nine and not a new house style: the plain graphite
-     * field is what tells this store apart from the other three at a glance in the grid, and a
-     * shopper who meets the coloured light on every third product stops seeing it.
+     * "מעט" is the whole brief, so it is a minority and not a new house style: the plain sweep is
+     * what tells this store apart from the other three at a glance in the grid, and a shopper who
+     * meets the coloured light on every third product stops seeing it.
+     *
+     * Rarer as of 2026-08-17, one in twelve rather than one in nine: "זה בסדר בנגיעות, זה חייב
+     * להיות מאוזן".
+     *
+     * And it is no longer stained glass at all. That whole idea died the same day — "הויטראז׳ והשיש
+     * מזכירים לי קונוטציות לא טובות" — and it was never the coloured light he objected to, it was
+     * the church the limestone and the marble built around it. So the exception stays an exception
+     * in LIGHT and drops the room: the same open sky as every other hero, at the end of the day
+     * instead of the morning. Same world, different hour, no second location to explain.
      */
     /**
      * Products that ALWAYS get the stained-glass light, whatever the hash says (owner, 2026-08-14:
@@ -394,7 +685,7 @@ export const SHOWCASE_STORES = [
      * a stranger sees on the homepage, so for a SHOWCASE store — an exhibit, whose whole job is to
      * show what the platform can look like — it is staged deliberately rather than left to a
      * `created_at` ordering. Two of the four, not all four, so the card still shows the store's
-     * ordinary graphite field beside it and the coloured light still reads as the exception.
+     * ordinary plain sweep beside it and the coloured light still reads as the exception.
      *
      * ⚠️ It is a NAME LIST, so it breaks silently in one specific way: rename a product and the
      * entry stops matching and simply stops applying. `tests/showcase-catalog-integrity` fails if
@@ -406,7 +697,11 @@ export const SHOWCASE_STORES = [
      * נעליים"); it stays in this list only because its picture was already made this way and
      * spending a generation to undo a good image buys nothing.
      */
-    backdropAccentAlways: ['ז׳קט בלייזר לא מובנה', 'שמלת קיץ פרחונית'],
+    // Renamed with their catalog rows on 2026-08-17 ('ז׳קט בלייזר לא מובנה' → 'בלייזר רך'). This is
+    // the silent-break case the ⚠️ above describes, caught only because the rename and this list
+    // were edited in the same sitting; `tests/showcase-catalog-integrity` is what catches the time
+    // they are not.
+    backdropAccentAlways: ['בלייזר רך', 'שמלת קיץ פרחונית'],
     /**
      * What the homepage store card shows, in order — see `cardAt()` in the showcase seeder for how
      * a name here becomes a `created_at`, and why the alternative was not stable enough to stage.
@@ -424,14 +719,14 @@ export const SHOWCASE_STORES = [
      * accessory. A card of four tops says less about a clothes shop than four categories do, and
      * this is the only picture of the store a stranger meets on the homepage.
      */
-    cardProducts: ['חולצת מחשוף V רכה', 'ז׳קט בלייזר לא מובנה', 'מכנסי מטען רחבים', 'חגורת עור קלאסית'],
+    cardProducts: ['חולצה רכה בצווארון עגול', 'בלייזר רך', 'מכנסי מטען רחבים', 'חגורת עור קלאסית'],
     backdropAccent:
-      'a plain pale limestone wall, softly out of focus, washed by the light of a tall stained-'
-      + 'glass window just outside the frame — broad soft pools of cobalt, ruby, amber and '
-      + 'emerald light lying across the wall and across the pale stone ledge the product stands '
-      + 'on, with the clean grey of the stone still showing between them. The coloured LIGHT is '
-      + 'the only decoration: the window itself is never visible, and there is still nothing in '
-      + 'the picture but the product, the ledge and the wall',
+      'the same open sky with no wall, floor, ground or horizon anywhere — but at golden hour '
+      + 'instead of morning: a soft gradient of pale apricot and warm gold low in the frame rising '
+      + 'into light blue above, with one or two long thin clouds catching warm light along their '
+      + 'edges. Warm, soft and hazy, still pale rather than saturated, and still just on the edge '
+      + 'of unreal. The product hangs in it exactly as it does in the plain sky, lit warmly from '
+      + 'the side. No sun disc in frame, no dramatic red sunset, no dark sky, nothing else at all',
     logoStyle:
       // No typography note here, deliberately: this store is `logoNameless`, and a style line that
       // describes how to set the name is an instruction to draw one. That contradiction is what put
@@ -484,15 +779,27 @@ export const SHOWCASE_STORES = [
       + 'the same order. DIRECTION, which matters most of all: the crescent\'s solid body is on '
       + 'the RIGHT and its two tapering horns point to the LEFT, so it opens leftward like a '
       + 'backwards C — never mirrored, never flipped, never opening to the right. The moon is deep '
+      // The same repalette as `bannerLettering`, and it has to be stated in both: the logo is drawn
+      // FROM the banner's mark, so if only one of the two moved, the reference and the words would
+      // disagree and the model would settle it on its own.
       + 'navy blue, and across its width it is cut by straight radial lines into flat wedges of '
-      + 'orange, royal blue, purple, orange and royal blue again, with the navy remaining at the '
-      + 'top and bottom tips — every division a crisp straight edge, never a gradient, never a '
-      + 'blend, never a glow. The background is a soft off-white, and the mark sits alone and '
-      + 'generously spaced in the centre of the frame.',
+      + 'warm gold, light sky blue, soft violet, warm gold and light sky blue again, with the navy '
+      + 'remaining at the top and bottom tips — every division a crisp straight edge, never a '
+      + 'gradient, never a blend, never a glow. The background is a soft off-white, and the mark '
+      + 'sits alone and generously spaced in the centre of the frame.',
     /** The banner, cropped to the crescent alone — see `logoStyle` for why the crop is the whole
      *  point and what happened without it. Fractional geometry so it survives the banner being
      *  re-rendered at another size; it does NOT survive the banner being regenerated with the mark
-     *  somewhere else, which is why the crescent is also described in words. */
+     *  somewhere else, which is why the crescent is also described in words.
+     *
+     *  ⚠️ **These numbers are measured off one specific picture and do not survive a new banner.**
+     *  Three things are cut out of `__banner` by fractional geometry — this crop, and the two in
+     *  `lockupUrl` that take the word and the mark for the header lock-up — and a regenerated
+     *  banner puts the sign somewhere slightly different every time. So a banner regeneration is
+     *  never one job: generate it, LOOK at the result, re-measure all three crops against it, and
+     *  only then regenerate the logo and recompose the lock-up. Skipping the middle step produces a
+     *  logo that is a blurry piece of wall, which is exactly what happened on 2026-08-14 and cost
+     *  three paid attempts to work out. */
     logoRefKey: '__banner',
     logoRefCrop: 'c_crop,x_0.852,y_0.24,w_0.095,h_0.44,g_north_west',
     /**
@@ -546,16 +853,44 @@ export const SHOWCASE_STORES = [
     // the omission was structural rather than careless: "a rail of clothes" is read by an image
     // model as womenswear every time, so a store that sells both had a banner that advertised
     // half of itself. The catalog has had a גברים category since 2026-08-13.
+    /**
+     * ── Rewritten 2026-08-17, and it is the only picture in this store being CHANGED rather than
+     *    replaced ──
+     *
+     * The owner likes this banner ("דווקא *כן* אהבתי את הבאנר והלוגו") and it is the reference the
+     * rest of the shop is now built from, so the room, the rail and the composition all stay. Three
+     * things move, each from something he said in the same breath:
+     *
+     * 1. The rail sells what the shop sells: "שהבגדים בבאנר יהיו יותר דגימה של הבגדים שבאמת מוצעים
+     *    אצלנו". It listed colours; it now lists garments that are rows in `catalog-fashion.mjs`.
+     * 2. Every piece on it is MODEST, by the same rule as the catalog — a banner is the one picture
+     *    a stranger sees first, and a sleeveless dress in it makes the rule a lie.
+     * 3. The saturation comes down a step. "הבאנר הוא על תקן קונספט, כלומר הבגדים צריכים להיות פחות
+     *    צעקניים ממה שיש בו באמת" — a whole rail seen from across a room can carry more colour than
+     *    one garment can, but the gap between banner and rack still has to be a step and not a
+     *    different shop.
+     *
+     * The marble ledge is gone with all the other marble, and an open view of SKY comes in through
+     * the far end — the one thread that ties this room to the product photographs, which have no
+     * room at all.
+     */
+    // MENSWEAR is named explicitly (owner, 2026-08-14: "חסר לי שם טאצ׳ של בגדי גברים בבאנר"), and
+    // the omission was structural rather than careless: "a rail of clothes" is read by an image
+    // model as womenswear every time, so a store that sells both had a banner that advertised
+    // half of itself. The catalog has had a גברים category since 2026-08-13.
     bannerSubject:
-      'a bright, cheerful fashion room: a long rail of clothes in strong saturated colour — '
-      + 'cobalt, tangerine, emerald green, cherry red, soft lilac — hung close together against a '
-      + 'pale stone wall that carries two large blocks of painted colour behind them. The rail is '
-      + 'clearly MIXED: alongside the women\'s pieces, a definite section of MENSWEAR — men\'s '
-      + 'shirts, a men\'s jacket and a knit on broader hangers, in the same strong colours — plus a '
-      + 'pair of men\'s shoes among the shoes below, so it reads at a glance as a shop for both. A '
-      + 'panel of coloured glass throws a pool of colour across the floor, a striped rug, a few '
-      + 'bags and shoes in bright colours set out on a pale marble ledge. Clean bright daylight, '
-      + 'alive and fun and full of colour — never grey, never monochrome, never austere, never empty',
+      'a bright, cheerful fashion room: a long rail of clothes hung close together against a pale '
+      + 'stone wall, with a wide open doorway or window at the far end showing clear pale SKY. '
+      + 'On the rail, the shop\'s actual range and all of it MODEST — a floral midi dress with '
+      + 'short sleeves, a soft unstructured blazer, a long trench coat, an oversized heavy shirt, a '
+      + 'denim jacket, a fine knit sweater and wide-leg cargo trousers — with a definite section of '
+      + 'MENSWEAR on broader hangers so it reads at a glance as a shop for both. Every garment has '
+      + 'a high closed neckline, sleeves, and a hem below the knee; nothing sleeveless, nothing '
+      + 'cropped, nothing low-cut. The colours are rich but WEARABLE and a step calmer than a '
+      + 'poster: indigo, dusty brick red, emerald, soft lilac, olive, warm gold and cream. Below, '
+      + 'a few bags and shoes set out on a simple pale wooden bench, and a striped rug on the '
+      + 'floor. Clean bright daylight from the open end, alive and inviting — never grey, never '
+      + 'monochrome, never austere, never empty, and no marble anywhere',
     /** The banner's own medium. Photographic, like the products, because this is a clothes shop and
      *  a shopper wants to see cloth — but the raking-daylight-and-atmosphere language that used to
      *  be hardcoded in `bannerPrompt` is gone, since that is what softened this exact banner
@@ -593,8 +928,14 @@ export const SHOWCASE_STORES = [
       'Mounted on the wall immediately beside the name — to the right of it, at the same height, '
       + 'sized to match the letters — is the shop\'s own mark: a crescent moon, its solid body on '
       + 'the right and its two tapering horns pointing to the LEFT, opening leftward. It is deep '
-      + 'ink blue, and inside its own shape it carries flat blocks of bright cobalt, soft violet '
-      + 'and warm tangerine, divided by crisp straight edges. Cut as a solid panel and fixed to '
+      // Repalette 2026-08-17, with everything else: "תתאים לצבעים של השמיים את הלוגו ואת הבאנר".
+      // The wedges were cobalt, violet and tangerine — a good mark for a stone room and a slightly
+      // hot one for a shop whose every product photograph is now pale sky. Same three positions,
+      // moved onto the sky's own colours: the blue of it, the violet of its shadows, the gold of
+      // its last hour. The navy body does not move; it is the mark's identity and the app's
+      // `colors.primary`.
+      + 'ink navy blue, and inside its own shape it carries flat blocks of light sky blue, soft '
+      + 'violet and warm gold, divided by crisp straight edges. Cut as a solid panel and fixed to '
       + 'the wall. Exactly one crescent, and it and the name read as one sign together. '
       + 'Both are real, physical signage inside the scene — cut or painted letters mounted on the '
       + 'wall, lit by the same light as everything else and casting its own small shadow, never '
@@ -614,30 +955,48 @@ export const SHOWCASE_STORES = [
      *  the store that was corrected OFF that palette. With the shared clause it came back as שקמה's
      *  room twice out of two: warm plaster, an olive branch in a clay jug. Israeli-Mediterranean is
      *  still the world; the surfaces in it are the cool half of it. */
+    /**
+     * Rewritten 2026-08-17, together with `backdrop`, and for the same reason.
+     *
+     * It read "a COOL palette throughout — marble, limestone, grey concrete, bone white and soft
+     * grey. Absolutely no terracotta, no clay, no olive branches, no warm plaster", written on
+     * 2026-08-12 to stop this store coming back as שקמה's warm room twice out of two. It worked,
+     * and it cost the store its daylight: cool + grey + a dark hero field is the graveyard the
+     * owner named five days later.
+     *
+     * That version lasted one sample and produced אדנית — see `backdrop`. The store is now sky, and
+     * the gallery views follow it: same open air, same pale light, no building at all. That is also
+     * the cleanest possible separation from all three of the others, because none of them is
+     * outdoors in the sky and every material that got סהר into trouble — plaster, stone, marble,
+     * concrete — is now simply absent rather than argued about.
+     */
     region:
-      'contemporary Israeli / Mediterranean 2026 aesthetic, bright natural daylight, but a COOL '
-      + 'palette throughout — marble, limestone, grey concrete, bone white and soft grey. '
-      + 'Absolutely no terracotta, no clay, no olive branches, no warm plaster, no beige linen',
-    /** Warm sand studio. Not white — the owner asked for at least one store off
-     *  plain white, and this is the softer of the two that are. */
+      'contemporary Israeli 2026 aesthetic, bright clean daylight OUTDOORS in the open air, high up '
+      + 'against sky — pale blue, white and soft gold, airy and light. There is no building, no '
+      + 'room and no interior: no stone, no marble, no concrete, no plaster and no wall of any kind. '
+      + 'Absolutely no terracotta pots, no clay jugs, no olive branches, no woven folk textiles and '
+      + 'no rustic props',
+    /**
+     * The gallery views' world — the hero is `backdrop` and skips this entirely.
+     *
+     * Rewritten with everything else on 2026-08-17, and it carries the two defects the first sky
+     * sample must not repeat, both of them named by the owner looking at real pictures:
+     *
+     *   "יש בגדים מקומטים או שיושבים לא טוב על האנשים"  → the pressing clause
+     *   "יש דוגמנים שחסרים להם איברים! פתאום אין כפות רגליים" → `LIMB_SAFETY`, shared, because it
+     *     is a defect of every store that puts a person in frame and not of this one's taste
+     *
+     * The modesty clause is not a style note either and is deliberately absolute: the owner is
+     * religious ("אני אדם דתי"), and asked for clothes "שמתאימים לאנשים שומרי מסורת". A garment
+     * that violates it is not a picture to be re-rolled — it is the wrong product, so the CATALOG
+     * carries the same rule (see `catalog-fashion.mjs`) and this clause is the second line of it.
+     */
     artDirection:
-      // Owner, 2026-08-12: he wanted this store off the warm room entirely — "רקע ניטרלי או על רקע
-      // של שיש או אבן". It is also the correction that breaks the beige: pale stone is cool and
-      // clean where plaster was warm, so סהר stops reading as the same room as שקמה.
-      // Owner, 2026-08-12: "סהר — קצת יותר תחכום, לא רק אבן, בטון, שיש, טקסטורות." Fair: the
-      // correction that got this store off warm plaster named three materials and the store then
-      // had nothing else. Stone stays as the GROUND, but a fashion shop's sophistication comes
-      // from the fittings and the light — chrome, glass, a sheer curtain moving, a mirror — none of
-      // which is a texture on a wall.
-      'refined fittings alongside the stone: a slim polished chrome or brushed steel rail, clear or '
-      + 'smoked glass, a sheer curtain catching the light, a mirrored edge, a thin bronze frame — '
-      + 'one such element, never a collection of them. '
-      + 'editorial fashion photograph against a NEUTRAL stone backdrop — pale marble, honed limestone '
-      + 'or smooth grey concrete, cool and clean, with the veining visible but quiet. Clothing is '
-      + 'WORN by a cropped figure (never a face) so the cut and the drape read; bags and accessories '
-      + 'are carried or held. One hard shaft of daylight crosses the stone and throws a crisp shadow. '
-      + 'At most one prop, in a material that contrasts with the stone. No wood, no plaster, no '
-      + 'terracotta, no beige linen',
+      'editorial fashion photograph in the open air against clear pale sky, bright and airy, with '
+      + 'nothing behind the product but sky and soft cloud — no room, no wall, no shop, no street. '
+      + 'Clothing is WORN by a cropped figure so the cut and the drape read; bags and accessories '
+      + 'are carried or held. Soft natural daylight from the side, with gentle shadows that have '
+      + 'shape. At most one simple prop, and never a piece of furniture or architecture',
   },
   {
     slug: 'showcase-home',
@@ -1487,7 +1846,8 @@ function backdropFor(store, subject, name) {
   // product's Hebrew NAME rather than its English image subject because the list is written and
   // read by a person, and the name is what he sees on the card he is talking about.
   if (name && store.backdropAccentAlways?.includes(name)) return store.backdropAccent;
-  return hashOf(`${subject}#stage`) % 9 === 0 ? store.backdropAccent : store.backdrop;
+  // 9 → 12 on 2026-08-17: "זה בסדר בנגיעות, זה חייב להיות מאוזן". See `backdropAccent`.
+  return hashOf(`${subject}#stage`) % 12 === 0 ? store.backdropAccent : store.backdrop;
 }
 
 /** One of the store's `settings`, chosen per product — see אדנית's entry for why they rotate. */
@@ -1526,9 +1886,14 @@ function companionFor(store, subject) {
 function colorwayFor(store, subject) {
   if (!store.colorways?.length) return '';
   const h = hashOf(`${subject}#colour`);
+  /** The default pushes TOWARD colour, which is what שקמה and אדנית were corrected into needing.
+   *  סהר was corrected the other way and overrides it — see its `colorwayTone` for why a store
+   *  states this in its own data instead of this sentence being edited for everyone. */
+  const tone = store.colorwayTone
+    ?? 'let it be genuinely saturated and cheerful rather than muted';
   return ` This particular piece is finished in ${store.colorways[h % store.colorways.length]} — `
-    + 'use this colour and pattern rather than any neutral colour named in the description above, '
-    + 'and let it be genuinely saturated and cheerful rather than muted.';
+    + `use this colour and pattern rather than any neutral colour named in the description above, and `
+    + `${tone}.`;
 }
 
 /**
@@ -1587,9 +1952,23 @@ export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0], name = '') 
   const opening = view.key === 'main'
     ? `The product: ${subject}.${colorwayFor(store, subject)}`
     : `${SAME_ITEM_CLAUSE} For reference the product is: ${subject}.`;
+  /**
+   * The three human-body rules go on EVERY view, not into a store's `artDirection`.
+   *
+   * `artDirection` is skipped entirely by the hero (see `world` above), and the hero is exactly
+   * where all three failures were reported: the missing feet, the creased garments and the
+   * necklines are all in main images. A rule that only reaches the gallery would have looked
+   * applied and changed nothing on the shot that every grid cell, card and ad feed reads.
+   *
+   * They are also unconditional rather than per-store. Modesty is the owner's own standard for the
+   * whole platform ("אני אדם דתי") and not a quirk of the fashion shop; the other two are defects
+   * that any picture with a person or a textile in it can have. A store that shows neither pays a
+   * few tokens for clauses that describe nothing in its frame, which is the cheaper mistake.
+   */
+  const body = `${MODESTY}. ${PRESSED}.${presentationFor(subject)} ${LIMB_SAFETY}`;
   return `${PURPOSE_DIRECTION} ${opening} `
     + `${view.modifier}. ${FIDELITY}. `
-    + `${regionFor(store)}. ${life}. ${QUALITY_DIRECTION}. ${world} ${NEGATIVE_PROMPT}.`;
+    + `${regionFor(store)}. ${life}. ${QUALITY_DIRECTION}. ${world} ${body}. ${NEGATIVE_PROMPT}.`;
 }
 
 /** The store's own two brand images. Same art direction as its products — that is
