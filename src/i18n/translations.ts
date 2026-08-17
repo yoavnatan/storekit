@@ -1916,6 +1916,7 @@ export const translations = {
       pageDone: 'דירגתם כבר את כל מה שבהזמנה הזאת. תודה!',
       pageInvalid: 'הקישור אינו תקין, או שההזמנה עדיין בדרך אליכם',
       rated: 'דורג',
+      showing: 'מוצגות {n} מתוך {total} ביקורות',
       // The way OUT of the review page, for the buyer whose parcel never came. One button, no
       // explanation — see the page for why the words around it were removed.
       notArrivedCta: 'לא קיבלתי את ההזמנה',
@@ -3713,6 +3714,7 @@ export const translations = {
       pageIntro: 'Thanks for your order. How was it?',
       pageDone: 'You have rated everything in this order. Thank you!',
       pageInvalid: 'This link is not valid, or the order is still on its way',
+      showing: 'Showing {n} of {total} reviews',
       rated: 'Rated',
       notArrivedCta: 'My order did not arrive',
     },
