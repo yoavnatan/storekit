@@ -5,7 +5,10 @@ import { orderIsReviewable } from './review-eligibility.js';
 import { sendReviewInviteEmail } from './email/review-invite-email.js';
 import { hasOpenReturn } from './return-requests.js';
 // The two numbers live in a file with no imports, because a PAGE reads them too — see there.
-import { REVIEW_INVITE_DAYS_AFTER_DELIVERY, REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT } from './review-timing.js';
+import {
+  REVIEW_INVITE_DAYS_AFTER_DELIVERY, REVIEW_INVITE_DAYS_AFTER_DISPATCH,
+  REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT,
+} from './review-timing.js';
 
 /**
  * The job that asks buyers how it was.
@@ -48,24 +51,28 @@ export interface ReviewInviteRunResult {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function runReviewInvites(nowMs: number = Date.now()): Promise<ReviewInviteRunResult> {
-  const deliveredCutoff = new Date(nowMs - REVIEW_INVITE_DAYS_AFTER_DELIVERY * DAY_MS).toISOString();
-  const paidCutoff = new Date(nowMs - REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT * DAY_MS).toISOString();
+  const cutoff = (days: number) => new Date(nowMs - days * DAY_MS).toISOString();
+  const deliveredCutoff = cutoff(REVIEW_INVITE_DAYS_AFTER_DELIVERY);
+  const dispatchCutoff = cutoff(REVIEW_INVITE_DAYS_AFTER_DISPATCH);
+  const paidCutoff = cutoff(REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT);
 
-  // **The two clocks are exclusive, not alternatives** — `CASE`, never `OR`. An order paid six
-  // weeks ago and delivered this morning satisfies the payment clock, so an `OR` would ask about a
-  // parcel the buyer opened an hour earlier; `COALESCE` into one column has the same fault from the
-  // other side, since the two deadlines are different lengths. Knowing the delivery date REPLACES
-  // the fallback rather than joining it, which is the whole point of having a fallback at all.
+  // **The three clocks are EXCLUSIVE, not alternatives** — a `CASE` ladder, never an `OR`. Each one
+  // knows more than the one below it, so the best available column decides alone and the others
+  // stop applying (`review-timing.ts` ranks them). An `OR` would let the most patient clock fire
+  // for an order we know arrived this morning; a `COALESCE` into one column has the same fault from
+  // the other side, since the three deadlines are different lengths on purpose.
   const candidates = await rows<{ id: string }>(
     `SELECT id FROM orders
       WHERE review_invited_at IS NULL
-        AND payment_status = ANY($3)
-        AND shipping_status = ANY($4)
+        AND payment_status = ANY($4)
+        AND shipping_status = ANY($5)
         AND (CASE WHEN delivered_at IS NOT NULL THEN delivered_at <= $1
-                  ELSE paid_at IS NOT NULL AND paid_at <= $2 END)
-      ORDER BY COALESCE(delivered_at, paid_at)
-      LIMIT $5`,
-    [deliveredCutoff, paidCutoff, REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES, INVITE_BATCH],
+                  WHEN shipped_at   IS NOT NULL THEN shipped_at   <= $2
+                  ELSE paid_at IS NOT NULL AND paid_at <= $3 END)
+      ORDER BY COALESCE(delivered_at, shipped_at, paid_at)
+      LIMIT $6`,
+    [deliveredCutoff, dispatchCutoff, paidCutoff,
+     REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES, INVITE_BATCH],
   );
 
   let sent = 0;

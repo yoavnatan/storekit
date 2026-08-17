@@ -7,7 +7,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { verifyReviewToken } from '../../lib/review-token.js';
 import { reviewableLines, orderIsReviewable } from '../../lib/review-eligibility.js';
 import { getReviewedProductIds } from '../../lib/product-reviews.js';
-import { REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/review-timing.js';
+import { REVIEW_INVITE_DAYS_AFTER_DISPATCH, REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/review-timing.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
 
@@ -81,19 +81,25 @@ const doneCount = usable ? reviewed.length : 0;
  *   · Nothing confirmed and recent — NOTHING. The buyer reached this page from their orders list
  *     rather than from the mail, and the parcel is simply still on its way.
  *
- * Measured from `paid_at` because there is no `shipped_at` column and inventing one to hold a guess
- * would be worse — dispatch follows payment by a day or two, so the two differ by less than the
- * precision this has.
+ * Measured from DISPATCH (`shipped_at`, migration 0036), which is the moment the wait actually
+ * starts. It used to be measured from payment, and that quietly charged the buyer's patience for
+ * the seller's packing time: five legitimate days in `processing` and the button appeared two days
+ * into transit. An order with no dispatch stamp — self-pickup, which never passes through
+ * `shipped`, or a row older than 0036 — falls through to the more patient payment clock.
  *
  * Where it points depends on who holds the link, because opening a return needs an account: a
  * signed-in buyer goes to their orders list, where the button already is; a guest goes to
  * `/contact`, which is unauthenticated by design and lands in the admin's alerts tab.
  */
 const deliveryConfirmed = !!order?.deliveredAt;
-const paidAgeDays = order?.paidAt
-  ? (Date.now() - new Date(order.paidAt).getTime()) / (24 * 60 * 60 * 1000)
-  : 0;
-const notArrivedIsLikely = !deliveryConfirmed && paidAgeDays >= REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT;
+const ageDays = (iso: string | undefined): number =>
+  iso ? (Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000) : -1;
+// The same ladder the invite job walks, and the same constants — so the mail and this page can
+// never disagree about whether a parcel is late (`review-timing.ts`).
+const overdue = order?.shippedAt
+  ? ageDays(order.shippedAt) >= REVIEW_INVITE_DAYS_AFTER_DISPATCH
+  : ageDays(order?.paidAt) >= REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT;
+const notArrivedIsLikely = !deliveryConfirmed && overdue;
 const notArrivedHref = userId ? '/buyer/dashboard?tab=orders' : '/contact';
 ---
 
