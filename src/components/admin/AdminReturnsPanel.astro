@@ -1,5 +1,6 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
+import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 import type { ReturnRequest } from '../../lib/return-requests.js';
@@ -20,8 +21,14 @@ import type { ReturnReason, ReturnStatus } from '../../lib/returns.js';
  */
 interface Props {
   requests: ReturnRequest[];
+  /** Shops returning far more than the platform does (`return-rate.ts`). Empty almost always, and
+   *  rendered only when it is not — a permanently visible "0 outliers" row is furniture. */
+  outliers?: { storeSlug: string; deliveredOrders: number; returns: number; rate: number }[];
+  platformRate?: number;
 }
-const { requests } = Astro.props;
+const { requests, outliers = [], platformRate = 0 } = Astro.props;
+
+const pct = (n: number): string => `${Math.round(n * 100)}%`;
 
 const REASON: Record<ReturnReason, string> = {
   changed_mind: 'התחרט',
@@ -36,9 +43,9 @@ const STATUS: Record<ReturnStatus, string> = {
   in_transit: 'הקונה שלח. המוצר בדרך למוכר',
   received: 'המוצר הגיע למוכר וממתין שיבדוק אותו',
   disputed: 'מחכה להחלטה שלך',
-  offered: 'המוכר הציע כסף במקום החזרה. מחכים לקונה',
+  offered: 'המוכר הציע החזר חלקי במקום החזרה. מחכים לתשובת הקונה',
   rejected: 'המוכר סירב לבקשה',
-  refunded: 'הקונה קיבל את כספו בחזרה',
+  refunded: 'ההחזר אושר. הכסף בדרך לקונה',
   expired: 'הקונה לא שלח את המוצר. הבקשה נסגרה',
 };
 
@@ -71,6 +78,13 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
             <span class="tabular-nums font-semibold ms-auto">{formatAgorot(r.refundAgorot)}</span>
           </div>
           {r.sellerNote && <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">המוכר: "{r.sellerNote}"</div>}
+          {r.buyerPhotoUrl && (
+            <a href={r.buyerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block mt-1.5">
+              <img src={cdnThumb(r.buyerPhotoUrl, 160, 160)} alt="התמונה שהקונה צירף"
+                width="72" height="72" loading="lazy" decoding="async"
+                class="rounded-[var(--radius-sm)] border [border-color:var(--color-border)] object-cover" />
+            </a>
+          )}
           <div class="flex gap-2 mt-2">
             <button type="button" class="btn btn--sm btn--accent" data-admin-return={r.id} data-admin-to="refunded">החזר לקונה</button>
             <button type="button" class="btn btn--sm" data-admin-return={r.id} data-admin-to="rejected">סגור בלי החזר</button>
@@ -83,6 +97,27 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
 
 {running.length === 0 && disputes.length === 0 && (
   <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">אין בקשות החזר פתוחות.</p>
+)}
+
+{outliers.length > 0 && (
+  <div class="rounded-[var(--radius)] border [border-color:var(--color-warning)] p-3.5 mb-5" style="background:color-mix(in srgb,var(--color-warning) 8%,transparent)">
+    <strong class="text-[0.9rem]">{outliers.length} חנויות עם הרבה יותר החזרות מהרגיל</strong>
+    <p class="m-0 mt-1 text-[0.78rem] [color:var(--color-muted)] leading-relaxed">
+      הממוצע בפלטפורמה הוא {pct(platformRate)}. זו התראה בלבד — לא ננקטה שום פעולה, ולא נשלחה למוכר
+      שום הודעה.
+    </p>
+    <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-1.5">
+      {outliers.map((o) => (
+        <li class="text-[0.82rem] flex flex-wrap items-baseline gap-x-2">
+          <strong>{o.storeSlug}</strong>
+          <span class="tabular-nums">{pct(o.rate)}</span>
+          <span class="[color:var(--color-muted)] text-[0.76rem] tabular-nums">
+            {o.returns} החזרות מתוך {o.deliveredOrders} הזמנות שנמסרו
+          </span>
+        </li>
+      ))}
+    </ul>
+  </div>
 )}
 
 {running.length > 0 && (

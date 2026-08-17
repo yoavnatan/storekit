@@ -44,8 +44,12 @@ const BUYER_COPY: Partial<Record<ReturnStatus, { title: string; body: (r: Return
       : 'המוכר לא אישר את ההחזרה.',
   },
   refunded: {
-    title: 'הזיכוי בוצע',
-    body: (r) => `${formatAgorot(r.refundAgorot)} חוזרים לכרטיס שבו שילמת.`,
+    // "אושר", not "בוצע" — the money has not moved yet and will not until a payment provider is
+    // wired (GO_LIVE §3). A buyer told their refund is done, who then finds nothing on their card,
+    // calls their bank; that chargeback is the thing this whole mechanism exists to make
+    // unnecessary. The obligation is real and worth announcing — only the tense was wrong.
+    title: 'ההחזר אושר',
+    body: (r) => `${formatAgorot(r.refundAgorot)} יוחזרו לכרטיס שבו שילמת.`,
   },
 };
 

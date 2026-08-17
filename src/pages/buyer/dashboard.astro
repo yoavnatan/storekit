@@ -91,6 +91,8 @@ const invoiceUrlByOrderId = await getBuyerInvoiceUrls(
 
 // One query for the whole page, keyed by order id — a per-order lookup here would be a round
 // trip per row on a list that already holds every id it needs.
+const cloudinaryCloud = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
+const cloudinaryPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
 const returnByOrderId = await getLatestReturnsByOrder(
   ordersPageResult.items.flatMap((p) => p.slices.map((s) => s.order.id)),
 );
@@ -627,6 +629,15 @@ const STORES_NAMED = 2;
     }
     .o-return-why button:hover { background: var(--color-surface); border-color: var(--color-muted); }
     .o-return-why button:disabled { cursor: default; opacity: 0.6; }
+    /* The chosen reason, while the photo field is open. Border and weight — no fill, because the
+       button is still the thing you press, not a badge. */
+    .o-return-why button.is-chosen {
+      border-color: var(--color-accent); color: var(--color-accent); font-weight: 600;
+    }
+    .o-return-photo { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted); width: 100%; }
+    .o-return-photo[hidden] { display: none; }
+    .o-return-photo input { font: inherit; font-size: 0.78rem; }
+    .o-return-photo-state:empty { display: none; }
     .o-return-items { display: flex; flex-direction: column; gap: 0.25rem; width: 100%; margin-bottom: 0.3rem; }
     .o-return-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; cursor: pointer; }
     .o-return-item input { accent-color: var(--color-accent); }
@@ -1045,7 +1056,7 @@ const STORES_NAMED = 2;
                                     ordinary return back exactly where it was. */}
                                 {rr.status === 'offered' && rr.partialOfferAgorot !== null && (
                                   <div class="o-return-why" style="margin-top:0.4rem">
-                                    <span class="o-return-q">{fmtAgorot(rr.partialOfferAgorot)} {t.buyerDashboard.offerKeep}</span>
+                                    <span class="o-return-q">{t.buyerDashboard.offerHeading.replace('{sum}', fmtAgorot(rr.partialOfferAgorot))}</span>
                                     <button type="button" data-offer-answer="refunded" data-offer-id={rr.id}>{t.buyerDashboard.offerAccept}</button>
                                     <button type="button" data-offer-answer="approved" data-offer-id={rr.id}>{t.buyerDashboard.offerDecline}</button>
                                   </div>
@@ -1082,6 +1093,15 @@ const STORES_NAMED = 2;
                                   </div>
                                 )}
                                 <span class="o-return-q">{t.buyerDashboard.returnWhy}</span>
+                                {/* Optional, and only under "פגום" or "לא מה שהזמנתי" — a photo of a
+                                    change of mind is a question with no answer. The line says why it
+                                    helps rather than demanding it: most people attach one when told
+                                    what it does, and nobody is blocked (decisions §1). */}
+                                <label class="o-return-photo" data-return-photo-wrap={s.order.id} hidden>
+                                  <span>{t.buyerDashboard.returnPhotoHint}</span>
+                                  <input type="file" accept="image/*" data-return-photo={s.order.id} />
+                                  <span class="o-return-photo-state" data-return-photo-state={s.order.id}></span>
+                                </label>
                                 <button type="button" data-return-reason="changed_mind" data-return-for={s.order.id}>{t.buyerDashboard.returnR1}</button>
                                 <button type="button" data-return-reason="damaged" data-return-for={s.order.id}>{t.buyerDashboard.returnR2}</button>
                                 <button type="button" data-return-reason="wrong_item" data-return-for={s.order.id}>{t.buyerDashboard.returnR3}</button>
@@ -1383,6 +1403,14 @@ const STORES_NAMED = 2;
   data-ship-cancelled={t.buyerDashboard.shippingCancelled}
   data-ship-returned={t.buyerDashboard.shippingReturned}
   data-return-failed={t.buyerDashboard.returnFailed}
+  data-cloud-name={cloudinaryCloud}
+  data-cloud-preset={cloudinaryPreset}
+  data-return-photo-hint={t.buyerDashboard.returnPhotoHint}
+  data-return-photo-sending={t.buyerDashboard.returnPhotoSending}
+  data-return-submit={t.buyerDashboard.returnSubmit}
+  data-cancel-confirm-title={t.buyerDashboard.cancelConfirmTitle}
+  data-cancel-confirm-body={t.buyerDashboard.cancelConfirmBody}
+  data-cancel-confirm-ok={t.buyerDashboard.cancelConfirmOk}
   data-return-ask={t.buyerDashboard.returnAsk}
   data-cancel-ask={t.buyerDashboard.cancelAsk}
   data-return-what={t.buyerDashboard.returnWhat}
@@ -1438,6 +1466,12 @@ const STORES_NAMED = 2;
     msgNewToast:     _i18nEl.dataset.msgNewToast       ?? 'You have a new message',
     msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
     returnFailed:   _i18nEl.dataset.returnFailed    ?? 'The request was not sent. Try again.',
+    returnPhotoHint: _i18nEl.dataset.returnPhotoHint    ?? 'A photo helps us handle it faster (optional)',
+    returnPhotoSending: _i18nEl.dataset.returnPhotoSending ?? 'Uploading…',
+    returnSubmit:       _i18nEl.dataset.returnSubmit       ?? 'Send the request',
+    cancelConfirmTitle: _i18nEl.dataset.cancelConfirmTitle ?? 'Cancel this order?',
+    cancelConfirmBody:  _i18nEl.dataset.cancelConfirmBody  ?? 'The order will be cancelled and the money returned to your card.',
+    cancelConfirmOk:    _i18nEl.dataset.cancelConfirmOk    ?? 'Cancel the order',
     returnAsk:      _i18nEl.dataset.returnAsk       ?? 'Request a return',
     cancelAsk:      _i18nEl.dataset.cancelAsk       ?? 'Cancel this order',
     returnWhat:     _i18nEl.dataset.returnWhat      ?? 'What are you returning?',
@@ -2371,6 +2405,34 @@ const STORES_NAMED = 2;
     })();
   });
 
+  /** A photo the buyer attached, per order, waiting to travel with the request. */
+  const returnPhotoUrl = new Map<string, string>();
+
+  /* Upload as soon as a file is chosen, so the request itself carries a URL and never a file. Failing
+     here must not block the request: a photo is help, not evidence we require (decisions §1). */
+  document.addEventListener('change', (e) => {
+    const input = (e.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-return-photo]');
+    if (!input?.files?.length) return;
+    const orderId = input.dataset.returnPhoto ?? '';
+    const state = document.querySelector<HTMLElement>(`[data-return-photo-state="${orderId}"]`);
+    const cloud = _i18nEl.dataset.cloudName ?? '';
+    const preset = _i18nEl.dataset.cloudPreset ?? '';
+    if (!cloud || !preset) return;   // silent: no upload target configured yet (GO_LIVE §4)
+    if (state) state.textContent = I.returnPhotoSending;
+    void (async () => {
+      try {
+        const { cloudinaryUpload } = await import('../../scripts/dashboard/cloudinary.js');
+        const url = await cloudinaryUpload(input.files![0]!, cloud, preset);
+        returnPhotoUrl.set(orderId, url);
+        if (state) state.textContent = '✓';
+      } catch {
+        // Cleared rather than left mid-sentence: the buyer may send without it, and a stuck
+        // "uploading…" reads as a broken form (audit row 11).
+        if (state) state.textContent = '';
+      }
+    })();
+  });
+
   document.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-return-reason]');
     if (!btn) return;
@@ -2378,12 +2440,46 @@ const STORES_NAMED = 2;
       e.stopPropagation();
       const orderId = btn.dataset.returnFor ?? '';
       const reason = btn.dataset.returnReason ?? '';
+
+      // First tap on a fault reason reveals the photo field and remembers the choice; the second
+      // sends. Nothing is asked twice for the reasons a photo cannot describe.
+      const wantsPhoto = reason === 'damaged' || reason === 'wrong_item';
+      const wrap = document.querySelector<HTMLElement>(`[data-return-photo-wrap="${orderId}"]`);
+      if (wantsPhoto && wrap?.hidden) {
+        wrap.hidden = false;
+        btn.dataset.armed = '1';
+        // The pressed reason has to LOOK chosen, and the button has to say what a second press does.
+        // Without this the first tap reads as a dead button — the buyer presses again, which sends,
+        // and the photo field they were being offered never gets used.
+        document.querySelectorAll<HTMLElement>(`[data-return-for="${orderId}"]`).forEach((b) => {
+          b.classList.remove('is-chosen');
+          if (b.dataset.origLabel) b.textContent = b.dataset.origLabel;
+        });
+        btn.dataset.origLabel = btn.dataset.origLabel ?? btn.textContent ?? '';
+        btn.classList.add('is-chosen');
+        btn.textContent = I.returnSubmit;
+        return;
+      }
+      if (wantsPhoto && !btn.dataset.armed) {
+        document.querySelectorAll<HTMLElement>(`[data-return-for="${orderId}"]`).forEach((b) => {
+          b.classList.remove('is-chosen');
+          if (b.dataset.origLabel) b.textContent = b.dataset.origLabel;
+        });
+        btn.dataset.origLabel = btn.dataset.origLabel ?? btn.textContent ?? '';
+        btn.classList.add('is-chosen');
+        btn.textContent = I.returnSubmit;
+        // A different fault reason was tapped after the field opened — re-arm rather than send, so
+        // the reason that travels is the one the buyer last chose.
+        document.querySelectorAll<HTMLElement>('[data-return-reason]').forEach((b) => { delete b.dataset.armed; });
+        btn.dataset.armed = '1';
+        return;
+      }
       // The whole row, not just the pressed button: four choices side by side, and a second tap
       // while the first is in flight produces a refusal that reads like a fault.
       const row = btn.parentElement;
       const all = row ? [...row.querySelectorAll<HTMLButtonElement>('button')] : [btn];
       all.forEach((b) => { b.disabled = true; });
-      void (async () => {
+      const send = async (): Promise<void> => {
         try {
           const res = await fetch('/api/returns', {
             method: 'POST',
@@ -2392,6 +2488,9 @@ const STORES_NAMED = 2;
             // this is empty and the server reads it as "the whole order" — the same answer.
             body: JSON.stringify({
               action: 'open', orderId, reason,
+              // Already uploaded by the time this runs — the request carries a URL, never a file, so
+              // a slow upload cannot hold the request open or fail it.
+              ...(returnPhotoUrl.has(orderId) ? { photoUrl: returnPhotoUrl.get(orderId) } : {}),
               lines: [...document.querySelectorAll<HTMLInputElement>(`[data-return-line-for="${orderId}"]`)]
                 .filter((c) => c.checked)
                 .map((c) => ({ position: Number(c.dataset.returnLine), qty: Number(c.dataset.returnQty) })),
@@ -2412,7 +2511,30 @@ const STORES_NAMED = 2;
           showErrorToast(I.returnFailed);
           all.forEach((b) => { b.disabled = false; });
         }
-      })();
+      };
+
+      // ── A cancellation is confirmed; a return request is not ──
+      //
+      // The owner, 2026-08-17: cancelling must not be "לחיצה וזהו", even inside the statutory
+      // window. Immediate and unconditional is about the SELLER having no say — it was never meant
+      // to mean effortless. An order that ends because a finger landed on the wrong row is a lost
+      // sale and a support conversation, and the buyer never learns which of the two happened.
+      //
+      // The asymmetry is deliberate: a cancellation ENDS the order there and then, while a return
+      // request only opens something the buyer can still abandon.
+      const act = document.querySelector<HTMLElement>(`[data-return-why="${orderId}"]`)?.dataset.returnAct;
+      if (act !== 'cancel') { void send(); return; }
+
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: I.cancelConfirmTitle,
+          body: I.cancelConfirmBody,
+          okLabel: I.cancelConfirmOk,
+          onConfirm: send,
+          // Re-enabled on the way out, or a buyer who changed their mind is left with dead buttons.
+          onCancel: () => { all.forEach((b) => { b.disabled = false; }); },
+        },
+      }));
     }
   });
 

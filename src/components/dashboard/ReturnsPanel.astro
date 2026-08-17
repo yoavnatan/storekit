@@ -1,5 +1,6 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
+import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
   isOpen, handoverDeadlineISO, autoRefundDueISO, responseDeadlineISO,
@@ -51,9 +52,9 @@ const STATUS: Record<ReturnStatus, string> = {
   in_transit: 'הקונה שלח. המוצר בדרך אליך',
   received: 'המוצר הגיע אליך וממתין שתבדוק אותו',
   disputed: 'העברת את זה אלינו. אנחנו מכריעים',
-  offered: 'הצעת לו כסף במקום החזרה. מחכים לתשובתו',
+  offered: 'הצעת החזר חלקי במקום החזרה. מחכים לתשובת הקונה',
   rejected: 'סירבת לבקשה',
-  refunded: 'הקונה קיבל את כספו בחזרה',
+  refunded: 'ההחזר אושר. הכסף בדרך לקונה',
   expired: 'הקונה לא שלח את המוצר. הבקשה נסגרה',
 };
 
@@ -72,7 +73,7 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
   ],
   approved:   [
     { to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' },
-    { to: 'offered', label: 'הצע כסף במקום החזרה', kind: 'ghost' },
+    { to: 'offered', label: 'הצע החזר חלקי במקום החזרה', kind: 'ghost' },
   ],
   in_transit: [{ to: 'received', label: 'המוצר הגיע אליי', kind: 'accent' }],
   received: [
@@ -134,6 +135,17 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         <span class="[color:var(--color-muted)]"> · המשלוח בחזרה על חשבון </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
       </p>
 
+      {r.buyerPhotoUrl && (
+        <a href={r.buyerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block mt-2">
+          <img
+            src={cdnThumb(r.buyerPhotoUrl, 160, 160)}
+            alt="התמונה שהקונה צירף"
+            width="80" height="80" loading="lazy" decoding="async"
+            class="rounded-[var(--radius-sm)] border [border-color:var(--color-border)] object-cover"
+          />
+        </a>
+      )}
+
       {r.buyerNote && (
         <p class="m-0 mt-2 text-[0.85rem] [color:var(--color-muted)] italic">"{r.buyerNote}"</p>
       )}
@@ -166,7 +178,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           one. In shekels, because that is what a person types; the script converts at the boundary. */}
       {MOVES[r.status]?.some((m) => m.to === 'offered') && (
         <label class="flex items-center gap-2 mt-2 text-[0.85rem]" data-offer-wrap>
-          <span class="[color:var(--color-muted)]">כמה להציע לו?</span>
+          <span class="[color:var(--color-muted)]">סכום ההחזר המוצע, בשקלים</span>
           <input
             type="number" min="1" step="1" inputmode="numeric"
             class="w-24 px-2 py-1 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)]"
@@ -179,8 +191,8 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
       {r.status === 'offered' && r.partialOfferAgorot !== null && (
         <p class="m-0 mt-2 text-[0.82rem]">
-          הצעת לקונה <strong class="tabular-nums">{formatAgorot(r.partialOfferAgorot)}</strong> כדי שישאיר את המוצר אצלו.
-          מחכים לתשובתו.
+          הצעת לקונה החזר חלקי על סך <strong class="tabular-nums">{formatAgorot(r.partialOfferAgorot)}</strong> במקום
+          החזרת המוצר. מחכים לתשובתו.
         </p>
       )}
 
