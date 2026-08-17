@@ -62,7 +62,16 @@ describe('the dashboard status banner', () => {
   });
 
   it('falls back to the shell when no panel is on screen', () => {
-    document.body.innerHTML = `<main class="dash-main"><p>x</p></main>`;
+    document.body.innerHTML = `<main><p>x</p></main>`;
+    showStatus('נשמר');
+    expect(document.getElementById('ajax-status')?.isConnected).toBe(true);
+  });
+
+  it('still shows the banner on a page with no panels and no main at all', () => {
+    // The last resort has to SUCCEED. An earlier version of this fix gave up here, which
+    // recreated the original bug on any surface shaped differently from the one it was written
+    // against — and a real test elsewhere in the suite caught exactly that.
+    document.body.innerHTML = '<div>bare</div>';
     showStatus('נשמר');
     expect(document.getElementById('ajax-status')?.isConnected).toBe(true);
   });
@@ -71,6 +80,7 @@ describe('the dashboard status banner', () => {
     // This is the exact shape of the reported bug: a page twitching toward nothing.
     document.body.innerHTML = '';
     showStatus('נשמר');
+    expect(scrolled.targets.length).toBeGreaterThan(0);
     for (const target of scrolled.targets) expect(target.isConnected).toBe(true);
   });
 

@@ -42,7 +42,14 @@ function insertStatus(el: HTMLElement): boolean {
   const shell = document.querySelector('main');
   if (shell) { shell.prepend(el); return true; }
 
-  return false;
+  // **The last resort always succeeds, and that is the point of it.** An earlier version of this
+  // function returned false here and `showStatus` gave up — which quietly recreated the bug it was
+  // written to fix, in the one case where the page is not shaped the way it was expected to be.
+  // `document.body` is the floor: a banner at the top of the document is a message the seller may
+  // have to look for, and that is strictly better than no message at all. There is no branch below
+  // this one, so a caller can rely on the banner existing.
+  document.body.prepend(el);
+  return true;
 }
 
 export function showStatus(msg: string, isError = false): void {
@@ -62,9 +69,7 @@ export function showStatus(msg: string, isError = false): void {
 
   // Re-anchored on every call, not only when created. A panel swap can leave the banner attached
   // to a panel that is no longer on screen, which is the same invisibility in a slower form.
-  if (!el.isConnected || !(el.parentElement as HTMLElement | null)?.offsetParent) {
-    if (!insertStatus(el)) return;   // nothing to attach to: say nothing rather than scroll at nothing
-  }
+  if (!el.isConnected || !(el.parentElement as HTMLElement | null)?.offsetParent) insertStatus(el);
 
   // **Bring the message to the seller, do not hope it is already there (reported 2026-08-03).**
   // Two things were wrong with `scrollIntoView({block:'nearest'})` here. `nearest` does nothing
