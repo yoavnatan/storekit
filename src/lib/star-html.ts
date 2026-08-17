@@ -46,14 +46,49 @@ export interface StarRowOptions {
  *  `tests/star-markup-single-source.test.ts`, which fails on a second literal in `src/`. */
 export const STAR_PATH = 'M12 2.6l2.9 5.88 6.5.95-4.7 4.58 1.11 6.47L12 17.43 6.19 20.48 7.3 14.01 2.6 9.43l6.5-.95z';
 
-/** One star: an outline, plus a clipped fill when it is whole or half. */
-function starHtml(fill: 'full' | 'half' | 'empty', px: number): string {
-  const outline = `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" style="position:absolute;inset:0;color:var(--color-border)"><path d="${STAR_PATH}"/></svg>`;
+/**
+ * One star: a pale SOLID star, with a gold one laid over the filled fraction and clipped to it.
+ *
+ * **Both layers are solid fills, and the first version's outline was a mistake.** A 1.5px stroke at
+ * 13px — the size on a product card — renders as a smudge rather than a star, and the boundary of a
+ * HALF star has to be unmistakable or the half-star rule may as well not exist. Two solid shapes
+ * are crisp at every size this is used at.
+ *
+ * **Every dimension is pinned INLINE, and that is not belt-and-braces.** `reset.css` sets
+ * `svg { max-width: 100%; height: auto }` for the whole site, which beats the `width`/`height`
+ * ATTRIBUTES — so inside the 50%-wide clipping box the overlay SVG obeyed `max-width` and shrank to
+ * half size, then `height:auto` scaled it down to match. The half star rendered as a small whole
+ * star sitting on top of a big one, which is exactly what the owner reported (2026-08-17) and
+ * exactly what memory `project_svg_height_auto_trap` already describes. `max-width:none` is the
+ * half of the fix that is easy to leave out.
+ */
+function starHtml(fill: 'full' | 'half' | 'empty', px: number, tint: string): string {
+  const svg = (color: string) =>
+    `<svg viewBox="0 0 24 24" fill="currentColor" style="display:block;width:${px}px;height:${px}px;max-width:none;color:${color}"><path d="${STAR_PATH}"/></svg>`;
+  const base = `<span style="position:absolute;inset:0;line-height:0">${svg('var(--color-rating-empty)')}</span>`;
   const filled = fill === 'empty' ? '' :
     `<span style="position:absolute;inset:0;overflow:hidden;width:${fill === 'half' ? '50%' : '100%'};line-height:0">`
-    + `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="currentColor" style="display:block;color:var(--color-warning)"><path d="${STAR_PATH}"/></svg>`
+    + svg(tint)
     + '</span>';
-  return `<span style="position:relative;display:inline-block;width:${px}px;height:${px}px;flex:0 0 auto">${outline}${filled}</span>`;
+  return `<span style="position:relative;display:inline-block;width:${px}px;height:${px}px;flex:0 0 auto">${base}${filled}</span>`;
+}
+
+/**
+ * The gradient, one star at a time.
+ *
+ * The site's own `.btn` pair (`--color-rating-from` → `--color-rating-to`) walked across the row in
+ * five steps, so a row of stars reads as ONE gradient rather than five identical marks. Five
+ * discrete stops rather than a real `linear-gradient`, and the reason is the same one that keeps
+ * the half star a clip instead of an SVG gradient: a gradient inside an `fill` needs a
+ * document-unique id, and this renders a dozen times on a page of cards. At 13-18px the eye cannot
+ * tell five steps from a continuous ramp across ~70px.
+ *
+ * `color-mix` does the interpolation in the browser, so the two ends stay tokens — swapping the
+ * whole site's stars to a gold is those two lines in `tokens.css` and nothing here.
+ */
+function starTint(index: number, total: number): string {
+  const pct = total <= 1 ? 0 : Math.round((index / (total - 1)) * 100);
+  return `color-mix(in srgb, var(--color-rating-to) ${pct}%, var(--color-rating-from))`;
 }
 
 /** `avg` is the AVERAGE (`reviews.ts#averageRating`), or null for a product nobody has rated —
@@ -63,7 +98,8 @@ export function starRowHtml(avg: number | null, options: StarRowOptions = {}): s
   if (avg === null) return '';
   const { px = 15, showValue = false, countLabel, ariaLabel, href } = options;
 
-  const stars = starFills(avg).map((fill) => starHtml(fill, px)).join('');
+  const fills = starFills(avg);
+  const stars = fills.map((fill, i) => starHtml(fill, px, starTint(i, fills.length))).join('');
   const value = showValue
     ? `<span style="font-size:${px}px;font-weight:700;color:var(--color-text);line-height:1">${escapeHtml(ratingDisplay(avg))}</span>`
     : '';

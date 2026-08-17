@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { rows, firstRow, query } from './db.js';
+import { rows, firstRow } from './db.js';
 import { getOrderById, updateOrder, type Order } from './orders.js';
 import { settleStatusChange, type StatusChangeStore } from './order-status-change.js';
 import { canTransition } from './order-status-rules.js';
@@ -57,7 +57,10 @@ export interface ReturnRequest {
   createdAt: string;
   approvedAt: string | null;
   deliveredBackAt: string | null;
-  closedAt: string | null;
+  /** When this request stopped being open. `settledAt` and not `closedAt` on purpose: the latter
+   *  is the store-lifecycle vocabulary, and `store-lifecycle-guard.test.ts` rightly refuses any
+   *  other subject borrowing it. The database column is still `closed_at`. */
+  settledAt: string | null;
   updatedAt: string;
 }
 
@@ -96,7 +99,7 @@ function toRequest(r: Row): ReturnRequest {
     createdAt: iso(r.created_at)!,
     approvedAt: iso(r.approved_at),
     deliveredBackAt: iso(r.delivered_back_at),
-    closedAt: iso(r.closed_at),
+    settledAt: iso(r.closed_at),
     updatedAt: iso(r.updated_at)!,
   };
 }
@@ -127,6 +130,21 @@ export async function getReturnsForStore(storeSlug: string): Promise<ReturnReque
 export async function getOpenReturns(): Promise<ReturnRequest[]> {
   return (await rows<Row>(
     `${SELECT} WHERE status NOT IN ('rejected','refunded','expired') ORDER BY created_at ASC`,
+  )).map(toRequest);
+}
+
+/**
+ * Cases that are FINISHED, newest first — the admin's history.
+ *
+ * A decision he cannot look up is a decision he cannot defend, and the ones he personally made are
+ * exactly the ones somebody rings back about a week later. Capped rather than paged: this is a
+ * reference, not a workload, and the screen it feeds is the one whose whole point is that it is
+ * usually empty.
+ */
+export async function getClosedReturns(limit = 50): Promise<ReturnRequest[]> {
+  return (await rows<Row>(
+    `${SELECT} WHERE status IN ('rejected','refunded','expired')
+      ORDER BY closed_at DESC NULLS LAST, created_at DESC LIMIT ${Math.max(1, Math.floor(limit))}`,
   )).map(toRequest);
 }
 
@@ -260,7 +278,42 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
   );
   const moved = toRequest(r!);
 
-  if (input.to === 'refunded' && isPartialReturn(moved.returnedLines)) {
+  // ── An accepted OFFER: money moves, goods do not ──
+  //
+  // The buyer keeps the item, so there is no restock and no return postage — the only thing that
+  // happens is a smaller refund. Settled through the same adjustment path a partial return uses,
+  // for the same reason: the order was delivered and stays delivered, and a status describing the
+  // whole order must not be used to record a discount on part of it.
+  const acceptedOffer = input.to === 'refunded' && current.status === 'offered';
+
+  if (acceptedOffer) {
+    const order = await getOrderById(moved.orderId);
+    const amount = moved.partialOfferAgorot ?? 0;
+    if (order && amount > 0) {
+      await recordMoneyEvent({
+        type: 'refund_due',
+        orderId: order.id,
+        checkoutRef: order.checkoutRef,
+        storeSlug: input.store.slug,
+        amountAgorot: amount,
+        actor: input.actor,
+        detail: 'החזר חלקי בהסכמה — הקונה שומר את המוצר. הסכום מגיע לו ועדיין לא הוחזר.',
+      });
+      const seller = await getSellerById(input.store.sellerId);
+      const commission = commissionOnAgorot(amount, commissionPercentForTier(seller?.tier));
+      const sellerShare = amount - commission;
+      if (sellerShare > 0) {
+        await recordAdjustment({
+          sellerId: input.store.sellerId,
+          orderId: order.id,
+          kind: 'refund_clawback',
+          amountAgorot: -sellerShare,
+          detail: `החזר חלקי בהסכמה בהזמנה ${order.id.slice(0, 8)}`,
+          returnRequestId: moved.id,
+        });
+      }
+    }
+  } else if (input.to === 'refunded' && isPartialReturn(moved.returnedLines)) {
     // ── A partial return settles WITHOUT touching the order (decisions §4) ──
     //
     // The order was delivered and most of it stayed delivered, so its status is still the truth. Using
@@ -382,7 +435,3 @@ export async function getLatestReturnsByOrder(orderIds: string[]): Promise<Map<s
   return new Map(r.map((row) => [row.order_id, toRequest(row)]));
 }
 
-/** Used by the tests and by nothing else — a case is closed by a transition, never by a delete. */
-export async function deleteReturnRequestsForOrder(orderId: string): Promise<void> {
-  await query('DELETE FROM return_requests WHERE order_id = $1', [orderId]);
-}

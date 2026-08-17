@@ -47,7 +47,11 @@ export function buildReviewInviteEmail(order: Order): EmailMessage | null {
 <p style="margin:0 0 12px;">קניתם ב${esc(storeName)}${names.length ? `: ${esc(names.join(', '))}${more ? '…' : ''}` : ''}.</p>
 <p style="margin:0 0 12px;">דירוג אחד, כמה שניות — והוא עוזר לקונים הבאים ולחנות עצמה.</p>
 ${refLine(ref)}
-${ctaButton(reviewInviteUrl(store.url, order.id), 'לדירוג הרכישה')}`;
+${ctaButton(reviewInviteUrl(store.url, order.id), 'לדירוג הרכישה')}
+<!-- The same door the page carries, said here because this is where the wrong reflex starts: a
+     buyer whose parcel never came opens the mail already annoyed and the only button in it says
+     "rate your purchase". Four words, no explanation — see review/[orderId].astro. -->
+<p style="margin:16px 0 0;font-size:13px;"><a href="${reviewInviteUrl(store.url, order.id)}" style="color:#5a6478;">לא קיבלתי את ההזמנה</a></p>`;
 
   return {
     to: order.buyerEmail,

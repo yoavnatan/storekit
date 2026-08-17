@@ -85,6 +85,39 @@ describe('syncEditRowRev rebuilds the form gallery when it is told images change
   });
 });
 
+describe('the island carries images too, for a form that does not exist yet', () => {
+  /**
+   * The second half of the same bug, and the one the owner actually asked about: a row still marked
+   * `data-edit-pending` has no gallery to repaint. `buildEditRow` builds its form from the page's
+   * product island, so unless the images reach THERE, the form opened after a bulk save shows the
+   * pre-save list and saving it writes that list back — the identical silent overwrite, one
+   * open-and-close later.
+   *
+   * Behaviourally covered end to end by `bulk-image-panel-lock.test.ts` ("an edit form opened AFTER
+   * the save shows the saved images"), including the ORDER, which is the part that reads as harmless
+   * and is not: the row's `data-images` must move before the revision is stamped, because the island
+   * patch re-reads the row rather than taking a value. Pinned here as well because that ordering is
+   * two ordinary-looking statements whose sequence carries the whole guarantee.
+   */
+  it('reads images off the display row, like every other field it patches', () => {
+    const fn = CLIENT.slice(
+      CLIENT.indexOf('function syncPageProductFromRow('),
+      CLIENT.indexOf('export function syncPageProduct('),
+    );
+    expect(fn).toContain('displayRow.dataset.images');
+    expect(fn).toContain('p.images = rowImages');
+  });
+
+  it('the bulk save writes the row attribute BEFORE stamping the revision', () => {
+    const save = CLIENT.slice(CLIENT.indexOf('const savedImages = data.images ?? urls;'));
+    const attrAt = save.indexOf('row.dataset.images = JSON.stringify(savedImages)');
+    const stampAt = save.indexOf('syncEditRowRev(row, data.rev, savedImages)');
+    expect(attrAt).toBeGreaterThan(-1);
+    expect(stampAt).toBeGreaterThan(-1);
+    expect(attrAt).toBeLessThan(stampAt);
+  });
+});
+
 describe('the repaint replaces the widget instead of patching it', () => {
   const fn = CLIENT.slice(CLIENT.indexOf('function repaintFormGallery('));
 

@@ -44,8 +44,12 @@ const BUYER_COPY: Partial<Record<ReturnStatus, { title: string; body: (r: Return
       : 'המוכר לא אישר את ההחזרה.',
   },
   refunded: {
-    title: 'הזיכוי בוצע',
-    body: (r) => `${formatAgorot(r.refundAgorot)} חוזרים לכרטיס שבו שילמת.`,
+    // "אושר", not "בוצע" — the money has not moved yet and will not until a payment provider is
+    // wired (GO_LIVE §3). A buyer told their refund is done, who then finds nothing on their card,
+    // calls their bank; that chargeback is the thing this whole mechanism exists to make
+    // unnecessary. The obligation is real and worth announcing — only the tense was wrong.
+    title: 'ההחזר אושר',
+    body: (r) => `${formatAgorot(r.refundAgorot)} יוחזרו לכרטיס שבו שילמת.`,
   },
 };
 
@@ -149,10 +153,14 @@ export async function notifySellerReturnDeadline(
       userId: sellerId,
       role: 'seller',
       type: 'order_update',
-      title: 'בקשת החזרה נסגרת מחר',
+      title: what === 'answer' ? 'בקשת החזרה — היום היום האחרון לענות' : 'המוצר חזר אליך ומחכה לך',
       body: what === 'answer'
-        ? 'לא ענית לבקשת ההחזרה. אם לא תענה מחר, היא תיסגר כמסורבת.'
-        : 'החבילה הגיעה אליך ולא סימנת. אם לא תגיב מחר, הקונה יזוכה אוטומטית.',
+        // Why he MAY refuse, then what happens if he says nothing, then the thing he might actually
+        // want: silence works in his favour here, so a warning that only states the default has
+        // nothing in it for him.
+        ? 'הקונה ביקש להחזיר מוצר אחרי שחלף חלון ההחזרה, ולכן ההחלטה שלך. היום היום האחרון לענות. אם לא תענה, הבקשה תידחה והקונה לא יקבל כסף בחזרה. אם רצית לאשר את ההחזרה — זה היום.'
+        // He already marked it as arrived; the missing step is saying what condition it is in.
+        : 'המוצר חזר אליך ועוד לא סימנת מה מצבו — תקין, או ריק ומשומש. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.',
       relatedId: request.orderId,
       storeSlug: request.storeSlug,
     });

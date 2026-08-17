@@ -1,63 +1,92 @@
 import { normalizeCategory } from './store-taxonomy.js';
 
 /**
- * Which products the LAW takes out of the return right — held by the platform, never asked of a
- * seller (decisions §2).
+ * Which PRODUCTS the law takes out of the return right (decisions §2).
  *
- * ── Why a platform list and not a per-product flag ──
- * The owner's answer in the decision game, and the reasoning is his standing rule about seller
- * forms: a checkbox on every product is a field a seller has to understand before they can answer
- * it, and the ones who would tick it wrongly are exactly the ones the rule exists to catch. The
- * exclusions come from תקנה 6 — they are a property of what the thing IS, not of what a shopkeeper
- * thinks about it — so the platform decides once and every shop inherits it.
+ * ── The correction this file is built on (owner, 2026-08-17) ──
+ * A first version keyed on the STORE's categories and was wrong in a way worth stating: *"קטגוריה
+ * של חנות זה לא קטגוריה של מוצר... בתוך חנות יש קטגוריות שהן מוחרגות ולא הקטגוריה של החנות כולה"*.
+ * A fashion shop is not a shop you cannot return from — it has a shelf of underwear that you cannot,
+ * and racks of coats that you can. Excluding at the shop level takes the right away from most of a
+ * catalogue in order to catch a corner of it, which is the larger of the two possible errors and the
+ * one nobody complains about because they never learn they had the right.
  *
- * ── ⚠️ This list is a MAPPING, and the mapping is the part a lawyer has to confirm ──
- * The regulation names goods ("מוצרי מזון", "הלבשה תחתונה", "טובין שיוצרו במיוחד עבור הצרכן"); this
- * file names the platform's own 20-word category vocabulary (`SEED_CATEGORIES`). Those are not the
- * same sentence, and where they meet is a judgement:
+ * So the question is asked of the PRODUCT: its own category inside that shop, and every ancestor of
+ * it. A product filed under `אופנה › הלבשה תחתונה` is excluded; its sibling under `אופנה › מעילים`
+ * is not.
  *
- *   · **מזון** — the regulation's own word. The clearest of them.
- *   · **לתינוק** — covers formula and baby food, which are food, alongside a great deal that is not.
- *     Excluded WHOLE, because the alternative is asking a seller to split their own shelf and the
- *     cost of being wrong falls on a parent holding a tin nobody will take back.
- *   · **חיות מחמד** — pet food, same reasoning.
+ * ── Why it matches WORDS rather than an id ──
+ * A store's category tree is free text its seller typed. There is no shared vocabulary to key on and
+ * there deliberately will not be one — asking every seller to map their shelves onto a platform
+ * taxonomy is exactly the entry barrier this project refuses (`feedback_seller_form_burden`). So the
+ * terms below are matched against the names on the product's own path, normalised the same way
+ * `store-taxonomy.ts` normalises everything else.
  *
- * Everything else in the vocabulary stays returnable, INCLUDING `אופנה`: underwear and swimwear are
- * excluded by the regulation and "fashion" is overwhelmingly not either, so excluding the category
- * would remove the right from most of a shop to catch a little of it. That case needs the per-item
- * answer this list deliberately does not ask for — it is question 5 in `docs/returns-lawyer-brief.md`
- * and is left OPEN rather than guessed, because guessing wide costs buyers a right they have and
- * guessing narrow costs a seller goods they cannot resell.
+ * That makes the list a JUDGEMENT about words, and it is written to fail SAFE: a seller who calls
+ * the shelf something the list does not know keeps the ordinary return right, which is the law's
+ * default and the error that can be corrected later. The reverse — a word that over-matches and
+ * silently removes a right — cannot be.
  *
- * Until that answer arrives this file is deliberately SHORT. A list that over-excludes is a list
- * that quietly denies people something the law gives them, which is the worse of the two errors and
- * the one nobody would report.
+ * ── ⚠️ The mapping is question 5 of `docs/returns-lawyer-brief.md` and is UNANSWERED ──
+ * תקנה 6 names goods; this names Hebrew shelf labels. Where the two meet needs confirming, and until
+ * it is confirmed the list stays short and obvious rather than clever.
  */
-export const NON_RETURNABLE_CATEGORIES: readonly string[] = [
-  'מזון',
-  'לתינוק',
-  'חיות מחמד',
+/**
+ * The exclusions, as SUBJECTS — each with the spellings a seller might actually shelve it under.
+ *
+ * Two lists in one on purpose, and the split is what makes both halves checkable. `subject` is the
+ * thing the regulation names and the thing the published policy has to mention; `match` is the
+ * spelling variants a Hebrew shop label arrives in. Flattened to one array they are indistinguishable
+ * — which is how a guard comparing the code against the policy page ended up comparing "מאכל" (a
+ * matcher) with prose that says "מזון" (the subject) and reporting a gap that was not one.
+ *
+ * `tests/returns-wired.test.ts` asserts the policy page names every SUBJECT. Adding a subject
+ * therefore fails the suite until the page says it, which is the join that matters: a right removed
+ * in code and not in the page is a right removed in silence.
+ */
+export const NON_RETURNABLE_SUBJECTS: readonly { subject: string; match: readonly string[] }[] = [
+  { subject: 'הלבשה תחתונה', match: ['הלבשה תחתונה', 'תחתונים', 'תחתוני', 'הלבשה אינטימית'] },
+  { subject: 'בגדי ים',      match: ['בגדי ים', 'בגד ים', 'בגדי-ים'] },
+  { subject: 'מזון',         match: ['מזון', 'מאכל', 'מזון לתינוק', 'מזון לחיות', 'אוכל לחיות'] },
+  { subject: 'תוספי תזונה',  match: ['תוספי תזונה', 'ויטמינים'] },
+  { subject: 'תרופות',       match: ['תרופות'] },
 ];
 
-const EXCLUDED = new Set(NON_RETURNABLE_CATEGORIES.map((c) => normalizeCategory(c)));
+/** Every spelling, for the matcher. Derived, so a variant added above cannot be forgotten here — and
+ *  NOT exported: nothing outside this file has a use for a matcher, and an export nothing calls is
+ *  the exact shape `tests/returns-wired.test.ts` refuses. */
+const NON_RETURNABLE_TERMS: readonly string[] =
+  NON_RETURNABLE_SUBJECTS.flatMap((s) => s.match);
+
+const TERMS = NON_RETURNABLE_TERMS.map((t) => normalizeCategory(t));
 
 /**
- * May this product be returned at all?
+ * Is this product returnable, given the category path it sits under?
  *
- * Takes the product's categories as the store stores them — free text a seller may have typed, which
- * is why it normalises before comparing rather than matching strings. A product with no category at
- * all is returnable: absence is not evidence, and the direction of that default is the same one the
- * header argues for.
+ * `path` is the product's own category and its ancestors — `categoryPath()` builds it, and a caller
+ * may pass the names in any form. A product filed nowhere is returnable: absence is not evidence,
+ * and the header explains which direction the doubt has to fall.
+ *
+ * Substring rather than equality, because a seller writes `בגדי ים לנשים`, not `בגדי ים`. That
+ * widens the match on purpose — and it is why the term list is short: every entry has to be a phrase
+ * that cannot appear innocently inside an unrelated shelf name.
  */
-export function isReturnable(categories: readonly string[] | null | undefined): boolean {
-  if (!categories?.length) return true;
-  return !categories.some((c) => EXCLUDED.has(normalizeCategory(c)));
+export function isProductReturnable(path: readonly string[] | string | null | undefined): boolean {
+  if (!path) return true;
+  const names = Array.isArray(path) ? path : String(path).split('›');
+  if (!names.length) return true;
+  const haystack = names.map((n) => normalizeCategory(String(n))).join(' | ');
+  return !TERMS.some((term) => haystack.includes(term));
 }
 
-/** The one line a product page shows when it is NOT returnable. Null when it is — a page that says
- *  "this CAN be returned" on every other product is noise, and the policy page carries the rule. */
-export function nonReturnableNotice(categories: readonly string[] | null | undefined): string | null {
-  return isReturnable(categories)
+/**
+ * The one line a product page shows when it may NOT be returned. Null when it may.
+ *
+ * Nothing is said in the ordinary case: a note reading "this can be returned" on every other product
+ * is noise, and the policy page is where the rule lives.
+ */
+export function nonReturnableNotice(path: readonly string[] | string | null | undefined): string | null {
+  return isProductReturnable(path)
     ? null
-    : 'על פי תקנות הגנת הצרכן, מוצר מסוג זה אינו ניתן להחזרה.';
+    : 'לפי תקנות הגנת הצרכן, מוצר מסוג זה לא ניתן להחזרה אחרי הרכישה.';
 }

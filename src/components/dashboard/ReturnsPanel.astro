@@ -1,5 +1,6 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
+import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
   isOpen, handoverDeadlineISO, autoRefundDueISO, responseDeadlineISO,
@@ -46,19 +47,20 @@ const REASON: Record<ReturnReason, string> = {
 /** What the case IS, in the seller's words. Every status in the machine has one — a card that
  *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
 const STATUS: Record<ReturnStatus, string> = {
-  requested: 'מחכה לתשובה שלך',
-  approved: 'אישרת — הקונה שולח את המוצר',
-  in_transit: 'המוצר בדרך אליך',
-  received: 'המוצר הגיע אליך',
-  disputed: 'אנחנו מכריעים',
-  rejected: 'סירבת',
-  refunded: 'הקונה קיבל את כספו',
-  expired: 'הקונה לא שלח — הבקשה נסגרה',
+  requested: 'הקונה מחכה לתשובה שלך',
+  approved: 'אישרת. הקונה אמור לשלוח את המוצר',
+  in_transit: 'הקונה שלח. המוצר בדרך אליך',
+  received: 'המוצר הגיע אליך וממתין שתבדוק אותו',
+  disputed: 'העברת את זה אלינו. אנחנו מכריעים',
+  offered: 'הצעת החזר חלקי במקום החזרה. מחכים לתשובת הקונה',
+  rejected: 'סירבת לבקשה',
+  refunded: 'ההחזר אושר. הכסף בדרך לקונה',
+  expired: 'הקונה לא שלח את המוצר. הבקשה נסגרה',
 };
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
 const TONE: Record<ReturnStatus, string> = {
-  requested: 'danger', approved: 'warning', in_transit: 'muted', received: 'danger',
+  requested: 'danger', approved: 'warning', in_transit: 'muted', received: 'danger', offered: 'muted',
   disputed: 'warning', rejected: 'muted', refunded: 'success', expired: 'muted',
 };
 
@@ -69,7 +71,10 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
     { to: 'approved', label: 'אשר', kind: 'accent' },
     { to: 'rejected', label: 'סרב', kind: 'ghost' },
   ],
-  approved:   [{ to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' }],
+  approved:   [
+    { to: 'in_transit', label: 'הקונה שלח את המוצר', kind: 'ghost' },
+    { to: 'offered', label: 'הצע החזר חלקי במקום החזרה', kind: 'ghost' },
+  ],
   in_transit: [{ to: 'received', label: 'המוצר הגיע אליי', kind: 'accent' }],
   received: [
     { to: 'refunded', label: 'המוצר תקין — החזר לו את הכסף', kind: 'accent' },
@@ -96,16 +101,47 @@ function deadlineLine(r: ReturnRequest): string | null {
   return null;
 }
 
+/** Rows per page. Only ever rendered as a pager when the visible set exceeds it — see the nav below. */
+const RETURNS_PAGE_SIZE = 20;
+
 const open = requests.filter((r) => isOpen(r.status));
 const closed = requests.filter((r) => !isOpen(r.status));
 const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg)] [background:var(--color-surface)] p-4';
 ---
 
-<div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
-  <h2 class="m-0 text-[1.05rem] font-bold">החזרות</h2>
-  <p class="m-0 mt-1 text-[0.82rem] [color:var(--color-muted)]">
-    {open.length ? `${open.length} בקשות מחכות לך` : 'אין בקשות פתוחות'}
-  </p>
+<div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)] flex flex-col items-start gap-[0.6rem]">
+  <div>
+    <h2 class="m-0 text-[1.05rem] font-bold">החזרות</h2>
+    <p class="m-0 mt-1 text-[0.82rem] [color:var(--color-muted)]">
+      {open.length ? `${open.length} בקשות מחכות לך` : 'אין בקשות פתוחות'}
+    </p>
+  </div>
+
+  {requests.length > 0 && (
+    <div class="dash-toolbar w-full">
+      <div class="relative flex-1 min-w-[110px] max-w-[280px]">
+        <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input
+          type="search" id="returns-search" data-returns-search
+          placeholder="חיפוש לפי מספר הזמנה…"
+          class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]"
+        />
+      </div>
+      {/* Two states and no menu: there are only two, and a dropdown to choose between two is a click
+          more than the question deserves. The closed count is on the button, so a seller knows there
+          IS a history before opening it. */}
+      <button
+        type="button" data-returns-show-closed
+        class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)]"
+        aria-pressed="false"
+      >
+        <span class="toolbar-btn-label">הצג גם בקשות שנסגרו</span>
+        {closed.length > 0 && (
+          <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-muted)] text-white text-[.68rem] font-bold leading-none">{closed.length}</span>
+        )}
+      </button>
+    </div>
+  )}
 </div>
 
 {requests.length === 0 && (
@@ -114,9 +150,19 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
   </p>
 )}
 
-<div class="flex flex-col gap-3" data-returns-list>
+<p class="m-0 py-6 text-center text-[0.88rem] [color:var(--color-muted)]" data-returns-empty hidden>
+  אין בקשות שתואמות לחיפוש.
+</p>
+
+<div class="flex flex-col gap-3" data-returns-list data-returns-page-size={String(RETURNS_PAGE_SIZE)}>
   {[...open, ...closed].map((r) => (
-    <article class={`${CARD}${isOpen(r.status) ? '' : ' opacity-70'}`} data-return-id={r.id}>
+    <article
+      class={`${CARD}${isOpen(r.status) ? '' : ' opacity-70'}`}
+      data-return-id={r.id}
+      data-return-closed={isOpen(r.status) ? undefined : ''}
+      data-return-order={r.orderId.slice(0, 8)}
+      hidden={!isOpen(r.status)}
+    >
       <div class="flex items-baseline justify-between gap-3 flex-wrap">
         <strong class="text-[0.95rem]">{STATUS[r.status]}</strong>
         <span class="text-[0.76rem] [color:var(--color-muted)] tabular-nums">
@@ -126,9 +172,20 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
       <p class="m-0 mt-2 text-[0.86rem]">
         {REASON[r.reason]}
-        <span class="[color:var(--color-muted)]"> · זיכוי </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
-        <span class="[color:var(--color-muted)]"> · משלוח חזרה על </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
+        <span class="[color:var(--color-muted)]"> · צריך להחזיר לו </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
+        <span class="[color:var(--color-muted)]"> · המשלוח בחזרה על חשבון </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
       </p>
+
+      {r.buyerPhotoUrl && (
+        <a href={r.buyerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block mt-2">
+          <img
+            src={cdnThumb(r.buyerPhotoUrl, 160, 160)}
+            alt="התמונה שהקונה צירף"
+            width="80" height="80" loading="lazy" decoding="async"
+            class="rounded-[var(--radius-sm)] border [border-color:var(--color-border)] object-cover"
+          />
+        </a>
+      )}
 
       {r.buyerNote && (
         <p class="m-0 mt-2 text-[0.85rem] [color:var(--color-muted)] italic">"{r.buyerNote}"</p>
@@ -157,6 +214,29 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         </div>
       )}
 
+      {/* The offer's amount. Hidden until "הצע כסף במקום החזרה" is pressed — a field asking for a
+          number the seller has not decided to give is a question on every card that does not need
+          one. In shekels, because that is what a person types; the script converts at the boundary. */}
+      {MOVES[r.status]?.some((m) => m.to === 'offered') && (
+        <label class="flex items-center gap-2 mt-2 text-[0.85rem]" data-offer-wrap>
+          <span class="[color:var(--color-muted)]">סכום ההחזר המוצע, בשקלים</span>
+          <input
+            type="number" min="1" step="1" inputmode="numeric"
+            class="w-24 px-2 py-1 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)]"
+            data-offer-amount
+            hidden
+            placeholder="₪"
+          />
+        </label>
+      )}
+
+      {r.status === 'offered' && r.partialOfferAgorot !== null && (
+        <p class="m-0 mt-2 text-[0.82rem]">
+          הצעת לקונה החזר חלקי על סך <strong class="tabular-nums">{formatAgorot(r.partialOfferAgorot)}</strong> במקום
+          החזרת המוצר. מחכים לתשובתו.
+        </p>
+      )}
+
       {r.status === 'disputed' && (
         <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">
           העברנו את זה להכרעה שלנו. הכסף לא זז עד שנחליט.
@@ -165,3 +245,9 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
     </article>
   ))}
 </div>
+
+<nav class="flex items-center justify-center gap-2 mt-4" data-returns-pager hidden aria-label="עמודים">
+  <button type="button" class="btn btn--sm" data-returns-prev>הקודם</button>
+  <span class="text-[0.8rem] [color:var(--color-muted)] tabular-nums" data-returns-page-label></span>
+  <button type="button" class="btn btn--sm" data-returns-next>הבא</button>
+</nav>

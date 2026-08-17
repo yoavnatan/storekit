@@ -7,6 +7,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { verifyReviewToken } from '../../lib/review-token.js';
 import { reviewableLines, orderIsReviewable } from '../../lib/review-eligibility.js';
 import { getReviewedProductIds } from '../../lib/product-reviews.js';
+import { REVIEW_INVITE_DAYS_AFTER_DISPATCH, REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT } from '../../lib/review-timing.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
 
@@ -47,6 +48,70 @@ const usable = allowed && orderIsReviewable(order!);
 const reviewed = usable ? await getReviewedProductIds(orderId!) : [];
 const lines = usable ? reviewableLines(order!, reviewed) : [];
 const doneCount = usable ? reviewed.length : 0;
+
+/**
+ * The way OUT, for the buyer whose parcel never came (owner asked, 2026-08-17).
+ *
+ * Without it this page offers exactly one thing to do with a bad experience — press one star — and
+ * a buyer who never received the goods will press it, because it is the only button in front of
+ * them. That review says nothing about the product, it is permanent, it drags the seller's average
+ * down for a failure that may not even be theirs, and it goes out in the Google feed. The
+ * frustration is legitimate; the star is simply the wrong place to put it.
+ *
+ * The platform already has the right place: a return request with reason `not_arrived`, which the
+ * returns decisions doc §8 puts on US rather than on the seller.
+ *
+ * ── One button, and the paragraph around it was DELETED (owner, 2026-08-17) ──
+ * The first cut was a heading, a sentence of explanation and a button. "לא קיבלתי את ההזמנה" is
+ * the whole thought; a person who did not receive their order does not need it explained to them,
+ * and prose above a screen is a standing ban here (memory `feedback_no_standing_screen_prose`).
+ *
+ * ── WHEN it appears, which is the part that stops it being noise ──
+ * Not while a parcel could reasonably still be in transit — offering "didn't arrive?" on day two is
+ * the platform inviting a case that does not exist yet, and the owner's own bar is the right one:
+ * a week and a half with nothing confirmed is strange, three days is not.
+ *
+ *   · Delivery CONFIRMED (`deliveredAt`) — a quiet line under the forms. The seller has said it
+ *     arrived; leading with doubt would be planting one. But the buyer may still disagree, so the
+ *     door is never absent.
+ *   · Nothing confirmed, and payment older than the fallback window — the button, on its own,
+ *     above the stars. This is precisely the state the invitation mail was sent in
+ *     (`review-invite-run.ts`'s fallback clock), so the page and the mail agree by construction:
+ *     the same constant decides both.
+ *   · Nothing confirmed and recent — NOTHING. The buyer reached this page from their orders list
+ *     rather than from the mail, and the parcel is simply still on its way.
+ *
+ * Measured from DISPATCH (`shipped_at`, migration 0036), which is the moment the wait actually
+ * starts. It used to be measured from payment, and that quietly charged the buyer's patience for
+ * the seller's packing time: five legitimate days in `processing` and the button appeared two days
+ * into transit. An order with no dispatch stamp — self-pickup, which never passes through
+ * `shipped`, or a row older than 0036 — falls through to the more patient payment clock.
+ *
+ * ── Where it points ──
+ * A signed-in buyer goes STRAIGHT to the case, not to their orders list: `oq` filters the list
+ * server-side to this purchase and `return` opens that card's reason chooser on arrival
+ * (`buyer/dashboard.astro`). This page knows which order they mean, so making them find it again
+ * was three taps to say one thing.
+ *
+ * ⚠️ A GUEST goes to `/contact`, and that is the weak half of this: `/api/returns` requires a
+ * session, so a guest cannot open a case at all and lands on a generic fault form with no order
+ * attached. The signed link that let them onto this page would be proof enough to do better — it
+ * already establishes which order is theirs — but whether a guest may open a case is a decision
+ * the owner has not made (raised 2026-08-17). Until then this at least reaches a human.
+ */
+const deliveryConfirmed = !!order?.deliveredAt;
+const ageDays = (iso: string | undefined): number =>
+  iso ? (Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000) : -1;
+// The same ladder the invite job walks, and the same constants — so the mail and this page can
+// never disagree about whether a parcel is late (`review-timing.ts`).
+const overdue = order?.shippedAt
+  ? ageDays(order.shippedAt) >= REVIEW_INVITE_DAYS_AFTER_DISPATCH
+  : ageDays(order?.paidAt) >= REVIEW_INVITE_FALLBACK_DAYS_AFTER_PAYMENT;
+const notArrivedIsLikely = !deliveryConfirmed && overdue;
+const notArrivedRef = order?.checkoutRef ?? orderId ?? '';
+const notArrivedHref = userId
+  ? `/buyer/dashboard?oq=${encodeURIComponent(notArrivedRef)}&return=${encodeURIComponent(orderId ?? '')}`
+  : '/contact';
 ---
 
 <BaseLayout title={t.reviews.pageTitle} description={t.reviews.pageIntro} noindex={true} isLoggedIn={!!userId} storeMode={true}>
@@ -63,7 +128,14 @@ const doneCount = usable ? reviewed.length : 0;
 
     {usable && lines.length > 0 && (
       <>
-        <p style="color:var(--color-muted);font-size:0.95rem;margin:0 0 1.5rem">{t.reviews.pageIntro}</p>
+        <p style="color:var(--color-muted);font-size:0.95rem;margin:0 0 1rem">{t.reviews.pageIntro}</p>
+
+        {notArrivedIsLikely && (
+          <p style="margin:0 0 1.5rem">
+            <a href={notArrivedHref} class="btn btn--ghost btn--sm">{t.reviews.notArrivedCta}</a>
+          </p>
+        )}
+
         <div class="flex flex-col gap-4">
           {lines.map((line) => (
             <section class="flex flex-col gap-3"
@@ -88,6 +160,12 @@ const doneCount = usable ? reviewed.length : 0;
             </section>
           ))}
         </div>
+        {deliveryConfirmed && (
+          <p style="margin:1.25rem 0 0;font-size:0.82rem">
+            <a href={notArrivedHref} style="color:var(--color-muted);text-decoration:underline;text-underline-offset:3px">{t.reviews.notArrivedCta}</a>
+          </p>
+        )}
+
         {doneCount > 0 && (
           <p style="color:var(--color-muted);font-size:0.8rem;margin:1rem 0 0">
             {`${doneCount} · ${t.reviews.rated}`}

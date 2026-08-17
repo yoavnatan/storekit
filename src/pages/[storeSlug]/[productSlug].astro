@@ -28,7 +28,7 @@ import { jsonForScript } from '../../lib/json-script.js';
 import { machineUrl } from '../../lib/url-base.js';
 import { toAbsoluteImageUrl } from '../../lib/image-url.js';
 import StarRating from '../../components/StarRating.astro';
-import { cardStarRowHtml } from '../../lib/star-html.js';
+import { cardStarRowHtml, STAR_PATH } from '../../lib/star-html.js';
 import ReviewForm from '../../components/ReviewForm.astro';
 import { getReviewsForProduct, getRatingCountsForProduct, getReviewableOrderForProduct } from '../../lib/product-reviews.js';
 import { averageRating, ratingDisplay, ratingHistogram, RATING_MAX } from '../../lib/reviews.js';
@@ -220,10 +220,11 @@ const productCategoryPathStr = product.categoryId ? categoryPath(storeCategories
 // Every sale names its scope on the banner, the store-wide one included — same rule as the
 // store page, and here it also tells the shopper the sale reaches beyond the product they are
 // looking at (StoreSaleBanner still hides itself entirely on a product a scoped sale misses).
-/** The regulations' own exclusion, when it applies to this shop's goods. Shown BEFORE the purchase,
- *  which is the only moment it can change a decision — `return-eligibility.ts` holds the list and
- *  `/api/returns` enforces the same answer. */
-const noReturnNotice = nonReturnableNotice(shopStore.categories);
+/** The regulations' own exclusion, when it applies to THIS PRODUCT — its own shelf inside the shop
+ *  and every shelf above it, never the shop as a whole (owner, 2026-08-17: a fashion store is not a
+ *  store you cannot return from; it has one shelf you cannot). Shown before the purchase, which is
+ *  the only moment it can change a decision, and `/api/returns` enforces the same answer. */
+const noReturnNotice = nonReturnableNotice(productCategoryPathStr);
 
 const saleScopeLabel = saleScopeCategoryLabel(storeCategoriesForProduct, shopStore.sale, t.store.saleAndMore)
   || (shopStore.sale?.productIds?.length ? t.store.saleOnSelected : t.store.saleOnWholeStore);
@@ -868,9 +869,15 @@ const pmI18n = {
                   aria-label={t.reviews.distribution}>
                 {ratingBars.map((bar) => (
                   <li class="flex items-center" style="gap:0.5rem;font-size:0.75rem;color:var(--color-muted)">
-                    <span style="width:1.6rem;text-align:end;flex:0 0 auto" dir="ltr">{bar.rating}★</span>
+                    {/* The number and ONE small star — never the `★` glyph, which is a font's
+                        drawing of a star and will not match the SVG two lines above it. */}
+                    <span class="inline-flex items-center" style="width:2.1rem;gap:0.2rem;justify-content:flex-end;flex:0 0 auto" dir="ltr">
+                      {bar.rating}
+                      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+                           style="display:block;width:10px;height:10px;max-width:none;color:var(--color-rating-to)"><path d={STAR_PATH}/></svg>
+                    </span>
                     <span style="flex:1 1 auto;height:6px;border-radius:9999px;background:var(--color-bg);overflow:hidden">
-                      <span style={`display:block;height:100%;border-radius:9999px;background:var(--color-warning);width:${ratingAggregate.count ? Math.round((bar.count / ratingAggregate.count) * 100) : 0}%`}></span>
+                      <span style={`display:block;height:100%;border-radius:9999px;background:linear-gradient(90deg,var(--color-rating-from),var(--color-rating-to));width:${ratingAggregate.count ? Math.round((bar.count / ratingAggregate.count) * 100) : 0}%`}></span>
                     </span>
                     <span style="width:1.8rem;flex:0 0 auto">{bar.count}</span>
                   </li>

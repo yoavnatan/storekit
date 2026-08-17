@@ -25,6 +25,32 @@
      4.5:1 on white (it sits at ~5:1; do not lighten it toward #16a34a). */
   --color-sale: #15803d;
 
+  /* ── The rating star ──
+     
+     Two stops, not one colour, and they are the SITE'S OWN gradient — the same pair `.btn` is
+     painted with (owner, 2026-08-17). The row interpolates between them star by star, so five
+     stars read as one gradient running across the whole row rather than five identical marks.
+     
+     Why this rather than a gold. The design line's first test is "is it already in the system?",
+     and a rating is not a new brand colour — it is a mark on a card that already carries a price,
+     a name and a badge. The first cut borrowed --color-warning, which is wrong twice: that colour
+     is spoken for by "something needs attention", and its brown-amber reads muddy at 13px against
+     a cool slate palette. A saturated gold was the other candidate and fails the "would it date?"
+     test on a page of slate and white.
+     
+     **Swapping to a gold is these two lines and nothing else** — every star on the site, the
+     picker, and the distribution bar all read them. A warm pair would be #f0a92e → #e08a1a.
+     
+     The interpolation itself is in `lib/star-html.ts`; five discrete steps rather than a real
+     linear-gradient, because a gradient inside an SVG fill needs a document-unique id and this
+     renders a dozen times per page (that file's header). At 13px the difference is invisible. */
+  --color-rating-from: #2a3c40;
+  --color-rating-to: #3a5260;
+  /* The unfilled part. A SOLID pale star, not a hairline outline: at 13px a 1.5px stroke is a
+     smudge, and the boundary of a HALF star has to be unmistakable or the half-star rule may as
+     well not exist. Light enough to read as absence, dark enough to hold its shape on white. */
+  --color-rating-empty: color-mix(in srgb, var(--color-muted) 22%, var(--color-surface));
+
   /* The travelling band of every skeleton shimmer on the site — the ONE definition,
      because it was written out identically in ten places and a value in ten places
      drifts into ten values.

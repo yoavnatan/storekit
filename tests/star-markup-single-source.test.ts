@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { STAR_PATH } from '../src/lib/star-html.js';
+import { STAR_PATH, starRowHtml } from '../src/lib/star-html.js';
 
 /**
  * There is ONE star on this site, and it is `lib/star-html.ts`'s.
@@ -36,6 +36,45 @@ const files = walk(SRC).map((full) => ({
   rel: path.relative(process.cwd(), full),
   text: readFileSync(full, 'utf8'),
 }));
+
+describe('the half star is CLIPPED, not shrunk', () => {
+  // The bug this pins, reported by the owner on 2026-08-17: `reset.css` sets
+  // `svg { max-width:100%; height:auto }` site-wide, and that beats the width/height ATTRIBUTES.
+  // Inside the 50%-wide clipping box the overlay obeyed `max-width` and became a small whole star
+  // sitting on top of a big one — a half star that was not half of anything. Memory
+  // `project_svg_height_auto_trap` already described the class; this is the guard it never had.
+  const half = starRowHtml(3.5, { px: 15 });
+
+  it('pins width, height AND max-width inline on every star svg', () => {
+    const svgs = half.match(/<svg[^>]*>/g) ?? [];
+    expect(svgs.length).toBeGreaterThan(0);
+    for (const svg of svgs) {
+      expect(svg, 'a bare width/height attribute is overridden by reset.css').toContain('width:15px');
+      expect(svg).toContain('height:15px');
+      expect(svg, 'without max-width:none the clipping box shrinks the star instead of cutting it').toContain('max-width:none');
+    }
+  });
+
+  it('clips the filled layer to half its width', () => {
+    expect(half).toContain('overflow:hidden;width:50%');
+  });
+
+  it('uses the rating tokens and not a borrowed accent', () => {
+    // `--color-warning` was the first cut and is spoken for by "something needs attention".
+    expect(half).toContain('var(--color-rating-from)');
+    expect(half).toContain('var(--color-rating-to)');
+    expect(half).toContain('var(--color-rating-empty)');
+    expect(half).not.toContain('--color-warning');
+  });
+
+  it('walks the gradient across the row rather than painting five identical stars', () => {
+    const row = starRowHtml(5, { px: 15 });
+    // First star sits at the `from` end, last at the `to` end. If someone replaces the walk with a
+    // single colour this fails, and the row silently stops being the site's own gradient.
+    expect(row).toContain('var(--color-rating-to) 0%');
+    expect(row).toContain('var(--color-rating-to) 100%');
+  });
+});
 
 describe('the star is drawn in exactly one place', () => {
   it('nowhere re-types the outline', () => {

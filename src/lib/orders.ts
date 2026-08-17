@@ -133,12 +133,19 @@ export interface Order {
    *  store, so the campaign names in here are the OWNER's marketing structure and not the seller's
    *  data. */
   attribution?: OrderAttribution;
-  /** When the capture succeeded, and when the seller first marked it delivered — the two clocks
-   *  `payout-hold.ts` runs on. Written by `updateOrder` on the FIRST transition into each status
-   *  and never cleared (see the CASE expressions there for why "first, and never"). Absent means
-   *  it has not happened: an order that was never captured has no `paidAt`, and one nobody marked
-   *  delivered has no `deliveredAt` — which is precisely what makes the fallback clock fire. */
+  /** When the capture succeeded, when the parcel left, and when the seller first marked it
+   *  delivered. Written by `updateOrder` on the FIRST transition into each status and never
+   *  cleared (see the CASE expressions there for why "first, and never"). Absent means it has not
+   *  happened: an order that was never captured has no `paidAt`, and one nobody marked delivered
+   *  has no `deliveredAt` — which is precisely what makes a fallback clock fire.
+   *
+   *  `shippedAt` is the DISPATCH clock (migration 0036), and it is NULL for two different reasons
+   *  that read the same: a self-pickup order never passes through `shipped` at all, and rows
+   *  written before 0036 were deliberately not backfilled. Both fall through to the
+   *  payment-based last resort. `paidAt`/`deliveredAt` are what `payout-hold.ts` runs on;
+   *  `shippedAt` is what `review-timing.ts` runs on. */
   paidAt?: string;
+  shippedAt?: string;
   deliveredAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -231,6 +238,7 @@ interface OrderRow {
    *  "no attribution" instead of putting a malformed record on an order. */
   attribution: unknown;
   paid_at: Date | string | null;
+  shipped_at: Date | string | null;
   delivered_at: Date | string | null;
   created_at: Date | string | null;
   updated_at: Date | string | null;
@@ -329,6 +337,7 @@ function toOrder(row: OrderRow): Order {
   // Absent, not null, when the event has not happened — `payout-hold.ts` branches on presence and
   // an `undefined` that is really `null` reads as "delivered at an unknown time" to a `?? ` chain.
   if (row.paid_at) order.paidAt = isoOf(row.paid_at);
+  if (row.shipped_at) order.shippedAt = isoOf(row.shipped_at);
   if (row.delivered_at) order.deliveredAt = isoOf(row.delivered_at);
   // Through the sanitiser, not straight off the column — see its doc for why our own `jsonb` is
   // still re-validated, and why NO lookback window is applied on the way out.
@@ -359,7 +368,7 @@ const SELECT_ORDERS = `
   SELECT o.id, o.checkout_ref, o.buyer_id, o.buyer_name, o.buyer_email, o.buyer_phone,
          o.buyer_city, o.buyer_street, o.buyer_zip, o.shipping_agorot, o.total_agorot,
          o.payment_ref, o.payment_status, o.shipping_status, o.tracking_number,
-         o.attribution, o.paid_at, o.delivered_at, o.created_at, o.updated_at,
+         o.attribution, o.paid_at, o.shipped_at, o.delivered_at, o.created_at, o.updated_at,
          i.items, s.stores
     FROM orders o
     LEFT JOIN LATERAL (
@@ -1222,6 +1231,10 @@ export async function updateOrder(id: string, updates: Partial<Omit<Order, 'id' 
       }
       if (key === 'shippingStatus') {
         sets.push(`delivered_at = CASE WHEN delivered_at IS NULL AND $${params.length} = 'delivered' THEN now() ELSE delivered_at END`);
+        // The dispatch clock (migration 0036). Same shape and the same "first, and never cleared"
+        // rule as the two above — a self-pickup order never passes through `shipped`, so its
+        // `shipped_at` stays NULL by construction rather than by omission.
+        sets.push(`shipped_at = CASE WHEN shipped_at IS NULL AND $${params.length} = 'shipped' THEN now() ELSE shipped_at END`);
       }
     }
     if ('shippingAgorot' in updates) {

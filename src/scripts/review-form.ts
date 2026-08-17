@@ -29,10 +29,16 @@ function str(form: HTMLFormElement, key: string): string {
 
 function paint(form: HTMLFormElement, state: FormState, hovered: number): void {
   const shown = hovered || state.rating;
-  form.querySelectorAll<HTMLButtonElement>('.review-star').forEach((btn) => {
+  const buttons = form.querySelectorAll<HTMLButtonElement>('.review-star');
+  buttons.forEach((btn) => {
     const n = Number(btn.dataset.rating);
     const on = n <= shown;
-    btn.style.color = on ? 'var(--color-warning)' : 'var(--color-border)';
+    // The same walk across the row the display stars make (lib/star-html.ts#starTint), so the
+    // picker and the score it produces are the same object.
+    const pct = Math.round(((n - 1) / (buttons.length - 1)) * 100);
+    btn.style.color = on
+      ? `color-mix(in srgb, var(--color-rating-to) ${pct}%, var(--color-rating-from))`
+      : 'var(--color-rating-empty)';
     // The picker fills whole stars only: a half star is a thing an AVERAGE can be, never a thing
     // one person chooses. Offering ten steps would also make the tap target 13px wide on a phone.
     btn.setAttribute('aria-checked', String(n === state.rating));

@@ -22,6 +22,78 @@ export function initReturnsTab(): void {
   if (!list || list.dataset.wired) return;
   list.dataset.wired = '1';
 
+  // ── Search and the open/closed switch ──
+  //
+  // Client-side because the whole set is already on the page (`getReturnsForStore` returns every case
+  // for the shop), so a query per keystroke would be slower and no more correct. One function decides
+  // visibility from both controls at once — two independent handlers each hiding rows is how a filter
+  // and a search end up fighting over the same element.
+  const search = document.querySelector<HTMLInputElement>('[data-returns-search]');
+  const closedBtn = document.querySelector<HTMLButtonElement>('[data-returns-show-closed]');
+  const emptyMsg = document.querySelector<HTMLElement>('[data-returns-empty]');
+
+  // ── The pager, and it only exists when there is something to page ──
+  //
+  // The owner's rule: a pager that depends on the count and stays out of sight below it. A control
+  // that always reads "1 מתוך 1" teaches a seller to ignore the exact spot a real pager will later
+  // appear — the same reasoning the admin's reconciliation card is built on.
+  //
+  // Paging happens AFTER filtering and over the visible set, which is the only order that behaves:
+  // paging first would leave a page that filters down to nothing while page 2 has every match on it.
+  const pager = document.querySelector<HTMLElement>('[data-returns-pager]');
+  const pageLabel = document.querySelector<HTMLElement>('[data-returns-page-label]');
+  const prevBtn = document.querySelector<HTMLButtonElement>('[data-returns-prev]');
+  const nextBtn = document.querySelector<HTMLButtonElement>('[data-returns-next]');
+  const pageSize = Number(list.dataset.returnsPageSize) || 20;
+  let page = 1;
+
+  function applyFilters(resetPage = true): void {
+    if (resetPage) page = 1;
+    const q = (search?.value ?? '').trim().toLowerCase();
+    const showClosed = closedBtn?.getAttribute('aria-pressed') === 'true';
+
+    // Pass 1: which cards MATCH, regardless of page.
+    const matching: HTMLElement[] = [];
+    list!.querySelectorAll<HTMLElement>('[data-return-id]').forEach((card) => {
+      const isClosed = card.hasAttribute('data-return-closed');
+      const matches = !q || (card.dataset.returnOrder ?? '').toLowerCase().includes(q);
+      if (matches && (showClosed || !isClosed)) matching.push(card);
+      else card.hidden = true;
+    });
+
+    const pages = Math.max(1, Math.ceil(matching.length / pageSize));
+    if (page > pages) page = pages;
+
+    // Pass 2: of those, which are on this page.
+    const from = (page - 1) * pageSize;
+    matching.forEach((card, i) => { card.hidden = i < from || i >= from + pageSize; });
+
+    // A list that filtered to nothing has to SAY so — an empty container reads as a broken tab
+    // (audit row 11: a failure dressed as a fact about the data).
+    if (emptyMsg) emptyMsg.hidden = matching.length > 0;
+
+    if (pager) {
+      pager.hidden = matching.length <= pageSize;
+      if (pageLabel) pageLabel.textContent = `${page} מתוך ${pages}`;
+      if (prevBtn) prevBtn.disabled = page <= 1;
+      if (nextBtn) nextBtn.disabled = page >= pages;
+    }
+  }
+
+  prevBtn?.addEventListener('click', () => { if (page > 1) { page--; applyFilters(false); } });
+  nextBtn?.addEventListener('click', () => { page++; applyFilters(false); });
+
+  search?.addEventListener('input', () => applyFilters());
+  closedBtn?.addEventListener('click', () => {
+    const on = closedBtn.getAttribute('aria-pressed') === 'true';
+    closedBtn.setAttribute('aria-pressed', String(!on));
+    closedBtn.classList.toggle('!border-[color:var(--color-primary)]', !on);
+    applyFilters();
+  });
+
+  // Paint once, so a shop with more than one page arrives on page 1 rather than showing everything.
+  applyFilters();
+
   list.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-return-move]');
     if (!btn) return;
@@ -36,12 +108,34 @@ export function initReturnsTab(): void {
     const buttons = card ? [...card.querySelectorAll<HTMLButtonElement>('button')] : [btn];
     buttons.forEach((b) => { b.disabled = true; });
 
+    // An offer needs a number, and it is the only move on this screen that does. Asked with a
+    // prompt-free inline field rather than `prompt()`, which is banned platform-wide — the field is
+    // already on the card, hidden until this button is pressed.
+    let partialOfferAgorot: number | undefined;
+    if (to === 'offered') {
+      const field = card?.querySelector<HTMLInputElement>('[data-offer-amount]');
+      if (field && field.hidden) {
+        field.hidden = false;
+        field.focus();
+        buttons.forEach((b) => { b.disabled = false; });
+        return;
+      }
+      const shekels = Number(field?.value ?? '');
+      if (!Number.isFinite(shekels) || shekels <= 0) {
+        showToast('לא בוצע', 'צריך לכתוב סכום גדול מאפס');
+        buttons.forEach((b) => { b.disabled = false; });
+        return;
+      }
+      // Agorot at the boundary, like every other amount that crosses into the server (money.ts).
+      partialOfferAgorot = Math.round(shekels * 100);
+    }
+
     void (async () => {
       try {
         const res = await fetch('/api/returns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, to }),
+          body: JSON.stringify({ id, to, ...(partialOfferAgorot ? { partialOfferAgorot } : {}) }),
         });
         if (!res.ok) {
           const said = await res.json().catch(() => null) as { error?: string } | null;
