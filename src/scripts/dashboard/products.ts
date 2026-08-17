@@ -1696,16 +1696,49 @@ export function buildEditRow(p: ProductData): HTMLTableRowElement {
  * this, the seller's OWN inline edit would make his next save from that row look like
  * someone else's conflict, and a warning he caused himself is exactly what teaches him
  * to click straight through the real one.
+ *
+ * **`images` is not optional decoration — without it this function is a data-loss bug** (found
+ * 2026-08-17). The sentence above assumes the row's FIELDS were patched alongside the rev, and for
+ * every caller but the image save that holds. The image save patches the display row's thumbnail
+ * and `data-images`, and leaves the open edit form's gallery — a set of `name="images"` hidden
+ * inputs, which `FormData(form)` submits in full — showing the list from before the save. Stamping
+ * the new rev on top then *removes the last defence*: the server's per-field merge no longer sees a
+ * conflict, so the stale list is written back as a deliberate edit and the images the seller just
+ * uploaded are gone with no warning anywhere. (Memory `project_hidden_input_silent_writes`: a field
+ * nobody can see still writes.) So a caller that changed images says so, and the gallery is rebuilt
+ * from what the server actually stored.
  */
-function syncEditRowRev(displayRow: Element | null | undefined, rev: string | undefined): void {
+function syncEditRowRev(displayRow: Element | null | undefined, rev: string | undefined, images?: string[]): void {
   if (!rev) return;
   const form = displayRow?.nextElementSibling?.querySelector<HTMLFormElement>('form.inline-edit-form');
-  if (form) form.dataset.baseRev = rev;
+  if (form) {
+    form.dataset.baseRev = rev;
+    if (images) repaintFormGallery(form, images);
+  }
   // …and the same, for a row whose form does not exist yet. A pending row is built later from the
   // page's product island, which is a snapshot taken when the document was served — so a change
   // made here and not written back would come out of that island as the OLD value the next time the
   // seller opens the form, and their next save would put it back. See `syncPageProductFromRow`.
   syncPageProductFromRow(displayRow, rev);
+}
+
+/**
+ * Rebuild an open edit form's gallery from the image list the server confirmed.
+ *
+ * Replaced whole rather than patched: the widget keeps per-slot state (the original upload, a
+ * background-removed variant, crop flags) in a `WeakMap` keyed by the slot element, and there is no
+ * honest way to reconcile that against a list this form did not produce. A fresh element carries no
+ * `data-gallery-init`, so `initGalleryWidget` wires it exactly as it wires a newly built row.
+ */
+function repaintFormGallery(form: HTMLFormElement, images: string[]): void {
+  const gallery = form.querySelector<HTMLElement>('.gallery-widget');
+  if (!gallery) return;
+  const holder = document.createElement('div');
+  holder.innerHTML = galleryWidgetHtml(images, getGalleryI18n());
+  const fresh = holder.firstElementChild;
+  if (!fresh) return;
+  gallery.replaceWith(fresh);
+  initGalleryWidget(fresh);
 }
 
 /**
@@ -3782,7 +3815,9 @@ export function initBulkSelect(cloud: string, preset: string): void {
           if (data.ok) {
             const savedImages = data.images ?? urls;
             const row = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
-            syncEditRowRev(row, data.rev);
+            // The images go WITH the rev — see `syncEditRowRev`. Sending the rev alone is what
+            // made an open edit row overwrite this save silently.
+            syncEditRowRev(row, data.rev, savedImages);
             if (row && savedImages.length) {
               row.dataset.images = JSON.stringify(savedImages);
               const firstUrl = savedImages[0];
