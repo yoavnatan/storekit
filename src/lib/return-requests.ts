@@ -56,6 +56,11 @@ export interface ReturnRequest {
   adminNote: string;
   createdAt: string;
   approvedAt: string | null;
+  /** When the BUYER said he sent it back. A claim, not proof — see `returns.ts`' note on who owns
+   *  `in_transit`. Only `received` may pay. */
+  sentAt: string | null;
+  /** When the seller offered money instead of a return. Starts the answer clock. */
+  offeredAt: string | null;
   deliveredBackAt: string | null;
   /** When this request stopped being open. `settledAt` and not `closedAt` on purpose: the latter
    *  is the store-lifecycle vocabulary, and `store-lifecycle-guard.test.ts` rightly refuses any
@@ -72,6 +77,7 @@ interface Row {
   returned_lines: ReturnedLine[] | null;
   tracking_number: string | null; seller_note: string; admin_note: string;
   created_at: Date | string; approved_at: Date | string | null;
+  sent_at: Date | string | null; offered_at: Date | string | null;
   delivered_back_at: Date | string | null; closed_at: Date | string | null;
   updated_at: Date | string;
 }
@@ -98,6 +104,8 @@ function toRequest(r: Row): ReturnRequest {
     adminNote: r.admin_note,
     createdAt: iso(r.created_at)!,
     approvedAt: iso(r.approved_at),
+    sentAt: iso(r.sent_at),
+    offeredAt: iso(r.offered_at),
     deliveredBackAt: iso(r.delivered_back_at),
     settledAt: iso(r.closed_at),
     updatedAt: iso(r.updated_at)!,
@@ -264,6 +272,14 @@ export interface MoveInput {
   store: StatusChangeStore;
   trackingNumber?: string;
   sellerNote?: string;
+  /**
+   * Something the buyer adds later — how he sent it, or why he thinks the refusal is wrong.
+   *
+   * APPENDED, never assigned. `buyer_note` holds the complaint he opened the case with, and that
+   * sentence is the evidence an admin reads first; replacing it with a later one would quietly delete
+   * the reason the case exists.
+   */
+  buyerNote?: string;
   adminNote?: string;
   partialOfferAgorot?: number;
 }
@@ -294,13 +310,24 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
        seller_note = COALESCE($4, seller_note),
        admin_note = COALESCE($5, admin_note),
        partial_offer_agorot = COALESCE($6, partial_offer_agorot),
+       -- Appended, so the sentence the buyer opened with survives. See MoveInput.buyerNote above.
+       -- (No backticks in here: this is inside a template literal, and one ends the string.)
+       -- Cast, and not for tidiness: every mention of $7 here is either an IS NULL or a concat, so
+       -- Postgres has nothing to infer a type from and refuses to prepare the statement at all.
+       buyer_note = CASE WHEN $7::text IS NULL THEN buyer_note
+                         WHEN buyer_note = '' THEN $7::text
+                         ELSE buyer_note || E'\n\n' || $7::text END,
        approved_at        = CASE WHEN $2 = 'approved'   AND approved_at        IS NULL THEN now() ELSE approved_at        END,
+       -- Set by the transition that earns it, and never overwritten: a clock a later edit could
+       -- restart is a clock that decides where money goes by accident.
+       sent_at            = CASE WHEN $2 = 'in_transit' AND sent_at            IS NULL THEN now() ELSE sent_at            END,
+       offered_at         = CASE WHEN $2 = 'offered'    AND offered_at         IS NULL THEN now() ELSE offered_at         END,
        delivered_back_at  = CASE WHEN $2 = 'received'   AND delivered_back_at  IS NULL THEN now() ELSE delivered_back_at  END,
        closed_at          = CASE WHEN $2 IN ('rejected','refunded','expired') THEN now() ELSE closed_at END,
        updated_at = now()
      WHERE id = $1 RETURNING *`,
     [input.id, input.to, input.trackingNumber ?? null, input.sellerNote ?? null,
-     input.adminNote ?? null, input.partialOfferAgorot ?? null],
+     input.adminNote ?? null, input.partialOfferAgorot ?? null, input.buyerNote ?? null],
   );
   const moved = toRequest(r!);
 
