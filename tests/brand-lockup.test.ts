@@ -145,6 +145,76 @@ describe('the boxes are cropped to the stroked ink', () => {
   });
 });
 
+describe('the block is spaced evenly', () => {
+  /**
+   * Every junction in `Dezabin` — the mark→`e` one included — must carry the same
+   * ink gap. It did not until 2026-08-17: Chakra Petch gives the `z` side bearings
+   * of 25/25 where the other letters carry 45–60 and kerns `ez`/`za` a further −5
+   * each, so the six gaps ran 65/25/25/75/65/75, and the thickening then took a
+   * flat 14 out of each and turned that into 51/11/11/61/51/61. `eza` read as a
+   * lump inside the word, which is how the owner spotted it.
+   *
+   * The gaps are measured off the SHIPPED paths rather than recomputed from the
+   * font, because the paths are what a visitor sees and the whole failure was
+   * invisible to the metrics that produced them.
+   */
+  /** Each path's subpaths as x-ranges, merged where they overlap — a letter is
+   *  one range even when it is drawn as two contours (the `e`'s counter, the
+   *  `i`'s dot). */
+  const letterBoxes = (d: string) => {
+    const boxes = d
+      .split('M')
+      .filter(Boolean)
+      .map((sub) => {
+        const xs = sub
+          .split(/[ML]/)
+          .filter(Boolean)
+          .map((p) => Number(p.trim().split(/\s+/)[0]));
+        return { x1: Math.min(...xs), x2: Math.max(...xs) };
+      })
+      .sort((a, b) => a.x1 - b.x1);
+    const merged: { x1: number; x2: number }[] = [];
+    for (const b of boxes) {
+      const last = merged.at(-1);
+      if (last && b.x1 <= last.x2) last.x2 = Math.max(last.x2, b.x2);
+      else merged.push({ ...b });
+    }
+    return merged;
+  };
+
+  const letters = letterBoxes(LETTERS_PATH);
+  const markRight = Math.max(...letterBoxes(MARK_PATH).map((b) => b.x2));
+
+  it('draws six letters after the mark, each as one shape', () => {
+    // If this is wrong the gaps below are measuring something else entirely.
+    expect(letters).toHaveLength(6);
+  });
+
+  it('gives every junction the same gap, the mark’s included', () => {
+    let prev = markRight;
+    const gaps = letters.map((l) => {
+      const g = l.x1 - prev;
+      prev = l.x2;
+      return g;
+    });
+    // A unit is a thousandth of an em; anything under one is past what a raster
+    // can show, and the levelling is exact arithmetic anyway.
+    for (const g of gaps) expect(g, `gaps: ${gaps.join(', ')}`).toBeCloseTo(gaps[0], 0);
+    // And it must be a gap, not a collision: the thickening eats STROKE_WIDTH out
+    // of every one of them, so a gap at or under the stroke means letters touching.
+    expect(gaps[0]).toBeGreaterThan(STROKE_WIDTH * 2);
+  });
+
+  it('did not buy that by opening the word up', () => {
+    // The levelling targets the MEAN of the font's own gaps, so it redistributes
+    // and cannot widen. 3.452em is what the wordmark measured before it, and the
+    // density is the logo (owner, twice). A different number here means the
+    // target stopped being the mean — which is a decision about density, and one
+    // that has been made and reverted once already.
+    expect(INK_WIDTH_EM).toBeCloseTo(3.452, 3);
+  });
+});
+
 describe('the module is what the generator writes', () => {
   /**
    * `gapEm` was added to `src/lib/brand-lockup.ts` by hand on 2026-08-14 and the
