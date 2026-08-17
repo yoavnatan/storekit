@@ -28,6 +28,12 @@ export const RETURN_RATE_MIN_ORDERS = 20;
 /** How many times the platform's own rate counts as unusual. */
 export const RETURN_RATE_MULTIPLE = 3;
 
+/** Below this many returns, "most of them were contested" is one or two cases. */
+export const DISPUTE_MIN_RETURNS = 5;
+
+/** Contesting this share of the returns received is what counts as habitual. */
+export const DISPUTE_RATE_THRESHOLD = 0.5;
+
 export interface StoreReturnRate {
   storeSlug: string;
   /** Orders that actually reached the buyer — the only ones a return could ever come from. */
@@ -35,6 +41,18 @@ export interface StoreReturnRate {
   returns: number;
   /** 0–1. `returns / deliveredOrders`. */
   rate: number;
+  /** How many of this shop's returns the seller DISPUTED — "the parcel came back empty".
+   *
+   *  **This is the brake on the one accusation the mechanism cannot verify** (owner, 2026-08-17:
+   *  *"זה בסדר? לא מזמין בעיות?"*). A seller must be able to say a parcel came back empty, or a
+   *  seller who was really defrauded has no recourse and starts refusing every return outright. But
+   *  the claim costs him nothing to make, lands on a person, and stops the buyer's money — so
+   *  something has to be able to see a shop that makes it habitually. Nothing did.
+   *
+   *  Counted, never acted on: same decision as the return rate itself. */
+  disputes: number;
+  /** 0–1. `disputes / returns` — of the returns this shop had, how many it contested. */
+  disputeRate: number;
 }
 
 export interface ReturnRateReport {
@@ -44,6 +62,10 @@ export interface ReturnRateReport {
   platformRate: number;
   /** The shops at or above `RETURN_RATE_MULTIPLE ×` the platform's rate. */
   outliers: StoreReturnRate[];
+  /** Shops contesting most of the returns they receive — the brake on the one accusation nothing can
+   *  verify. Separate from `outliers` because it is a different problem with a different answer: a
+   *  high return rate is usually the product, a high dispute rate is usually the shop. */
+  disputeOutliers: StoreReturnRate[];
 }
 
 /**
@@ -54,10 +76,11 @@ export interface ReturnRateReport {
  * question and one the platform has no business scoring.
  */
 export async function returnRateByStore(): Promise<ReturnRateReport> {
-  const r = await rows<{ store_slug: string; delivered: string | number; returns: string | number }>(
+  const r = await rows<{ store_slug: string; delivered: string | number; returns: string | number; disputes: string | number }>(
     `SELECT os.store_slug,
             COUNT(DISTINCT o.id)  AS delivered,
-            COUNT(DISTINCT rr.id) AS returns
+            COUNT(DISTINCT rr.id) AS returns,
+            COUNT(DISTINCT rr.id) FILTER (WHERE rr.status = 'disputed' OR rr.seller_note <> '') AS disputes
        FROM order_stores os
        JOIN orders o ON o.id = os.order_id
        LEFT JOIN return_requests rr ON rr.order_id = o.id
@@ -71,11 +94,17 @@ export async function returnRateByStore(): Promise<ReturnRateReport> {
     .map((row) => {
       const deliveredOrders = Number(row.delivered);
       const returns = Number(row.returns);
+      const disputes = Number(row.disputes ?? 0);
       return {
         storeSlug: row.store_slug,
         deliveredOrders,
         returns,
         rate: deliveredOrders > 0 ? returns / deliveredOrders : 0,
+        disputes,
+        // Out of this shop's own RETURNS, not out of its orders: the question is "when goods come
+        // back, how often does this shop say something was wrong with them", and dividing by orders
+        // would make a shop with few returns look clean for contesting all of them.
+        disputeRate: returns > 0 ? disputes / returns : 0,
       };
     })
     .filter((s) => s.deliveredOrders >= RETURN_RATE_MIN_ORDERS)
@@ -92,5 +121,11 @@ export async function returnRateByStore(): Promise<ReturnRateReport> {
     ? stores.filter((s) => s.rate >= platformRate * RETURN_RATE_MULTIPLE)
     : [];
 
-  return { stores, platformRate, outliers };
+  // A shop that contested more than half the returns it received, with enough of them for that to
+  // mean anything. Deliberately a flat threshold and not a multiple of the platform: "most of them"
+  // is the claim being made, and it is the same claim whatever everyone else does.
+  const disputeOutliers = stores.filter((s) => s.returns >= DISPUTE_MIN_RETURNS
+    && s.disputeRate >= DISPUTE_RATE_THRESHOLD);
+
+  return { stores, platformRate, outliers, disputeOutliers };
 }
