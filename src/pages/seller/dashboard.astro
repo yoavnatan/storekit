@@ -22,7 +22,12 @@ import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astr
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
-import { getReturnsForStore, countOpenReturns } from '../../lib/return-requests.js';
+import { getReturnsForStore, countOpenReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
+import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
+
+/** The chip's word per state — short, because it sits in a crowded row beside the age and the
+ *  totals. The seller's full sentence lives on the returns tab; this only has to say "this order is
+ *  in the middle of coming back, and whose move it is". */
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import CopyButton from '../../components/dashboard/CopyButton.astro';
@@ -826,7 +831,31 @@ const newOrdersCount = orderStatusCounts.pending ?? 0;
 // Both are skipped entirely when there is no store selected: `store` is null on an account whose
 // shop was just deleted, and a query keyed on a slug that does not exist is a round trip whose
 // only possible answer is "none".
+const RETURN_CHIP: Record<ReturnStatus, string> = {
+  requested: d.returnChipWaiting,
+  approved: d.returnChipReturning,
+  in_transit: d.returnChipOnTheWay,
+  received: d.returnChipArrived,
+  disputed: d.returnChipDeciding,
+  offered: d.returnChipOffered,
+  // Closed states carry no chip: the order is no longer in the middle of anything, and a chip that
+  // says "finished" on a row is one more thing to read past.
+  rejected: '',
+  refunded: '',
+  expired: '',
+};
+
 const openReturnsCount = store ? await countOpenReturns(store.slug) : 0;
+// The words for the chip above, per order — one batched read, and only on the tab that renders
+// order cards. `openReturnsCount` above is the badge and runs everywhere; this is the detail and
+// runs where it is drawn.
+const returnStateByOrderId = new Map<string, string>();
+if (store && shows('orders') && ordersPage.orders.length) {
+  const live = await getLatestReturnsByOrder(ordersPage.orders.map((o: Order) => o.id));
+  for (const [orderId, r] of live) {
+    if (returnIsOpen(r.status)) returnStateByOrderId.set(orderId, RETURN_CHIP[r.status] ?? 'בקשת החזרה');
+  }
+}
 const returnRequests = store
   ? await only(['returns'], () => getReturnsForStore(store.slug), [])
   : [];
@@ -1326,7 +1355,7 @@ const orderStatusColors: Record<string, string> = {
         <div>
           <div class="products-header">
             <div class="products-header__title">
-              <input type="checkbox" id="bulk-select-all-mobile" class="bulk-select-all bulk-select-all--mobile" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0">
+              <input type="checkbox" id="bulk-select-all-mobile" class="bulk-select-all bulk-select-all--mobile cursor-pointer disabled:cursor-not-allowed disabled:opacity-40" aria-label={d.bulkSelectAll} style="width:15px;height:15px;flex-shrink:0">
               <span class="bulk-count-paren" id="bulk-count-paren" aria-hidden="true"></span>
               <h2>{d.productsTitle}</h2>
               <span class="bulk-count-badge" id="bulk-count-badge" hidden>
@@ -1791,7 +1820,7 @@ const orderStatusColors: Record<string, string> = {
           <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
               <tr>
-                <th class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0"></th>
+                <th class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" id="bulk-select-all" class="bulk-select-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40" aria-label={d.bulkSelectAll} style="width:15px;height:15px;flex-shrink:0"></th>
                 {/* Width lives in dashboard.css, not here: under `table-layout: fixed` the
                     declared width is the column's REAL width rather than a minimum, and an
                     inline 2rem (narrower than a 4-digit row number) beats any stylesheet. */}
@@ -1864,7 +1893,7 @@ const orderStatusColors: Record<string, string> = {
                 return (
                 <>
                   <tr data-product-display={p.id} data-store-id={store.id} data-discount={p.discount ? JSON.stringify(p.discount) : ''} data-hidden={p.hidden ? '1' : ''} data-featured={p.featured ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
-                    <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
+                    <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check cursor-pointer disabled:cursor-not-allowed disabled:opacity-40" data-bulk-check={p.id} aria-label={p.name} style="width:15px;height:15px"></td>
                     <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
                       {p.images?.[0] && <span class="thumb-wrap" data-skeleton><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" /></span>}
@@ -1974,7 +2003,7 @@ const orderStatusColors: Record<string, string> = {
                         </button>
                         <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
                           <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product={p.id} role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>{d.viewProduct}</button></li>
-                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
+                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)] aria-disabled:opacity-45 aria-disabled:cursor-not-allowed aria-disabled:hover:bg-transparent" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
                           <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility={p.id} data-hidden={p.hidden ? '1' : ''} role="menuitem">
                             <svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                             <svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -2170,6 +2199,17 @@ const orderStatusColors: Record<string, string> = {
                       <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
                         <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatAgorot(storeSliceTotalAgorot(storeSub))}</span>
                         <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
+                          {/* A return or cancellation running on THIS order, said on the order
+                              itself and not only on its own tab (owner, 2026-08-17). A seller
+                              looking at his orders has to see that one of them is in the middle of
+                              coming back — otherwise the tab is a place he has to remember to
+                              visit, which is the same as not being told. */}
+                          {returnStateByOrderId.get(order.id) && (
+                            <span class="order-return-chip inline-flex items-center gap-1 shrink-0 text-[0.72rem] font-semibold rounded-[var(--radius-sm)] px-1.5 py-0.5 [background:color-mix(in_srgb,var(--color-warning)_12%,transparent)] [color:var(--color-warning)]">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                              {returnStateByOrderId.get(order.id)}
+                            </span>
+                          )}
                           <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                           <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)] cursor-help" data-tooltip={d.orderNoteChip} aria-label={d.orderNoteChip} hidden={noteList.length === 0} tabindex="0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3.5h15v10.5l-5.5 5.5h-9.5z"/><path d="M19.5 14h-5.5v5.5"/><line x1="8" y1="8.5" x2="16" y2="8.5"/><line x1="8" y1="12" x2="13" y2="12"/></svg></span>
                           <Fragment set:html={orderInvoiceChipHtml(invoiceStates.get(order.id) ?? null, d.orderInvoiceChip)} />

@@ -83,7 +83,10 @@ export function buyerActionFor(
 /** Where the case stands. Mirrors the CHECK on `return_requests.status` (migration 0030). */
 export type ReturnStatus =
   | 'requested' | 'approved' | 'rejected' | 'in_transit'
-  | 'received' | 'refunded' | 'disputed' | 'expired';
+  | 'received' | 'refunded' | 'disputed' | 'expired'
+  /** The seller has offered money instead of a return, and the buyer has not answered yet
+   *  (decisions §4, migration 0035). The one state where nobody is late. */
+  | 'offered';
 
 /**
  * How long the seller has to answer a request he is actually allowed to refuse.
@@ -265,8 +268,15 @@ export function refundForRequest(
  * deciding. Nothing reaches `refunded` except through the seller having it or the admin saying so.
  */
 export const RETURN_TRANSITIONS: Record<ReturnStatus, readonly ReturnStatus[]> = {
+  // No 'offered' here, deliberately: declining an offer returns the case to `approved`, and from
+  // `requested` that would GRANT a return the seller may still have been entitled to refuse. An
+  // offer is a shortcut through an approved return, never a way around the decision.
   requested:  ['approved', 'rejected'],
-  approved:   ['in_transit', 'expired', 'rejected'],
+  approved:   ['in_transit', 'expired', 'rejected', 'offered'],
+  // The buyer's answer, and nothing else. Accepting pays the offered amount and keeps the goods
+  // where they are; declining puts the case back exactly where it was, because a refusal must cost
+  // the buyer nothing or the offer is a trap rather than a shortcut.
+  offered:    ['refunded', 'approved'],
   in_transit: ['received', 'expired'],
   received:   ['refunded', 'disputed'],
   disputed:   ['refunded', 'rejected'],

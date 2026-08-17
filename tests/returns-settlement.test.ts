@@ -197,6 +197,55 @@ describe('a refunded return settles the order, the stock and the debt', () => {
     expect(rows[0]!.n, 'both partial returns must debit the seller').toBe(2);
   });
 
+  it('an accepted OFFER pays the agreed amount and leaves the goods with the buyer', async () => {
+    const order = await deliveredOrder();
+    const stockBefore = await stockOf();
+
+    const opened = await openReturnRequest({ order, storeSlug: 'keramika', reason: 'damaged' });
+    const req = opened as Exclude<typeof opened, { error: string }>;
+
+    // The seller offers ₪40 to keep it where it is.
+    await moveReturnRequest({
+      id: req.id, to: 'offered', actor: STORE.sellerId, store: STORE, partialOfferAgorot: 4_000,
+    });
+    // The buyer accepts.
+    const done = await moveReturnRequest({ id: req.id, to: 'refunded', actor: 'buyer', store: STORE });
+    expect('error' in done).toBe(false);
+
+    // Nothing came back, so nothing goes on the shelf — this is the whole difference from a return.
+    expect(await stockOf()).toBe(stockBefore);
+
+    // The order is untouched: it was delivered and it stays delivered.
+    expect((await getOrderById(order.id))!.shippingStatus).toBe('delivered');
+
+    // The money is the OFFER, not the order's value.
+    const { rows: due } = await query<{ amount_agorot: string }>(
+      `SELECT amount_agorot FROM money_events WHERE order_id = $1 AND type = 'refund_due'`, [order.id]);
+    expect(due).toHaveLength(1);
+    expect(Number(due[0]!.amount_agorot)).toBe(4_000);
+
+    const { rows: adj } = await query<{ amount_agorot: string }>(
+      `SELECT amount_agorot FROM seller_ledger_adjustments WHERE order_id = $1`, [order.id]);
+    expect(adj).toHaveLength(1);
+    expect(Number(adj[0]!.amount_agorot)).toBeLessThan(0);
+  });
+
+  it('a declined offer puts the ordinary return back where it was', async () => {
+    const order = await deliveredOrder();
+    const opened = await openReturnRequest({ order, storeSlug: 'keramika', reason: 'damaged' });
+    const req = opened as Exclude<typeof opened, { error: string }>;
+
+    await moveReturnRequest({ id: req.id, to: 'offered', actor: STORE.sellerId, store: STORE, partialOfferAgorot: 4_000 });
+    const declined = await moveReturnRequest({ id: req.id, to: 'approved', actor: 'buyer', store: STORE });
+    expect('error' in declined).toBe(false);
+    expect((declined as { request: { status: string } }).request.status).toBe('approved');
+
+    // Refusing must cost the buyer nothing: no money moved, and the case can still run its course.
+    const { rows } = await query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM money_events WHERE order_id = $1 AND type = 'refund_due'`, [order.id]);
+    expect(rows[0]!.n).toBe(0);
+  });
+
   it('refuses a second open request on one order', async () => {
     const order = await deliveredOrder();
     await openReturnRequest({ order, storeSlug: 'keramika', reason: 'damaged' });

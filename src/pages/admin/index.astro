@@ -59,7 +59,20 @@ import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
 import AdminPanelShell from '../../components/admin/AdminPanelShell.astro';
 import AdminReturnsPanel from '../../components/admin/AdminReturnsPanel.astro';
-import { getOpenReturns } from '../../lib/return-requests.js';
+import { getOpenReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
+import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
+
+/** The chip's word, from the admin's seat. Closed states carry none — the order is no longer in the
+ *  middle of anything, and a chip that says "finished" is one more thing to read past. */
+const ADMIN_RETURN_CHIP: Record<ReturnStatus, string> = {
+  requested: 'מחכה למוכר',
+  approved: 'בהחזרה',
+  in_transit: 'בדרך למוכר',
+  received: 'הגיע למוכר',
+  disputed: 'מחכה לך',
+  offered: 'הוצעה פשרה',
+  rejected: '', refunded: '', expired: '',
+};
 import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { planPayouts } from '../../lib/payout-run.js';
@@ -387,6 +400,17 @@ const [
   only(['overview'], () => getLicenceCeiling(), null),
 ]);
 
+// The chip on each order row: which of THESE orders has a live return. One batched read, only on
+// the tab that draws order rows.
+const returnStateByOrderId = new Map<string, string>();
+if (ordersPage?.orders?.length) {
+  const live = await getLatestReturnsByOrder(ordersPage.orders.map((o) => o.id));
+  for (const [orderId, r] of live) {
+    if (returnIsOpen(r.status)) returnStateByOrderId.set(orderId, ADMIN_RETURN_CHIP[r.status] || 'בהחזרה');
+  }
+}
+
+
 const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
 
 // The platform's balance sheet — pure arithmetic over the two reads above (lib/platform-ledger.ts).
@@ -704,6 +728,7 @@ const badgeFor: Record<string, number> = badgeCounts;
       <AdminPanelShell panel="orders" active={!!ordersPage}>
         {ordersPage && <AdminOrdersPanel
           orders={ordersPage!.orders}
+          returnStateByOrderId={returnStateByOrderId}
           totalAll={ordersPage!.totalUnfiltered}
           totalFiltered={ordersPage!.total}
           q={oq}

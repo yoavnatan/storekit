@@ -12,7 +12,7 @@ import {
   getReturnsForStore, getOpenReturns,
 } from '../../lib/return-requests.js';
 import { buyerActionFor, type ReturnedLine, type ReturnReason, type ReturnStatus } from '../../lib/returns.js';
-import { isReturnable } from '../../lib/return-eligibility.js';
+import { returnableLinePositions } from '../../lib/return-eligibility-order.js';
 
 /**
  * Every move a return case can make, behind ONE route — and the authorization that decides who may
@@ -153,7 +153,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // the seller nothing. A body naming no valid line at all falls through to a whole-order return,
     // which is what the buyer's default button means anyway.
     const asked = Array.isArray(data.lines) ? data.lines : [];
-    const returnedLines: ReturnedLine[] = asked
+    const returnedLinesRaw: ReturnedLine[] = asked
       .map((raw) => {
         const l = raw as { position?: unknown; qty?: unknown };
         const position = Math.floor(Number(l.position));
@@ -161,23 +161,34 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         return { position, qty };
       })
       .filter((l) => Number.isInteger(l.position) && l.position >= 0 && l.position < order.items.length
-        && Number.isInteger(l.qty) && l.qty > 0 && l.qty <= (order.items[l.position]?.qty ?? 0));
+        && Number.isInteger(l.qty) && l.qty > 0 && l.qty <= (order.items[l.position]?.qty ?? 0))
+      // …and only lines the regulations allow back. A body naming an excluded shelf is refused
+      // below rather than silently trimmed: a buyer who ticked three items and is refunded for two
+      // has been told nothing about the third.
+      .filter((l) => !allowedPositions || allowedPositions.has(l.position));
+
+    if (asked.length > 0 && returnedLinesRaw.length === 0) {
+      return json({ error: 'לפי תקנות הגנת הצרכן, הפריטים שבחרת לא ניתנים להחזרה' }, 409);
+    }
 
     // Naming every line at full quantity IS the whole order — stored as such so the settlement takes
     // the status path rather than the adjustment one, and the two never disagree about the same act.
+    const returnedLines = returnedLinesRaw;
     const wholeOrder = returnedLines.length === order.items.length
       && returnedLines.every((l) => l.qty === order.items[l.position]!.qty);
 
     const store = await getStoreBySlugOrPrevious(slug);
 
-    // The law's own exclusions, held by the platform (decisions §2). Enforced on the SERVER even
-    // though the product page already says so — a disabled button is not a rule, and this endpoint
-    // is directly callable.
+    // The law's own exclusions, per PRODUCT (`return-eligibility-order.ts`). Enforced on the SERVER
+    // even though the buyer's screen already withholds the line — a hidden checkbox is not a rule,
+    // and this endpoint is directly callable.
     //
-    // A CANCELLATION is never blocked by this and never reaches here: nothing was supplied yet, so
-    // there is nothing the exclusion is about. It is the return that the regulation removes.
-    if (store && !isReturnable(store.categories)) {
-      return json({ error: 'על פי תקנות הגנת הצרכן, מוצר מסוג זה אינו ניתן להחזרה' }, 409);
+    // A CANCELLATION never reaches here: nothing was supplied yet, so there is nothing for the
+    // exclusion to be about. It is the return the regulation removes, not the right to stop an
+    // order that has not left.
+    const allowedPositions = store ? await returnableLinePositions(order, store.id) : null;
+    if (allowedPositions && allowedPositions.size === 0) {
+      return json({ error: 'לפי תקנות הגנת הצרכן, המוצרים בהזמנה הזאת לא ניתנים להחזרה' }, 409);
     }
 
     const result = await openReturnRequest({
@@ -199,8 +210,31 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const store = await getStoreBySlugOrPrevious(existing.storeSlug);
   if (!store) return json({ error: 'החנות לא נמצאה' }, 404);
 
+  // What an offer may not exceed — the order's own total. Read once for both branches below.
+  const targetOrder = await getOrderById(existing.orderId);
+  const offerCeilingAgorot = targetOrder?.totalAgorot ?? 0;
+
   const admin = isAdminRequest(cookies);
   let actor = 'admin';
+
+  // ── The buyer answering an offer ──
+  //
+  // The only move that belongs to the buyer, and it exists because the offer was a QUESTION: accept
+  // and keep the goods for a smaller refund, or decline and the ordinary return resumes where it
+  // stopped. Checked before the seller branch, because a buyer is not a seller and would otherwise
+  // fall through to a 403 on their own order.
+  if (!admin && existing.status === 'offered' && (to === 'refunded' || to === 'approved')) {
+    const buyerId = getSellerSession(cookies);
+    const order = buyerId ? await getOrderById(existing.orderId) : null;
+    if (buyerId && order?.buyerId === buyerId) {
+      const answered = await moveReturnRequest({
+        id, to, actor: buyerId,
+        store: { slug: store.slug, name: store.name, sellerId: store.sellerId },
+      });
+      if ('error' in answered) return json({ error: answered.error }, 409);
+      return json({ request: answered.request });
+    }
+  }
 
   if (!admin) {
     const sellerId = getSellerSession(cookies);
@@ -208,6 +242,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     const owned = await getStoresBySellerId(sellerId);
     if (!owned.some((s) => s.id === store.id)) return json({ error: 'Forbidden' }, 403);
     if (!SELLER_MOVES.includes(to)) return json({ error: 'הפעולה הזאת אינה של המוכר' }, 403);
+    // An offer is a QUESTION put to the buyer, so only the buyer (or an admin) may answer it. Without
+    // this a seller could accept his own offer and force a partial refund in place of the full return
+    // the buyer is entitled to — the machine allows the transition, and only the ROLE forbids it.
+    if (existing.status === 'offered') {
+      return json({ error: 'רק הקונה יכול לענות על ההצעה' }, 403);
+    }
     // Belt and braces: the case names a store, and the order must really belong to it. A case row
     // whose slug drifted from its order would otherwise let the wrong seller act.
     const order = await getOrderById(existing.orderId);
@@ -221,8 +261,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     trackingNumber: typeof data.trackingNumber === 'string' ? data.trackingNumber.slice(0, 120) : undefined,
     sellerNote: typeof data.sellerNote === 'string' ? data.sellerNote.slice(0, 2000) : undefined,
     adminNote: admin && typeof data.adminNote === 'string' ? data.adminNote.slice(0, 2000) : undefined,
-    partialOfferAgorot: typeof data.partialOfferAgorot === 'number' && data.partialOfferAgorot > 0
-      ? Math.round(data.partialOfferAgorot) : undefined,
+    // Capped at what the buyer actually paid: an offer is an alternative to refunding the order, so
+    // it can never exceed it. Unbounded, this writes a debt bigger than the sale and a ledger row to
+    // match — and both are real money on a screen somebody acts on.
+    partialOfferAgorot: typeof data.partialOfferAgorot === 'number'
+      && Number.isFinite(data.partialOfferAgorot) && data.partialOfferAgorot > 0
+      ? Math.min(Math.round(data.partialOfferAgorot), offerCeilingAgorot) : undefined,
   });
   if ('error' in moved) return json({ error: moved.error }, 409);
   return json({ request: moved.request });

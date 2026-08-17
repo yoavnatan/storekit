@@ -25,6 +25,24 @@
      4.5:1 on white (it sits at ~5:1; do not lighten it toward #16a34a). */
   --color-sale: #15803d;
 
+  /* The rating star, and the only colour on this site that exists for one control.
+     
+     It earns its own slot rather than borrowing one, and the alternatives were tried first:
+     --color-warning (#d97706) was the first cut and is WRONG twice over — it is spoken for by
+     "something needs attention", and at 13px on a product card that brown-amber reads muddy
+     against a cool slate palette rather than as a mark. --color-accent is the link/CTA colour and
+     would make every rating look clickable. --color-text turns a 13px star into another piece of
+     dark type beside the product name, which is precisely what a rating must NOT be: its whole job
+     is to be readable without being read.
+     
+     Deliberately muted rather than a saturated gold — the design line's "would it date?" test, and
+     a bright yellow on a page of slate and white is the one that dates. */
+  --color-rating: #e8a33c;
+  /* The unfilled part. A SOLID pale star, not a hairline outline: at 13px a 1.5px stroke is a
+     smudge, and the boundary of a HALF star has to be unmistakable or the half-star rule may as
+     well not exist. Light enough to read as absence, dark enough to hold its shape on white. */
+  --color-rating-empty: color-mix(in srgb, var(--color-muted) 22%, var(--color-surface));
+
   /* The travelling band of every skeleton shimmer on the site — the ONE definition,
      because it was written out identically in ten places and a value in ten places
      drifts into ten values.

@@ -1585,7 +1585,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.dataset.featured = p.featured ? '1' : '';
   if (p.hidden) display.classList.add('is-product-hidden');
   display.innerHTML = `
-    <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
+    <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check cursor-pointer disabled:cursor-not-allowed disabled:opacity-40" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="width:15px;height:15px"></td>
     <td class="num row-num pe-[0.2rem]"></td>
     <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap" data-skeleton><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}</td>
     <td class="name-col">
@@ -1613,7 +1613,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
         </button>
         <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
           <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product="${p.id}" role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
-          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
+          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)] aria-disabled:opacity-45 aria-disabled:cursor-not-allowed aria-disabled:hover:bg-transparent" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
           <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility="${p.id}" data-hidden="${p.hidden ? '1' : ''}" role="menuitem"><svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span class="menu-visibility-label">${esc(p.hidden ? (i.productShow ?? 'הצג בחנות') : (i.productHide ?? 'הסתר מהחנות'))}</span></button></li>
           <li role="none"><button class="product-menu__item product-menu__item--feature flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-featured="${p.id}" data-featured="${p.featured ? '1' : ''}" data-tooltip="${esc(featureHintText(i))}" role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg><span class="menu-feature-label">${esc(p.featured ? (i.productUnfeature ?? 'הסר מכרטיסיית החנות') : (i.productFeature ?? 'הצג בכרטיסיית החנות'))}</span></button></li>
           <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>${esc(i.delete ?? 'Delete')}</button></li>
@@ -1770,6 +1770,18 @@ function syncPageProductFromRow(displayRow: Element | null | undefined, rev?: st
   if (Number.isFinite(stock)) p.stock = stock;
   p.hidden = displayRow.dataset.hidden === '1';
   p.featured = displayRow.dataset.featured === '1';
+  // **Images, and their absence here was the second half of the same data-loss bug** (owner asked
+  // 2026-08-17: *"אם ערכתי מהסקשן זה יופיע בטופס עריכה? בלי לעשות רענן"* — and for a form he had
+  // never opened, the answer was no). `syncEditRowRev` repaints a form that already EXISTS; a row
+  // still marked `data-edit-pending` has no form to repaint, and `buildEditRow` builds it from this
+  // island. With images left out, opening that form after a bulk image save showed the pre-save
+  // gallery, and saving it wrote that list back — the identical silent overwrite, one open-and-close
+  // later. Read off the row, like every other field here, so the four writers that patch the row
+  // cannot fall out of step with this one reader.
+  try {
+    const rowImages = displayRow.dataset.images ? JSON.parse(displayRow.dataset.images) : undefined;
+    if (Array.isArray(rowImages)) p.images = rowImages as string[];
+  } catch { /* same reasoning as `discount` below: one unparseable attribute is not the whole patch */ }
   try { p.discount = displayRow.dataset.discount ? JSON.parse(displayRow.dataset.discount) : undefined; }
   catch { /* an unparseable attribute is not a reason to drop the rest of the patch */ }
   if (rev) p.rev = rev;
@@ -2195,9 +2207,30 @@ export function ensureEditRow(productId: string, cloud: string, preset: string):
   return built;
 }
 
+/**
+ * Is this row's "ערוך" currently refused, and say so if it is.
+ *
+ * The refusal itself is marked by `initBulkSelect#applyImagePanelLock`, which is the only thing that
+ * knows the image panel is open — this reads the mark rather than the state, so the two cannot
+ * disagree, and a future second reason to refuse an edit needs no change here.
+ *
+ * It has to be a function call rather than the `disabled` attribute doing the work for free: a
+ * `disabled` button shows no tooltip and, styled by utilities alone, no greying either, so the lock
+ * was invisible in both senses (owner, 2026-08-17). `aria-disabled` keeps the button interactive,
+ * which buys the tooltip and this message — and costs exactly this guard.
+ */
+function editToggleBlocked(btn: Element | null | undefined): boolean {
+  if (btn?.getAttribute('aria-disabled') !== 'true') return false;
+  // The tooltip needs a hover, and a seller who clicked has already decided not to wait for one.
+  showStatus(btn.getAttribute('title') || (getDashI18n().bulkUploadLocked ?? 'סגרו קודם את עריכת התמונות'), true);
+  return true;
+}
+
 export function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRowElement, cloud: string, preset: string): void {
   originalEditHtml.set(edit, edit.innerHTML);
-  display.querySelector('[data-edit-toggle]')?.addEventListener('click', () => {
+  const editToggle = display.querySelector('[data-edit-toggle]');
+  editToggle?.addEventListener('click', () => {
+    if (editToggleBlocked(editToggle)) return;
     // Re-resolved through `ensureEditRow`, never through the `edit` captured above: on a first open
     // that reference is the placeholder this call is about to replace.
     const row = ensureEditRow(display.dataset.productDisplay ?? '', cloud, preset) ?? edit;
@@ -3626,16 +3659,31 @@ export function initBulkSelect(cloud: string, preset: string): void {
       if (bulkEditBtn) bulkEditBtn.hidden = true;
       if (bulkDiscountBtn) bulkDiscountBtn.hidden = true;
     }
-    // The row menu's own "ערוך". Disabled rather than removed: the seller looking for it should
-    // find it and be told why, not wonder where it went. A disabled <button> fires no click, so
-    // this is the enforcement and not only the hint — `attachListeners` needs no guard.
+    // The row menu's own "ערוך", for a product the panel holds.
+    //
+    // **`aria-disabled`, NOT `disabled`, and the first version got this wrong** (owner, 2026-08-17:
+    // *"לא רואה שהכפתור מקבל אפור של דיסאייבל, וגם לא רואה שום הודעה"* — both true, and both caused
+    // by `disabled`). A real `disabled` button receives no pointer events at all, so the browser
+    // never shows its `title`: the explanation existed in the DOM and could not be read. And the
+    // menu item is styled entirely by utilities with no `:disabled` variant among them, so it also
+    // looked completely untouched — same pointer cursor, same hover highlight, on a button that did
+    // nothing. A dead control that looks alive is worse than no lock at all.
+    //
+    // `aria-disabled` fixes both halves: the element stays interactive, so the tooltip appears and
+    // the click below can SAY something, and `aria-disabled:` variants on the twin markup grey it
+    // out. The cost is that the guard is no longer free — `attachListeners` has to check, which is
+    // why `editToggleBlocked` is exported rather than living in this closure.
     document.querySelectorAll<HTMLButtonElement>('[data-edit-toggle]').forEach((btn) => {
       const inPanel = locked && !!uploadPanel?.querySelector(
         `[data-upload-product="${CSS.escape(btn.dataset.editToggle ?? '')}"]`,
       );
-      btn.disabled = inPanel;
-      if (inPanel) btn.title = i.bulkUploadLocked ?? 'סגרו קודם את עריכת התמונות';
-      else btn.removeAttribute('title');
+      if (inPanel) {
+        btn.setAttribute('aria-disabled', 'true');
+        btn.title = i.bulkUploadLocked ?? 'סגרו קודם את עריכת התמונות';
+      } else {
+        btn.removeAttribute('aria-disabled');
+        btn.removeAttribute('title');
+      }
     });
   }
 
@@ -3961,11 +4009,16 @@ export function initBulkSelect(cloud: string, preset: string): void {
           if (data.ok) {
             const savedImages = data.images ?? urls;
             const row = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
+            // **The row's `data-images` is written FIRST, and the order is load-bearing.**
+            // `syncEditRowRev` → `syncPageProductFromRow` re-reads the images off this row (that is
+            // how one reader stays in step with four writers), so stamping the revision before the
+            // attribute moved would copy the PRE-SAVE list into the island — and an edit form built
+            // from the island later would carry it, which is the bug this is here to prevent.
+            if (row && savedImages.length) row.dataset.images = JSON.stringify(savedImages);
             // The images go WITH the rev — see `syncEditRowRev`. Sending the rev alone is what
             // made an open edit row overwrite this save silently.
             syncEditRowRev(row, data.rev, savedImages);
             if (row && savedImages.length) {
-              row.dataset.images = JSON.stringify(savedImages);
               const firstUrl = savedImages[0];
               const thumbCol = row.querySelector<HTMLElement>('.thumb-col');
               let wrap = thumbCol?.querySelector<HTMLElement>('.thumb-wrap');

@@ -7,7 +7,7 @@ import { getStoresBySellerId, getStoresByIds } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
 import { getBuyerInvoiceUrls } from '../../lib/invoicing/buyer-invoice.js';
 import { getLatestReturnsByOrder, ordersWithOpenReturns } from '../../lib/return-requests.js';
-import { isReturnable } from '../../lib/return-eligibility.js';
+import { orderHasNothingReturnable } from '../../lib/return-eligibility-order.js';
 import { getStoresBySlugs } from '../../lib/stores.js';
 import { isOpen as returnIsOpen, buyerActionFor, type ReturnStatus } from '../../lib/returns.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
@@ -54,14 +54,25 @@ const hasStore = storesOfSeller.length > 0;
 // all if the buyer is waiting on money back (buyer-purchases.ts explains why the status table cannot
 // see that).
 const openReturnOrderIds = await ordersWithOpenReturns(orders.map((o) => o.id));
-// Which shops on this page sell something the regulations take out of the return right
-// (return-eligibility.ts). Read here so the BUTTON can be withheld — the endpoint refuses these
-// anyway, and a button that appears and then fails is worse than no button at all.
-// One query for every shop on the page, not one per row.
-const nonReturnableSlugs = new Set(
+// Orders where the regulations take EVERY line out of the return right, so the button can be
+// withheld rather than shown and then refused (`return-eligibility-order.ts`). Asked per product,
+// never per shop: a fashion store is not a store you cannot return from — it has one shelf you
+// cannot (owner, 2026-08-17).
+//
+// One store lookup for the page, then two batched reads per order that HAS a store. Only orders the
+// buyer could otherwise act on are asked about; a shipped or cancelled one offers nothing either
+// way, so it never pays for the question.
+const storeBySlug = new Map(
   (await getStoresBySlugs([...new Set(orders.flatMap((o) => Object.keys(o.storeSubtotals ?? {})))]))
-    .filter((st) => !isReturnable(st.categories))
-    .map((st) => st.slug),
+    .map((st) => [st.slug, st]),
+);
+const nothingReturnable = new Set(
+  (await Promise.all(orders.map(async (o) => {
+    if (buyerActionFor(o) !== 'return') return null;
+    const st = storeBySlug.get(Object.keys(o.storeSubtotals ?? {})[0] ?? '');
+    if (!st) return null;
+    return (await orderHasNothingReturnable(o, st.id)) ? o.id : null;
+  }))).filter((id): id is string => id !== null),
 );
 const purchases = groupBuyerPurchases(orders, openReturnOrderIds);
 // The same function `/api/buyer/orders` answers with, so the figures this paints cannot disagree
@@ -147,6 +158,7 @@ const returnLabel: Record<ReturnStatus, string> = {
   rejected: t.buyerDashboard.returnRejected,
   expired: t.buyerDashboard.returnExpired,
   disputed: t.buyerDashboard.returnChecking,
+  offered: t.buyerDashboard.returnOffered,
 };
 
 /** How many stores the collapsed card names before it starts counting. Two fits the narrowest
@@ -1023,15 +1035,27 @@ const STORES_NAMED = 2;
                           const rr = returnByOrderId.get(s.order.id);
                           if (rr) {
                             return (
-                              <p class="o-tracking">
-                                <strong>{returnLabel[rr.status]}</strong>
-                                {returnIsOpen(rr.status) ? '' : ` · ${fmtAgorot(rr.refundAgorot)}`}
-                              </p>
+                              <Fragment>
+                                <p class="o-tracking">
+                                  <strong>{returnLabel[rr.status]}</strong>
+                                  {returnIsOpen(rr.status) ? '' : ` · ${fmtAgorot(rr.refundAgorot)}`}
+                                </p>
+                                {/* An offer is the one state where the BUYER has to answer. Two
+                                    buttons and the amount — declining costs nothing and puts the
+                                    ordinary return back exactly where it was. */}
+                                {rr.status === 'offered' && rr.partialOfferAgorot !== null && (
+                                  <div class="o-return-why" style="margin-top:0.4rem">
+                                    <span class="o-return-q">{fmtAgorot(rr.partialOfferAgorot)} {t.buyerDashboard.offerKeep}</span>
+                                    <button type="button" data-offer-answer="refunded" data-offer-id={rr.id}>{t.buyerDashboard.offerAccept}</button>
+                                    <button type="button" data-offer-answer="approved" data-offer-id={rr.id}>{t.buyerDashboard.offerDecline}</button>
+                                  </div>
+                                )}
+                              </Fragment>
                             );
                           }
                           const act = buyerActionFor(s.order);
                           if (act === 'none') return null;
-                          if (act === 'return' && nonReturnableSlugs.has(s.storeSlug)) return null;
+                          if (act === 'return' && nothingReturnable.has(s.order.id)) return null;
                           return (
                             <div class="o-return">
                               <button type="button" class="o-return-btn" data-return-open={s.order.id}>
@@ -1359,6 +1383,22 @@ const STORES_NAMED = 2;
   data-ship-cancelled={t.buyerDashboard.shippingCancelled}
   data-ship-returned={t.buyerDashboard.shippingReturned}
   data-return-failed={t.buyerDashboard.returnFailed}
+  data-return-ask={t.buyerDashboard.returnAsk}
+  data-cancel-ask={t.buyerDashboard.cancelAsk}
+  data-return-what={t.buyerDashboard.returnWhat}
+  data-return-why={t.buyerDashboard.returnWhy}
+  data-return-r1={t.buyerDashboard.returnR1}
+  data-return-r2={t.buyerDashboard.returnR2}
+  data-return-r3={t.buyerDashboard.returnR3}
+  data-return-r4={t.buyerDashboard.returnR4}
+  data-return-sent={t.buyerDashboard.returnSent}
+  data-return-approved={t.buyerDashboard.returnApproved}
+  data-return-back={t.buyerDashboard.returnBack}
+  data-return-at-seller={t.buyerDashboard.returnAtSeller}
+  data-return-refunded={t.buyerDashboard.returnRefunded}
+  data-return-rejected={t.buyerDashboard.returnRejected}
+  data-return-expired={t.buyerDashboard.returnExpired}
+  data-return-checking={t.buyerDashboard.returnChecking}
   data-order-stores-more={t.buyerDashboard.orderStoresMore}
   data-order-total-all={t.buyerDashboard.orderTotalAll}
   data-orders-empty-active={t.buyerDashboard.ordersEmptyActive}
@@ -1398,6 +1438,22 @@ const STORES_NAMED = 2;
     msgNewToast:     _i18nEl.dataset.msgNewToast       ?? 'You have a new message',
     msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
     returnFailed:   _i18nEl.dataset.returnFailed    ?? 'The request was not sent. Try again.',
+    returnAsk:      _i18nEl.dataset.returnAsk       ?? 'Request a return',
+    cancelAsk:      _i18nEl.dataset.cancelAsk       ?? 'Cancel this order',
+    returnWhat:     _i18nEl.dataset.returnWhat      ?? 'What are you returning?',
+    returnWhy:      _i18nEl.dataset.returnWhy       ?? 'Why?',
+    returnR1:       _i18nEl.dataset.returnR1        ?? 'Changed my mind',
+    returnR2:       _i18nEl.dataset.returnR2        ?? 'Arrived damaged',
+    returnR3:       _i18nEl.dataset.returnR3        ?? 'Not what I ordered',
+    returnR4:       _i18nEl.dataset.returnR4        ?? 'Never arrived',
+    returnSent:     _i18nEl.dataset.returnSent      ?? 'Request sent',
+    returnApproved: _i18nEl.dataset.returnApproved  ?? 'Approved',
+    returnBack:     _i18nEl.dataset.returnBack      ?? 'On its way back',
+    returnAtSeller: _i18nEl.dataset.returnAtSeller  ?? 'Arrived at the seller',
+    returnRefunded: _i18nEl.dataset.returnRefunded  ?? 'Refunded',
+    returnRejected: _i18nEl.dataset.returnRejected  ?? 'Declined',
+    returnExpired:  _i18nEl.dataset.returnExpired   ?? 'Lapsed',
+    returnChecking: _i18nEl.dataset.returnChecking  ?? 'Under review',
     msgDeleteOk:     _i18nEl.dataset.msgDeleteOk      ?? 'Delete conversation',
     msgColStore:     _i18nEl.dataset.msgColStore       ?? 'Store',
     msgColProduct:   _i18nEl.dataset.msgColProduct     ?? 'Product',
@@ -2224,20 +2280,101 @@ const STORES_NAMED = 2;
     }
   });
 
-  /* ── Ask to return an order ──
-     Two taps and no form: the button reveals the reasons, a reason sends the request. The reason is
-     the only thing the server cannot work out for itself — it decides who pays the return postage
-     and whether the original delivery charge comes back — so it is the only thing asked. */
-  document.querySelectorAll<HTMLButtonElement>('[data-return-open]').forEach((btn) => {
+  /* ── Delete message thread ── */
+  document.querySelectorAll<HTMLButtonElement>('[data-delete-bmsg-id]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const why = document.querySelector<HTMLElement>(`[data-return-why="${btn.dataset.returnOpen}"]`);
-      if (why) why.hidden = !why.hidden;
+      const id = btn.dataset.deleteBmsgId ?? '';
+      // Site-styled ConfirmModal (rendered by BaseLayout), never the native
+      // confirm(). Message/cancel/working labels fall back to the shared
+      // `confirm` i18n block in #i18n-data, so nothing here is hardcoded.
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: I.msgDeleteConfirm,
+          okLabel: I.msgDeleteOk,
+          onConfirm: async () => {
+            try {
+              const res = await fetch('/api/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete', id }),
+              });
+              if (!res.ok) throw new Error('request failed');
+              const row = btn.closest('tr');
+              const nextRow = row?.nextElementSibling;
+              row?.remove();
+              if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
+            } catch {
+              showErrorToast(I.profErrorNetwork);
+            }
+          },
+        },
+      }));
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>('[data-return-reason]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
+  } // end bindBuyerMessagesPanel
+
+  bindBuyerMessagesPanel();
+
+  /* ── Ask to return an order — bound ONCE, outside the re-wirable block ──
+     `bindBuyerMessagesPanel()` is re-run after a panel refresh, and a `document.addEventListener`
+     inside it would bind a second handler on every refresh — one tap, two requests.
+     `tests/buyer-messages-refresh.test.ts` refuses exactly that, and it caught this. So the
+     delegation lives out here: attached once, and it still survives the list being redrawn,
+     which is the whole reason it is delegated.
+
+     Two taps and no form: the button reveals the reasons, a reason sends the request. The reason is
+     the only thing the server cannot work out for itself — it decides who pays the return postage
+     and whether the original delivery charge comes back — so it is the only thing asked. */
+  // ── DELEGATED, and that is the fix rather than a style choice ──
+  //
+  // These rows are rebuilt by the client renderer on every search and page change. Listeners bound to
+  // the buttons that existed at load are lost with the nodes they were on, so the button was there
+  // and did nothing — the second half of the bug a parallel session reported (the first was the
+  // server-only markup). Delegation from a container that survives the re-render is the only shape
+  // that cannot rot the next time the list is redrawn.
+  document.addEventListener('click', (e) => {
+    const opener = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-return-open]');
+    if (!opener) return;
+    e.stopPropagation();
+    const why = document.querySelector<HTMLElement>(`[data-return-why="${opener.dataset.returnOpen}"]`);
+    if (why) why.hidden = !why.hidden;
+  });
+
+  // Answering the seller's offer. Delegated for the same reason the two above are: these rows are
+  // redrawn by the client renderer, and a listener bound to a node that no longer exists is a button
+  // that quietly does nothing.
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-offer-answer]');
+    if (!btn) return;
+    e.stopPropagation();
+    btn.disabled = true;
+    void (async () => {
+      try {
+        const res = await fetch('/api/returns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: btn.dataset.offerId, to: btn.dataset.offerAnswer }),
+        });
+        if (!res.ok) {
+          const said = await res.json().catch(() => null) as { error?: string } | null;
+          showErrorToast(said?.error || I.returnFailed);
+          btn.disabled = false;
+          return;
+        }
+        location.reload();
+      } catch {
+        showErrorToast(I.returnFailed);
+        btn.disabled = false;
+      }
+    })();
+  });
+
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-return-reason]');
+    if (!btn) return;
+    {
       e.stopPropagation();
       const orderId = btn.dataset.returnFor ?? '';
       const reason = btn.dataset.returnReason ?? '';
@@ -2276,45 +2413,9 @@ const STORES_NAMED = 2;
           all.forEach((b) => { b.disabled = false; });
         }
       })();
-    });
+    }
   });
 
-  /* ── Delete message thread ── */
-  document.querySelectorAll<HTMLButtonElement>('[data-delete-bmsg-id]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.deleteBmsgId ?? '';
-      // Site-styled ConfirmModal (rendered by BaseLayout), never the native
-      // confirm(). Message/cancel/working labels fall back to the shared
-      // `confirm` i18n block in #i18n-data, so nothing here is hardcoded.
-      window.dispatchEvent(new CustomEvent('confirm:open', {
-        detail: {
-          title: I.msgDeleteConfirm,
-          okLabel: I.msgDeleteOk,
-          onConfirm: async () => {
-            try {
-              const res = await fetch('/api/messages', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'delete', id }),
-              });
-              if (!res.ok) throw new Error('request failed');
-              const row = btn.closest('tr');
-              const nextRow = row?.nextElementSibling;
-              row?.remove();
-              if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
-            } catch {
-              showErrorToast(I.profErrorNetwork);
-            }
-          },
-        },
-      }));
-    });
-  });
-
-  } // end bindBuyerMessagesPanel
-
-  bindBuyerMessagesPanel();
 
   /**
    * Re-render the messages panel from the server.
@@ -2431,6 +2532,17 @@ const STORES_NAMED = 2;
     slices: { storeSlug: string; storeName: string; order: BuyerOrderJson }[];
   }
 
+  /** Twin of the server's `returnLabel`, read from the same island. A word written here instead of
+   *  looked up is exactly the drift `i18n-hardcoded-strings.test.ts` refuses. */
+  const RETURN_LABEL_CLIENT: Record<string, string> = {
+    requested: I.returnSent, approved: I.returnApproved, in_transit: I.returnBack,
+    received: I.returnAtSeller, refunded: I.returnRefunded, rejected: I.returnRejected,
+    expired: I.returnExpired, disputed: I.returnChecking,
+  };
+  /** Which of those are still running — the amount is shown only once the case is closed, exactly as
+   *  the server twin does it. Spelled out rather than imported: this runs in the browser. */
+  const RETURN_OPEN_CLIENT = new Set(['requested', 'approved', 'in_transit', 'received', 'disputed']);
+
   const shipLabelClient: Record<string, string> = {
     pending: I.shipPending, processing: I.shipProcessing, ready: I.shipReady,
     shipped: I.shipShipped, delivered: I.shipDelivered, cancelled: I.shipCancelled,
@@ -2480,6 +2592,30 @@ const STORES_NAMED = 2;
       // here, which is how the two renderers of this card come to disagree.
       const reviewHtml = orderIsReviewable(s.order)
         ? `<p class="o-tracking"><a href="/review/${encodeURIComponent(s.order.id)}"><strong>${escB(I.reviewCta)}</strong></a></p>` : '';
+      // The return block, from the SERVER'S answer (`/api/buyer/orders` sends `returnAction`) rather
+      // than from a status comparison written here. That is the whole reason this used to disappear
+      // after a search: the twin had to know a rule, and now it only has to draw one.
+      const rStatus = (s as { returnStatus?: string | null }).returnStatus ?? null;
+      const rAction = (s as { returnAction?: string }).returnAction ?? 'none';
+      const rAmount = (s as { returnRefundAgorot?: number | null }).returnRefundAgorot ?? null;
+      const returnHtml = rStatus
+        ? `<p class="o-tracking"><strong>${escB(RETURN_LABEL_CLIENT[rStatus] ?? rStatus)}</strong>${
+            RETURN_OPEN_CLIENT.has(rStatus) || rAmount === null ? '' : ` · ${fmtAgorotBuyer(rAmount)}`}</p>`
+        : rAction === 'none' ? '' : `
+          <div class="o-return">
+            <button type="button" class="o-return-btn" data-return-open="${escB(s.order.id)}">${
+              escB(rAction === 'cancel' ? I.cancelAsk : I.returnAsk)}</button>
+            <div class="o-return-why" data-return-why="${escB(s.order.id)}" data-return-act="${escB(rAction)}" hidden>
+              ${s.order.items.length > 1 ? `<div class="o-return-items"><span class="o-return-q">${escB(I.returnWhat)}</span>${
+                s.order.items.map((item, position) => `<label class="o-return-item"><input type="checkbox" checked data-return-line="${position}" data-return-line-for="${escB(s.order.id)}" data-return-qty="${item.qty}"><span>${escB(item.productName)}${item.qty > 1 ? ` ×${item.qty}` : ''}</span></label>`).join('')
+              }</div>` : ''}
+              <span class="o-return-q">${escB(I.returnWhy)}</span>
+              <button type="button" data-return-reason="changed_mind" data-return-for="${escB(s.order.id)}">${escB(I.returnR1)}</button>
+              <button type="button" data-return-reason="damaged" data-return-for="${escB(s.order.id)}">${escB(I.returnR2)}</button>
+              <button type="button" data-return-reason="wrong_item" data-return-for="${escB(s.order.id)}">${escB(I.returnR3)}</button>
+              <button type="button" data-return-reason="not_arrived" data-return-for="${escB(s.order.id)}">${escB(I.returnR4)}</button>
+            </div>
+          </div>`;
       return `
         <div class="o-store-group">
           <div class="o-store-head">
@@ -2490,6 +2626,7 @@ const STORES_NAMED = 2;
           ${subHtml}
           ${trackingHtml}
           ${reviewHtml}
+          ${returnHtml}
         </div>`;
     }).join('');
     const grandTotalHtml = split ? `
