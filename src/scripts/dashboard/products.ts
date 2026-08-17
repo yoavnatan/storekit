@@ -1872,7 +1872,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     delete form.dataset.forceSave;
 
     const res = await fetch('/api/product', { method: 'POST', body: fd });
-    const data = await res.json() as { ok: boolean; conflict?: boolean; conflictFields?: string[]; rev?: string; images?: string[]; categoryId?: string; categoryPath?: string; stockAlerts?: number; error?: string };
+    const data = await res.json() as { ok: boolean; conflict?: boolean; conflictFields?: string[]; rev?: string; images?: string[]; categoryId?: string; categoryPath?: string; discount?: ProductDiscount | null; stockAlerts?: number; error?: string };
 
     if (data.conflict) {
       // Nothing was written, and only the listed fields are actually in dispute — the
@@ -1987,6 +1987,41 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
       displayRow.dataset.sortName = name.toLowerCase();
       displayRow.dataset.sortPrice = String(price);
       displayRow.dataset.sortStock = String(stock);
+
+      /**
+       * **The three attributes this save changes and used to leave behind** (owner, 2026-08-17:
+       * *"צריך לוודא שכששומרים טופס הוא נשמר גם אם אני אפתח אותו שוב לפני ריענון של הדף. לא רק
+       * התמונות, כולו"*).
+       *
+       * The FORM itself was never the problem — its markup survives the save, so reopening it shows
+       * exactly what was written. What went stale is the display row, and the row is what every
+       * OTHER feature reads. All three values come back in the save response and were simply never
+       * written down:
+       *
+       *   `images`     — `renderUploadPanel` builds each panel item from this attribute. Save new
+       *                  photos in the edit form, then open the bulk image panel for that product,
+       *                  and it showed the OLD list — and "שמור הכל" would post it back over what
+       *                  was just saved. The exact mirror of the bug the panel lock was built for,
+       *                  running the other way.
+       *   `discount`   — the bulk "מבצע" panel prefills from it (promotions.ts), so a discount
+       *                  changed here reopened there as the previous one.
+       *   `categoryId` — the same panel sends it as the scope of a category-wide sale, so a
+       *                  recategorised product could be priced under the category it just left.
+       *
+       * `categoryPath`/`images` are taken from the SERVER's answer rather than from the form: the
+       * server is what resolved the id to a path and what may have reordered or dropped an image,
+       * and a row patched from the form would disagree with the record it claims to show.
+       */
+      if (data.images) displayRow.dataset.images = JSON.stringify(data.images);
+      if (data.categoryId !== undefined) displayRow.dataset.categoryId = data.categoryId;
+      displayRow.dataset.discount = data.discount ? JSON.stringify(data.discount) : '';
+      // …and the island with it, so a row nobody has opened is built from the same truth. Note
+      // `syncPageProductFromRow` and NOT `syncEditRowRev`: the latter also REPAINTS the open form's
+      // gallery, which here is the very form that just saved — rebuilding it would throw away the
+      // `finalizeGallery` state a few lines above and reset every slot's crop. The form is already
+      // correct; only the island is behind. (It reads the images off the row, which is why the
+      // attribute is written first.)
+      syncPageProductFromRow(displayRow, data.rev);
     }
 
     // Lock width → swap label → animate → close after delay (same pattern as add-to-cart btn)
