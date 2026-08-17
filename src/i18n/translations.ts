@@ -1501,7 +1501,7 @@ export const translations = {
       // who reads "nothing more will be charged" and then sees a charge has been misled by us, on
       // the screen where he was being careful.
       adConfirmPauseTitle: 'להשהות את הקמפיין?',
-      adConfirmPauseMsg: 'המודעות יפסיקו להופיע ולא ייצבר חיוב נוסף. מה שכבר הוצא ייגבה כרגיל. ניתן להחזיר לפעילות בכל רגע.',
+      adConfirmPauseMsg: 'המודעות יפסיקו להופיע ולא ייצבר חיוב נוסף. הוצאה שנצברה תיגבה כרגיל. ניתן להחזיר לפעילות בכל רגע.',
       adConfirmPauseOk: 'השהה',
       adPausing: 'משהה…',
       ordersTitle: 'הזמנות',
@@ -1925,6 +1925,7 @@ export const translations = {
       pageDone: 'דירגתם כבר את כל מה שבהזמנה הזאת. תודה!',
       pageInvalid: 'הקישור אינו תקין, או שההזמנה עדיין בדרך אליכם',
       rated: 'דורג',
+      showing: 'מוצגות {n} מתוך {total} ביקורות',
       // The way OUT of the review page, for the buyer whose parcel never came. One button, no
       // explanation — see the page for why the words around it were removed.
       notArrivedCta: 'לא קיבלתי את ההזמנה',
@@ -3375,7 +3376,7 @@ export const translations = {
       adConfirmDeleteTitle: 'Cancel this campaign?',
       adConfirmDeleteMsg: 'The campaign stops immediately and moves to "Past campaigns" with the numbers it accrued. You only pay for what actually ran — e.g. if you picked a week and cancel after two days, you\'re charged only for those two days. The rest of the budget won\'t be charged, and no more money comes out from here on.',
       adConfirmPauseTitle: 'Pause this campaign?',
-      adConfirmPauseMsg: 'Your ads stop being shown and nothing more is charged. The campaign stays saved — you can resume it at any time.',
+      adConfirmPauseMsg: 'Your ads stop being shown and no further charges accrue. Spend already accrued is still charged. You can resume at any time.',
       adConfirmPauseOk: 'Pause',
       adPausing: 'Pausing…',
       ordersTitle: 'Orders',
@@ -3738,6 +3739,7 @@ export const translations = {
       pageIntro: 'Thanks for your order. How was it?',
       pageDone: 'You have rated everything in this order. Thank you!',
       pageInvalid: 'This link is not valid, or the order is still on its way',
+      showing: 'Showing {n} of {total} reviews',
       rated: 'Rated',
       notArrivedCta: 'My order did not arrive',
     },

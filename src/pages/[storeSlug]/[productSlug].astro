@@ -914,9 +914,12 @@ const pmI18n = {
             ))}
           </ul>
 
+          {/* A SENTENCE, not "8 / 14". The bare fraction was what this said until it was looked at
+              in a browser (2026-08-17) — it reads as nothing in either direction, and in RTL the
+              two numbers swap sides so it reads as the wrong way round. */}
           {ratingAggregate.count > productReviews.length && (
             <p style="margin:0.875rem 0 0;font-size:0.78rem;color:var(--color-muted)">
-              {`${productReviews.length} / ${ratingAggregate.count}`}
+              {t.reviews.showing.replace('{n}', String(productReviews.length)).replace('{total}', String(ratingAggregate.count))}
             </p>
           )}
         </section>
