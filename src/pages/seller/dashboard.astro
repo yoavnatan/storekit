@@ -22,7 +22,12 @@ import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astr
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
-import { getReturnsForStore, countOpenReturns } from '../../lib/return-requests.js';
+import { getReturnsForStore, countOpenReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
+import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
+
+/** The chip's word per state — short, because it sits in a crowded row beside the age and the
+ *  totals. The seller's full sentence lives on the returns tab; this only has to say "this order is
+ *  in the middle of coming back, and whose move it is". */
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import CopyButton from '../../components/dashboard/CopyButton.astro';
@@ -826,7 +831,30 @@ const newOrdersCount = orderStatusCounts.pending ?? 0;
 // Both are skipped entirely when there is no store selected: `store` is null on an account whose
 // shop was just deleted, and a query keyed on a slug that does not exist is a round trip whose
 // only possible answer is "none".
+const RETURN_CHIP: Record<ReturnStatus, string> = {
+  requested: d.returnChipWaiting,
+  approved: d.returnChipReturning,
+  in_transit: d.returnChipOnTheWay,
+  received: d.returnChipArrived,
+  disputed: d.returnChipDeciding,
+  // Closed states carry no chip: the order is no longer in the middle of anything, and a chip that
+  // says "finished" on a row is one more thing to read past.
+  rejected: '',
+  refunded: '',
+  expired: '',
+};
+
 const openReturnsCount = store ? await countOpenReturns(store.slug) : 0;
+// The words for the chip above, per order — one batched read, and only on the tab that renders
+// order cards. `openReturnsCount` above is the badge and runs everywhere; this is the detail and
+// runs where it is drawn.
+const returnStateByOrderId = new Map<string, string>();
+if (store && shows('orders') && ordersPage.orders.length) {
+  const live = await getLatestReturnsByOrder(ordersPage.orders.map((o: Order) => o.id));
+  for (const [orderId, r] of live) {
+    if (returnIsOpen(r.status)) returnStateByOrderId.set(orderId, RETURN_CHIP[r.status] ?? 'בקשת החזרה');
+  }
+}
 const returnRequests = store
   ? await only(['returns'], () => getReturnsForStore(store.slug), [])
   : [];
@@ -2170,6 +2198,17 @@ const orderStatusColors: Record<string, string> = {
                       <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
                         <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatAgorot(storeSliceTotalAgorot(storeSub))}</span>
                         <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
+                          {/* A return or cancellation running on THIS order, said on the order
+                              itself and not only on its own tab (owner, 2026-08-17). A seller
+                              looking at his orders has to see that one of them is in the middle of
+                              coming back — otherwise the tab is a place he has to remember to
+                              visit, which is the same as not being told. */}
+                          {returnStateByOrderId.get(order.id) && (
+                            <span class="order-return-chip inline-flex items-center gap-1 shrink-0 text-[0.72rem] font-semibold rounded-[var(--radius-sm)] px-1.5 py-0.5 [background:color-mix(in_srgb,var(--color-warning)_12%,transparent)] [color:var(--color-warning)]">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                              {returnStateByOrderId.get(order.id)}
+                            </span>
+                          )}
                           <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                           <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)] cursor-help" data-tooltip={d.orderNoteChip} aria-label={d.orderNoteChip} hidden={noteList.length === 0} tabindex="0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3.5h15v10.5l-5.5 5.5h-9.5z"/><path d="M19.5 14h-5.5v5.5"/><line x1="8" y1="8.5" x2="16" y2="8.5"/><line x1="8" y1="12" x2="13" y2="12"/></svg></span>
                           <Fragment set:html={orderInvoiceChipHtml(invoiceStates.get(order.id) ?? null, d.orderInvoiceChip)} />

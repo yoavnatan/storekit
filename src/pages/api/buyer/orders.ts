@@ -4,7 +4,10 @@ import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { getOrdersByBuyer } from '../../../lib/orders.js';
 import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../../lib/buyer-orders-query.js';
 import { groupBuyerPurchases, countBuyerPurchases } from '../../../lib/buyer-purchases.js';
-import { ordersWithOpenReturns } from '../../../lib/return-requests.js';
+import { ordersWithOpenReturns, getLatestReturnsByOrder } from '../../../lib/return-requests.js';
+import { buyerActionFor } from '../../../lib/returns.js';
+import { orderHasNothingReturnable } from '../../../lib/return-eligibility-order.js';
+import { getStoresBySlugs } from '../../../lib/stores.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 
@@ -52,9 +55,43 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   // here: the grouping it counts is the same one the page above was cut from, no second read.
   const counts = countBuyerPurchases(allPurchases);
 
+  // ── What the buyer may DO with each order, decided here and not in the browser ──
+  //
+  // The bug this closes (found by a parallel session, 2026-08-17): the return button was rendered by
+  // the server on first paint and by a JS twin after any search or page change — and the twin knew
+  // nothing about returns, so the button vanished until a refresh. That is this repo's twin-renderer
+  // class (memory `project_client_renderer_i18n_drift`), and the fix is the same one it always is:
+  // the decision travels in the payload, and the renderer only draws.
+  //
+  // Three facts per order, all of them already computable here: which act applies, whether a request
+  // is already running, and whether the regulations leave anything returnable at all.
+  const pageOrders = page.items.flatMap((p) => p.slices.map((s) => s.order));
+  const latestReturns = await getLatestReturnsByOrder(pageOrders.map((o) => o.id));
+  const storeById = new Map(
+    (await getStoresBySlugs([...new Set(pageOrders.flatMap((o) => Object.keys(o.storeSubtotals ?? {})))]))
+      .map((st) => [st.slug, st]),
+  );
+  const blocked = new Set<string>();
+  await Promise.all(pageOrders.map(async (o) => {
+    if (buyerActionFor(o) !== 'return') return;
+    const st = storeById.get(Object.keys(o.storeSubtotals ?? {})[0] ?? '');
+    if (st && await orderHasNothingReturnable(o, st.id)) blocked.add(o.id);
+  }));
+
   const purchases = page.items.map((p) => ({
     ...p,
-    slices: p.slices.map((s) => ({ ...s, order: publicOrder(s.order) })),
+    slices: p.slices.map((s) => {
+      const rr = latestReturns.get(s.order.id);
+      return {
+        ...s,
+        order: publicOrder(s.order),
+        // `null` when there is nothing to offer — the renderer draws neither a button nor a status,
+        // which is what "the button only appears when it can actually work" means on this side.
+        returnAction: blocked.has(s.order.id) ? 'none' : buyerActionFor(s.order),
+        returnStatus: rr?.status ?? null,
+        returnRefundAgorot: rr?.refundAgorot ?? null,
+      };
+    }),
   }));
   // `items` is the same page flattened back to order rows, and it is here for ONE deploy: during
   // a rolling deploy the previous page bundle is still in someone's browser calling this route,

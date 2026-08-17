@@ -12,7 +12,7 @@ import {
   getReturnsForStore, getOpenReturns,
 } from '../../lib/return-requests.js';
 import { buyerActionFor, type ReturnedLine, type ReturnReason, type ReturnStatus } from '../../lib/returns.js';
-import { isReturnable } from '../../lib/return-eligibility.js';
+import { returnableLinePositions } from '../../lib/return-eligibility-order.js';
 
 /**
  * Every move a return case can make, behind ONE route — and the authorization that decides who may
@@ -153,7 +153,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // the seller nothing. A body naming no valid line at all falls through to a whole-order return,
     // which is what the buyer's default button means anyway.
     const asked = Array.isArray(data.lines) ? data.lines : [];
-    const returnedLines: ReturnedLine[] = asked
+    const returnedLinesRaw: ReturnedLine[] = asked
       .map((raw) => {
         const l = raw as { position?: unknown; qty?: unknown };
         const position = Math.floor(Number(l.position));
@@ -161,23 +161,34 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         return { position, qty };
       })
       .filter((l) => Number.isInteger(l.position) && l.position >= 0 && l.position < order.items.length
-        && Number.isInteger(l.qty) && l.qty > 0 && l.qty <= (order.items[l.position]?.qty ?? 0));
+        && Number.isInteger(l.qty) && l.qty > 0 && l.qty <= (order.items[l.position]?.qty ?? 0))
+      // …and only lines the regulations allow back. A body naming an excluded shelf is refused
+      // below rather than silently trimmed: a buyer who ticked three items and is refunded for two
+      // has been told nothing about the third.
+      .filter((l) => !allowedPositions || allowedPositions.has(l.position));
+
+    if (asked.length > 0 && returnedLinesRaw.length === 0) {
+      return json({ error: 'לפי תקנות הגנת הצרכן, הפריטים שבחרת לא ניתנים להחזרה' }, 409);
+    }
 
     // Naming every line at full quantity IS the whole order — stored as such so the settlement takes
     // the status path rather than the adjustment one, and the two never disagree about the same act.
+    const returnedLines = returnedLinesRaw;
     const wholeOrder = returnedLines.length === order.items.length
       && returnedLines.every((l) => l.qty === order.items[l.position]!.qty);
 
     const store = await getStoreBySlugOrPrevious(slug);
 
-    // The law's own exclusions, held by the platform (decisions §2). Enforced on the SERVER even
-    // though the product page already says so — a disabled button is not a rule, and this endpoint
-    // is directly callable.
+    // The law's own exclusions, per PRODUCT (`return-eligibility-order.ts`). Enforced on the SERVER
+    // even though the buyer's screen already withholds the line — a hidden checkbox is not a rule,
+    // and this endpoint is directly callable.
     //
-    // A CANCELLATION is never blocked by this and never reaches here: nothing was supplied yet, so
-    // there is nothing the exclusion is about. It is the return that the regulation removes.
-    if (store && !isReturnable(store.categories)) {
-      return json({ error: 'על פי תקנות הגנת הצרכן, מוצר מסוג זה אינו ניתן להחזרה' }, 409);
+    // A CANCELLATION never reaches here: nothing was supplied yet, so there is nothing for the
+    // exclusion to be about. It is the return the regulation removes, not the right to stop an
+    // order that has not left.
+    const allowedPositions = store ? await returnableLinePositions(order, store.id) : null;
+    if (allowedPositions && allowedPositions.size === 0) {
+      return json({ error: 'לפי תקנות הגנת הצרכן, המוצרים בהזמנה הזאת לא ניתנים להחזרה' }, 409);
     }
 
     const result = await openReturnRequest({

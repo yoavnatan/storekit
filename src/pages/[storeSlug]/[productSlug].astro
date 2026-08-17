@@ -220,10 +220,11 @@ const productCategoryPathStr = product.categoryId ? categoryPath(storeCategories
 // Every sale names its scope on the banner, the store-wide one included — same rule as the
 // store page, and here it also tells the shopper the sale reaches beyond the product they are
 // looking at (StoreSaleBanner still hides itself entirely on a product a scoped sale misses).
-/** The regulations' own exclusion, when it applies to this shop's goods. Shown BEFORE the purchase,
- *  which is the only moment it can change a decision — `return-eligibility.ts` holds the list and
- *  `/api/returns` enforces the same answer. */
-const noReturnNotice = nonReturnableNotice(shopStore.categories);
+/** The regulations' own exclusion, when it applies to THIS PRODUCT — its own shelf inside the shop
+ *  and every shelf above it, never the shop as a whole (owner, 2026-08-17: a fashion store is not a
+ *  store you cannot return from; it has one shelf you cannot). Shown before the purchase, which is
+ *  the only moment it can change a decision, and `/api/returns` enforces the same answer. */
+const noReturnNotice = nonReturnableNotice(productCategoryPathStr);
 
 const saleScopeLabel = saleScopeCategoryLabel(storeCategoriesForProduct, shopStore.sale, t.store.saleAndMore)
   || (shopStore.sale?.productIds?.length ? t.store.saleOnSelected : t.store.saleOnWholeStore);
