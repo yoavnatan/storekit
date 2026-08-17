@@ -31,9 +31,9 @@ import StarRating from '../../components/StarRating.astro';
 import { cardStarRowHtml, STAR_PATH } from '../../lib/star-html.js';
 import ReviewForm from '../../components/ReviewForm.astro';
 import { getReviewsForProduct, getRatingCountsForProduct, getReviewableOrderForProduct } from '../../lib/product-reviews.js';
-import { averageRating, ratingDisplay, ratingHistogram, RATING_MAX } from '../../lib/reviews.js';
+import { averageRating, ratingDisplay, ratingHistogram, reviewerInitial, RATING_MAX } from '../../lib/reviews.js';
 import { REVIEWS_SECTION_ANCHOR } from '../../lib/reviews-anchor.js';
-import { storeMark, storeMarkGradient } from '../../lib/store-mark.js';
+import { soloHue, hueIndexFor } from '../../lib/placeholder-art.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -902,15 +902,19 @@ const pmI18n = {
           <ul class="flex flex-col" style="gap:1rem;margin:0;padding:0;list-style:none">
             {productReviews.map((r) => (
               <li class="flex" style="gap:0.7rem;border-top:1px solid var(--color-border);padding-top:1rem">
-                {/* The reviewer's mark. `storeMark` is the site's ONE deterministic-identity rule —
-                    hash a seed to one of five tile hues, build the gradient, take an initial — and
-                    a reviewer is simply another thing that needs one. Seeded on the review id
-                    rather than the name, so two people called דנה do not share a colour and one
-                    person's mark never changes. No new palette: `MARK_HUES` mirrors
-                    `--color-tile-*` in tokens.css. */}
+                {/* The reviewer's mark, in the ELEVEN hues of the homepage's invite cards (owner,
+                    2026-08-17 — he pointed at those specifically). Not `MARK_HUES`, which is the
+                    five-colour palette every store's generated identity mark is built from:
+                    `placeholder-art.ts` already argues that those two lists are not
+                    interchangeable, and a person is not a store. Eleven also matters here for the
+                    same reason it does there — a long list of reviews is a column, and a small
+                    pool repeats down it.
+
+                    Seeded on the review ID rather than the name, so two people called דנה get
+                    different colours and one person's mark never changes. */}
                 <span aria-hidden="true" class="flex items-center justify-center"
-                      style={`flex:0 0 auto;width:34px;height:34px;border-radius:50%;color:#fff;font-size:0.85rem;font-weight:700;line-height:1;background:${storeMarkGradient(storeMark(r.id, r.reviewerName || t.reviews.anonymous))}`}>
-                  {storeMark(r.id, r.reviewerName || t.reviews.anonymous).initial}
+                      style={`flex:0 0 auto;width:34px;height:34px;border-radius:50%;color:#fff;font-size:0.85rem;font-weight:700;line-height:1;background:${soloHue(hueIndexFor(r.id))}`}>
+                  {reviewerInitial(r.reviewerName || t.reviews.anonymous)}
                 </span>
                 <div class="min-w-0" style="flex:1 1 auto">
                   <div class="flex flex-wrap items-center gap-x-2 gap-y-1" style="margin-bottom:0.2rem">
