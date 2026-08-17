@@ -110,6 +110,25 @@ const TAGLINE_MARGIN_BISECTION = 0.02571;
  */
 const TAGLINE_SIZE_BISECTION = -0.00244;
 
+/** The space between the wordmark and the Hebrew line, in the LOCKUP's em.
+ *
+ *  Opened from 0.05 to 0.12 on 2026-08-14 (owner, looking at the mail header): at
+ *  0.05 the Hebrew read as attached to the wordmark rather than set under it.
+ *  Still small on purpose — the gap is what keeps this a subtitle rather than a
+ *  second name, and too much of it makes them two unrelated lines.
+ *
+ *  It lives HERE, with the other authored numbers, because it is the lockup's
+ *  spacing and every surface has to take it from the same place. That was the
+ *  intent on 2026-08-14 and it half-happened: the value reached the module and
+ *  the two live surfaces, but the module is GENERATED and this script was never
+ *  taught to emit it. So it survived only until the next `brand:wordmark` run —
+ *  which would have deleted a value `BrandLogo.astro` and the mail header both
+ *  import — and the poster lockup below went on drawing the old 0.05 the whole
+ *  time, which is exactly the two-copies drift the move was made to end.
+ *  `tests/brand-lockup.test.ts` now pins the module's exports against this
+ *  file's template, so a hand-edit of a generated file cannot survive again. */
+const TAGLINE_GAP = 0.12;
+
 /** The slogan the poster lockup carries. The site's own line is live text in
  *  BrandLogo.astro, because it follows the visitor's language; this is the
  *  Hebrew one, outlined, for a file that has to stand alone. */
@@ -362,8 +381,13 @@ export const GRADIENT = { from: '${BRAND_A}', to: '${BRAND_B}', x1: 0, y1: 0, x2
  *  bearing to the right of the מ, because a line box is not its ink and aligning
  *  the boxes parks the Hebrew a visible pixel inside the English.
  *  Both are re-solved by the generator whenever the wordmark moves — and
- *  \`sizeEm\` then carries a bisection against the built site, see the test. */
-export const TAGLINE = { sizeEm: ${r5(TAG_SIZE)}, marginEm: ${r5(-HEEBO_RSB + TAGLINE_MARGIN_BISECTION)} };
+ *  \`sizeEm\` then carries a bisection against the built site, see the test.
+ *
+ *  \`gapEm\` is the space between the two lines, in the LOCKUP's em, so the site
+ *  header and the mail header move together; a divergence there is a brand that
+ *  looks assembled twice. It is authored rather than solved — see the
+ *  generator. */
+export const TAGLINE = { sizeEm: ${r5(TAG_SIZE)}, marginEm: ${r5(-HEEBO_RSB + TAGLINE_MARGIN_BISECTION)}, gapEm: ${TAGLINE_GAP} };
 `;
 
 mkdirSync(resolve(ROOT, 'src/lib'), { recursive: true });
@@ -407,7 +431,7 @@ const files = {
    uses — the ink widths match and the bearing is cancelled. */
 const TAG_SIZE_UNITS = TAG_SIZE * UPEM;
 const tagRun = run(heebo, SLOGAN, { size: TAG_SIZE_UNITS, x: 0, y: 0, dir: 'rtl' });
-const GAP = 0.05 * UPEM; // the component's own gap-[0.05em] between the two lines
+const GAP = TAGLINE_GAP * UPEM; // the same gap the component and the mail header take
 const tagShift = INK_W + STROKE / 2 - tagRun.box.x2;      // right edges flush, ink to ink
 const tagLift = H + STROKE / 2 + GAP - tagRun.box.y1;
 const tagPath = run(heebo, SLOGAN, { size: TAG_SIZE_UNITS, x: tagShift, y: tagLift, dir: 'rtl' });

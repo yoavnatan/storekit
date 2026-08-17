@@ -145,6 +145,43 @@ describe('the boxes are cropped to the stroked ink', () => {
   });
 });
 
+describe('the module is what the generator writes', () => {
+  /**
+   * `gapEm` was added to `src/lib/brand-lockup.ts` by hand on 2026-08-14 and the
+   * generator was never taught to emit it. Nothing failed, because nobody ran
+   * `brand:wordmark` for three days — and that run would have deleted a value two
+   * live surfaces import, while the poster lockup drew the superseded 0.05 the
+   * whole time. A generated file that can be hand-edited is two files.
+   */
+  const generator = read('scripts/generate-wordmark.mjs');
+  const moduleSrc = read('src/lib/brand-lockup.ts');
+  const exportsOf = (src: string) => [...src.matchAll(/export const (\w+)/g)].map((m) => m[1]).sort();
+
+  it('exports exactly the names the generator’s template emits', () => {
+    expect(exportsOf(moduleSrc)).toEqual(exportsOf(generator));
+  });
+
+  it('carries no TAGLINE key the generator does not write', () => {
+    const keys = (src: string) =>
+      // Up to `};`, not to the first `}` — in the generator each value is a
+      // `${...}` interpolation and would swallow the match at its own brace.
+      (src.match(/export const TAGLINE = \{(.*?)\};/)?.[1] ?? '')
+        .split(',')
+        .map((p) => p.split(':')[0].trim())
+        .filter(Boolean)
+        .sort();
+    expect(keys(moduleSrc)).toEqual(keys(generator));
+    expect(keys(moduleSrc)).toContain('gapEm');
+  });
+
+  it('leaves no second copy of the tagline gap in the generator', () => {
+    // The poster lockup used to hard-code `0.05 * UPEM` beside the module's own
+    // value. One authored constant, read by both, or they drift again.
+    expect(generator).toMatch(/const TAGLINE_GAP = /);
+    expect(generator).not.toMatch(/0\.05 \* UPEM/);
+  });
+});
+
 describe('the tagline still solves against the wordmark', () => {
   it('is a fraction of the wordmark, not a size of its own', () => {
     // Heebo's own "מתחם חנויות דיגיטלי" is a shade under 8.6em, so the ratio that
