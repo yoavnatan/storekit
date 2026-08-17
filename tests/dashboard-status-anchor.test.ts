@@ -119,6 +119,46 @@ describe('dashboard scripts anchor to classes the markup actually renders', () =
   });
 });
 
+describe('the ✓ hold does not resize the button it lands on', () => {
+  it('pins both dimensions while the tick shows, and releases them after', async () => {
+    // The owner's correction (2026-08-17): the ✓ replaces a line of TEXT, so without a pinned
+    // height the button collapses to the icon's own 13px and the whole row of controls jumps —
+    // twice, once each way. Width was already pinned; height is the one that shows.
+    const { flashConfirmed } = await import('../src/scripts/dashboard/btn-confirm.js');
+    document.body.innerHTML = '<button id="b" class="btn">השהה</button>';
+    const btn = document.getElementById('b') as HTMLButtonElement;
+    // jsdom reports 0 for every box, so this asserts WHAT was pinned rather than a real size.
+    Object.defineProperty(btn, 'offsetWidth', { value: 88, configurable: true });
+    Object.defineProperty(btn, 'offsetHeight', { value: 32, configurable: true });
+
+    flashConfirmed(btn, { holdMs: 20 });
+    expect(btn.style.minWidth).toBe('88px');
+    expect(btn.style.height).toBe('32px');
+    expect(btn.classList.contains('btn--confirmed')).toBe(true);
+
+    await new Promise((r) => { setTimeout(r, 60); });
+    expect(btn.style.minWidth).toBe('');
+    expect(btn.style.height).toBe('');
+    expect(btn.textContent).toBe('השהה');
+    expect(btn.classList.contains('btn--confirmed')).toBe(false);
+  });
+
+  it('leaves the button alone when its list was redrawn under it', async () => {
+    // The card is replaced by the refetch, so the restore must not write to a detached element.
+    const { flashConfirmed } = await import('../src/scripts/dashboard/btn-confirm.js');
+    document.body.innerHTML = '<button id="b" class="btn">השהה</button>';
+    const btn = document.getElementById('b') as HTMLButtonElement;
+    Object.defineProperty(btn, 'offsetHeight', { value: 32, configurable: true });
+    flashConfirmed(btn, { holdMs: 20 });
+    btn.remove();
+    await new Promise((r) => { setTimeout(r, 60); });
+    // Still holding the pinned size — untouched, because nothing may be written to a node the
+    // page no longer contains. (In the browser this element is already garbage; what matters is
+    // that the timer did not throw trying to restore it.)
+    expect(btn.style.height).toBe('32px');
+  });
+});
+
 describe('the confirm dialog does not draw two sets of dots', () => {
   it('strips the ellipsis every workingLabel is written with', () => {
     // Reported by the owner (2026-08-17): the pause button read "משהה… ⋯" — the copy's three dots

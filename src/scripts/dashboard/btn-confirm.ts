@@ -40,15 +40,26 @@ export function flashConfirmed(btn: HTMLButtonElement | null | undefined, option
   const originalHtml = btn.innerHTML;
   const wasDisabled = btn.disabled;
 
-  // Pinned so the button does not resize around the shorter word and shuffle its neighbours — the
-  // same reflow this whole treatment exists to avoid, one control smaller.
+  // **Both dimensions pinned, and the height is the one that was missed** (owner, 2026-08-17).
+  // Width was obvious: a button that shrinks around a shorter word shuffles its neighbours. Height
+  // is less obvious and looks worse — the ✓ replaces a line of TEXT, so without this the button
+  // collapses to the icon's own 13px and the whole row of controls jumps as it goes and again as
+  // it comes back. That is the reflow this treatment exists to avoid, happening inside the very
+  // control that is supposed to be reassuring.
+  //
+  // Measured before anything is written, because reading `offsetHeight` after the swap would
+  // measure the collapsed button.
   btn.style.minWidth = `${btn.offsetWidth}px`;
+  btn.style.height = `${btn.offsetHeight}px`;
   btn.disabled = true;
   btn.classList.remove('btn--busy');
   btn.classList.add('btn--confirmed');
   btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${CHECK_SVG}${label ? escapeHtml(label) : ''}</span>`;
   // The site's one spring (AI_INSTRUCTIONS, micro-interactions). Runs once — never `infinite`.
-  btn.animate(
+  // Optional because the Web Animations API is the one part of this that can be absent, and the
+  // ✓ is the message while the pop is only its manners: a browser without `animate` must still
+  // get the confirmation, not a thrown TypeError that swallows the rest of the handler.
+  btn.animate?.(
     [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
     { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
   );
@@ -58,6 +69,7 @@ export function flashConfirmed(btn: HTMLButtonElement | null | undefined, option
     btn.disabled = wasDisabled;
     btn.classList.remove('btn--confirmed');
     btn.style.minWidth = '';
+    btn.style.height = '';
     btn.innerHTML = originalHtml;
   }, holdMs);
 }
