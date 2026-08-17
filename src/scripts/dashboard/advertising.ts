@@ -572,16 +572,15 @@ export function initAdvertisingTab(): void {
             showStatus(errorText(data.error, i18n), true, cardNow());
             return;
           }
-          // Refetch FIRST, then speak: the confirmation is anchored to the card, and the card it
-          // must sit above is the one the refetch just drew.
+          // **Success says nothing in words, and that is the point.** A banner above the card
+          // pushed every card below it down for three seconds (owner, 2026-08-17) — a list that
+          // jumps is a worse answer than the silence this replaced. The refetch has already
+          // redrawn this card with its status chip flipped to "מושהה"/"פעיל" and its button to
+          // "המשך"/"השהה", so the confirmation is on the card in the seller's own language; all
+          // that was missing was something to draw the eye to it. `row-settled` is a shadow, so it
+          // is painted outside the box and moves nothing, and it fades itself out.
           await refetch();
-          showStatus(
-            nextStatus === 'paused'
-              ? (i18n.adCampaignPaused ?? 'Campaign paused.')
-              : (i18n.adCampaignResumed ?? 'Campaign resumed.'),
-            false,
-            cardNow(),
-          );
+          cardNow()?.classList.add('animate-[row-settled_1.4s_ease-out]');
         } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
       };
 

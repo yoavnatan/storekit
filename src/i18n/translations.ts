@@ -1491,14 +1491,19 @@ export const translations = {
       adConfirmDeleteMsg: 'הקמפיין ייעצר מיד ויעבור ל״קמפיינים קודמים״ עם המספרים שצבר. משלמים רק על מה שכבר רץ בפועל — למשל אם בחרת שבוע וביטלת אחרי יומיים, תחויב רק על היומיים. שאר התקציב לא ייגבה, ומכאן לא יירד עוד כסף.',
       // Pausing is reversible and cancelling is not, so this asks in the calm tone
       // (`tone:'primary'` — no red button) while the delete above keeps the danger one. What it
-      // must still say in one sentence is the thing a seller cannot see: the ad stops being shown,
-      // which is not the same as the campaign ending.
+      // must still say is the thing a seller cannot see: the ad stops being shown, which is not
+      // the same as the campaign ending.
+      //
+      // **The middle sentence is the one that has to be there.** A first draft said "no more money
+      // will be charged", and that is false in the direction that costs the seller trust: pausing
+      // stops FUTURE spend, and what the campaign already spent is still billed — the platform
+      // pays Google and Meta for it either way (GO_LIVE §2.5, the boost billing model). A seller
+      // who reads "nothing more will be charged" and then sees a charge has been misled by us, on
+      // the screen where he was being careful.
       adConfirmPauseTitle: 'להשהות את הקמפיין?',
-      adConfirmPauseMsg: 'המודעות יפסיקו להופיע ולא ייגבה עוד כסף, והקמפיין יישאר שמור — אפשר להחזיר אותו בכל רגע.',
+      adConfirmPauseMsg: 'המודעות יפסיקו להופיע ולא ייצבר חיוב נוסף. מה שכבר הוצא ייגבה כרגיל. ניתן להחזיר לפעילות בכל רגע.',
       adConfirmPauseOk: 'השהה',
       adPausing: 'משהה…',
-      adCampaignPaused: 'הקמפיין הושהה.',
-      adCampaignResumed: 'הקמפיין חזר לפעול.',
       ordersTitle: 'הזמנות',
       noOrders: 'עדיין לא נכנסו הזמנות.',
       // Shown when orders exist but none match the toolbar's search/filter — distinct from
@@ -3355,8 +3360,6 @@ export const translations = {
       adConfirmPauseMsg: 'Your ads stop being shown and nothing more is charged. The campaign stays saved — you can resume it at any time.',
       adConfirmPauseOk: 'Pause',
       adPausing: 'Pausing…',
-      adCampaignPaused: 'Campaign paused.',
-      adCampaignResumed: 'Campaign resumed.',
       ordersTitle: 'Orders',
       noOrders: 'No orders yet.',
       ordersFilterEmpty: 'No orders match your search or filters.',
