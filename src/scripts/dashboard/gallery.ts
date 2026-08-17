@@ -573,6 +573,50 @@ export function initGalleryWidget(gallery: Element): void {
   doneBtn?.addEventListener('click', closePanel);
 }
 
+/**
+ * **Which photo the refusal is about.**
+ *
+ * Uploads happen on SAVE, not on pick, and they run one at a time — so a seller who chose five
+ * photos and pressed Save gets one sentence back about one of them, with nothing saying which. Every
+ * refusal has this problem ("the file is too large", "unsupported format", and since the moderation
+ * add-on went on, "התמונה נדחתה בבדיקת תוכן"), and the answer to all of them is the same: name the
+ * position, and put a mark on the slot so the eye finds it without counting.
+ *
+ * Asked by the owner as *"אז מה קורה כשתמונה לא מאושרת מבחינת ui? בדיוק"* (2026-08-17) — and the
+ * honest answer at the time was "a red line at the top that does not say which one", which for
+ * anything past a single photo is a guessing game with the seller deleting good pictures to find
+ * the bad one.
+ *
+ * The ring is set from here rather than in a stylesheet because the slot's own CSS is on the legacy
+ * list (`pages/dashboard.css`) and this is a transient JS state, not a style the widget owns.
+ * `-outline-offset-2` keeps it INSIDE the slot, where no ancestor's overflow can clip it (memory
+ * `project_focus_ring_clipped_by_scroller`).
+ */
+const REJECTED_SLOT_RING = ['outline', 'outline-2', '-outline-offset-2', 'outline-[color:var(--color-danger)]'];
+
+function markSlotRejected(slot: Element): void {
+  (slot as HTMLElement).dataset.uploadRejected = '1';
+  slot.classList.add(...REJECTED_SLOT_RING);
+}
+
+function clearSlotRejections(gallery: Element): void {
+  gallery.querySelectorAll<HTMLElement>('[data-upload-rejected]').forEach((slot) => {
+    delete slot.dataset.uploadRejected;
+    slot.classList.remove(...REJECTED_SLOT_RING);
+  });
+}
+
+/** `תמונה 2` — one-based, because `data-slot` is not what the seller is looking at. */
+function slotPositionLabel(slot: Element): string {
+  const n = Number((slot as HTMLElement).dataset.slot ?? 0) + 1;
+  let template = 'תמונה {n}';
+  try {
+    const gallery = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').gallery ?? {};
+    if (typeof gallery.slotPosition === 'string') template = gallery.slotPosition;
+  } catch { /* the default above is already a sentence a seller can read */ }
+  return template.replace('{n}', String(n));
+}
+
 export async function resolveGalleryUrls(
   gallery: Element, cloud: string, preset: string,
   onProgress?: (done: number, total: number) => void,
@@ -582,6 +626,13 @@ export async function resolveGalleryUrls(
   // first pays for the whole upload inside that click, and the button said "שומר..." throughout —
   // so the slow part was the one part the label denied was happening. A total is the difference
   // between a progress report and a spinner.
+  // **Before the early return below, not after it.** A previous attempt's ring must not outlive
+  // the photo it was about, and the commonest way to fix a refused photo is to REMOVE it — which
+  // leaves nothing to upload at all, so a clear placed after `if (!pending.length) return` never
+  // ran on exactly the path that needed it most, and the ring stayed on the innocent slot that
+  // shifted into its place. (Found by `gallery-upload-refusal.test.ts` while it was being written.)
+  clearSlotRejections(gallery);
+
   const pending: { slot: Element; blob: Blob }[] = [];
   if (cloud && preset) {
     for (const slot of gallery.querySelectorAll<Element>('.gallery-slot')) {
@@ -595,7 +646,17 @@ export async function resolveGalleryUrls(
   onProgress?.(0, pending.length);
   for (let i = 0; i < pending.length; i++) {
     const { slot, blob } = pending[i]!;
-    const url = await cloudinaryUpload(blob, cloud, preset);
+    let url: string;
+    try {
+      url = await cloudinaryUpload(blob, cloud, preset);
+    } catch (err) {
+      // The loop still stops here — the caller aborts the whole save, and the slots already
+      // uploaded keep the URLs written below, so nothing is lost and nothing half-saved. What
+      // changes is that the seller is told WHICH photo, in the sentence and on the slot.
+      markSlotRejected(slot);
+      if (err instanceof Error) err.message = `${err.message} (${slotPositionLabel(slot)})`;
+      throw err;
+    }
     const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
     if (urlInput) { urlInput.value = url; announceValueChange(urlInput); }
     onProgress?.(i + 1, pending.length);

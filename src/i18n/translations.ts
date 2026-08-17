@@ -1838,6 +1838,8 @@ export const translations = {
       cancel: 'בטל',
       removingBg: 'מסיר רקע...',
       loadingImage: 'טוען תמונה...',
+      /** Which of the five slots a refused upload was about — appended to the refusal itself. */
+      slotPosition: 'תמונה {n}',
       removeImageTitle: 'הסרת תמונה?',
       removeImageMsg: 'התמונה תוסר מהמוצר.',
       removeImageBtn: 'הסר',
@@ -3606,6 +3608,8 @@ export const translations = {
       cancel: 'Cancel',
       removingBg: 'Removing background…',
       loadingImage: 'Loading image…',
+      /** Which of the five slots a refused upload was about — appended to the refusal itself. */
+      slotPosition: 'image {n}',
       removeImageTitle: 'Remove image?',
       removeImageMsg: 'This image will be removed from the product.',
       removeImageBtn: 'Remove',
