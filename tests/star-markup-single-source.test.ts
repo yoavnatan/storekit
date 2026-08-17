@@ -59,11 +59,20 @@ describe('the half star is CLIPPED, not shrunk', () => {
     expect(half).toContain('overflow:hidden;width:50%');
   });
 
-  it('uses the rating colours and not a borrowed accent', () => {
+  it('uses the rating tokens and not a borrowed accent', () => {
     // `--color-warning` was the first cut and is spoken for by "something needs attention".
-    expect(half).toContain('var(--color-rating)');
+    expect(half).toContain('var(--color-rating-from)');
+    expect(half).toContain('var(--color-rating-to)');
     expect(half).toContain('var(--color-rating-empty)');
     expect(half).not.toContain('--color-warning');
+  });
+
+  it('walks the gradient across the row rather than painting five identical stars', () => {
+    const row = starRowHtml(5, { px: 15 });
+    // First star sits at the `from` end, last at the `to` end. If someone replaces the walk with a
+    // single colour this fails, and the row silently stops being the site's own gradient.
+    expect(row).toContain('var(--color-rating-to) 0%');
+    expect(row).toContain('var(--color-rating-to) 100%');
   });
 });
 
