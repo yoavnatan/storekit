@@ -84,6 +84,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { withTestLock } from './lib/test-lock.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = (name) => resolve(ROOT, 'node_modules/.bin', name);
@@ -311,7 +312,7 @@ if (checks.length === 0) {
   process.exit(0);
 }
 
-const run = (check) =>
+const spawnCheck = (check) =>
   new Promise((done) => {
     const started = Date.now();
     let out = '';
@@ -323,6 +324,31 @@ const run = (check) =>
       done({ ...check, code, out, secs: Math.round((Date.now() - started) / 1000) }),
     );
   });
+
+/**
+ * **The test step queues behind every other session on this machine; nothing else does.**
+ *
+ * Six sessions running at once turned six DIFFERENT database-backed test files red at ~32s against
+ * the 30s per-test ceiling — a different random subset each run, all of them passing in ~2s alone
+ * (2026-08-17). `vitest` sizes its pool from the CPU count, so six suites asked for six machines,
+ * and a wall-clock deadline under a fraction of a core is a failure that says nothing about the
+ * code. `scripts/lib/test-lock.mjs` carries the full argument, including why raising the timeout
+ * again — the fix applied the last time this happened — is the wrong one.
+ *
+ * Only this step waits. `tsc`, `lint` and `astro check` get slower under contention and never
+ * wrong, so they keep running concurrently with everyone; the queue costs nothing but the seconds
+ * that genuinely conflict, and a queued suite is not slower overall — six suites sharing one
+ * machine take the same total time interleaved or serialised, except serialised they pass.
+ */
+const run = async (check) => {
+  if (check.name !== 'test') return spawnCheck(check);
+  const release = await withTestLock((own) => {
+    // Said once, and only when it actually waits — a hang with no explanation is the thing this is
+    // most likely to be mistaken for.
+    if (!COMPACT) console.log(`verify: waiting for another session's tests (pid ${own?.pid ?? '?'})…`);
+  });
+  try { return await spawnCheck(check); } finally { release(); }
+};
 
 // Keep only the lines that say what broke — a full vitest or eslint dump buries the one useful line.
 // ESC written via fromCharCode, not a \x1b literal — a raw control character in a regex is a lint
