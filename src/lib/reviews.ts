@@ -114,6 +114,21 @@ export function normalizeReviewBody(value: unknown): string {
 }
 
 /**
+ * The letter in the reviewer's circle.
+ *
+ * The FIRST character, taken with a code-point-aware split so an emoji or a surrogate pair does not
+ * come back as half of itself — the same care `reviewerDisplayName` takes over the surname's
+ * initial. Upper-cased for Latin; Hebrew has no case, so the call is simply a no-op there.
+ *
+ * A name that reduces to nothing (a reviewer with none, and the localised fallback missing too)
+ * gets `?` rather than an empty circle: a blank coloured disc reads as a rendering failure.
+ */
+export function reviewerInitial(name: string): string {
+  const first = [...name.trim()][0] ?? '';
+  return first ? first.toUpperCase() : '?';
+}
+
+/**
  * The distribution bar on the product page: how many reviews gave each score, 5 down to 1.
  *
  * Always five entries, zeros included — a histogram that hides its empty rows re-scales itself

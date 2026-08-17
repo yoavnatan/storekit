@@ -1907,7 +1907,7 @@ export const translations = {
       throttled: 'יותר מדי בקשות. נסו שוב עוד כמה דקות',
       verifiedPurchase: 'רכישה מאומתת',
       // Said once about the whole set, never per row — see the product page for why.
-      allVerified: 'כולן מרכישה מאומתת',
+      allVerified: 'כולן מרכישות מאומתות',
       anonymous: 'קונה',
       starsAria: 'דירוג ממוצע',
       pickStar: 'דירוג',
