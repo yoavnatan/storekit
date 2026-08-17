@@ -27,22 +27,31 @@
  * On this platform that would make a seller's product photo wait on the owner — the exact
  * admin-gatekeeping the zero-touch rule forbids (AI_INSTRUCTIONS → What we're building).
  *
- * **`pending`/`queued` let the upload THROUGH, and that is the one decision here worth arguing.**
- * It was the other way round for half a day, on the reasoning that an unapproved asset is not
- * delivered so its URL would render nothing. The reasoning is sound and the behaviour was still
- * wrong, because it assumed the verdict arrives IN the upload response. Cloudinary's own docs point
- * both ways and neither can be settled without an account (asked 2026-08-13): the Rekognition page
- * shows an example response already carrying `status: approved`, while the moderation page defines
- * `pending` as "in the process of being moderated but an outcome hasn't been reached yet" and
- * documents `notification_url` as the way to hear the result — i.e. asynchronous. **If it is
- * asynchronous, refusing `pending` refuses EVERY photo the moment the add-on is switched on**, and
- * a seller who cannot upload anything is a far worse failure than a photo that has to be re-picked.
- * So the ambiguity is resolved toward the recoverable side: an image that turns out not to render
- * is visible in the form's own preview and the seller replaces it in seconds.
- * ⚠️ The consequence, and it is why GO_LIVE §2.6 carries a row rather than a note: under the
- * asynchronous reading a `rejected` verdict arrives AFTER the product is saved, and pulling that
- * image back off the product needs the `notification_url` webhook, which is not built. Settle which
- * reading is true on the first real upload after enabling the add-on.
+ * **`pending`/`queued` let the upload THROUGH — and the ambiguity that made that a hard call is now
+ * SETTLED: the verdict is synchronous.** ✅ Measured 2026-08-17, against the live account, by
+ * uploading through the same unsigned preset the browser uses and printing the response:
+ *
+ *     "moderation": [{ "kind": "aws_rek", "status": "approved",
+ *                      "response": { "moderation_labels": [], "moderation_model_version": "7.0",
+ *                                    "content_types": [] },
+ *                      "updated_at": "2026-08-17T10:47:53Z" }]
+ *
+ * The verdict is in the upload response itself. That closes the question this file carried open
+ * since 2026-08-13, when Cloudinary's own docs pointed both ways and neither reading could be
+ * checked without an account: the Rekognition page showed a response already carrying
+ * `status: approved`, while the moderation page defined `pending` as "an outcome hasn't been
+ * reached yet" and documented `notification_url` as how you hear the result.
+ *
+ * **What being synchronous means, and it is the good outcome:** a rejected photo is refused HERE,
+ * before the product is ever saved, so `moderationRefusal` is the whole enforcement and the
+ * `notification_url` webhook is not needed. GO_LIVE §2.6's ⚠️ row — "a `rejected` verdict arrives
+ * after the product is saved and pulling it back needs a webhook that is not built" — was written
+ * for the asynchronous reading and no longer describes anything.
+ *
+ * `pending`/`queued` still pass rather than block, and that stays deliberate: this is one account's
+ * behaviour on one add-on, a queue under load could still answer `pending`, and refusing on it
+ * would mean a seller who can upload nothing at all — far worse than a photo that has to be
+ * re-picked, which the form's own preview shows immediately.
  *
  * Statuses are Cloudinary's own, verified against its moderation docs (2026-08-13):
  * `queued` · `pending` · `approved` · `rejected` · `aborted` (rejected by an earlier moderation).
