@@ -33,7 +33,7 @@ import ReviewForm from '../../components/ReviewForm.astro';
 import { getReviewsForProduct, getRatingCountsForProduct, getReviewableOrderForProduct } from '../../lib/product-reviews.js';
 import { averageRating, ratingDisplay, ratingHistogram, reviewerInitial, RATING_MAX } from '../../lib/reviews.js';
 import { REVIEWS_SECTION_ANCHOR } from '../../lib/reviews-anchor.js';
-import { soloHue, hueIndexFor } from '../../lib/placeholder-art.js';
+import { soloHueGradient, hueIndexFor } from '../../lib/placeholder-art.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -265,6 +265,9 @@ const reviewsWithText = productReviews.filter((r) => r.body.trim());
 // Constructed ONCE, not per row. Building an `Intl` formatter inside a loop is what took the admin
 // dashboard from 700ms to 80ms when it was removed (memory `project_admin_dashboard_render_cost`);
 // eight rows is not that page, but the shape is how it got there.
+// Where this product's reviewer colours begin. Stable per product, arbitrary between
+// products — which is what makes two product pages look different rather than identical.
+const reviewHueStart = hueIndexFor(product.id);
 const reviewDateFormat = new Intl.DateTimeFormat(lang === 'he' ? 'he-IL' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const ratingJsonLd = ratingAvg === null ? {} : {
   aggregateRating: {
@@ -900,20 +903,23 @@ const pmI18n = {
           )}
 
           <ul class="flex flex-col" style="gap:1rem;margin:0;padding:0;list-style:none">
-            {productReviews.map((r) => (
+            {productReviews.map((r, rowIndex) => (
               <li class="flex" style="gap:0.7rem;border-top:1px solid var(--color-border);padding-top:1rem">
                 {/* The reviewer's mark, in the ELEVEN hues of the homepage's invite cards (owner,
                     2026-08-17 — he pointed at those specifically). Not `MARK_HUES`, which is the
                     five-colour palette every store's generated identity mark is built from:
                     `placeholder-art.ts` already argues that those two lists are not
-                    interchangeable, and a person is not a store. Eleven also matters here for the
-                    same reason it does there — a long list of reviews is a column, and a small
-                    pool repeats down it.
+                    interchangeable, and a person is not a store.
 
-                    Seeded on the review ID rather than the name, so two people called דנה get
-                    different colours and one person's mark never changes. */}
+                    **The PRODUCT picks where the sequence starts, and the ROW walks it from there**
+                    — so every product page gets its own order (owner asked for exactly that) while
+                    no two adjacent rows can ever land on the same colour. Hashing each review
+                    independently gave the first property and not the second: two neighbours
+                    collided about one time in eleven, which on a page of fourteen reviews is most
+                    pages. The step of 1 through eleven hues also inherits the palette's own
+                    ordering, which is built so no two ADJACENT entries share a colour family. */}
                 <span aria-hidden="true" class="flex items-center justify-center"
-                      style={`flex:0 0 auto;width:34px;height:34px;border-radius:50%;color:#fff;font-size:0.85rem;font-weight:700;line-height:1;background:${soloHue(hueIndexFor(r.id))}`}>
+                      style={`flex:0 0 auto;width:34px;height:34px;border-radius:50%;color:#fff;font-size:0.85rem;font-weight:700;line-height:1;background:${soloHueGradient(reviewHueStart + rowIndex)}`}>
                   {reviewerInitial(r.reviewerName || t.reviews.anonymous)}
                 </span>
                 <div class="min-w-0" style="flex:1 1 auto">

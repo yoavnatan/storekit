@@ -263,6 +263,26 @@ export function soloHue(index: number): string {
 }
 
 /**
+ * The same hue with DEPTH — a 135° gradient, lighter at the top-start corner.
+ *
+ * The angle and the direction are not invented here: `store-mark.ts` paints every store's identity
+ * mark at 135° from `shade(hue, +0.12)` to `shade(hue, -0.30)`, and the invite tiles are lit from
+ * the same corner (`TILE_LIGHT_ANGLE`). A round mark on this site is lit from the top-start, so one
+ * that is not looks like a different site's control.
+ *
+ * `color-mix` rather than `shade()` because these hues are TOKENS, not hexes — the whole point of
+ * `--color-invite-*` is that a value can move in `tokens.css` without a rebuild, and reading them
+ * into JS to darken them would freeze the copy that got read. The two percentages are the same
+ * distance the store mark travels, expressed the way CSS can do it.
+ */
+export function soloHueGradient(index: number): string {
+  const hue = soloHue(index);
+  return `linear-gradient(135deg,`
+    + ` color-mix(in srgb, ${hue} 88%, #fff) 0%,`
+    + ` color-mix(in srgb, ${hue} 70%, #000) 100%)`;
+}
+
+/**
  * Which of the eleven a given string lands on.
  *
  * FNV-1a, the same hash `store-mark.ts` uses and for the same reason: a plain character sum
