@@ -59,7 +59,8 @@ import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
 import AdminPanelShell from '../../components/admin/AdminPanelShell.astro';
 import AdminReturnsPanel from '../../components/admin/AdminReturnsPanel.astro';
-import { getOpenReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
+import { getOpenReturns, getClosedReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
+import { returnRateByStore } from '../../lib/return-rate.js';
 import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
 
 /** The chip's word, from the admin's seat. Closed states carry none — the order is no longer in the
@@ -70,7 +71,7 @@ const ADMIN_RETURN_CHIP: Record<ReturnStatus, string> = {
   in_transit: 'בדרך למוכר',
   received: 'הגיע למוכר',
   disputed: 'מחכה לך',
-  offered: 'הוצעה פשרה',
+  offered: 'הוצע החזר חלקי',
   rejected: '', refunded: '', expired: '',
 };
 import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
@@ -256,7 +257,7 @@ const [
   sellers, stores, newSince, openOrdersByStore, orderTotals, revenueByStore,
   orderStoreNamesRaw, orderSellersRaw, threadsPage, errorsAll,
   brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings,
-  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog, openReturns, statement,
+  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog, openReturns, returnRates, closedReturns, statement,
 ] = await Promise.all([
   only(SELLER_ROSTER_PANELS, getAllSellers, []),
   only(STORE_ROSTER_PANELS, getAllStores, []),
@@ -301,6 +302,13 @@ const [
   // three-step chain (permalink → window → page) is stated once, in admin-moneylog-panel.ts.
   only(['moneylog'], () => loadMoneyLogPanel(sp), null),
   only(['returns'], () => getOpenReturns(), []),
+  only(['returns'], () => returnRateByStore(), { stores: [], platformRate: 0, outliers: [], disputeOutliers: [] }),
+  // The history reads its OWN params, so a search and a page survive a reload and can be linked —
+  // which is the whole difference between a history and a list that resets under you.
+  only(['returns'], () => getClosedReturns({
+    q: sp.get('rq') ?? '',
+    page: Number(sp.get('rpage')) || 1,
+  }), { items: [], total: 0, page: 1, totalPages: 1 }),
   // The accounting statement — five aggregates in one wave (admin-statement-load.ts), and the SAME
   // function `/api/admin/statement` serves the CSV from, so the screen and the downloaded file
   // cannot be two statements of one month.
@@ -864,7 +872,7 @@ const badgeFor: Record<string, number> = badgeCounts;
       {/* Returns. Its normal state is empty — the sweep closes seven of the eight states on
           its own, and the one that needs a person arrives by mail before anyone opens this. */}
       <AdminPanelShell panel="returns" active={shows('returns')}>
-        <AdminReturnsPanel requests={openReturns} />
+        <AdminReturnsPanel requests={openReturns} outliers={returnRates.outliers} platformRate={returnRates.platformRate} disputeOutliers={returnRates.disputeOutliers} closed={closedReturns} closedQuery={sp.get('rq') ?? ''} tabUrl={tabUrl} />
       </AdminPanelShell>
 
       <AdminPanelShell panel="moneylog" active={!!moneyLog && !!reconciliation}>

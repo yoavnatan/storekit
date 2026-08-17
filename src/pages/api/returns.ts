@@ -7,6 +7,7 @@ import { getOrderById, updateOrder, orderBelongsToStore } from '../../lib/orders
 import { settleStatusChange } from '../../lib/order-status-change.js';
 import { notifySellerOrderCancelled } from '../../lib/order-notify.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
+import { sanitizeImageUrl } from '../../lib/image-url.js';
 import {
   openReturnRequest, moveReturnRequest, getReturnRequest, getReturnsForOrder,
   getReturnsForStore, getOpenReturns,
@@ -194,6 +195,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     const result = await openReturnRequest({
       order, storeSlug: slug, reason,
       buyerNote: String(data.note ?? '').slice(0, 2000),
+      // Through `sanitizeImageUrl`, never straight out of the body: it validates by SHAPE and stores
+      // the URL parser's own serialisation, so quotes and angle brackets come back percent-encoded
+      // and an attribute breakout is impossible even where a screen forgets to escape
+      // (`lib/image-url.ts`, and `tests/image-url.test.ts` greps for exactly this).
+      buyerPhotoUrl: sanitizeImageUrl(data.photoUrl),
       returnedLines: wholeOrder ? null : returnedLines,
       ...(store ? { sellerId: store.sellerId, storeName: store.name } : {}),
     });

@@ -44,6 +44,7 @@ import { getStoresBySellerId } from '../lib/stores.js';
 import { getLang } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
 import { STATUTORY_RETURN_DAYS, SHIP_AUTO_CANCEL_DAYS } from '../lib/payout-schedule.js';
+import { RESPONSE_BUSINESS_DAYS } from '../lib/returns.js';
 
 const lang = getLang(Astro.cookies);
 const sellerId = getSellerSession(Astro.cookies);
@@ -121,6 +122,51 @@ const clauses: { h: string; p: string[] }[] = [
     ],
   },
 ];
+
+/** The same facts, in the words people use. Last on the page and deliberately short — every answer
+ *  is one or two sentences, and none of them adds a rule the clauses above do not already state. */
+const faq: { q: string; a: string }[] = [
+  {
+    q: 'ביטלתי הזמנה — מתי הכסף חוזר?',
+    a: 'הביטול מתבצע מיד, והכסף חוזר לאותו אמצעי תשלום שבו שילמת. אין דמי ביטול.',
+  },
+  {
+    q: 'פשוט לא התאים לי. אפשר להחזיר?',
+    a: `כן, תוך ${STATUTORY_RETURN_DAYS} ימים מקבלת המוצר, בלי לתת סיבה. מחיר המוצר חוזר במלואו. המשלוח בחזרה על חשבונך, ודמי המשלוח המקורי אינם מוחזרים.`,
+  },
+  {
+    q: 'המוצר הגיע שבור. מי משלם על המשלוח בחזרה?',
+    a: 'החנות. גם דמי המשלוח שכבר שילמת חוזרים אליך.',
+  },
+  {
+    q: 'הזמנתי שלושה דברים ורוצה להחזיר רק אחד.',
+    a: 'אפשר. בבקשה מסמנים אילו פריטים חוזרים, והכסף חוזר עבורם בלבד.',
+  },
+  {
+    q: 'הזמנתי משתי חנויות. צריך להחזיר הכול?',
+    a: 'לא. כל חנות היא הזמנה נפרדת, ואפשר להחזיר מאחת בלי לגעת בשנייה.',
+  },
+  {
+    q: 'המוכר הציע לי החזר חלקי כדי שאשאיר את המוצר. חייבים להסכים?',
+    a: 'לא. אפשר לדחות ולהחזיר את המוצר כרגיל, וזה לא פוגע בזכות שלך.',
+  },
+  {
+    q: 'ההזמנה לא הגיעה בכלל.',
+    a: `פותחים בקשה מהאזור האישי ובוחרים "לא קיבלתי". אנחנו מבררים מול חברת השילוח, לא המוכר. ואם ההזמנה לא נמסרה לשילוח תוך ${SHIP_AUTO_CANCEL_DAYS} ימים, היא מתבטלת מעצמה והכסף חוזר.`,
+  },
+  {
+    q: 'אני מוכר. אפשר לסרב להחזרה?',
+    a: `לא בתוך ${STATUTORY_RETURN_DAYS} הימים הראשונים — זו זכות של הקונה בחוק. אחרי התקופה הזאת ההחלטה שלך, ויש לך ${RESPONSE_BUSINESS_DAYS} ימי עסקים לענות.`,
+  },
+  {
+    q: 'אני מוכר. המוצר חזר אליי משומש או בקופסה ריקה.',
+    a: `מסמנים "הגיע ריק או משומש" בלשונית ההחזרות. הכסף נעצר, ונציג ${platform.name} מכריע.`,
+  },
+  {
+    q: 'אני מוכר. מתי מקזזים ממני את הכסף?',
+    a: 'אם ההזמנה עוד לא שולמה לך, הכסף פשוט לא מועבר. אם הוא כבר הועבר, הסכום מקוזז מהתשלום הבא שלך.',
+  },
+];
 ---
 
 <BaseLayout
@@ -145,6 +191,16 @@ const clauses: { h: string; p: string[] }[] = [
         {c.p.map((line) => <p style="margin-top:0.5rem">{line}</p>)}
       </>
     ))}
+
+    <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:2.5rem">שאלות נפוצות</h2>
+    <dl style="margin-top:0.25rem">
+      {faq.map((item) => (
+        <>
+          <dt class="!font-semibold" style="margin-top:1.1rem">{item.q}</dt>
+          <dd style="margin:0.3rem 0 0">{item.a}</dd>
+        </>
+      ))}
+    </dl>
 
     <p style="margin-top:2rem">
       <a href="/terms" class="muted">תנאי שימוש</a> · <a href="/contact" class="muted">יצירת קשר</a>

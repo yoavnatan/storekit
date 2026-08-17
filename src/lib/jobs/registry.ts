@@ -465,7 +465,7 @@ const returnsSweep: Job = {
   leaseSec: 30 * MINUTE,
   async run() {
     const r = await runReturnsSweep();
-    return `scanned ${r.scanned} · auto-rejected ${r.autoRejected} · expired ${r.expired} `
+    return `scanned ${r.scanned} · warned ${r.warned} · auto-rejected ${r.autoRejected} · expired ${r.expired} `
       + `· auto-refunded ${r.autoRefunded} (${r.refundedAgorot} agorot) · failed ${r.failed} `
       + `· awaiting a human ${r.awaitingAdmin}`;
   },

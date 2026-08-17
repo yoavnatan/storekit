@@ -550,25 +550,61 @@ export function initAdvertisingTab(): void {
       const card = btn.closest<HTMLElement>('[data-status]');
       const currentStatus = card?.dataset.status;
       const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
-      // btn--busy: keep the double-submit guard (disabled) but show a "working"
-      // cursor, not the "no-entry" not-allowed, for this brief in-flight moment.
-      btn.disabled = true;
-      btn.classList.add('btn--busy');
-      try {
-        const res = await fetch(endpoint, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: campaignId, storeSlug, status: nextStatus }),
-        });
-        const data = await res.json() as { ok?: boolean; error?: string };
-        if (!data.ok) {
-          showStatus(errorText(data.error, i18n), true);
-          await refetch(); // the card's own note explains it too
-          return;
-        }
-        showStatus(i18n.adCampaignUpdated ?? 'Campaign updated.');
-        await refetch();
-      } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
+
+      /** The card as it exists NOW — after a refetch has replaced the list, the element captured
+       *  before it is detached and anchoring to it would put the message nowhere. */
+      const cardNow = (): Element | null => list.querySelector(`[data-campaign-id="${CSS.escape(campaignId)}"]`);
+
+      const apply = async (): Promise<void> => {
+        // btn--busy: keep the double-submit guard (disabled) but show a "working"
+        // cursor, not the "no-entry" not-allowed, for this brief in-flight moment.
+        btn.disabled = true;
+        btn.classList.add('btn--busy');
+        try {
+          const res = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: campaignId, storeSlug, status: nextStatus }),
+          });
+          const data = await res.json() as { ok?: boolean; error?: string };
+          if (!data.ok) {
+            await refetch(); // the card's own note explains it too
+            showStatus(errorText(data.error, i18n), true, cardNow());
+            return;
+          }
+          // Refetch FIRST, then speak: the confirmation is anchored to the card, and the card it
+          // must sit above is the one the refetch just drew.
+          await refetch();
+          showStatus(
+            nextStatus === 'paused'
+              ? (i18n.adCampaignPaused ?? 'Campaign paused.')
+              : (i18n.adCampaignResumed ?? 'Campaign resumed.'),
+            false,
+            cardNow(),
+          );
+        } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
+      };
+
+      // **Pausing asks; resuming does not.** Stopping the ads is the direction with a cost a seller
+      // cannot see — the campaign keeps its dates while nothing is being shown — so it gets a
+      // sentence saying so before it happens. Turning them back ON needs no defence, and a
+      // confirmation there would only be a tax on the fix. `tone:'primary'` because a pause is
+      // reversible: the red button belongs to the cancel below it, and spending red on both makes
+      // neither mean anything.
+      if (nextStatus === 'paused') {
+        window.dispatchEvent(new CustomEvent('confirm:open', {
+          detail: {
+            title: i18n.adConfirmPauseTitle ?? 'Pause this campaign?',
+            message: i18n.adConfirmPauseMsg ?? 'Your ads stop being shown and nothing more is charged. The campaign stays saved — you can resume it at any time.',
+            okLabel: i18n.adConfirmPauseOk ?? 'Pause',
+            workingLabel: i18n.adPausing ?? 'Pausing…',
+            tone: 'primary',
+            onConfirm: apply,
+          },
+        }));
+        return;
+      }
+      await apply();
       return;
     }
 

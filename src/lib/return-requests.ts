@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { rows, firstRow, query } from './db.js';
+import { rows, firstRow } from './db.js';
 import { getOrderById, updateOrder, type Order } from './orders.js';
 import { settleStatusChange, type StatusChangeStore } from './order-status-change.js';
 import { canTransition } from './order-status-rules.js';
@@ -57,7 +57,10 @@ export interface ReturnRequest {
   createdAt: string;
   approvedAt: string | null;
   deliveredBackAt: string | null;
-  closedAt: string | null;
+  /** When this request stopped being open. `settledAt` and not `closedAt` on purpose: the latter
+   *  is the store-lifecycle vocabulary, and `store-lifecycle-guard.test.ts` rightly refuses any
+   *  other subject borrowing it. The database column is still `closed_at`. */
+  settledAt: string | null;
   updatedAt: string;
 }
 
@@ -96,7 +99,7 @@ function toRequest(r: Row): ReturnRequest {
     createdAt: iso(r.created_at)!,
     approvedAt: iso(r.approved_at),
     deliveredBackAt: iso(r.delivered_back_at),
-    closedAt: iso(r.closed_at),
+    settledAt: iso(r.closed_at),
     updatedAt: iso(r.updated_at)!,
   };
 }
@@ -128,6 +131,47 @@ export async function getOpenReturns(): Promise<ReturnRequest[]> {
   return (await rows<Row>(
     `${SELECT} WHERE status NOT IN ('rejected','refunded','expired') ORDER BY created_at ASC`,
   )).map(toRequest);
+}
+
+/**
+ * Cases that are FINISHED — the admin's history, paged and searchable over ALL of them.
+ *
+ * A decision he cannot look up is a decision he cannot defend, and the one somebody rings back about
+ * is exactly the one a cap would have dropped (owner, 2026-08-17: "זה לא יכול פשוט להיעלם"). So this
+ * counts and slices in the database rather than truncating in the caller — the same shape every other
+ * admin list uses, for the same reason: the total is what tells him whether what he is looking at is
+ * everything.
+ *
+ * `q` matches the order id's visible prefix, which is the string on every screen and the one a person
+ * reads down the phone. Matched with LIKE on a lowercased prefix rather than a regex: it is a uuid,
+ * so there is nothing to normalise and nothing a caller can inject through the parameter.
+ */
+export async function getClosedReturns(
+  opts: { q?: string; page?: number; pageSize?: number } = {},
+): Promise<{ items: ReturnRequest[]; total: number; page: number; totalPages: number }> {
+  const pageSize = Math.min(100, Math.max(5, Math.floor(opts.pageSize ?? 20)));
+  // `%` and `_` are LIKE wildcards. Parameterised, so nothing can be injected — but an admin typing
+  // `%` would match every row and read it as "these are the matches", which on a history screen is a
+  // search box lying about what it found. Escaped with a backslash, declared to Postgres explicitly
+  // so the behaviour does not depend on the server's default.
+  const q = (opts.q ?? '').trim().toLowerCase().replace(/([%_\\])/g, '\\$1');
+  const where = `status IN ('rejected','refunded','expired')${q ? " AND lower(order_id::text) LIKE $1 ESCAPE '\\\\'" : ''}`;
+  const params = q ? [`${q}%`] : [];
+
+  const counted = await firstRow<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM return_requests WHERE ${where}`, params);
+  const total = counted?.n ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(opts.page ?? 1)), totalPages);
+
+  const items = (await rows<Row>(
+    `${SELECT} WHERE ${where}
+      ORDER BY closed_at DESC NULLS LAST, created_at DESC
+      LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
+    params,
+  )).map(toRequest);
+
+  return { items, total, page, totalPages };
 }
 
 /** Does this order have a live case? What the buyer's button and the payout hold ask. */
@@ -417,7 +461,3 @@ export async function getLatestReturnsByOrder(orderIds: string[]): Promise<Map<s
   return new Map(r.map((row) => [row.order_id, toRequest(row)]));
 }
 
-/** Used by the tests and by nothing else — a case is closed by a transition, never by a delete. */
-export async function deleteReturnRequestsForOrder(orderId: string): Promise<void> {
-  await query('DELETE FROM return_requests WHERE order_id = $1', [orderId]);
-}

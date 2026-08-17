@@ -48,8 +48,47 @@ const FONTS = resolve(ROOT, 'assets/brand-fonts');
 
 /** The wordmark's tracking. Negative is the point: heavy weight plus negative
  *  tracking is what closes the seven letters into ONE SOLID SHAPE, and that
- *  shape is the logo (owner, 2026-08-05 and again 2026-08-10). */
+ *  shape is the logo (owner, 2026-08-05 and again 2026-08-10).
+ *
+ *  It sets the block's DENSITY and nothing else. How that density is shared out
+ *  between the six junctions is `EVEN_GAPS` below, which cannot change the total
+ *  by construction — so this number still means exactly what it always meant. */
 const TRACKING = -0.04;
+
+/**
+ * EVEN THE INK GAPS OUT (owner, 2026-08-17, looking at the header: "eza —
+ * הרווח שלהן צפוף יותר מאשר כל השאר?"). He was right, and it measured worse than
+ * it looked. In Chakra Petch the `z` carries side bearings of 25/25 where every
+ * other letter here carries 45–60, and the face kerns `ez` and `za` by a further
+ * −5 each; the six ink gaps across `Dezabin` therefore ran
+ *
+ *      D-e 65   e-z 25   z-a 25   a-b 75   b-i 65   i-n 75      (font units)
+ *
+ * and the thickening then made the disproportion worse rather than better,
+ * because a centred stroke eats STROKE units out of every gap regardless of how
+ * much was there: 51 / 11 / 11 / 61 / 51 / 61. A gap of 11 units is a gap the eye
+ * reads as none. `eza` was a lump inside the word.
+ *
+ * The fix is to give every junction the MEAN of those six gaps. The mean is the
+ * one target that leaves the wordmark's total ink width untouched — the deltas
+ * sum to zero by definition — which is why this can be a pure redistribution and
+ * not a decision about density. The block stays exactly as tight as it was; only
+ * its rhythm changes. It also means the tagline's solve below is unaffected, so
+ * neither bisection needed re-measuring.
+ *
+ * WHY NOT AN AREA SOLVE. The strictly correct instrument measures the white
+ * BETWEEN two letters over their shared height, not the shortest distance
+ * between their bounding boxes, and it would give the `z` slightly less room
+ * than a straight-sided pair because its diagonal leaves a void the ink edges
+ * do not describe. That is a real refinement of perhaps five units. It is not
+ * what was wrong here — a 5× disproportion is — and it would add an authored
+ * "how much of the counter counts" constant that nobody could later re-derive.
+ * If the `z` ever reads loose, THAT is the thing to reach for, and this comment
+ * is where to start.
+ *
+ * Turning this off restores the font's own spacing exactly.
+ */
+const EVEN_GAPS = true;
 
 /** The thickening, in em. Chakra Petch has 300–700 and no variable axis, so
  *  "800" does not exist; this is the standard substitute — a centred outline on
@@ -109,6 +148,25 @@ const TAGLINE_MARGIN_BISECTION = 0.02571;
  * disagreement that no visitor can see.
  */
 const TAGLINE_SIZE_BISECTION = -0.00244;
+
+/** The space between the wordmark and the Hebrew line, in the LOCKUP's em.
+ *
+ *  Opened from 0.05 to 0.12 on 2026-08-14 (owner, looking at the mail header): at
+ *  0.05 the Hebrew read as attached to the wordmark rather than set under it.
+ *  Still small on purpose — the gap is what keeps this a subtitle rather than a
+ *  second name, and too much of it makes them two unrelated lines.
+ *
+ *  It lives HERE, with the other authored numbers, because it is the lockup's
+ *  spacing and every surface has to take it from the same place. That was the
+ *  intent on 2026-08-14 and it half-happened: the value reached the module and
+ *  the two live surfaces, but the module is GENERATED and this script was never
+ *  taught to emit it. So it survived only until the next `brand:wordmark` run —
+ *  which would have deleted a value `BrandLogo.astro` and the mail header both
+ *  import — and the poster lockup below went on drawing the old 0.05 the whole
+ *  time, which is exactly the two-copies drift the move was made to end.
+ *  `tests/brand-lockup.test.ts` now pins the module's exports against this
+ *  file's template, so a hand-edit of a generated file cannot survive again. */
+const TAGLINE_GAP = 0.12;
 
 /** The slogan the poster lockup carries. The site's own line is live text in
  *  BrandLogo.astro, because it follows the visitor's language; this is the
@@ -212,8 +270,11 @@ function toPath(path, dp = 2) {
 
 /** Lay a string out with kerning and tracking, and return one path plus its ink
  *  box. `dir: 'rtl'` places the first logical character rightmost; Hebrew needs
- *  no contextual shaping, so reversing the run is the whole of it. */
-function run(font, text, { size, x, y, tracking = 0, dir = 'ltr' }) {
+ *  no contextual shaping, so reversing the run is the whole of it.
+ *
+ *  `deltas` is an extra advance after each glyph, in FONT UNITS, in the order the
+ *  glyphs are drawn — the hook `evenGapDeltas` needs and nothing else uses. */
+function run(font, text, { size, x, y, tracking = 0, dir = 'ltr', deltas = [] }) {
   const upem = font.unitsPerEm;
   const scale = size / upem;
   const glyphs = font.stringToGlyphs(text);
@@ -224,9 +285,54 @@ function run(font, text, { size, x, y, tracking = 0, dir = 'ltr' }) {
     path.extend(g.getPath(pen, y, size));
     const next = order[i + 1];
     const kern = next ? font.getKerningValue(g, next) : 0;
-    pen += (g.advanceWidth + kern) * scale + tracking * size;
+    pen += (g.advanceWidth + kern + (deltas[i] ?? 0)) * scale + tracking * size;
   });
   return { path, box: path.getBoundingBox() };
+}
+
+/**
+ * The ink gap before each glyph of `text`, laid out left to right at `tracking`,
+ * in font units. `after` is the ink edge the run starts from — the mark's right
+ * edge — so the first entry is the mark→`e` junction and the block is measured
+ * as the seven shapes it actually is.
+ *
+ * Bounding boxes, not the metrics table: `lsb`/`rsb` are what the FONT declares,
+ * and the point of this measurement is what the eye gets.
+ */
+function inkGaps(font, text, { tracking, x, after }) {
+  const upem = font.unitsPerEm;
+  const glyphs = font.stringToGlyphs(text);
+  const gaps = [];
+  let pen = x;
+  let right = after;
+  glyphs.forEach((g, i) => {
+    const b = g.getPath(0, 0, upem).getBoundingBox();
+    gaps.push(pen + b.x1 - right);
+    right = pen + b.x2;
+    const kern = glyphs[i + 1] ? font.getKerningValue(g, glyphs[i + 1]) : 0;
+    pen += g.advanceWidth + kern + tracking * upem;
+  });
+  return gaps;
+}
+
+/**
+ * What to add at each junction so all of them come out at the same ink gap — see
+ * `EVEN_GAPS`. Returns the shift for the run's START (the mark→`e` junction) and
+ * the per-glyph deltas `run` takes; every delta is cumulative in the pen, so
+ * each junction only has to make up its own shortfall.
+ *
+ * The target is the mean, so the deltas sum to zero and the wordmark's width
+ * does not move. Nothing here is authored: it is the font's own spacing,
+ * levelled.
+ */
+function evenGapDeltas(gaps) {
+  const target = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  return {
+    target,
+    start: target - gaps[0],
+    // `deltas[i]` lands after glyph i, i.e. it opens the gap BEFORE glyph i+1.
+    deltas: gaps.slice(1).map((g) => target - g),
+  };
 }
 
 /** Ink width of a string at 1em, for the ratios below. */
@@ -280,9 +386,22 @@ const MARK_PATH = `${outer} ${inner}`;
  * it was at -D_LSB, and the next pen is that plus the D's advance plus the
  * tracking every other pair in the word gets. A mark spaced like a symbol is
  * what made early versions read as an icon glued next to a word.
+ *
+ * `EVEN_GAPS` then levels all six junctions, this one included — which is the
+ * same rule stated once more rather than an exception to it: whatever the mark
+ * gets, every letter gets.
  */
-const PEN = -D_LSB + D.adv + TRACKING * UPEM;
-const letters = run(cp, 'ezabin', { size: UPEM, x: PEN, y: H, tracking: TRACKING });
+const NATURAL_PEN = -D_LSB + D.adv + TRACKING * UPEM;
+const GAPS = inkGaps(cp, 'ezabin', { tracking: TRACKING, x: NATURAL_PEN, after: W });
+const EVEN = EVEN_GAPS ? evenGapDeltas(GAPS) : { start: 0, deltas: [], target: null };
+const PEN = NATURAL_PEN + EVEN.start;
+const letters = run(cp, 'ezabin', {
+  size: UPEM,
+  x: PEN,
+  y: H,
+  tracking: TRACKING,
+  deltas: EVEN.deltas,
+});
 const LETTERS_PATH = toPath(letters.path);
 
 const STROKE = THICKEN * UPEM;
@@ -329,7 +448,14 @@ const module_ = `/**
 export const MARK_PATH =
   '${MARK_PATH}';
 
-/** "ezabin", outlined at ${TRACKING}em tracking. */
+/** "ezabin", outlined at ${TRACKING}em tracking${
+  EVEN_GAPS
+    ? `, with every junction in the
+ *  block — the mark's included — levelled to the same ${r(EVEN.target)}-unit ink gap. The
+ *  levelling is a redistribution and cannot change the width; the generator's
+ *  \`EVEN_GAPS\` says why the font's own spacing needed it`
+    : ''
+}. */
 export const LETTERS_PATH =
   '${LETTERS_PATH}';
 
@@ -362,8 +488,13 @@ export const GRADIENT = { from: '${BRAND_A}', to: '${BRAND_B}', x1: 0, y1: 0, x2
  *  bearing to the right of the מ, because a line box is not its ink and aligning
  *  the boxes parks the Hebrew a visible pixel inside the English.
  *  Both are re-solved by the generator whenever the wordmark moves — and
- *  \`sizeEm\` then carries a bisection against the built site, see the test. */
-export const TAGLINE = { sizeEm: ${r5(TAG_SIZE)}, marginEm: ${r5(-HEEBO_RSB + TAGLINE_MARGIN_BISECTION)} };
+ *  \`sizeEm\` then carries a bisection against the built site, see the test.
+ *
+ *  \`gapEm\` is the space between the two lines, in the LOCKUP's em, so the site
+ *  header and the mail header move together; a divergence there is a brand that
+ *  looks assembled twice. It is authored rather than solved — see the
+ *  generator. */
+export const TAGLINE = { sizeEm: ${r5(TAG_SIZE)}, marginEm: ${r5(-HEEBO_RSB + TAGLINE_MARGIN_BISECTION)}, gapEm: ${TAGLINE_GAP} };
 `;
 
 mkdirSync(resolve(ROOT, 'src/lib'), { recursive: true });
@@ -407,7 +538,7 @@ const files = {
    uses — the ink widths match and the bearing is cancelled. */
 const TAG_SIZE_UNITS = TAG_SIZE * UPEM;
 const tagRun = run(heebo, SLOGAN, { size: TAG_SIZE_UNITS, x: 0, y: 0, dir: 'rtl' });
-const GAP = 0.05 * UPEM; // the component's own gap-[0.05em] between the two lines
+const GAP = TAGLINE_GAP * UPEM; // the same gap the component and the mail header take
 const tagShift = INK_W + STROKE / 2 - tagRun.box.x2;      // right edges flush, ink to ink
 const tagLift = H + STROKE / 2 + GAP - tagRun.box.y1;
 const tagPath = run(heebo, SLOGAN, { size: TAG_SIZE_UNITS, x: tagShift, y: tagLift, dir: 'rtl' });
