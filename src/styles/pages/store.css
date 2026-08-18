@@ -573,8 +573,15 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
      visible through the first bit of the curtain scroll. Full bleed, there is no frame and no
      shadow — nothing left to keep visible — so it goes to the smallest value that still lets the
      details read as RISING OVER the picture rather than starting flush against it. */
-  .store-banner { padding-top: 0; padding-bottom: 0.85rem; }
-  .store-banner-pin { padding-top: 0; padding-bottom: 0.4rem; }
+  /* All the way to zero, on a second report that 6px and 14px were still reading as bands.
+     They were, and the reason is that a full-bleed card has no side gaps for a vertical gap to
+     belong to: an inset card is surrounded by white on four sides, so white above it is part of a
+     ring the eye already accepts, while a card spanning the screen has white on exactly two, and
+     two facing stripes read as gaps rather than as margin. There is no small-but-not-zero value
+     that fixes that — the shape is wrong, not the number — so the borders meet the things they
+     separate and the hairline does the whole job. */
+  .store-banner { padding-top: 0; padding-bottom: 0; }
+  .store-banner-pin { padding-top: 0; padding-bottom: 0; }
 }
 
 .search-results-heading {
