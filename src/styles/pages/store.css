@@ -775,7 +775,16 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   align-items: center;
   gap: 0.35rem;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
+  /* 10px, not a pill (owner, 2026-08-18, after seeing all three side by side). He asked for "8px
+     or so"; the scale has no 8 — it is three steps, 6 / 10 / 14, and an off-scale value fails to
+     compile on purpose (base/tokens.css) — so this is the step next to it, and it is also the
+     site's DEFAULT radius. That is the argument for it rather than for 6: the chip row now shares
+     its corner with the cards, fields and menus around it instead of being the one fully round
+     thing on the page, while still reading as a chip. 6 was close enough to square at this height
+     (28px) that the row started reading as a toolbar of buttons.
+     `.category-chip--open` and the pressed/hover states inherit this — they change border style,
+     fill and colour only, never geometry. */
+  border-radius: var(--radius);
   padding: 0.35rem 0.9rem;
   font-size: 0.82rem;
   font-weight: 500;
