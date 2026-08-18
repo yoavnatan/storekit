@@ -403,12 +403,22 @@ const SURFACELESS_MAIN =
 const mainModifier = (store, view) =>
   (view.key === 'main' && store.backdropSurfaceless ? SURFACELESS_MAIN : view.modifier);
 
-export function presentationFor(subject) {
+export function presentationFor(store, subject) {
   if (LONG_GARMENT.test(subject)) return ` ${GHOST_PRESENTATION}.`;
   // Everything that is not clothing — shoes, bags, jewellery, hats, belts — used to return '' and
   // fall through to whatever the model made of "a plain, simple surface" in an empty sky. It made
   // plinths. See `OBJECT_PRESENTATION`.
-  if (!UPPER_GARMENT.test(subject)) return ` ${OBJECT_PRESENTATION}.`;
+  //
+  // ⚠️ Gated on the STORE, and the gate is the whole correctness of it. `presentationFor` is called
+  // from `imagePrompt` for every store, so when this clause first went in unconditionally it told
+  // שקמה's ceramics, Teklar's gadgets and אדנית's plant pots to hover in an open sky — none of
+  // which has a sky, and all three of which are built on a surface their backdrop names (a teal
+  // wall, a white sweep, sunlit plaster). Nothing broke visibly only because no other store was
+  // regenerated that day; the next run of any of them would have produced floating pots.
+  // `surfacelessBackdrop` is how a store says its hero has nothing to stand on.
+  if (!UPPER_GARMENT.test(subject)) {
+    return store.surfacelessBackdrop ? ` ${OBJECT_PRESENTATION}.` : '';
+  }
   return hashOf(`${subject}#worn`) % 2 === 0 ? ` ${WORN_PRESENTATION}.` : ` ${GHOST_PRESENTATION}.`;
 }
 
@@ -880,6 +890,10 @@ export const SHOWCASE_STORES = [
     //   sky v2    below                            the stained-glass banner
     // The reliable way to find them, rather than guessing: crop the whole sign area wide
     // (x_0.60,y_0.10,w_0.40,h_0.85), read the mark's edges off THAT at a known scale, convert back.
+    /** This store's hero has no surface in it at all — the product stands in open sky. That is what
+     *  `OBJECT_PRESENTATION` exists for, and this flag is what keeps it off the three stores whose
+     *  heroes DO have a wall and a floor. See `presentationFor`. */
+    surfacelessBackdrop: true,
     logoCut: {
       key: '__banner',
       crop: 'c_crop,x_0.860,y_0.272,w_0.101,h_0.436,g_north_west',
@@ -1665,11 +1679,17 @@ export const SHOWCASE_STORES = [
     lockup: {
       word: { key: '__banner', crop: 'c_crop,x_0.385,y_0.26,w_0.2467,h_0.31,g_north_west', tolerance: 18 },
       mark: { key: '__logo', crop: 'c_crop,x_0.25,y_0.12,w_0.50,h_0.48,g_north_west', tolerance: 12 },
-      // The mark gets the extra height here, unlike סהר's: a pot with leaves rising out of it is a
-      // tall shape whose visual weight is in its lower half, so matched to the letters it reads as
-      // smaller than them.
+      // The mark gets a little extra height here, unlike סהר's: a pot with leaves rising out of it
+      // is a tall shape whose visual weight is in its lower half, so matched exactly to the letters
+      // it reads as smaller than them.
+      //
+      // 280 → 215 on 2026-08-17. 280 was 1.4× the word and overcorrected badly — `lockupUrl` centres
+      // both halves vertically, so the surplus goes half above the letters and half below, and the
+      // owner read the result as exactly that: "העציץ שלה לא מיושר עם הגובה של המילה". At 215 the
+      // leaves reach the letters' top and the pot lands near their baseline, which is what "the
+      // same size" looks like for a shape this narrow. Compared by eye at 215 and 235.
       wordHeight: 200,
-      markHeight: 280,
+      markHeight: 215,
     },
     /** URBAN, and that word is doing the work. שקמה is already the warm-interior store, so a
      *  nursery shot on travertine and oak would read as the same shop with plants in it. Concrete,
@@ -2096,7 +2116,7 @@ export function imagePrompt(store, subject, view = PRODUCT_VIEWS[0], name = '') 
    * that any picture with a person or a textile in it can have. A store that shows neither pays a
    * few tokens for clauses that describe nothing in its frame, which is the cheaper mistake.
    */
-  const body = `${MODESTY}. ${PRESSED}.${presentationFor(subject)} ${LIMB_SAFETY}`;
+  const body = `${MODESTY}. ${PRESSED}.${presentationFor(store, subject)} ${LIMB_SAFETY}`;
   return `${PURPOSE_DIRECTION} ${opening} `
     + `${mainModifier(store, view)}. ${FIDELITY}. `
     + `${regionFor(store)}. ${life}. ${QUALITY_DIRECTION}. ${world} ${body}. ${NEGATIVE_PROMPT}.`;
@@ -2485,14 +2505,33 @@ const cut = (part, height) =>
  * palette felt "מת מבחינת סטורציה" — vivid panes are far from cream, and at 35 they all survive.
  * If the mark is ever repainted pale again, this route stops working and the note above is why.
  */
+/** The box a cut-out mark is fitted into before being centred on the 1024 square — see the note
+ *  inside `markCutUrl` for why 660 and not something rounder. */
+const INSET = 660;
+
 export function markCutUrl(store, manifest) {
   const spec = store.logoCut;
   if (!spec) return null;
   const src = manifest[`${store.slug}:${spec.key}`];
   if (!src) return null;                        // held back for a later run, like any missing ref
+  // ── The two steps after the trim are both load-bearing, and both were wrong once ──
+  //
+  // `e_trim` removes every pixel of margin, so the mark comes out edge to edge. Padded straight to
+  // a square it then FILLS the square — and a store avatar renders in a CIRCLE, so the crescent's
+  // tips were clipped and the shape spilled out of its container (owner, 2026-08-17: "הלוגו שלו
+  // יותר גדול מהקונטיינר העגול עכשיו, הירח יוצא החוצה"). A generated logo never showed this
+  // because a model draws its own margin in; a cut-out has none by construction.
+  //
+  // `c_fit` inside `INSET` is what puts the margin back. The number is geometry, not taste: a
+  // shape fitted inside 660×660 and centred on 1024 has a half-diagonal of 467, comfortably under
+  // the 512 radius of the circle the avatar is cropped to, so even the corners of its bounding box
+  // stay inside the mask at any size.
+  //
+  // And `c_lpad`, never `c_pad`: `c_pad` SCALES to the target before padding, which took the 660
+  // back up to 1024 and undid the inset entirely — the first fix looked identical to the bug.
   return src.replace('/upload/', '/upload/'
     + `${spec.crop}/e_make_transparent:${spec.tolerance}/e_trim:8/`
-    + `c_pad,w_1024,h_1024,b_rgb:${spec.pad}/f_png/`);
+    + `c_fit,w_${INSET},h_${INSET}/c_lpad,w_1024,h_1024,b_rgb:${spec.pad}/f_png/`);
 }
 
 export async function lockupUrl(store, manifest) {
