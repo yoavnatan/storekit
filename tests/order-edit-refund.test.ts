@@ -150,3 +150,47 @@ describe('the route that edits an order calls it', () => {
     expect(src.indexOf('recordPartialRefundOwed(')).toBeLessThan(src.indexOf("type: 'order_discount_changed'"));
   });
 });
+
+describe('the buyer is TOLD, not only owed', () => {
+  it('names the amount rather than saying the order changed', async () => {
+    // A card statement does not change retroactively. "Your order was updated" leaves the buyer
+    // comparing a 230 charge against a 190 order with nothing explaining the gap.
+    const { buildOrderCheapenedNotification } = await import('../src/lib/order-notify.js');
+    const n = buildOrderCheapenedNotification(order({ buyerId: 'buyer-1' } as Partial<Order>), 4000, { storeName: 'חנות' });
+    expect(n, 'no notification was built').toBeTruthy();
+    expect(n!.body).toContain('40');
+    expect(String(n!.body)).toMatch(/יוחזר/);
+  });
+
+  it('builds nothing for a guest — the email is their channel', async () => {
+    const { buildOrderCheapenedNotification } = await import('../src/lib/order-notify.js');
+    expect(buildOrderCheapenedNotification(order(), 4000)).toBeNull();
+  });
+
+  it('builds nothing when the edit owed nothing', async () => {
+    const { buildOrderCheapenedNotification } = await import('../src/lib/order-notify.js');
+    expect(buildOrderCheapenedNotification(order({ buyerId: 'buyer-1' } as Partial<Order>), 0)).toBeNull();
+  });
+
+  it('emails everyone, including the guests who are most of them, with the amount', async () => {
+    const { buildOrderCheapenedEmail } = await import('../src/lib/email/order-status-email.js');
+    const mail = buildOrderCheapenedEmail(order(), 4000);
+    expect(mail, 'no email was built').toBeTruthy();
+    expect(mail!.to).toBe('b@example.com');
+    expect(mail!.html).toContain('40');
+    expect(mail!.text).toMatch(/יוחזר/);
+  });
+
+  it('carries the warning about wiring a real gateway where the promise is made', async () => {
+    // The owner asked for it to live beside the message, not in a checklist: this mail promises
+    // money back, and today nothing settles the obligation behind it.
+    const src = await import('node:fs').then((fs) => fs.readFileSync('src/lib/email/order-status-email.ts', 'utf8'));
+    expect(src).toMatch(/⚠️[\s\S]{0,400}gateway is wired/);
+  });
+
+  it('is called by the route, and only when something is owed', async () => {
+    const src = await import('node:fs').then((fs) => fs.readFileSync('src/pages/api/seller/orders.ts', 'utf8'));
+    expect(src).toMatch(/notifyOrderCheapened\(/);
+    expect(src).toMatch(/if \(owedToBuyer > 0\)/);
+  });
+});
