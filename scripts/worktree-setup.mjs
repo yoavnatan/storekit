@@ -137,6 +137,38 @@ for (const rel of ['.env', '.claude/settings.local.json']) {
   }
 }
 
+// ── rerere, because closing a worktree now REBASES ──
+//
+// A worktree closes with `git rebase main`, not `git merge main` (2026-08-18: the merge form wrote a
+// commit per closeout that carried no work — 145 of that fortnight's 923 commits were
+// `Merge branch 'main' into worktree-X`). Rebase costs one thing in exchange, and it costs it in
+// exactly the state this repo is always in: several sessions live, main moving underneath. A merge
+// resolves a conflict once; a rebase replays every commit, so the same conflict can return per
+// commit — and again on the RETRY, when main moved between `verify -- --all` going green and the
+// fast-forward, so the whole rebase is redone against a newer main.
+//
+// `rerere` records each resolution and replays it, which makes those repeats free; `autoupdate`
+// stages the replayed hunk instead of leaving a resolved conflict looking unresolved.
+//
+// Set here, and per-repo rather than --global, because `.git/config` lives in the COMMON dir: one
+// worktree setting it settles it for the main checkout and every other worktree at once, and a
+// fresh clone picks it up on its first `worktree:setup` instead of never.
+for (const [key, value] of [
+  ['rerere.enabled', 'true'],
+  ['rerere.autoupdate', 'true'],
+]) {
+  let current = '';
+  try {
+    current = git('config', '--get', key);
+  } catch {
+    // `--get` exits 1 when the key is unset, which is the normal first-run case, not a failure.
+  }
+  if (current !== value) {
+    git('config', key, value);
+    steps.push(`git: ${key}=${value} (a rebase replays conflict resolutions)`);
+  }
+}
+
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
 console.log(`worktree ready — ${branch}\n  ${steps.join('\n  ')}`);
 
