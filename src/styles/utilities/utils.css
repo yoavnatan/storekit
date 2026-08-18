@@ -944,7 +944,9 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
   align-items: center;
   gap: 0.25rem;
   padding: 0.12rem 0.5rem;
-  border-radius: var(--radius-pill);
+  /* Follows `.store-card__tag` off the capsule (2026-08-18) — this rule's own note is that its
+     geometry is that chip's to the pixel, and a radius is geometry. */
+  border-radius: var(--radius-sm);
   --badge-hue: var(--color-sale);
   color: var(--color-sale);
   font-size: 0.68rem;

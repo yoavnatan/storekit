@@ -16,10 +16,10 @@ import {
 import {
   PLACEHOLDER_ART,
   TILE_HUES,
+  TILE_WASHES,
+  TILE_LIGHT_ANGLE,
   INVITE_HUES,
-  previewWash,
-  tileWashPosition,
-  tileWashSize,
+  tileBackground,
   pickArtTrio,
   pickCardHue,
   pickCardInk,
@@ -176,20 +176,17 @@ describe('placeholder tile colour', () => {
     }
   });
 
-  it('reaches fully transparent, so no card is a solid block of colour', () => {
-    // This replaces a "no inverted tile" check that read the LIGHT end of each tile's own
-    // ramp (owner, 2026-08-14: a dark card with white art was tried and rejected). There are
-    // no per-tile ramps any more — one gradient crosses the row — so the guarantee moves to
-    // the end it now has: the wash resolves to nothing rather than to some darker mix. That is
-    // also the half the old shape could not assert, because it bottomed out at --color-surface.
-    //
-    // Matched by SHAPE, not by percentage. This assertion was written as
-    // `toContain('transparent 85%')` and it failed the first time the stop moved (2026-08-18,
-    // when the clear part was widened past half) — which is a test pinning a number nobody
-    // promised instead of the rule everybody meant.
+  it('keeps every card pale — no inverted tile in the set', () => {
+    // A dark tile with white art was tried for the neutral slot and rejected as
+    // an outlier in a row of pale cards (owner, 2026-08-14). Every ramp starts
+    // near white, so a card that renders dark end to end means the rule slipped.
     for (let card = 0; card < INVITE_HUES.length; card++) {
-      for (const dir of ['rtl', 'ltr'] as const) {
-        expect(previewWash(card, dir)).toMatch(/,\s*transparent\s+\d+(\.\d+)?%\s*\)$/);
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        // 15 is nowhere near an inversion (that card started at 78) and leaves
+        // room for the deepest hue's own lit edge, which lands at 10.3.
+        expect(Math.min(...mixes)).toBeLessThanOrEqual(15);
       }
     }
   });
@@ -282,10 +279,15 @@ describe('placeholder tile colour', () => {
     // Art is stroked in the card's hue at full strength, and the cap is what keeps
     // 3:1 between the two. It is per-hue because equal percentages are not equal
     // fill — see the note on INVITE_HUES for the measured ratios.
-    // The three per-tile ramps this used to check went with the tiles' own backgrounds
-    // (2026-08-18 — one gradient across the row now, see previewWash). What survives is the
-    // half that was never about tiles: no hue's budget may drift past what the contrast
-    // measurements cover. The ceiling
+    expect(TILE_WASHES).toHaveLength(3);
+    for (const w of TILE_WASHES) {
+      expect(w.bottom).toBeLessThanOrEqual(1);
+      expect(w.top).toBeLessThan(w.bottom);
+      expect(w.top).toBeGreaterThan(0);
+    }
+    // Tiles must actually differ, or the card is one flat block of colour.
+    expect(new Set(TILE_WASHES.map((w) => `${w.top}/${w.bottom}`)).size).toBe(TILE_WASHES.length);
+    // And no hue's budget may drift past what the measurements cover. The ceiling
     // is where the darkest, least saturated hue in the set sits; past it a card
     // stops being a tinted tile and starts being a coloured block.
     for (const hue of INVITE_HUES) {
@@ -297,58 +299,36 @@ describe('placeholder tile colour', () => {
   it('never renders a wash deeper than the hue it belongs to allows', () => {
     for (let card = 0; card < INVITE_HUES.length; card++) {
       const cap = INVITE_HUES[card]!.maxWash;
-      const mixes = [...previewWash(card, 'rtl').matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
-        .map((m) => Number(m[1]));
-      expect(mixes.length).toBeGreaterThan(0);
-      for (const mix of mixes) expect(mix).toBeLessThanOrEqual(cap);
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(mixes).toHaveLength(2);
+        for (const mix of mixes) expect(mix).toBeLessThanOrEqual(cap);
+      }
     }
   });
 
-  it('runs the wash from the reading-start edge, in both languages', () => {
-    // The regression this replaces: three tiles at three angles read as pictures hung
-    // crooked (owner, 2026-08-14), so light direction was pinned as a constant. One
-    // gradient across the row inherits the same rule with one addition — the row has a
-    // READING order, so a physical direction would put the solid half where the eye
-    // enters in one language and where it leaves in the other.
+  it('lights every tile from the same direction', () => {
+    // The regression: three tiles with three gradient angles read as small
+    // pictures hung crooked (owner, 2026-08-14). Light direction is a constant,
+    // and depth is the only thing a tile is allowed to vary.
+    const angles = TILE_WASHES.map((_, i) => tileBackground(0, i))
+      .map((bg) => bg.match(/linear-gradient\((\d+)deg/)?.[1]);
+    expect(new Set(angles).size).toBe(1);
+    expect(angles[0]).toBe(String(TILE_LIGHT_ANGLE));
+  });
+
+  it('ramps every tile lighter at the top than at the bottom', () => {
+    // A tile lit from below would pass the "one angle" test above and still look
+    // wrong, so the ramp direction is pinned separately: the first colour stop
+    // of the wash is always the weaker mix.
     for (let card = 0; card < INVITE_HUES.length; card++) {
-      expect(previewWash(card, 'rtl')).toContain('linear-gradient(to left');
-      expect(previewWash(card, 'ltr')).toContain('linear-gradient(to right');
-    }
-  });
-
-  it('reassembles one sweep across the tiles, with nothing spilling between them', () => {
-    // The bug this pins: the wash was painted on the ROW and the tiles were cleared, so the
-    // colour showed in the 0.4rem gaps too — the gradient ran outside the boxes it was meant
-    // to be crossing (owner, 2026-08-18: "הגרדיאנט יוצא מהקופסאות"). Slicing it INTO each tile
-    // is what keeps every pixel inside one, and these two numbers are the whole mechanism.
-    for (const count of [2, 3, 4, 5]) {
-      expect(tileWashSize(count)).toBe(`${count * 100}% 100%`);
-      const positions = Array.from({ length: count }, (_, i) =>
-        Number(tileWashPosition(i, count).replace('% 0%', '')));
-      // Ends anchored, so the sweep starts at one edge of the row and finishes at the other
-      // rather than beginning part-way in.
-      expect(positions[0]).toBe(0);
-      expect(positions[count - 1]).toBe(100);
-      // ...and strictly increasing, or two tiles show the same slice and the run reads as a
-      // repeat instead of a sweep.
-      for (let i = 1; i < count; i++) expect(positions[i]!).toBeGreaterThan(positions[i - 1]!);
-    }
-    // A single tile has no span to divide and must not land on NaN.
-    expect(tileWashPosition(0, 1)).toBe('0% 0%');
-    expect(tileWashSize(1)).toBe('100% 100%');
-  });
-
-  it('runs from the colour to nothing, never the other way round', () => {
-    // Direction alone would pass with the clear end at the start, which is the same
-    // gradient read backwards and puts an empty row where the eye lands first.
-    for (let card = 0; card < INVITE_HUES.length; card++) {
-      const wash = previewWash(card, 'rtl');
-      const firstColour = wash.indexOf('invite-');
-      // The bare `transparent <n>%` stop — the one with no colour mixed into it, i.e. the end
-      // of the sweep. Located by shape for the same reason as the test above.
-      const clearStop = wash.search(/,\s*transparent\s+\d/);
-      expect(firstColour).toBeGreaterThan(-1);
-      expect(clearStop).toBeGreaterThan(firstColour);
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const stops = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(stops).toHaveLength(2);
+        expect(stops[0]!).toBeLessThan(stops[1]!);
+      }
     }
   });
 });

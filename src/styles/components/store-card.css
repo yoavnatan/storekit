@@ -180,7 +180,19 @@
   font-weight: 500;
   color: var(--color-muted);
   --badge-hue: var(--color-muted);
-  border-radius: var(--radius-pill);
+  /* Off the capsule on EVERY card, not only the invite ones (owner, 2026-08-18), following the
+     category chips that moved the same day.
+     `--radius-sm`, not the `--radius` those chips took, and the reason is arithmetic rather than
+     taste: this chip is 22px tall, so its "pill" was only ever an 11px radius — setting 10px here
+     is a ONE PIXEL change, indistinguishable from the pill side by side, which is not what taking
+     something off a capsule means. 6px is the step that reads as a soft rectangle at this height,
+     and it is the same proportion of the box that 10px is on the 33px chips. The scale has three
+     steps for exactly this: a smaller control takes the smaller one, or one absolute number
+     quietly means something different at every size.
+     `.sale-chip` (utils.css) and `StoreDemoBadge`'s pill move with it. They are the same row, and
+     `.badge-finish`'s whole rule is that a chip differs from its neighbour ONLY by hue — a radius
+     changed here alone would have split it. */
+  border-radius: var(--radius-sm);
   padding: 0.12rem 0.55rem;
   line-height: 1.5;
   white-space: nowrap;
@@ -201,20 +213,6 @@
    these properties on the same element, so `font-bold` and a text colour would lose to it and need
    `!` — exactly the case AI_INSTRUCTIONS' conversion rule says to leave alone (exception (f)). */
 .store-card__tag--invite {
-  /* Off the pill, like the category chips before it (owner, 2026-08-18 — these are the badges
-     inside the call-to-action card and he asked for them to follow).
-     `--radius-sm` and NOT the `--radius` the chips took, and the reason is arithmetic rather than
-     taste: this chip is 22px tall, so its "pill" was only ever an 11px radius. Setting 10px here
-     is a ONE PIXEL change — rendered side by side against the pill it is indistinguishable, which
-     is not what "take them off the capsule" means. 6px is the step that actually reads as a soft
-     rectangle at this height, and it is the same proportion of the box that 10px is on the 33px
-     chips. The scale's three steps exist for exactly this: a smaller control takes the smaller
-     one, or an absolute number silently means something different at every size.
-     Scoped to the invite chip and not put on `.store-card__tag`, which a REAL store card's
-     category tags also use: he named the CTA cards. The scoping is safe here for the same reason
-     the transparent finish below is — every chip in this card's row is an invite chip, so it has
-     no neighbour to disagree with about shape. */
-  border-radius: var(--radius-sm);
   /* 600, AND THIS ROW HAS ALREADY SETTLED THIS ARGUMENT ONCE. It shipped at 700 for one round and
      the owner's reaction was the useful kind — "זה היה יותר יפה קודם, אבל אני מבין שההדגשה כן
      מושכת את העין... מה עושים" — i.e. both halves are true and the question is which knob was
@@ -229,30 +227,10 @@
      say "outranks a category label", and 600 says it. Two full-strength signals for one message is
      the stacking the design line rules out anyway. */
   font-weight: 600;
-  /* The hue at full strength, mixed toward the text colour so it stays legible against the wash
-     of itself behind it — a chip whose ink and fill are the same colour at different alphas is the
-     one way this pairing can go unreadable. */
+  /* The hue at full strength, mixed toward the text colour so it stays legible against the 11%
+     wash of itself that `.badge-finish` puts behind it — a chip whose ink and fill are the same
+     colour at different alphas is the one way this pairing can go unreadable. */
   color: color-mix(in srgb, var(--badge-hue) 72%, var(--color-text));
-  /* Mostly transparent, to match what the tiles below it now do (owner, 2026-08-18 — the same
-     "much more transparent" applied to the badges inside the card). `.badge-finish` gives every
-     chip on this shelf an 11%->5% fill and a 28% border mixed toward `--color-surface`; here both
-     are cut to roughly a third and mixed toward `transparent` instead.
-     Mixing toward transparent rather than lowering the percentages against the surface is what
-     makes it actually transparent rather than merely paler: the tile behind these chips is now a
-     wash that fades across the row, so a fill locked to the card's white would sit as a visible
-     opaque patch over the coloured end and vanish over the clear end. Against transparent the
-     chip reads the same against both.
-     SCOPED TO THE INVITE CHIP on purpose. `.badge-finish` is shared with the sale chip, the
-     "חנות לדוגמה" badge and a real store's category tags, and its own note says the whole point of
-     that rule is that a chip differs from its neighbour ONLY by hue. This card's row has no
-     neighbour of that kind — every chip in it is an invite chip — so it can take a different
-     finish without splitting a row that has to read as one set. */
-  background: linear-gradient(
-    140deg,
-    color-mix(in srgb, var(--badge-hue) 4%, transparent) 0%,
-    color-mix(in srgb, var(--badge-hue) 2%, transparent) 100%
-  );
-  border-color: color-mix(in srgb, var(--badge-hue) 10%, transparent);
 }
 
 /* Keeps the shared fill and shadow, swaps the line for a dashed one — "+3 more" is a count, not a
@@ -296,14 +274,6 @@
   align-items: center;
   justify-content: center;
   color: var(--color-border);
-  /* Keeps the base rule's white fill and border. The card's wash arrives as a
-     `background-image` from StorePlaceholderCard — one gradient at Nx width, each tile showing
-     its own slice — so the white sits UNDER it and is what the transparent end of the gradient
-     resolves into, exactly as a tile looked before.
-     Two earlier shapes are worth not re-trying. Clearing the fill and painting the ROW instead
-     let the colour through the 0.4rem gaps, so the gradient ran outside the tiles it was
-     crossing. Clearing the border as well dissolved the four tiles into one band. The tiles and
-     their edges are the part that was asked to stay; only the per-tile GRADIENT went. */
 }
 
 /* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css.

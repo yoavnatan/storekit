@@ -142,81 +142,83 @@ export const INVITE_HUES: readonly InviteHue[] = [
 /** Just the tokens, in order — the shape most callers and tests want. */
 export const TILE_HUES: readonly string[] = INVITE_HUES.map((h) => h.token);
 
-/** Mix % for one stop of the wash, rounded — a fraction of the card hue's own budget. */
+/** ONE light direction for every tile of every card (owner, 2026-08-14).
+ *
+ *  The first version gave each tile its own gradient angle — 145°, 215°, 175° —
+ *  so within a single card the light appeared to come from three different
+ *  directions at once. Three squares side by side, each lit from somewhere else,
+ *  read exactly the way it was described: small pictures hung crooked. Nothing
+ *  was geometrically tilted (the tiles are `aspect-ratio: 1`); the tilt was
+ *  entirely in the lighting.
+ *
+ *  So the angle is a constant now, and it is the ONE thing the tiles no longer
+ *  vary. 168° is very close to straight down with a slight lean — light from
+ *  above, the way a product photograph is lit, and the lean keeps it from
+ *  reading as a flat horizontal band. */
+export const TILE_LIGHT_ANGLE = 168;
+
+/** What separates the three tiles of one card, now that the angle can't: how
+ *  deep the card's hue sinks into the surface. Every tile is lightest at the top
+ *  and deepest at the bottom — a consistent ramp is what makes three tiles read
+ *  as one lit scene, and the depth difference between them is what stops the
+ *  card being a single flat block of colour.
+ *
+ *  These are FRACTIONS of the hue's own `maxWash`, not absolute mix percentages.
+ *  Absolutes were the first version and they gave every hue the same numbers,
+ *  which the least saturated hues could not carry — see the note on INVITE_HUES.
+ *  A fraction means the three tiles of a card always sit at the same three
+ *  RELATIVE depths, whichever hue the card drew. */
+export interface TileWash {
+  /** Share of the hue's `maxWash` at the lit top edge. */
+  top: number;
+  /** …and at the shaded bottom edge. Always the deeper of the two. */
+  bottom: number;
+}
+
+export const TILE_WASHES: readonly TileWash[] = [
+  { top: 0.18, bottom: 1 },
+  { top: 0.09, bottom: 0.68 },
+  { top: 0.27, bottom: 0.95 },
+];
+
+/** Mix % for one tile edge, rounded — a fraction of the card hue's own budget. */
 function washPercent(hue: InviteHue, fraction: number): number {
   return Math.round(hue.maxWash * fraction * 10) / 10;
 }
 
 /**
- * ONE wash for the whole preview row — the four tiles keep their boxes and each shows
- * its own slice of a single gradient, the way a gradient crosses a logo rather than
- * being reapplied to every letter (owner, 2026-08-18: "לא שכל גרדיאנט בנפרד, כמו
- * בלוגו, הגרדיאנט על הכל ביחד", running "מהצבע לשקוף" and "ממש חצי חצי").
+ * The full CSS `background` for one tile of the card at `cardIndex`: the wash,
+ * under a soft highlight that falls from just above the tile's top edge.
  *
- * There is no CSS that slices one gradient across separately-painted children, so the
- * row paints it and the tiles stop painting themselves — see
- * `.store-card__preview-img-wrap--empty`, which drops the base rule's white fill and
- * KEEPS its border. That border is the whole difference from the version he rejected:
- * dropping it too dissolved the four tiles into one band, and the tiles are what he
- * asked to keep.
+ * The highlight is what gives the tile a surface instead of a fill — it is the
+ * same light the gradient ramps away from, so the two are one treatment rather
+ * than the "gradients-on-gradients" store-card.css warns against. It is
+ * deliberately weak and stops well before the middle: past that it turns the
+ * tile into a glossy button, which is a 2010 treatment and not this site's.
  *
- * Horizontal, not the tiles' old 168°: a near-vertical ramp is identical in every tile
- * and so cannot read as one gradient crossing four of them. Across the row, tile 1 and
- * tile 4 are visibly different parts of the same sweep, which is what "together" means
- * here.
- *
- * It runs from the READING-START edge, so the colour is where the eye enters the row —
- * right in Hebrew, left in English. A physical direction would put the solid half at
- * the end of the row in one language and the start in the other.
- *
- * Half and half, with the hue holding its own budget (INVITE_HUES) to 40% and reaching
- * fully transparent by 85% — not 100%, so the far end is unambiguously clear rather
- * than still fading as it runs out of tile.
- *
- * **12%/45% was tried on 2026-08-18 and reverted the same day. Don't take it further open
- * again without asking.** It came from a direct request ("הרבה יותר אחוזים שקוף. יותר
- * מחצי") and was built exactly as asked — the peak untouched, only the DISTANCE widened,
- * so 55% of the sweep was clear card. Seen on the page the owner rejected it within hours.
- * What the extra clearance actually removed was the thing the wash is for: with the colour
- * gone by 45% the row stopped reading as one gradient crossing a set of tiles and became a
- * tinted first tile beside four blank ones, which is what the per-tile ramps this replaced
- * already looked like. The numbers here are the ones that survived being looked at.
+ * Takes the CARD index rather than a hue string, because the wash depth is a
+ * property of the hue and the two must not be picked apart — the whole reason
+ * the caps are per-hue is that a hue and its budget belong together.
  */
-/**
- * Where one tile sits in the row-wide gradient, as a `background-position` percentage.
- *
- * This is the half that makes `previewWash` land INSIDE the boxes instead of behind them.
- * Painting the row and letting transparent tiles reveal it was the first attempt and the
- * colour showed in the 0.4rem gaps too, i.e. the gradient ran outside the tiles it was
- * supposed to be crossing (owner, 2026-08-18: "הגרדיאנט יוצא מהקופסאות").
- *
- * So every tile paints the SAME gradient at `count`x width and shows only its own slice.
- * A background-position percentage aligns that point of the image with the same point of
- * the box, so an evenly spaced 0 -> 100 across the tiles reassembles the sweep with the
- * gaps skipped rather than filled — which is what "crossing the tiles" actually means, and
- * a hairline more continuous than painting the gaps would have been.
- *
- * `visualIndex`, not the DOM index: the row is `flex` and reverses under `dir=rtl`, so the
- * first tile in source order is the RIGHTMOST one in Hebrew. Feeding source order in would
- * mirror the sweep against itself and put the solid end in the middle.
- */
-export function tileWashPosition(visualIndex: number, count: number): string {
-  if (count <= 1) return '0% 0%';
-  return `${(visualIndex / (count - 1)) * 100}% 0%`;
-}
-
-/** The gradient's width, as a `background-size`, for a row of `count` tiles. */
-export function tileWashSize(count: number): string {
-  return `${Math.max(count, 1) * 100}% 100%`;
-}
-
-export function previewWash(cardIndex: number, dir: 'rtl' | 'ltr'): string {
+export function tileBackground(cardIndex: number, tileIndex: number): string {
   const hue = pickCardHueSpec(cardIndex);
-  const to = dir === 'rtl' ? 'left' : 'right';
-  return `linear-gradient(to ${to},`
-    + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, 1)}%, transparent) 0%,`
-    + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, 1)}%, transparent) 40%,`
-    + ` transparent 85%)`;
+  const wash = TILE_WASHES[tileIndex % TILE_WASHES.length]!;
+  return [
+    `radial-gradient(120% 78% at 50% -12%, color-mix(in srgb, #fff 55%, transparent) 0%, transparent 62%)`,
+    `linear-gradient(${TILE_LIGHT_ANGLE}deg,`
+      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, wash.top)}%, var(--color-surface)) 0%,`
+      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, wash.bottom)}%, var(--color-surface)) 100%)`,
+  ].join(', ');
+}
+
+/** The hairline that closes the tile off from the card behind it. A wash with no
+ *  edge floats; the edge is what makes three of them read as a deliberate set —
+ *  and it is drawn in the card's own hue, not the grey border token, so it
+ *  belongs to the tile rather than outlining it. Scaled by the same budget: on a
+ *  hue whose wash runs deep, a 12% edge disappears into it. */
+export function tileEdge(cardIndex: number): string {
+  const hue = pickCardHueSpec(cardIndex);
+  return `inset 0 0 0 1px color-mix(in srgb, ${hue.token} ${washPercent(hue, 0.55)}%, transparent)`;
 }
 
 /** The full hue spec of the card at `cardIndex` — token, wash budget, ink.
@@ -264,10 +266,9 @@ export function soloHue(index: number): string {
  * The same hue with DEPTH — a 135° gradient, lighter at the top-start corner.
  *
  * The angle and the direction are not invented here: `store-mark.ts` paints every store's identity
- * mark at 135° from `shade(hue, +0.12)` to `shade(hue, -0.30)`, and and a round mark on this site is
- * lit from the top-start, so one that is not looks like a different site's control. (The invite
- * tiles used to share that corner through a `TILE_LIGHT_ANGLE` constant; the tiles stopped
- * painting themselves on 2026-08-18 and it went with them.)
+ * mark at 135° from `shade(hue, +0.12)` to `shade(hue, -0.30)`, and the invite tiles are lit from
+ * the same corner (`TILE_LIGHT_ANGLE`). A round mark on this site is lit from the top-start, so one
+ * that is not looks like a different site's control.
  *
  * `color-mix` rather than `shade()` because these hues are TOKENS, not hexes — the whole point of
  * `--color-invite-*` is that a value can move in `tokens.css` without a rebuild, and reading them
