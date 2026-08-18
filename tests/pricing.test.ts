@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { blendedCommissionRate, commissionPercentForTier, DEFAULT_TIER, monthlyFeeForTier, resolveTier, SELLER_TIERS, boostFeePercent, AD_PLATFORM_MARGIN_PERCENT } from '../src/lib/pricing.js';
 import { buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 
@@ -119,5 +120,22 @@ describe('boostFeePercent', () => {
   it('ignores a nonsense override rather than showing it to a seller', () => {
     expect(boostFeePercent(-3)).toBe(AD_PLATFORM_MARGIN_PERCENT);
     expect(boostFeePercent(Number.NaN)).toBe(AD_PLATFORM_MARGIN_PERCENT);
+  });
+});
+
+describe('the tier prices are quoted BEFORE VAT, and the two conventions disagree on purpose', () => {
+  it('states the convention where the numbers live', () => {
+    // Worth 18% of the platform's revenue and written down nowhere until 2026-08-18. The decision
+    // (owner): a seller reclaims the VAT, so it costs him nothing and it is ours to keep — which is
+    // also how our own suppliers quote us.
+    const src = readFileSync('src/lib/pricing.ts', 'utf8');
+    expect(src).toMatch(/BEFORE VAT/);
+  });
+
+  it('keeps lib/vat.ts saying the OPPOSITE, because it governs a different payer', () => {
+    // vat.ts is about CONSUMER prices — an Israeli shopper is quoted what they will pay. pricing.ts
+    // is a B2B fee. Anyone who "unifies" the two makes one of them wrong, and which one depends on
+    // who is being charged. This pins that the disagreement is deliberate.
+    expect(readFileSync('src/lib/vat.ts', 'utf8')).toMatch(/VAT-INCLUSIVE/);
   });
 });
