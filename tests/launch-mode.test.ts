@@ -182,9 +182,14 @@ describe('placeholder tile colour', () => {
     // no per-tile ramps any more — one gradient crosses the row — so the guarantee moves to
     // the end it now has: the wash resolves to nothing rather than to some darker mix. That is
     // also the half the old shape could not assert, because it bottomed out at --color-surface.
+    //
+    // Matched by SHAPE, not by percentage. This assertion was written as
+    // `toContain('transparent 85%')` and it failed the first time the stop moved (2026-08-18,
+    // when the clear part was widened past half) — which is a test pinning a number nobody
+    // promised instead of the rule everybody meant.
     for (let card = 0; card < INVITE_HUES.length; card++) {
       for (const dir of ['rtl', 'ltr'] as const) {
-        expect(previewWash(card, dir)).toContain('transparent 85%');
+        expect(previewWash(card, dir)).toMatch(/,\s*transparent\s+\d+(\.\d+)?%\s*\)$/);
       }
     }
   });
@@ -338,10 +343,12 @@ describe('placeholder tile colour', () => {
     // gradient read backwards and puts an empty row where the eye lands first.
     for (let card = 0; card < INVITE_HUES.length; card++) {
       const wash = previewWash(card, 'rtl');
-      const colourEnd = wash.indexOf('invite-');
-      const clearEnd = wash.indexOf('transparent 85%');
-      expect(colourEnd).toBeGreaterThan(-1);
-      expect(clearEnd).toBeGreaterThan(colourEnd);
+      const firstColour = wash.indexOf('invite-');
+      // The bare `transparent <n>%` stop — the one with no colour mixed into it, i.e. the end
+      // of the sweep. Located by shape for the same reason as the test above.
+      const clearStop = wash.search(/,\s*transparent\s+\d/);
+      expect(firstColour).toBeGreaterThan(-1);
+      expect(clearStop).toBeGreaterThan(firstColour);
     }
   });
 });
