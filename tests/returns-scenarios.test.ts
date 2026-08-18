@@ -15,6 +15,8 @@ import {
   HANDOVER_DAYS, IN_TRANSIT_PATIENCE_DAYS, OFFER_ANSWER_DAYS,
   type ReturnStatus,
 } from '../src/lib/returns.js';
+import { businessTodayISO } from '../src/lib/business-day.js';
+import { addDaysISO } from '../src/lib/date-range.js';
 import { buyerReturnCta } from '../src/lib/return-buyer-cta.js';
 import { POST as returnsRoute } from '../src/pages/api/returns.js';
 import { setAdminCookie } from '../src/lib/admin-auth.js';
@@ -64,13 +66,23 @@ const KERAMIKA = '22222222-2222-4222-8222-000000000001';
 const STORE = { slug: 'keramika', name: 'קרמיקה', sellerId: '11111111-1111-4111-8111-000000000001' };
 const BUYER = 'buyer-under-test';
 
-/** The day n days from now, as the sweep wants it. Generous margins beat business-day arithmetic in a
- *  test: a scenario that means "well past the deadline" should not fail because a Saturday moved. */
-const at = (days: number): string => {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
+/**
+ * The day n days from now, as the sweep wants it. Generous margins beat business-day arithmetic in a
+ * test: a scenario that means "well past the deadline" should not fail because a Saturday moved.
+ *
+ * **It has to count on the BUSINESS calendar, and it counted in UTC until 2026-08-19.** Every deadline
+ * in this file is built by `businessDayISO` — the day in `Asia/Jerusalem` — while `at()` derived its
+ * day from `toISOString()`, which is UTC. The two agree for most of the day and disagree from local
+ * midnight until 03:00, when Jerusalem has already turned over and UTC has not. In that window `at(n)`
+ * is one day behind every deadline it is compared against, so the one assertion here that sits on an
+ * EXACT boundary — the warning fired the day before the handover window closes — misses by one:
+ * `handoverDeadlineISO` came out 2026-08-26 while `at(HANDOVER_DAYS)` said 2026-08-25, the warn branch
+ * needs the deadline to fall between today and tomorrow, and it reported `expected 0 to be > 0`.
+ *
+ * So it failed for three hours a night, on main, with nobody's change behind it — the worst shape a
+ * red test can have, because it looks exactly like whatever diff happens to be open at the time.
+ */
+const at = (days: number): string => addDaysISO(businessTodayISO(), days);
 
 const stockOf = async (): Promise<number> => {
   const { rows } = await query<{ stock: number }>(
