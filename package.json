@@ -30,7 +30,8 @@
     "copy:apply": "node scripts/copy-review.mjs apply",
     "brand:wordmark": "node scripts/generate-wordmark.mjs",
     "showcase:prompts": "node ./scripts/export-showcase-prompts.mjs",
-    "audit:drift": "node scripts/audit-drift.mjs"
+    "audit:drift": "node scripts/audit-drift.mjs",
+    "showcase:check": "node --env-file-if-exists=.env ./scripts/showcase-seed-check.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.0.2",

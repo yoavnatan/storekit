@@ -301,6 +301,20 @@ if (has(/^migrations\//)) {
   });
 }
 
+// The same class as the migration gate above, through the other door. `showcase:images` writes URLs
+// to the manifest and `seed:showcase` writes them to the DB — two commands, and the storefront reads
+// only the second. A session that generates images and stops leaves paid-for pictures that no page
+// will ever show, silently. Exactly that happened on 2026-08-17 (a remade banner, a new avatar and
+// 22 re-rolled heroes, all stranded), and the owner found it by looking at the shop, which is the
+// only thing that could have found it. See scripts/showcase-seed-check.mjs.
+if (has(/^scripts\/lib\/showcase\/image-manifest\.json$/)) {
+  checks.push({
+    name: 'showcase images seeded',
+    cmd: process.execPath,
+    args: ['--env-file-if-exists=.env', resolve(ROOT, 'scripts/showcase-seed-check.mjs'), '--quiet'],
+  });
+}
+
 // `astro check` is a superset of `tsc`, so a recorded pass of the bigger one satisfies the smaller.
 const already = passedBefore();
 const cached = (name) => already.includes(name) || (name === 'tsc' && already.includes('astro check'));
