@@ -19,7 +19,8 @@
 import type { Order } from './orders.js';
 import { createNotification, type Notification } from './notifications.js';
 import { STATUS_MESSAGES, type NotifiableStatus } from './order-status-copy.js';
-import { sendOrderStatusEmail } from './email/order-status-email.js';
+import { sendOrderStatusEmail, sendOrderCheapenedEmail } from './email/order-status-email.js';
+import { formatAgorot } from './money.js';
 
 type BuyerNotificationInput = Omit<Notification, 'id' | 'read' | 'createdAt'>;
 
@@ -48,6 +49,52 @@ export function buildOrderStatusNotification(
     ...(opts.storeSlug ? { storeSlug: opts.storeSlug } : {}),
     ...(opts.storeName ? { storeName: opts.storeName } : {}),
   };
+}
+
+/**
+ * **Tell the BUYER their paid order got cheaper.**
+ *
+ * The one message in this file that is not about a shipping status, and it exists because the
+ * whole pipeline around it is: a seller deleting a line, changing shipping or granting a discount
+ * moves real money on an order the buyer has already paid, and none of it is a status change, so
+ * until 2026-08-18 the buyer was told nothing at all. They paid 230, the order said 190, and the
+ * only place the 40 existed was a journal row.
+ *
+ * Pure/side-effecting split as above: `buildOrderCheapenedNotification` decides, `notifyOrderCheapened`
+ * writes and sends. In-app for registered buyers, email for everyone — and the email is the one
+ * that matters, because most buyers here are guests with no account to notify.
+ *
+ * ⚠️ The email carries the warning about wiring a real gateway; see `order-status-email.ts`.
+ */
+export function buildOrderCheapenedNotification(
+  order: Order,
+  owedAgorot: number,
+  opts: { storeName?: string; storeSlug?: string } = {},
+): BuyerNotificationInput | null {
+  if (owedAgorot <= 0) return null;      // the edit made it dearer, or changed nothing
+  if (!order.buyerId) return null;       // guest → email only, same rule as a status change
+  return {
+    userId: order.buyerId,
+    role: 'buyer',
+    type: 'order_update',
+    title: 'ההזמנה שלך עודכנה',
+    // The amount, not "your order changed" — a card statement does not change retroactively, so a
+    // message without the number leaves the buyer comparing a charge to nothing.
+    body: `הסכום ירד ב-${formatAgorot(owedAgorot)}. ההפרש יוחזר לאמצעי התשלום שלך.`,
+    relatedId: order.id,
+    ...(opts.storeSlug ? { storeSlug: opts.storeSlug } : {}),
+    ...(opts.storeName ? { storeName: opts.storeName } : {}),
+  };
+}
+
+export async function notifyOrderCheapened(
+  order: Order,
+  owedAgorot: number,
+  opts: { storeName?: string; storeSlug?: string } = {},
+): Promise<void> {
+  const input = buildOrderCheapenedNotification(order, owedAgorot, opts);
+  if (input) await createNotification(input).catch(() => { /* the edit itself stands */ });
+  if (owedAgorot > 0) void sendOrderCheapenedEmail(order, owedAgorot).catch(() => { /* handled inside */ });
 }
 
 /**
