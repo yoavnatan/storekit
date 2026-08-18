@@ -159,21 +159,12 @@ describe('the ✓ hold does not resize the button it lands on', () => {
   });
 });
 
-describe('the confirm dialog does not draw two sets of dots', () => {
-  it('strips the ellipsis every workingLabel is written with', () => {
-    // Reported by the owner (2026-08-17): the pause button read "משהה… ⋯" — the copy's three dots
-    // plus the three animated ones. Every workingLabel in the tree is written with an ellipsis, so
-    // the fix belongs to the component that adds the animation, not to twenty call sites.
-    const modal = readFileSync('src/components/ConfirmModal.astro', 'utf8');
-    expect(modal).toMatch(/workingLabel\.replace\(/);
-    // And the interpolation must use the stripped label, or the strip is decorative.
-    expect(modal).not.toMatch(/gap:0\.5em">\$\{workingLabel\}/);
-  });
-
-  it('leaves no confirm caller passing a label the dots will duplicate', () => {
-    // Belt and braces on the layer above: if the strip is ever removed, this still fails.
-    const stripped = readFileSync('src/components/ConfirmModal.astro', 'utf8')
-      .match(/const label = workingLabel\.replace\(([^)]*)\)/);
-    expect(stripped, 'ConfirmModal no longer strips the trailing ellipsis').not.toBeNull();
-  });
-});
+/* MOVED, 2026-08-18 → tests/busy-label.test.ts.
+   Two cases lived here and both were shape assertions: one checked that the string
+   `workingLabel.replace(` appeared in ConfirmModal, the other that the same line still matched a
+   regex. Neither ever read a CALL SITE, despite the second one being named
+   "leaves no confirm caller passing a label the dots will duplicate" — so when the bulk delete
+   composed `"מוחק... (3)"`, which the end-anchored strip could not touch, both stayed green while
+   the six dots were back on screen (owner, 2026-08-18). A guard that asserts a line exists cannot
+   fail for the reason its name promises. The replacement tests the behaviour and scans the
+   callers. */
