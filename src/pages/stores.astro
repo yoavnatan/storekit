@@ -7,7 +7,7 @@ import CategoryIcon from '../components/CategoryIcon.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores, byPromoWeight } from '../lib/stores.js';
-import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
+import { countRealStores, filterShopperStores, isDemoStore, isLiveStore, realStores } from '../lib/demo-stores.js';
 import { getStorePreviews, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
 import LoadingSweep from '../components/LoadingSweep.astro';
 import { isLaunchMode, showShelfInvite, launchInviteCount, LAUNCH_GRID_SLOTS } from '../lib/launch-mode.js';
@@ -59,7 +59,7 @@ const previewedStores = previewParam === 'blank'
 // Same narrowing as the homepage, and for the same measured reason — see
 // store-products.ts#getStorePreviews. This page draws the identical card.
 const previewsByStore = await getStorePreviews(previewedStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
-const liveRealCount = countRealStores(previewedStores.filter((s) => previewsByStore.get(s.id)?.hasProducts));
+const liveRealCount = countRealStores(previewedStores.filter((s) => isLiveStore(previewsByStore.get(s.id))));
 const shopperStores = filterShopperStores(previewedStores, liveRealCount);
 const storesWithProducts = shopperStores
   .map((s) => ({ store: s, preview: previewsByStore.get(s.id) }))
@@ -165,7 +165,11 @@ const isFiltered = !!q || !!category || safePage > 1;
 // second slice — the count below is the previewed one.
 // Real stores only — a showcase store must not count toward the threshold it
 // exists to cover (lib/demo-stores.ts).
-const liveStoreCount = countRealStores(storesWithProducts.map((s) => s.store));
+// The SAME number the demo decision above used, and reused rather than recomputed. These two
+// thresholds counting different things is exactly the bug of 2026-08-18: one asked how many real
+// stores exist, the other how many have products, and five empty stores fell into the gap between
+// them. One question — how many real stores are actually live — gets one answer.
+const liveStoreCount = liveRealCount;
 const launchMode = isLaunchMode(liveStoreCount);
 const gridStores = pageItems;
 const placeholderCount = !isFiltered && launchMode

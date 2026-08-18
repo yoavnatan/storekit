@@ -834,6 +834,12 @@ export interface StorePreview {
    *  with products but no photos keeps its place and draws placeholder squares — so this is a
    *  separate fact from the images below, not `images.length > 0`. */
   hasProducts: boolean;
+  /** How many visible products the store has. Separate from `hasProducts` because the two answer
+   *  different questions: a card draws for ANY product, while "does this count as a real store on
+   *  the discovery surfaces" has a higher bar (`demo-stores.ts#LIVE_STORE_MIN_PRODUCTS`). Counted
+   *  in the same statement rather than by a second query — it is a `count(*)` over rows already
+   *  being scanned. */
+  productCount: number;
   /** First image of each of the first few visible products, newest first — exactly the thumbnails
    *  the card draws, in the order it would have drawn them. */
   images: string[];
@@ -876,10 +882,10 @@ export interface StorePreview {
  */
 export async function getStorePreviews(storeIds: readonly string[], perStore: number): Promise<Map<string, StorePreview>> {
   const ids = [...new Set(storeIds.filter(isUuid))];
-  const byStore = new Map<string, StorePreview>(ids.map((id) => [id, { hasProducts: false, images: [] }]));
+  const byStore = new Map<string, StorePreview>(ids.map((id) => [id, { hasProducts: false, productCount: 0, images: [] }]));
   if (!ids.length) return byStore;
 
-  const rows_ = await rows<{ store_id: string; images: string[] | null }>(
+  const rows_ = await rows<{ store_id: string; images: string[] | null; product_count: string | number }>(
     `WITH visible AS (
        SELECT p.id, p.store_id, p.created_at, p.featured,
               (SELECT i.url FROM product_images i WHERE i.product_id = p.id ORDER BY i.position LIMIT 1) AS image
@@ -893,6 +899,7 @@ export async function getStorePreviews(storeIds: readonly string[], perStore: nu
         WHERE image IS NOT NULL
      )
      SELECT v.store_id,
+            count(*)::int AS product_count,
             (SELECT array_agg(r.image ORDER BY r.rn)
                FROM ranked r WHERE r.store_id = v.store_id AND r.rn <= $2) AS images
        FROM visible v
@@ -902,7 +909,7 @@ export async function getStorePreviews(storeIds: readonly string[], perStore: nu
 
   // A row here means the store has at least one visible product; `images` is null when none of them
   // carries a photo, which is the placeholder case rather than an empty shelf.
-  for (const row of rows_) byStore.set(row.store_id, { hasProducts: true, images: row.images ?? [] });
+  for (const row of rows_) byStore.set(row.store_id, { hasProducts: true, productCount: Number(row.product_count), images: row.images ?? [] });
   return byStore;
 }
 

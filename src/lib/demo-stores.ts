@@ -50,6 +50,28 @@ export function isDemoStore(store: DemoFlagged): boolean {
 
 /** Stores that count toward every threshold — i.e. everything except the ones the
  *  platform stocked itself. */
+/**
+ * How many visible products a real store needs before it counts toward "the mall has enough real
+ * stores" (owner, 2026-08-18, asked what the bar should be and set it here).
+ *
+ * **It was one, and one is too few.** The bar started as `hasProducts` — the flag a store CARD
+ * uses, which is the right question for drawing a card and the wrong one for this. Five stores with
+ * a single product each would switch the mall out of launch mode and take the stocked showcase
+ * stores off the homepage with them, leaving a discovery page that is technically full and visibly
+ * empty. Five products is roughly where a shelf stops reading as a placeholder.
+ *
+ * Deliberately NOT the same number as the store threshold it feeds; they are different quantities
+ * that happen to coincide today, and tying them would make one move whenever the other did.
+ */
+export const LIVE_STORE_MIN_PRODUCTS = 5;
+
+/** Does this store have enough to sell to count as a live one? The single definition — a surface
+ *  comparing `productCount` against its own literal is how two pages start disagreeing about what
+ *  a real store is. */
+export function isLiveStore(preview: { productCount?: number } | undefined): boolean {
+  return (preview?.productCount ?? 0) >= LIVE_STORE_MIN_PRODUCTS;
+}
+
 export function realStores<T extends DemoFlagged>(stores: readonly T[]): T[] {
   return stores.filter((s) => !isDemoStore(s));
 }
