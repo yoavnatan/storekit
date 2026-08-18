@@ -241,6 +241,64 @@ export function pickCardInk(cardIndex: number): string {
   return hue.ink ?? hue.token;
 }
 
+/**
+ * A SOLID fill from this palette, for a small filled shape rather than a washed tile.
+ *
+ * The reviewer's initial circle on a product page is the first caller (owner, 2026-08-17: he
+ * pointed at the homepage invite cards and said use THAT palette). It needs the opposite of what a
+ * tile needs — the tile is a pale wash the art is drawn ON, this is the hue at full strength with
+ * white type on top — so it takes the token directly and ignores `maxWash` entirely, which is a
+ * cap on the wash and means nothing here.
+ *
+ * `ink` is preferred where a hue declares one: that field exists precisely because two of these
+ * are too light to carry their own line-art, and a light hue behind white text has the same
+ * problem for the same reason.
+ *
+ * Keyed by an arbitrary STRING rather than a card index, because a review has no position in a
+ * grid — the caller hashes whatever identity it wants stable (`hueIndexFor`).
+ */
+export function soloHue(index: number): string {
+  const hue = INVITE_HUES[((index % INVITE_HUES.length) + INVITE_HUES.length) % INVITE_HUES.length]!;
+  return hue.ink ?? hue.token;
+}
+
+/**
+ * The same hue with DEPTH — a 135° gradient, lighter at the top-start corner.
+ *
+ * The angle and the direction are not invented here: `store-mark.ts` paints every store's identity
+ * mark at 135° from `shade(hue, +0.12)` to `shade(hue, -0.30)`, and the invite tiles are lit from
+ * the same corner (`TILE_LIGHT_ANGLE`). A round mark on this site is lit from the top-start, so one
+ * that is not looks like a different site's control.
+ *
+ * `color-mix` rather than `shade()` because these hues are TOKENS, not hexes — the whole point of
+ * `--color-invite-*` is that a value can move in `tokens.css` without a rebuild, and reading them
+ * into JS to darken them would freeze the copy that got read. The two percentages are the same
+ * distance the store mark travels, expressed the way CSS can do it.
+ */
+export function soloHueGradient(index: number): string {
+  const hue = soloHue(index);
+  return `linear-gradient(135deg,`
+    + ` color-mix(in srgb, ${hue} 88%, #fff) 0%,`
+    + ` color-mix(in srgb, ${hue} 70%, #000) 100%)`;
+}
+
+/**
+ * Which of the eleven a given string lands on.
+ *
+ * FNV-1a, the same hash `store-mark.ts` uses and for the same reason: a plain character sum
+ * collides badly across same-length seeds, which for reviewer initials would put every name of a
+ * given length in the same handful of colours. Deterministic and stateless — nothing is stored, and
+ * the same seed is the same colour forever.
+ */
+export function hueIndexFor(seed: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) % INVITE_HUES.length;
+}
+
 /** Step between one card's starting art and the next card's. Must be coprime
  *  with the pool size so the sequence visits every piece before repeating —
  *  a step of 3 against 12 pieces cycles every 4 cards, which in a 4-column

@@ -11,6 +11,7 @@ import {
   sellerLoginRules,
 } from '../src/lib/rate-limit.js';
 import { clientIp } from '../src/lib/client-ip.js';
+import { cleanGitEnv } from './helpers/git-env.js';
 
 /**
  * Brute-force throttling on the three credential surfaces (GO_LIVE §7).
@@ -205,7 +206,7 @@ describe('every credential surface is actually gated', () => {
   it('no page verifies a credential without asking the limiter first', async () => {
     const { readFile } = await import('node:fs/promises');
     const { execFileSync } = await import('node:child_process');
-    const tracked = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' }).trim().split('\n');
+    const tracked = execFileSync('git', ['ls-files', 'src'], { cwd: process.cwd(), env: cleanGitEnv(), encoding: 'utf8' }).trim().split('\n');
 
     const offenders: string[] = [];
     for (const file of tracked) {

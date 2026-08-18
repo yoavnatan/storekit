@@ -18,9 +18,17 @@ import { escapeHtml } from './html-escape.js';
  * ── The two rules the markup encodes ──
  * A half star is an empty star with a filled one laid over it, clipped to half its width — no SVG
  * gradient, because a gradient needs a document-unique id and this renders a dozen times per page.
- * And the row is `dir="ltr"` even on an RTL page: a half star only reads correctly if "full" starts
- * at a known end, and 4.5 as four-and-a-half stars left to right is the borrowed idiom's own
- * grammar. The NUMBER beside it is text and stays in the page's direction.
+ * **And the row MIRRORS with the page — it does not pin `dir="ltr"` (corrected 2026-08-17).** It
+ * did, on the argument that a half star only reads if "full" starts at a known end and that a star
+ * rating is a borrowed idiom carrying its own left-to-right grammar. The owner asked what the
+ * convention actually IS, and the answer goes the other way: a rating is a SCALE, and both Material
+ * Design's bidirectionality guidance and Microsoft's mirroring guidance say a scale or a
+ * progression mirrors — in RTL a progression runs right to left. "It is borrowed" is a weak
+ * argument on a Hebrew-first site that mirrors everything else it owns, down to the arrow keys.
+ *
+ * Nothing here had to change for it: the flex row lays its stars out in the page's direction, and
+ * the fill span is `inset:0` plus a `width`, which over-constrains left/right — so the browser
+ * drops the START edge and the clip anchors to the reading side of its own accord, either way.
  *
  * No rating renders NOTHING — not five empty stars, which read as a bad score rather than as none.
  */
@@ -116,18 +124,42 @@ export function starRowHtml(avg: number | null, options: StarRowOptions = {}): s
   ].filter(Boolean).join(' ');
 
   return `<${tag} ${attrs}>`
-    + `<span dir="ltr" class="inline-flex items-center" style="gap:1px;line-height:0" aria-hidden="true">${stars}</span>`
+    + `<span class="inline-flex items-center" style="gap:1px;line-height:0" aria-hidden="true">${stars}</span>`
     + value + count
     + `</${tag}>`;
 }
 
-/** The compact form every product CARD uses: stars, the average, and the count in brackets. Digits
- *  only — a card has no room for "12 ביקורות" and the brackets need no translation. */
+/**
+ * The compact form every product CARD uses: ONE star, the average, and the count in brackets.
+ *
+ * **One star and not five, and that is the difference between a grid and a page** (owner,
+ * 2026-08-17). Five stars at 13px repeated down twenty-four cards is a lot of identical ornament
+ * competing with the two things a card exists to say — the name and the price — and it costs a
+ * third of the card's width to express a number that is right there next to it. A number is also
+ * read faster than a shape is counted: `4.5` is exact at a glance, where four-and-a-half stars has
+ * to be resolved. It is what Airbnb, Booking and the food-delivery apps do, and they are the ones
+ * whose lists are longest.
+ *
+ * The FIVE-star row stays where it earns its place: the summary on the product page, where there
+ * is room and where the shape genuinely says something (4.3 reads as "four and a half" without
+ * reading the number), and inside each review row, where the stars ARE the content.
+ *
+ * Digits only for the count — a card has no room for "12 ביקורות" and brackets need no
+ * translation.
+ */
 export function cardStarRowHtml(agg: RatingAggregate, ariaLabel?: string): string {
-  return starRowHtml(averageRating(agg), {
-    px: 13,
-    showValue: true,
-    countLabel: agg.count > 0 ? `(${agg.count})` : undefined,
-    ...(ariaLabel ? { ariaLabel } : {}),
-  });
+  const avg = averageRating(agg);
+  if (avg === null) return '';
+  const px = 13;
+  return `<span class="inline-flex items-center gap-1 align-middle" style="font-size:${px}px"`
+    + (ariaLabel ? ` role="img" aria-label="${escapeHtml(ariaLabel)}"` : '')
+    + '>'
+    // Always whole, and drawn directly rather than through `starHtml` — that one stacks a pale
+    // base under a clipped fill so a HALF can be cut out of it, and there is nothing to cut here.
+    // This star is a MARK saying "there is a rating"; the number beside it is the measurement, so a
+    // half-filled icon would be the same fact drawn twice and worse both times.
+    + `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:block;width:${px}px;height:${px}px;max-width:none;color:var(--color-rating-to);flex:0 0 auto"><path d="${STAR_PATH}"/></svg>`
+    + `<span style="font-size:${px}px;font-weight:700;color:var(--color-text);line-height:1">${escapeHtml(ratingDisplay(avg))}</span>`
+    + `<span style="font-size:${px - 1}px;color:var(--color-muted);line-height:1">(${agg.count})</span>`
+    + '</span>';
 }

@@ -102,6 +102,24 @@ if [ ! -d "$REPO_ROOT/node_modules" ]; then
   exit 1
 fi
 
+# ⚠️ **UNSET THESE BEFORE RUNNING ANYTHING, and this is not defensive tidying — it is the repair for
+# a real incident on 2026-08-17.** Git exports GIT_DIR (and friends) into every hook it runs. This
+# hook runs the whole test suite, so every test inherits them — and a test that shells out to git
+# with its own `cwd` STILL talks to the repository these variables name, because they win over cwd.
+#
+# `tests/handoff-backup.test.ts` builds a throwaway repo and runs `git init --bare`, `git add -A`
+# and `git commit -m seed` inside it. Under this hook those three ran against the REAL repository
+# instead: they set `core.bare=true` on it, and committed "seed" onto the branch that happened to be
+# checked out — a commit deleting 1,060 files, 212,797 lines, authored by the fixture's `t <t@t>`.
+# It looked exactly like sabotage and was a `git push`.
+#
+# The test is careful and was not the bug. Any test that shells out to git would have done this, so
+# the fix belongs here, once, rather than in each of them: a hook must hand its children a clean
+# environment, because "which repository does this command act on" is not something a child can be
+# expected to defend against.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+unset GIT_PREFIX GIT_COMMON_DIR GIT_NAMESPACE GIT_QUARANTINE_PATH
+
 if ! (cd "$REPO_ROOT" && npm run --silent verify -- --all); then
   echo "" >&2
   echo "[pre-push] REFUSED: verification is red, and CI will fail on the same thing." >&2

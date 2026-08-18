@@ -30,9 +30,8 @@ import type { ReturnStatus } from './returns.js';
  * states, applied here for the same reason. Failures are logged by the adapter, not by pretending.
  */
 
-/** The buyer-facing sentence for each state that earns a message. Absent = no message, which is
- *  most of them: `in_transit` and `received` are the mechanism working, not news the buyer can act
- *  on, and `expired` is the buyer's own inaction and already visible on their order. */
+/** The buyer-facing sentence for each state that earns a message. Absent = no message: `in_transit`
+ *  and `received` are the mechanism working, not news the buyer can act on. */
 const BUYER_COPY: Partial<Record<ReturnStatus, { title: string; body: (r: ReturnRequest) => string }>> = {
   approved: {
     title: 'בקשת ההחזרה אושרה',
@@ -51,6 +50,25 @@ const BUYER_COPY: Partial<Record<ReturnStatus, { title: string; body: (r: Return
     // unnecessary. The obligation is real and worth announcing — only the tense was wrong.
     title: 'ההחזר אושר',
     body: (r) => `${formatAgorot(r.refundAgorot)} יוחזרו לכרטיס שבו שילמת.`,
+  },
+  // ── The two closures that end AGAINST the buyer, added because they now exist ──
+  //
+  // `expired` used to be dismissed here as "the buyer's own inaction and already visible on their
+  // order", and that reasoning does not survive the two new ways in: an offer he never answered, and
+  // a handover window he may simply have lost track of. A case that closes and takes the money with
+  // it is the single most important thing that can happen to a person on this screen, and "it is
+  // visible if you go and look" is exactly how somebody learns about it a month too late.
+  expired: {
+    title: 'בקשת ההחזרה נסגרה',
+    // Deliberately does not accuse: from here we cannot tell a lost parcel from a change of heart
+    // from a person who was in hospital. What he needs is what it MEANS and what he can still do.
+    body: () => 'הבקשה נסגרה והמוצר לא הוחזר, ולכן לא בוצע החזר כספי. אם תקופת ההחזרה עוד לא חלפה, אפשר לפתוח בקשה חדשה מהאזור האישי.',
+  },
+  disputed: {
+    title: 'הבקשה עברה לבדיקה שלנו',
+    // Says who decides and that nobody has been paid, and says nothing about the seller's claim. His
+    // rule from the first round, and it holds harder here: an accusation is not made on a screen.
+    body: () => 'הבקשה עברה לבדיקה שלנו ואנחנו נכריע בה. עד ההכרעה הכסף לא מועבר לאף צד. נעדכן אותך כשתהיה החלטה.',
   },
 };
 
@@ -112,6 +130,59 @@ ${ctaButton(`${SITE}/buyer/dashboard?tab=orders`, 'לפרטי ההזמנה')}
 }
 
 /**
+ * Tell the buyer his own clock runs out tomorrow.
+ *
+ * ── Why this exists at all ──
+ * Every warning in this mechanism used to go to the seller, and the handover window was written off as
+ * "the buyer's to miss". That was true and it was not a reason: the buyer is the one who loses the
+ * money, he is the party who is not in a dashboard daily, and the two clocks that can close on him
+ * (the handover window, and an offer he has not answered) both end with a case shut and nothing paid.
+ * One sentence the day before is what separates a deadline from a trap.
+ *
+ * Reuses the buyer mail shape rather than inventing a second one, for the reason this file's header
+ * gives: a mail that says what happened and not where to look ends in a search.
+ */
+export async function notifyBuyerReturnDeadline(
+  order: Pick<Order, 'buyerId' | 'buyerEmail' | 'buyerName' | 'checkoutRef' | 'id'>,
+  which: 'handover' | 'offer',
+  storeName?: string,
+): Promise<void> {
+  const title = which === 'handover' ? 'מחר היום האחרון לשלוח את המוצר' : 'מחר היום האחרון לענות להצעה';
+  const body = which === 'handover'
+    // What to do, by when, and what happens otherwise — in that order, and with the way back out: a
+    // closed request is not the end of his right, and a buyer who thinks it is will not try again.
+    ? 'אם לא ישלח המוצר בחזרה לחנות עד מחר, הבקשה תיסגר ולא יבוצע החזר כספי. שלחת כבר? סמן באזור האישי שהמוצר נשלח, וזה עוצר את הסגירה.'
+    : 'המוכר הציע החזר כספי חלקי במקום שהמוצר יחזור, ומחר ההצעה מתבטלת. אפשר לקבל אותה או לדחות ולהחזיר את המוצר כרגיל — שתי האפשרויות באזור האישי.';
+
+  if (order.buyerId) {
+    try {
+      await createNotification({
+        userId: order.buyerId, role: 'buyer', type: 'order_update',
+        title, body, relatedId: order.id,
+        ...(storeName ? { storeName } : {}),
+      });
+    } catch { /* announced, not load-bearing — see the header */ }
+  }
+  if (order.buyerEmail) {
+    try {
+      const ref = order.checkoutRef ?? order.id.slice(0, 8);
+      const bodyHtml = `
+<p style="margin:0 0 12px;">שלום ${esc(order.buyerName ?? '')},</p>
+<p style="margin:0 0 12px;">${esc(body)}</p>
+<p style="margin:0 0 12px;color:#6b7280;">הזמנה ${esc(ref)}</p>
+${ctaButton(`${SITE}/buyer/dashboard?tab=orders`, 'לפרטי ההזמנה')}
+<p style="margin:16px 0 0;font-size:13px;"><a href="${orderHelpUrl(SITE, order.id)}" style="color:#5a6478;">פנייה בנוגע להזמנה</a></p>`;
+      await sendEmail({
+        to: order.buyerEmail,
+        subject: `${title} (${ref})`,
+        html: renderEmailShell({ previewText: body, heading: title, bodyHtml }),
+        text: `שלום ${order.buyerName ?? ''},\n${body}\nהזמנה ${ref}`,
+      });
+    } catch { /* same */ }
+  }
+}
+
+/**
  * Tell the seller a request has arrived.
  *
  * Only when it is HIS to answer — inside the statutory window the request was approved on arrival and
@@ -146,21 +217,28 @@ export async function notifySellerReturnOpened(
  * Tell the seller his clock is nearly out — one message, one day before it closes on him.
  *
  * Sent by the daily sweep and only for the states where silence has a COST he did not choose: a
- * request he may still refuse, and a parcel sitting unopened that will refund itself. Not for the
- * handover window, which is the buyer's to miss.
+ * request he may still refuse, a parcel sitting unopened that will refund itself, and a parcel the
+ * buyer says he posted which is about to become our decision instead of his. Not for the handover
+ * window, which is the buyer's to miss — and which the buyer is now warned about himself.
  */
 export async function notifySellerReturnDeadline(
   sellerId: string,
   request: ReturnRequest,
-  what: 'answer' | 'open_parcel',
+  what: 'answer' | 'open_parcel' | 'missing_parcel',
 ): Promise<void> {
   try {
     await createNotification({
       userId: sellerId,
       role: 'seller',
       type: 'order_update',
-      title: what === 'answer' ? 'בקשת החזרה — היום היום האחרון לענות' : 'המוצר חזר אליך ומחכה לך',
-      body: what === 'answer'
+      title: what === 'answer' ? 'בקשת החזרה — היום היום האחרון לענות'
+        : what === 'missing_parcel' ? 'הקונה מסר שהוא שלח את המוצר — האם הוא הגיע?'
+        : 'המוצר חזר אליך ומחכה לך',
+      body: what === 'missing_parcel'
+        // Both answers, plainly, because either one may be the true one and he is the only person who
+        // knows which. Naming what happens if he says nothing is the point: the case leaves his hands.
+        ? 'אם המוצר הגיע אליך — סמן "המוצר הגיע אליי" בלשונית ההחזרות. אם הוא לא הגיע, אל תסמן כלום. מחר הבקשה תעבור לבדיקה שלנו ואנחנו נכריע בה, והכסף יישאר מוקפא עד ההכרעה.'
+        : what === 'answer'
         // Why he MAY refuse, then what happens if he says nothing, then the thing he might actually
         // want: silence works in his favour here, so a warning that only states the default has
         // nothing in it for him.

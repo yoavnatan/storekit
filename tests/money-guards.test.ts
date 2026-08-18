@@ -67,6 +67,27 @@ describe('money arithmetic goes through lib/money.ts', () => {
     });
   });
 
+  it('nobody hand-rolls the shekels-to-agorot conversion', () => {
+    // The other half of the rule above, and the half that was missing: this file watched
+    // `Math.round(x * 100) / 100` (rounding shekels) and said nothing about `Math.round(x * 100)`
+    // (converting them into agorot). Two client scripts had written it by hand — the seller's
+    // partial-offer field and the admin's award field — and `toAgorot` carries an EPSILON correction
+    // they did not, so the two forms disagree on values like 1.005. That difference is agorot owed to
+    // a real person, produced by two screens that both look correct.
+    //
+    // Scanned per LINE and discriminated on two things, because `* 100` is overwhelmingly a
+    // PERCENTAGE in this codebase and a guard that cried wolf on all of them would be turned off:
+    // a division inside the parentheses means a ratio, and a money conversion always names its unit.
+    const MONEY_WORD = /agorot|shekel|ils/i;
+    forEachFileExcept(['lib/money.ts'], (file, src) => {
+      for (const line of src.split('\n')) {
+        const hit = /Math\.round\(([^;]*?)\*\s*100\s*\)(?!\s*\/)/.exec(line);
+        if (!hit || hit[1]!.includes('/') || !MONEY_WORD.test(line)) continue;
+        expect.fail(`${file}: use toAgorot() from lib/money.ts — a bare Math.round(x * 100) rounds differently\n  ${line.trim()}`);
+      }
+    });
+  });
+
   it('nobody hand-rolls a percentage cut of an amount', () => {
     // A commission or a percent discount computed inline rounds differently from
     // percentOf(), and the difference only shows up as a reconciliation failure.

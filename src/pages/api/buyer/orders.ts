@@ -6,6 +6,7 @@ import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } fro
 import { groupBuyerPurchases, countBuyerPurchases } from '../../../lib/buyer-purchases.js';
 import { ordersWithOpenReturns, getLatestReturnsByOrder } from '../../../lib/return-requests.js';
 import { buyerActionFor } from '../../../lib/returns.js';
+import { buyerReturnCta, inStoreReturnAddress } from '../../../lib/return-buyer-cta.js';
 import { orderHasNothingReturnable } from '../../../lib/return-eligibility-order.js';
 import { getStoresBySlugs } from '../../../lib/stores.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
@@ -90,6 +91,16 @@ export const GET: APIRoute = async ({ request, cookies }) => {
         returnAction: blocked.has(s.order.id) ? 'none' : buyerActionFor(s.order),
         returnStatus: rr?.status ?? null,
         returnRefundAgorot: rr?.refundAgorot ?? null,
+        // What the buyer may PRESS on a case that already exists — decided here for the same reason
+        // `returnAction` is. These buttons lived in the server's markup only, so a buyer who searched
+        // his orders lost the only way to answer an offer or say he had sent the product back; the
+        // twin cannot be trusted with a rule, only with drawing one (`lib/return-buyer-cta.ts`).
+        returnCta: rr ? buyerReturnCta(rr) : { buttons: [] },
+        returnId: rr?.id ?? null,
+        returnPartialOfferAgorot: rr?.partialOfferAgorot ?? null,
+        // A shop that offers collection in person must also take returns in person (owner,
+        // 2026-08-17), so the address travels with the case rather than being looked up in the browser.
+        returnInStoreAddress: inStoreReturnAddress(storeById.get(s.storeSlug)),
       };
     }),
   }));

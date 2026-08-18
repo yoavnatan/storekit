@@ -23,6 +23,29 @@ export const SHIPPING_RATES = {
   pickup_point: 20,
 } as const;
 
+/**
+ * Does this shop really offer collection in person?
+ *
+ * Two halves, and both are required: the seller opted in, AND the store has an address to collect
+ * from. It was written out by hand at three call sites — the checkout page, `/api/checkout`, and then
+ * the returns card — and the third is what made it a function: a fourth surface disagreeing about
+ * whether a shop offers pickup is a buyer told he may collect from an address we do not hold.
+ *
+ * `addressVisible` deliberately does NOT gate it. Offering collection publishes the address by
+ * necessity — you cannot come to a place you are not told — so that flag governs the shop's about
+ * panel, not this.
+ *
+ * The parameter is shaped structurally rather than typed as a `Store`, which keeps this file what its
+ * header promises: pure, importable from the browser bundle and from a test, with no store model and
+ * no database behind it. That matters here specifically — a DB-backed home would force every test
+ * that mocks the store module to restate the rule, and a restated rule is the bug.
+ */
+export function offersSelfPickup(
+  store: { shipping?: { selfPickup?: boolean }; address?: string } | null | undefined,
+): boolean {
+  return !!store?.shipping?.selfPickup && !!store.address;
+}
+
 /** Courier + pickup point are platform defaults available on every store. Self-pickup is
  *  offered only when the seller opted in AND the store has a pickup address — the caller
  *  passes that already-resolved boolean (address presence is checked where the Store is

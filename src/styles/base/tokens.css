@@ -27,25 +27,32 @@
 
   /* ── The rating star ──
      
-     Two stops, not one colour, and they are the SITE'S OWN gradient — the same pair `.btn` is
-     painted with (owner, 2026-08-17). The row interpolates between them star by star, so five
-     stars read as one gradient running across the whole row rather than five identical marks.
+     Two stops, not one colour, and the row interpolates between them star by star — so five stars
+     read as one gradient running across the whole row rather than five identical marks. The
+     interpolation is in `lib/star-html.ts`; five discrete steps rather than a real linear-gradient,
+     because a gradient inside an SVG fill needs a document-unique id and this renders a dozen times
+     per page (that file's header). At 13px the difference is invisible.
      
-     Why this rather than a gold. The design line's first test is "is it already in the system?",
-     and a rating is not a new brand colour — it is a mark on a card that already carries a price,
-     a name and a badge. The first cut borrowed --color-warning, which is wrong twice: that colour
-     is spoken for by "something needs attention", and its brown-amber reads muddy at 13px against
-     a cool slate palette. A saturated gold was the other candidate and fails the "would it date?"
-     test on a page of slate and white.
+     ── Why a warm gold, decided by LOOKING (owner, 2026-08-17) ──
+     Three candidates were rendered on the real page with the real reviews and compared side by
+     side, which is the only way this was ever going to be settled:
      
-     **Swapping to a gold is these two lines and nothing else** — every star on the site, the
-     picker, and the distribution bar all read them. A warm pair would be #f0a92e → #e08a1a.
+       · The site's own `.btn` navy was the first choice and the one this replaced. In the review
+         LIST it merged with the reviewer's name beside it — the whole row read as one block of
+         dark text — and on a product card it nearly disappeared against the product title.
+       · `--color-accent` (the link blue) is the most legible of the three and is disqualified by
+         the design line's own question: that colour is spoken for. Stars in it look clickable, and
+         nothing happens when you click them.
+       · `--color-warning` was the very first cut, before any of this: spoken for by "something
+         needs attention", and its brown-amber reads muddy at 13px on a cool slate palette.
      
-     The interpolation itself is in `lib/star-html.ts`; five discrete steps rather than a real
-     linear-gradient, because a gradient inside an SVG fill needs a document-unique id and this
-     renders a dozen times per page (that file's header). At 13px the difference is invisible. */
-  --color-rating-from: #2a3c40;
-  --color-rating-to: #3a5260;
+     Gold is the only one of the four that takes no other colour's job, and the pale unfilled star
+     separates from it immediately — which is what makes 3.7 and 4.5 readable without counting.
+     
+     **Every star on the site reads these two lines** — the product page, every card, the picker in
+     the review form and the bars in the distribution. Changing the pair changes all of them. */
+  --color-rating-from: #f0a92e;
+  --color-rating-to: #e08a1a;
   /* The unfilled part. A SOLID pale star, not a hairline outline: at 13px a 1.5px stroke is a
      smudge, and the boundary of a HALF star has to be unmistakable or the half-star rule may as
      well not exist. Light enough to read as absence, dark enough to hold its shape on white. */

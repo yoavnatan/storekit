@@ -466,7 +466,7 @@ const returnsSweep: Job = {
   async run() {
     const r = await runReturnsSweep();
     return `scanned ${r.scanned} · warned ${r.warned} · auto-rejected ${r.autoRejected} · expired ${r.expired} `
-      + `· auto-refunded ${r.autoRefunded} (${r.refundedAgorot} agorot) · failed ${r.failed} `
+      + `· auto-refunded ${r.autoRefunded} (${r.refundedAgorot} agorot) · escalated ${r.escalated} · failed ${r.failed} `
       + `· awaiting a human ${r.awaitingAdmin}`;
   },
 };

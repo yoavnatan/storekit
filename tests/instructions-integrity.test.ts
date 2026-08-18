@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cleanGitEnv } from './helpers/git-env.js';
 
 /**
  * Does AI_INSTRUCTIONS.md still describe the repo it is sitting in?
@@ -69,7 +70,7 @@ const NOT_REAL = new Set(['a.ts', 'b.ts', 'file.ts', 'foo.ts', 'src/**', '.env']
 // Resolving git off PATH is the only portable option (no fixed path across mac/linux/CI), and this
 // is a test file: anyone who can shadow `git` on your PATH can already edit the suite itself.
 // eslint-disable-next-line sonarjs/no-os-command-from-path
-const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1e8 })
+const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, env: cleanGitEnv(), encoding: 'utf8', maxBuffer: 1e8 })
   .split('\n')
   .filter(Boolean);
 

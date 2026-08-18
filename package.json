@@ -12,6 +12,7 @@
     "astro": "astro",
     "test": "vitest run",
     "db:migrate": "node --env-file-if-exists=.env ./scripts/db-migrate.mjs",
+    "db:forget": "node --env-file-if-exists=.env ./scripts/db-forget-migration.mjs",
     "backup:db": "node --env-file-if-exists=.env ./scripts/backup-db.mjs",
     "seed:showcase": "node --env-file-if-exists=.env ./scripts/seed-showcase-stores.mjs",
     "showcase:images": "node --env-file-if-exists=.env ./scripts/generate-showcase-images.mjs",
