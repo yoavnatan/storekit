@@ -26,6 +26,33 @@ const POLL_MS = 45_000;
 let generation = 0;
 const clearedLocally = new Set<string>();
 
+/**
+ * The BROWSER TAB's own "(N)" — every visible tab badge summed, read back off the strip.
+ *
+ * Derived from the spans rather than from a count of its own, deliberately: the strip is already
+ * the one place that knows what has been cleared locally, what a poll has re-painted and what a
+ * departure has zeroed, so a second source would be a second thing that can be wrong. Whatever the
+ * admin can see on the tabs is what the title says, always.
+ *
+ * The title is seeded server-side by admin/index.astro (same five counts, same sum). This exists so
+ * a dashboard left open in a background tab — the case the badges are FOR, since switching tabs
+ * here never navigates — does not keep announcing a number that has since been read.
+ *
+ * The base title is recovered by stripping any leading "(N) " rather than captured once at load,
+ * so a re-entry cannot stack "(2) (1) Admin Dashboard".
+ */
+export function syncAdminTitleBadge(): void {
+  const spans = document.querySelectorAll<HTMLElement>('.dash-tab__count');
+  if (spans.length === 0) return;
+  let total = 0;
+  spans.forEach((span) => {
+    if (span.hidden) return;
+    total += Number((span.textContent ?? '').replace(/\D+/g, '')) || 0;
+  });
+  const base = document.title.replace(/^\(\d+\)\s*/, '');
+  document.title = total > 0 ? `(${total}) ${base}` : base;
+}
+
 function paint(counts: Record<string, number>): void {
   for (const [tab, count] of Object.entries(counts)) {
     if (clearedLocally.has(tab)) continue;
@@ -35,6 +62,7 @@ function paint(counts: Record<string, number>): void {
     span.textContent = n > 0 ? `(${n})` : '';
     span.hidden = n === 0;
   }
+  syncAdminTitleBadge();
 }
 
 async function refresh(): Promise<void> {

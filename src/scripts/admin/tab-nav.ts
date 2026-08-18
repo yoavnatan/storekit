@@ -5,7 +5,7 @@ import { stripForeignTabParams } from '../../lib/admin-nav.js';
 // client reports becomes a tab the route answers 400 to. That module imports nothing, which is
 // what lets browser code have it; `admin-tab-views.ts` cannot come here, it imports the database.
 import { isTrackedAdminTab } from '../../lib/admin-tabs.js';
-import { acknowledgeTabLeft, initAdminTabBadges } from './tab-badges.js';
+import { acknowledgeTabLeft, initAdminTabBadges, syncAdminTitleBadge } from './tab-badges.js';
 
 // Everything that says "this tab has new rows" is cleared together, the moment
 // the tab is left — the count on the tab, the "חדש" chip on each row, and the
@@ -32,6 +32,13 @@ function clearTabBadge(panel: string): void {
   if (newOnlyToggle) {
     newOnlyToggle.textContent = (newOnlyToggle.textContent ?? '').replace(/\s*\(\d+\)\s*$/, '');
   }
+}
+
+// The browser tab is a fourth view of the same fact, and drops out of step the same way the chips
+// did if it is not cleared here with the other three.
+function clearTabBadgeAndTitle(panel: string): void {
+  clearTabBadge(panel);
+  syncAdminTitleBadge();
 }
 
 // Advancing the "last viewed" boundary is what turns a row from new to seen —
@@ -90,7 +97,7 @@ export function initAdminTabNav(): void {
       if (panel === activePanel) return; // re-clicking the tab you're already on — not a "leave"
       const leftPanel = activePanel;
       activePanel = panel;
-      if (isTrackedAdminTab(leftPanel)) clearTabBadge(leftPanel);
+      if (isTrackedAdminTab(leftPanel)) clearTabBadgeAndTitle(leftPanel);
       recordLeft(leftPanel);
     });
   });

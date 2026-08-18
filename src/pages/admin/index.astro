@@ -599,6 +599,19 @@ const performanceTab = shows('performance') ? (() => {
 // Indexed by tab id for the strip below, which walks `tabs` and knows only the id — a cast inside
 // the template is a compile error in `.astro`, so the widening happens here.
 const badgeFor: Record<string, number> = badgeCounts;
+
+// The same five counts, summed, for the BROWSER TAB — "(3) Admin Dashboard".
+//
+// Until now the admin's tab wore a number that had nothing to do with admin work: whatever seller
+// account the same browser was signed into leaked its unread notification count into the title,
+// because the site-wide poller keyed off that cookie and not off the page (fixed in BaseLayout.astro
+// / Header.astro, owner 2026-08-18). This is the number that belongs there instead — the one thing
+// this page already computes for tabs the admin is NOT looking at, which is exactly what a title
+// badge is for: the dashboard is a single page whose tabs never navigate, so a tab left open in the
+// background has no other way to say that something arrived. `scripts/admin/tab-badges.ts` keeps it
+// in step with the strip after every poll and every tab switch, from the strip's own spans, so the
+// two can never disagree.
+const badgeTotal = Object.values(badgeCounts).reduce((sum, n) => sum + n, 0);
 ---
 
 {/* sellerMode=true here isn't "seller dashboard" semantics — reusing the flag
@@ -608,7 +621,7 @@ const badgeFor: Record<string, number> = badgeCounts;
     as being logged into two things at once (2026-07-14, see CURRENT_TASK.md
     → סשן ב׳). The avatar itself already doesn't render — isLoggedIn stays
     false since there's no buyer/seller session active. */}
-<BaseLayout title="Admin Dashboard" noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
+<BaseLayout title={badgeTotal > 0 ? `(${badgeTotal}) Admin Dashboard` : 'Admin Dashboard'} noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
   {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
       one, so this nested a second <main> carrying the SAME id, and the skip link then
       resolves to whichever one comes first rather than to this page content. */}

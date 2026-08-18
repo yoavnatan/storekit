@@ -5,6 +5,7 @@ import { ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 import { buildAdminUrl, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
+import { syncAdminTitleBadge } from './tab-badges.js';
 
 const PANEL_ID = 'dash-panel-messages';
 const messagesPortal = createFloatingPortal('admin-messages-toolbar-portal');
@@ -57,6 +58,8 @@ function setTabMessagesCount(count: number): void {
   if (!span) return;
   span.hidden = count === 0;
   span.textContent = count > 0 ? `(${count})` : '';
+  // The tab title sums the strip, so the one badge that moves without a poll has to say so.
+  syncAdminTitleBadge();
 }
 
 function bubbleHtml(m: AdminMsg): string {
