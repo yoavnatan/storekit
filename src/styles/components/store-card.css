@@ -262,6 +262,14 @@
   align-items: center;
   justify-content: center;
   color: var(--color-border);
+  /* Keeps the base rule's white fill and border. The card's wash arrives as a
+     `background-image` from StorePlaceholderCard — one gradient at Nx width, each tile showing
+     its own slice — so the white sits UNDER it and is what the transparent end of the gradient
+     resolves into, exactly as a tile looked before.
+     Two earlier shapes are worth not re-trying. Clearing the fill and painting the ROW instead
+     let the colour through the 0.4rem gaps, so the gradient ran outside the tiles it was
+     crossing. Clearing the border as well dissolved the four tiles into one band. The tiles and
+     their edges are the part that was asked to stay; only the per-tile GRADIENT went. */
 }
 
 /* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css.

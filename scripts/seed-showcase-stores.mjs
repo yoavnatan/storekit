@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url';
 import { seedShowcaseReviews } from './seed-reviews.mjs';
 import {
   SEED_SCOPES, SHOWCASE_OWNER_EMAIL,
-  openSeedClient, purge, writeCatalog, purgeSeededReviews,
+  openSeedClient, purge, writeCatalog,
 } from './lib/seed-db.mjs';
 import { SHOWCASE_STORES, PRODUCT_VIEWS } from './lib/showcase/identity.mjs';
 import { variantsFor } from './lib/showcase/variants.mjs';
@@ -352,12 +352,6 @@ async function seed(db, clean) {
     process.exit(1);
   }
 
-  // BEFORE the purge, and the order is the whole point: `writeCatalog` deletes these stores'''
-  // orders, and `product_reviews` references `orders` with ON DELETE RESTRICT — so a seeded review
-  // still pointing at one blocks the delete and the whole reseed fails. Taking the ratings down
-  // first (reviews, then their order lines, then the orders) leaves nothing holding a reference.
-  // They are written again at the end of this run.
-  await purgeSeededReviews(db);
 
   await writeCatalog(db, {
     // `includeSellers: false` — the owner row is reused when it already exists, so this purge must

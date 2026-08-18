@@ -1,38 +1,34 @@
 #!/usr/bin/env node
 /**
- * Reviews for the showcase stores — so the ratings can be LOOKED AT before the platform has sold
- * anything (owner asked, 2026-08-17).
+ * The showcase stores' ratings — illustrative, and with no purchase behind them.
  *
- *   npm run seed:reviews             # add them
- *   npm run seed:reviews -- --clean  # remove them and everything they needed
+ *   npm run seed:reviews             # write them
+ *   npm run seed:reviews -- --clean  # remove them
  *
- * ── Its own script, AND run automatically at the end of `seed:showcase` (2026-08-17) ──
- * A review cannot exist without a purchase — that is the whole feature (`review-eligibility.ts`),
- * and a seeder does not get a shortcut the product does not have. So this writes ORDERS, and those
- * orders are money: they land in the platform statement, in the reconciliation card and in the
- * seller's own balance, none of which filter demo stores today. That is why it stayed out of
- * `seed:showcase` at first.
+ * Also run automatically at the end of `seed:showcase`, because `product_reviews` cascades from
+ * `store_products`: every reseed of those stores deleted the whole set, silently, and it happened
+ * twice in one afternoon from parallel sessions. A demo whose content evaporates is not a demo.
  *
- * It could not stay out. `product_reviews` cascades from `store_products`, so every `seed:showcase`
- * — which purges and rewrites those stores — silently deleted every seeded review with them. It
- * happened twice in one afternoon from parallel sessions, and each time the ratings simply vanished
- * from the site with nothing to say so. A demo whose content evaporates whenever somebody reseeds
- * is not a demo.
+ * ── What this used to do, and why it stopped (owner, 2026-08-18) ──
+ * `order_id` was NOT NULL, so the first version gave each rating a fabricated ORDER to hang from.
+ * That worked and quietly put invented revenue into the accountant's report, the reconciliation
+ * card and the platform's own balance — none of which filter demo stores. The choice looked like
+ * "no ratings in the shop window" versus "fake money in the books", and the owner rejected the
+ * question instead of answering it: *"למה לא לייצר ביקורות דמה שהן רק לשם הדוגמא?"*
  *
- * So `seedShowcaseReviews` is exported and the showcase seeder calls it last, after the stores it
- * depends on exist. What keeps the fabricated money out of production is not the separation any
- * more — it is the ⚠️ line in GO_LIVE §2.7: `npm run seed:reviews -- --clean` before the site opens,
- * which removes every row this wrote in one command.
+ * Migration 0040 is that answer. A review is now either REAL — with the order it belongs to, the
+ * guarantee unchanged — or DEMO, with no order at all, and a CHECK constraint keeps the two apart.
+ * So this script writes reviews and nothing else: no orders, no order lines, no money, nothing to
+ * clean up before going live.
  *
- * ── The purge gate ──
- * Everything written here is tagged by the buyer's email suffix, and `--clean` deletes by exactly
- * that tag — never by store, never by date. So it cannot reach an order a real person placed, which
- * is the same guarantee `seed-db.mjs`'s own purge gate exists to give.
- */
-import crypto from 'node:crypto';
+ * ── The purge ──
+ * `--clean` and every re-run delete by the `demo` flag, which is the only thing these rows have in
+ * common and is set by nothing else on the platform. There is no argument under which it could
+ * reach a review a real buyer wrote — the same guarantee `seed-db.mjs`'s own purge gate gives.
+ */import crypto from 'node:crypto';
 import pg from 'pg';
 import { pathToFileURL } from 'node:url';
-import { SEEDED_REVIEW_EMAIL_SUFFIX as SUFFIX, purgeSeededReviews } from './lib/seed-db.mjs';
+import { purgeDemoReviews } from './lib/seed-db.mjs';
 
 const CLEAN = process.argv.includes('--clean');
 
@@ -66,9 +62,6 @@ const BODIES = [
  *  distribution bar never render at all, which is exactly what needs to be seen. */
 const RATINGS = [5, 5, 5, 5, 4, 4, 4, 4, 3, 3, 2, 1];
 
-const DAY = 86_400_000;
-const iso = (ms) => new Date(ms).toISOString();
-
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) { console.error('\n❌ DATABASE_URL is not set.\n'); process.exit(1); }
@@ -95,19 +88,20 @@ export async function seedShowcaseReviews(db, { clean = false, quiet = false } =
     await db.query('BEGIN');
 
     // A re-run replaces the previous set rather than stacking a second one on top. The delete
-    // itself belongs to `seed-db.mjs` — a seeder names what it disposes of and never writes its
-    // own WHERE (tests/seed-purge-gate.test.ts).
-    const removed = await purgeSeededReviews(db);
+    // belongs to `seed-db.mjs` — a seeder names what it disposes of and never writes its own WHERE
+    // (tests/seed-purge-gate.test.ts).
+    const removed = await purgeDemoReviews(db);
 
     if (clean) {
       await recompute(db);
       await db.query('COMMIT');
-      say(`\n✅ Removed ${removed} seeded order(s) and every review on them.\n`);
+      say(`\n✅ Removed ${removed} demo review(s).\n`);
       return;
     }
 
-    // Showcase stores only: they are the ones with no sales of their own, and they are the set a
-    // `--clean` can safely be scoped to. A real seller's store is never touched.
+    // Showcase stores only. `demo = true` is the same flag that keeps them out of the index, the
+    // sitemap, the product feed and checkout — so a rating written here can never reach a real
+    // shop, and the review's own `demo` column says so a second time.
     const { rows: stores } = await db.query(
       `SELECT id, slug, name FROM stores
         WHERE demo = true AND NOT blocked AND deleted_at IS NULL
@@ -118,68 +112,38 @@ export async function seedShowcaseReviews(db, { clean = false, quiet = false } =
       return;
     }
 
-    let orderN = 0;
     let reviewN = 0;
     const rated = [];
 
     for (const store of stores) {
-      // A handful of products per store, and DELIBERATELY not all of them: a catalogue where every
+      // A handful of products per store, DELIBERATELY not all of them: a catalogue where every
       // single product carries a rating is the one thing a real shop never looks like, and the
-      // unrated ones are half of what needs checking (they must show nothing at all).
+      // unrated ones are half of what needs checking — they must show nothing at all.
       const { rows: products } = await db.query(
-        `SELECT id, slug, name, price_agorot FROM store_products
+        `SELECT id, slug, name FROM store_products
           WHERE store_id = $1 AND NOT hidden AND NOT blocked
           ORDER BY created_at DESC, id
           LIMIT 6`, [store.id]);
 
       for (const [index, product] of products.entries()) {
-        // A spread: the first product of each store gets enough reviews for the distribution bar to
-        // say something, the rest taper off to one, and the last one gets none.
+        // A spread: the first product of each store gets enough for the distribution bar to say
+        // something, the rest taper to one, and the last gets none.
         const count = index === 0 ? int(9, 14) : index === 1 ? int(4, 6) : index >= products.length - 1 ? 0 : int(1, 3);
         if (!count) continue;
         rated.push({ store: store.slug, product: product.slug, count });
 
         for (let i = 0; i < count; i++) {
-          const orderId = crypto.randomUUID();
-          const placed = Date.now() - int(6, 120) * DAY;
-          const delivered = placed + int(2, 6) * DAY;
-          const qty = 1;
-          const total = Number(product.price_agorot) * qty;
-
-          await db.query(
-            `INSERT INTO orders (id, checkout_ref, buyer_name, buyer_email, buyer_phone,
-                                 buyer_city, buyer_street, shipping_agorot, total_agorot,
-                                 payment_status, shipping_status, paid_at, delivered_at,
-                                 review_invited_at, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, '0500000000', 'תל אביב', 'הרצל 1', 0, $5,
-                     'paid', 'delivered', $6, $7, now(), $6, $7)`,
-            [orderId, `RV${String(++orderN).padStart(5, '0')}`, pick(FIRST), `buyer${orderN}${SUFFIX}`,
-             total, iso(placed), iso(delivered)]);
-
-          await db.query(
-            `INSERT INTO order_items (id, order_id, product_id, product_name, product_slug,
-                                      store_slug, store_name, price_agorot, qty, position)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0)`,
-            [crypto.randomUUID(), orderId, product.id, product.name, product.slug,
-             store.slug, store.name, product.price_agorot, qty]);
-
-          await db.query(
-            `INSERT INTO order_stores (order_id, store_slug, store_name, subtotal_agorot, shipping_agorot)
-             VALUES ($1, $2, $3, $4, 0)`,
-            [orderId, store.slug, store.name, total]);
-
-          // `review_invited_at` is stamped above so the invite job never mails these fake
-          // addresses — the row is a display fixture, not a person waiting to be asked.
           const rating = pick(RATINGS);
+          const ago = int(6, 130);
           await db.query(
-            `INSERT INTO product_reviews (id, product_id, store_slug, order_id, reviewer_name, rating, body, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [crypto.randomUUID(), product.id, store.slug, orderId,
+            `INSERT INTO product_reviews (id, product_id, store_slug, reviewer_name, rating, body, demo, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, true, now() - ($7 || ' days')::interval)`,
+            [crypto.randomUUID(), product.id, store.slug,
              `${pick(FIRST)} ${pick(INITIAL)}`, rating,
-             // A low rating without a reason is the least useful thing on a review page, so those
+             // A low rating with no reason is the least useful thing on a review page, so those
              // always carry text; the happy ones sometimes do not, which is also true of real ones.
              rating <= 3 || rnd() < 0.7 ? pick(BODIES) : '',
-             iso(delivered + int(1, 10) * DAY)]);
+             String(ago)]);
           reviewN++;
         }
       }
@@ -188,12 +152,12 @@ export async function seedShowcaseReviews(db, { clean = false, quiet = false } =
     await recompute(db);
     await db.query('COMMIT');
 
-    say(`\n✅ ${reviewN} reviews across ${rated.length} products in ${stores.length} showcase stores.`);
+    say(`\n✅ ${reviewN} demo reviews across ${rated.length} products in ${stores.length} showcase stores.`);
     for (const store of stores) {
       const top = rated.filter((r) => r.store === store.slug).sort((a, b) => b.count - a.count)[0];
       if (top) say(`     /${top.store}/${top.product}   — ${top.count} reviews`);
     }
-    say('\n   Remove it all with:  npm run seed:reviews -- --clean\n');
+    say('\n   Remove them with:  npm run seed:reviews -- --clean\n');
   } catch (error) {
     await db.query('ROLLBACK');
     throw error;

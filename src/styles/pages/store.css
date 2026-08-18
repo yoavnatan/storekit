@@ -742,6 +742,13 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   transition: background 0.13s, color 0.13s, border-color 0.13s;
   white-space: nowrap;
   scroll-snap-align: start;
+  /* The row is a scroller — overflow-x:auto, scroll snapping, arrows and an edge fade. None of
+     that can happen while its children are allowed to shrink: flex takes the overflow out of the
+     chips instead, so scrollWidth never exceeds the box and there is nothing to scroll. Measured
+     2026-08-18 at 700px: scrollWidth 594 in a 700px row, i.e. it had never scrolled at that width
+     in its life. `white-space: nowrap` protects the label only, which is why this reads as fine
+     until you look at what absorbed the loss. */
+  flex-shrink: 0;
 }
 
 /* Fill + border-color + weight carry the pressed state on their own. No shadow:
@@ -834,7 +841,13 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    resolves correctly in all three states, and a same-element override here would
    need to out-specify a class+type selector to land at all. Only opacity differs:
    the chevron is an affordance, not content, so it sits a step back. */
-.category-chip__chev { opacity: 0.65; transition: opacity 0.13s; }
+/* flex-shrink + an explicit height for the same reason `.category-chip-option svg` has the first
+   of them: reset.css gives every svg `height: auto`, which BEATS the height attribute, so a
+   squeezed width drags the height down with it and the glyph vanishes rather than clipping. The
+   chip itself no longer shrinks, so this is belt-and-braces — but it is the cheap half, and this
+   chevron is also built into a JS template string (index.astro CHIP_CHEVRON_SVG) where the next
+   reader has no rule in front of them at all. */
+.category-chip__chev { opacity: 0.65; transition: opacity 0.13s; flex-shrink: 0; height: 10px; }
 .category-chip:hover > .category-chip__chev { opacity: 1; }
 
 /* Same badge inside a dropdown option / drawer row, where it sits inline after the
