@@ -147,7 +147,27 @@ function metaPixelScript(id: string): string {
 // seller-supplied product names (dataLayer ecommerce items) to every visitor.
 const dlJson = dataLayer && !noTracking ? jsonForScript(dataLayer) : null;
 const sessionUserId = getSellerSession(Astro.cookies) ?? '';
-const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUserId) : 0;
+
+/**
+ * Whether the buyer/seller NOTIFICATION surface belongs on this page — the bell, its badge, the
+ * "(N)" the title carries, and the toasts.
+ *
+ * `sessionUserId` alone is not that question, and the difference was a live bug (owner, 2026-08-18):
+ * the admin dashboard renders `isLoggedIn={false}` on purpose — an admin session is a different
+ * session from any buyer/seller one, so it draws no bell and no avatar — but the cookie of whatever
+ * seller account the same browser is signed into is still sent. The poller below keyed off the
+ * cookie, so the admin's tab silently wore the SELLER's unread count: `(1) Admin Dashboard` for an
+ * order in a store the admin was not looking at, with no bell anywhere on the page to explain the
+ * number or clear it. Toasts landed there too, and Header polled `/api/notifications` every 30s for
+ * a widget that does not exist on that page.
+ *
+ * `isLoggedIn` is the same gate the bell itself is drawn behind (Header.astro) and the same one the
+ * `notifications` i18n slice travels with above, so the count, the strings and the markup that
+ * explains it now appear together or not at all. Note this is deliberately NOT `window.__sessionUserId`,
+ * which stays ungated below — cart identity has to switch on every page, admin pages included.
+ */
+const notifySurface = isLoggedIn && !!sessionUserId;
+const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUserId) : 0;
 ---
 
 <!doctype html>
@@ -340,7 +360,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
     <script>import { initIconTooltips } from '../scripts/icon-tooltips.js'; initIconTooltips();</script>
     <script>import { initFormValidity } from '../scripts/form-validity.js'; initFormValidity();</script>
     <script>import { initNavProgress } from '../scripts/nav-progress.js'; initNavProgress();</script>
-    {sessionUserId && (
+    {notifySurface && (
       <script is:inline set:html={`
 (function(){
   if(!window.__sessionUserId)return;

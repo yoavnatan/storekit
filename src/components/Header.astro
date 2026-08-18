@@ -916,6 +916,20 @@ const strEmpty   = t.store.noProductsFound;
   const notifDrop  = document.getElementById('notif-dropdown') as HTMLElement | null;
   const notifList  = document.getElementById('notif-list') as HTMLElement | null;
 
+  /**
+   * Whether this page draws the notification surface at all.
+   *
+   * This script ships on every page — including ones that deliberately render no bell (the admin
+   * dashboard, which is `isLoggedIn={false}` because an admin session is not a buyer/seller one).
+   * Without this flag the block below still polled `/api/notifications` every 30 seconds for a
+   * widget that isn't there, and still wrote `(N)` into `document.title` — so the admin's browser
+   * tab wore some seller account's unread count, with nothing on the page that could explain or
+   * clear it (owner, 2026-08-18). BaseLayout gates its own 15s poller on the same condition; this
+   * is the second layer, on the element itself, so the title can't be moved by an event arriving
+   * from anywhere else either.
+   */
+  const hasNotifUi = !!bellBtn;
+
   interface NotifItem { id: string; type?: string; role?: string; title: string; body: string; read: boolean; createdAt: string; storeName?: string; relatedId?: string; href?: string; }
 
   /**
@@ -955,7 +969,8 @@ const strEmpty   = t.store.noProductsFound;
     if (notifCountBadge) {
       updateBadge(notifCountBadge, unreadCount > 0 ? (unreadCount > 99 ? '99+' : String(unreadCount)) : null, opts);
     }
-    document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
+    // Only where a bell exists to explain the number — see `hasNotifUi`.
+    if (hasNotifUi) document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
   }
 
   function renderNotifs(items: NotifItem[]) {
@@ -1082,6 +1097,7 @@ const strEmpty   = t.store.noProductsFound;
 
 
   async function loadNotifs() {
+    if (!hasNotifUi) return;
     const loadingDot = document.getElementById('notif-loading-dot');
     loadingDot?.removeAttribute('hidden');
     try {
@@ -1100,7 +1116,7 @@ const strEmpty   = t.store.noProductsFound;
     }
   }
 
-  setInterval(loadNotifs, 30000);
+  if (hasNotifUi) setInterval(loadNotifs, 30000);
 
   // Background tabs get their timers throttled by the browser (battery/perf
   // policy) — the 30s poll above still runs while hidden, just less often.
