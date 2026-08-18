@@ -231,7 +231,7 @@
 .home-cart-chip {
   display: inline-flex;
   align-items: center;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   white-space: nowrap;
@@ -253,8 +253,8 @@
   text-decoration: none;
   color: inherit;
   position: relative;
-  border-start-start-radius: 9999px;
-  border-end-start-radius: 9999px;
+  border-start-start-radius: var(--radius-pill);
+  border-end-start-radius: var(--radius-pill);
   transition: background 0.12s;
 }
 
@@ -282,8 +282,8 @@
   font-family: inherit;
   color: var(--color-muted);
   position: relative;
-  border-start-end-radius: 9999px;
-  border-end-end-radius: 9999px;
+  border-start-end-radius: var(--radius-pill);
+  border-end-end-radius: var(--radius-pill);
   transition: background 0.12s;
 }
 
@@ -320,7 +320,7 @@
 .home-cart-chip-skel {
   height: 2.55rem;
   width: 8rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--color-border);
   opacity: 0.45;
 }
@@ -384,7 +384,7 @@
   z-index: 5;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius-icon);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
