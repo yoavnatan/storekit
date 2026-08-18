@@ -173,6 +173,34 @@ function washPercent(hue: InviteHue, fraction: number): number {
  * fully transparent by 85% — not 100%, so the far end is unambiguously clear rather
  * than still fading as it runs out of tile.
  */
+/**
+ * Where one tile sits in the row-wide gradient, as a `background-position` percentage.
+ *
+ * This is the half that makes `previewWash` land INSIDE the boxes instead of behind them.
+ * Painting the row and letting transparent tiles reveal it was the first attempt and the
+ * colour showed in the 0.4rem gaps too, i.e. the gradient ran outside the tiles it was
+ * supposed to be crossing (owner, 2026-08-18: "הגרדיאנט יוצא מהקופסאות").
+ *
+ * So every tile paints the SAME gradient at `count`x width and shows only its own slice.
+ * A background-position percentage aligns that point of the image with the same point of
+ * the box, so an evenly spaced 0 -> 100 across the tiles reassembles the sweep with the
+ * gaps skipped rather than filled — which is what "crossing the tiles" actually means, and
+ * a hairline more continuous than painting the gaps would have been.
+ *
+ * `visualIndex`, not the DOM index: the row is `flex` and reverses under `dir=rtl`, so the
+ * first tile in source order is the RIGHTMOST one in Hebrew. Feeding source order in would
+ * mirror the sweep against itself and put the solid end in the middle.
+ */
+export function tileWashPosition(visualIndex: number, count: number): string {
+  if (count <= 1) return '0% 0%';
+  return `${(visualIndex / (count - 1)) * 100}% 0%`;
+}
+
+/** The gradient's width, as a `background-size`, for a row of `count` tiles. */
+export function tileWashSize(count: number): string {
+  return `${Math.max(count, 1) * 100}% 100%`;
+}
+
 export function previewWash(cardIndex: number, dir: 'rtl' | 'ltr'): string {
   const hue = pickCardHueSpec(cardIndex);
   const to = dir === 'rtl' ? 'left' : 'right';

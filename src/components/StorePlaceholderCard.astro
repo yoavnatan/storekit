@@ -12,7 +12,7 @@
  * card is an open slot, and it deliberately doesn't tell a seller what kind of
  * store belongs in it.
  */
-import { pickArtTrio, pickCardHue, pickCardInk, previewWash } from '../lib/placeholder-art.js';
+import { pickArtTrio, pickCardHue, pickCardInk, previewWash, tileWashPosition, tileWashSize } from '../lib/placeholder-art.js';
 import { getDir, getLang, getT } from '../i18n/index.js';
 
 interface Props {
@@ -28,6 +28,10 @@ const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const dir = getDir(lang);
 const art = pickArtTrio(index, previewSlots);
+// One gradient, sliced across the tiles — see tileWashPosition for why the slice is
+// computed from VISUAL order and not from source order.
+const wash = previewWash(index, dir);
+const washSize = tileWashSize(art.length);
 // The wash colour and the stroke colour are the same for six of the seven hues.
 // Yellow is the one that cannot be — placeholder-art.ts's `ink` note says why.
 const hue = pickCardHue(index);
@@ -118,21 +122,25 @@ const hint = t.launch.inviteHint;
       <span class="store-card__tag store-card__tag--invite badge-finish" style={`--badge-hue:${ink}`}>{f}</span>
     ))}
   </div>
-  <!-- The whole card takes ONE hue (`pickCardHue`), and as of 2026-08-18 ONE gradient
-       crosses the whole row while the four tiles keep their boxes — each shows its slice
-       of it, the way a gradient crosses a logo instead of being reapplied per letter
-       (`previewWash`). The tiles paint no fill of their own for that to be possible; the
-       row paints, they frame. Their BORDER stays, and that is not incidental — dropping
-       it as well dissolved the four tiles into one band, which is the version he rejected.
+  <!-- The whole card takes ONE hue (`pickCardHue`), and ONE gradient crosses all four
+       tiles — each paints the same `previewWash` at four times the width and shows only
+       its own slice of it (`tileWashSize` / `tileWashPosition`), the way a gradient
+       crosses a logo instead of being reapplied per letter.
+       It is sliced INTO the tiles rather than painted behind them, which took two goes:
+       painting the row and clearing the tiles let the colour through the 0.4rem gaps as
+       well, so the gradient ran outside the boxes it was meant to be crossing. Slicing
+       keeps every pixel of it inside a tile and skips the gaps.
        What has not changed is why there is a wash at all: flat boxes with a hairline glyph
        read as "image failed to load", and a coloured field reads as a stocked shelf. And it
        is still one hue per CARD, never one per tile — several tints inside a single card
        cancel out and the card goes grey. The variety belongs between cards. -->
-  <div class="store-card__preview" aria-hidden="true" style={`background:${previewWash(index, dir)}`}>
-    {art.map((a) => {
+  <div class="store-card__preview" aria-hidden="true">
+    {art.map((a, i) => {
+      const visualIndex = dir === 'rtl' ? art.length - 1 - i : i;
       return (
         <span
           class="store-card__preview-img-wrap store-card__preview-img-wrap--empty"
+          style={`background-image:${wash};background-size:${washSize};background-position:${tileWashPosition(visualIndex, art.length)}`}
         >
           <!-- Sized to fill the tile the way a product photo does (~55% of it) —
                a small centred glyph reads as "no image", a large one reads as the

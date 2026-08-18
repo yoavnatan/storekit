@@ -18,6 +18,8 @@ import {
   TILE_HUES,
   INVITE_HUES,
   previewWash,
+  tileWashPosition,
+  tileWashSize,
   pickArtTrio,
   pickCardHue,
   pickCardInk,
@@ -307,6 +309,28 @@ describe('placeholder tile colour', () => {
       expect(previewWash(card, 'rtl')).toContain('linear-gradient(to left');
       expect(previewWash(card, 'ltr')).toContain('linear-gradient(to right');
     }
+  });
+
+  it('reassembles one sweep across the tiles, with nothing spilling between them', () => {
+    // The bug this pins: the wash was painted on the ROW and the tiles were cleared, so the
+    // colour showed in the 0.4rem gaps too — the gradient ran outside the boxes it was meant
+    // to be crossing (owner, 2026-08-18: "הגרדיאנט יוצא מהקופסאות"). Slicing it INTO each tile
+    // is what keeps every pixel inside one, and these two numbers are the whole mechanism.
+    for (const count of [2, 3, 4, 5]) {
+      expect(tileWashSize(count)).toBe(`${count * 100}% 100%`);
+      const positions = Array.from({ length: count }, (_, i) =>
+        Number(tileWashPosition(i, count).replace('% 0%', '')));
+      // Ends anchored, so the sweep starts at one edge of the row and finishes at the other
+      // rather than beginning part-way in.
+      expect(positions[0]).toBe(0);
+      expect(positions[count - 1]).toBe(100);
+      // ...and strictly increasing, or two tiles show the same slice and the run reads as a
+      // repeat instead of a sweep.
+      for (let i = 1; i < count; i++) expect(positions[i]!).toBeGreaterThan(positions[i - 1]!);
+    }
+    // A single tile has no span to divide and must not land on NaN.
+    expect(tileWashPosition(0, 1)).toBe('0% 0%');
+    expect(tileWashSize(1)).toBe('100% 100%');
   });
 
   it('runs from the colour to nothing, never the other way round', () => {
