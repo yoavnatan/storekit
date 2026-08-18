@@ -19,18 +19,90 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { migrationFileName } from '../scripts/db-new-migration.mjs';
 
 const ROOT = process.cwd();
 const files = readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
 
+/**
+ * ── Two naming eras, and why the counter had to end (2026-08-18) ──
+ *
+ * `0001…0041` came from ONE global counter, and this repo runs several sessions at once in separate
+ * worktrees. **A worktree isolates files; it does not isolate a counter.** Two sessions writing a
+ * migration on the same afternoon both saw the same last number and both wrote the next one — not a
+ * mistake either could avoid. The header above records it happening at `0010` on 2026-08-05; it
+ * happened again at `0038` on 2026-08-17 and cost the owner an evening, because by then the loser's
+ * file was applied in the SHARED development database, so every other session's `--check` refused the
+ * whole tree until somebody cleared a ledger row by hand.
+ *
+ * New migrations are timestamped to the second (`npm run db:new`). Two sessions cannot collide unless
+ * they run that command in the same second, and then the second one is told. The run ORDER is
+ * unchanged, which is why this was safe to do: the runner sorts filenames, `0…` sorts before `2…`,
+ * and timestamps sort chronologically among themselves.
+ *
+ * The 41 numbered files keep their names forever. Renaming an applied migration orphans its ledger
+ * row on every machine that ran it — the precise failure this whole file exists to catch.
+ */
+const LEGACY = /^\d{4}_/;
+const STAMPED = /^\d{8}_\d{6}_[a-z0-9_]+\.sql$/;
+/** Frozen: the last number ever issued. A 42nd numbered file is the collision coming back. */
+const LEGACY_COUNT = 41;
+
 describe('migration files', () => {
-  it('are numbered once each, with no gaps', () => {
-    // A duplicate number is the collision itself: `db-migrate.mjs` runs in filename order, so two
-    // `0010`s both run, in an order neither author chose. A gap means a file was deleted after
-    // somebody's database already ran it — which is the orphan row this suite is about.
-    const numbers = files.map((f) => f.slice(0, 4));
-    expect(new Set(numbers).size, `duplicate migration number in: ${files.join(', ')}`).toBe(files.length);
-    expect(numbers).toEqual(files.map((_, i) => String(i + 1).padStart(4, '0')));
+  it('the numbered era is closed — new migrations are timestamped', () => {
+    const legacy = files.filter((f) => LEGACY.test(f));
+    expect(
+      legacy.length,
+      'a new NNNN_ migration was added. That counter is why two sessions collided three times —\n'
+      + '  use `npm run db:new -- <name>` instead, which stamps the file with the time to the second.',
+    ).toBe(LEGACY_COUNT);
+  });
+
+  it('the numbered ones are still unique and gapless — they are frozen history', () => {
+    // Unchanged for the legacy set, and still worth asserting: a gap here means a file was deleted
+    // after somebody's database already ran it, which is the orphan row this suite is about.
+    const numbers = files.filter((f) => LEGACY.test(f)).map((f) => f.slice(0, 4));
+    expect(new Set(numbers).size, `duplicate migration number in: ${files.join(', ')}`).toBe(numbers.length);
+    expect(numbers).toEqual(numbers.map((_, i) => String(i + 1).padStart(4, '0')));
+  });
+
+  it('every timestamped one is well formed and unique', () => {
+    const stamped = files.filter((f) => !LEGACY.test(f));
+    for (const f of stamped) {
+      expect(STAMPED.test(f), `${f}: expected YYYYMMDD_HHMMSS_name.sql — create it with \`npm run db:new\``).toBe(true);
+    }
+    // Same second, same name: the generator refuses it, and this catches one written by hand.
+    const stamps = stamped.map((f) => f.slice(0, 15));
+    expect(new Set(stamps).size, `two migrations share a timestamp: ${stamped.join(', ')}`).toBe(stamped.length);
+  });
+
+  it('the generator produces exactly the shape this file demands', () => {
+    // The one assertion that ties two deliberately-separate statements of the rule together. The
+    // regex above is independent ON PURPOSE — its job is to catch a file somebody named by hand, and
+    // a guard that reads its rule from the generator asserts nothing. This is what stops a rename in
+    // the generator from quietly outdating it: they may be written twice, but they must agree.
+    const made = migrationFileName('Return Admin Award!!', new Date(2026, 7, 18, 21, 42, 33));
+    expect(made).toBe('20260818_214233_return_admin_award.sql');
+    // Narrowed rather than asserted with `!`: a null here would otherwise stringify into the regex
+    // test as "null" and pass both of the next two lines while meaning the generator had refused.
+    expect(made).not.toBe(null);
+    expect(STAMPED.test(made ?? '')).toBe(true);
+    expect(LEGACY.test(made ?? '')).toBe(false);
+    // A name with nothing usable in it is refused rather than turned into a file called `.sql`.
+    expect(migrationFileName('!!!')).toBe(null);
+    // And a path separator cannot survive the normalisation — the name reaches the filesystem.
+    expect(migrationFileName('../../etc/passwd')).toMatch(/^\d{8}_\d{6}_etc_passwd\.sql$/);
+  });
+
+  it('runs oldest-first whatever the era — the sort the runner relies on', () => {
+    // The one property that made the switch safe, pinned rather than assumed: legacy names sort
+    // before timestamped ones because '0' < '2'. If a future era ever starts with a '0' or a '1',
+    // this fails instead of silently re-ordering history.
+    const legacy = files.filter((f) => LEGACY.test(f));
+    const stamped = files.filter((f) => !LEGACY.test(f));
+    if (legacy.length > 0 && stamped.length > 0) {
+      expect([...legacy, ...stamped]).toEqual([...files].sort());
+    }
   });
 
   it('never edits history: every file is additive or explicitly reversible', () => {
