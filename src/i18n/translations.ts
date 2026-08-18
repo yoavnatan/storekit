@@ -213,6 +213,9 @@ export const translations = {
       cartOnlyDemo: 'בסל יש רק פריטים מחנות לדוגמה, ולא ניתן לרכוש אותם. הוסיפו מוצר מחנות אמיתית כדי להמשיך.',
       sellerLink: 'צפו בחנות לדוגמה',
       productBadge: 'מוצר לדוגמה',
+      // The reviews on a showcase store are written by the seeder, not by buyers. Same mark and
+      // same words as everything else demo here, so a shopper learns one symbol and not four.
+      reviewsBadge: 'ביקורות לדוגמה',
       openYours: 'פתחו חנות משלכם',
       noticeCta: 'לפתיחת חנות ←',
     },
@@ -2373,6 +2376,7 @@ export const translations = {
       cartOnlyDemo: 'Your cart holds only example-store items, which cannot be purchased. Add a product from a real store to continue.',
       sellerLink: 'See an example store',
       productBadge: 'Example product',
+      reviewsBadge: 'Example reviews',
       openYours: 'Open your own store',
       noticeCta: 'Open a store →',
     },

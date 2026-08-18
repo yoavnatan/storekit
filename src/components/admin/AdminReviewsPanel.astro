@@ -19,19 +19,26 @@
  */
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { starRowHtml } from '../../lib/star-html.js';
+import { demoProductBadgeHtml } from '../../lib/demo-badge.js';
+import { getLang, getT } from '../../i18n/index.js';
 import type { AdminReviewRow } from '../../lib/product-reviews.js';
 
 interface Props {
   reviews: AdminReviewRow[];
 }
 const { reviews } = Astro.props;
+const t = getT(getLang(Astro.cookies));
 const hiddenCount = reviews.filter((r) => r.blocked).length;
+const demoCount = reviews.filter((r) => r.demo).length;
 ---
 
 <section class="admin-card" aria-labelledby="admin-reviews-heading">
   <h3 id="admin-reviews-heading" class="admin-card__title">
     ביקורות מוצרים
     {hiddenCount > 0 && <span class="admin-badge admin-badge--failed">{hiddenCount} מוסתרות</span>}
+    {/* Said on the heading as well as per row: the useful question on this screen is "how many of
+        these did real people write", and counting them by eye down a list of eighty is not it. */}
+    {demoCount > 0 && <span class="admin-badge admin-badge--muted">{demoCount} לדוגמה</span>}
   </h3>
 
   {reviews.length === 0
@@ -47,6 +54,11 @@ const hiddenCount = reviews.filter((r) => r.blocked).length;
                 <a href={`/${r.storeSlug}/${r.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
                    style="font-size:0.82rem;font-weight:600;color:var(--color-text);text-decoration:none">{r.productName}</a>
                 <span style="font-size:0.75rem;color:var(--color-muted)">{r.storeName}</span>
+                {/* Same mark the shopper sees, so the two screens agree about what this row is.
+                    Without it 83 seeded ratings sit here looking exactly like buyers' own — and
+                    the one screen where that matters is the one used to decide whether to take a
+                    review down. */}
+                {r.demo && <Fragment set:html={demoProductBadgeHtml(t.demo.reviewsBadge, 'inline')} />}
                 <span style="font-size:0.75rem;color:var(--color-muted)">·</span>
                 <span style="font-size:0.75rem;color:var(--color-muted)">{r.reviewerName || '—'}</span>
                 <time datetime={r.createdAt} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">

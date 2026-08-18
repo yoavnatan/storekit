@@ -15,6 +15,7 @@ import { offerShippingDetails } from '../../lib/shipping.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import ProductDemoBadge from '../../components/ProductDemoBadge.astro';
+import { demoProductBadgeHtml } from '../../lib/demo-badge.js';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
 import ShareMenu from '../../components/ShareMenu.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
@@ -857,9 +858,23 @@ const pmI18n = {
       -->
       {(ratingAggregate.count > 0 || canReview) && (
         <section id={REVIEWS_SECTION_ANCHOR} style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border);scroll-margin-top:5rem" aria-labelledby="reviews-heading">
-          <p id="reviews-heading" style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
-            {t.reviews.title}
-          </p>
+          <div class="flex flex-wrap items-baseline gap-x-2" style="margin:0 0 0.875rem">
+            <p id="reviews-heading" style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0">
+              {t.reviews.title}
+            </p>
+            {/* A showcase store's ratings are written by the seeder, not by buyers, and the page
+                has to say so where they are READ — the "מוצר לדוגמה" chip sits on the photograph
+                and a person scrolling to the reviews has left it behind. Same mark and same
+                wording as every other demo disclosure on the site (`lib/demo-badge.ts`), because a
+                shopper should learn one symbol rather than four.
+
+                Bounded, not decorative: these pages are `noindex` and `/api/checkout` refuses a
+                demo store outright, so nobody can act on an invented review — but "you could not
+                have bought it anyway" is not a reason to let it read as somebody's real opinion. */}
+            {isDemo && ratingAggregate.count > 0 && (
+              <Fragment set:html={demoProductBadgeHtml(t.demo.reviewsBadge, 'inline')} />
+            )}
+          </div>
 
           {ratingAggregate.count > 0 && (
             <div class="flex flex-wrap items-center gap-x-8 gap-y-4" style="margin-bottom:1.25rem">
