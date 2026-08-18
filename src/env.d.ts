@@ -34,4 +34,9 @@ interface Window {
    *  the click that opens it — those forms do not exist when the load scan runs. Defined by the
    *  inline <FormFallbackGuard />, which is deliberately outside the module graph. */
   __dashScanDrafts?: (root?: ParentNode) => void;
+  /** Re-arms every `[data-sticky-glass]` bar on the page — i.e. gives it back the sentinel that
+   *  toggles `.is-stuck` when it pins. Defined by the inline <StickyGlassBoot />, which is
+   *  deliberately outside the module graph; only a page that REPLACES a bar's DOM (the /stores
+   *  directory, on every category swap) has to call it. Idempotent. */
+  __armStickyGlass?: () => void;
 }

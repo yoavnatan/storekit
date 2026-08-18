@@ -245,7 +245,7 @@ const jsonLd = {
            it fails SILENTLY here — the route stops building, so /stores falls
            through to [storeSlug] and 302s to /404 (see AI_INSTRUCTIONS → Architecture). -->
       {allCategories.length > 0 && (
-        <div class="store-controls stores-directory__chips">
+        <div class="store-controls stores-directory__chips" data-sticky-glass="3.3">
           <div class="category-filters-wrap">
             <button type="button" class="category-filters-arrow category-filters-arrow--prev"
                     id="stores-filters-prev" aria-label={lang === 'he' ? 'הקודם' : 'Previous'} hidden>
@@ -346,7 +346,6 @@ const jsonLd = {
   import { initImageSkeletons } from '../lib/img-skeleton.js';
   import { playReveal, armBelowFoldReveal } from '../lib/scroll-reveal.js';
   import { initChipScroller } from '../lib/chip-scroller.js';
-  import { initStickyBar } from '../lib/sticky-bar.js';
   import { startLoadingSweep, stopLoadingSweep } from '../lib/loading-sweep.js';
 
   // The chip row lives INSIDE #stores-directory-results, so every AJAX swap
@@ -358,8 +357,10 @@ const jsonLd = {
       next: document.getElementById('stores-filters-next'),
     });
     // The sticky sentinel is created next to the bar, so it dies with the bar on
-    // every swap too — re-arm both together.
-    initStickyBar(document.querySelector<HTMLElement>('.store-controls'));
+    // every swap too — re-arm both together. The bar itself declares its own offset
+    // (`data-sticky-glass`) and is armed inline by BaseLayout on first paint; this is only
+    // the RE-arm, for the copy the swap just built.
+    window.__armStickyGlass?.();
   }
   armChipScroller();
 

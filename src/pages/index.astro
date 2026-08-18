@@ -385,7 +385,7 @@ const jsonLd = {
            being, in practice, no signal at all. That is half of why nothing on a
            375px viewport said a fourth tab existed (CURRENT_TASK.md → סשן ב׳ 1);
            the arrows below are the half that is actually loud enough. -->
-      <div id="home-tabs-bar" class="sticky top-[var(--site-header-h,3.4rem)] z-30 bg-[var(--color-bg)] [--dash-tab-fade-bg:var(--color-bg)]">
+      <div id="home-tabs-bar" data-sticky-glass="3.4" class="sticky top-[var(--site-header-h,3.4rem)] z-30 bg-[var(--color-bg)] [--dash-tab-fade-bg:var(--color-bg)]">
         <div class="container">
           <!-- The four Hebrew labels need 441px and a 375px viewport gives the
                strip 343, so it scrolls — and a fade alone is a quiet signal on a
@@ -842,7 +842,6 @@ const jsonLd = {
   // smooth-scroll on this RTL site (AI_INSTRUCTIONS → Architecture → Scroll).
   import { animateScrollTo } from '../scripts/dashboard/scroll-utils.js';
   import { playReveal, armBelowFoldReveal } from '../lib/scroll-reveal.js';
-  import { initStickyBar } from '../lib/sticky-bar.js';
 
   // Landing on the platform home is a deliberate exit from any store context —
   // don't let a stale "back to store" pill follow the buyer into checkout/dashboard afterward.
@@ -852,10 +851,10 @@ const jsonLd = {
   // hidden-toggling, ?panel= URL sync via history.replaceState) — reused
   // unchanged, see AI_INSTRUCTIONS.md → Homepage.
   initDashTabs();
-  // Marks the tab strip `.is-stuck` while it is pinned under the header, which is
-  // what cancels the header's own shadow (header.css) — butted against this bar
-  // the header is not covering page content any more.
-  initStickyBar(document.getElementById('home-tabs-bar'), 3.4);
+  // The tab strip's `.is-stuck` — what cancels the header's own shadow (header.css), since
+  // butted against this bar the header is not covering page content any more — is armed by
+  // `data-sticky-glass="3.4"` on the strip itself, inline from BaseLayout. See
+  // components/StickyGlassBoot.astro for why it may not wait on this module.
 
   // ── Sliding tab underline (CURRENT_TASK.md → סשן ג׳) — one shared bar that
   // travels the full width of the tab row to the tab that was just ACTIVATED.

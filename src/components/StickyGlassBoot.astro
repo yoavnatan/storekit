@@ -1,0 +1,85 @@
+---
+// Marks a `position:sticky` bar `.is-stuck` from the moment it pins under the fixed site header.
+// That class is what fades in the frosted-glass backdrop behind the store's category chips
+// (`.store-controls::before`, styles/pages/store.css), what cancels the header's own shadow on the
+// homepage tab strip, and what tells the store banner's curtain it is covering something.
+//
+// **Why this is an `is:inline` script and not a call inside the page's module** (2026-08-18, owner:
+// *"יש פעמים שהפס גלאס מורפיזם שמאחורי הקטגוריות … לא נטען, ואז אין שם כלום"*).
+//
+// It used to be `initStickyBar()` in `lib/sticky-bar.ts`, called from the bottom of each page's own
+// `<script>`. A page module is deferred AND is the tail of the page's whole import graph — the
+// store page pulls in a dozen modules — so `.is-stuck` could only ever land after every one of them
+// had downloaded and run. The bar itself is CSS: it pins on the first pixel of scroll, glass or no
+// glass. Measured on the store page at 400kbps / 6x CPU throttle: the bar was pinned at ~4.4s and
+// still had no `.is-stuck` at 10s. On a cold cache, a slow phone, or any page-module error at all,
+// the shopper scrolls a pinned bar with a fully transparent background over moving product cards —
+// exactly "there is nothing there", and exactly "sometimes", because it depends on the network.
+//
+// Inline, this runs at parse time with nothing to download, so the glass is armed before the first
+// scroll can happen. Participation is declared in the markup — `data-sticky-glass` on the bar, its
+// value the header offset in rem — so this file stays the one definition and no page repeats the
+// logic. `window.__armStickyGlass()` re-arms after a DOM swap (the /stores directory replaces the
+// whole results block, sentinel included, on every category change).
+//
+// BaseLayout renders it BEFORE `<main>`, so it executes almost immediately — and it then watches
+// the parse rather than waiting for it, so a bar is dressed the frame it appears. See the
+// MutationObserver below.
+//
+// Plain ES5-ish JS with `var`, like FormFallbackGuard.astro's inline boot, for the same reason:
+// `is:inline` is shipped verbatim, so it is never compiled and never bundled.
+---
+
+<script is:inline>
+  (function () {
+    /** Default header offset, in rem — matches `body { padding-top }` and the bars' own `top`. */
+    var DEFAULT_REM = 3.3;
+
+    function arm(bar) {
+      if (!bar || !bar.parentElement || bar.hasAttribute('data-sticky-glass-armed')) return;
+      bar.setAttribute('data-sticky-glass-armed', '');
+      // A zero-height sentinel just above the bar: it leaves the viewport at the exact scroll
+      // position the bar reaches its own `top`, so one IntersectionObserver replaces a scroll
+      // handler and there is no per-frame layout cost.
+      var sentinel = document.createElement('div');
+      sentinel.setAttribute('aria-hidden', 'true');
+      bar.parentElement.insertBefore(sentinel, bar);
+      var rem = parseFloat(bar.getAttribute('data-sticky-glass')) || DEFAULT_REM;
+      var rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      new IntersectionObserver(function (entries) {
+        bar.classList.toggle('is-stuck', !(entries[0] && entries[0].isIntersecting));
+      }, { rootMargin: '-' + Math.round(rem * rootPx) + 'px 0px 0px 0px', threshold: 0 }).observe(sentinel);
+    }
+
+    function armAll() {
+      var bars = document.querySelectorAll('[data-sticky-glass]');
+      for (var i = 0; i < bars.length; i++) arm(bars[i]);
+    }
+
+    window.__armStickyGlass = armAll;
+    armAll();
+
+    // **Armed DURING the parse, not after it.** BaseLayout renders this right after the header, so
+    // the bars a page declares further down do not exist yet on that first call — and waiting for
+    // DOMContentLoaded would mean waiting for the whole page's HTML, which on a slow connection is
+    // seconds of scrollable content. Measured on the store page at 400kbps / 6x CPU: the bar was
+    // pinned 1.75s before DOMContentLoaded fired. So watch the document fill instead, and arm each
+    // bar the moment the parser has produced it.
+    //
+    // Coalesced through rAF rather than run per mutation: during a parse the callback fires for
+    // every node, and `armAll` is a document-wide querySelectorAll. Per frame it is a handful of
+    // cheap scans; per node it would be the kind of quadratic work that hurts most on exactly the
+    // slow device this exists to serve. Disconnected at DOMContentLoaded — after that the only
+    // source of new bars is a deliberate DOM swap, which calls `__armStickyGlass` itself.
+    if (document.readyState === 'loading') {
+      var queued = false;
+      var mo = new MutationObserver(function () {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(function () { queued = false; armAll(); });
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+      document.addEventListener('DOMContentLoaded', function () { mo.disconnect(); armAll(); });
+    }
+  })();
+</script>
