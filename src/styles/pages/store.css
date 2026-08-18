@@ -556,10 +556,32 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 @media (max-width: 640px) {
   .store-banner__image-wrap,
   .store-info {
-    margin-inline: -1rem;
+    /* The container's own gutter, read rather than assumed — see container.css. */
+    margin-inline: calc(-1 * var(--page-gutter));
     border-radius: 0;
     border-inline: 0;
   }
+
+  /* And the vertical space around them comes down with it. These paddings were tuned while both
+     elements were INSET, and that is the whole reason they now read wrong: white above and below
+     something inset is part of its framing, and the identical white around something that touches
+     both screen edges is a loose stripe (owner, 2026-08-18 — three separate ones, and he was right
+     about all three). Measured on a 390px screen before this rule: 34px above the banner, 34px
+     between banner and details, 24px below.
+     `.store-banner-pin`'s bottom padding is the one with an argument attached, and the argument
+     does not survive the change: it exists so the framed image's bottom edge and shadow stay
+     visible through the first bit of the curtain scroll. Full bleed, there is no frame and no
+     shadow — nothing left to keep visible — so it goes to the smallest value that still lets the
+     details read as RISING OVER the picture rather than starting flush against it. */
+  /* All the way to zero, on a second report that 6px and 14px were still reading as bands.
+     They were, and the reason is that a full-bleed card has no side gaps for a vertical gap to
+     belong to: an inset card is surrounded by white on four sides, so white above it is part of a
+     ring the eye already accepts, while a card spanning the screen has white on exactly two, and
+     two facing stripes read as gaps rather than as margin. There is no small-but-not-zero value
+     that fixes that — the shape is wrong, not the number — so the borders meet the things they
+     separate and the hairline does the whole job. */
+  .store-banner { padding-top: 0; padding-bottom: 0; }
+  .store-banner-pin { padding-top: 0; padding-bottom: 0; }
 }
 
 .search-results-heading {

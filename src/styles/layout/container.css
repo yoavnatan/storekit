@@ -1,9 +1,23 @@
 /* Container */
 .container {
+  /* Named, because things OUTSIDE this file need to cancel it exactly. A full-bleed child inside a
+     container pulls itself out with a negative margin of precisely this value (store.css does it
+     for the phone banner), and a hard-coded -1rem there silently becomes wrong the moment this
+     number moves — which it does, one line below. Custom properties inherit, so any descendant can
+     read the gutter it is actually sitting in rather than the one it assumes. */
+  --page-gutter: 1rem;
   width: 100%;
   max-width: var(--max-width);
   margin-inline: auto;
-  padding-inline: 1rem;
+  padding-inline: var(--page-gutter);
+}
+
+/* A phone has no width to give away (owner, 2026-08-18: "לצמצם מעט את הריווח בצדדים במובייל,
+   מעט"). 0.85rem is 13.6px against 16 — deliberately a trim and not a redesign; the ask was
+   "slightly", and below about 12px a gutter stops reading as margin and starts reading as text
+   running into the edge. */
+@media (max-width: 640px) {
+  .container { --page-gutter: 0.85rem; }
 }
 
 /* Section spacing */

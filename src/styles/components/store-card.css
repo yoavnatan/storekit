@@ -215,10 +215,30 @@
      say "outranks a category label", and 600 says it. Two full-strength signals for one message is
      the stacking the design line rules out anyway. */
   font-weight: 600;
-  /* The hue at full strength, mixed toward the text colour so it stays legible against the 11%
-     wash of itself that `.badge-finish` puts behind it — a chip whose ink and fill are the same
-     colour at different alphas is the one way this pairing can go unreadable. */
+  /* The hue at full strength, mixed toward the text colour so it stays legible against the wash
+     of itself behind it — a chip whose ink and fill are the same colour at different alphas is the
+     one way this pairing can go unreadable. */
   color: color-mix(in srgb, var(--badge-hue) 72%, var(--color-text));
+  /* Mostly transparent, to match what the tiles below it now do (owner, 2026-08-18 — the same
+     "much more transparent" applied to the badges inside the card). `.badge-finish` gives every
+     chip on this shelf an 11%->5% fill and a 28% border mixed toward `--color-surface`; here both
+     are cut to roughly a third and mixed toward `transparent` instead.
+     Mixing toward transparent rather than lowering the percentages against the surface is what
+     makes it actually transparent rather than merely paler: the tile behind these chips is now a
+     wash that fades across the row, so a fill locked to the card's white would sit as a visible
+     opaque patch over the coloured end and vanish over the clear end. Against transparent the
+     chip reads the same against both.
+     SCOPED TO THE INVITE CHIP on purpose. `.badge-finish` is shared with the sale chip, the
+     "חנות לדוגמה" badge and a real store's category tags, and its own note says the whole point of
+     that rule is that a chip differs from its neighbour ONLY by hue. This card's row has no
+     neighbour of that kind — every chip in it is an invite chip — so it can take a different
+     finish without splitting a row that has to read as one set. */
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--badge-hue) 4%, transparent) 0%,
+    color-mix(in srgb, var(--badge-hue) 2%, transparent) 100%
+  );
+  border-color: color-mix(in srgb, var(--badge-hue) 10%, transparent);
 }
 
 /* Keeps the shared fill and shadow, swaps the line for a dashed one — "+3 more" is a count, not a
