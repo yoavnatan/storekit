@@ -16,9 +16,10 @@ import {
 import {
   PLACEHOLDER_ART,
   TILE_HUES,
+  TILE_WASHES,
   TILE_LIGHT_ANGLE,
   INVITE_HUES,
-  previewWash,
+  tileBackground,
   pickArtTrio,
   pickCardHue,
   pickCardInk,
@@ -180,11 +181,13 @@ describe('placeholder tile colour', () => {
     // an outlier in a row of pale cards (owner, 2026-08-14). Every ramp starts
     // near white, so a card that renders dark end to end means the rule slipped.
     for (let card = 0; card < INVITE_HUES.length; card++) {
-      const mixes = [...previewWash(card).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
-        .map((m) => Number(m[1]));
-      // 15 is nowhere near an inversion (that card started at 78) and leaves
-      // room for the deepest hue's own lit edge, which lands at 10.3.
-      expect(Math.min(...mixes)).toBeLessThanOrEqual(15);
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        // 15 is nowhere near an inversion (that card started at 78) and leaves
+        // room for the deepest hue's own lit edge, which lands at 10.3.
+        expect(Math.min(...mixes)).toBeLessThanOrEqual(15);
+      }
     }
   });
 
@@ -276,10 +279,15 @@ describe('placeholder tile colour', () => {
     // Art is stroked in the card's hue at full strength, and the cap is what keeps
     // 3:1 between the two. It is per-hue because equal percentages are not equal
     // fill — see the note on INVITE_HUES for the measured ratios.
-    // The three per-tile ramps this used to check are gone with the tiles themselves
-    // (2026-08-18 — one wash across the whole row now, see previewWash). What survives
-    // is the half that was never about tiles: no hue's budget may drift past what the
-    // contrast measurements cover. The ceiling
+    expect(TILE_WASHES).toHaveLength(3);
+    for (const w of TILE_WASHES) {
+      expect(w.bottom).toBeLessThanOrEqual(1);
+      expect(w.top).toBeLessThan(w.bottom);
+      expect(w.top).toBeGreaterThan(0);
+    }
+    // Tiles must actually differ, or the card is one flat block of colour.
+    expect(new Set(TILE_WASHES.map((w) => `${w.top}/${w.bottom}`)).size).toBe(TILE_WASHES.length);
+    // And no hue's budget may drift past what the measurements cover. The ceiling
     // is where the darkest, least saturated hue in the set sits; past it a card
     // stops being a tinted tile and starts being a coloured block.
     for (const hue of INVITE_HUES) {
@@ -291,10 +299,12 @@ describe('placeholder tile colour', () => {
   it('never renders a wash deeper than the hue it belongs to allows', () => {
     for (let card = 0; card < INVITE_HUES.length; card++) {
       const cap = INVITE_HUES[card]!.maxWash;
-      const mixes = [...previewWash(card).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
-        .map((m) => Number(m[1]));
-      expect(mixes).toHaveLength(2);
-      for (const mix of mixes) expect(mix).toBeLessThanOrEqual(cap);
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const mixes = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(mixes).toHaveLength(2);
+        for (const mix of mixes) expect(mix).toBeLessThanOrEqual(cap);
+      }
     }
   });
 
@@ -302,7 +312,7 @@ describe('placeholder tile colour', () => {
     // The regression: three tiles with three gradient angles read as small
     // pictures hung crooked (owner, 2026-08-14). Light direction is a constant,
     // and depth is the only thing a tile is allowed to vary.
-    const angles = INVITE_HUES.map((_, card) => previewWash(card))
+    const angles = TILE_WASHES.map((_, i) => tileBackground(0, i))
       .map((bg) => bg.match(/linear-gradient\((\d+)deg/)?.[1]);
     expect(new Set(angles).size).toBe(1);
     expect(angles[0]).toBe(String(TILE_LIGHT_ANGLE));
@@ -313,14 +323,12 @@ describe('placeholder tile colour', () => {
     // wrong, so the ramp direction is pinned separately: the first colour stop
     // of the wash is always the weaker mix.
     for (let card = 0; card < INVITE_HUES.length; card++) {
-      const stops = [...previewWash(card).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
-        .map((m) => Number(m[1]));
-      expect(stops).toHaveLength(2);
-      expect(stops[0]!).toBeLessThan(stops[1]!);
-      // ...and the wash must actually REACH nothing. This is the half the per-tile
-      // version could not assert: it bottomed out at --color-surface, so "fades out"
-      // was true of the colour and false of the edge.
-      expect(previewWash(card)).toContain('transparent 0%');
+      for (let tile = 0; tile < TILE_WASHES.length; tile++) {
+        const stops = [...tileBackground(card, tile).matchAll(/invite-[a-z]+\) ([\d.]+)%/g)]
+          .map((m) => Number(m[1]));
+        expect(stops).toHaveLength(2);
+        expect(stops[0]!).toBeLessThan(stops[1]!);
+      }
     }
   });
 });

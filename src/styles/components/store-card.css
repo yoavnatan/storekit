@@ -262,20 +262,6 @@
   align-items: center;
   justify-content: center;
   color: var(--color-border);
-  /* The base rule's white fill and grey border are RIGHT for a real thumbnail and wrong here, and
-     the difference is what the tile is holding. A product photo may be a transparent PNG, so its
-     container has to be an opaque neutral or the subject shows the page through it — that is the
-     note above, and it still stands. This tile holds line-art drawn in the card's own hue; there
-     is nothing to back, and the fill was the only thing standing between the row's single wash
-     (StorePlaceholderCard -> previewWash) and the eye. With four opaque tiles on top, the wash
-     painted underneath them and showed only in the 0.4rem gaps.
-     The border goes transparent rather than to `none` so the box keeps the same outer size as a
-     real card's thumbnail — this component's whole contract is lining up with the real cards
-     beside it, and 1px x 4 tiles is exactly the kind of drift that breaks a mixed row.
-     Left as CSS, not converted: this is a variant of a class StoreCard also renders, so a utility
-     here would have to out-specify an unlayered legacy rule on the same element. */
-  background: none;
-  border-color: transparent;
 }
 
 /* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css.

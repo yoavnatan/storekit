@@ -157,51 +157,68 @@ export const TILE_HUES: readonly string[] = INVITE_HUES.map((h) => h.token);
  *  reading as a flat horizontal band. */
 export const TILE_LIGHT_ANGLE = 168;
 
-/** Mix % for one stop of the wash, rounded — a fraction of the card hue's own budget. */
+/** What separates the three tiles of one card, now that the angle can't: how
+ *  deep the card's hue sinks into the surface. Every tile is lightest at the top
+ *  and deepest at the bottom — a consistent ramp is what makes three tiles read
+ *  as one lit scene, and the depth difference between them is what stops the
+ *  card being a single flat block of colour.
+ *
+ *  These are FRACTIONS of the hue's own `maxWash`, not absolute mix percentages.
+ *  Absolutes were the first version and they gave every hue the same numbers,
+ *  which the least saturated hues could not carry — see the note on INVITE_HUES.
+ *  A fraction means the three tiles of a card always sit at the same three
+ *  RELATIVE depths, whichever hue the card drew. */
+export interface TileWash {
+  /** Share of the hue's `maxWash` at the lit top edge. */
+  top: number;
+  /** …and at the shaded bottom edge. Always the deeper of the two. */
+  bottom: number;
+}
+
+export const TILE_WASHES: readonly TileWash[] = [
+  { top: 0.18, bottom: 1 },
+  { top: 0.09, bottom: 0.68 },
+  { top: 0.27, bottom: 0.95 },
+];
+
+/** Mix % for one tile edge, rounded — a fraction of the card hue's own budget. */
 function washPercent(hue: InviteHue, fraction: number): number {
   return Math.round(hue.maxWash * fraction * 10) / 10;
 }
 
 /**
- * ONE wash for the whole preview ROW, replacing the per-tile backgrounds (owner,
- * 2026-08-18: "לא על כל כרטיסיה בנפרד אלא כמו כולם ביחד", and a colour that "הופך
- * לשקוף לגמרי").
+ * The full CSS `background` for one tile of the card at `cardIndex`: the wash,
+ * under a soft highlight that falls from just above the tile's top edge.
  *
- * The per-tile version was correct for what it was solving — four tiles that had to
- * stand in for four product photos — and it stopped being correct when the corner
- * radius went to 2px. At 10px the tile edges were soft enough to disappear; sharp,
- * the card became four hard rectangles inside a rectangle inside a grid, and the
- * eye counts every one of them. Painting the row instead of the tiles removes three
- * of those four boundaries without removing anything the card was saying.
+ * The highlight is what gives the tile a surface instead of a fill — it is the
+ * same light the gradient ramps away from, so the two are one treatment rather
+ * than the "gradients-on-gradients" store-card.css warns against. It is
+ * deliberately weak and stops well before the middle: past that it turns the
+ * tile into a glossy button, which is a 2010 treatment and not this site's.
  *
- * The gradient reaches FULLY transparent rather than fading into the surface. That
- * is the difference he asked for and it is not cosmetic: `color-mix(…, transparent)`
- * against `--color-surface` bottoms out at the card's own colour, so the wash always
- * ended on a visible edge somewhere. Ending at `transparent` means the card behind it
- * is what the wash resolves into, whatever that card is — so the same row works on
- * the surface, on the page background, and against a dark theme without a second set
- * of numbers.
- *
- * Same 168° and the same ramp DIRECTION as the tiles (TILE_LIGHT_ANGLE): transparent at
- * the lit top edge, deepest at the shaded bottom. That direction was tried inverted first
- * — colour at the top dissolving downward, which is the obvious reading of "fades to
- * transparent" — and it hung the band off the chips above it instead of grounding it.
- * Lit from above is not a preference here, it is the one property every tile shared, and
- * a row that reverses it stops being the same scene at a larger size.
- *
- * 0.3 -> 0.85 of the hue's own budget, not 0 -> 1: the deep end stays under the cap that
- * keeps the line-art at 3:1 against it (see INVITE_HUES), and the light end starts above
- * zero so the middle of the row is a colour rather than a fade with a stripe at the end.
+ * Takes the CARD index rather than a hue string, because the wash depth is a
+ * property of the hue and the two must not be picked apart — the whole reason
+ * the caps are per-hue is that a hue and its budget belong together.
  */
-export function previewWash(cardIndex: number): string {
+export function tileBackground(cardIndex: number, tileIndex: number): string {
   const hue = pickCardHueSpec(cardIndex);
+  const wash = TILE_WASHES[tileIndex % TILE_WASHES.length]!;
   return [
-    `radial-gradient(90% 60% at 50% -8%, color-mix(in srgb, #fff 45%, transparent) 0%, transparent 58%)`,
+    `radial-gradient(120% 78% at 50% -12%, color-mix(in srgb, #fff 55%, transparent) 0%, transparent 62%)`,
     `linear-gradient(${TILE_LIGHT_ANGLE}deg,`
-      + ` transparent 0%,`
-      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, 0.3)}%, transparent) 45%,`
-      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, 0.85)}%, transparent) 100%)`,
+      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, wash.top)}%, var(--color-surface)) 0%,`
+      + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, wash.bottom)}%, var(--color-surface)) 100%)`,
   ].join(', ');
+}
+
+/** The hairline that closes the tile off from the card behind it. A wash with no
+ *  edge floats; the edge is what makes three of them read as a deliberate set —
+ *  and it is drawn in the card's own hue, not the grey border token, so it
+ *  belongs to the tile rather than outlining it. Scaled by the same budget: on a
+ *  hue whose wash runs deep, a 12% edge disappears into it. */
+export function tileEdge(cardIndex: number): string {
+  const hue = pickCardHueSpec(cardIndex);
+  return `inset 0 0 0 1px color-mix(in srgb, ${hue.token} ${washPercent(hue, 0.55)}%, transparent)`;
 }
 
 /** The full hue spec of the card at `cardIndex` — token, wash budget, ink.
