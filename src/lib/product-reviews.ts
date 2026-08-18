@@ -23,13 +23,18 @@ export interface ProductReview {
   id: string;
   productId: string;
   storeSlug: string;
-  orderId: string;
+  /** The purchase this review belongs to. `null` ONLY for a demo review, which has none — see
+   *  migration 0040 for why that is a constraint and not a loosening. */
+  orderId: string | null;
   buyerId: string | null;
   /** Already shortened for publication (`reviews.ts#reviewerDisplayName`), possibly empty. */
   reviewerName: string;
   rating: number;
   body: string;
   blocked: boolean;
+  /** An illustrative rating on a showcase store, with no purchase behind it. Excluded from the
+   *  Google feed and from the threshold count; see migration 0040. */
+  demo: boolean;
   createdAt: string;
 }
 
@@ -37,16 +42,17 @@ interface Row {
   id: string;
   product_id: string;
   store_slug: string;
-  order_id: string;
+  order_id: string | null;
   buyer_id: string | null;
   reviewer_name: string;
   rating: number;
   body: string;
   blocked: boolean;
+  demo: boolean;
   created_at: Date | string;
 }
 
-const COLUMNS = 'id, product_id, store_slug, order_id, buyer_id, reviewer_name, rating, body, blocked, created_at';
+const COLUMNS = 'id, product_id, store_slug, order_id, buyer_id, reviewer_name, rating, body, blocked, demo, created_at';
 
 function toReview(r: Row): ProductReview {
   return {
@@ -59,6 +65,7 @@ function toReview(r: Row): ProductReview {
     rating: Number(r.rating),
     body: r.body,
     blocked: r.blocked,
+    demo: r.demo,
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
   };
 }
@@ -107,6 +114,33 @@ export interface NewReview {
  * A duplicate is not an error to the caller: the API turns it into "you have already reviewed
  * this", which is what actually happened.
  */
+/**
+ * A showcase store's illustrative rating — no purchase, no order, no money.
+ *
+ * The only writer of `demo = true`, and it exists because the alternative was worse: giving the
+ * showcase stores real reviews meant writing real ORDERS underneath them, and those are counted as
+ * revenue by every money surface (migration 0040 tells the whole story). This writes a review and
+ * nothing else.
+ *
+ * Not reachable from any request — `scripts/seed-reviews.mjs` is the only caller, and the API goes
+ * through `createReview`, which cannot set the flag.
+ */
+export async function createDemoReview(input: Omit<NewReview, 'orderId' | 'buyerId'>): Promise<ProductReview | null> {
+  return withTransaction(async (tx) => {
+    const inserted = await tx.query<Row>(
+      `INSERT INTO product_reviews (id, product_id, store_slug, order_id, buyer_id, reviewer_name, rating, body, demo)
+       VALUES ($1, $2, $3, NULL, NULL, $4, $5, $6, true)
+       RETURNING ${COLUMNS}`,
+      [crypto.randomUUID(), input.productId, input.storeSlug,
+       reviewerDisplayName(input.buyerFullName), input.rating, input.body],
+    );
+    const row = inserted.rows[0];
+    if (!row) return null;
+    await recomputeProductRating(input.productId, tx);
+    return toReview(row);
+  });
+}
+
 export async function createReview(input: NewReview): Promise<ProductReview | null> {
   return withTransaction(async (tx) => {
     const inserted = await tx.query<Row>(
@@ -287,11 +321,18 @@ export async function getReviewableOrderForProduct(buyerId: string, productId: s
   return row?.id ?? null;
 }
 
-/** How many published reviews the whole platform holds — Google's Product Ratings programme needs
- *  50 before it will take the feed at all (GO_LIVE §2.7), so this is the number that decides
- *  whether that milestone has been reached, and the admin dashboard shows it. */
+/**
+ * How many REAL published reviews the whole platform holds.
+ *
+ * Google's Product Ratings programme needs 50 across the account before it will take the feed at
+ * all (GO_LIVE §2.7), so this is the number that says whether that milestone has been reached —
+ * which is exactly why `NOT demo` is in the predicate. The showcase stores carry illustrative
+ * ratings that are never submitted; counting them would announce a threshold nobody had crossed and
+ * send the owner to Merchant Center to connect a feed that would be rejected.
+ */
 export async function countPublishedReviews(): Promise<number> {
-  const row = await firstRow<{ n: string }>('SELECT count(*) AS n FROM product_reviews WHERE NOT blocked');
+  const row = await firstRow<{ n: string }>(
+    'SELECT count(*) AS n FROM product_reviews WHERE NOT blocked AND NOT demo');
   return Number(row?.n ?? 0);
 }
 
@@ -311,8 +352,13 @@ export async function getReviewsForProductIds(productIds: readonly string[]): Pr
   const byProduct = new Map<string, ProductReview[]>();
   if (!productIds.length) return byProduct;
   const found = await rows<Row>(
+    // `NOT demo` is the SECOND lock, and it is deliberate belt-and-braces: the caller already walks
+    // `getIndexableStores`, which excludes demo stores, so an illustrative review cannot reach the
+    // feed through the store it sits on. This makes it impossible through the review itself too —
+    // submitting invented reviews is a policy violation against the one Merchant Center account
+    // every seller on the platform shares, and that is not a risk to leave to one predicate.
     `SELECT ${COLUMNS} FROM product_reviews
-      WHERE product_id = ANY($1::uuid[]) AND NOT blocked
+      WHERE product_id = ANY($1::uuid[]) AND NOT blocked AND NOT demo
       ORDER BY created_at, id`,
     [[...productIds]],
   );
