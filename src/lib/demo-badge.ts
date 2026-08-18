@@ -47,7 +47,15 @@ export type DemoBadgeVariant = 'chip' | 'inline';
  * `feedback_wishlist_heart_no_glass`), and `pointer-events:none` so it can never swallow a click
  * meant for the card behind it.
  */
-const CHIP_CLASS = 'absolute bottom-2 start-2 z-[2] pointer-events-none '
+// `product-demo-chip` carries no styles of its own — it is the hook the image dots need in order
+// to get out of this chip's way (store.css, `.product-card__dots:has(~ .product-demo-chip)`).
+// The corner map in the comment above was right about which corners are OWNED and wrong about
+// one thing: bottom CENTRE is not a point, it is a pill ~66px wide, and on a phone-width card
+// it reaches into the start corner and covers this badge. Measured 2026-08-18: they overlap at
+// every viewport 500px and under, i.e. on every phone, and the disclosure read "מוצר לד...".
+// A marker class rather than a `:has()` on the wrapper because four surfaces render this chip
+// and they do not all share a wrapper class.
+const CHIP_CLASS = 'product-demo-chip absolute bottom-2 start-2 z-[2] pointer-events-none '
   + 'inline-flex items-center gap-1 py-[0.15rem] px-[0.4rem] rounded-[var(--radius-sm)] '
   + 'bg-white/70 [backdrop-filter:blur(4px)] text-[0.6rem] font-medium leading-[1.4] '
   + 'whitespace-nowrap [color:var(--color-muted)]';

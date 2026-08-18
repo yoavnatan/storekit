@@ -21,12 +21,6 @@ export const RATING_MAX = 5;
  */
 export const REVIEW_BODY_MAX = 1500;
 
-/** Text is OPTIONAL — a rating on its own is a complete review, and the friction of demanding a
- *  paragraph is what makes review systems empty. Google's feed disagrees (it requires `content`),
- *  so a rating-only review is published on the page and skipped by the feed; `review-feed.ts` says
- *  so at the filter. */
-export const REVIEW_BODY_MIN = 0;
-
 export interface RatingAggregate {
   /** Published reviews. */
   count: number;

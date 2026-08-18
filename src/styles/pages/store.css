@@ -539,6 +539,29 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   .local-search-row { width: 140px; }
 }
 
+/* PHONE: the banner and the identity card go edge to edge, because on a phone their side space is
+   PAID TWICE. `.container` gives 1rem, then each of them adds its own — measured on a 390px screen
+   before this rule: the store description started 35px in (16 container + 17.6 card + 1 border) and
+   ran 321px wide, i.e. 18% of the screen spent on air before a word (owner, 2026-08-18: "כל החנות
+   מקבלת מרווח יותר מדי גדול בצדדים").
+   Cancelling the container's padding rather than removing anyone's own is what keeps both of them
+   intact: the card's 1.1rem stops stacking on top of the page's 1rem and simply BECOMES the gutter,
+   so the text gets 353px instead of 321 and nothing had to give up its spacing.
+   `.store-info`'s bounding line stays — it is a decision ("קו תוחם בשפה של האתר"), not a default —
+   but only top and bottom: a vertical hairline sitting exactly on the screen edge reads as a
+   rendering fault rather than as an edge, and the two horizontal lines are what carry the box. The
+   banner drops its radius and border for the same reason.
+   640px, not 360: this is about a screen with no width to spare, which starts well above the point
+   where the layout gets cramped. */
+@media (max-width: 640px) {
+  .store-banner__image-wrap,
+  .store-info {
+    margin-inline: -1rem;
+    border-radius: 0;
+    border-inline: 0;
+  }
+}
+
 .search-results-heading {
   display: flex;
   align-items: center;
@@ -1281,6 +1304,34 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   border: 0.75px solid rgba(255, 255, 255, 0.2);
   z-index: 3;
   pointer-events: none;
+}
+
+/* A card carrying the "מוצר לדוגמה" chip gives the dots the bottom inline-END corner instead of
+   the centre. `lib/demo-badge.ts` placed that chip at bottom inline-start on the reasoning that the
+   heart owns top inline-end, the sale badge top inline-start, and the dots bottom CENTRE — the map
+   was right, and it treated "centre" as a point. It is a pill about 66px wide, so on a narrow card
+   it reaches the start corner and sits on top of the chip: measured 2026-08-18, they overlap at
+   every viewport 500px and under, and the disclosure rendered as "מוצר לד...".
+   That matters more than a normal overlap. `lib/demo-stores.ts` states the rule this badge exists
+   for — a shopper must never discover the store was a demo only at the checkout refusal — and a
+   covered badge is exactly that failure, on the surface most likely to be the only one they see.
+   Bottom-end is free on such a card, and the sibling selector means a card with no chip keeps its
+   centred dots. */
+.product-card__dots:has(~ .product-demo-chip) {
+  left: auto;
+  right: auto;
+  inset-inline-end: 8px;
+  transform: none;
+}
+
+/* Below ~360px the two simply do not fit on one line: the chip is 77px, the dots pill 66px, and a
+   two-column grid at 320px gives each card about 140px of image. Opposite corners buys nothing when
+   there are no two corners left. So the decoration yields and the disclosure stays — the dots are
+   `aria-hidden` decoration and swiping still works without them, while a covered "מוצר לדוגמה" is
+   the one failure `lib/demo-stores.ts` exists to prevent. Verified 320-1440 after this rule: zero
+   overlaps at every width. */
+@media (max-width: 360px) {
+  .product-card__dots:has(~ .product-demo-chip) { display: none; }
 }
 
 .product-card__dot {
