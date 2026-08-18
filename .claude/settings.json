@@ -32,6 +32,11 @@
             "type": "command",
             "command": "bash .claude/hooks/one-way-to-verify.sh",
             "statusMessage": "Checking the one-command testing rule..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-destructive-git.sh",
+            "statusMessage": "Checking this git command cannot destroy another session's work..."
           }
         ]
       },

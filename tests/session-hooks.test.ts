@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { cleanGitEnv } from './helpers/git-env.js';
 
 /**
  * `one-way-to-verify.sh` — tested because nothing else can see a hook fail: one that stops speaking
@@ -129,5 +131,103 @@ describe('money-rules-on-contact.sh — the money rules arrive when money code i
     ]) {
       expect(rules, `the briefing dropped ${module}`).toContain(module);
     }
+  });
+});
+
+/**
+ * `block-destructive-git.sh` — the four git commands that have actually destroyed another session's
+ * work in this repo. All four were written down in memory before they happened again; being written
+ * down is precisely what failed, because their common shape is that git reports SUCCESS and the
+ * loss surfaces hours later, when somebody asks where a module went.
+ *
+ * The risk here is over-blocking, exactly as above: this hook sits in front of every Bash call a
+ * session makes, and a gate that refuses ordinary git gets switched off. So most of the cases below
+ * are things it MUST let through — including the two repair tools the incidents were fixed with
+ * (`refs/rescue/<name>` anchors, and a path-by-path `git checkout <sha> -- <file>`), which look
+ * superficially like the commands being blocked.
+ *
+ * One case is here because it was a real defect and not a hypothesis: the argument extraction was
+ * first written as `sed -E 's/\bupdate-ref\b//'`, and BSD sed — which is what macOS ships — has no
+ * `\b`. It matched nothing, so every rule read the subcommand name as its own argument: the hook
+ * denied `refs/rescue/` and allowed every `git push .` shape. It was emitting confident blocks the
+ * whole time, which is what makes the class worth pinning — a guard can be loud and still be inert.
+ */
+describe('block-destructive-git.sh — the four commands that lost work here', () => {
+  const run = (command: string, cwd?: string) =>
+    runHook('block-destructive-git.sh', { tool_input: { command }, ...(cwd ? { cwd } : {}) });
+
+  // Each case also asserts the way OUT is named: a block with no exit teaches the next session to
+  // work around it, which is how a gate stops being one.
+  const blocked: [string, string][] = [
+    ['git update-ref refs/heads/main worktree-foo', 'merge --ff-only'],
+    ['git update-ref main worktree-foo', 'merge --ff-only'],
+    ['cd /repo && git update-ref -d refs/heads/main', 'merge --ff-only'],
+    ['git push .', '867 files'],
+    ['git push . HEAD:main', '867 files'],
+    ['git push /Users/me/repo main', '867 files'],
+    ['git push ../main-checkout main', '867 files'],
+    ['git checkout main -- .', 'git show <ref>:<path>'],
+    ['git checkout abc1234 -- .', 'git show <ref>:<path>'],
+    ['git restore --source=main .', 'git show <ref>:<path>'],
+  ];
+
+  it.each(blocked)('blocks %s', (command, mustNameTheWayOut) => {
+    const out = run(command);
+    expect(out, `expected a deny for: ${command}`).toContain('"permissionDecision": "deny"');
+    expect(out, `the block for ${command} never says what to do instead`).toContain(mustNameTheWayOut);
+  });
+
+  const allowed = [
+    'git update-ref refs/rescue/before-surgery abc1234', // the anchor memory says to save FIRST
+    'git checkout abc1234 -- src/foo.ts', // path-by-path is how the 2026-08-06 loss was repaired
+    'git push origin main',
+    'git push -u origin HEAD',
+    'git checkout -- .', // no ref: discards only this session's own uncommitted work
+    'git checkout main',
+    'git checkout -B worktree-foo main',
+    'git merge --ff-only worktree-foo',
+    'git rebase main',
+    'git status --short',
+    'git show main:src/foo.ts',
+    'npm run verify -- --all',
+    'git commit -m "a message that mentions git add -A in prose"',
+  ];
+
+  it.each(allowed)('allows %s', (command) => {
+    expect(run(command), `over-blocked: ${command}`).toBe('');
+  });
+
+  it('blocks a sweeping commit from a tree missing tracked files, and names them', () => {
+    // The 2026-08-06 shape, BUILT rather than described: HEAD holds files the working tree does not.
+    const repo = mkdtempSync(resolve(tmpdir(), 'stale-tree-'));
+    // env, not just cwd: under `git push` the pre-push hook runs this suite with GIT_DIR set, and
+    // GIT_DIR beats cwd — so these would address the REAL repository (tests/git-env-isolation.test.ts).
+    const git = (...args: string[]) =>
+      // eslint-disable-next-line sonarjs/no-os-command-from-path -- same reasoning as runHook above
+      execFileSync('git', args, { cwd: repo, env: cleanGitEnv(), encoding: 'utf8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@t');
+    git('config', 'user.name', 't');
+    for (const f of ['a.ts', 'b.ts', 'c.ts', 'keep.ts']) writeFileSync(resolve(repo, f), 'x');
+    git('add', '-A');
+    git('commit', '-qm', 'in');
+    for (const f of ['a.ts', 'b.ts', 'c.ts']) rmSync(resolve(repo, f));
+
+    for (const sweeping of ['git commit -am "docs"', 'git commit -a -m "docs"', 'git add -A', 'git add .', 'git add -u']) {
+      const out = run(sweeping, repo);
+      expect(out, `expected a deny for: ${sweeping}`).toContain('"permissionDecision": "deny"');
+      expect(out, 'the block has to name the files, or it is unactionable').toContain('a.ts');
+    }
+
+    // Naming what you mean stays open — that is the exit the block points at.
+    expect(run('git rm a.ts b.ts c.ts', repo)).toBe('');
+    expect(run('git commit -m "docs"', repo)).toBe('');
+
+    // And a tree missing nothing is never blocked, however sweeping the command.
+    git('rm', '-q', 'a.ts', 'b.ts', 'c.ts');
+    git('commit', '-qm', 'out');
+    expect(run('git add -A', repo)).toBe('');
+
+    rmSync(repo, { recursive: true, force: true });
   });
 });
