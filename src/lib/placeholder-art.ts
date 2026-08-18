@@ -169,15 +169,18 @@ function washPercent(hue: InviteHue, fraction: number): number {
  * right in Hebrew, left in English. A physical direction would put the solid half at
  * the end of the row in one language and the start in the other.
  *
- * MOST OF THE ROW IS NOTHING (owner, 2026-08-18: "הרבה יותר אחוזים שקוף. יותר מחצי").
- * The hue holds its own budget (INVITE_HUES) only to 12% and is fully gone by 45%, so
- * 55% of the sweep is clear card. It first shipped holding to 40% and clearing at 85%,
- * which read as a coloured band with a fade on the end rather than as a wash.
- * The peak is unchanged and that is deliberate: what he asked for is more transparent
- * DISTANCE, not a weaker colour. Dropping the peak too would have taken the first tile's
- * hue with it, and the hue is the card's whole identity — one colour per card is the rule
- * this treatment is built on. So the colour stays exactly as strong where it exists, and
- * simply stops sooner.
+ * Half and half, with the hue holding its own budget (INVITE_HUES) to 40% and reaching
+ * fully transparent by 85% — not 100%, so the far end is unambiguously clear rather
+ * than still fading as it runs out of tile.
+ *
+ * **12%/45% was tried on 2026-08-18 and reverted the same day. Don't take it further open
+ * again without asking.** It came from a direct request ("הרבה יותר אחוזים שקוף. יותר
+ * מחצי") and was built exactly as asked — the peak untouched, only the DISTANCE widened,
+ * so 55% of the sweep was clear card. Seen on the page the owner rejected it within hours.
+ * What the extra clearance actually removed was the thing the wash is for: with the colour
+ * gone by 45% the row stopped reading as one gradient crossing a set of tiles and became a
+ * tinted first tile beside four blank ones, which is what the per-tile ramps this replaced
+ * already looked like. The numbers here are the ones that survived being looked at.
  */
 /**
  * Where one tile sits in the row-wide gradient, as a `background-position` percentage.
@@ -212,8 +215,8 @@ export function previewWash(cardIndex: number, dir: 'rtl' | 'ltr'): string {
   const to = dir === 'rtl' ? 'left' : 'right';
   return `linear-gradient(to ${to},`
     + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, 1)}%, transparent) 0%,`
-    + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, 1)}%, transparent) 12%,`
-    + ` transparent 45%)`;
+    + ` color-mix(in srgb, ${hue.token} ${washPercent(hue, 1)}%, transparent) 40%,`
+    + ` transparent 85%)`;
 }
 
 /** The full hue spec of the card at `cardIndex` — token, wash budget, ink.

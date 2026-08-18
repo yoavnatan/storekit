@@ -1142,7 +1142,13 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   color: var(--color-text);
   background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
+  /* Matches `.category-chip` — same row, same geometry, one corner (owner, 2026-08-18, right
+     after the chips moved off the pill). It shares this control's whole recipe already: the same
+     padding, size, weight, border and background. Two radii in one row was the only thing making
+     them read as different kinds of object. The scroll ARROWS in the same row deliberately stay
+     at 50%: a round icon button is its own family here (--radius-icon), not a capsule, and
+     squaring a 26px circle would make it a button rather than a nudge. */
+  border-radius: var(--radius);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
