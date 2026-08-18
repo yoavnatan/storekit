@@ -10,6 +10,7 @@ import { parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 import { orderNetForStore } from '../../../lib/admin-stats.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
+import { recordPartialRefundOwed } from '../../../lib/refund-owed.js';
 import { settleStatusChange } from '../../../lib/order-status-change.js';
 import { storeSliceTotalAgorot } from '../../../lib/order-totals.js';
 import { toAgorot } from '../../../lib/money.js';
@@ -304,6 +305,22 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   if (prevStatus && updated.shippingStatus !== prevStatus) {
     await settleStatusChange({ before, after: updated, store, actor: sellerId });
   }
+  // **An edit that makes a PAID order cheaper owes the buyer the difference.**
+  //
+  // This route could already delete a line, override shipping and set a discount on an order whose
+  // card had been charged in full — and recorded only the seller-side note below, which says the
+  // seller's share moved and says nothing about the buyer. So a buyer paid 230, every screen and
+  // every report then said 190, and the 40 stayed on our side with nothing naming it. The bug was
+  // not in either half: `refund-owed.ts` asks whether an order LEFT the sales, which a partial
+  // reduction never does, and this route asks about the seller's net, which is a different
+  // question. It was the seam between them, and it is closed here rather than inside `updateOrder`
+  // because the obligation belongs to the ACT of editing, not to the row changing — the SLA job
+  // and the returns flow write their own, through `settleStatusChange`.
+  //
+  // Before the journal note below, deliberately: if only one of the two ever lands, the one that
+  // names real money owed to a real person is the one worth having.
+  await recordPartialRefundOwed(before, updated, storeSlug, sellerId, store.sellerId);
+
   const newNet = orderNetForStore(updated, storeSlug);
   if (newNet !== prevNet) {
     await recordMoneyEvent({

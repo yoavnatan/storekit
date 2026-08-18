@@ -117,3 +117,30 @@ describe('checkout cart split (a demo item must not block a real one)', () => {
     expect(splitDemoCarts([], isDemoSlug)).toEqual({ payable: [], viewOnly: [] });
   });
 });
+
+describe('a real store with nothing to sell does not count toward "enough real stores"', () => {
+  const demo = (id: string) => ({ id, demo: true });
+  const real = (id: string) => ({ id, demo: false });
+
+  it('keeps the showcase stores when the five real ones are all empty', () => {
+    // The bug this pins, seen live on 2026-08-18: seven product-less stores appeared in the dev
+    // database and the homepage emptied out. `filterShopperStores` counted stores that EXIST while
+    // launch mode counted stores with PRODUCTS, so the showcase stores — which are there to fill a
+    // thin mall — left, and five empty ones stayed in their place.
+    const stores = [demo('d1'), demo('d2'), real('r1'), real('r2'), real('r3'), real('r4'), real('r5')];
+    expect(filterShopperStores(stores, 0).map((s) => s.id)).toContain('d1');
+    expect(filterShopperStores(stores, 1).map((s) => s.id)).toContain('d1');
+  });
+
+  it('drops them once that many real stores can actually sell', () => {
+    const stores = [demo('d1'), real('r1'), real('r2'), real('r3'), real('r4'), real('r5')];
+    expect(filterShopperStores(stores, 5).map((s) => s.id)).not.toContain('d1');
+  });
+
+  it('falls back to counting stores when no live count is given', () => {
+    // The parameter is optional so a caller with no product data degrades to the old behaviour
+    // instead of crashing — but every discovery surface passes it.
+    const stores = [demo('d1'), real('r1'), real('r2'), real('r3'), real('r4'), real('r5')];
+    expect(filterShopperStores(stores).map((s) => s.id)).not.toContain('d1');
+  });
+});

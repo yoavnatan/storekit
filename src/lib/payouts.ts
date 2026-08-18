@@ -63,6 +63,11 @@ export interface SellerPayout {
 
 export type AdjustmentKind =
   | 'refund_clawback'
+  /** An order that got CHEAPER after its funds were released — a line deleted, shipping changed, a
+   *  goodwill discount. Separate from `refund_clawback` because that one is idempotent on
+   *  (order, kind) so a repeated cancellation debits once, and an order can be edited many times:
+   *  sharing the key would swallow every edit after the first. */
+  | 'refund_clawback_partial'
   | 'chargeback'
   | 'setoff_subscription'
   | 'setoff_ad'
@@ -83,6 +88,7 @@ export type AdjustmentKind =
  */
 export const ADJUSTMENT_KIND_LABELS: Record<AdjustmentKind, string> = {
   refund_clawback: 'החזרת זיכוי ששולם כבר למוכר',
+  refund_clawback_partial: 'קיזוז הפרש על הזמנה שהוזלה',
   chargeback: 'חיוב-חוזר מחברת האשראי',
   setoff_subscription: 'קיזוז דמי מנוי',
   setoff_ad: 'קיזוז הוצאות פרסום',

@@ -55,7 +55,16 @@ const previewedStores = previewLimit === null || previewParam === 'blank'
       const keptReal = new Set(realStores(visibleStores).slice(0, previewLimit).map((s) => s.id));
       return visibleStores.filter((s) => isDemoStore(s) || keptReal.has(s.id));
     })();
-const stores = filterShopperStores(previewedStores);
+// **Previews first, then the demo decision** (owner, 2026-08-18). The two thresholds on this page
+// were counting different things: launch mode below asks how many real stores have PRODUCTS, and
+// `filterShopperStores` used to ask how many exist at all. Five empty real stores therefore dropped
+// the showcase stores — which are here to FILL a thin mall — while launch mode stayed on, leaving
+// exactly the state nobody wants. So the previews are read for every visible store, the real ones
+// that can actually sell are counted, and only then is it decided whether the showcase stores go.
+// The extra rows are the handful of showcase stores; `getStorePreviews` is one query either way.
+const allPreviews = await getStorePreviews(previewedStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
+const liveRealCount = countRealStores(previewedStores.filter((s) => allPreviews.get(s.id)?.hasProducts));
+const stores = filterShopperStores(previewedStores, liveRealCount);
 
 // Applied before the feed is built, so every downstream surface (shelves,
 // spotlight, discovery) sees the same small catalog rather than a mixed picture.
@@ -64,7 +73,7 @@ const stores = filterShopperStores(previewedStores);
 // field from the first three or four of them — measured at ~900ms of a 778ms TTFB against Neon
 // (store-products.ts#getStorePreviews). A store with products but no photos keeps its place and
 // draws placeholders, so `hasProducts` is the filter, never `previewImages.length`.
-const previewsByStore = await getStorePreviews(stores.map((s) => s.id), STORE_PREVIEW_SLOTS);
+const previewsByStore = allPreviews;
 const storesWithProducts = stores
   .map((s) => ({ store: s, preview: previewsByStore.get(s.id) }))
   .filter((e): e is { store: typeof e.store; preview: { hasProducts: boolean; images: string[] } } => !!e.preview?.hasProducts)
