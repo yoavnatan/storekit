@@ -173,7 +173,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   gap: 0.35rem;
   padding: 0.28rem 0.65rem 0.28rem 0.5rem;
   border: 0.75px solid var(--color-border);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: none;
   cursor: pointer;
   font-family: inherit;
@@ -557,7 +557,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   padding: 0.15rem;
   color: var(--color-muted);
   cursor: pointer;
-  border-radius: 50%;
+  border-radius: var(--radius-icon);
   transition: color 0.1s;
 }
 .search-results-clear:hover { color: var(--color-text); }
@@ -658,7 +658,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   flex-shrink: 0;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
+  border-radius: var(--radius-icon);
   border: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-surface) 55%, transparent);
   backdrop-filter: blur(3px);
@@ -730,7 +730,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   align-items: center;
   gap: 0.35rem;
   border: 1px solid var(--color-border);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   padding: 0.35rem 0.9rem;
   font-size: 0.82rem;
   font-weight: 500;
@@ -1075,7 +1075,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   color: var(--color-text);
   background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -1144,7 +1144,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   /* It is an <a href="?page=N"> drawn as a button — the catalog's crawl path lives on this
      one element (see [storeSlug]/index.astro). So it has to shed the link underline. */

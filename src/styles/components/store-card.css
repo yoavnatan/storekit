@@ -180,7 +180,7 @@
   font-weight: 500;
   color: var(--color-muted);
   --badge-hue: var(--color-muted);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   padding: 0.12rem 0.55rem;
   line-height: 1.5;
   white-space: nowrap;
@@ -584,7 +584,7 @@
   align-items: center;
   gap: 0.45rem;
   padding: 0.5rem 1rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);

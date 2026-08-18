@@ -586,7 +586,7 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
   gap: 0.4rem;
   border: 1px solid var(--color-border);
   background: none;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   padding: 0.3rem 0.85rem 0.3rem 0.7rem;
   cursor: pointer;
   font-size: 0.82rem;
@@ -682,7 +682,7 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: var(--radius-icon);
   border: none;
   background: none;
   color: var(--color-muted);
@@ -944,7 +944,7 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
   align-items: center;
   gap: 0.25rem;
   padding: 0.12rem 0.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   --badge-hue: var(--color-sale);
   color: var(--color-sale);
   font-size: 0.68rem;
