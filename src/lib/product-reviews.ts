@@ -210,16 +210,6 @@ export async function getReviewedProductIds(orderId: string): Promise<string[]> 
   return found.map((r) => r.product_id);
 }
 
-/** The seller's own list, and the admin's queue for one store. Blocked rows INCLUDED — an admin
- *  looking at moderation has to see what they hid. */
-export async function getReviewsForStore(storeSlug: string, limit = 50): Promise<ProductReview[]> {
-  const found = await rows<Row>(
-    `SELECT ${COLUMNS} FROM product_reviews WHERE store_slug = $1 ORDER BY created_at DESC, id LIMIT $2`,
-    [storeSlug, limit],
-  );
-  return found.map(toReview);
-}
-
 /**
  * The platform's most recent reviews, blocked ones INCLUDED — the admin's takedown list.
  *
@@ -252,11 +242,6 @@ export async function getRecentReviews(limit = 25): Promise<AdminReviewRow[]> {
     productSlug: row.product_slug,
     storeName: row.store_name,
   }));
-}
-
-export async function getReviewById(id: string): Promise<ProductReview | null> {
-  const row = await firstRow<Row>(`SELECT ${COLUMNS} FROM product_reviews WHERE id = $1`, [id]);
-  return row ? toReview(row) : null;
 }
 
 /**

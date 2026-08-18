@@ -32,11 +32,32 @@
 
 export type SellerTierId = 'starter' | 'growth' | 'pro' | 'enterprise';
 
+/**
+ * ── EVERY NUMBER IN THIS FILE IS **BEFORE VAT** (owner, 2026-08-18) ──
+ *
+ * This had never been written down anywhere, and it is worth 18% of the platform's whole revenue —
+ * on the 99₪ fee and on the commission alike — so it is stated here rather than left to be assumed
+ * by whoever builds the pricing screen.
+ *
+ * **It is the opposite convention to the rest of the app, and both are right.** `lib/vat.ts` says
+ * prices here are VAT-INCLUSIVE, because those are CONSUMER prices: an Israeli shopper is quoted
+ * what they will pay, and a storefront price that grew by 18% at checkout is also a Merchant Center
+ * price mismatch. What this file holds is different — a B2B fee charged to a registered business —
+ * and the convention there is `+ מע״מ`, for the reason the owner gave when he settled it: **the
+ * seller reclaims that VAT, so it costs him nothing and it is ours to keep.** It is also exactly
+ * how our own suppliers quote us (PayMe's schedule: *"כלל המחירים אינם כוללים מע״מ"*).
+ *
+ * **So every seller-facing surface must say `+ מע״מ` beside these numbers.** A seller who reads
+ * "99₪ לחודש" and is then invoiced 116.82₪ has been surprised by us on the one screen where trust
+ * is being established; and if we instead absorb it to avoid that, the fee was silently 84₪ all
+ * along.
+ */
 export interface SellerTier {
   id: SellerTierId;
-  /** Fixed platform fee, ILS per month, charged regardless of sales. */
+  /** Fixed platform fee, ILS per month, BEFORE VAT, charged regardless of sales. */
   monthlyFee: number;
-  /** Percent of each sale taken by the platform on top of the monthly fee. */
+  /** Percent of each sale taken by the platform on top of the monthly fee. The percentage applies
+   *  to the sale as the buyer paid it; VAT is added to the resulting fee, not contained in it. */
   commissionPercent: number;
 }
 
