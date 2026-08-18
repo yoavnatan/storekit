@@ -62,8 +62,15 @@ unmerged — mention it only if he asks what is running. Never offer to merge on
 
 YOUR OWN worktree — the one this session created — is yours to close out, without asking. The owner
 made that explicit on 2026-08-05 ("אתה תחליט"), because he does not know when it is the right moment
-and I do: when the work is done and the full verify is green, `git merge main` into the branch,
-re-run `verify -- --all`, fast-forward main, then remove it. Confirm `git log main..<branch>` is
+and I do: when the work is done and the full verify is green, **`git rebase main`** — not
+`git merge main` — then re-run `verify -- --all`, fast-forward main, then remove it. Rebase, because
+the merge form was writing a commit per closeout that carries no work: 221 of the 923 commits in the
+fortnight to 2026-08-18 were merges, 145 of them the "Merge branch 'main' into worktree-X" catch-up
+kind, so a one-topic change landed as two or three lines of history instead of one. He asked about
+exactly that (2026-08-18: "אתה עושה יותר מדי קומיטים"). Rebase gives the same guarantee the merge was
+there for — the branch is verified sitting on top of current main — and main then fast-forwards with
+no merge commit at all. Rewriting the branch is safe here precisely because a worktree branch is
+never pushed. Confirm `git log main..<branch>` is
 EMPTY before removing — `ExitWorktree remove` counts commits against the branch POINT, not against
 main, so it will warn about discarding dozens that are all already merged.
 
