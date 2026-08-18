@@ -101,6 +101,128 @@ export async function recordRefundOwed(
 }
 
 /**
+ * The same obligation, for an order that got CHEAPER without leaving the sales.
+ *
+ * **The gap this closes, and it is the twin of the one at the top of this file.** A seller can edit
+ * a paid order from their own screen: delete a line they cannot fulfil, override the shipping, or
+ * give a discount as a goodwill gesture instead of taking the whole thing back. Every one of those
+ * lowers the total on an order the buyer has ALREADY paid in full — and until now the only thing
+ * recorded was `order_discount_changed`, a note that the seller's own share had moved. Nothing said
+ * the buyer was owed the difference. So the buyer paid 230, the order, the invoice and every report
+ * said 190, and the 40 sat on our side with no screen naming it and no obligation to return it.
+ *
+ * `createsRefundObligation` above cannot answer this: it asks whether the order LEFT the sales,
+ * which is a whole-order question with a whole-order answer. A partial reduction never trips it —
+ * the order still counts, it just counts for less.
+ *
+ * **Why the amount is the drop in `totalAgorot` and not the drop in the seller's net.** The same
+ * reasoning as `refundOwedAgorot`: what the buyer is owed is what left their card and did not buy
+ * anything. Commission and shipping are our arrangement with the seller and the carrier, and the
+ * buyer is not party to either.
+ *
+ * **Deliberately silent when the total goes UP.** A seller who adds shipping or removes a discount
+ * has not created a debt in either direction that this platform can act on — we cannot charge a
+ * card again off the back of an edit, and pretending otherwise would put a positive `refund_due` in
+ * the journal that nothing could ever settle. It is `Math.max(0, …)`, and that floor is the
+ * decision, not an accident.
+ */
+export function partialRefundOwedAgorot(
+  before: Pick<Order, 'totalAgorot'>,
+  after: Pick<Order, 'totalAgorot' | 'paymentStatus' | 'shippingStatus'>,
+): number {
+  // Nothing was captured, so nothing is owed back — the same first question the whole-order rule
+  // asks, and asked of the status table rather than of the word 'paid'.
+  if (!orderMoneyWasTaken(after)) return 0;
+  // An order that has LEFT the sales is the other function's job, and letting both fire would
+  // record the reduction twice: once as a partial refund and once as the whole slice.
+  if (!orderCountsAsRevenue(after)) return 0;
+  return Math.max(0, before.totalAgorot - after.totalAgorot);
+}
+
+/**
+ * Record the partial obligation, if the edit created one. Returns the amount owed, or 0.
+ *
+ * Never throws, for the reason the whole-order version does not: a journal write that fails must
+ * not fail the edit it was describing.
+ */
+export async function recordPartialRefundOwed(
+  before: Order,
+  after: Order,
+  storeSlug: string,
+  actor: string,
+  /** The store's owner, so money already released to them is clawed back too. Optional for the
+   *  same reason as above: the buyer-side obligation is the half that must never depend on the
+   *  other being available. */
+  sellerId?: string,
+): Promise<number> {
+  const amountAgorot = partialRefundOwedAgorot(before, after);
+  if (amountAgorot <= 0) return 0;
+
+  await recordMoneyEvent({
+    type: 'refund_due',
+    orderId: after.id,
+    checkoutRef: after.checkoutRef,
+    storeSlug,
+    amountAgorot,
+    // The totals themselves, not a status: this event is not a transition, and `from`/`to` are what
+    // the journal panel renders beside the sentence. A reader asking "why is 40 owed" gets the
+    // subtraction that produced it without opening anything else.
+    from: String(before.totalAgorot),
+    to: String(after.totalAgorot),
+    actor,
+    detail: `הכסף נגבה בפועל (אסמכתה ${after.paymentRef ?? '—'}) והזמנה זו הוזלה לאחר מכן — פריט שנמחק, משלוח שעודכן או הנחה שניתנה. ההפרש מגיע בחזרה לקונה, ועדיין לא הוחזר.`,
+  });
+
+  if (sellerId) await recordPartialSellerClawback(before, after, storeSlug, sellerId);
+  return amountAgorot;
+}
+
+/**
+ * The seller's side of a partial refund.
+ *
+ * Mirrors `recordSellerClawback` and differs in exactly one way: the whole-order version claws back
+ * the seller's entire net share because the sale was undone, while this one claws back only the
+ * DROP in that share, because the sale still stands for the reduced amount. Both ask the hold
+ * first, and both are no-ops while the money is still held — an order whose funds never left is
+ * corrected for free by the balance arithmetic the moment the total changes.
+ */
+export async function recordPartialSellerClawback(
+  before: Order,
+  after: Order,
+  storeSlug: string,
+  sellerId: string,
+): Promise<number> {
+  if (partialRefundOwedAgorot(before, after) <= 0) return 0;
+
+  // The state BEFORE the edit, for the same reason the whole-order version reads it there: the
+  // question is whether this money had already been released by the time it was reduced.
+  const holdBefore = orderHold(before);
+  if (holdBefore.state !== 'releasable') return 0;
+
+  const seller = await getSellerById(sellerId);
+  const percent = commissionPercentForTier(seller?.tier);
+  const netBefore = orderNetForStore(before, storeSlug);
+  const netAfter = orderNetForStore(after, storeSlug);
+  const shareBefore = netBefore - commissionOnAgorot(netBefore, percent);
+  const shareAfter = netAfter - commissionOnAgorot(netAfter, percent);
+  const drop = shareBefore - shareAfter;
+  if (drop <= 0) return 0;
+
+  // A DIFFERENT `kind` from the whole-order clawback on purpose. That one is idempotent on
+  // (order, kind) so a repeated cancellation debits once — which is right for an event that can
+  // only happen once. An edit can happen many times, and each reduction is its own debit, so
+  // sharing the kind would silently swallow every edit after the first.
+  await recordAdjustment({
+    sellerId,
+    orderId: after.id,
+    kind: 'refund_clawback_partial',
+    amountAgorot: -drop,
+    detail: `הזמנה ${after.id.slice(0, 8)} (${storeSlug}) הוזלה אחרי שהכסף כבר שוחרר למוכר. ההפרש בחלקו של המוכר מקוזז מהתשלום הבא.`,
+  });
+  return drop;
+}
+
+/**
  * The seller's side of the same event: when the platform gives money back, whose money is it?
  *
  * **This is new with the agent model and it closes a real hole.** Under the sub-merchant model the
