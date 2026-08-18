@@ -53,10 +53,14 @@ const previewedStores = previewParam === 'blank'
         const keptReal = new Set(realStores(visibleStores).slice(0, previewLimit).map((s) => s.id));
         return visibleStores.filter((s) => isDemoStore(s) || keptReal.has(s.id));
       })();
-const shopperStores = filterShopperStores(previewedStores);
+// Previews first, then the demo decision — the homepage carries the full reasoning (owner,
+// 2026-08-18): a real store with nothing to sell must not count toward "enough real stores", or
+// five empty ones hide the showcase stores that exist to fill exactly that gap.
 // Same narrowing as the homepage, and for the same measured reason — see
 // store-products.ts#getStorePreviews. This page draws the identical card.
-const previewsByStore = await getStorePreviews(shopperStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
+const previewsByStore = await getStorePreviews(previewedStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
+const liveRealCount = countRealStores(previewedStores.filter((s) => previewsByStore.get(s.id)?.hasProducts));
+const shopperStores = filterShopperStores(previewedStores, liveRealCount);
 const storesWithProducts = shopperStores
   .map((s) => ({ store: s, preview: previewsByStore.get(s.id) }))
   .filter((e) => !!e.preview?.hasProducts)

@@ -70,9 +70,25 @@ export function showDemoStores(realStoreCount: number): boolean {
  * so a call site can't pass a count that already includes the demo stores — the
  * self-suppression bug this whole module exists to avoid.
  */
-export function filterShopperStores<T extends DemoFlagged>(stores: readonly T[]): T[] {
+/**
+ * @param liveRealCount How many REAL stores actually have something to sell. Optional only so a
+ *   caller with no product data still gets the old behaviour rather than a crash — pass it wherever
+ *   it can be known, which is every discovery surface.
+ *
+ * **Why the count is a parameter rather than `real.length` (owner, 2026-08-18).** The two
+ * thresholds on the homepage were counting different things: launch mode already asked how many
+ * real stores have PRODUCTS, while this function asked how many exist at all. Five empty real
+ * stores therefore hid the showcase stores — which exist precisely to fill a thin mall — while
+ * leaving launch mode on, producing the one state nobody wants: the stocked stores gone and five
+ * empty ones in their place. It was visible the moment seven product-less stores appeared in the
+ * dev database and the homepage emptied out.
+ *
+ * The rule now matches the one it was always tied to: a store with nothing to sell does not count
+ * toward "the mall has enough real stores", because a shopper cannot buy from it.
+ */
+export function filterShopperStores<T extends DemoFlagged>(stores: readonly T[], liveRealCount?: number): T[] {
   const real = realStores(stores);
-  return showDemoStores(real.length) ? [...stores] : real;
+  return showDemoStores(liveRealCount ?? real.length) ? [...stores] : real;
 }
 
 /** Anything the checkout groups by store — the per-store carts it renders. */
