@@ -111,6 +111,14 @@ export async function recordRefundOwed(
  * the buyer was owed the difference. So the buyer paid 230, the order, the invoice and every report
  * said 190, and the 40 sat on our side with no screen naming it and no obligation to return it.
  *
+ * **That a seller MAY do this at all is a decision, not an accident** (owner, 2026-08-18, asked
+ * directly whether it should instead be forced through the returns flow): *"הוא צריך להיות מסוגל
+ * לבצע איזשהו סוג של זיכוי חלקי"*. The reasoning is the seller's ordinary week — one line of three
+ * cannot be fulfilled, or a parcel arrived late and 20% back is cheaper for everyone than a full
+ * return. Routing that through returns would make the seller open a dispute against himself. So the
+ * capability stays, and what was missing was never the permission: it was that the money it moved
+ * was owed to nobody.
+ *
  * `createsRefundObligation` above cannot answer this: it asks whether the order LEFT the sales,
  * which is a whole-order question with a whole-order answer. A partial reduction never trips it —
  * the order still counts, it just counts for less.
