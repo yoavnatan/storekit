@@ -226,28 +226,18 @@
     overflow: hidden;
     flex-shrink: 0;
   }
-  /* Shimmer while the sticky thumbnail's deferred fetch (data-src, only
-     triggered once the bar is about to show its mini-summary) is in flight. */
-  .product-detail-page #sticky-mini-img-wrap.is-loading {
-    background: linear-gradient(
-      90deg,
-      var(--color-surface) 25%,
-      var(--color-skeleton) 50%,
-      var(--color-surface) 75%
-    );
-    background-size: 400% 100%;
-    animation: skeleton-shimmer 1.4s ease infinite;
-  }
+  /* No skeleton here any more (2026-08-18). It existed to cover the deferred `data-src` fetch
+     that only started when the bar revealed itself; the thumbnail now carries a real `src` and
+     is decoded long before that. It was also gating VISIBILITY (`img { opacity: 0 }` until the
+     class came off), which is the one thing a skeleton on this site may never do — see
+     lib/img-skeleton.ts. */
   .product-detail-page #sticky-mini-summary img {
     width: 44px;
     height: 44px;
     border-radius: var(--radius-sm);
     object-fit: cover;
     flex-shrink: 0;
-    opacity: 0;
-    transition: opacity 0.18s ease;
   }
-  .product-detail-page #sticky-mini-img-wrap:not(.is-loading) img { opacity: 1; }
   .product-detail-page #sticky-mini-name {
     font-size: 0.9375rem;
     font-weight: 600;

@@ -12,23 +12,54 @@
   padding-top: 1.25rem;
 }
 
+/* Quiet, not absent (owner, 2026-08-18: *"קצת גדולה ומכערת את העמוד … או להוריד לגמרי?"*).
+   It STAYS — this is an indexable directory page and SEO is the project's first priority, so it
+   keeps its one <h1>; a page whose only heading is a decoration is a page Google reads as having
+   no subject. What it gives up is the SHOUT: 1.5rem/800 was heavier than anything it introduces
+   (the store names under it are 1rem/600), and a title outweighing its own content is what read
+   as ugly rather than the size on its own. 1.25rem/700 is the same step the dashboards' panel
+   heads use — an existing answer, not a new one. */
 .stores-directory__title {
-  font-size: 1.5rem;
-  font-weight: 800;
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--color-text);
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.9rem;
 }
 
+/* Field + button as ONE control, not two objects with a gap between them (owner, 2026-08-18:
+   *"מעגל קצת … והבורדר רדיוס שביניהם שטוח, ומצמיד אותם טיפה, שייראו כאילו הם משלימים זה את זה"*).
+   THE FORM owns the border, the pill and the background; the two children own nothing but their
+   own insides and the hairline between them. Tried the obvious way first — each child keeping its
+   border and going flat only where they meet — and it fell apart on focus: the field's outline
+   went brand-coloured while the button's stayed grey, which put the seam back and made them two
+   objects again exactly when the shopper was looking. With one border there is nothing to
+   disagree; `:focus-within` colours the whole control, and that is still the site's one focus
+   treatment (a border colour, no ring — tests/field-focus-consistency.test.ts). */
 .stores-directory__search {
   display: flex;
-  gap: 0.5rem;
+  gap: 0;
   margin-bottom: 1rem;
   max-width: 420px;
   margin-inline: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg);
+  /* Clips both children's corners to the pill, so neither needs a radius of its own and neither
+     can square off the end it sits at. */
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.stores-directory__search:focus-within {
+  border-color: var(--color-primary);
 }
 
 .stores-directory__search .input {
   flex: 1;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding-inline-start: 1.05rem;
 }
 
 /* Icon-only, no fill — the default .btn's own dark gradient (buttons.css)
@@ -44,18 +75,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding-inline: 0.75rem;
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
+  padding-inline: 0.95rem;
+  border: 0;
+  /* The ONE line inside the control — the divider that says these are two halves rather than one
+     wide field. It is the only border either child gets; the outer one belongs to the form.
+     inline-START because the button is the SECOND child: in RTL it sits at the left and the edge
+     facing the field is its right one, which is what `inline-start` names. */
+  border-inline-start: 1px solid var(--color-border);
+  border-radius: 0;
   background: none;
   color: var(--color-brand-dark);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s;
 }
 
 .stores-directory__search-btn:hover {
   background: color-mix(in srgb, var(--color-brand-dark) 8%, transparent);
-  border-color: color-mix(in srgb, var(--color-brand-dark) 35%, var(--color-border));
 }
 
 /* The directory reuses `.store-controls` verbatim (styles/pages/store.css) for

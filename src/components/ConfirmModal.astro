@@ -18,6 +18,7 @@
 </dialog>
 
 <script>
+  import { busyLabel } from '../lib/busy-label.js';
   import { showActionFailedToast } from '../lib/toast.js';
 
   function getI18n() {
@@ -78,14 +79,33 @@
     busy = true;
     okBtn.disabled = true;
     if (cancelBtn) cancelBtn.disabled = true;
-    // **Six dots, and it was on every confirm dialog in the app** (owner, 2026-08-17). Every
-    // `workingLabel` in the codebase is written with a trailing ellipsis — "מוחק…", "מבטל…",
-    // "משהה…" — and the `.dot-pulse` beside it draws three more that actually animate. So the
-    // button read "משהה… ⋯". Stripped HERE and not in the twenty call sites: the dots belong to
-    // this component, so the fact that the label must not carry its own is this component's to
-    // know. A caller that never sees the dots keeps its ellipsis where it wrote it.
-    const label = workingLabel.replace(/[\s.…]+$/, '');
-    okBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${label}<span class="dot-pulse" role="status" aria-label="${label}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+    // Six dots, otherwise: the label carries its own ellipsis and the `.dot-pulse` beside it
+    // draws three more that actually move. Stripped HERE and not in the twenty call sites,
+    // because the dots belong to this component — but through `busyLabel`, not a local regex.
+    // This used to anchor on the END of the string, and the bulk delete composes its label as
+    // `"מוחק... (3)"`, which ends in a bracket and slipped straight past. That whole story, and
+    // why the rule cannot live in a regex each surface keeps a copy of, is in lib/busy-label.ts.
+    const label = busyLabel(workingLabel);
+    // DOM calls, not an innerHTML template. `label` reaches this from an arbitrary caller and the
+    // template put it BOTH in a text position and, unescaped, inside `aria-label="…"` — the
+    // attribute-breakout shape this repo has already been bitten by (see lib/busy-label.ts's
+    // sibling note in btn-busy.ts). Today's callers pass dictionary constants and a count, so
+    // nothing was exploitable; `textContent` means it cannot become so.
+    const live = document.createElement('span');
+    live.style.cssText = 'display:inline-flex;align-items:center;gap:0.5em';
+    live.setAttribute('role', 'status');
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+    const dots = document.createElement('span');
+    dots.className = 'dot-pulse';
+    dots.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 3; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'dot-pulse__dot';
+      dots.appendChild(dot);
+    }
+    live.append(labelEl, dots);
+    okBtn.replaceChildren(live);
     try {
       await action();
     } catch {

@@ -1,22 +1,15 @@
 /**
- * Toggles `.is-stuck` on a `position:sticky` control bar the moment it pins to
- * the fixed site header — which is what fades the frosted-glass backdrop in
- * (`.store-controls::before`, styles/pages/store.css). At rest, with nothing
- * scrolling behind it, glass is meaningless; it only earns its place once cards
- * are dissolving underneath.
+ * Pinned-panel chrome that has to be measured rather than declared.
  *
- * A zero-height sentinel inserted just above the bar drives it through an
- * IntersectionObserver, so there is no scroll handler and no per-frame layout
- * cost. The header's height becomes the trigger line via `rootMargin`.
- *
- * Extracted from the store page so the /stores directory's own filter bar
- * behaves identically rather than reimplementing it.
+ * **The sticky-bar half of this file is GONE (2026-08-18) — `initStickyBar` and
+ * `STICKY_HEADER_REM` moved into `components/StickyGlassBoot.astro`, and were not
+ * reimplemented on the way.** They toggled `.is-stuck` on a pinning bar, which is what fades
+ * in the store's frosted-glass backdrop. The mechanism was right; the PLACE was not. Called
+ * from each page's own `<script>`, it could only run once that page's whole import graph had
+ * downloaded — while the bar, being CSS, pins on the first pixel of scroll regardless. That
+ * gap is why the glass "sometimes didn't load". The boot component carries the measurement
+ * and the replacement; do not add a module-level version back here to call beside it.
  */
-
-/** Site header height in rem — matches `.store-controls`'s own `top` and
- *  `body { padding-top }`. Kept as one number so the trigger line and the pin
- *  line can't drift apart. */
-export const STICKY_HEADER_REM = 3.3;
 
 /** Overflow smaller than this is layout rounding, not content — see initOverflowShadow. */
 const NOISE_FLOOR_PX = 4;
@@ -56,26 +49,4 @@ export function initOverflowShadow(scroller: HTMLElement | null, footer: HTMLEle
   new ResizeObserver(sync).observe(scroller);
   new MutationObserver(sync).observe(scroller, { childList: true, subtree: true });
   sync();
-}
-
-/* GONE, 2026-08-12: initHeaderScrolled, which put `.is-stuck` on the site header on the
-   first pixel of scroll. It stopped driving any depth on 2026-08-02 (the header has no
-   shadow in any state), and its last reader was the store page's curtain shadow, which
-   was using "the page has moved" as a stand-in for "the curtain is covering something".
-   Those are only the same moment when nothing sits above the pinned banner, so the shadow
-   now keys off `.store-banner-pin.is-stuck` — the pin itself — and this observer was left
-   running on every page in the site to set a class nobody read. Don't reintroduce it to
-   answer "has the page scrolled": ask the element that cares whether IT has pinned. */
-
-export function initStickyBar(bar: HTMLElement | null, headerRem: number = STICKY_HEADER_REM): void {
-  if (!bar?.parentElement) return;
-  const sentinel = document.createElement('div');
-  sentinel.setAttribute('aria-hidden', 'true');
-  bar.parentElement.insertBefore(sentinel, bar);
-  const rootFontPx = parseFloat(getComputedStyle(document.documentElement).fontSize || '16');
-  const headerPx = Math.round(headerRem * rootFontPx);
-  new IntersectionObserver(
-    ([entry]) => bar.classList.toggle('is-stuck', !entry?.isIntersecting),
-    { rootMargin: `-${headerPx}px 0px 0px 0px`, threshold: 0 },
-  ).observe(sentinel);
 }

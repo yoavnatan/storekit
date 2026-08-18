@@ -31,6 +31,7 @@ const STORE_CSS = readFileSync(fileURLToPath(new URL('../src/styles/pages/store.
 const STORE_PAGE = readFileSync(fileURLToPath(new URL('../src/pages/[storeSlug]/index.astro', import.meta.url)), 'utf8');
 const STICKY_BAR = readFileSync(fileURLToPath(new URL('../src/lib/sticky-bar.ts', import.meta.url)), 'utf8');
 const HEADER = readFileSync(fileURLToPath(new URL('../src/components/Header.astro', import.meta.url)), 'utf8');
+const BOOT = readFileSync(fileURLToPath(new URL('../src/components/StickyGlassBoot.astro', import.meta.url)), 'utf8');
 
 /** Strip /* … *\/ comments so this file's own prose — which quotes the old selector — never counts. */
 function code(text: string): string {
@@ -52,12 +53,30 @@ describe('curtain shadow fires only while the curtain is covering', () => {
     expect(css).not.toContain('.site-header.is-stuck');
   });
 
-  it('the JS puts .is-stuck on the element the CSS names', () => {
+  it('the markup arms .is-stuck on the element the CSS names', () => {
     // `.store-banner-pin`, NOT `.store-banner`: the details layer crosses the header line
     // long after it has finished covering the pin, so keying on it would show the shadow
     // only once the curtain's job was already done.
-    expect(page).toMatch(/initStickyBar\(\s*document\.querySelector<HTMLElement>\('\.store-banner-pin'\)\s*,\s*3\.4\s*\)/);
-    expect(page, 'the old, dead observer on the details layer is back').not.toMatch(/initStickyBar\(\s*document\.querySelector<HTMLElement>\('\.store-banner'\)/);
+    //
+    // Declared on the element as `data-sticky-glass` since 2026-08-18 and armed by the inline
+    // <StickyGlassBoot />, rather than called from this page's module — which is why the
+    // assertion is on the MARKUP now. The reason for the move is in that component; what
+    // matters here is unchanged: the class lands on the pin, at the pin's own offset.
+    expect(page).toMatch(/class="store-banner-pin"\s+data-sticky-glass="3\.4"/);
+    expect(page, 'the pin is rendered somewhere without arming its observer')
+      .not.toMatch(/class="store-banner-pin"(?!\s+data-sticky-glass)/);
+    expect(page, 'the old, dead observer on the details layer is back')
+      .not.toMatch(/class="store-banner"\s+data-sticky-glass/);
+  });
+
+  it('the boot that arms it is inline, not part of the page module graph', () => {
+    // The whole point of the 2026-08-18 move: the bar pins on the first pixel of scroll whether
+    // the page's imports have arrived or not, so the thing that dresses it may not wait on them.
+    // A regression here is silent — the glass simply stops appearing on slow loads.
+    expect(BOOT).toContain('is:inline');
+    expect(BOOT).toContain('data-sticky-glass');
+    expect(code(STORE_PAGE), 'the page module is arming the bar again — that is the bug')
+      .not.toContain('initStickyBar');
   });
 
   it('the trigger line matches the pin\'s own top, or the shadow starts at the wrong pixel', () => {

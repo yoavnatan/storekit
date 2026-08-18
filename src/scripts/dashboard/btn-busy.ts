@@ -1,3 +1,5 @@
+import { busyLabel } from '../../lib/busy-label.js';
+
 /**
  * A button that is WORKING — the one in-flight treatment for the dashboard's image actions.
  *
@@ -14,11 +16,6 @@
  * definition, and the dots, the cursor and the percent arrive together or not at all.
  */
 
-/** The label text with any trailing ellipsis removed, so a percentage can be appended without
- *  producing "מסיר רקע… 40%". */
-function stem(label: string): string {
-  return label.replace(/[.…]+$/, '').trimEnd();
-}
 
 export interface BusyButton {
   /** 0–1. Rounded to whole percent, appended to the label. Called as often as the worker reports;
@@ -63,7 +60,11 @@ export function busyButton(btn: HTMLButtonElement, label: string): BusyButton {
 
   const text = document.createElement('span');
   text.setAttribute('data-busy-label', '');
-  text.textContent = label;
+  // `busyLabel`, not the raw one: the dots below animate three of their own, and every caller's
+  // dictionary entry ("מסיר רקע…") writes an ellipsis. This used to strip it only for `base`
+  // further down, i.e. only once a percentage arrived — so the seconds BEFORE the first progress
+  // report, which is most of a short run, showed six dots. See lib/busy-label.ts.
+  text.textContent = busyLabel(label);
 
   const dots = document.createElement('span');
   dots.className = 'dot-pulse';
@@ -77,7 +78,7 @@ export function busyButton(btn: HTMLButtonElement, label: string): BusyButton {
   live.append(text, dots);
   btn.replaceChildren(live);
 
-  const base = stem(label);
+  const base = busyLabel(label);
   return {
     setProgress(fraction: number): void {
       if (restored) return;

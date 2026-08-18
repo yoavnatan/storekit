@@ -532,7 +532,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
          The comment sits OUTSIDE the expression on purpose: Astro's compiler rejects an HTML
          comment as the first child right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
     {isDemo ? (
-      <div class="store-banner-pin">
+      <div class="store-banner-pin" data-sticky-glass="3.4">
         <div class="container">
           <div class="store-banner__image-wrap">
             <StoreDemoBanner name={shopStore.name} bannerImage={shopStore.bannerImage} colors={shopStore.colors} />
@@ -540,7 +540,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         </div>
       </div>
     ) : shopStore.bannerImage && (
-      <div class="store-banner-pin">
+      <div class="store-banner-pin" data-sticky-glass="3.4">
         <div class="container">
           <div class="store-banner__image-wrap" data-skeleton>
             <img
@@ -745,7 +745,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         </div>
       ) : (
         <Fragment>
-          <div class="store-controls">
+          <div class="store-controls" data-sticky-glass="3.3">
             {/* Local search — only meaningful once a category filter is active (searching
                 the whole store already has the header's own search bar for that). A plain
                 always-open single-line field, underline only, no box/border. */}
@@ -1156,7 +1156,6 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
   import { initImageSkeletons } from '../../lib/img-skeleton.js';
   import { initChipScroller } from '../../lib/chip-scroller.js';
-  import { initStickyBar } from '../../lib/sticky-bar.js';
   import { resolvePrice, type StoreSale } from '../../lib/discounts.js';
   import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
   import { cardStarRowHtml } from '../../lib/star-html.js';
@@ -1459,18 +1458,17 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     card.addEventListener('animationend', () => card.classList.remove('product-card--entering'), { once: true });
   });
 
-  // Sticky filter bar → `.is-stuck` fades the frosted backdrop in once it pins
-  // to the header (see lib/sticky-bar.ts; shared with the /stores directory).
+  // Not for `.is-stuck` (see below) — `scrollToResults` needs the bar to find the grey block.
   const controlsBar = document.querySelector<HTMLElement>('.store-controls');
-  initStickyBar(controlsBar);
-  // Not a sticky bar — the PINNED banner, and `.is-stuck` here means "the curtain
-  // has started to cover me": .store-banner-pin reaching its own `top` is the exact
-  // frame the details layer begins travelling over it. That is the only moment the
-  // curtain's shadow is true, so it is what drives it (styles/pages/store.css).
-  // The 3.4 matches .store-banner-pin's `top` — one number, two places, so keep them
-  // together. And a store with no banner at all renders no .store-banner-pin: the
-  // querySelector is null, initStickyBar bails, and the shadow correctly never fires.
-  initStickyBar(document.querySelector<HTMLElement>('.store-banner-pin'), 3.4);
+  // The filter bar's `.is-stuck` (which fades the frosted backdrop in) and the pinned banner's
+  // (which means "the curtain has started to cover me", the only moment its shadow is true —
+  // styles/pages/store.css) are both armed by `data-sticky-glass` on the elements themselves,
+  // from BaseLayout's inline StickyGlassBoot. Deliberately NOT from this module: it is the tail
+  // of a dozen imports, and the bar pins on the first pixel of scroll whether they have arrived
+  // or not — the component carries the measurement. The rem value beside each attribute is that
+  // element's own `top`, so the trigger line and the pin line stay one number in one place. A
+  // store with no banner renders no .store-banner-pin, so nothing is armed and the shadow
+  // correctly never fires.
 
   // ── Search + Sort ─────────────────────────────────────────────
   const searchInput = document.getElementById('product-search') as HTMLInputElement | null;
