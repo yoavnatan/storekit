@@ -618,8 +618,17 @@ const jsonLd = {
                      down both edges. This element's clipping is what makes one slide one
                      store; the halo gets its room from the inside instead, see
                      `.home-store-section` in home.css. -->
+                {/* `gap-8` is the whole reason this reads as one store at a time (owner, 2026-08-18:
+                    *"בכל גלילה רואים שהקרוסלות צמודות לגמרי אחת לשניה, זה נראה נורא"*). Every slide is
+                    `flex-[0_0_100%]` in a track exactly that wide, so at rest the gutter is off
+                    screen and costs nothing — it exists only for the seconds of the transit, which
+                    is the only time two stores are visible at once. With none, the second store's
+                    section began in the same pixel the first one ended, so the pair read as one
+                    ragged strip and the incoming "כנס לחנות" arrived welded to the outgoing store.
+                    NOTE: this gap is why the paging below addresses slides by their real position
+                    instead of `index * clientWidth` — see `goToSlide`. */}
                 <div
-                  class="home-spotlight-track flex overflow-x-auto [overflow-y:clip] [scroll-snap-type:x_mandatory]
+                  class="home-spotlight-track flex gap-8 overflow-x-auto [overflow-y:clip] [scroll-snap-type:x_mandatory]
                     [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                   role="list" aria-label={t.home.spotlightTitle}
                 >
@@ -666,14 +675,27 @@ const jsonLd = {
                                      36px avatar it read as the smaller of the two. -->
                                 <h2 id={`sh-${s.slug}`} class="home-section-title text-[1.15rem] group-hover/hdr:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
                               </a>
-                              {(s.tagline || s.description) && (
-                                <p class="home-store-section__tagline"><bdi>{s.tagline || s.description}</bdi></p>
-                              )}
-                              <!-- The spotlight is the one surface a shopper can browse a
-                                   showcase store's products from without ever seeing its
-                                   card or its page, so the label has to be here too — in
-                                   the quiet variant, since this header is already busy. -->
-                              <StoreDemoBadge demo={s.demo} quiet={true} />
+                              <!-- ONE meta line, always, whatever this store happens to have.
+                                   The tagline and the demo label used to stack, so a showcase
+                                   store's header stood 19px taller than an ordinary one — and
+                                   since the slides are paged side by side, that put the two
+                                   stores' "כנס לחנות" buttons and their product rows at different
+                                   heights for the whole transit (owner, 2026-08-18: *"לפעמים בכלל
+                                   לא באותו הגובה"*). Sharing one row removes the variance at its
+                                   source; `min-height:1lh` holds the row open for a store that has
+                                   neither, so the name row is followed by exactly one line on every
+                                   slide. The tagline already truncates to a single line
+                                   (home.css), so it can never re-introduce a second.
+                                   The spotlight is the one surface a shopper can browse a showcase
+                                   store's products from without ever seeing its card or its page,
+                                   so the label has to be here — in the quiet variant, since this
+                                   header is already busy. -->
+                              <div class="flex items-center gap-2 min-w-0 min-h-[1lh]">
+                                {(s.tagline || s.description) && (
+                                  <p class="home-store-section__tagline"><bdi>{s.tagline || s.description}</bdi></p>
+                                )}
+                                <StoreDemoBadge demo={s.demo} quiet={true} />
+                              </div>
                             </div>
                             <!-- Hover: the same "lift to a white surface" the tab beam
                                  uses, plus the arrow springing a few px the way it
@@ -1107,8 +1129,44 @@ const jsonLd = {
       updateSpotlightArrows();
       requestAnimationFrame(updateSpotlightArrows);
 
-      btnPrev?.addEventListener('click', () => track.scrollBy({ left: (isRtl ? 1 : -1) * track.clientWidth, behavior: 'smooth' }));
-      btnNext?.addEventListener('click', () => track.scrollBy({ left: (isRtl ? -1 : 1) * track.clientWidth, behavior: 'smooth' }));
+      /**
+       * Paging, by where the slides ACTUALLY are.
+       *
+       * All three callers used to assume slide N sits at `N * clientWidth` — the arrows via
+       * `scrollBy(±clientWidth)`, the auto-advance via `scrollTo(index * clientWidth)`. That was
+       * true only while the track had no gutter between slides. It has one now (see the track's
+       * `gap-8` above), so each press would have drifted by one gap, cumulatively, and the
+       * auto-advance would have landed further off with every tick — a silent failure that looks
+       * like the carousel losing its place rather than like a bug in an arrow.
+       *
+       * Measuring the delta from the two elements' own rects, and moving by `scrollBy`, is
+       * direction-agnostic: it needs no `isRtl` branch, no reading of the gap, and it stays right
+       * if the gap ever changes at a breakpoint. RTL is exactly where the arithmetic version is
+       * most fragile — `scrollLeft` runs negative there — and this never touches it.
+       */
+      const spotSlides = () => Array.from(track.querySelectorAll<HTMLElement>('.home-spotlight-slide'));
+
+      /** The slide whose leading edge is nearest the track's — i.e. the one being shown. Read
+       *  from the DOM rather than kept in a counter, so an arrow press and the auto-advance can
+       *  never disagree about where the carousel is. */
+      function currentSlide(): number {
+        const origin = track!.getBoundingClientRect().left;
+        const dists = spotSlides().map((el) => Math.abs(el.getBoundingClientRect().left - origin));
+        return dists.indexOf(Math.min(...dists));
+      }
+
+      function goToSlide(i: number): void {
+        const slides = spotSlides();
+        const target = slides[Math.max(0, Math.min(i, slides.length - 1))];
+        if (!target) return;
+        track!.scrollBy({
+          left: target.getBoundingClientRect().left - track!.getBoundingClientRect().left,
+          behavior: 'smooth',
+        });
+      }
+
+      btnPrev?.addEventListener('click', () => goToSlide(currentSlide() - 1));
+      btnNext?.addEventListener('click', () => goToSlide(currentSlide() + 1));
 
       // The Discover tab's panel starts `hidden` (display:none, zero width)
       // whenever it isn't the default active tab — the measurement above ran
@@ -1141,7 +1199,6 @@ const jsonLd = {
       const slides = Array.from(track.querySelectorAll<HTMLElement>('.home-spotlight-slide'));
       if (slides.length > 1) {
         const AUTO_ADVANCE_MS = 4500;
-        let slideIndex = 0;
         let userPaused = false;
         let hoverPaused = false;
         // Masks the track's OWN auto-advance scroll from the manual-scroll pause
@@ -1156,15 +1213,18 @@ const jsonLd = {
           if (document.visibilityState !== 'visible') return;
           if (discoverPanel?.hidden) return;
           if (userPaused || hoverPaused) return;
-          slideIndex = (slideIndex + 1) % slides.length;
           autoScrolling = true;
           clearTimeout(autoSettleTimer);
           autoSettleTimer = setTimeout(() => { autoScrolling = false; }, 900);
-          // Scroll the track *itself* horizontally to the next slide — never
-          // `slide.scrollIntoView()`, which also scrolls the whole page
-          // vertically to pull the section into view and yanks the buyer down
-          // mid-read on every tick.
-          track!.scrollTo({ left: (isRtl ? -1 : 1) * slideIndex * track!.clientWidth, behavior: 'smooth' });
+          // Through `goToSlide`, which scrolls the track *itself* horizontally — never
+          // `slide.scrollIntoView()`, which also scrolls the whole page vertically to pull the
+          // section into view and yanks the buyer down mid-read on every tick.
+          //
+          // The step is taken from where the carousel actually IS (`currentSlide()`), not from a
+          // private counter this timer kept. The counter could not see an arrow press, so paging
+          // by hand and then waiting made the next tick jump back to wherever the timer thought
+          // it was.
+          goToSlide((currentSlide() + 1) % slides.length);
         }, AUTO_ADVANCE_MS);
 
         // Item 5 — explicit pause/play toggle sitting next to the arrows.
