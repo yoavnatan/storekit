@@ -9,7 +9,7 @@ import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl, isPlat
 import { platformBoundaryData } from '../../lib/cross-origin-handoff.js';
 import { parseVariantLanding } from '../../lib/variant-landing.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
-import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
+import { store as platform, cdnSrc, cdnSrcSet, cdnThumb } from '../../config/store.config.js';
 import { resolvePrice, priceValidUntil } from '../../lib/discounts.js';
 import { offerShippingDetails } from '../../lib/shipping.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
@@ -1023,9 +1023,20 @@ const pmI18n = {
       {product.stock > 0 && (
         <div id="sticky-cart-bar" class="sticky-bottom-bar">
           <div id="sticky-mini-summary">
+            {/* A REAL `src`, not a `data-src` the script fills in later. The deferred version
+                (removed 2026-08-18) waited for the product NAME to scroll out of view before it
+                started fetching — i.e. the same instant the bar reveals the thumbnail — so the
+                shopper watched a 44px square shimmer for a photo the page had had for minutes.
+                It could not even ride the main image's cache: `cdnSrc(…, 96)` is a different
+                derivative from anything else on this page, so it was always a cold request.
+                It was also the hand-rolled lazy-loading lib/cdn.ts bans outright.
+                `cdnThumb` (square crop, 2x the 44px box) because this IS a fixed-size cell, and
+                `fetchpriority="low"` so a 3KB thumbnail never queues ahead of the LCP hero — the
+                fetch starts with the page and is long finished by the time the bar appears. */}
             {images[0] && (
-              <span id="sticky-mini-img-wrap" class="is-loading">
-                <img id="sticky-mini-img" data-src={cdnSrc(images[0], 96)} alt="" width="44" height="44" loading="lazy" decoding="async" />
+              <span id="sticky-mini-img-wrap">
+                <img id="sticky-mini-img" src={cdnThumb(images[0], 88, 88)} alt="" width="44" height="44"
+                     loading="lazy" fetchpriority="low" decoding="async" />
               </span>
             )}
             <span id="sticky-mini-name" dir="auto">{product.name}</span>
@@ -1267,14 +1278,17 @@ const pmI18n = {
       applyStockState();
       // Color chip may carry its own linked photo (seller-assigned in the
       // dashboard) — swap the main image to it, same visual result as
-      // clicking that image's own thumbnail. Uses switchMainImage(), a
-      // hoisted function declared further down with the rest of the
-      // thumbnail-switcher logic — safe to call here since this callback
-      // only ever runs on a real click, well after the whole module has run.
+      // clicking that image's own thumbnail. Literally the same call the
+      // thumbnails make (pickMainImage), so a colour two photos away lands
+      // the same way a thumbnail two photos away does, rather than scrolling
+      // past everything between. Hoisted function declared further down with
+      // the rest of the thumbnail-switcher logic — safe to call here since
+      // this callback only ever runs on a real click, well after the whole
+      // module has run.
       if (isColorVariant(vName)) {
         const url = pageVariantImages[vValue];
         const idx = url ? images.indexOf(url) : -1;
-        if (idx !== -1) switchMainImage(idx);
+        if (idx !== -1) pickMainImage(idx);
       }
     });
   });
@@ -1330,6 +1344,50 @@ const pmI18n = {
     activeIndex = idx;
     mainSlides.scrollTo({ left: (slidesRtl ? -1 : 1) * idx * getMainSlideW(), behavior: instant ? 'auto' : 'smooth' });
     setThumbActive(idx);
+  }
+
+  /**
+   * A thumbnail click LANDS on its image; it does not travel there.
+   *
+   * A smooth scroll across a snap carousel plays every slide between here and there. From
+   * photo 1 to photo 5 the shopper watches 2, 3 and 4 flick past and only then arrives — which
+   * reads as the gallery doing something of its own rather than answering the tap (owner,
+   * 2026-08-18). One slide over it is a swipe and looks right; two or more it is a flicker.
+   *
+   * So anything past a neighbour cross-fades instead, through the SAME overlay the hover
+   * preview uses: paint the destination on top, jump the carousel underneath it, fade the
+   * overlay off. Nothing between the two is ever on screen. `switchMainImage(idx, true)`
+   * already ends with `endPreview()`, i.e. the fade-out, so the overlay only has to be put up.
+   *
+   * Falls back to the instant jump — never the smooth one — when there is no overlay to fade
+   * (a single-image gallery cannot get here) or the destination is not decoded yet, since a
+   * fade that starts on an empty box is worse than no fade. And with a hover preview already
+   * up, the overlay IS the destination: that path stays exactly as it was.
+   */
+  function pickMainImage(idx: number): void {
+    if (idx === activeIndex) return;
+    const adjacent = Math.abs(idx - activeIndex) === 1;
+    if (adjacent || previewIndex !== null) { switchMainImage(idx, previewIndex !== null); return; }
+
+    const slide = slideImgs[idx];
+    const img = previewImg;
+    if (!img || !slide?.complete) { switchMainImage(idx, true); return; }
+    img.src = slide.currentSrc || slide.src;
+    img.decode().then(
+      () => {
+        // Cover the carousel with the destination BEFORE it moves. No transition on the way up:
+        // this frame is the cut, and the 0.16s the overlay carries is for the fade back off
+        // (switchMainImage → endPreview). getBoundingClientRect() is the reflow that makes the
+        // browser commit opacity:1 under `transition:none` instead of collapsing both writes.
+        previewIndex = idx;
+        img.style.transition = 'none';
+        img.style.opacity = '1';
+        img.getBoundingClientRect();
+        img.style.transition = '';
+        switchMainImage(idx, true);
+      },
+      () => switchMainImage(idx, true),
+    );
   }
 
   // A landing that named a colour opens on that colour's photo. `instant`, not the click path's
@@ -1421,11 +1479,9 @@ const pmI18n = {
 
   thumbBtns.forEach((btn) => {
     const idx = Number(btn.dataset.imgIndex ?? 0);
-    // Instant when a preview is up: that image is ALREADY on screen under the pointer, so the
-    // carousel only has to be where the overlay says it is before the overlay fades off it.
-    // Animating there would play a scroll the shopper watches through a dissolving copy of the
-    // destination. With no preview (touch, keyboard) the click keeps its smooth scroll.
-    btn.addEventListener('click', () => switchMainImage(idx, previewIndex !== null));
+    // pickMainImage decides between the neighbour's swipe, the hover preview's instant landing
+    // and the cross-fade — see it for which and why.
+    btn.addEventListener('click', () => pickMainImage(idx));
   });
 
   // Note: the main image intentionally does NOT hijack wheel/scroll to cycle
@@ -1664,18 +1720,10 @@ const pmI18n = {
     stickyAddBtn?.classList.toggle('sticky-btn--solo', isCollapsed);
   }
   if (stickyMiniSummary && productNameHeading) {
+    // Collapse/expand only. The thumbnail used to be fetched from here too, at the exact
+    // moment it was about to be revealed — see its markup for why that is now a plain `src`.
     new IntersectionObserver(([entry]) => {
       stickyMiniSummary.classList.toggle('is-collapsed', entry.isIntersecting);
-      // Defer the thumbnail fetch until it's about to be shown — it's fixed-position
-      // and always laid out, so native loading="lazy" can't tell it's off-screen.
-      if (!entry.isIntersecting && stickyMiniImg && stickyMiniImg.dataset.src) {
-        const stickyImgWrap = stickyMiniImg.closest<HTMLElement>('#sticky-mini-img-wrap');
-        const doneSticky = () => stickyImgWrap?.classList.remove('is-loading');
-        stickyMiniImg.addEventListener('load', doneSticky, { once: true });
-        stickyMiniImg.addEventListener('error', doneSticky, { once: true });
-        stickyMiniImg.src = stickyMiniImg.dataset.src;
-        stickyMiniImg.removeAttribute('data-src');
-      }
       updateStickyBarSoloWidth();
     }, { rootMargin: '-56px 0px 0px 0px' }).observe(productNameHeading);
   }
