@@ -11,8 +11,8 @@ import DashTabsBoot from '../components/dashboard/DashTabsBoot.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
-import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
-import { getStorePreviews, getVisibleProductsByStoreIds, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
+import { countRealStores, filterShopperStores, isDemoStore, isLiveStore, realStores } from '../lib/demo-stores.js';
+import { getStorePreviews, getVisibleProductsByStoreIds, STORE_PREVIEW_SLOTS, type StorePreview } from '../lib/store-products.js';
 import { getOrdersByBuyer } from '../lib/orders.js';
 import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
 import { getFavoriteStoresForUser, getRecentStoresForUser } from '../lib/user-carts.js';
@@ -63,7 +63,7 @@ const previewedStores = previewLimit === null || previewParam === 'blank'
 // that can actually sell are counted, and only then is it decided whether the showcase stores go.
 // The extra rows are the handful of showcase stores; `getStorePreviews` is one query either way.
 const allPreviews = await getStorePreviews(previewedStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
-const liveRealCount = countRealStores(previewedStores.filter((s) => allPreviews.get(s.id)?.hasProducts));
+const liveRealCount = countRealStores(previewedStores.filter((s) => isLiveStore(allPreviews.get(s.id))));
 const stores = filterShopperStores(previewedStores, liveRealCount);
 
 // Applied before the feed is built, so every downstream surface (shelves,
@@ -76,7 +76,7 @@ const stores = filterShopperStores(previewedStores, liveRealCount);
 const previewsByStore = allPreviews;
 const storesWithProducts = stores
   .map((s) => ({ store: s, preview: previewsByStore.get(s.id) }))
-  .filter((e): e is { store: typeof e.store; preview: { hasProducts: boolean; images: string[] } } => !!e.preview?.hasProducts)
+  .filter((e): e is { store: typeof e.store; preview: StorePreview } => !!e.preview?.hasProducts)
   .map(({ store, preview }) => ({ store, previewImages: preview.images }));
 
 // Stores this buyer has actually bought from before, most-recent purchase first — same
@@ -175,7 +175,11 @@ const requestedTab = Astro.url.searchParams.get('panel');
 // (lib/demo-stores.ts) are here to FILL launch mode, so counting them would make
 // three of them switch it off and hide themselves along with it.
 // Resolved HERE, above the tab list, because the strip itself depends on it.
-const liveStoreCount = countRealStores(storesWithProducts.map((s) => s.store));
+// The SAME number the demo decision above used, and reused rather than recomputed. These two
+// thresholds counting different things is exactly the bug of 2026-08-18: one asked how many real
+// stores exist, the other how many have products, and five empty stores fell into the gap between
+// them. One question — how many real stores are actually live — gets one answer.
+const liveStoreCount = liveRealCount;
 const launchMode = isLaunchMode(liveStoreCount);
 
 // THE NEW TAB IS NOT ON THE STRIP WHILE LAUNCH MODE IS ON (owner, 2026-08-16:

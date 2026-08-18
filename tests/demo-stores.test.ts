@@ -144,3 +144,46 @@ describe('a real store with nothing to sell does not count toward "enough real s
     expect(filterShopperStores(stores).map((s) => s.id)).not.toContain('d1');
   });
 });
+
+describe('a store needs a shelf, not a single item, to count as live', () => {
+  it('is five visible products (owner, 2026-08-18)', async () => {
+    const { LIVE_STORE_MIN_PRODUCTS, isLiveStore } = await import('../src/lib/demo-stores.js');
+    expect(LIVE_STORE_MIN_PRODUCTS).toBe(5);
+    expect(isLiveStore({ productCount: 4 })).toBe(false);
+    expect(isLiveStore({ productCount: 5 })).toBe(true);
+  });
+
+  it('does not count a store with one product', async () => {
+    // The bar used to be `hasProducts`, which is the right question for drawing a CARD and the
+    // wrong one for "is the mall full enough to drop the showcase stores". Five stores holding one
+    // item each would have emptied the homepage while technically filling it.
+    const { isLiveStore } = await import('../src/lib/demo-stores.js');
+    expect(isLiveStore({ productCount: 1 })).toBe(false);
+  });
+
+  it('treats a missing preview as not live rather than crashing', async () => {
+    const { isLiveStore } = await import('../src/lib/demo-stores.js');
+    expect(isLiveStore(undefined)).toBe(false);
+    expect(isLiveStore({})).toBe(false);
+  });
+
+  it('is the ONE definition — no discovery page compares productCount itself', async () => {
+    // Two pages with their own literal is how they start disagreeing about what a real store is,
+    // which is the bug this whole thread began with.
+    const fs = await import('node:fs');
+    for (const page of ['src/pages/index.astro', 'src/pages/stores.astro']) {
+      const src = fs.readFileSync(page, 'utf8');
+      expect(src, `${page} should ask isLiveStore()`).toMatch(/isLiveStore\(/);
+      expect(src, `${page} compares productCount by hand`).not.toMatch(/productCount\s*[><]=?\s*\d/);
+    }
+  });
+
+  it('and both thresholds on a page read the same number', async () => {
+    // launch mode and the demo-hiding rule counted different things until 2026-08-18; five empty
+    // stores fell into the gap between them.
+    const fs = await import('node:fs');
+    for (const page of ['src/pages/index.astro', 'src/pages/stores.astro']) {
+      expect(fs.readFileSync(page, 'utf8')).toMatch(/const liveStoreCount = liveRealCount;/);
+    }
+  });
+});
