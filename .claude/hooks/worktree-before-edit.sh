@@ -28,14 +28,47 @@
 #     is a trap, and the session most likely to need to fix it is the one it is blocking.
 set -uo pipefail
 
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+source "$DIR/review-state.sh"   # REPO_ROOT + STATE_DIR, keyed per working tree
+
 payload="$(cat 2>/dev/null || true)"
+
+# Edit/Write hand over a file_path. Bash does not, and on 2026-08-18 that was the whole gap: the
+# harness had begun making file changes through Bash (`sed -i`, a python heredoc, a `>` redirect),
+# this hook was registered for Edit|Write only, and so the newcomer edited the shared checkout all
+# session with the guard never firing once. A parallel session's merge then took the uncommitted
+# work with it. The rule was never wrong; it was watching two of the three doors.
+#
+# For Bash there is no path to read, so the command TEXT is the evidence: a repo code path plus
+# something write-shaped. It over-triggers by design — a read-only python heredoc that happens to
+# name a src/ file is refused too — because the two outcomes are not symmetric. A false positive
+# costs one worktree; a false negative costs somebody's uncommitted work, which is what this file
+# was written after.
 f="$(printf '%s' "$payload" | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("tool_input",{}).get("file_path","") or "")
 except Exception: print("")' 2>/dev/null || echo "")"
+
+if [ -z "$f" ]; then
+  cmd="$(printf '%s' "$payload" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("tool_input",{}).get("command","") or "")
+except Exception: print("")' 2>/dev/null || echo "")"
+  [ -n "$cmd" ] || exit 0
+  # A code path anywhere in the command, ignoring any .md target (same carve-out as below).
+  printf '%s' "$cmd" | grep -Eq '(^|[^A-Za-z0-9_./-])(src|tests|migrations|scripts|public)/' || exit 0
+  # ...and a write-shaped token. `git checkout/restore/reset/stash/clean` are here because
+  # destroying the newcomer's OWN edits in a shared tree is the same collision from the other side.
+  #
+  # A BARE `>` was the first version of this and it was too blunt to survive its own commit: the
+  # commit message describing the fix contained the words "a > redirect", so the hook refused the
+  # commit that installed it. Prose is most of what a long Bash command holds — messages, comments,
+  # heredoc text — so a token that also appears in English cannot be the test. A redirect only
+  # counts when it points AT a code path, which is the thing being claimed anyway.
+  printf '%s' "$cmd" | grep -Eq '>>?[[:space:]]*"?'"'"'?[A-Za-z0-9_./-]*(src|tests|migrations|scripts|public)/|sed[[:space:]]+-i|[[:space:]]tee[[:space:]]|(^|[[:space:];&|])(cp|mv|rm|install|truncate|patch)[[:space:]]|git[[:space:]]+(apply|checkout|restore|reset|stash|clean)([[:space:]]|$)|\.write\(|writeFileSync|open\([^)]*,[[:space:]]*.[wa]' || exit 0
+  # Stand in for the file so the code-path test below reads the same for both shapes.
+  f="$REPO_ROOT/src/.bash-write"
+fi
 [ -n "$f" ] || exit 0
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-source "$DIR/review-state.sh"   # REPO_ROOT + STATE_DIR, keyed per working tree
 
 # A linked worktree is the answer, not the problem — it has its own gates and its own fingerprint.
 git_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || exit 0

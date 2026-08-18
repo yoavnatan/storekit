@@ -200,6 +200,24 @@
      the name the codebase already uses everywhere: var(--radius). */
   --radius: var(--radius-md);
 
+  /* Pill radius — the ONE name behind every text chip and capsule control that used to
+     hardcode 9999px: the category chips, a store card's tags, the sale chip, the sort
+     trigger, "load more", the banner actions, the header's search field. It is a token
+     because "how round is a chip" had eight separate answers, which is how a row's chips
+     drift apart one edit at a time.
+     NOT for circles — see --radius-icon below for where that line is drawn. */
+  --radius-pill: 2px; /* EXPERIMENT 2026-08-18 — sharp-corner trial; the shipped value is 9999px */
+
+  /* Radius for CHROME icon buttons — the close x, the wishlist heart, the carousel and
+     filter arrows, the spotlight pause, the search magnifier.
+     The line here is CONTENT vs CHROME, and AVATARS ARE DELIBERATELY NOT IN IT. Squaring
+     an avatar does not square the artwork inside it: a logo drawn to sit in a circle (the
+     showcase moon, a monogram) just gains four empty corners, which was tried on
+     2026-08-18 and looked more consistent and worse. A circle is that picture's own frame.
+     An icon button is the shell talking, so it follows the shell's corner.
+     Dots, progress bars and the drawer's grab handle are not buttons and keep their 50%. */
+  --radius-icon: 2px; /* EXPERIMENT 2026-08-18 — sharp-corner trial; the shipped value is 50% */
+
   /* "Tactile depth" — the site's depth language since 2026-07-07, RE-SCOPED 2026-08-01 after a
      site-wide audit found 279 shadow declarations, most of them at rest on surfaces sitting flat
      in the page. The rule below replaces the old three-tier "which card gets which shadow"
@@ -345,9 +363,9 @@
      a fourth step, and stay as they are — as do the 2-3px colour swatches,
      which sit a whole scale below this one. */
   --radius-*: initial;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
 
   /* Shared dialog entrance animations (@theme → animate-* utilities) */
   --animate-modal-in: modal-in 120ms ease-out backwards;

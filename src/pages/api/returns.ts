@@ -12,7 +12,10 @@ import {
   openReturnRequest, moveReturnRequest, getReturnRequest, getReturnsForOrder,
   getReturnsForStore, getOpenReturns,
 } from '../../lib/return-requests.js';
-import { buyerActionFor, RETURN_NOTE_MAX, type ReturnedLine, type ReturnReason, type ReturnStatus } from '../../lib/returns.js';
+import {
+  buyerActionFor, canEscalate, isOpen, RETURN_NOTE_MAX,
+  type ReturnedLine, type ReturnReason, type ReturnStatus,
+} from '../../lib/returns.js';
 import { returnableLinePositions } from '../../lib/return-eligibility-order.js';
 import { resolveOrderAccess } from '../../lib/order-access.js';
 import { clientIp } from '../../lib/client-ip.js';
@@ -247,13 +250,69 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
   const admin = isAdminRequest(cookies);
   let actor = 'admin';
 
-  // ── The buyer answering an offer ──
+  // ── A decision on a dispute must say WHY, and may award part ──
   //
-  // The only move that belongs to the buyer, and it exists because the offer was a QUESTION: accept
-  // and keep the goods for a smaller refund, or decline and the ordinary return resumes where it
-  // stopped. Checked before the seller branch, because a buyer is not a seller and would otherwise
-  // fall through to a 403 on their own order.
-  if (!admin && existing.status === 'offered' && (to === 'refunded' || to === 'approved')) {
+  // Both come from the owner reading his own screen (2026-08-17). The reason first: `admin_note` was a
+  // column the panel never sent, so a decision that moved real money left the status behind and
+  // nothing else. A month later, when a seller argues he was treated unfairly, there was no answer —
+  // and a note that is optional is empty exactly on the case somebody eventually disputes. Enforced
+  // here rather than only in the form, because the form is not the rule.
+  //
+  // The award second: the decision was all-or-nothing, and the case that most needs a middle is
+  // exactly the one that reaches a person. A product returned USED is neither "as sold" nor "never
+  // returned", so two buttons could only ever serve one side of it. Capped at what a full refund
+  // would have been — an award larger than the refund is money the buyer never paid.
+  let adminAwardAgorot: number | undefined;
+  if (admin && existing.status === 'disputed') {
+    const note = typeof data.adminNote === 'string' ? data.adminNote.trim() : '';
+    if (note.length < 3) {
+      return json({ error: 'צריך לכתוב למה החלטת. ההחלטה הזאת מזיזה כסף אמיתי ואי אפשר לשחזר אותה בלי הסבר.' }, 400);
+    }
+    data.adminNote = note;
+    if (to === 'refunded' && typeof data.adminAwardAgorot === 'number' && Number.isFinite(data.adminAwardAgorot)) {
+      const asked = Math.round(data.adminAwardAgorot);
+      if (asked < 0) return json({ error: 'סכום ההחזר לא יכול להיות שלילי' }, 400);
+      adminAwardAgorot = Math.min(asked, existing.refundAgorot);
+    }
+  }
+
+  // ── The three moves that belong to the BUYER ──
+  //
+  // Checked before the seller branch, because a buyer is not a seller and would otherwise fall
+  // through to a 403 on their own case. Each is a thing only the buyer can know or claim:
+  //
+  //   · `offered → refunded | approved` — answering the seller's offer, which was a QUESTION: accept
+  //     and keep the goods for a smaller refund, or decline and the ordinary return resumes.
+  //   · `approved → in_transit` — "I sent the product back." This used to be the SELLER's button,
+  //     which meant a seller who pressed nothing let the case expire on day 7 and kept the money and
+  //     the goods. It is a claim, not proof: it pays nobody, it stops that expiry, and if no proof
+  //     ever follows the sweep hands the case to a person.
+  //   · `rejected → disputed` — escalating a refusal to us. Decided in §3 of the decisions doc and
+  //     never built, which left a buyer refused outside the statutory window with nowhere to go.
+  const buyerMove = existing.status === 'offered' ? (to === 'refunded' || to === 'approved')
+    : existing.status === 'approved' ? to === 'in_transit'
+    : existing.status === 'rejected' ? to === 'disputed'
+    : false;
+  if (!admin && buyerMove) {
+    // The escalation has a window; the other two do not need one, because the case is still open and
+    // its own clock is already running. Refused-and-finished is the only one that could be reopened
+    // from a year ago, against money long since paid out.
+    if (to === 'disputed' && !canEscalate(existing.status, existing.settledAt)) {
+      return json({ error: 'חלף הזמן שבו אפשר לבקש מאיתנו לבדוק את הסירוב. אפשר לכתוב לנו.' }, 409);
+    }
+    // The SAME limiter the `open` branch runs, and for the same reason: the resolver below accepts a
+    // guest's order number plus the address it was placed with, so without this the route is an
+    // unmetered oracle for which references exist and who they belong to. It was missing here while
+    // the branch answered one state, and this change gave it three — a wider door on the same hole.
+    // A signed-in buyer's session is not a guess and is not counted.
+    if (!getSellerSession(cookies)) {
+      const rules = orderHelpRules(clientIp(request, clientAddress));
+      const gate = await checkAuthRate(rules);
+      if (!gate.allowed) {
+        return json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות', retryAfterMinutes: retryAfterMinutes(gate.retryAfterSec) }, 429);
+      }
+      await countAuthAttempt(rules);
+    }
     // Through the SAME resolver the open branch uses (`order-access.ts`), and for the same reason:
     // a guest can now open a case, so a guest can be sent an offer — and an offer they cannot
     // answer is the dead end this whole change exists to remove. The offer mail carries the signed
@@ -262,6 +321,11 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     if (access) {
       const answered = await moveReturnRequest({
         id, to, actor: access.buyerId ?? 'buyer',
+        // What the buyer says happened, in their words, on the two moves where the next person to
+        // read the case is a human deciding it. Capped like every other free-text field here.
+        buyerNote: typeof data.buyerNote === 'string' ? data.buyerNote.slice(0, RETURN_NOTE_MAX) : undefined,
+        trackingNumber: to === 'in_transit' && typeof data.trackingNumber === 'string'
+          ? data.trackingNumber.slice(0, 120) : undefined,
         store: { slug: store.slug, name: store.name, sellerId: store.sellerId },
       });
       if ('error' in answered) return json({ error: answered.error }, 409);
@@ -281,6 +345,13 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     if (existing.status === 'offered') {
       return json({ error: 'רק הקונה יכול לענות על ההצעה' }, 403);
     }
+    // Same shape of hole one door along: `rejected → disputed` is the BUYER's appeal, and `disputed`
+    // is in the seller's list for the empty-parcel claim — so without this a seller could reopen a
+    // case he himself refused, freezing his own payout and putting a decided matter back on our desk.
+    // A closed case is never the seller's to move; only the buyer appeals and only an admin decides.
+    if (!isOpen(existing.status)) {
+      return json({ error: 'הבקשה כבר נסגרה' }, 403);
+    }
     // Belt and braces: the case names a store, and the order must really belong to it. A case row
     // whose slug drifted from its order would otherwise let the wrong seller act.
     const order = await getOrderById(existing.orderId);
@@ -294,6 +365,7 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     trackingNumber: typeof data.trackingNumber === 'string' ? data.trackingNumber.slice(0, 120) : undefined,
     sellerNote: typeof data.sellerNote === 'string' ? data.sellerNote.slice(0, 2000) : undefined,
     adminNote: admin && typeof data.adminNote === 'string' ? data.adminNote.slice(0, 2000) : undefined,
+    adminAwardAgorot,
     // Capped at what the buyer actually paid: an offer is an alternative to refunding the order, so
     // it can never exceed it. Unbounded, this writes a debt bigger than the sale and a ledger row to
     // match — and both are real money on a screen somebody acts on.

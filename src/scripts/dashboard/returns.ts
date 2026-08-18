@@ -1,4 +1,5 @@
 import { showToast, showActionFailedToast } from '../../lib/toast.js';
+import { toAgorot } from '../../lib/money.js';
 
 /**
  * The returns tab's buttons — the seller's four verbs, wired to the one route.
@@ -127,7 +128,7 @@ export function initReturnsTab(): void {
         return;
       }
       // Agorot at the boundary, like every other amount that crosses into the server (money.ts).
-      partialOfferAgorot = Math.round(shekels * 100);
+      partialOfferAgorot = toAgorot(shekels);
     }
 
     void (async () => {

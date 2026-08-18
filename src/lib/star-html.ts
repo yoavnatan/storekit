@@ -18,9 +18,17 @@ import { escapeHtml } from './html-escape.js';
  * ── The two rules the markup encodes ──
  * A half star is an empty star with a filled one laid over it, clipped to half its width — no SVG
  * gradient, because a gradient needs a document-unique id and this renders a dozen times per page.
- * And the row is `dir="ltr"` even on an RTL page: a half star only reads correctly if "full" starts
- * at a known end, and 4.5 as four-and-a-half stars left to right is the borrowed idiom's own
- * grammar. The NUMBER beside it is text and stays in the page's direction.
+ * **And the row MIRRORS with the page — it does not pin `dir="ltr"` (corrected 2026-08-17).** It
+ * did, on the argument that a half star only reads if "full" starts at a known end and that a star
+ * rating is a borrowed idiom carrying its own left-to-right grammar. The owner asked what the
+ * convention actually IS, and the answer goes the other way: a rating is a SCALE, and both Material
+ * Design's bidirectionality guidance and Microsoft's mirroring guidance say a scale or a
+ * progression mirrors — in RTL a progression runs right to left. "It is borrowed" is a weak
+ * argument on a Hebrew-first site that mirrors everything else it owns, down to the arrow keys.
+ *
+ * Nothing here had to change for it: the flex row lays its stars out in the page's direction, and
+ * the fill span is `inset:0` plus a `width`, which over-constrains left/right — so the browser
+ * drops the START edge and the clip anchors to the reading side of its own accord, either way.
  *
  * No rating renders NOTHING — not five empty stars, which read as a bad score rather than as none.
  */
@@ -116,7 +124,7 @@ export function starRowHtml(avg: number | null, options: StarRowOptions = {}): s
   ].filter(Boolean).join(' ');
 
   return `<${tag} ${attrs}>`
-    + `<span dir="ltr" class="inline-flex items-center" style="gap:1px;line-height:0" aria-hidden="true">${stars}</span>`
+    + `<span class="inline-flex items-center" style="gap:1px;line-height:0" aria-hidden="true">${stars}</span>`
     + value + count
     + `</${tag}>`;
 }

@@ -6,7 +6,7 @@ import { jsonForScript } from '../lib/json-script.js';
 import { getVisibleStores } from '../lib/stores.js';
 import { isDemoStore } from '../lib/demo-stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
-import { SHIPPING_RATES, availableDeliveryMethods, type DeliveryMethod } from '../lib/shipping.js';
+import { SHIPPING_RATES, availableDeliveryMethods, offersSelfPickup, type DeliveryMethod } from '../lib/shipping.js';
 import { checkoutIsOpen } from '../lib/site-mode.js';
 
 const checkoutOpen = checkoutIsOpen();
@@ -34,10 +34,10 @@ const prefillEmail = sessionSeller?.email ?? '';
 // central SHIPPING_RATES sent once below — the seller never sets them.
 const storeShipping: Record<string, { methods: DeliveryMethod[]; address: string | null; demo?: boolean }> = {};
 for (const s of await getVisibleStores()) {
-  const offersSelfPickup = !!s.shipping?.selfPickup && !!s.address;
+  const selfPickup = offersSelfPickup(s);
   storeShipping[s.slug] = {
-    methods: availableDeliveryMethods(offersSelfPickup),
-    address: offersSelfPickup ? (s.address ?? null) : null,
+    methods: availableDeliveryMethods(selfPickup),
+    address: selfPickup ? (s.address ?? null) : null,
     // Showcase store (lib/demo-stores.ts). The real guard is /api/checkout's 403 —
     // this only lets the page say so BEFORE the buyer fills the whole form, instead
     // of walking them to the end and failing there.

@@ -22,6 +22,7 @@ import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astr
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
+import { offersSelfPickup } from '../../lib/shipping.js';
 import { getReturnsForStore, countOpenReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
 import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
 
@@ -2792,7 +2793,10 @@ const orderStatusColors: Record<string, string> = {
           Read only when this is the tab that was asked for: a store with no returns pays
           nothing for the tab existing, and the badge above came from a single COUNT. */}
       <SellerPanelShell panel="returns" active={shows('returns')}>
-        <ReturnsPanel requests={returnRequests} storeSlug={store?.slug ?? ''} />
+        {/* A shop that offers collection in person must also take returns in person (owner,
+            2026-08-17) — so the flag is DERIVED from the pickup setting, never a switch of its own. */}
+        <ReturnsPanel requests={returnRequests} storeSlug={store?.slug ?? ''}
+          acceptsInStoreReturns={offersSelfPickup(store)} />
       </SellerPanelShell>
 
       <SellerPanelShell panel="payouts" active={shows('payouts')}>

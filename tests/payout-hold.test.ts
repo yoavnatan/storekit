@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 import { query, rows } from '../src/lib/db.js';
 import { orderHold, isReleasable, RELEASABLE_SQL, releasableParams, RELEASABLE_PARAM_COUNT } from '../src/lib/payout-hold.js';
 import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../src/lib/payout-schedule.js';
+import { RETURN_TRANSITIONS, isOpen, type ReturnStatus } from '../src/lib/returns.js';
 import { addDaysISO } from '../src/lib/date-range.js';
 
 const TODAY = '2026-08-10';
@@ -228,5 +229,25 @@ describe('the SQL twin agrees with the JS rule', () => {
       expect(r.releasable, `${note}: the predicate evaluated to NULL`).not.toBeNull();
       expect(r.negated, `${note}: NOT(predicate) evaluated to NULL — this row falls out of BOTH halves of every split`).toBe(!r.releasable);
     }
+  });
+});
+
+describe('the SQL and the JS agree on which return states hold a payout', () => {
+  /**
+   * `RELEASABLE_SQL` names the CLOSED states as a literal list, and `isOpen` names the open ones in
+   * TypeScript. They are two spellings of one set, in two languages, and nothing connected them —
+   * so a status added to the machine would have been treated as open by every screen and as closed
+   * by the query that decides whether a seller gets paid. That is money moving out of the company on
+   * a case still under decision, and it would have looked correct on every screen a person can see.
+   *
+   * Found by reviewing this change, which added a state (`offered`) to that machine — the previous
+   * one to do so got it right by hand, which is not a mechanism.
+   */
+  it('every status the SQL calls closed is one `isOpen` calls closed, and no other', () => {
+    const inSql = /rr\.status NOT IN \(([^)]*)\)/.exec(RELEASABLE_SQL)?.[1];
+    expect(inSql, 'the return clause is no longer in RELEASABLE_SQL — has the hold rule moved?').toBeTruthy();
+    const closedInSql = [...inSql!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!).sort();
+    const closedInTs = (Object.keys(RETURN_TRANSITIONS) as ReturnStatus[]).filter((s) => !isOpen(s)).sort();
+    expect(closedInSql).toEqual(closedInTs);
   });
 });

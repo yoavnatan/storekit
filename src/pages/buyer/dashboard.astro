@@ -10,6 +10,7 @@ import { getLatestReturnsByOrder, ordersWithOpenReturns } from '../../lib/return
 import { orderHasNothingReturnable } from '../../lib/return-eligibility-order.js';
 import { getStoresBySlugs } from '../../lib/stores.js';
 import { isOpen as returnIsOpen, buyerActionFor, type ReturnStatus } from '../../lib/returns.js';
+import { buyerReturnCta, inStoreReturnAddress } from '../../lib/return-buyer-cta.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
@@ -97,6 +98,16 @@ const cloudinaryPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
 const returnByOrderId = await getLatestReturnsByOrder(
   ordersPageResult.items.flatMap((p) => p.slices.map((s) => s.order.id)),
 );
+// Where each order could be handed back over the counter, if anywhere. Built from the store map this
+// page already loaded, so it costs no query: a shop that offers collection in person must also take
+// returns in person (owner, 2026-08-17), and the buyer is told the address rather than left to guess.
+const inStoreAddressByOrderId = new Map(
+  ordersPageResult.items.flatMap((p) => p.slices.map((s) => [
+    s.order.id,
+    inStoreReturnAddress(storeBySlug.get(s.storeSlug)),
+  ] as const)).filter((pair): pair is readonly [string, string] => pair[1] !== null),
+);
+
 const ordersEmptyMessage = buyerOrderQuery.q
   ? t.buyerDashboard.ordersSearchEmpty
   : (buyerOrderQuery.history ? t.buyerDashboard.ordersEmptyHistory : t.buyerDashboard.ordersEmptyActive);
@@ -705,7 +716,7 @@ const STORES_NAMED = 2;
     }
     .o-search-clear {
       position: absolute; top: 50%; transform: translateY(-50%); inset-inline-end: 0.45rem;
-      width: 1.15rem; height: 1.15rem; border-radius: 50%; padding: 0;
+      width: 1.15rem; height: 1.15rem; border-radius: var(--radius-icon); padding: 0;
       display: flex; align-items: center; justify-content: center;
       border: none; background: var(--color-bg); color: var(--color-muted); cursor: pointer;
       transition: background 0.1s, color 0.1s;
@@ -1052,16 +1063,48 @@ const STORES_NAMED = 2;
                                   <strong>{returnLabel[rr.status]}</strong>
                                   {returnIsOpen(rr.status) ? '' : ` · ${fmtAgorot(rr.refundAgorot)}`}
                                 </p>
-                                {/* An offer is the one state where the BUYER has to answer. Two
-                                    buttons and the amount — declining costs nothing and puts the
-                                    ordinary return back exactly where it was. */}
-                                {rr.status === 'offered' && rr.partialOfferAgorot !== null && (
-                                  <div class="o-return-why" style="margin-top:0.4rem">
-                                    <span class="o-return-q">{t.buyerDashboard.offerHeading.replace('{sum}', fmtAgorot(rr.partialOfferAgorot))}</span>
-                                    <button type="button" data-offer-answer="refunded" data-offer-id={rr.id}>{t.buyerDashboard.offerAccept}</button>
-                                    <button type="button" data-offer-answer="approved" data-offer-id={rr.id}>{t.buyerDashboard.offerDecline}</button>
-                                  </div>
-                                )}
+                                {/* Whatever the buyer may press, from `buyerReturnCta` — the same
+                                    answer the client twin below draws from, and the reason the offer
+                                    buttons no longer vanish after a search. Three cases reach here:
+                                    answering an offer, saying he sent the product, and asking us to
+                                    look at a refusal. */}
+                                {(() => {
+                                  const cta = buyerReturnCta(rr);
+                                  if (cta.buttons.length === 0) return null;
+                                  const inStore = inStoreAddressByOrderId.get(s.order.id) ?? null;
+                                  return (
+                                    <div class="o-return-why" style="margin-top:0.4rem">
+                                      {cta.headingKey && (
+                                        <span class="o-return-q">{
+                                          t.buyerDashboard[cta.headingKey].replace('{sum}', fmtAgorot(rr.partialOfferAgorot ?? 0))
+                                        }</span>
+                                      )}
+                                      {/* A shop that lets people collect in person must also take
+                                          returns over the counter (the owner's rule, 2026-08-17), so
+                                          where that is true the buyer is told so with the address —
+                                          it is the one way back that needs no carrier at all. */}
+                                      {rr.status === 'approved' && inStore && (
+                                        <span class="o-return-q">{t.buyerDashboard.returnInStore.replace('{address}', inStore)}</span>
+                                      )}
+                                      {/* Optional, and asked only where a person will read it: a
+                                          tracking number is what lets us tell a lost parcel from one
+                                          that was never sent, on the day somebody has to decide. */}
+                                      {rr.status === 'approved' && (
+                                        <input type="text" class="o-return-note" data-return-tracking-for={rr.id}
+                                          maxlength="120" placeholder={t.buyerDashboard.returnTrackingAsk} />
+                                      )}
+                                      {rr.status === 'rejected' && (
+                                        <textarea class="o-return-note" data-return-escalate-note-for={rr.id} rows="2"
+                                          maxlength={RETURN_NOTE_MAX} placeholder={t.buyerDashboard.returnEscalateNote} />
+                                      )}
+                                      {cta.buttons.map((b) => (
+                                        <button type="button" data-offer-answer={b.to} data-offer-id={rr.id}>
+                                          {t.buyerDashboard[b.labelKey]}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
                               </Fragment>
                             );
                           }
@@ -1439,6 +1482,17 @@ const STORES_NAMED = 2;
   data-return-rejected={t.buyerDashboard.returnRejected}
   data-return-expired={t.buyerDashboard.returnExpired}
   data-return-checking={t.buyerDashboard.returnChecking}
+  data-return-offered={t.buyerDashboard.returnOffered}
+  data-offer-heading={t.buyerDashboard.offerHeading}
+  data-offer-accept={t.buyerDashboard.offerAccept}
+  data-offer-decline={t.buyerDashboard.offerDecline}
+  data-return-send-heading={t.buyerDashboard.returnSendHeading}
+  data-return-sent-back={t.buyerDashboard.returnSentBack}
+  data-return-tracking-ask={t.buyerDashboard.returnTrackingAsk}
+  data-return-in-store={t.buyerDashboard.returnInStore}
+  data-return-rejected-heading={t.buyerDashboard.returnRejectedHeading}
+  data-return-escalate={t.buyerDashboard.returnEscalate}
+  data-return-escalate-note={t.buyerDashboard.returnEscalateNote}
   data-order-stores-more={t.buyerDashboard.orderStoresMore}
   data-order-total-all={t.buyerDashboard.orderTotalAll}
   data-orders-empty-active={t.buyerDashboard.ordersEmptyActive}
@@ -1501,6 +1555,19 @@ const STORES_NAMED = 2;
     returnRejected: _i18nEl.dataset.returnRejected  ?? 'Declined',
     returnExpired:  _i18nEl.dataset.returnExpired   ?? 'Lapsed',
     returnChecking: _i18nEl.dataset.returnChecking  ?? 'Under review',
+    returnOffered:  _i18nEl.dataset.returnOffered   ?? 'A partial refund was offered',
+    // Keyed EXACTLY as `ReturnCta.headingKey` / `ReturnCtaLabel` name them: the twin looks these up
+    // by the key the server sent, so a rename on either side has to be a rename on both.
+    offerHeading:   _i18nEl.dataset.offerHeading    ?? 'A partial refund of {sum} was offered. Accept?',
+    offerAccept:    _i18nEl.dataset.offerAccept     ?? 'Accept the offer',
+    offerDecline:   _i18nEl.dataset.offerDecline    ?? 'Return it anyway',
+    returnSendHeading:     _i18nEl.dataset.returnSendHeading     ?? 'Send the item back within 7 days, then press here.',
+    returnSentBack:        _i18nEl.dataset.returnSentBack        ?? 'I sent the item',
+    returnTrackingAsk:     _i18nEl.dataset.returnTrackingAsk     ?? 'Tracking number, if you have one',
+    returnInStore:         _i18nEl.dataset.returnInStore         ?? 'You can also bring it to the shop, at: {address}',
+    returnRejectedHeading: _i18nEl.dataset.returnRejectedHeading ?? 'The seller refused. You can ask us to review it.',
+    returnEscalate:        _i18nEl.dataset.returnEscalate        ?? 'Ask us to review',
+    returnEscalateNote:    _i18nEl.dataset.returnEscalateNote    ?? 'Tell us briefly why the return is due',
     msgDeleteOk:     _i18nEl.dataset.msgDeleteOk      ?? 'Delete conversation',
     msgColStore:     _i18nEl.dataset.msgColStore       ?? 'Store',
     msgColProduct:   _i18nEl.dataset.msgColProduct     ?? 'Product',
@@ -2400,10 +2467,20 @@ const STORES_NAMED = 2;
     btn.disabled = true;
     void (async () => {
       try {
+        // The two optional fields that go with the two newer moves. Read from the DOM next to the
+        // button rather than remembered in a variable: this block survives the list being redrawn,
+        // and anything held outside it would be about a card that no longer exists.
+        const caseId = btn.dataset.offerId ?? '';
+        const tracking = document.querySelector<HTMLInputElement>(`[data-return-tracking-for="${caseId}"]`)?.value.trim();
+        const note = document.querySelector<HTMLTextAreaElement>(`[data-return-escalate-note-for="${caseId}"]`)?.value.trim();
         const res = await fetch('/api/returns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: btn.dataset.offerId, to: btn.dataset.offerAnswer }),
+          body: JSON.stringify({
+            id: caseId, to: btn.dataset.offerAnswer,
+            ...(tracking ? { trackingNumber: tracking } : {}),
+            ...(note ? { buyerNote: note } : {}),
+          }),
         });
         if (!res.ok) {
           const said = await res.json().catch(() => null) as { error?: string } | null;
@@ -2705,11 +2782,15 @@ const STORES_NAMED = 2;
   const RETURN_LABEL_CLIENT: Record<string, string> = {
     requested: I.returnSent, approved: I.returnApproved, in_transit: I.returnBack,
     received: I.returnAtSeller, refunded: I.returnRefunded, rejected: I.returnRejected,
-    expired: I.returnExpired, disputed: I.returnChecking,
+    // `offered` was missing from both of these tables — it was added to the machine after they were
+    // written, and nothing forced them to keep up. The visible cost: after any search the row printed
+    // the raw word "offered", and the set below treated it as CLOSED, so the amount appeared beside it
+    // as though the money had already been paid.
+    expired: I.returnExpired, disputed: I.returnChecking, offered: I.returnOffered,
   };
   /** Which of those are still running — the amount is shown only once the case is closed, exactly as
    *  the server twin does it. Spelled out rather than imported: this runs in the browser. */
-  const RETURN_OPEN_CLIENT = new Set(['requested', 'approved', 'in_transit', 'received', 'disputed']);
+  const RETURN_OPEN_CLIENT = new Set(['requested', 'approved', 'offered', 'in_transit', 'received', 'disputed']);
 
   const shipLabelClient: Record<string, string> = {
     pending: I.shipPending, processing: I.shipProcessing, ready: I.shipReady,
@@ -2766,9 +2847,26 @@ const STORES_NAMED = 2;
       const rStatus = (s as { returnStatus?: string | null }).returnStatus ?? null;
       const rAction = (s as { returnAction?: string }).returnAction ?? 'none';
       const rAmount = (s as { returnRefundAgorot?: number | null }).returnRefundAgorot ?? null;
+      // The buttons on an existing case, from the SERVER'S `returnCta` — never a status comparison
+      // written here. Same rule as the badge above and the same bug if it is broken: these existed in
+      // the server's markup only, so answering an offer became impossible after a search.
+      const rCta = (s as { returnCta?: { headingKey?: string; buttons?: { to: string; labelKey: string }[] } }).returnCta;
+      const rOffer = (s as { returnPartialOfferAgorot?: number | null }).returnPartialOfferAgorot ?? null;
+      const rInStore = (s as { returnInStoreAddress?: string | null }).returnInStoreAddress ?? null;
+      const rId = (s as { returnId?: string | null }).returnId ?? null;
+      const ctaHtml = rCta?.buttons?.length && rId ? `
+        <div class="o-return-why" style="margin-top:0.4rem">
+          ${rCta.headingKey ? `<span class="o-return-q">${escB(
+            (I[rCta.headingKey as keyof typeof I] ?? '').replace('{sum}', rOffer === null ? '' : fmtAgorotBuyer(rOffer)))}</span>` : ''}
+          ${rStatus === 'approved' && rInStore ? `<span class="o-return-q">${escB(I.returnInStore.replace('{address}', rInStore))}</span>` : ''}
+          ${rStatus === 'approved' ? `<input type="text" class="o-return-note" data-return-tracking-for="${escB(rId)}" maxlength="120" placeholder="${escB(I.returnTrackingAsk)}" />` : ''}
+          ${rStatus === 'rejected' ? `<textarea class="o-return-note" data-return-escalate-note-for="${escB(rId)}" rows="2" maxlength="${RETURN_NOTE_MAX}" placeholder="${escB(I.returnEscalateNote)}"></textarea>` : ''}
+          ${rCta.buttons.map((b) => `<button type="button" data-offer-answer="${escB(b.to)}" data-offer-id="${escB(rId)}">${
+            escB(I[b.labelKey as keyof typeof I] ?? '')}</button>`).join('')}
+        </div>` : '';
       const returnHtml = rStatus
         ? `<p class="o-tracking"><strong>${escB(RETURN_LABEL_CLIENT[rStatus] ?? rStatus)}</strong>${
-            RETURN_OPEN_CLIENT.has(rStatus) || rAmount === null ? '' : ` · ${fmtAgorotBuyer(rAmount)}`}</p>`
+            RETURN_OPEN_CLIENT.has(rStatus) || rAmount === null ? '' : ` · ${fmtAgorotBuyer(rAmount)}`}</p>${ctaHtml}`
         : rAction === 'none' ? '' : `
           <div class="o-return">
             <button type="button" class="o-return-btn" data-return-open="${escB(s.order.id)}">${

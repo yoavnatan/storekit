@@ -30,6 +30,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync, existsSync, lstatSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { cleanGitEnv } from './helpers/git-env.js';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,6 +56,7 @@ const git = (cwd: string, ...args: string[]) =>
   // eslint-disable-next-line sonarjs/no-os-command-from-path
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
     cwd,
+    env: cleanGitEnv(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
@@ -74,7 +76,7 @@ function machine() {
   const seed = join(root, 'seed');
   mkdirSync(seed, { recursive: true });
   // eslint-disable-next-line sonarjs/no-os-command-from-path
-  execFileSync('git', ['init', '--bare', '-b', 'main', remote], { stdio: 'ignore' });
+  execFileSync('git', ['init', '--bare', '-b', 'main', remote], { env: cleanGitEnv(), stdio: 'ignore' });
   git(seed, 'init', '-b', 'main');
   writeFileSync(join(seed, 'MEMORY.md'), '# Memory Index\n');
   git(seed, 'add', '-A');
@@ -364,7 +366,7 @@ function withMemory(opts: { lastPushAge?: number; dirty?: boolean; unpushed?: bo
 
   const remote = join(root, 'remote.git');
   // eslint-disable-next-line sonarjs/no-os-command-from-path
-  execFileSync('git', ['init', '--bare', '-b', 'main', remote], { stdio: 'ignore' });
+  execFileSync('git', ['init', '--bare', '-b', 'main', remote], { env: cleanGitEnv(), stdio: 'ignore' });
   const seed = join(root, 'seed');
   mkdirSync(seed, { recursive: true });
   git(seed, 'init', '-b', 'main');
@@ -375,14 +377,14 @@ function withMemory(opts: { lastPushAge?: number; dirty?: boolean; unpushed?: bo
     // eslint-disable-next-line sonarjs/no-os-command-from-path
     'git',
     ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-m', 'seed', '--date', when],
-    { cwd: seed, env: { ...process.env, GIT_COMMITTER_DATE: when }, stdio: 'ignore' },
+    { cwd: seed, env: cleanGitEnv({ GIT_COMMITTER_DATE: when }), stdio: 'ignore' },
   );
   git(seed, 'remote', 'add', 'origin', remote);
   git(seed, 'push', '-q', 'origin', 'main');
 
   const mem = join(repo, '.claude-memory');
   // eslint-disable-next-line sonarjs/no-os-command-from-path
-  execFileSync('git', ['clone', '-q', remote, mem], { stdio: 'ignore' });
+  execFileSync('git', ['clone', '-q', remote, mem], { env: cleanGitEnv(), stdio: 'ignore' });
   if (opts.dirty) writeFileSync(join(mem, 'scratch.md'), 'written this session\n');
   if (opts.unpushed) {
     writeFileSync(join(mem, 'committed.md'), 'committed, never pushed\n');

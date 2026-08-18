@@ -4,7 +4,7 @@ import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 import type { ReturnRequest } from '../../lib/return-requests.js';
-import type { ReturnReason, ReturnStatus } from '../../lib/returns.js';
+import { disputeCause, type ReturnReason, type ReturnStatus, type DisputeCause } from '../../lib/returns.js';
 
 /**
  * The admin's returns queue — and it is deliberately almost empty most of the time.
@@ -61,13 +61,23 @@ const REASON: Record<ReturnReason, string> = {
 const STATUS: Record<ReturnStatus, string> = {
   requested: 'מחכה לתשובה של המוכר',
   approved: 'המוכר אישר. הקונה אמור לשלוח את המוצר',
-  in_transit: 'הקונה שלח. המוצר בדרך למוכר',
+  in_transit: 'הקונה מסר שהוא שלח את המוצר. המוכר עוד לא אישר שקיבל אותו',
   received: 'המוצר הגיע למוכר וממתין שיבדוק אותו',
   disputed: 'מחכה להחלטה שלך',
   offered: 'המוכר הציע החזר חלקי במקום החזרה. מחכים לתשובת הקונה',
   rejected: 'המוכר סירב לבקשה',
   refunded: 'ההחזר אושר. הכסף בדרך לקונה',
-  expired: 'הקונה לא שלח את המוצר. הבקשה נסגרה',
+  expired: 'הבקשה נסגרה והמוצר לא הוחזר',
+};
+
+/** What each door means, in one line the owner can act on. */
+const CAUSE: Record<DisputeCause, string> = {
+  seller_claim: 'המוכר קיבל את המוצר וטוען שהחבילה הגיעה ריקה או שהמוצר משומש.',
+  parcel_unconfirmed: 'הקונה מסר שהוא שלח את המוצר, ואיש לא אישר שהוא הגיע. עברו שבועיים.',
+  refusal_appeal: 'המוכר סירב לבקשה, והקונה מבקש שתבדוק את הסירוב.',
+  // Not a case anybody can produce today — it is what a state added later without a timestamp would
+  // look like, and saying so is better than printing a confident sentence about the wrong thing.
+  unknown: 'הבקשה מחכה להכרעה שלך. פרטי המקרה בהזמנה ובהערות למטה.',
 };
 
 const disputes = requests.filter((r) => r.status === 'disputed');
@@ -86,7 +96,7 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
   <div class="rounded-[var(--radius)] border border-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)] p-3.5 mb-5">
     <strong class="text-[0.9rem]">⚠ {disputes.length} ממתינות להכרעה שלך</strong>
     <p class="m-0 mt-1 text-[0.78rem] [color:var(--color-muted)] leading-relaxed">
-      המוכר אומר שהחבילה שחזרה אליו הייתה ריקה, או שהמוצר היה משומש. הכסף לא זז עד שתחליט מי צודק.
+      הכסף לא זז עד שתחליט. ליד כל בקשה כתוב למה היא הגיעה אליך.
     </p>
     <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-2.5">
       {disputes.map((r) => (
@@ -98,7 +108,18 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
             <span class="[color:var(--color-muted)] text-[0.76rem]">{r.storeSlug} · {REASON[r.reason]}</span>
             <span class="tabular-nums font-semibold ms-auto">{formatAgorot(r.refundAgorot)}</span>
           </div>
+          {/* Why this one is here — the three doors a dispute comes through, from the case's own
+              facts (`returns.ts#disputeCause`). This used to be one standing sentence above the whole
+              list, which named the seller's empty-parcel claim on every case including the ones that
+              never had one. */}
+          <div class="mt-1 text-[0.78rem] font-semibold">{CAUSE[disputeCause(r)]}</div>
+          {r.trackingNumber && (
+            <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">מספר מעקב: <span class="tabular-nums">{r.trackingNumber}</span></div>
+          )}
           {r.sellerNote && <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">המוכר: "{r.sellerNote}"</div>}
+          {/* The buyer's own words. On an appeal this IS the case — deciding one without reading what
+              he wrote is deciding it on the seller's account alone. */}
+          {r.buyerNote && <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">הקונה: "{r.buyerNote}"</div>}
           {r.buyerPhotoUrl && (
             <a href={r.buyerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block mt-1.5">
               <img src={cdnThumb(r.buyerPhotoUrl, 160, 160)} alt="התמונה שהקונה צירף"
@@ -106,8 +127,31 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
                 class="rounded-[var(--radius-sm)] border [border-color:var(--color-border)] object-cover" />
             </a>
           )}
+          {/* ── The two things a decision needs, on the card and not in the dialog ──
+
+              The REASON is required, and the API refuses without it. A decision that moves real money
+              used to leave nothing behind but a status, so a month later — when a seller says he was
+              treated unfairly — there was no answer to give him. It is asked here rather than in the
+              confirm dialog because a person writes a sentence before he is sure, not after.
+
+              The AMOUNT is optional, and empty means the whole refund. The case that reaches a person
+              is often the one where neither extreme is true — a product that came back USED is not "as
+              sold" and not "never returned" — and two buttons could only ever serve one side of it. */}
+          <label class="block mt-2">
+            <span class="[color:var(--color-muted)] text-[0.76rem]">למה החלטת ככה (חובה — יישמר בתיק)</span>
+            <textarea rows="2" maxlength="2000" data-admin-note-for={r.id}
+              class="w-full mt-1 px-2 py-1.5 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)] text-[0.8rem] resize-none"
+            ></textarea>
+          </label>
+          <label class="flex items-center gap-2 mt-2 text-[0.8rem]">
+            <span class="[color:var(--color-muted)]">כמה להחזיר לקונה, בשקלים</span>
+            <input type="number" min="0" step="1" inputmode="numeric" data-admin-award-for={r.id}
+              placeholder={`הכל — ${formatAgorot(r.refundAgorot)}`}
+              class="w-32 px-2 py-1 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)]" />
+          </label>
           <div class="flex gap-2 mt-2">
-            <button type="button" class="btn btn--sm btn--accent" data-admin-return={r.id} data-admin-to="refunded">החזר לקונה</button>
+            <button type="button" class="btn btn--sm btn--accent" data-admin-return={r.id}
+              data-admin-to="refunded" data-admin-full={String(r.refundAgorot)}>החזר לקונה</button>
             <button type="button" class="btn btn--sm" data-admin-return={r.id} data-admin-to="rejected">סגור בלי החזר</button>
           </div>
         </li>
@@ -154,7 +198,19 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
           <strong>{STATUS[r.status]}</strong>
           <span class="[color:var(--color-muted)]">{REASON[r.reason]}</span>
           <span class="[color:var(--color-muted)] tabular-nums">{formatBusinessDateShort(r.createdAt)}</span>
-          <span class="tabular-nums font-semibold ms-auto">{formatAgorot(r.refundAgorot)}</span>
+          {/* What was actually PAID, which is not always the case's full refund since the admin may
+              award part of it. Both are shown when they differ — the awarded figure alone would look
+              like a case that was simply worth less. */}
+          <span class="tabular-nums font-semibold ms-auto">
+            {r.adminAwardAgorot !== null && r.adminAwardAgorot < r.refundAgorot
+              ? `${formatAgorot(r.adminAwardAgorot)} מתוך ${formatAgorot(r.refundAgorot)}`
+              : formatAgorot(r.refundAgorot)}
+          </span>
+          {/* The reason he decided. This is the entire point of requiring it: a decision you cannot
+              look up months later is a decision you cannot defend. */}
+          {r.adminNote && (
+            <div class="basis-full [color:var(--color-muted)] text-[0.78rem]">ההכרעה שלך: "{r.adminNote}"</div>
+          )}
         </div>
       ))}
     </div>

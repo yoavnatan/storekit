@@ -286,19 +286,46 @@ export const RETURN_TRANSITIONS: Record<ReturnStatus, readonly ReturnStatus[]> =
   // No 'offered' here, deliberately: declining an offer returns the case to `approved`, and from
   // `requested` that would GRANT a return the seller may still have been entitled to refuse. An
   // offer is a shortcut through an approved return, never a way around the decision.
+  // No 'offered' here, deliberately: declining an offer returns the case to `approved`, and from
+  // `requested` that would GRANT a return the seller may still have been entitled to refuse.
   requested:  ['approved', 'rejected'],
-  approved:   ['in_transit', 'expired', 'rejected', 'offered'],
+  // `in_transit` is now the BUYER saying he sent it — see `RETURN_TRANSITIONS`' own note below.
+  approved:   ['in_transit', 'expired', 'rejected', 'offered', 'received'],
   // The buyer's answer, and nothing else. Accepting pays the offered amount and keeps the goods
   // where they are; declining puts the case back exactly where it was, because a refusal must cost
-  // the buyer nothing or the offer is a trap rather than a shortcut.
-  offered:    ['refunded', 'approved'],
-  in_transit: ['received', 'expired'],
+  // the buyer nothing or the offer is a trap rather than a shortcut. `expired` is the sweep's answer
+  // to a buyer who never replies — without it the case AND the seller's money freeze forever.
+  offered:    ['refunded', 'approved', 'expired'],
+  // NOT `expired`. Once the buyer has said he sent it, letting the clock hand the money to the seller
+  // decides a factual dispute by default, in favour of the person who did nothing. `disputed` is a
+  // person deciding it, which is the only honest answer when neither side has proof.
+  in_transit: ['received', 'disputed'],
   received:   ['refunded', 'disputed'],
   disputed:   ['refunded', 'rejected'],
-  rejected:   [],
+  // The buyer's escalation, and the reason `rejected` is no longer a dead end. A seller can refuse
+  // for a good reason or a bad one, and until now a refusal ended the matter with no way to ask
+  // anybody to look — including the refusals the law does not allow him to make. It goes to
+  // `disputed` because that is our word for "a person decides", not because a refusal is suspect.
+  rejected:   ['disputed'],
   refunded:   [],
   expired:    [],
 };
+
+/**
+ * ── Who owns `in_transit`, and why it changed (owner's sweep, 2026-08-17) ──
+ *
+ * It was a SELLER move ("הקונה שלח את המוצר"), which put every protection the buyer had in the hands
+ * of the person with the opposite interest. A seller who touched nothing let the request expire on
+ * day 7 and kept the money and the goods — in total silence, with nothing anywhere saying so.
+ *
+ * It is now the BUYER's declaration. That is not proof and is not treated as any: it cannot refund
+ * anything by itself. What it does is stop the expiry and put the case in front of a person, which is
+ * the only honest answer when one side says "I sent it" and the other says nothing.
+ *
+ * PROOF stays what the owner defined: the seller marking it received (which is also what a physical
+ * return in the shop is), or the carrier's webhook once a tracked label exists. Both land on
+ * `received`, and only `received` can pay.
+ */
 
 export function canMove(from: ReturnStatus, to: ReturnStatus): { ok: true } | { ok: false; reason: string } {
   if (from === to) return { ok: true };
@@ -308,9 +335,44 @@ export function canMove(from: ReturnStatus, to: ReturnStatus): { ok: true } | { 
   return { ok: true };
 }
 
+/**
+ * The states where somebody still owes somebody an action.
+ *
+ * ⚠️ Listed, not derived — and it USED to be derived, as `RETURN_TRANSITIONS[status].length > 0`.
+ * That read beautifully and was wrong the moment `rejected` gained the buyer's escalation: one new
+ * arrow out of a closed state would have turned every refused case in the system back into an open
+ * one, freezing those sellers' payouts indefinitely and filling both queues with cases nobody is
+ * waiting on. "Can still move" and "is still open" looked like the same property and are not: a
+ * refusal is finished business that a buyer may nonetheless ask us to look at again.
+ */
+const OPEN_STATUSES: readonly ReturnStatus[] = [
+  'requested', 'approved', 'offered', 'in_transit', 'received', 'disputed',
+];
+
 /** Is this case still waiting on somebody? What the seller's tab and the admin's queue count. */
 export function isOpen(status: ReturnStatus): boolean {
-  return RETURN_TRANSITIONS[status].length > 0;
+  return OPEN_STATUSES.includes(status);
+}
+
+/**
+ * How long after a refusal the buyer may still ask us to look at it.
+ *
+ * Not a limit on the buyer's rights — those are not ours to time — but on this button. A case has to
+ * become finished at some point: the seller's money is released on a refusal, and reopening a case
+ * from six months ago means clawing back money already paid out over a dispute whose evidence
+ * (the parcel, the photographs, the messages) nobody kept. Two weeks matches the statutory window
+ * the buyer had in the first place, and a buyer past it can still write to us like any other person.
+ */
+export const ESCALATION_DAYS = 14;
+
+/** May the buyer still escalate this refusal to us? */
+export function canEscalate(
+  status: ReturnStatus,
+  rejectedAtISO: string | null,
+  todayISO: string = businessTodayISO(),
+): boolean {
+  if (status !== 'rejected' || !rejectedAtISO) return false;
+  return addDaysISO(businessDayISO(new Date(rejectedAtISO)), ESCALATION_DAYS) >= todayISO;
 }
 
 /** The day the buyer must have handed the parcel over by. Null before approval. */
@@ -359,6 +421,94 @@ export function dueForAutoRefund(
   const due = autoRefundDueISO(deliveredBackAtISO);
   // Inclusive, like every other deadline here: on the day itself it is due.
   return due !== null && due <= todayISO;
+}
+
+/**
+ * How long a declared-sent parcel may travel before a person has to look at it.
+ *
+ * Generous on purpose. It is not a deadline anybody is being held to — it is how long we wait before
+ * admitting that nobody can prove what happened. A domestic parcel arrives in days; two weeks means a
+ * seller who really received nothing has had every chance to say so, and a buyer who really sent it is
+ * not left waiting on somebody else's silence.
+ */
+export const IN_TRANSIT_PATIENCE_DAYS = 14;
+
+/** The day an unanswered offer stops holding the seller's money hostage. */
+export const OFFER_ANSWER_DAYS = 7;
+
+/** Why a case is sitting on the admin's desk. */
+export type DisputeCause = 'seller_claim' | 'parcel_unconfirmed' | 'refusal_appeal' | 'unknown';
+
+/**
+ * Which of the three doors this dispute came through.
+ *
+ * There used to be one — a seller claiming the returned parcel was empty or the goods used — and the
+ * admin screen said so in a standing sentence above the list. Two more exist now (a parcel the buyer
+ * says he posted and nobody confirms, and a buyer appealing a refusal), so that sentence would have
+ * sent the owner hunting for an empty-parcel claim on a case that never had one.
+ *
+ * Read from the case's own timestamps rather than stored, because each one already IS the fact:
+ *
+ *  · `deliveredBackAt` — the parcel reached the seller. Whatever he says about it, he had it.
+ *  · `sentAt` with no `deliveredBackAt` — the buyer says he posted it and nobody ever confirmed
+ *    arrival. This is the door with no evidence behind it, and the one that needs a person.
+ *  · `settledAt` with neither — the case had already closed as refused, so it is here on appeal.
+ *
+ * Ordered by how much we KNOW, most first: a case that reached the seller is a claim about goods in
+ * his hands no matter what else happened to it earlier.
+ */
+export function disputeCause(r: {
+  deliveredBackAt: string | null;
+  sentAt: string | null;
+  settledAt: string | null;
+}): DisputeCause {
+  if (r.deliveredBackAt) return 'seller_claim';
+  if (r.sentAt) return 'parcel_unconfirmed';
+  if (r.settledAt) return 'refusal_appeal';
+  return 'unknown';
+}
+
+/**
+ * The day we will look at a declared-sent parcel ourselves. Null before the buyer has declared.
+ *
+ * The DATE half of `inTransitStale`, kept beside it so the screen that promises a seller something and
+ * the job that does it can never be two different calculations — the mistake this file exists to make
+ * impossible.
+ */
+export function inTransitReviewDueISO(sentAtISO: string | null): string | null {
+  if (!sentAtISO) return null;
+  return addDaysISO(businessDayISO(new Date(sentAtISO)), IN_TRANSIT_PATIENCE_DAYS);
+}
+
+/** The day an unanswered offer closes. Null before one was made. */
+export function offerAnswerDueISO(offeredAtISO: string | null): string | null {
+  if (!offeredAtISO) return null;
+  return addDaysISO(businessDayISO(new Date(offeredAtISO)), OFFER_ANSWER_DAYS);
+}
+
+/** Has a declared-sent parcel been in the air long enough that a person must decide? */
+export function inTransitStale(
+  sentAtISO: string | null,
+  todayISO: string = businessTodayISO(),
+): boolean {
+  if (!sentAtISO) return false;
+  return addDaysISO(businessDayISO(new Date(sentAtISO)), IN_TRANSIT_PATIENCE_DAYS) <= todayISO;
+}
+
+/**
+ * Has an offer gone unanswered long enough to close?
+ *
+ * The hole it fills: `offered` had no clock at all, so a buyer who never replied left the case open
+ * and that order's payout frozen — indefinitely, with nobody late and nothing to chase. Expiring it
+ * releases the seller's money, and the buyer's statutory right is untouched: they can open a new
+ * request, exactly as they could before the offer was made.
+ */
+export function offerUnanswered(
+  offeredAtISO: string | null,
+  todayISO: string = businessTodayISO(),
+): boolean {
+  if (!offeredAtISO) return false;
+  return addDaysISO(businessDayISO(new Date(offeredAtISO)), OFFER_ANSWER_DAYS) < todayISO;
 }
 
 /**
