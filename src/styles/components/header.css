@@ -756,6 +756,16 @@ nav a:hover { color: var(--color-text); }
    renders a <span> when the seller uploaded nothing and an <img> when they did,
    so stores with no logo had their badge pushed 4px down and stores with one did
    not. Two stores, two vertical positions, from a selector that looked harmless. */
+/* A touch larger than the row's own type (owner, 2026-08-18: *"טיפה"*), and set HERE rather than
+   on `.logo`, because `.logo` is shared with a STORE's name in a store header — raising it there
+   would have grown every seller's name to match the platform's wordmark, which is the opposite of
+   the rule that platform chrome fades inside a store. `.dz-logo` is the wordmark and nothing else.
+
+   1.09em, i.e. 1.417rem against the row's 1.3rem: the SVG goes 15.1px → 16.5px tall in a 54.4px
+   header that had 19.6px of clear air above and below it, so the pinned height still governs and
+   nothing moves. Everything inside the lockup is in `em` — the nudge on the next line included —
+   so one number scales the whole drawing and none of its proportions change. */
+.site-header .dz-logo { font-size: 1.09em; }
 .site-header .dz-logo { transform: translateY(0.0248em); }
 /* RE-DERIVED 2026-08-10, when the wordmark became outlines. It was 0.113em, and
    that value was right for a lockup whose box was Heebo's LINE box — most of the
