@@ -206,7 +206,7 @@
      because "how round is a chip" had eight separate answers, which is how a row's chips
      drift apart one edit at a time.
      NOT for circles — see --radius-icon below for where that line is drawn. */
-  --radius-pill: 2px; /* EXPERIMENT 2026-08-18 — sharp-corner trial; the shipped value is 9999px */
+  --radius-pill: 9999px;
 
   /* Radius for CHROME icon buttons — the close x, the wishlist heart, the carousel and
      filter arrows, the spotlight pause, the search magnifier.
@@ -215,8 +215,11 @@
      showcase moon, a monogram) just gains four empty corners, which was tried on
      2026-08-18 and looked more consistent and worse. A circle is that picture's own frame.
      An icon button is the shell talking, so it follows the shell's corner.
-     Dots, progress bars and the drawer's grab handle are not buttons and keep their 50%. */
-  --radius-icon: 2px; /* EXPERIMENT 2026-08-18 — sharp-corner trial; the shipped value is 50% */
+     Dots, progress bars and the drawer's grab handle are not buttons and keep their own 50%.
+     It is 50% today, i.e. the same circle every one of these call sites drew by hand before
+     the token existed — the point of the name was never a new value, it was having one place
+     to answer the question at all. */
+  --radius-icon: 50%;
 
   /* "Tactile depth" — the site's depth language since 2026-07-07, RE-SCOPED 2026-08-01 after a
      site-wide audit found 279 shadow declarations, most of them at rest on surfaces sitting flat
@@ -359,13 +362,29 @@
        md  → the default (= var(--radius)): buttons, inputs, cards, panels,
              dropdowns, tables.
        lg  → full-surface containers: modals, dialogs, drawers, toasts.
-     Pills and circles (rounded-full, 999px, 50%) are a different intent, not
-     a fourth step, and stay as they are — as do the 2-3px colour swatches,
-     which sit a whole scale below this one. */
+     Pills and circles are a different intent, not a fourth step — they have their own two
+     names now, `--radius-pill` and `--radius-icon` above — as do the 2-3px colour swatches,
+     which sit a whole scale below this one.
+
+     THESE THREE NUMBERS WERE TRIED AT 2px/2px/3px ON 2026-08-18 AND RESTORED THE SAME DAY.
+     Do not re-open it as "would sharp look better", because that is not the question it
+     turned on. Sharp genuinely won on the store and product pages — more of each photo, text
+     sitting flat on the line — and the owner said so himself while looking at it. It lost on
+     the argument he then made, which is about what this codebase IS: every store here is
+     somebody else's brand, and a sharp corner is an OPINION while a soft one is neutral. A
+     platform with a strong house style flatters the sellers who share it and fights the ones
+     who do not. The four showcase stores that the whole comparison was judged on have studio
+     photography and coherent palettes — they are the population that flatters sharp, and the
+     seller shooting candles on a phone is the case nobody could test.
+     Two things worth keeping from the trial. The home page looked WORSE sharp, and the cause
+     was not the corners: it is the only screen with no photograph to carry it, so sharpening
+     merely exposed how many nested frames a card has (7 in one store card, measured). That
+     is still true at 10px and still worth fixing. And squaring the AVATARS was tried inside
+     the trial and failed on its own terms — see --radius-icon. */
   --radius-*: initial;
-  --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 
   /* Shared dialog entrance animations (@theme → animate-* utilities) */
   --animate-modal-in: modal-in 120ms ease-out backwards;
