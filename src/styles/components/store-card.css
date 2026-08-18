@@ -262,6 +262,15 @@
   align-items: center;
   justify-content: center;
   color: var(--color-border);
+  /* No fill — the ROW paints (StorePlaceholderCard -> previewWash) and these frame, which is the
+     only way one gradient can cross four separately-boxed children: CSS cannot slice a background
+     across siblings, so the siblings have to stop painting. The base rule's white is right for a
+     real thumbnail and only for a real thumbnail — a transparent PNG shows the page through it
+     otherwise, which is the note above and it still stands.
+     The BORDER stays. Removing it too was tried on 2026-08-18 and it dissolved the four tiles
+     into a single band; the tiles are the part he asked to keep, and the border is all that was
+     holding them. */
+  background: none;
 }
 
 /* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css.
