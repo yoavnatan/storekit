@@ -3770,13 +3770,19 @@ const orderStatusColors: Record<string, string> = {
    */
   const LOADERS: Record<string, () => Promise<() => void>> = {
     products: async () => {
-      const [p, gallery, csv, picker, select, seo] = await Promise.all([
+      const [p, gallery, csv, picker, select, seo, feed] = await Promise.all([
         import('../../scripts/dashboard/products.js'),
         import('../../scripts/dashboard/gallery.js'),
         import('../../scripts/dashboard/csv-import.js'),
         import('../../scripts/dashboard/category-picker.js'),
         import('../../scripts/dashboard/select-dropdown.js'),
         import('../../scripts/dashboard/product-seo.js'),
+        // The external-inventory panel is rendered by THIS panel (#feed-panel, beside the CSV one)
+        // and was being wired by `settings` — so on a fresh load the "סנכרון מלאי חיצוני" button
+        // was dead: `initFeedSync` binds `#toggle-feed-panel`, which nothing had imported yet.
+        // Opening Settings first happened to fix it, which is why it survived every test and every
+        // demo. Found 2026-08-19 by driving the panel in a browser rather than reasoning about it.
+        import('../../scripts/dashboard/feed-sync.js'),
         imageEditors(),
       ]);
       return () => {
@@ -3813,6 +3819,9 @@ const orderStatusColors: Record<string, string> = {
       p.initProductsToolbar();
       p.initBulkSelect(CLOUD, PRESET);
       csv.initCsvImport();
+      // Beside its twin, because they are the same shape: two panels rendered by this tab, each
+      // wired by the tab that renders it.
+      feed.initFeedSync();
       p.initThumbs();
       // The chips the SERVER rendered — the client sweep only covers rows it rebuilt itself.
       p.initCategoryChipTips();
@@ -3894,13 +3903,14 @@ const orderStatusColors: Record<string, string> = {
     },
 
     settings: async () => {
-      const [img, tree, domain, lifecycle, url, feed, storeCats, headerLogo] = await Promise.all([
+      // No feed-sync here: its panel is rendered by `products`, which now wires it. Binding it from
+      // both would answer every click twice, which is the documented cost of a second init.
+      const [img, tree, domain, lifecycle, url, storeCats, headerLogo] = await Promise.all([
         import('../../scripts/dashboard/store-image.js'),
         import('../../scripts/dashboard/category-tree.js'),
         import('../../scripts/dashboard/custom-domain.js'),
         import('../../scripts/dashboard/store-lifecycle.js'),
         import('../../scripts/dashboard/store-url.js'),
-        import('../../scripts/dashboard/feed-sync.js'),
         import('../../scripts/store-category-picker.js'),
         import('../../scripts/dashboard/header-logo.js'),
         imageEditors(),
@@ -3943,7 +3953,6 @@ const orderStatusColors: Record<string, string> = {
       domain.initCustomDomain();
       lifecycle.initStoreLifecycle();
       url.initStoreUrl();
-      feed.initFeedSync();
       storeCats.initAllStoreCategoryPickers();
       };
     },

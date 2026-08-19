@@ -144,11 +144,15 @@ try {
   // A vendor's own spelling: our columns, renamed, reordered, with two we do not want. Nothing here
   // is our canonical format — the mapping UI is what turns it into ours, and this file exists to
   // give that UI something real to chew on.
-  const header = ['Warehouse', 'Item Code', 'Description', 'Qty On Hand', 'Last Counted'];
+  // 'Description' was this column's header until it mapped — correctly — onto our description field
+  // and wrote a combo label into 112 products. A real vendor file does carry a name column, so ours
+  // now carries the product's own name (a round-trip then changes nothing), and the combo label
+  // moved to a column nothing maps — which is also what an unmapped column is meant to look like.
+  const header = ['Warehouse', 'Item Code', 'Item Name', 'Variant', 'Qty On Hand', 'Last Counted'];
   const body = lines.map((line) => {
     const qty = ZERO ? 0 : Math.max(0, Math.round(Number(line.stock) + (rnd() * 10 - 4)));
-    const label = line.combo ? `${line.name} (${line.combo.replace(/=/g, ' ').replace(/,/g, ' / ')})` : line.name;
-    return ['MAIN', line.sku, label, String(qty), '2026-08-19'].map(cell).join(',');
+    const variant = line.combo ? line.combo.replace(/=/g, ' ').replace(/,/g, ' / ') : '';
+    return ['MAIN', line.sku, line.name, variant, String(qty), '2026-08-19'].map(cell).join(',');
   });
   // `\uFEFF` as an ESCAPE rather than the literal character: a raw BOM in source is invisible, which
   // is exactly why `no-irregular-whitespace` refuses it. The byte in the OUTPUT is unchanged — it is

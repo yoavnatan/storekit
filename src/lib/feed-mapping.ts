@@ -20,7 +20,13 @@ const SYNONYMS: Array<[MappableKey, string[]]> = [
   ['sku',          ['sku', 'item code', 'itemcode', 'item_code', 'item number', 'item no', 'item', 'barcode', 'mpn', 'catalog', 'catalog number', 'cat no', 'product code', 'מק"ט', 'מקט', 'מק״ט', 'ברקוד', 'קוד פריט', 'קטלוג']],
   ['name',         ['name', 'title', 'product name', 'product', 'item name', 'description short', 'שם', 'שם מוצר', 'שם פריט', 'כותרת', 'מוצר', 'פריט']],
   ['price',        ['price', 'cost', 'amount', 'unit price', 'sale price', 'retail price', 'מחיר', 'עלות', 'מחיר יחידה', 'מחיר מכירה']],
-  ['stock',        ['stock', 'qty', 'quantity', 'inventory', 'in stock', 'instock', 'stock qty', 'available', 'availability', 'on hand', 'onhand', 'inventory on hand', 'units', 'מלאי', 'כמות', 'זמין', 'יחידות', 'מלאי זמין', 'כמות במלאי']],
+  // "Qty On Hand" and its family were MISSING until 2026-08-19, and it is the single most common
+  // spelling a POS exports — the repo's own test fixture had been using it as the realistic example
+  // header since this module was written, with a saved mapping that never exercised the guess. The
+  // cost of the gap is quiet: the seller uploads their export, every other column maps, the stock
+  // column falls to "don't import", and the import then updates nothing (blank cell = leave
+  // unchanged) while reporting success. Found by generating a realistic file and watching it do it.
+  ['stock',        ['stock', 'qty', 'quantity', 'inventory', 'in stock', 'instock', 'stock qty', 'qty on hand', 'qty on-hand', 'quantity on hand', 'stock on hand', 'available', 'available qty', 'qty available', 'availability', 'on hand', 'onhand', 'inventory on hand', 'units', 'units in stock', 'מלאי', 'כמות', 'זמין', 'יחידות', 'מלאי זמין', 'כמות במלאי', 'כמות זמינה']],
   ['category',     ['category', 'type', 'department', 'product type', 'main category', 'קטגוריה', 'סוג', 'מחלקה', 'קטגוריה ראשית']],
   ['subcategory1', ['subcategory', 'subcategory 1', 'sub category', 'sub-category', 'subcategory1', 'תת קטגוריה', 'תת-קטגוריה', 'תת קטגוריה 1']],
   ['subcategory2', ['subcategory 2', 'sub category 2', 'subcategory2', 'תת קטגוריה 2', 'תת-קטגוריה 2']],

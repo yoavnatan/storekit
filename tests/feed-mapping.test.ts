@@ -27,6 +27,31 @@ describe('guessMapping', () => {
     expect(normalizeHeader('  "SKU" ')).toBe('sku');
     expect(guessMapping(['  INVENTORY '])[0]!.key).toBe('stock');
   });
+
+  /**
+   * The quantity column, in the spellings a till actually prints.
+   *
+   * "Qty On Hand" was NOT among them until 2026-08-19, and the failure it produced is the quiet
+   * kind this whole module exists to avoid: every other column maps, the stock column falls to
+   * "don't import", and the import then changes nothing while reporting success — because a blank
+   * cell means "leave unchanged" everywhere downstream. It went unnoticed because the repo's own
+   * feed test used that exact header with an explicit saved mapping, which never asks the guess.
+   */
+  it('recognises the quantity column however the till spells it', () => {
+    for (const header of [
+      'Qty On Hand', 'QTY ON HAND', 'Qty on-hand', 'Quantity On Hand', 'Stock On Hand',
+      'On Hand', 'Units In Stock', 'Available Qty', 'Qty Available', 'כמות זמינה',
+    ]) {
+      expect(guessMapping([header])[0]!.key, `${header} did not map to stock`).toBe('stock');
+    }
+  });
+
+  it('and the new spellings steal nothing from another field', () => {
+    // A synonym list grows by being generous; the cost of being generous is a header that a
+    // DIFFERENT key used to claim. This is the whole guess, over one realistic export.
+    const m = guessMapping(['Item Code', 'Item Name', 'Variant', 'Qty On Hand', 'Unit Price', 'Last Counted']);
+    expect(m.map((e) => e.key)).toEqual(['sku', 'name', null, 'stock', 'price', null]);
+  });
 });
 
 describe('mappingStatus', () => {
