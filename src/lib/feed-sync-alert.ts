@@ -77,8 +77,14 @@ export function classifyFeedSyncOutcome(status: number, body: Record<string, unk
   return 'file-rejected';
 }
 
-/** Title + body per problem. Each says what happened and what the seller can do — never a code. */
-function copyFor(problem: FeedSyncProblem): { title: string; body: string } {
+/**
+ * Title + body per problem. Each says what happened and what the seller can do — never a code.
+ *
+ * Exported because the products tab says the SAME thing in a card at the top of the page: a bell
+ * notification is read once and dismissed, and the sync stays broken long after. Two wordings for
+ * one situation is how a seller ends up believing the milder of them.
+ */
+export function feedSyncProblemCopy(problem: FeedSyncProblem): { title: string; body: string } {
   switch (problem) {
     case 'unreachable':
       return {
@@ -130,7 +136,7 @@ export async function alertOnScheduledSync(store: Store, status: number, body: R
   const alreadySaid = await existingNotificationRelatedIds([relatedId], hoursAgo(REPEAT_AFTER_HOURS));
   if (alreadySaid.has(relatedId)) return;
 
-  const { title, body: text } = copyFor(problem);
+  const { title, body: text } = feedSyncProblemCopy(problem);
   await createNotification({
     userId: store.sellerId,
     role: 'seller',

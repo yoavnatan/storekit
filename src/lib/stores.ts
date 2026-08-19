@@ -118,6 +118,12 @@ export interface Store {
     url?: string;
     mapping?: Record<string, string>;
     lastSyncAt?: string;
+    /** Why the last UNATTENDED pull failed, and when. Written and cleared by the scheduled run
+     *  alone (`store-feed-sync.ts`), because it answers a question only the unattended run raises:
+     *  the seller pressing "sync now" is reading the answer on screen. It is what lets the products
+     *  tab say "your stock has stopped updating" without asking anything at render time —
+     *  `lastSyncAt` cannot: a feed that broke an hour ago still carries yesterday's success. */
+    lastError?: { problem: string; at: string };
   };
   /** Outbound-feed credential: when set, another system can pull THIS store's live catalog (incl.
    *  stock) as CSV/JSON from a tokenized, login-free URL (/api/store-feed/[token]). Absent = the

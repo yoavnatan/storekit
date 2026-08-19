@@ -20,8 +20,8 @@ import { fetchFeedCsv } from './feed-fetch.js';
 import { parseCsv } from './csv-bulk.js';
 import { guessMapping, confirmedMapping, mappingStatus, buildCanonicalCsv, type MappableKey } from './feed-mapping.js';
 import { runProductImport } from './store-products-import.js';
-import { updateStore, type Store } from './stores.js';
-import { alertOnScheduledSync } from './feed-sync-alert.js';
+import { updateStore, getStoreById, type Store } from './stores.js';
+import { alertOnScheduledSync, classifyFeedSyncOutcome } from './feed-sync-alert.js';
 
 export interface FeedSyncResult {
   status: number;
@@ -60,6 +60,11 @@ export async function syncStoreFeed(store: Store, commit: boolean, trigger: Feed
   // reports on: a badge is not worth undoing a pull that worked.
   if (commit && trigger === 'scheduled') {
     await alertOnScheduledSync(store, result.status, result.body).catch(() => { /* a badge must not cost the sync */ });
+    // The same verdict, kept ON THE STORE as well as in the bell: a notification is read once and
+    // dismissed, and the sync stays broken long after. This is what the products tab reads to say
+    // so in a card the seller cannot miss — and `lastSyncAt` could never answer it, since a feed
+    // that broke an hour ago still carries yesterday's success.
+    await rememberScheduledOutcome(store, result).catch(() => { /* nor is a card worth the sync */ });
   }
   return result;
 }
@@ -104,10 +109,43 @@ async function runSync(store: Store, commit: boolean, trigger: FeedSyncTrigger):
 
   if (commit && body.ok) {
     const lastSyncAt = new Date().toISOString();
-    await updateStore(store.id, { feedSync: { ...store.feedSync, lastSyncAt } });
+    // `lastError` is dropped rather than carried through the spread: a pull that worked is the end
+    // of the previous failure, and a stale one would keep a card on the seller's screen for a
+    // problem that fixed itself.
+    await updateStore(store.id, { feedSync: { ...withoutLastError(store), lastSyncAt } });
     return { status, body: { ...body, lastSyncAt } };
   }
   return { status, body };
+}
+
+/** The store's feed config with any recorded failure dropped — a pull that worked is the end of the
+ *  previous failure, and a stale one would keep a card on the seller's screen for a problem that
+ *  fixed itself. */
+function withoutLastError(store: Store): NonNullable<Store['feedSync']> {
+  const kept = { ...(store.feedSync ?? {}) };
+  delete kept.lastError;
+  return kept;
+}
+
+/** Record (or clear) why the unattended pull is not working, on the store itself. */
+async function rememberScheduledOutcome(stale: Store, result: FeedSyncResult): Promise<void> {
+  const problem = classifyFeedSyncOutcome(result.status, result.body);
+  // Re-read, because the run itself may have written to this very column a moment ago: a successful
+  // pull stamps `lastSyncAt` inside `runSync`, and merging onto the copy this function was handed
+  // would put the pre-run value back — erasing the stamp of the run that just worked. Found by the
+  // test below, which is exactly the kind of thing "same object, two writers" produces.
+  const store = (await getStoreById(stale.id)) ?? stale;
+  const stored = store.feedSync?.lastError;
+  if (!problem) {
+    // Cleared here as well as on the success path above, because a run can end clean without
+    // writing (`rows-refused` resolving to nothing changed still means the sync is healthy).
+    if (stored) await updateStore(store.id, { feedSync: withoutLastError(store) });
+    return;
+  }
+  // Same problem as last time: leave the original timestamp, which is when the sync actually
+  // stopped working — the number the seller needs is "since when", not "as of the last attempt".
+  if (stored?.problem === problem) return;
+  await updateStore(store.id, { feedSync: { ...store.feedSync, lastError: { problem, at: new Date().toISOString() } } });
 }
 
 /** How many rows a committed sync actually created or updated — the one number worth putting in the

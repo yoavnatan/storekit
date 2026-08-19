@@ -58,8 +58,16 @@ export function notificationHref(n: Linkable): string {
     // notification's own body says "תקן את המוצר", so it must not land on the ads tab.
     case 'low_stock':
     case 'out_of_stock':
-    case 'feed_status':
       return '/seller/dashboard?panel=products';
+    // `feed_status` covers two different pieces of news, told apart by their key rather than by
+    // their type: an ad network rejecting one PRODUCT (`feed:<network>:<id>:<reason>`, fixed on the
+    // product) and the external inventory sync failing (`feed-sync:<storeId>:<problem>`, fixed in a
+    // panel the seller then has to find). The second one opens that panel — the alert says "open
+    // the sync panel", so landing on the tab and leaving them to hunt for it is half an answer.
+    case 'feed_status':
+      return n.relatedId?.startsWith('feed-sync:')
+        ? '/seller/dashboard?panel=products&feed=1'
+        : '/seller/dashboard?panel=products';
     case 'domain_status':
       return '/seller/dashboard?panel=settings';
     default:

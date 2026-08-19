@@ -86,6 +86,7 @@ import { getSellerStoreAlerts, type StoreAlertLevel } from '../../lib/seller-ale
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { CSV_MAX_DIMENSIONS } from '../../lib/csv-bulk.js';
+import { feedSyncProblemCopy, type FeedSyncProblem } from '../../lib/feed-sync-alert.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath, type StoreCategory } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
@@ -540,6 +541,18 @@ const adNeedsAttention = !!store && stalledAdStoreIds.has(store.id);
 // preview to read: the rows for these products are refused every hour with nobody watching.
 // Free — `productsUnsorted` is already loaded for this tab, so this is a filter, not a query.
 const syncUnreachable = productsUnsorted.filter((p) => (p.variants?.length ?? 0) > CSV_MAX_DIMENSIONS);
+
+// The unattended pull is broken — said on the tab whose numbers are the ones going stale, in the
+// same words the notification used (feed-sync-alert.ts). Read off the store, not recomputed: the
+// scheduled run is the only thing that can know, and asking a remote server at render time is not
+// something a page load may do. `at` is when it STOPPED working, not the last attempt.
+const feedError = store?.feedSync?.lastError;
+const syncFailure = feedError
+  ? {
+    ...feedSyncProblemCopy(feedError.problem as FeedSyncProblem),
+    since: new Date(feedError.at).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: 'numeric', month: 'long' }),
+  }
+  : null;
 const products = [...productsUnsorted].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
@@ -1361,6 +1374,24 @@ const orderStatusColors: Record<string, string> = {
       <!-- ── Panel: Products ── -->
       <SellerPanelShell panel="products" active={shows('products')}>
         {showTabHints && <TabHint text={d.tabHintProducts} />}
+
+        {/* The unattended pull has stopped working. A bell notification is read once and dismissed
+            while the sync stays broken for days, so the state is also stated here, on the tab whose
+            numbers are the ones going stale — and it says the SAME sentence the notification did
+            (feed-sync-alert.ts#feedSyncProblemCopy), because two wordings for one situation is how
+            a seller ends up believing the milder of them. Only rendered while it is true; a card
+            that is always there is furniture. */}
+        {syncFailure && (
+          <div class="card card--flat p-4 mb-3 [border-color:var(--color-warning)] flex items-start gap-[0.6rem]" role="status">
+            <svg class="shrink-0 max-w-none mt-[0.15rem] [color:var(--color-warning)]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div class="text-[0.85rem] leading-[1.6]">
+              <strong>{syncFailure.title}.</strong>{' '}
+              <span>{syncFailure.body}</span>{' '}
+              <span class="[color:var(--color-muted)]">{d.feedFailureSince.replace('{date}', syncFailure.since)}</span>
+              <button type="button" data-open-feed-panel class="btn btn--ghost btn--sm mt-[0.55rem] block">{d.feedFailureOpen}</button>
+            </div>
+          </div>
+        )}
 
         <div>
           <div class="products-header">

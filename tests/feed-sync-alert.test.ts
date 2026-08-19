@@ -135,3 +135,59 @@ describe('what a scheduled pull leaves in the seller\'s bell', () => {
     expect(raised[0]!.related_id).toBe(`feed-sync:${storeId}:rows-refused`);
   });
 });
+
+/**
+ * The same verdict, kept on the STORE — which is what the products tab reads to put a card in front
+ * of the seller. A notification is read once and dismissed; the sync stays broken for days.
+ */
+describe('what the store remembers about a failing pull', () => {
+  const feedSyncOf = async (storeId: string) =>
+    (await query<{ feed_sync: { lastError?: { problem: string; at: string }; lastSyncAt?: string } }>(
+      'SELECT feed_sync FROM stores WHERE id = $1', [storeId])).rows[0]!.feed_sync;
+
+  it('records WHY, and when it stopped working', async () => {
+    const { storeId } = await storeWithFeed();
+    feed.ok = false;
+
+    await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    const { lastError } = await feedSyncOf(storeId);
+    expect(lastError?.problem).toBe('unreachable');
+    expect(Date.parse(lastError!.at)).toBeGreaterThan(0);
+  });
+
+  it('keeps the ORIGINAL timestamp while the same problem persists', async () => {
+    // "Since when" is the number the seller needs; the last attempt is not news.
+    const { storeId } = await storeWithFeed();
+    feed.ok = false;
+    await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+    const first = (await feedSyncOf(storeId)).lastError!.at;
+
+    await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    expect((await feedSyncOf(storeId)).lastError!.at).toBe(first);
+  });
+
+  it('forgets it the moment a pull succeeds', async () => {
+    const { storeId } = await storeWithFeed();
+    feed.ok = false;
+    await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+    expect((await feedSyncOf(storeId)).lastError).toBeDefined();
+
+    feed.ok = true;
+    await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    const after = await feedSyncOf(storeId);
+    expect(after.lastError, 'a card must not outlive the problem').toBeUndefined();
+    expect(after.lastSyncAt, 'and the success is still stamped').toBeTypeOf('string');
+  });
+
+  it('says nothing about the run the seller watched', async () => {
+    const { storeId } = await storeWithFeed();
+    feed.ok = false;
+
+    await syncStoreFeed((await getStoreById(storeId))!, true);
+
+    expect((await feedSyncOf(storeId)).lastError).toBeUndefined();
+  });
+});

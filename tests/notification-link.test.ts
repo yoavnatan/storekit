@@ -50,6 +50,18 @@ describe('notificationHref', () => {
     }
   });
 
+  it('opens the sync panel for a sync alert, and only for that one', () => {
+    // `feed_status` carries two different pieces of news and the type cannot tell them apart: an ad
+    // network rejecting a PRODUCT (fixed on the product) and the external inventory sync failing
+    // (fixed in a panel the seller would otherwise have to hunt for). The key does tell them apart.
+    expect(notificationHref({ role: 'seller', type: 'feed_status', relatedId: 'feed-sync:abc:unreachable' }))
+      .toBe('/seller/dashboard?panel=products&feed=1');
+    expect(notificationHref({ role: 'seller', type: 'feed_status', relatedId: 'feed:google:p1:rejected' }))
+      .toBe('/seller/dashboard?panel=products');
+    expect(notificationHref({ role: 'seller', type: 'feed_status' }))
+      .toBe('/seller/dashboard?panel=products');
+  });
+
   it('deep-links a system message to its own thread', () => {
     expect(notificationHref({ role: 'seller', type: 'admin_message', relatedId: 'thread 1' }))
       .toBe('/seller/dashboard?panel=messages&msg=thread%201');

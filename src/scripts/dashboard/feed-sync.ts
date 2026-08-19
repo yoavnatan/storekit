@@ -119,16 +119,35 @@ export function initFeedSync(): void {
   };
   renderLastSync();
 
+  const openPanel = (): void => {
+    panel.hidden = false;
+    document.getElementById('add-product-form')?.setAttribute('hidden', '');
+    document.getElementById('toggle-add-form')?.removeAttribute('hidden');
+    document.getElementById('csv-panel')?.setAttribute('hidden', '');
+    scrollProductsPanelIntoView(panelEl);
+  };
+
   toggleBtn?.addEventListener('click', () => {
-    panel.hidden = !panel.hidden;
-    if (!panel.hidden) {
-      document.getElementById('add-product-form')?.setAttribute('hidden', '');
-      document.getElementById('toggle-add-form')?.removeAttribute('hidden');
-      document.getElementById('csv-panel')?.setAttribute('hidden', '');
-      scrollProductsPanelIntoView(panelEl);
-    }
+    if (panel.hidden) openPanel();
+    else panel.hidden = true;
   });
+  // The card at the top of the products tab, which says the sync is broken and then has to be able
+  // to take the seller to the one place it can be fixed.
+  document.querySelector('[data-open-feed-panel]')?.addEventListener('click', () => openPanel());
   closeBtn?.addEventListener('click', () => { panel.hidden = true; });
+
+  // Arriving from the alert that says "open the sync panel" (notification-link.ts writes `feed=1`
+  // for a `feed-sync:` notification and nothing else does). It cannot ride the in-page intent
+  // mechanism the overview tiles use — a notification is a real navigation, and `panel-intent.ts`
+  // is memory in the page being left. Consumed from the URL rather than left there, so a refresh
+  // or a shared link does not keep re-opening a panel nobody asked for this time.
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('feed') === '1') {
+    openPanel();
+    params.delete('feed');
+    const rest = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`);
+  }
 
   // ---- Persist URL + mapping on the store (so the URL pull reuses the confirmed mapping) ----
   async function saveFeedConfig(mapping: Record<string, MappableKey>): Promise<boolean> {
