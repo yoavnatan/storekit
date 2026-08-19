@@ -81,7 +81,7 @@ import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { withTestLock } from './lib/test-lock.mjs';
@@ -230,8 +230,48 @@ function treeHash() {
   }
 }
 
+/**
+ * The installed dependency tree, as one hash — the second half of the marker's key.
+ *
+ * The tree hash covers `package-lock.json`, i.e. what SHOULD be installed. It cannot see what IS:
+ * an interrupted `npm ci`, a hand-deleted package, a worktree whose setup died halfway. That did
+ * not matter while each checkout kept its own markers, because a checkout could only ever inherit
+ * its own green. It matters the moment they are shared, so the key carries it.
+ *
+ * `node_modules/.package-lock.json` is npm's own record of what it actually laid down, and it is
+ * written deterministically from the lockfile — so two checkouts installed from the same lockfile
+ * agree byte for byte and share, and anything else simply does not. Missing file → its own bucket,
+ * which is today's behaviour and the safe direction.
+ */
+function installHash() {
+  try {
+    return createHash('sha256')
+      .update(readFileSync(resolve(ROOT, 'node_modules/.package-lock.json')))
+      .digest('hex')
+      .slice(0, 16);
+  } catch {
+    return 'noinstall';
+  }
+}
+
+/**
+ * MACHINE-WIDE, not per checkout (2026-08-19). The marker records "these checks passed against this
+ * exact content", and that sentence is about the CONTENT — it was never about the directory the
+ * content happened to be sitting in. Keeping the markers under each checkout's `node_modules` made
+ * it about the directory, and the cost was one whole suite per push: a worktree verifies green,
+ * fast-forwards into main, and `pre-push` then runs the identical suite against the identical bytes
+ * from scratch, because main had never seen that hash. With three sessions live that is the wait
+ * the owner hit on 2026-08-19 ("waiting hours"), and it is pure repetition — the same argument the
+ * paragraph above makes about `git commit` throwing the cache away, one level up.
+ *
+ * The key is `<tree content>-<installed deps>`, so sharing can only ever happen between checkouts
+ * that would run the identical checks over the identical inputs. `tmpdir()` because this is an
+ * optimisation and losing it costs a re-run, not correctness — the same reasoning, and the same
+ * neighbourhood, as `scripts/lib/test-lock.mjs`.
+ */
+const STATE = resolve(tmpdir(), 'storekit-verify-state');
 const HASH = NO_CACHE ? null : treeHash();
-const MARKER = HASH && resolve(CACHE, 'verify', `${HASH}.json`);
+const MARKER = HASH && resolve(STATE, `${HASH}-${installHash()}.json`);
 
 function passedBefore() {
   if (!MARKER || !existsSync(MARKER)) return [];
@@ -246,7 +286,7 @@ function passedBefore() {
 function recordPassed(names) {
   if (!MARKER) return;
   try {
-    mkdirSync(resolve(CACHE, 'verify'), { recursive: true });
+    mkdirSync(STATE, { recursive: true });
     writeFileSync(MARKER, JSON.stringify([...new Set([...passedBefore(), ...names])]));
   } catch { /* the cache is an optimisation; failing to write one must never fail the run */ }
 }
