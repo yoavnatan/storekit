@@ -86,3 +86,7 @@ showcase-prompts.csv
 # external sync by hand (`npm run demo:feed`). Regenerated on demand and different on every
 # machine — committing one would just be somebody else's stock numbers.
 demo-feed.csv
+
+# Scratch commit messages — a long message is written here and passed with `git commit -F`,
+# because the scratchpad path trips the destructive-git hook. Never part of the tree.
+.git-commit-msg.tmp
