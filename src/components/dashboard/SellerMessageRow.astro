@@ -72,6 +72,14 @@ const d = getT(getLang(Astro.cookies)).dashboard;
               <span>{d.msgAboutProduct}: {row.productName}</span>
             </span>
       )}
+      {/* **What pressing "שלח" will actually do.** A guest ordered without an account, so there is
+          no screen to show them an answer on — the platform mails it to the address the order was
+          placed with, and the conversation continues in the two mailboxes rather than here. Without
+          this line the box looks like every other one, and a seller writes "ראה בקישור למטה" or
+          waits for a reply that will never come back to this thread. */}
+      {row.replyGoesByEmail && (
+        <p class="msg-thread-head__meta">{d.msgReplyByEmail}</p>
+      )}
     </div>
     <div class="msg-thread msg-thread--seller-pov" id={`replies-${row.id}`}>
       {row.entries.map((entry) => (

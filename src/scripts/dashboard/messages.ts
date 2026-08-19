@@ -79,6 +79,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     replyCancel: msgDashI18nDict.msgReplyCancel ?? 'ביטול',
     subjectLabel: msgDashI18nDict.msgSubjectLabel ?? 'נושא',
     aboutProduct: msgDashI18nDict.msgAboutProduct ?? 'בנוגע למוצר',
+    replyByEmail: msgDashI18nDict.msgReplyByEmail ?? 'הקונה הזה הזמין ללא חשבון — התשובה שלך תישלח אליו במייל, והמשך ההתכתבות יהיה שם.',
     you: msgDashI18nDict.msgYou ?? 'אתה',
   };
 
@@ -396,6 +397,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     hasUnread: boolean;
     productName: string;
     productHref: string;
+    replyGoesByEmail?: boolean;
   }
   function entryBubbleHtml(entry: ThreadEntryData): string {
     return `<div class="msg-thread-entry ${entry.fromSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}">
@@ -458,6 +460,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
         <div class="msg-thread-head">
           <p class="msg-thread-head__subject"><span class="msg-thread-head__label">${escMsg(msgI18n.subjectLabel)}</span>${escMsg(data.subject)}</p>
           ${data.productName ? threadHeadProductHtml(data.productName, data.productHref) : ''}
+          ${data.replyGoesByEmail ? `<p class="msg-thread-head__meta">${escMsg(msgI18n.replyByEmail)}</p>` : ''}
         </div>
         <div class="msg-thread msg-thread--seller-pov" id="replies-${data.id}">${data.entries.map(entryBubbleHtml).join('')}</div>
         <div class="seller-msg-reply-form" data-reply-for="${escMsg(data.id)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">

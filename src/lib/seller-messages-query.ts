@@ -1,5 +1,6 @@
 import type { Message } from './messages.js';
 import type { AdminThread } from './admin-messages.js';
+import { senderHasAccount } from './guest-sender.js';
 import { decodeList } from './admin-nav.js';
 
 // Server-side counterpart of the seller dashboard's Messages tab toolbar
@@ -66,6 +67,15 @@ export interface SellerThreadRow {
   hasUnread: boolean;
   productName: string;       // '' when the thread isn't about a product
   productHref: string;
+  /** True when the person who opened this thread has no account — a guest who asked about their
+   *  own order from the signed link in an order mail.
+   *
+   *  It changes what a REPLY does, which is why the seller has to be told: there is no screen for
+   *  a guest to read an answer on, so the platform mails it to the address the order was placed
+   *  with, with the seller's own address as the reply-to. From that point the conversation is two
+   *  people's mailboxes and nothing comes back into this thread. A seller who writes "see the link
+   *  below" or waits for an answer here has been misled by a box that looks like every other one. */
+  replyGoesByEmail: boolean;
 }
 
 export function buildSellerMessageRows(messages: Message[], repliesByMsgId: Record<string, Message[]>, sellerId: string): SellerThreadRow[] {
@@ -91,6 +101,10 @@ export function buildSellerMessageRows(messages: Message[], repliesByMsgId: Reco
       hasUnread: entries.some((e) => e.unread),
       productName: msg.productRef?.productName ?? '',
       productHref: msg.productRef ? `/${msg.productRef.storeSlug}/${msg.productRef.productSlug}` : '',
+      // Asked of the ROOT: the thread's counterparty is whoever opened it, and a reply always goes
+      // back to them. `senderHasAccount` is the one definition (`messages.ts`), shared with the
+      // reply endpoint that decides between a notification and a letter.
+      replyGoesByEmail: !senderHasAccount(msg.fromUserId),
     };
   });
 }
@@ -114,6 +128,8 @@ export function buildSystemMessageRows(threads: AdminThread[]): SellerThreadRow[
       hasUnread: t.unreadForSeller > 0,
       productName: '',
       productHref: '',
+      // An admin thread always has an admin on the other end, and the admin has a screen.
+      replyGoesByEmail: false,
     };
   });
 }

@@ -1865,6 +1865,9 @@ export const translations = {
       // and the product the conversation is about, which the card layout drops.
       msgSubjectLabel: 'נושא',
       msgAboutProduct: 'בנוגע למוצר',
+      // Said on the thread itself, because it changes what pressing "שלח" does. Deliberately not a
+      // warning: nothing is wrong, the answer simply travels by post.
+      msgReplyByEmail: 'הקונה הזה הזמין ללא חשבון — התשובה שלך תישלח אליו במייל, והמשך ההתכתבות יהיה שם.',
     },
     gallery: {
       main: 'ראשי',
@@ -3706,6 +3709,7 @@ export const translations = {
       msgReplyCancel: 'Cancel',
       msgSubjectLabel: 'Subject',
       msgAboutProduct: 'About product',
+      msgReplyByEmail: 'This buyer ordered without an account — your reply is sent to them by email, and the conversation continues there.',
     },
     gallery: {
       main: 'Main',
