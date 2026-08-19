@@ -4,6 +4,7 @@ import { sanitizeImageUrl, sanitizeImageUrls } from './image-url.js';
 import { normalizeProductDiscount } from './discount-input.js';
 import type { ProductDiscount } from './discounts.js';
 import { parseWeightGrams } from './product-weight.js';
+import { collectComboSkus } from './variant-sku-field.js';
 
 /** Every image URL a seller submits, validated + normalized (image-url.ts).
  *  Anything that isn't an https:// or site-relative URL is dropped here rather
@@ -69,10 +70,14 @@ export function parseSpecs(form: FormData): Array<{ label: string; value: string
 export interface VariantsPayload {
   variants: ProductVariant[];
   variantStock: Record<string, number>;
+  /** Per-combination codes, keyed like `variantStock`. The seller's own system's name for blue-L,
+   *  and what an inbound inventory feed matches its rows on (lib/variant-sku-match.ts). */
+  variantSku: Record<string, string>;
   variantImages: Record<string, string>;
-  /** Set when the submission must be REJECTED rather than stored — today only the combo limit.
-   *  A caller that ignores it stores a bounded-but-different variant set, which is why
-   *  `tests/variant-combo-limit.test.ts` checks the API route reads it. */
+  /** Set when the submission must be REJECTED rather than stored — the combo limit, or one code
+   *  typed onto two combos of the same product. A caller that ignores it stores a bounded-but-
+   *  different variant set, which is why `tests/variant-combo-limit.test.ts` checks the API route
+   *  reads it. */
   error?: string;
 }
 
@@ -80,14 +85,14 @@ export interface VariantsPayload {
  *  the old parallel `variant_name`/`variant_options` array zipping, which silently misaligned
  *  if a block was ever added/removed out of order. */
 export function parseVariantsPayload(form: FormData): VariantsPayload {
-  const empty: VariantsPayload = { variants: [], variantStock: {}, variantImages: {} };
+  const empty: VariantsPayload = { variants: [], variantStock: {}, variantSku: {}, variantImages: {} };
   const raw = String(form.get('variants_json') || '');
   if (!raw) return empty;
 
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return empty; }
   if (!parsed || typeof parsed !== 'object') return empty;
-  const obj = parsed as { variants?: unknown; variantStock?: unknown; variantImages?: unknown };
+  const obj = parsed as { variants?: unknown; variantStock?: unknown; variantSku?: unknown; variantImages?: unknown };
 
   const variants: ProductVariant[] = Array.isArray(obj.variants)
     ? obj.variants
@@ -122,6 +127,17 @@ export function parseVariantsPayload(form: FormData): VariantsPayload {
     }
   }
 
+  // Same key rule as the stock map above. A code repeated across two combos of ONE product fails
+  // the submission rather than being dropped quietly: it would make an inbound feed row ambiguous,
+  // and the seller who typed it is the only person who knows which combo they meant.
+  const { skus: variantSku, duplicate } = collectComboSkus(
+    obj.variantSku && typeof obj.variantSku === 'object' ? (obj.variantSku as Record<string, unknown>) : undefined,
+    validKeys,
+  );
+  if (duplicate) {
+    return { ...empty, variants, variantStock, error: `המק"ט ${duplicate} מופיע ביותר משילוב אחד של המוצר.` };
+  }
+
   // Keys must be a real option value on the final variant set (guards against a
   // stale entry after an option was renamed/removed); values must be one of this
   // submission's own images — never trust an arbitrary client-supplied URL.
@@ -139,5 +155,5 @@ export function parseVariantsPayload(form: FormData): VariantsPayload {
     }
   }
 
-  return { variants, variantStock, variantImages };
+  return { variants, variantStock, variantSku, variantImages };
 }

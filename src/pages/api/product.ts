@@ -4,7 +4,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 // One definition of "is this store / this product this seller's" — shared with the dashboard's
 // no-JS fallback handlers, which is where it was missing entirely (lib/store-ownership.ts).
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
-import { createProduct, updateProduct, deleteProduct, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
+import { createProduct, updateProduct, deleteProduct, getProductsByStoreId, isSkuTaken, comboSkusTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides, remapComboKeys } from '../../lib/variant-combo.js';
 import { parseImages, parseCategoryId, parseSku, parseBrand, parseWeight, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
 import { normalizeProductDiscount } from '../../lib/discount-input.js';
@@ -12,6 +12,7 @@ import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 import { productFieldsOverLimit, fieldLimitRejectionMessage } from '../../lib/field-limits.js';
+import { comboSkuTakenMessage } from '../../lib/variant-sku-field.js';
 import { pingProductChange, pingProductsChanged } from '../../lib/indexnow.js';
 import { warmImageDerivations } from '../../lib/image-derive.js';
 import { deriveAutoTags } from '../../lib/tag-suggest.js';
@@ -105,12 +106,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const specs = parseSpecs(form);
     const sellerNote = parseSellerNote(form);
     const discount = parseProductDiscount(form, price);
-    const { variants, variantStock, variantImages, error: variantsError } = parseVariantsPayload(form);
+    const { variants, variantStock, variantSku, variantImages, error: variantsError } = parseVariantsPayload(form);
 
     if (variantsError) return json({ ok: false, error: variantsError }, 400);
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
     if (sku && await isSkuTaken(storeId, sku)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
+    // The per-combination codes answer to the same namespace as the product-level one — see
+    // comboSkusTaken. Checked on the way in, because a duplicate here is what makes an inbound
+    // feed row ambiguous later, when nobody is watching.
+    const takenOnCreate = await comboSkusTaken(storeId, Object.values(variantSku));
+    if (takenOnCreate.length) return json({ ok: false, error: comboSkuTakenMessage(takenOnCreate[0]!) }, 400);
     // `brand` joins the gate for the same reason name/description/tags are in it: it is seller
     // free text that reaches a public surface (Product JSON-LD + the ad feed), so it is one more
     // place to stuff keywords onto the shared domain.
@@ -141,6 +147,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       variants: variants.length ? variants : undefined,
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
+      variantSku: Object.keys(variantSku).length ? variantSku : undefined,
     });
     // A brand-new public page — the highest-value IndexNow signal (fire-and-forget).
     pingProductChange(ownerStore, product.slug);
@@ -163,7 +170,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Destructured rather than spread: a rejection is not a FIELD of the product, and spreading it
     // into `submitted` would hand `mergeByFieldRev` a key that has no stored counterpart. Rejected
     // before the merge, so an over-limit payload never reaches the conflict machinery either.
-    const { variants: submittedVariants, variantStock: submittedVariantStock, variantImages: submittedVariantImages, error: variantsError } = parseVariantsPayload(form);
+    const { variants: submittedVariants, variantStock: submittedVariantStock, variantSku: submittedVariantSku, variantImages: submittedVariantImages, error: variantsError } = parseVariantsPayload(form);
     if (variantsError) return json({ ok: false, error: variantsError }, 400);
     // Shaped exactly like the stored record (empty → absent), because these values are
     // compared field-by-field against it below — a difference in shape alone would read
@@ -184,6 +191,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       sellerNote: parseSellerNote(form) || undefined,
       variants: submittedVariants,
       variantStock: submittedVariantStock,
+      variantSku: submittedVariantSku,
       variantImages: submittedVariantImages,
     };
 
@@ -219,6 +227,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const variants = (merged.variants ?? []) as ReturnType<typeof parseVariantsPayload>['variants'];
     const variantStock = (merged.variantStock ?? {}) as Record<string, number>;
     const variantImages = (merged.variantImages ?? {}) as Record<string, string>;
+    const mergedVariantSku = (merged.variantSku ?? {}) as Record<string, string>;
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
@@ -233,22 +242,25 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuffingHit = findKeywordStuffing(name, description, brand, ...tags);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
-    // Per-combo SKUs are set only via CSV import / the external feed; the editor doesn't render
-    // them, so preserve the product's existing ones — but drop any whose combo no longer exists
-    // after an options edit, so a stale code can't leak onto a new combo.
+    // The per-combo SKUs the seller typed into the combo table — merged per-field like every other
+    // one, so a CSV import or an external sync that wrote a code between this form opening and this
+    // save is not reverted by a field this tab merely carried (record-rev.ts).
     //
-    // A RELABELLED dimension is not that case, and treating it as one was a silent break: the key
-    // changes wholesale, so "צבע" → "Color" dropped every per-combo SKU — which is exactly what an
-    // external inventory feed matches its rows on (`variant-sku-match.ts`). The rename is followed
-    // through instead (variant-combo.ts#remapComboKeys, deliberately narrow), so the codes ride
-    // along with the combos they belong to and the seller's own POS keeps matching.
+    // Two rules on the way out. A code whose combo no longer exists is DROPPED, so it cannot leak
+    // onto a new one. But a RELABELLED dimension is not that case, and treating it as one was a
+    // silent break: the key changes wholesale, so "צבע" → "Color" dropped every code — which is
+    // exactly what an external inventory feed matches its rows on (`variant-sku-match.ts`). The
+    // rename is followed through instead (variant-combo.ts#remapComboKeys, deliberately narrow), so
+    // the codes ride along with the combos they belong to and the seller's own POS keeps matching.
     const renamed = remapComboKeys(product.variants, variants);
     const validComboKeys = new Set(generateCombos(variants).map(comboKey));
     const keptVariantSku = Object.fromEntries(
-      Object.entries(product.variantSku ?? {})
+      Object.entries(mergedVariantSku)
         .map(([key, sku]) => [renamed.get(key) ?? key, sku] as const)
         .filter(([key]) => validComboKeys.has(key)),
     );
+    const takenOnEdit = await comboSkusTaken(product.storeId, Object.values(keptVariantSku), productId);
+    if (takenOnEdit.length) return json({ ok: false, error: comboSkuTakenMessage(takenOnEdit[0]!) }, 400);
 
     // On edit, auto-tag only from sources NEW since the last save — a category
     // that just changed, and variant options just added — so a seller who

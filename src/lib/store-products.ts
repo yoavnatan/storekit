@@ -361,6 +361,35 @@ export async function isSkuTaken(storeId: string, sku: string, excludeId?: strin
   return Boolean(row);
 }
 
+/**
+ * Which of these codes another product in this store already uses — at product level OR on one of
+ * its own combinations.
+ *
+ * Both, in one query, because they are one namespace and always have been: the CSV importer has
+ * refused a row whose sku is live anywhere in the catalogue since it was written (its
+ * `existingSkuOwners` map spans both), and `variant-sku-match.ts` resolves an inbound feed row by
+ * looking a code up across both. A form that checked only `store_products.sku` would let a seller
+ * type a code onto a combination that is already another product's, and the next external sync
+ * would then hand that feed row to whichever the lookup happened to find first.
+ *
+ * Returns the offending codes rather than a boolean, so the answer can name the one to change.
+ */
+export async function comboSkusTaken(storeId: string, skus: string[], excludeProductId?: string): Promise<string[]> {
+  const wanted = [...new Set(skus.filter(Boolean))];
+  if (!isUuid(storeId) || !wanted.length) return [];
+  const exclude = excludeProductId && isUuid(excludeProductId) ? excludeProductId : null;
+  const found = await rows<{ sku: string }>(
+    `SELECT p.sku AS sku FROM store_products p
+      WHERE p.store_id = $1 AND p.sku = ANY($2::text[]) AND ($3::uuid IS NULL OR p.id <> $3::uuid)
+     UNION
+     SELECT v.sku AS sku FROM product_variant_stock v
+       JOIN store_products p ON p.id = v.product_id
+      WHERE p.store_id = $1 AND v.sku = ANY($2::text[]) AND ($3::uuid IS NULL OR p.id <> $3::uuid)`,
+    [storeId, wanted, exclude],
+  );
+  return found.map((r) => r.sku);
+}
+
 /** How many `name-2`, `name-3`… a colliding slug is worth trying before falling back to randomness. */
 const SLUG_BUMP_ATTEMPTS = 50;
 

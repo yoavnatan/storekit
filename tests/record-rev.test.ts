@@ -42,11 +42,20 @@ describe('productEditRev — the fields the edit form overwrites', () => {
 
   it('ignores fields the form never writes — otherwise an unrelated action reads as a conflict', () => {
     const base = productEditRev(product);
-    // hide/show, an admin block, a per-combo SKU from a CSV import, view counters
+    // hide/show, an admin block, view counters
     expect(productEditRev({ ...product, hidden: true } as typeof product)).toBe(base);
     expect(productEditRev({ ...product, blocked: true } as typeof product)).toBe(base);
-    expect(productEditRev({ ...product, variantSku: { 'צבע:טבעי': 'X' } } as typeof product)).toBe(base);
     expect(productEditRev({ ...product, slug: 'other', createdAt: 'now' } as typeof product)).toBe(base);
+  });
+
+  it('DOES watch the per-combo codes, now that the form has a column for them', () => {
+    // The opposite of what this file asserted until 2026-08-19, and the reversal is the point: while
+    // the editor only preserved `variantSku`, a CSV import touching a code had to be invisible to an
+    // open form or it would have read as a conflict over a field the seller could not even see. The
+    // combo table now edits them, so the same import IS a conflicting write — and per-field merging
+    // is what tells the two apart, which it can only do for a field on this list.
+    const base = productEditRev(product);
+    expect(productEditRev({ ...product, variantSku: { 'צבע:טבעי': 'X' } } as typeof product)).not.toBe(base);
   });
 
   it('does not depend on object key order — a JSON round-trip must not invent a conflict', () => {

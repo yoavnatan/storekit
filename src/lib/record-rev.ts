@@ -59,7 +59,11 @@ function normalize(value: unknown): unknown {
   return value;
 }
 
-/** The product fields the dashboard's full edit form submits (api/product.ts `edit-product`). `variantSku` is deliberately absent — the editor preserves it rather than writing it, so a CSV import that only touched per-combo codes must not disturb an open edit row. */
+/** The product fields the dashboard's full edit form submits (api/product.ts `edit-product`).
+ *  `variantSku` was deliberately absent while the editor merely PRESERVED it; it grew a column in
+ *  the combo table on 2026-08-19, so it is now a field the seller edits and needs the same per-field
+ *  merge as any other — without it, a CSV import or an external sync writing a code would be
+ *  reverted by whatever an open form happened to be holding. */
 /** APPEND-ONLY, and positional — a rev is these fields' hashes joined in this order. Inserting
  *  mid-list would make every open form's baseline describe the wrong fields; appending only makes
  *  it the wrong LENGTH, which `mergeByFieldRev` already treats as "client doesn't speak revisions"
@@ -68,6 +72,9 @@ export const PRODUCT_REV_FIELDS = [
   'name', 'description', 'price', 'stock', 'images', 'categoryId', 'tags',
   'sku', 'specs', 'discount', 'sellerNote', 'variants', 'variantStock', 'variantImages',
   'brand', 'weightGrams',
+  // Appended, per the rule above — a baseline minted before this deploy is simply the wrong LENGTH,
+  // which mergeByFieldRev already falls back from safely.
+  'variantSku',
 ] as const;
 
 /** The store fields the Settings form submits (api/store.ts `save-settings`). Everything else on the store — sale, bg colours, feed config, export token, custom domain, slug — saves live from its own section and is intentionally outside this revision. */

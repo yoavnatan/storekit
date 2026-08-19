@@ -39,6 +39,7 @@ function renderEditor(): HTMLFormElement {
       [comboKey({ צבע: 'כחול', מידה: 'S' })]: 4,
       [comboKey({ צבע: 'כחול', מידה: 'L' })]: 0,
     },
+    variantSku: {},
     variantImages: {},
   }, 10);
   return form;

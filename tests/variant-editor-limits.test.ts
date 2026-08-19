@@ -32,7 +32,7 @@ function renderEditor(variants: Array<{ name: string; options: string[] }>): HTM
       </div>
     </form>`;
   const form = document.querySelector('form')!;
-  applyVariantsPayload(form, { variants, variantStock: {}, variantImages: {} }, 10);
+  applyVariantsPayload(form, { variants, variantStock: {}, variantSku: {}, variantImages: {} }, 10);
   // applyVariantsPayload replaces the editor node, and the note is rebuilt with it.
   const editor = form.querySelector<HTMLElement>('[data-variants-editor]')!;
   // Nudge the editor through its own refresh, the way any edit to a dimension does.

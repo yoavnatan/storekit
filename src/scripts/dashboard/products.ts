@@ -11,6 +11,7 @@ import { takePanelIntent } from './panel-intent.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { canonicalDimName, comboCount, LOW_STOCK_THRESHOLD, MAX_VARIANT_COMBOS, comboStockRows, remapComboKeys, type VariantDimension } from '../../lib/variant-combo.js';
 import { CSV_MAX_DIMENSIONS } from '../../lib/csv-bulk.js';
+import { COMBO_SKU_MAXLENGTH } from '../../lib/variant-sku-field.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import { initImageSkeletons, SKELETON_ATTR } from '../../lib/img-skeleton.js';
@@ -43,6 +44,9 @@ export interface ProductData {
   discount?: ProductDiscount;
   variants?: VariantDimension[];
   variantStock?: Record<string, number>;
+  /** Per-combination codes — the seller's own system's names for blue-L, which is what an external
+   *  inventory feed matches on. Editable in the combo table since 2026-08-19. */
+  variantSku?: Record<string, string>;
   variantImages?: Record<string, string>;
   hidden?: boolean;
   /** One of the store card's picks — see `setProductFeatured`. Carried here because this renderer
@@ -772,7 +776,11 @@ function comboHeaderHtml(dims: VariantDimension[], i18n: Record<string, string>)
       ${comboFilterHtml(i, d.name, i18n)}
     </div>
   </th>`).join('');
-  return `<tr data-variant-combo-header>${dimHeaders}<th style="padding:0.4rem 0.6rem;text-align:end;border-bottom:1px solid var(--color-border);white-space:nowrap;${STOCK_COL_STICKY};z-index:2">
+  // Between the dimensions and the stock column, and deliberately neither sortable nor filterable:
+  // it is an identifier, not something a seller scans a catalogue by. Stock keeps the sticky end
+  // column, because that is the number they came here to read.
+  const skuHeader = `<th style="padding:0.4rem 0.6rem;text-align:start;border-bottom:1px solid var(--color-border);white-space:nowrap;font-size:0.82rem;font-weight:600;color:var(--color-text)">${esc(i18n.variantComboSkuCol ?? 'SKU')}</th>`;
+  return `<tr data-variant-combo-header>${dimHeaders}${skuHeader}<th style="padding:0.4rem 0.6rem;text-align:end;border-bottom:1px solid var(--color-border);white-space:nowrap;${STOCK_COL_STICKY};z-index:2">
     <button type="button" class="combo-sort-btn" data-combo-sort-col="stock" aria-label="${esc(`${sortBy} ${i18n.variantStockColLabel ?? 'Stock'}`)}">${esc(i18n.variantStockColLabel ?? 'Stock')}${SORT_ICON_SVG}</button>
   </th></tr>`;
 }
@@ -780,12 +788,12 @@ function comboHeaderHtml(dims: VariantDimension[], i18n: Record<string, string>)
 function comboTotalRowHtml(dims: VariantDimension[], i18n: Record<string, string>): string {
   const label = `${i18n.variantComboTotal ?? 'Total'} (${i18n.variantFilterAll ?? 'All'})`;
   return `<tr data-variant-combo-total-row>
-    <td colspan="${dims.length}" data-variant-combo-total-label style="padding:0.4rem 0.6rem;font-size:0.82rem;font-weight:600;color:var(--color-text);white-space:nowrap;border-top:1px solid var(--color-border);position:sticky;bottom:0;background:var(--color-surface)">${esc(label)}</td>
+    <td colspan="${dims.length + 1}" data-variant-combo-total-label style="padding:0.4rem 0.6rem;font-size:0.82rem;font-weight:600;color:var(--color-text);white-space:nowrap;border-top:1px solid var(--color-border);position:sticky;bottom:0;background:var(--color-surface)">${esc(label)}</td>
     <td data-variant-combo-total-value style="padding:0.4rem 0.6rem;text-align:end;font-weight:600;color:var(--color-text);border-top:1px solid var(--color-border);position:sticky;inset-inline-end:0;bottom:0;background:var(--color-surface);z-index:1">0</td>
   </tr>`;
 }
 
-function comboRowHtml(dims: VariantDimension[], combo: Record<string, string>, key: string, value: number | undefined, sharedStock: number, i18n: Record<string, string>): string {
+function comboRowHtml(dims: VariantDimension[], combo: Record<string, string>, key: string, value: number | undefined, sharedStock: number, i18n: Record<string, string>, sku = ''): string {
   const cells = dims.map(d => {
     const raw = combo[d.name] ?? '';
     if (!isColorVariant(d.name)) {
@@ -803,14 +811,20 @@ function comboRowHtml(dims: VariantDimension[], combo: Record<string, string>, k
   const sharedNote = value === undefined
     ? `<span data-combo-shared style="font-size:0.72rem;color:var(--color-muted);white-space:nowrap">${esc((i18n.comboFromPool ?? 'from pool').replace('{n}', String(sharedStock)))}</span>`
     : '';
-  return `<tr class="variant-combo-row" data-variant-combo-row data-combo-key="${esc(key)}">${cells}<td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;${STOCK_COL_STICKY};z-index:1"><span style="display:inline-flex;align-items:center;gap:0.4rem;justify-content:flex-end">${sharedNote}<input type="number" min="0" step="1" class="input" data-combo-stock value="${esc(shownValue)}" placeholder="${esc(String(sharedStock))}" style="width:80px;text-align:center;padding:0.3rem 0.4rem"></span></td></tr>`;
+  // The code the seller's OWN system knows this combination by — a POS counts blue-L, not "the
+  // shirt", so this is the field an external inventory feed matches its rows on
+  // (lib/variant-sku-match.ts). Until 2026-08-19 it could only be set through the CSV round-trip,
+  // which put the whole sync out of reach of anyone who does not live in a spreadsheet. Blank is
+  // the normal answer and stays blank: an empty code is no code, never an empty string stored.
+  const skuCell = `<td style="padding:0.4rem 0.6rem;vertical-align:middle"><input type="text" class="input" data-combo-sku value="${esc(sku)}" placeholder="${esc(i18n.variantComboSkuPlaceholder ?? '')}" maxlength="${COMBO_SKU_MAXLENGTH}" aria-label="${esc(i18n.variantComboSkuCol ?? 'SKU')}" style="width:110px;padding:0.3rem 0.4rem;font-size:0.82rem"></td>`;
+  return `<tr class="variant-combo-row" data-variant-combo-row data-combo-key="${esc(key)}">${cells}${skuCell}<td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;${STOCK_COL_STICKY};z-index:1"><span style="display:inline-flex;align-items:center;gap:0.4rem;justify-content:flex-end">${sharedNote}<input type="number" min="0" step="1" class="input" data-combo-stock value="${esc(shownValue)}" placeholder="${esc(String(sharedStock))}" style="width:80px;text-align:center;padding:0.3rem 0.4rem"></span></td></tr>`;
 }
 
-function comboRowsHtml(dims: VariantDimension[], stockMap: Record<string, number>, sharedStock: number, i18n: Record<string, string>): string {
+function comboRowsHtml(dims: VariantDimension[], stockMap: Record<string, number>, sharedStock: number, i18n: Record<string, string>, skuMap: Record<string, string> = {}): string {
   // No invented defaults. A combo the seller has not counted arrives blank and stays on the pool
   // — see variant-combo.ts#comboStockRows for why the even split was removed.
   return comboStockRows(dims, stockMap, sharedStock)
-    .map((row) => comboRowHtml(dims, row.selection, row.key, row.override, sharedStock, i18n))
+    .map((row) => comboRowHtml(dims, row.selection, row.key, row.override, sharedStock, i18n, skuMap[row.key] ?? ''))
     .join('');
 }
 
@@ -846,7 +860,7 @@ function sortComboTable(editor: HTMLElement, col: string): void {
   });
 }
 
-function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<string, number>, currentStock: number, i18n: Record<string, string>, variantImages: Record<string, string> = {}): string {
+function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<string, number>, currentStock: number, i18n: Record<string, string>, variantImages: Record<string, string> = {}, variantSku: Record<string, string> = {}): string {
   const hasAnyStock = Object.keys(variantStock).length > 0;
   const dimsHtml = variants.map(v => dimHtml(v, i18n, variantImages)).join('');
   // Never expand past the bound, on any path into this table — the same rule refreshVariantCombos
@@ -854,7 +868,7 @@ function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<s
   // so this only ever fires on a payload that came from somewhere it should not have.
   const renderable = variants.length > 0 && comboCount(variants) <= MAX_VARIANT_COMBOS;
   const headerHtml = renderable ? comboHeaderHtml(variants, i18n) : '';
-  const rowsHtml = renderable ? comboRowsHtml(variants, variantStock, currentStock, i18n) : '';
+  const rowsHtml = renderable ? comboRowsHtml(variants, variantStock, currentStock, i18n, variantSku) : '';
   const totalHtml = renderable ? comboTotalRowHtml(variants, i18n) : '';
   return `<div class="field variants-editor" data-variants-editor data-combo-dims="${esc(JSON.stringify(variants))}">
     <span class="field-label">${esc(i18n.variantsLabel ?? 'Variants & inventory')}</span>
@@ -954,6 +968,23 @@ function readComboStock(editor: HTMLElement): Record<string, number> {
     if (!key || !input) return;
     if (input.value.trim() === '') return;
     out[key] = Math.max(0, Math.floor(Number(input.value)) || 0);
+  });
+  return out;
+}
+
+/**
+ * The per-combo codes the form will save — typed ones only.
+ *
+ * Trimmed, and a blank input is left out entirely rather than stored as an empty string: "no code"
+ * is a real answer here (most sellers never set one), and an empty string in the map would be a
+ * code that exists and matches nothing.
+ */
+function readComboSku(editor: HTMLElement): Record<string, string> {
+  const out: Record<string, string> = {};
+  editor.querySelectorAll<HTMLElement>('[data-variant-combo-row]').forEach((row) => {
+    const key = row.dataset.comboKey ?? '';
+    const value = row.querySelector<HTMLInputElement>('[data-combo-sku]')?.value.trim() ?? '';
+    if (key && value) out[key] = value;
   });
   return out;
 }
@@ -1211,7 +1242,7 @@ function updateVariantLimitNote(editor: HTMLElement, dims: VariantDimension[], i
 
   // Over the combo limit the product cannot be saved at all, so this one is a refusal, not a note.
   if (combos > MAX_VARIANT_COMBOS) {
-    note.textContent = (i18n.variantLimitCombos ?? '{n} combinations, and the maximum is {max}. Remove values or variant types to save.')
+    note.textContent = (i18n.variantLimitCombos ?? '{n} combinations — the maximum is {max}. Remove some values.')
       .replace('{n}', Number.isFinite(combos) ? String(combos) : `>${MAX_VARIANT_COMBOS}`)
       .replace('{max}', String(MAX_VARIANT_COMBOS));
     note.style.color = 'var(--color-danger)';
@@ -1223,7 +1254,7 @@ function updateVariantLimitNote(editor: HTMLElement, dims: VariantDimension[], i
   // the file: it exports as one flat row, so neither a CSV nor the external inventory sync can
   // ever move its stock again. That is a decision the seller is making right now, unknowingly.
   if (dims.length > CSV_MAX_DIMENSIONS) {
-    note.textContent = (i18n.variantLimitDims ?? 'More than {max} variant types — this product\'s stock will then be editable here only. A file or an external inventory sync cannot update it.')
+    note.textContent = (i18n.variantLimitDims ?? 'More than {max} variant types — this product\'s stock is edited here, in the dashboard, only. Not in a file and not by an external sync.')
       .replace('{max}', String(CSV_MAX_DIMENSIONS));
     note.style.color = 'var(--color-muted)';
     note.hidden = false;
@@ -1242,9 +1273,11 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
   // silently emptied the whole stock table on the first keystroke; the counts are followed through
   // the rename instead (variant-combo.ts#remapComboKeys, which refuses anything but a relabel).
   const renamed = remapComboKeys(lastRenderedDims(editor), dims);
-  const existingStock = renamed.size
-    ? Object.fromEntries(Object.entries(readComboStock(editor)).map(([k, v]) => [renamed.get(k) ?? k, v]))
-    : readComboStock(editor);
+  const followRename = <T,>(map: Record<string, T>): Record<string, T> => (renamed.size
+    ? Object.fromEntries(Object.entries(map).map(([k, v]) => [renamed.get(k) ?? k, v]))
+    : map);
+  const existingStock = followRename(readComboStock(editor));
+  const existingSku = followRename(readComboSku(editor));
   const combosWrap = editor.querySelector<HTMLElement>('[data-variant-combos]');
   const thead = editor.querySelector<HTMLElement>('[data-variant-combo-thead]');
   const rowsBody = editor.querySelector<HTMLElement>('[data-variant-combo-rows]');
@@ -1289,7 +1322,7 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
   delete combosWrap.dataset.sortCol;
   delete combosWrap.dataset.sortDir;
   thead.innerHTML = comboHeaderHtml(dims, i18n);
-  rowsBody.innerHTML = comboRowsHtml(dims, existingStock, fallbackTotal, i18n);
+  rowsBody.innerHTML = comboRowsHtml(dims, existingStock, fallbackTotal, i18n, existingSku);
   tfoot.innerHTML = comboTotalRowHtml(dims, i18n);
   rememberRenderedDims(editor, dims);
   updateVariantLimitNote(editor, dims, i18n);
@@ -1355,17 +1388,30 @@ function commitVariantValue(dimEl: HTMLElement, editor: HTMLElement, i18n: Recor
   refreshVariantCombos(editor, i18n);
 }
 
-export function collectVariantsPayload(form: HTMLFormElement): { variants: VariantDimension[]; variantStock: Record<string, number>; variantImages: Record<string, string> } {
+/** What the variants editor holds, in the shape `variants_json` carries to the server. */
+export interface VariantsFormPayload {
+  variants: VariantDimension[];
+  variantStock: Record<string, number>;
+  variantSku: Record<string, string>;
+  variantImages: Record<string, string>;
+}
+
+export function collectVariantsPayload(form: HTMLFormElement): VariantsFormPayload {
   const editor = form.querySelector<HTMLElement>('[data-variants-editor]');
-  if (!editor) return { variants: [], variantStock: {}, variantImages: {} };
-  return { variants: readVariantDims(editor), variantStock: readComboStock(editor), variantImages: readVariantImages(editor) };
+  if (!editor) return { variants: [], variantStock: {}, variantSku: {}, variantImages: {} };
+  return {
+    variants: readVariantDims(editor),
+    variantStock: readComboStock(editor),
+    variantSku: readComboSku(editor),
+    variantImages: readVariantImages(editor),
+  };
 }
 
 export function resetVariantsEditor(form: HTMLFormElement): void {
   const editor = form.querySelector<HTMLElement>('[data-variants-editor]');
   if (!editor) return;
   const wrapper = document.createElement('div');
-  wrapper.innerHTML = variantsEditorHtml([], {}, 0, getDashI18n());
+  wrapper.innerHTML = variantsEditorHtml([], {}, 0, getDashI18n(), {}, {});
   editor.replaceWith(wrapper.firstElementChild as HTMLElement);
 }
 
@@ -1382,13 +1428,13 @@ export function resetVariantsEditor(form: HTMLFormElement): void {
  */
 export function applyVariantsPayload(
   form: HTMLFormElement,
-  payload: { variants: VariantDimension[]; variantStock: Record<string, number>; variantImages: Record<string, string> },
+  payload: VariantsFormPayload,
   currentStock: number,
 ): void {
   const editor = form.querySelector<HTMLElement>('[data-variants-editor]');
   if (!editor) return;
   const wrapper = document.createElement('div');
-  wrapper.innerHTML = variantsEditorHtml(payload.variants, payload.variantStock, currentStock, getDashI18n(), payload.variantImages);
+  wrapper.innerHTML = variantsEditorHtml(payload.variants, payload.variantStock, currentStock, getDashI18n(), payload.variantImages, payload.variantSku);
   const next = wrapper.firstElementChild as HTMLElement;
   editor.replaceWith(next);
   // The note travels with the payload, not only with the next keystroke — a form re-rendered from
@@ -1752,7 +1798,7 @@ export function buildEditRow(p: ProductData): HTMLTableRowElement {
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
         <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}${brandFieldHtml(p.brand ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
-        ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {})}
+        ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {}, p.variantSku ?? {})}
         ${specsEditorHtml(p.specs ?? [], i)}
         ${sellerNoteFieldHtml(p.sellerNote ?? '', i)}
         <div class="field">
