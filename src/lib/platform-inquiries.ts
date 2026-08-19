@@ -30,6 +30,8 @@ import { createInquiryThread, type InquiryKind } from './admin-messages.js';
  *  column is not a place to paste a file. The form counts down against the same number. */
 export const MAX_REPORT_LEN = 2000;
 const MAX_EMAIL_LEN = 200;
+/** Matches `MAX_MESSAGE_SUBJECT_LEN`, which is the column's own limit. */
+const MAX_SUBJECT_LEN = 120;
 const MAX_PATH_LEN = 500;
 
 /**
@@ -43,10 +45,19 @@ const MAX_PATH_LEN = 500;
 export const REPORT_KINDS = ['fault', 'content', 'store', 'question', 'other'] as const;
 export type ReportKind = InquiryKind;
 
-/** The subject line each kind gets. Nothing asks the sender for one — the three facts that make an
- *  inquiry actionable are the three nobody types, and a subject box is a fourth thing to fill in
- *  before saying the thing. A thread with no subject renders as "הודעת מערכת", which would tell the
- *  admin nothing about which of these it is. */
+/**
+ * The subject each kind falls back to.
+ *
+ * A visitor reporting a fault is not asked for one: the three facts that make THAT actionable are
+ * the three nobody types (which page, which store, who), and a subject box is a fourth field
+ * standing between a person and the thing they came to say.
+ *
+ * **A seller writing to us IS asked** (owner, 2026-08-19: *"אני גם רוצה שיהיה שם נושא, שיהיה ברור
+ * על מה הוא פונה… לא סתם בקלות ככה"*), and the asymmetry is the point rather than an inconsistency:
+ * a seller is a business partner opening a conversation that will be answered, so naming it costs
+ * them one line and saves the inbox from a column of identical headings. A visitor is a stranger
+ * whose report is worth more than its filing.
+ */
 const SUBJECT: Record<ReportKind, string> = {
   fault: 'דיווח על תקלה',
   content: 'דיווח על תוכן',
@@ -58,6 +69,10 @@ const SUBJECT: Record<ReportKind, string> = {
 export interface NewInquiryInput {
   kind: unknown;
   message: unknown;
+  /** What the sender called it, when the surface asked. Falls back to the kind's own heading — an
+   *  empty one must never reach the column, or the thread renders as "הודעת מערכת" and the inbox
+   *  says nothing about which inquiry it is. */
+  subject?: unknown;
   /** Optional, and an unusable one is DROPPED rather than made a reason to refuse: an inquiry is
    *  worth more than the way back to its author. Dropping it is also what keeps the panel honest —
    *  it says "ללא כתובת לחזרה" instead of offering a mailto that bounces. */
@@ -104,7 +119,7 @@ export async function createPlatformInquiry(input: NewInquiryInput): Promise<boo
   const kind = normalizeKind(input.kind);
 
   await createInquiryThread({
-    subject: SUBJECT[kind],
+    subject: clamp(input.subject, MAX_SUBJECT_LEN) ?? SUBJECT[kind],
     content: message,
     party: {
       role,

@@ -227,6 +227,9 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
   // the address they left, and a guest who left none by their role — never a blank cell, which is
   // what `sellerId` gave for a buyer or guest (it is '' for them).
   const ROLE_WORD: Record<InquiryParty, string> = { seller: 'מוכר', buyer: 'קונה', guest: 'אורח' };
+  // Mirrors the SSR row: a seller is reachable through their dashboard, anyone else only through
+  // the address they left. Both renderers or neither — see this function's header.
+  const canReply = partyRole === 'seller' || !!partyEmail;
   const label = seller
     ? `${seller.name} (${seller.email})`
     : partyEmail || sellerId || `${ROLE_WORD[partyRole]} · ללא כתובת לחזרה`;
@@ -251,7 +254,8 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
       </div>
       <div class="msg-thread" id="admin-msg-replies-${escapeHtml(threadId)}">${bubbleHtml(message)}</div>
       <div class="seller-msg-reply-form" data-reply-for-thread="${escapeHtml(threadId)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-        ${partyRole === 'seller' ? `
+        ${canReply ? `
+        ${partyRole !== 'seller' ? `<p class="msg-thread-head__meta" style="margin:0 0 .6rem">${partyRole === 'guest' ? 'אורח ללא חשבון' : 'הפונה אינו מחובר'} — התשובה תישלח אליו במייל (<span dir="ltr">${escapeHtml(partyEmail)}</span>), והמשך ההתכתבות יהיה שם.</p>` : ''}
         <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
         <div class="seller-msg-reply-actions">
           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
@@ -263,9 +267,7 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
         <div class="seller-msg-reply-actions">
           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
           <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" type="button">סמן כטופל</button>
-          ${partyEmail
-            ? `<a class="btn btn--sm" href="mailto:${escapeHtml(partyEmail)}">השב במייל</a>`
-            : '<span class="muted" style="font-size:0.8rem">ללא כתובת לחזרה</span>'}
+          <span class="muted" style="font-size:0.8rem">הפונה לא השאיר כתובת לחזרה — אין דרך לענות</span>
         </div>`}
       </div>
     </td>

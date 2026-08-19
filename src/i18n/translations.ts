@@ -1833,11 +1833,16 @@ export const translations = {
       filterColFrom: 'שולח',
       filterNoProduct: 'ללא מוצר',
       msgSearchPlaceholder: 'חיפוש הודעות…',
-      // The seller's way to START a conversation with the platform — no such thing existed until
-      // 2026-08-19, so a seller with a question left the product for a mailto.
-      platformInquiry: 'פנייה לפלטפורמה',
-      platformInquiryPlaceholder: 'מה תרצו לשאול אותנו?',
+      // The seller's way to START a conversation with us — no such thing existed until 2026-08-19,
+      // so a seller with a question left the product for a mailto. "לפלטפורמה" was the first label
+      // and the owner rejected it: it names the software, and what a seller is writing to is a
+      // group of people who will answer.
+      platformInquiry: 'פנייה לצוות',
+      platformInquirySubject: 'נושא',
+      platformInquirySubjectPlaceholder: 'על מה הפנייה? למשל: לא הצלחתי להעלות מוצר',
+      platformInquiryPlaceholder: 'פרטו כאן. ככל שתכתבו יותר, נוכל לענות מדויק יותר.',
       platformInquirySend: 'שלח פנייה',
+      platformInquiryNeedsSubject: 'צריך נושא — כדי שנדע במה מדובר לפני שנפתח',
       ordersSearchPlaceholder: 'חיפוש הזמנות…',
       orderSortOptDateDesc: 'תאריך: חדש — ישן',
       orderSortOptDateAsc: 'תאריך: ישן — חדש',
@@ -3689,9 +3694,12 @@ export const translations = {
       filterColFrom: 'Sender',
       filterNoProduct: 'No product',
       msgSearchPlaceholder: 'Search messages…',
-      platformInquiry: 'Ask the platform',
-      platformInquiryPlaceholder: 'What would you like to ask us?',
+      platformInquiry: 'Contact the team',
+      platformInquirySubject: 'Subject',
+      platformInquirySubjectPlaceholder: "What is it about? e.g. I couldn't upload a product",
+      platformInquiryPlaceholder: 'Tell us more. The more you write, the more precisely we can answer.',
       platformInquirySend: 'Send',
+      platformInquiryNeedsSubject: 'A subject, please — so we know what this is before we open it',
       ordersSearchPlaceholder: 'Search orders…',
       orderSortOptDateDesc: 'Date: Newest → Oldest',
       orderSortOptDateAsc: 'Date: Oldest → Newest',

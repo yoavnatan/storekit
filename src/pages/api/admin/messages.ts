@@ -17,6 +17,8 @@ import { createNotification, deleteNotificationsByRelatedIds } from '../../../li
 import { getSellerById } from '../../../lib/seller-auth.js';
 import { withTransaction, type Queryable } from '../../../lib/db.js';
 import { ADMIN_PAGE_SIZE } from '../../../lib/pagination.js';
+import { sendMessageReplyEmail } from '../../../lib/email/message-reply-email.js';
+import { store as platform } from '../../../config/store.config.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -105,13 +107,40 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!thread) return new Response(JSON.stringify({ error: 'Thread not found' }), { status: 404, headers: json });
     // One transaction, same reason as the buyer↔seller side: a system message with no notification
     // never reaches the seller's header, and a notification with no message deep-links to nothing.
+    // **Who is on the other end decides how the answer travels** (owner, 2026-08-19). A SELLER has a
+    // dashboard, so a notification lands somewhere they will see it. A buyer or a guest does not —
+    // for them the platform mails it, exactly as it does when a seller answers a guest. The earlier
+    // cut offered a `mailto:` here instead, which the owner rejected and was right to: it leaves
+    // the product, sends from a private address, and leaves the thread with no record of the reply.
+    const byEmail = thread.partyRole !== 'seller';
+    const replyTo = thread.root.partyEmail ?? '';
+    // Nothing to send and nowhere to send it — refused rather than written, so a thread never shows
+    // an answer that left the building through no door.
+    if (byEmail && !replyTo) {
+      return new Response(JSON.stringify({ error: 'לפונה אין כתובת לחזרה' }), { status: 409, headers: json });
+    }
+
     const message = await withTransaction(async (tx) => {
       const written = await replyToAdminThread(threadId, 'admin', content, tx);
-      if (written) await notifySeller(thread.sellerId, thread.subject, content, threadId, tx);
+      // `thread.sellerId` is '' for a buyer or a guest, and a notification addressed to it is a row
+      // nobody can read — the same dead-row shape `senderHasAccount` closed on the buyer↔seller side.
+      if (written && !byEmail) await notifySeller(thread.sellerId, thread.subject, content, threadId, tx);
       return written;
     });
     if (!message) return new Response(JSON.stringify({ error: 'Thread not found' }), { status: 404, headers: json });
-    return new Response(JSON.stringify({ ok: true, message, threadId }), { headers: json });
+
+    // Outside the transaction: the reply is committed, and a mail provider having a bad minute must
+    // never turn a written answer into an error the admin retries — which would post it twice.
+    if (byEmail) {
+      await sendMessageReplyEmail({
+        to: replyTo,
+        storeName: platform.name,
+        replyTo: platform.business.email,
+        subject: `Re: ${thread.subject}`,
+        body: content,
+      });
+    }
+    return new Response(JSON.stringify({ ok: true, message, threadId, sentByEmail: byEmail }), { headers: json });
   }
 
   // …or open a new one, which is the only place a subject is set.

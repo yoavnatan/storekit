@@ -33,6 +33,10 @@ function json(data: unknown, status = 200) {
 
 interface ReportBody {
   kind?: unknown;
+  /** What the sender called it. Only the seller's own form asks for one; every other surface
+   *  leaves it out and takes the kind's heading. Clamped and defaulted in `platform-inquiries.ts`,
+   *  never trusted for length here. */
+  subject?: unknown;
   message?: unknown;
   email?: unknown;
   pageUrl?: unknown;
@@ -63,6 +67,7 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
 
   const stored = await createPlatformInquiry({
     kind: read.value.kind,
+    subject: read.value.subject,
     message: read.value.message,
     senderEmail: email,
     pageUrl: read.value.pageUrl,

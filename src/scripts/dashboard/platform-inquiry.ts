@@ -16,10 +16,17 @@ import { showToast, showErrorToast } from '../../lib/toast.js';
 export function initPlatformInquiry(): void {
   const toggle = document.getElementById('seller-inquiry-toggle') as HTMLButtonElement | null;
   const form = document.getElementById('seller-inquiry-form');
+  const subject = document.getElementById('seller-inquiry-subject') as HTMLInputElement | null;
   const text = document.getElementById('seller-inquiry-text') as HTMLTextAreaElement | null;
   const send = document.getElementById('seller-inquiry-send') as HTMLButtonElement | null;
-  if (!toggle || !form || !text || !send || toggle.dataset.wired) return;
+  if (!toggle || !form || !subject || !text || !send || toggle.dataset.wired) return;
   toggle.dataset.wired = '1';
+
+  // Server-rendered, like every other string a script writes here — the fallback covers a missing
+  // attribute only and is never the source of the sentence.
+  let dict: Record<string, string> = {};
+  try { dict = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
+  const needsSubject = dict.platformInquiryNeedsSubject ?? 'צריך נושא — כדי שנדע במה מדובר לפני שנפתח';
 
   toggle.addEventListener('click', () => {
     const open = form.hasAttribute('hidden');
@@ -28,18 +35,23 @@ export function initPlatformInquiry(): void {
     // Focused only on OPEN, and only because the seller pressed a button that means "I want to
     // write" — the reply boxes further down this page deliberately do not autofocus, since an
     // always-open textarea under every thread reads as a chat window.
-    if (open) text.focus();
+    if (open) subject.focus();
   });
 
   send.addEventListener('click', async () => {
+    const title = subject.value.trim();
     const message = text.value.trim();
+    // The subject is required HERE and defaulted on the server, which is not a duplicated rule: the
+    // server's fallback keeps a fault report from a stranger out of a "הודעת מערכת" row, and this
+    // asks the seller — who is opening a conversation that will be answered — to name it.
+    if (!title) { showErrorToast(needsSubject); subject.focus(); return; }
     if (!message) { text.focus(); return; }
     send.disabled = true;
     try {
       const res = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'question', message, pageUrl: location.pathname }),
+        body: JSON.stringify({ kind: 'question', subject: title, message, pageUrl: location.pathname }),
       });
       if (res.status === 429) {
         const body = await res.json() as { retryAfterMinutes?: number };
@@ -47,6 +59,7 @@ export function initPlatformInquiry(): void {
         return;
       }
       if (!res.ok) throw new Error('failed');
+      subject.value = '';
       text.value = '';
       form.setAttribute('hidden', '');
       toggle.setAttribute('aria-expanded', 'false');

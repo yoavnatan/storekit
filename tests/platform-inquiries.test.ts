@@ -123,6 +123,25 @@ describe('what a sender may and may not put in the record', () => {
     expect((await inbox())[0]!.root.content.length).toBe(2000);
   });
 
+  it('takes a subject the sender wrote, and clamps it', async () => {
+    // Only the seller's own form asks for one — a stranger reporting a broken checkout is not made
+    // to file it before saying it. When it IS supplied it becomes the thread's heading, which is
+    // the whole point: an inbox where every row reads "שאלה לפלטפורמה" stops being scannable.
+    await post({ kind: 'question', subject: 'לא הצלחתי להעלות מוצר', message: 'הכפתור לא מגיב' });
+    expect((await inbox())[0]!.subject).toBe('לא הצלחתי להעלות מוצר');
+
+    await query('DELETE FROM admin_messages');
+    await post({ kind: 'question', subject: 'א'.repeat(400), message: 'ארוך' });
+    expect((await inbox())[0]!.subject.length).toBe(120);
+  });
+
+  it('falls back to the kind heading when the surface asked for no subject', async () => {
+    // The column must never take an empty string: a thread with no subject renders as
+    // "הודעת מערכת" and tells the admin nothing about which inquiry it is.
+    await post({ kind: 'fault', subject: '   ', message: 'משהו נשבר' });
+    expect((await inbox())[0]!.subject).toBe('דיווח על תקלה');
+  });
+
   it('gives each kind a subject, so the inbox says which one it is', async () => {
     // Nothing asks the sender for a subject — a fourth field before saying the thing. Without one
     // every inquiry would render as "הודעת מערכת" and the list would say nothing at all.

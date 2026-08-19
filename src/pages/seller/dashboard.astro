@@ -2765,7 +2765,15 @@ const orderStatusColors: Record<string, string> = {
             </button>
           </div>
           <div id="seller-inquiry-form" class="w-full" hidden>
-            <textarea id="seller-inquiry-text" class="seller-msg-reply-textarea" rows="3" maxlength="2000" placeholder={d.platformInquiryPlaceholder} style="resize:none"></textarea>
+            {/* A subject, required (owner, 2026-08-19: *"שיהיה ברור על מה הוא פונה... לא סתם
+                בקלות ככה"*). It costs the seller one line and it is what the admin's inbox lists —
+                without it every row from every seller reads "שאלה לפלטפורמה" and the list stops
+                being scannable at the third one. */}
+            <label class="field" style="margin-bottom:.6rem">
+              <span>{d.platformInquirySubject}</span>
+              <input id="seller-inquiry-subject" type="text" class="input" maxlength="120" placeholder={d.platformInquirySubjectPlaceholder} />
+            </label>
+            <textarea id="seller-inquiry-text" class="seller-msg-reply-textarea" rows="4" maxlength="2000" placeholder={d.platformInquiryPlaceholder} style="resize:none"></textarea>
             <div class="flex justify-end mt-2">
               <button type="button" id="seller-inquiry-send" class="btn btn--accent btn--sm">{d.platformInquirySend}</button>
             </div>

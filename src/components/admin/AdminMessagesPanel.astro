@@ -160,6 +160,9 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
             ? `${seller.name} (${seller.email})`
             : root.partyEmail || (partyRole === 'guest' ? 'אורח · ללא כתובת לחזרה' : sellerId || '—');
           const review = root.reviewId ? reviewsById.get(root.reviewId) : undefined;
+          // A seller is reachable through their dashboard; anyone else only through the address
+          // they left. No address and no account means the answer has nowhere to go.
+          const canReply = partyRole === 'seller' || !!root.partyEmail;
           return (
             <>
               <tr class={`msg-table__row${unreadForAdmin > 0 ? ' msg-table__row--unread' : ''}`} data-thread-id={id} data-seller-id={sellerId} data-thread-status={status} tabindex="0" role="button" aria-expanded="false">
@@ -245,8 +248,21 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                         them was a conversation whose other half does not exist, and offering the
                         box was the product promising something it cannot do. What is left is what
                         is true: read it, act on it, and write back by mail if they left an address. */}
-                    {partyRole === 'seller' ? (
+                    {/* **You answer HERE, whoever it is** (owner, 2026-08-19 — the `mailto:` that
+                        used to sit on this branch was rejected: it leaves the product, sends from a
+                        private address and leaves the thread with no record). What differs is only
+                        how the answer travels: a seller has a dashboard and gets a notification; a
+                        buyer or a guest has no screen, so the platform mails it. The line above the
+                        box says which, because it changes what the admin is writing — a reply that
+                        will be read in a mailbox cannot say "see the panel below". */}
+                    {canReply ? (
                       <>
+                        {partyRole !== 'seller' && (
+                          <p class="msg-thread-head__meta" style="margin:0 0 .6rem">
+                            {partyRole === 'guest' ? 'אורח ללא חשבון' : 'הפונה אינו מחובר'} — התשובה תישלח אליו במייל
+                            (<span dir="ltr">{root.partyEmail}</span>), והמשך ההתכתבות יהיה שם.
+                          </p>
+                        )}
                         <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
                         <div class="seller-msg-reply-actions">
                           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
@@ -260,18 +276,17 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                         </div>
                       </>
                     ) : (
+                      /* The one case with genuinely nowhere to send an answer: a guest who left no
+                         address. `api/report.ts` DROPS an unusable one rather than storing it, so
+                         this is honest rather than defensive — and the box is withheld instead of
+                         accepting words that could never leave. */
                       <div class="seller-msg-reply-actions">
                         <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
                         <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id={id}
                                 data-handled={status === 'handled' ? '1' : ''}
                                 aria-pressed={status === 'handled' ? 'true' : 'false'}
                                 type="button">{status === 'handled' ? 'טופל ✓' : 'סמן כטופל'}</button>
-                        {/* The address is offered only when there is one. `api/report.ts` drops an
-                            unusable one rather than storing it, precisely so this can never be a
-                            mailto that bounces. */}
-                        {root.partyEmail
-                          ? <a class="btn btn--sm" href={`mailto:${root.partyEmail}`}>השב במייל</a>
-                          : <span class="muted" style="font-size:0.8rem">ללא כתובת לחזרה</span>}
+                        <span class="muted" style="font-size:0.8rem">הפונה לא השאיר כתובת לחזרה — אין דרך לענות</span>
                       </div>
                     )}
                   </div>
