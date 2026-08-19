@@ -1,5 +1,6 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { wireReviewTakedown } from '../../lib/review-takedown.js';
+import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../dashboard/select-dropdown.js';
 
 /**
  * The Reviews tab's client half.
@@ -8,9 +9,14 @@ import { wireReviewTakedown } from '../../lib/review-takedown.js';
  * the panel. Nothing filters DOM rows, because only one page of rows is ever present — the
  * narrowing runs in SQL (`product-reviews.ts#getAdminReviewsPage`).
  *
- * **Plain `<select>`s and `<input type="date">`, not the money journal's floating menus** (owner,
- * 2026-08-19: *"שיהיה פשוט. לא עמוס בעין"*). Two short lists and a date range do not need a portal,
- * and the native controls come with keyboard and screen-reader behaviour already correct.
+ * **The `<select>`s are UPGRADED to the site's own dropdown** (`initSelectDropdown`), and the first
+ * cut shipped them raw — which the owner caught twice in one session and then made standing:
+ * *"אני לא מבין למה כל דרופדאון שאתה עושה הוא נייטיב, תרשום לך את זה"*. He had asked for simple,
+ * and I read that as simple to BUILD. It means simple to read, and a native popup rendered in the
+ * OS's styling is the one control on the page that belongs to somebody else.
+ *
+ * The native element stays in the DOM as the source of truth — a portal pick sets its value and
+ * fires a real `change`, so the listeners below are unchanged by the upgrade.
  */
 const PANEL_ID = 'dash-panel-reviews';
 
@@ -43,7 +49,9 @@ function wireToolbar(): void {
 
   const onSelect = (id: string, param: string, blank: string) => {
     const el = document.getElementById(id) as HTMLSelectElement | null;
-    el?.addEventListener('change', () => navigate({ [param]: el.value === blank ? undefined : el.value }));
+    if (!el) return;
+    initSelectDropdown(el, { triggerClassName: COMPACT_TRIGGER_CLASS });
+    el.addEventListener('change', () => navigate({ [param]: el.value === blank ? undefined : el.value }));
   };
   onSelect('admin-reviews-store', 'vstore', '');
   onSelect('admin-reviews-seller', 'vseller', '');

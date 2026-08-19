@@ -179,13 +179,12 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                 </td>
                 <td class="msg-table__td msg-table__td--date">{formatHeDateTime(lastMessage.createdAt)}</td>
                 <td class="msg-table__td msg-table__td--actions">
-                  {/* Separate from "read", and the distinction is the one the reports list had and
-                      the threads did not: read is attention, this is the work. A thread opened,
-                      read and not yet acted on is exactly the one that used to vanish from view. */}
-                  <button class="btn btn--sm admin-thread-handled" data-thread-id={id}
-                          data-handled={status === 'handled' ? '1' : ''}
-                          aria-pressed={status === 'handled' ? 'true' : 'false'}
-                          type="button">{status === 'handled' ? 'טופל ✓' : 'סמן כטופל'}</button>
+                  {/* **"סמן כטופל" is NOT here, and putting it here is what broke this table**
+                      (owner, 2026-08-19: *"זה גם שבר את הטבלה"*). This column is `table-layout:
+                      fixed` and sized for ONE icon; a text button in it forces the row wider than
+                      its column and the whole table slides sideways. It lives inside the open
+                      thread now, where there is room for a word and where the admin is anyway at
+                      the moment they decide they are done with it. */}
                   <button class="seller-msg-delete" data-delete-thread-id={id} data-thread-subject={subject} type="button" aria-label="מחק שיחה">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                   </button>
@@ -220,8 +219,9 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                       class, so both surfaces go through one handler and one endpoint. */}
                   {review && (
                     <div class="admin-review-row" data-review-row={review.id}
-                         style={`display:flex;gap:0.75rem;align-items:flex-start;margin:0 1rem 0.75rem;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-bg);opacity:${review.blocked ? 0.55 : 1}`}>
-                      <div class="min-w-0" style="flex:1 1 auto">
+                         style="display:flex;gap:0.75rem;align-items:flex-start;margin:0 1rem 0.75rem;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-bg)">
+                      {/* Dim the content, not the row — see AdminReviewsPanel.astro. */}
+                      <div class="min-w-0" data-review-body style={`flex:1 1 auto;opacity:${review.blocked ? 0.55 : 1}`}>
                         <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
                           <Fragment set:html={starRowHtml(review.rating, { px: 13 })} />
                           <a href={`/${review.storeSlug}/${review.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
@@ -238,13 +238,42 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                   )}
                   <div class="msg-thread" id={`admin-msg-replies-${id}`}></div>
                   <div class="seller-msg-reply-form" data-reply-for-thread={id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-                    <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
-                    <div class="seller-msg-reply-actions">
-                      <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-                      <button class="seller-msg-reply-cancel" type="button" hidden>ביטול</button>
-                      <button class="seller-msg-reply-open" type="button" aria-expanded="false">כתוב תגובה</button>
-                      <button class="seller-msg-reply-send" type="button" hidden>שלח</button>
-                    </div>
+                    {/* **A reply box only where a reply can ARRIVE** (owner, 2026-08-19: *"אורח
+                        לא אמור לשוחח איתי... איך אורח מקבל תשובה? איך הוא מחזיר תשובה לתשובה?"*).
+                        A seller has a dashboard, so the answer lands somewhere they will see it and
+                        they can carry on. A buyer or a guest has no such screen — a thread with
+                        them was a conversation whose other half does not exist, and offering the
+                        box was the product promising something it cannot do. What is left is what
+                        is true: read it, act on it, and write back by mail if they left an address. */}
+                    {partyRole === 'seller' ? (
+                      <>
+                        <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
+                        <div class="seller-msg-reply-actions">
+                          <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
+                          <button class="seller-msg-reply-cancel" type="button" hidden>ביטול</button>
+                          <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id={id}
+                                  data-handled={status === 'handled' ? '1' : ''}
+                                  aria-pressed={status === 'handled' ? 'true' : 'false'}
+                                  type="button">{status === 'handled' ? 'טופל ✓' : 'סמן כטופל'}</button>
+                          <button class="seller-msg-reply-open" type="button" aria-expanded="false">כתוב תגובה</button>
+                          <button class="seller-msg-reply-send" type="button" hidden>שלח</button>
+                        </div>
+                      </>
+                    ) : (
+                      <div class="seller-msg-reply-actions">
+                        <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
+                        <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id={id}
+                                data-handled={status === 'handled' ? '1' : ''}
+                                aria-pressed={status === 'handled' ? 'true' : 'false'}
+                                type="button">{status === 'handled' ? 'טופל ✓' : 'סמן כטופל'}</button>
+                        {/* The address is offered only when there is one. `api/report.ts` drops an
+                            unusable one rather than storing it, precisely so this can never be a
+                            mailto that bounces. */}
+                        {root.partyEmail
+                          ? <a class="btn btn--sm" href={`mailto:${root.partyEmail}`}>השב במייל</a>
+                          : <span class="muted" style="font-size:0.8rem">ללא כתובת לחזרה</span>}
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>

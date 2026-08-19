@@ -51,8 +51,10 @@ async function toggleReview(btn: HTMLButtonElement): Promise<void> {
     btn.dataset.blocked = blocked ? '1' : '';
     btn.textContent = blocked ? 'החזר לפרסום' : 'הסתר';
     btn.classList.toggle('btn--ghost', !blocked);
-    const row = btn.closest<HTMLElement>('[data-review-row]');
-    if (row) row.style.opacity = blocked ? '0.55' : '1';
+    // The BODY dims, not the row: fading the row fades this button with it, and the button that
+    // undoes the action must never look like the action is unavailable (owner, 2026-08-19).
+    const body = btn.closest<HTMLElement>('[data-review-row]')?.querySelector<HTMLElement>('[data-review-body]');
+    if (body) body.style.opacity = blocked ? '0.55' : '1';
   } catch {
     showErrorToast('הפעולה נכשלה, נסו שוב');
   } finally {

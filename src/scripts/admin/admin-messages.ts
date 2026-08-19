@@ -6,6 +6,7 @@ import { buildAdminUrl, swapPanel, wirePanelLinks, wirePopstateReload } from '..
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
 import { wireReviewTakedown } from '../../lib/review-takedown.js';
+import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../dashboard/select-dropdown.js';
 import { syncAdminTitleBadge } from './tab-badges.js';
 
 const PANEL_ID = 'dash-panel-messages';
@@ -420,8 +421,12 @@ function wireMessagesToolbar(): void {
     navigate();
   });
 
-  roleSelect()?.addEventListener('change', () => navigate());
-  statusSelect()?.addEventListener('change', () => navigate());
+  // Upgraded to the site's dropdown, never left native — see `reviews.ts` for the standing rule.
+  for (const el of [roleSelect(), statusSelect()]) {
+    if (!el) continue;
+    initSelectDropdown(el, { triggerClassName: COMPACT_TRIGGER_CLASS });
+    el.addEventListener('change', () => navigate());
+  }
 }
 
 /**

@@ -189,6 +189,8 @@ const REASONS = [
 </div>
 
 <script>
+  import { initSelectDropdown } from '../scripts/dashboard/select-dropdown.js';
+
   const form = document.getElementById('report-form') as HTMLFormElement | null;
   const done = document.getElementById('report-done');
   const status = document.getElementById('report-status');
@@ -212,6 +214,16 @@ const REASONS = [
     const ORDER_KIND = d.orderKind ?? 'order';
     const QUESTION_REASON = d.questionReason ?? 'question';
     const kindEl = document.getElementById('report-kind') as HTMLSelectElement;
+    // **The site's own dropdown, not the browser's** — standing instruction (owner, 2026-08-19),
+    // and it holds on a PUBLIC page more than anywhere: `/contact` is the first screen a stranger
+    // judges the platform by, and a native popup there is the one control wearing somebody else's
+    // styling. The native element stays as the source of truth, so everything below that reads
+    // `kindEl.value` or listens for `change` is untouched.
+    initSelectDropdown(kindEl);
+    // The order branch's reason picker, same rule. Both are on this form, and one upgraded while
+    // the other stayed native would be worse than either choice made consistently.
+    const reasonEl = document.getElementById('order-reason') as HTMLSelectElement | null;
+    if (reasonEl) initSelectDropdown(reasonEl);
     const orderFields = document.getElementById('order-fields');
     const messageField = document.getElementById('report-message-field');
     const emailField = document.getElementById('report-email-field');

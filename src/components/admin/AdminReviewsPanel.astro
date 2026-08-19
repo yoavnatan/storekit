@@ -108,8 +108,13 @@ const anyFilter = hasActiveReviewFilters(query);
     <div class="flex flex-col" style="gap:0.6rem">
       {reviews.map((r) => (
         <article class="admin-review-row" data-review-row={r.id}
-                 style={`display:flex;gap:0.75rem;align-items:flex-start;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);opacity:${r.blocked ? 0.55 : 1}`}>
-          <div class="min-w-0" style="flex:1 1 auto">
+                 style="display:flex;gap:0.75rem;align-items:flex-start;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface)">
+          {/* **The dim is on the CONTENT, never on the row** (owner, 2026-08-19: *"למה החזר
+              לפרסום נראה כאילו הוא דיסאייבל? אפור?"*). Fading the whole article faded the button
+              with it, so the one control that UNDOES the action looked like the one control that
+              was unavailable — the opposite of what a two-way switch has to say. What is hidden is
+              the review; the way back is not. */}
+          <div class="min-w-0" data-review-body style={`flex:1 1 auto;opacity:${r.blocked ? 0.55 : 1}`}>
             <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
               <Fragment set:html={starRowHtml(r.rating, { px: 13 })} />
               <a href={`/${r.storeSlug}/${r.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
