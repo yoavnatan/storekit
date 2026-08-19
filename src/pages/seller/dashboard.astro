@@ -85,6 +85,7 @@ import { formatAgorot, fromAgorot } from '../../lib/money.js';
 import { getSellerStoreAlerts, type StoreAlertLevel } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
+import { CSV_MAX_DIMENSIONS } from '../../lib/csv-bulk.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath, type StoreCategory } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
@@ -531,6 +532,14 @@ const [
   // rather than `readonly []` — a seller who has not opened a shop yet reaches this page too.
   : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0, new Map<string, StoreProductCounts>(), new Set<string>()];
 const adNeedsAttention = !!store && stalledAdStoreIds.has(store.id);
+// Which products an external sync can never reach: past three variant types there are no option
+// columns left to spell a combination out in, so a file — ours or the seller's own system's —
+// cannot address one, and their stock is dashboard-only (store-products-import.ts says the same
+// thing to a manual import, as a per-row error). Said in the sync panel and not only in the product
+// form, because the seller who has a feed is looking HERE, and on a scheduled pull there is no
+// preview to read: the rows for these products are refused every hour with nobody watching.
+// Free — `productsUnsorted` is already loaded for this tab, so this is a filter, not a query.
+const syncUnreachable = productsUnsorted.filter((p) => (p.variants?.length ?? 0) > CSV_MAX_DIMENSIONS);
 const products = [...productsUnsorted].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
@@ -1669,6 +1678,17 @@ const orderStatusColors: Record<string, string> = {
                 </button>
               </div>
               <span id="feed-last-sync" class="muted text-[0.78rem]" aria-live="polite"></span>
+              {syncUnreachable.length > 0 && (
+                <p class="text-[0.78rem] leading-[1.5] [color:var(--color-danger)] flex items-start gap-[0.3rem]">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 mt-[0.15rem]" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span>
+                    {d.feedUnreachableNote.replace('{max}', String(CSV_MAX_DIMENSIONS))}
+                    {' '}
+                    {syncUnreachable.slice(0, 3).map((p) => p.name).join(', ')}
+                    {syncUnreachable.length > 3 ? d.feedUnreachableMore.replace('{n}', String(syncUnreachable.length - 3)) : ''}
+                  </span>
+                </p>
+              )}
               <p class="muted text-[0.75rem] leading-[1.5] flex items-start gap-[0.3rem]">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 mt-[0.15rem]" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 <span>{d.feedManualNote}</span>
