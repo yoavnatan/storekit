@@ -5,6 +5,7 @@ import { ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 import { buildAdminUrl, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
+import { wireReviewTakedown } from '../../lib/review-takedown.js';
 import { syncAdminTitleBadge } from './tab-badges.js';
 
 const PANEL_ID = 'dash-panel-messages';
@@ -424,15 +425,14 @@ function wireMessagesToolbar(): void {
 }
 
 /**
- * "סמן כטופל", and the review takedown button a complaint carries inline.
+ * "סמן כטופל" — done with this thread, or not yet.
  *
- * Both delegated off the panel and wired ONCE — the container survives every `swapPanel`, only its
+ * Delegated off the panel and wired ONCE: the container survives every `swapPanel`, only its
  * innerHTML is replaced, so a per-init binding would stack a listener per navigation and fire the
  * request as many times as the admin had filtered.
  *
- * The review button is the same class and the same endpoint the Reviews tab uses. That is the
- * point of putting the review in the thread at all: one handler, one endpoint, and reading the
- * complaint and acting on it are the same screen (owner, 2026-08-19).
+ * The takedown button a complaint carries beside it is NOT here — it is the same button the Reviews
+ * tab renders, so it is one implementation in `lib/review-takedown.ts` and both screens wire it.
  */
 function wireThreadActions(): void {
   const panel = document.getElementById(PANEL_ID);
@@ -468,37 +468,13 @@ function wireThreadActions(): void {
       }
       return;
     }
-
-    const reviewBtn = target?.closest<HTMLButtonElement>('.admin-review-toggle');
-    if (reviewBtn) {
-      e.stopPropagation();
-      const wasBlocked = reviewBtn.dataset.blocked === '1';
-      reviewBtn.disabled = true;
-      try {
-        const res = await fetch('/api/admin/moderation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: wasBlocked ? 'show-review' : 'hide-review', reviewId: reviewBtn.dataset.reviewId }),
-        });
-        if (!res.ok) throw new Error('request failed');
-        const { blocked } = await res.json() as { blocked: boolean };
-        reviewBtn.dataset.blocked = blocked ? '1' : '';
-        reviewBtn.textContent = blocked ? 'החזר לפרסום' : 'הסתר';
-        reviewBtn.classList.toggle('btn--ghost', !blocked);
-        const row = reviewBtn.closest<HTMLElement>('[data-review-row]');
-        if (row) row.style.opacity = blocked ? '0.55' : '1';
-      } catch {
-        showErrorToast('הפעולה נכשלה, נסו שוב');
-      } finally {
-        reviewBtn.disabled = false;
-      }
-    }
   });
 }
 
 export function initAdminMessagesPanel(): void {
   wireMessagesToolbar();
   wireThreadActions();
+  wireReviewTakedown(PANEL_ID);
   wirePanelLinks(PANEL_ID, () => initAdminMessagesPanel());
   wirePopstateReload();
 

@@ -102,3 +102,28 @@ export async function resolveOrderAccess(
 
   return null;
 }
+
+/**
+ * Is this request presenting a GUESSABLE credential — the order number plus the address it was
+ * placed with?
+ *
+ * **The three callers gated on `!getSellerSession(cookies)`, and that was the wrong question**
+ * (found 2026-08-19, while reviewing a fourth endpoint written the same way). It reads as "an
+ * anonymous request is a guess and a signed-in one is not", which is true of the SESSION branch —
+ * that one requires the order's `buyerId` to equal the account, so there is nothing to guess. But
+ * this is one function with three doors, and the ref+email door stays open to a signed-in caller:
+ * registration here is free and instant, so "sign in first" removed the limiter entirely for
+ * anyone who bothered to. An 8-character reference plus the buying address is two secrets and not
+ * walkable, which is why this was a weakness rather than a break — but the limiter exists precisely
+ * so that nothing rests on that arithmetic staying true.
+ *
+ * So the gate follows the CREDENTIAL, not the session. A signed-in buyer acting on their own order
+ * presents `orderId` alone and is never counted; anyone presenting a reference and an address is
+ * counted, session or not.
+ *
+ * `tests/order-access-throttle.test.ts` scans every caller of `resolveOrderAccess` and fails on one
+ * that does not run this, so the next endpoint cannot quietly re-derive the old predicate.
+ */
+export function isGuessedCredential(credential: OrderCredential): boolean {
+  return !!(str(credential.orderRef) && str(credential.email));
+}

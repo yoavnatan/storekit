@@ -3,8 +3,7 @@ import type { APIRoute } from 'astro';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { clientIp } from '../../lib/client-ip.js';
 import { checkAuthRate, countAuthAttempt, orderHelpRules, retryAfterMinutes } from '../../lib/rate-limit.js';
-import { getSellerSession } from '../../lib/seller-auth.js';
-import { resolveOrderAccess } from '../../lib/order-access.js';
+import { resolveOrderAccess, isGuessedCredential } from '../../lib/order-access.js';
 import { getStoreBySlugOrPrevious } from '../../lib/stores.js';
 import { createMessage, MAX_MESSAGE_CONTENT_LEN } from '../../lib/messages.js';
 import { createNotification } from '../../lib/notifications.js';
@@ -53,11 +52,11 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
   const content = String(data.content ?? '').trim();
   if (!content || content.length > MAX_MESSAGE_CONTENT_LEN) return json({ error: 'הודעה ריקה או ארוכה מדי' }, 400);
 
-  // The two credentials a guest can present are guessable in principle, so they are rate-limited on
-  // the way in — the same bucket `/api/returns` uses, because they are the same guess. A signed-in
-  // buyer's session is not, and is not counted.
+  // The order number plus the buying address is a guessable credential, so it is rate-limited on the
+  // way in — the same bucket `/api/returns` uses, because it is the same guess. Gated on the
+  // CREDENTIAL and not on the session: `order-access.ts#isGuessedCredential` carries why.
   const rules = orderHelpRules(clientIp(request, clientAddress));
-  if (!getSellerSession(cookies)) {
+  if (isGuessedCredential(data)) {
     const gate = await checkAuthRate(rules);
     if (!gate.allowed) {
       return json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות', retryAfterMinutes: retryAfterMinutes(gate.retryAfterSec) }, 429);

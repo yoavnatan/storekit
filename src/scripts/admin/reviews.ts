@@ -1,5 +1,5 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
-import { showErrorToast } from '../../lib/toast.js';
+import { wireReviewTakedown } from '../../lib/review-takedown.js';
 
 /**
  * The Reviews tab's client half.
@@ -63,50 +63,11 @@ function wireToolbar(): void {
   });
 }
 
-/**
- * The takedown buttons. Moved here with the panel — they used to live in `alerts.ts` because the
- * list did.
- *
- * Delegated off the panel rather than bound per row, so it survives `swapPanel` re-rendering the
- * tab. Optimistic in the same shape as the product-block toggle in `stores.ts`: the server's answer
- * is what the button ends up reflecting, never the click.
- *
- * No `ConfirmModal` here, unlike blocking a store: hiding a review is instantly reversible from the
- * same button, and a confirm dialog on a two-way switch is friction with nothing behind it.
- */
-function wireReviewToggles(): void {
-  const panel = document.getElementById(PANEL_ID);
-  if (!panel || panel.dataset.togglesWired) return; // container survives every swap — wire once
-  panel.dataset.togglesWired = '1';
-  panel.addEventListener('click', async (e) => {
-    const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('.admin-review-toggle');
-    if (!btn) return;
-    const wasBlocked = btn.dataset.blocked === '1';
-    btn.disabled = true;
-    try {
-      const res = await fetch('/api/admin/moderation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: wasBlocked ? 'show-review' : 'hide-review', reviewId: btn.dataset.reviewId }),
-      });
-      if (!res.ok) throw new Error('request failed');
-      const { blocked } = await res.json() as { blocked: boolean };
-      btn.dataset.blocked = blocked ? '1' : '';
-      btn.textContent = blocked ? 'החזר לפרסום' : 'הסתר';
-      btn.classList.toggle('btn--ghost', !blocked);
-      const row = btn.closest<HTMLElement>('[data-review-row]');
-      if (row) row.style.opacity = blocked ? '0.55' : '1';
-    } catch {
-      showErrorToast('הפעולה נכשלה, נסו שוב');
-    } finally {
-      btn.disabled = false;
-    }
-  });
-}
-
 export function initAdminReviewsPanel(): void {
   wireToolbar();
-  wireReviewToggles();
+  // The takedown button is shared with the Messages tab, where a complaint carries its review
+  // inline — one implementation, in `lib/review-takedown.ts`.
+  wireReviewTakedown(PANEL_ID);
   wirePanelLinks(PANEL_ID, () => initAdminReviewsPanel());
   wirePopstateReload();
 }

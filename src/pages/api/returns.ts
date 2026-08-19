@@ -17,7 +17,7 @@ import {
   type ReturnedLine, type ReturnReason, type ReturnStatus,
 } from '../../lib/returns.js';
 import { returnableLinePositions } from '../../lib/return-eligibility-order.js';
-import { resolveOrderAccess } from '../../lib/order-access.js';
+import { resolveOrderAccess, isGuessedCredential } from '../../lib/order-access.js';
 import { clientIp } from '../../lib/client-ip.js';
 import { checkAuthRate, countAuthAttempt, orderHelpRules, retryAfterMinutes } from '../../lib/rate-limit.js';
 
@@ -104,8 +104,9 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     // The two credentials a guest can present are guessable in principle, so they are rate-limited
     // on the way in. A signed-in buyer's session is not, and is not counted.
     const rules = orderHelpRules(clientIp(request, clientAddress));
-    const guestAttempt = !getSellerSession(cookies);
-    if (guestAttempt) {
+    // Gated on the CREDENTIAL, not on the session — `order-access.ts#isGuessedCredential` carries
+    // why the old `!getSellerSession(cookies)` was the wrong question and what it left open.
+    if (isGuessedCredential(data)) {
       const gate = await checkAuthRate(rules);
       if (!gate.allowed) {
         return json({ error: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות', retryAfterMinutes: retryAfterMinutes(gate.retryAfterSec) }, 429);
@@ -304,8 +305,8 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     // guest's order number plus the address it was placed with, so without this the route is an
     // unmetered oracle for which references exist and who they belong to. It was missing here while
     // the branch answered one state, and this change gave it three — a wider door on the same hole.
-    // A signed-in buyer's session is not a guess and is not counted.
-    if (!getSellerSession(cookies)) {
+    // Gated on the CREDENTIAL, not on the session — see `isGuessedCredential`.
+    if (isGuessedCredential(data)) {
       const rules = orderHelpRules(clientIp(request, clientAddress));
       const gate = await checkAuthRate(rules);
       if (!gate.allowed) {
