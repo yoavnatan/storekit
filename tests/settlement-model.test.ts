@@ -16,22 +16,43 @@ import { readFileSync } from 'node:fs';
 const { SETTLEMENT_MODEL, isCustodial, assertCustodial } = await import('../src/lib/settlement-model.js');
 
 describe('the switch itself', () => {
-  it('defaults to custodial, which is the fail-safe direction', () => {
-    // Wrong in this direction stops a payout that should have run and somebody notices. Wrong the
-    // other way pays twice and nobody does.
+  it('ships defaulting to SPLIT since 2026-08-19', () => {
+    // Asserted from the SOURCE, not the runtime value: the suite pins the model to custodial on
+    // purpose (tests/helpers/db-setup.ts) so the custodial machinery stays covered and reachable.
+    // Reading the line is what makes the shipped default a fact rather than a memory.
+    const src = readFileSync('src/lib/settlement-model.ts', 'utf8');
+    expect(src).toMatch(/=== 'custodial'\) \? 'custodial' : 'split'/);
+  });
+
+  it('runs the suite as custodial, so the model we may go back to stays tested', () => {
     expect(SETTLEMENT_MODEL).toBe('custodial');
     expect(isCustodial()).toBe(true);
   });
 
-  it('treats anything that is not exactly "split" as custodial', async () => {
-    // Unset, misspelled, empty — all must land on the safe side.
+  it('goes back on one explicit word, because the decision is not final', () => {
     const src = readFileSync('src/lib/settlement-model.ts', 'utf8');
-    expect(src).toMatch(/=== 'split'/);
-    expect(src).toMatch(/'custodial'/);
+    expect(src).toMatch(/=== 'custodial'/);
   });
 
-  it('permits the custodial operations while custodial', () => {
+  it('permits the custodial money moves while custodial', () => {
     expect(() => assertCustodial('runPayouts')).not.toThrow();
+  });
+
+  it('refuses them by name, and says why, when the model is split', () => {
+    // The message is read by whoever finds a payout job that stopped, and they were not in this
+    // conversation: it has to name the operation and say that paying again sends money twice.
+    const src = readFileSync('src/lib/settlement-model.ts', 'utf8');
+    expect(src).toMatch(/twice/);
+    expect(src).toMatch(/\$\{what\}/);
+  });
+
+  it('records that the fail-safe direction INVERTED with the flip', () => {
+    // While custodial was the default, a missing value stopped a payout and somebody noticed. Now
+    // it disables one. That is only acceptable while nothing is custodial in production, and the
+    // file has to say so — the next person to read it will not have been in the conversation.
+    const src = readFileSync('src/lib/settlement-model.ts', 'utf8');
+    expect(src).toMatch(/fail-safe direction inverted/i);
+    expect(src).toMatch(/set the variable explicitly/i);
   });
 
   it('names the operation in the refusal, so a log says which one', () => {

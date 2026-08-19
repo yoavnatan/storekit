@@ -42,13 +42,24 @@ export type SettlementModel = 'custodial' | 'split';
  * and a value that can change while the process runs is a value that can change BETWEEN a plan and
  * the payment it authorised. Read once at import, same answer for the life of the process.
  *
- * `SETTLEMENT_MODEL=split` in the environment switches it. Anything else — unset, misspelled,
- * empty — is `custodial`, which is the fail-safe direction: the wrong answer there stops a payout
- * that should have run and someone notices, while the wrong answer the other way pays money twice
- * and nobody does.
+ * **`split` is the default as of 2026-08-19** (owner: *"אנחנו גם ככה בפיתוח... מה יש להמשיך לרוץ
+ * על מודל שאנחנו כנראה לא נשתמש בו?"*), and the argument is right: nothing takes real money
+ * anywhere yet, the deployed environment has no gateway wired at all, and a development tree that
+ * keeps exercising the model we are leaving is a tree that keeps proving the wrong thing works.
+ *
+ * `SETTLEMENT_MODEL=custodial` in the environment goes back, and it stays a single word because
+ * the decision is not final — the custodial modules are whole, tested and reachable the moment
+ * that word is set.
+ *
+ * ⚠️ **The fail-safe direction inverted with this change, and that is a real cost, not a detail.**
+ * While `custodial` was the default, a misspelled or missing value stopped a payout and somebody
+ * noticed; now it disables one instead, and a deployment that MEANT to be custodial would quietly
+ * pay nobody. That is acceptable only while nothing is custodial in production — which is today,
+ * and is why this is safe to flip now rather than later. If the custodial model is ever chosen for
+ * real, set the variable explicitly in that environment rather than relying on this line.
  */
 export const SETTLEMENT_MODEL: SettlementModel =
-  (typeof process !== 'undefined' && process.env?.SETTLEMENT_MODEL === 'split') ? 'split' : 'custodial';
+  (typeof process !== 'undefined' && process.env?.SETTLEMENT_MODEL === 'custodial') ? 'custodial' : 'split';
 
 /** Does this deployment hold buyers' money on the sellers' behalf? */
 export function isCustodial(): boolean {
