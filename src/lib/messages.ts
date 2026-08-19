@@ -58,6 +58,21 @@ const SELECT_MESSAGE = `SELECT id, from_user_id, from_name, from_email, to_store
  * starts failing, and `admin-messages.ts` re-exports both rather than keeping a second copy — one
  * number for "how big a message on this platform may be".
  */
+/**
+ * The `from_user_id` of somebody with no account — a guest who wrote about their own order.
+ *
+ * `from_user_id` is plain `text` precisely so it can say this (see the column note above). The
+ * prefix is a namespace, not an id: it keeps the thread attributable to the ORDER without
+ * inventing an account, and it is the one fact a reply has to check before it tries to notify
+ * anybody, because a `notifications` row addressed to it can never be read by any login.
+ */
+export const GUEST_SENDER_PREFIX = 'order:';
+
+/** Does this sender have an account that can receive an in-app notification? */
+export function senderHasAccount(fromUserId: string): boolean {
+  return !!fromUserId && !fromUserId.startsWith(GUEST_SENDER_PREFIX);
+}
+
 export const MAX_MESSAGE_SUBJECT_LEN = 120;
 export const MAX_MESSAGE_CONTENT_LEN = 5000;
 

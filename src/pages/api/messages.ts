@@ -13,7 +13,9 @@ import {
   markThreadReadBySeller,
   markThreadReadByBuyer,
   deleteMessageThread,
+  senderHasAccount,
 } from '../../lib/messages.js';
+import { sendMessageReplyEmail } from '../../lib/email/message-reply-email.js';
 import { getStoreById } from '../../lib/stores.js';
 import { createNotification, deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { withTransaction } from '../../lib/db.js';
@@ -162,18 +164,37 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         replyToId: body.replyToId,
       }, tx);
 
-      await createNotification({
-        userId: toId,
-        role: isSeller ? 'buyer' : 'seller',
-        type: isSeller ? 'seller_reply' : 'new_message',
-        title: isSeller ? NOTIFY_NEW_MESSAGE_FROM_SELLER : NOTIFY_NEW_MESSAGE_FROM_BUYER,
-        body: '',
-        relatedId: written.id,
-        storeName: original.toStoreName,
-      }, tx);
+      // **Only when the recipient has an account to read it in.** A guest who wrote about their
+      // own order has `from_user_id = order:<id>` — a namespace, not a login — so a notification
+      // addressed to it is a row nobody can ever reach. It was being written anyway, which made
+      // the seller's answer look delivered on our side and arrive nowhere on theirs.
+      if (senderHasAccount(toId)) {
+        await createNotification({
+          userId: toId,
+          role: isSeller ? 'buyer' : 'seller',
+          type: isSeller ? 'seller_reply' : 'new_message',
+          title: isSeller ? NOTIFY_NEW_MESSAGE_FROM_SELLER : NOTIFY_NEW_MESSAGE_FROM_BUYER,
+          body: '',
+          relatedId: written.id,
+          storeName: original.toStoreName,
+        }, tx);
+      }
 
       return written;
     });
+
+    // …and mail is what reaches them instead. Outside the transaction on purpose: the reply is
+    // already committed, and a mail provider having a bad minute must never turn a successful
+    // reply into an error the seller retries — which would post it twice.
+    if (isSeller && !senderHasAccount(toId) && original.fromEmail) {
+      await sendMessageReplyEmail({
+        to: original.fromEmail,
+        storeName: original.toStoreName || seller.name,
+        replyTo: seller.email,
+        subject: `Re: ${original.subject}`,
+        body: content,
+      });
+    }
 
     await countMessageSent(rules);
 

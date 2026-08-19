@@ -13,11 +13,12 @@ const PANEL_ID = 'dash-panel-messages';
 const messagesPortal = createFloatingPortal('admin-messages-toolbar-portal');
 
 interface AdminMsgSellerInfo { id: string; name: string; email: string }
-interface AdminMsg { id: string; sellerId: string; fromRole: 'admin' | 'seller'; content: string; createdAt: string }
+type InquiryParty = 'seller' | 'buyer' | 'guest';
+interface AdminMsg { id: string; sellerId: string; fromRole: 'admin' | InquiryParty; content: string; createdAt: string; partyEmail?: string }
 // A thread = one subject-titled conversation with a seller (a seller can have
 // several) — keyed by the root message's id, NOT by sellerId as it was while
 // admin<->seller messaging was a single flat per-seller conversation.
-interface AdminThreadInfo { id: string; sellerId: string; subject: string; lastMessage: AdminMsg; unreadForAdmin: number }
+interface AdminThreadInfo { id: string; sellerId: string; subject: string; lastMessage: AdminMsg; unreadForAdmin: number; partyRole?: InquiryParty; root?: AdminMsg }
 interface KnownThread { sellerId: string; subject: string; lastMessageId: string; unreadForAdmin: number }
 
 function setRowUnread(row: HTMLElement, unread: boolean): void {
@@ -209,11 +210,26 @@ function trimToPageSize(): void {
   }
 }
 
-function insertThreadRow(threadId: string, sellerId: string, subject: string, seller: AdminMsgSellerInfo | undefined, message: AdminMsg, unread = false): HTMLElement | null {
+/**
+ * A thread the POLL discovered, drawn to match what the server would have rendered.
+ *
+ * **The reply box is conditional here too, and it was not** (found 2026-08-19, reading all six
+ * inquiry paths): the SSR row already withheld it from a buyer or a guest — they have no screen an
+ * answer could land on — but a thread arriving while the panel was open got one anyway. Two
+ * renderers of one row is the shape this repo keeps paying for; a guard applied to one of them is
+ * a guard that holds until somebody leaves the tab open.
+ */
+function insertThreadRow(threadId: string, sellerId: string, subject: string, seller: AdminMsgSellerInfo | undefined, message: AdminMsg, unread = false, partyRole: InquiryParty = 'seller', partyEmail = ''): HTMLElement | null {
   const table = document.getElementById('admin-msg-table');
   const tbody = table?.querySelector('tbody');
   if (!tbody) return null;
-  const label = seller ? `${seller.name} (${seller.email})` : sellerId;
+  // Same fallback order the SSR row uses: a seller by the name we know them by, anyone else by
+  // the address they left, and a guest who left none by their role — never a blank cell, which is
+  // what `sellerId` gave for a buyer or guest (it is '' for them).
+  const ROLE_WORD: Record<InquiryParty, string> = { seller: 'מוכר', buyer: 'קונה', guest: 'אורח' };
+  const label = seller
+    ? `${seller.name} (${seller.email})`
+    : partyEmail || sellerId || `${ROLE_WORD[partyRole]} · ללא כתובת לחזרה`;
   const previewTag = message.fromRole === 'admin' ? ' <span class="msg-table__preview-you">(אתה)</span>' : '';
   const unreadMarker = unread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : '';
   const rowHtml = `<tr class="msg-table__row${unread ? ' msg-table__row--unread' : ''}" data-thread-id="${escapeHtml(threadId)}" data-seller-id="${escapeHtml(sellerId)}" tabindex="0" role="button" aria-expanded="false">
@@ -235,13 +251,22 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
       </div>
       <div class="msg-thread" id="admin-msg-replies-${escapeHtml(threadId)}">${bubbleHtml(message)}</div>
       <div class="seller-msg-reply-form" data-reply-for-thread="${escapeHtml(threadId)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
+        ${partyRole === 'seller' ? `
         <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
         <div class="seller-msg-reply-actions">
           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
           <button class="seller-msg-reply-cancel" type="button" hidden>ביטול</button>
+          <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" type="button">סמן כטופל</button>
           <button class="seller-msg-reply-open" type="button" aria-expanded="false">כתוב תגובה</button>
           <button class="seller-msg-reply-send" type="button" hidden>שלח</button>
-        </div>
+        </div>` : `
+        <div class="seller-msg-reply-actions">
+          <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
+          <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" type="button">סמן כטופל</button>
+          ${partyEmail
+            ? `<a class="btn btn--sm" href="mailto:${escapeHtml(partyEmail)}">השב במייל</a>`
+            : '<span class="muted" style="font-size:0.8rem">ללא כתובת לחזרה</span>'}
+        </div>`}
       </div>
     </td>
   </tr>`;
@@ -277,7 +302,7 @@ function pollAdminMessages(sellers: Map<string, AdminMsgSellerInfo>, known: Map<
             document.getElementById('admin-msg-empty')?.remove();
             const wrap = document.getElementById('admin-msg-table-wrap');
             if (wrap) wrap.hidden = false;
-            const newRow = insertThreadRow(t.id, t.sellerId, t.subject, sellers.get(t.sellerId), t.lastMessage, t.unreadForAdmin > 0);
+            const newRow = insertThreadRow(t.id, t.sellerId, t.subject, sellers.get(t.sellerId), t.lastMessage, t.unreadForAdmin > 0, t.partyRole ?? 'seller', t.root?.partyEmail ?? '');
             if (newRow) wireThreadRow(newRow, known);
             trimToPageSize();
           }

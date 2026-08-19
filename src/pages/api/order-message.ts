@@ -5,7 +5,7 @@ import { clientIp } from '../../lib/client-ip.js';
 import { checkAuthRate, countAuthAttempt, orderHelpRules, retryAfterMinutes } from '../../lib/rate-limit.js';
 import { resolveOrderAccess, isGuessedCredential } from '../../lib/order-access.js';
 import { getStoreBySlugOrPrevious } from '../../lib/stores.js';
-import { createMessage, MAX_MESSAGE_CONTENT_LEN } from '../../lib/messages.js';
+import { createMessage, GUEST_SENDER_PREFIX, MAX_MESSAGE_CONTENT_LEN } from '../../lib/messages.js';
 import { createNotification } from '../../lib/notifications.js';
 import { NOTIFY_NEW_MESSAGE_FROM_BUYER } from '../../lib/notification-copy.js';
 import { checkMessageFlood, countMessageSent, floodRefusal, newThreadRules } from '../../lib/message-flood.js';
@@ -81,7 +81,7 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
   //
   // Measured over this ORDER's existing thread, not over an account: a guest has no account to
   // measure, and the order is what both sides of this conversation actually share.
-  const floodKey = buyerId || `order:${order.id}`;
+  const floodKey = buyerId || `${GUEST_SENDER_PREFIX}${order.id}`;
   const floodRules = newThreadRules(floodKey, store.id);
   const verdict = await checkMessageFlood(floodRules, [], floodKey);
   if (!verdict.allowed) return floodRefusal(verdict, cookies);
