@@ -9,7 +9,7 @@ import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.j
 import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
 import { takePanelIntent } from './panel-intent.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
+import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, remapComboKeys, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import { initImageSkeletons, SKELETON_ATTR } from '../../lib/img-skeleton.js';
@@ -851,7 +851,7 @@ function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<s
   const headerHtml = variants.length ? comboHeaderHtml(variants, i18n) : '';
   const rowsHtml = variants.length ? comboRowsHtml(variants, variantStock, currentStock, i18n) : '';
   const totalHtml = variants.length ? comboTotalRowHtml(variants, i18n) : '';
-  return `<div class="field variants-editor" data-variants-editor>
+  return `<div class="field variants-editor" data-variants-editor data-combo-dims="${esc(JSON.stringify(variants))}">
     <span class="field-label">${esc(i18n.variantsLabel ?? 'Variants & inventory')}</span>
     <div class="variant-dims" data-variant-dims>${dimsHtml}</div>
     <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.25rem">${esc(i18n.variantAddBtn ?? '+ Add variant type')}</button>
@@ -1173,9 +1173,33 @@ function openComboFilterPortal(wrap: HTMLElement, editor: HTMLElement, i18n: Rec
   btn.setAttribute('aria-expanded', 'true');
 }
 
+/**
+ * The dimension set the combo rows on screen were built from — kept on the editor because the
+ * inputs already hold the NEW values by the time this runs (the name field refreshes on every
+ * keystroke), so the DOM cannot answer "what did these rows mean a moment ago" on its own.
+ */
+function lastRenderedDims(editor: HTMLElement): VariantDimension[] {
+  try {
+    const parsed = JSON.parse(editor.dataset.comboDims ?? '[]');
+    return Array.isArray(parsed) ? (parsed as VariantDimension[]) : [];
+  } catch { return []; }
+}
+
+function rememberRenderedDims(editor: HTMLElement, dims: VariantDimension[]): void {
+  editor.dataset.comboDims = JSON.stringify(dims);
+}
+
 function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>): void {
   const dims = readVariantDims(editor);
-  const existingStock = readComboStock(editor);
+  // A combo's key is built from the dimension NAME and the value, so relabelling either one —
+  // typing in the name field, or a colour chip picking up its exact hex — renames every key of
+  // this product at once. Reading the rows back by their old keys therefore found nothing and
+  // silently emptied the whole stock table on the first keystroke; the counts are followed through
+  // the rename instead (variant-combo.ts#remapComboKeys, which refuses anything but a relabel).
+  const renamed = remapComboKeys(lastRenderedDims(editor), dims);
+  const existingStock = renamed.size
+    ? Object.fromEntries(Object.entries(readComboStock(editor)).map(([k, v]) => [renamed.get(k) ?? k, v]))
+    : readComboStock(editor);
   const combosWrap = editor.querySelector<HTMLElement>('[data-variant-combos]');
   const thead = editor.querySelector<HTMLElement>('[data-variant-combo-thead]');
   const rowsBody = editor.querySelector<HTMLElement>('[data-variant-combo-rows]');
@@ -1190,6 +1214,7 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
     tfoot.innerHTML = '';
     delete combosWrap.dataset.sortCol;
     delete combosWrap.dataset.sortDir;
+    rememberRenderedDims(editor, dims);
     syncTotalStockField(editor);
     return;
   }
@@ -1210,6 +1235,7 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
   thead.innerHTML = comboHeaderHtml(dims, i18n);
   rowsBody.innerHTML = comboRowsHtml(dims, existingStock, fallbackTotal, i18n);
   tfoot.innerHTML = comboTotalRowHtml(dims, i18n);
+  rememberRenderedDims(editor, dims);
   combosWrap.removeAttribute('hidden');
   if (hint) hint.hidden = hasAnyStock;
   syncTotalStockField(editor);

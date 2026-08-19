@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isProductInStock, comboStockRows, isFullyPerCombo, sumComboOverrides, comboKey } from '../src/lib/variant-combo.js';
+import { isProductInStock, comboStockRows, isFullyPerCombo, sumComboOverrides, comboKey, remapComboKeys } from '../src/lib/variant-combo.js';
 
 describe('isProductInStock', () => {
   it('for a non-variant product, reflects the flat stock field directly', () => {
@@ -96,5 +96,40 @@ describe('isFullyPerCombo / sumComboOverrides — when the pool stops mattering'
   it('sums the buckets and never folds the shared pool in', () => {
     expect(sumComboOverrides({ [S]: 1, [M]: 4 })).toBe(5);
     expect(sumComboOverrides(undefined)).toBe(0);
+  });
+});
+
+describe('remapComboKeys — a relabelled dimension is not a new product', () => {
+  const before = [{ name: 'צבע', options: ['אדום', 'כחול'] }, { name: 'מידה', options: ['S', 'L'] }];
+
+  it('follows a renamed dimension through every combo', () => {
+    const after = [{ name: 'Color', options: ['אדום', 'כחול'] }, { name: 'מידה', options: ['S', 'L'] }];
+    const map = remapComboKeys(before, after);
+    expect(map.size).toBe(4);
+    expect(map.get(comboKey({ צבע: 'אדום', מידה: 'S' }))).toBe(comboKey({ Color: 'אדום', מידה: 'S' }));
+  });
+
+  it('follows a relabelled VALUE too — the colour picker appends an exact hex', () => {
+    const after = [{ name: 'צבע', options: ['אדום #ff0000', 'כחול'] }, { name: 'מידה', options: ['S', 'L'] }];
+    const map = remapComboKeys(before, after);
+    expect(map.get(comboKey({ צבע: 'אדום', מידה: 'S' }))).toBe(comboKey({ צבע: 'אדום #ff0000', מידה: 'S' }));
+    // The combos that did not move are absent rather than mapped to themselves — a caller keeps
+    // its own key when the map has no entry, so an identity entry would say nothing.
+    expect(map.has(comboKey({ צבע: 'כחול', מידה: 'L' }))).toBe(false);
+  });
+
+  it('refuses anything that is not a relabel — a moved count is worse than a lost one', () => {
+    // An option added: the slots no longer line up, so nothing is claimed to correspond.
+    expect(remapComboKeys(before, [before[0]!, { name: 'מידה', options: ['S', 'M', 'L'] }]).size).toBe(0);
+    // A dimension removed.
+    expect(remapComboKeys(before, [before[0]!]).size).toBe(0);
+    // A dimension added.
+    expect(remapComboKeys(before, [...before, { name: 'חומר', options: ['עץ'] }]).size).toBe(0);
+    // Nothing to remap from.
+    expect(remapComboKeys(undefined, before).size).toBe(0);
+  });
+
+  it('is empty when nothing was relabelled at all', () => {
+    expect(remapComboKeys(before, [...before]).size).toBe(0);
   });
 });

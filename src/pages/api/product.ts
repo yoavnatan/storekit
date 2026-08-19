@@ -5,7 +5,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 // no-JS fallback handlers, which is where it was missing entirely (lib/store-ownership.ts).
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
 import { createProduct, updateProduct, deleteProduct, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
-import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides } from '../../lib/variant-combo.js';
+import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides, remapComboKeys } from '../../lib/variant-combo.js';
 import { parseImages, parseCategoryId, parseSku, parseBrand, parseWeight, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
 import { normalizeProductDiscount } from '../../lib/discount-input.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
@@ -233,12 +233,21 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuffingHit = findKeywordStuffing(name, description, brand, ...tags);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
-    // Per-combo SKUs are set only via CSV import; the editor doesn't render them, so preserve the
-    // product's existing ones — but drop any whose combo no longer exists after an options edit
-    // (a renamed/removed option changes the comboKey), so a stale code can't leak onto a new combo.
+    // Per-combo SKUs are set only via CSV import / the external feed; the editor doesn't render
+    // them, so preserve the product's existing ones — but drop any whose combo no longer exists
+    // after an options edit, so a stale code can't leak onto a new combo.
+    //
+    // A RELABELLED dimension is not that case, and treating it as one was a silent break: the key
+    // changes wholesale, so "צבע" → "Color" dropped every per-combo SKU — which is exactly what an
+    // external inventory feed matches its rows on (`variant-sku-match.ts`). The rename is followed
+    // through instead (variant-combo.ts#remapComboKeys, deliberately narrow), so the codes ride
+    // along with the combos they belong to and the seller's own POS keeps matching.
+    const renamed = remapComboKeys(product.variants, variants);
     const validComboKeys = new Set(generateCombos(variants).map(comboKey));
     const keptVariantSku = Object.fromEntries(
-      Object.entries(product.variantSku ?? {}).filter(([key]) => validComboKeys.has(key)),
+      Object.entries(product.variantSku ?? {})
+        .map(([key, sku]) => [renamed.get(key) ?? key, sku] as const)
+        .filter(([key]) => validComboKeys.has(key)),
     );
 
     // On edit, auto-tag only from sources NEW since the last save — a category

@@ -105,3 +105,24 @@ describe('typing a total, then adding variants — nothing is invented and nothi
     for (const combo of generateCombos(DIMS)) expect(keys.has(comboKey(combo))).toBe(true);
   });
 });
+
+/**
+ * The same route decides what happens to a product's per-combo SKUs when the seller relabels a
+ * dimension — and those codes are what an external inventory feed matches its rows on
+ * (`variant-sku-match.ts`). Dropping them (which is what filtering by the NEW keys alone did) cuts
+ * the seller's own POS off from the product silently, so the rename is followed through instead.
+ * Source-checked for the same reason as `resolveTotalStock` above: the logic is inline in a route
+ * no unit test can call, and the failure is invisible until a sync stops matching.
+ */
+describe('relabelling a dimension keeps the per-combo codes attached', () => {
+  const source = readFileSync(ROUTE, 'utf8');
+
+  it('remaps the stored codes before filtering them against the new combos', () => {
+    expect(source).toContain('remapComboKeys(product.variants, variants)');
+    expect(source).toMatch(/renamed\.get\(key\)\s*\?\?\s*key/);
+  });
+
+  it('still filters, so a code whose combo really is gone cannot leak onto a new one', () => {
+    expect(source).toContain('validComboKeys.has(key)');
+  });
+});

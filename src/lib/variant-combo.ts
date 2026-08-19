@@ -220,3 +220,56 @@ export function generateCombos(dimensions: VariantDimension[]): VariantSelection
     [{}]
   );
 }
+
+/**
+ * Old combo key → new combo key, when a dimension was RELABELLED rather than restructured.
+ *
+ * **What it protects (found 2026-08-19, in the external-sync audit).** A combo is identified
+ * everywhere by `comboKey`, which is built from the dimension NAMES and the chosen values. So
+ * renaming a dimension — "צבע" → "Color", or a colour chip picking up its exact hex — changes every
+ * key of that product at once, and every consumer keyed by the old ones simply stops matching: the
+ * dashboard's per-combo stock table blanked out on the first keystroke in the name field, and the
+ * product's per-combo SKUs (`variantSku`, which is what an external inventory feed matches on) were
+ * dropped as "keys no combo has any more". A seller who tidied a label lost the counts AND the link
+ * to their own POS, with nothing said.
+ *
+ * The rule is deliberately narrow, because a wrong match here would move stock between combos: the
+ * two dimension sets must have the same SHAPE — same count, slot for slot, each slot's option list
+ * the same length — and a combo maps only when every one of its values still exists in the same
+ * slot, or has a single unambiguous positional counterpart there. Anything else (a dimension added
+ * or removed, options added or dropped) returns no entry for that combo and the caller keeps its
+ * existing "this combo is new" behaviour.
+ */
+export function remapComboKeys(
+  oldDims: VariantDimension[] | undefined,
+  newDims: VariantDimension[] | undefined,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const from = realDimensions(oldDims);
+  const to = realDimensions(newDims);
+  if (!from.length || from.length !== to.length) return out;
+  if (from.some((dim, i) => dim.options.length !== to[i]!.options.length)) return out;
+
+  // Per slot: the old value → the new value in the same position. An unchanged option list maps
+  // each value to itself, so a pure rename of the dimension's NAME is the identity here and only
+  // the key's name half moves.
+  const valueMaps = from.map((dim, i) => {
+    const next = to[i]!;
+    return new Map(dim.options.map((opt, j) => [opt, next.options[j]!]));
+  });
+
+  for (const selection of generateCombos(from)) {
+    const mapped: VariantSelection = {};
+    let ok = true;
+    from.forEach((dim, i) => {
+      const value = valueMaps[i]!.get(selection[dim.name]!);
+      if (value === undefined) { ok = false; return; }
+      mapped[to[i]!.name] = value;
+    });
+    if (!ok) continue;
+    const before = comboKey(selection);
+    const after = comboKey(mapped);
+    if (before !== after) out.set(before, after);
+  }
+  return out;
+}
