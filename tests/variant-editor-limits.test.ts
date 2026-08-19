@@ -52,27 +52,29 @@ describe('the variant limits, said on the spot', () => {
     expect(note(editor).hidden).toBe(true);
   });
 
-  it('names what a fourth variant type costs — the file, and the sync with it', () => {
+  it('names the fourth variant type\'s consequence, with the bound derived and not typed', () => {
     const editor = renderEditor([
       { name: 'צבע', options: ['אדום'] }, { name: 'מידה', options: ['S'] },
       { name: 'חומר', options: ['עץ'] }, { name: 'נפח', options: ['1L'] },
     ]);
     expect(note(editor).hidden).toBe(false);
     expect(note(editor).textContent).toContain(String(CSV_MAX_DIMENSIONS));
-    // The wording has to name the consequence, not the rule — a seller does not know what
-    // "3 dimensions" means until it is spelled as "a file cannot update this".
+    // The wording names what the seller can DO about it, not the rule that produced it.
     expect(note(editor).textContent!.length).toBeGreaterThan(20);
   });
 
-  it('refuses the combo limit before the save does, with the count in it', () => {
+  it('refuses the combo limit before the save does — and quotes no arithmetic at the seller', () => {
     // 15 × 15 = 225 combinations, from 30 typed values.
     const editor = renderEditor([
       { name: 'צבע', options: values(15, 'c') },
       { name: 'מידה', options: values(15, 's') },
     ]);
     expect(note(editor).hidden).toBe(false);
-    expect(note(editor).textContent).toContain('225');
-    expect(note(editor).textContent).toContain(String(MAX_VARIANT_COMBOS));
+    // Neither the count nor the cap: both are this file's own multiplication, and a seller cannot
+    // count their way down to a number. The note says what to do instead.
+    expect(note(editor).textContent).not.toContain('225');
+    expect(note(editor).textContent).not.toContain(String(MAX_VARIANT_COMBOS));
+    expect(note(editor).textContent!.length).toBeGreaterThan(10);
   });
 
   it('does not expand 225 rows to say so', () => {

@@ -1238,13 +1238,14 @@ function rememberRenderedDims(editor: HTMLElement, dims: VariantDimension[]): vo
 function updateVariantLimitNote(editor: HTMLElement, dims: VariantDimension[], i18n: Record<string, string>): void {
   const note = editor.querySelector<HTMLElement>('[data-variant-limit-note]');
   if (!note) return;
-  const combos = comboCount(dims);
-
   // Over the combo limit the product cannot be saved at all, so this one is a refusal, not a note.
-  if (combos > MAX_VARIANT_COMBOS) {
-    note.textContent = (i18n.variantLimitCombos ?? '{n} combinations — the maximum is {max}. Remove some values.')
-      .replace('{n}', Number.isFinite(combos) ? String(combos) : `>${MAX_VARIANT_COMBOS}`)
-      .replace('{max}', String(MAX_VARIANT_COMBOS));
+  //
+  // It deliberately carries NO numbers (owner, 2026-08-19: *"זו מתמטיקה שאין לה משמעות לאף אחד
+  // חוץ ממך"*). "225 of a maximum 200" is the multiplication this file just did, not anything the
+  // seller can act on — they are not going to count their way down to 200. What they can act on is
+  // the instruction, so that is all it says.
+  if (comboCount(dims) > MAX_VARIANT_COMBOS) {
+    note.textContent = i18n.variantLimitCombos ?? 'Too many combinations — this cannot be saved. Remove values or variant types.';
     note.style.color = 'var(--color-danger)';
     note.hidden = false;
     return;
@@ -1254,7 +1255,7 @@ function updateVariantLimitNote(editor: HTMLElement, dims: VariantDimension[], i
   // the file: it exports as one flat row, so neither a CSV nor the external inventory sync can
   // ever move its stock again. That is a decision the seller is making right now, unknowingly.
   if (dims.length > CSV_MAX_DIMENSIONS) {
-    note.textContent = (i18n.variantLimitDims ?? 'More than {max} variant types — this product\'s stock is edited here, in the dashboard, only. Not in a file and not by an external sync.')
+    note.textContent = (i18n.variantLimitDims ?? 'Editing a product with more than {max} variant types is possible in the dashboard only.')
       .replace('{max}', String(CSV_MAX_DIMENSIONS));
     note.style.color = 'var(--color-muted)';
     note.hidden = false;
