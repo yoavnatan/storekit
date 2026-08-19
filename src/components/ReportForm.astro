@@ -59,6 +59,9 @@ const KINDS = REPORT_KINDS.map((value) => ({ value, label: KIND_LABELS[value] })
  *  so it deliberately has no row in the `about_kind` CHECK constraint. It is the form's own option,
  *  and the script below sends it to a different endpoint. */
 const ORDER_KIND = 'order';
+/** Not a `ReturnReason` — it is the branch that sends a MESSAGE instead of opening a case, so it
+ *  deliberately has no row in the returns vocabulary. The script below routes it elsewhere. */
+const QUESTION_REASON = 'question';
 const selected = identified || kind === ORDER_KIND
   ? ORDER_KIND
   : ((REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fault');
@@ -87,6 +90,9 @@ const REASONS = [
   data-str-order-submit={r.orderSubmit}
   data-str-order-sent={r.orderSent}
   data-str-order-sent-body={r.orderSentBody}
+  data-str-question-sent={r.questionSent}
+  data-str-question-sent-body={r.questionSentBody}
+  data-question-reason={QUESTION_REASON}
   style="max-width:44rem;margin-top:1rem"
 >
   <label class="field">
@@ -120,9 +126,15 @@ const REASONS = [
         </>
       )}
 
+    {/* **"שאלה" first, and it is not a return reason** (owner, 2026-08-19). Until now the only
+        thing a buyer could do with their own order here was open a CASE — a heavy instrument for
+        "when is this shipping?", and one that leaves a record against the seller nobody wanted.
+        Most of what arrives on this form is a question, so it is the first option and the default,
+        and it goes to the SELLER (`/api/order-message`) rather than into the returns machinery. */}
     <label class="field">
       <span>{r.orderReason}</span>
       <select id="order-reason" class="input">
+        <option value={QUESTION_REASON}>{r.orderReasonQuestion}</option>
         {REASONS.map((o) => <option value={o.value}>{o.label}</option>)}
       </select>
     </label>
@@ -194,8 +206,11 @@ const REASONS = [
       orderSubmit: d.strOrderSubmit ?? 'שליחת הפנייה',
       orderSent: d.strOrderSent ?? 'הפנייה התקבלה',
       orderSentBody: d.strOrderSentBody ?? 'נטפל בה ונעדכן אתכם במייל.',
+      questionSent: d.strQuestionSent ?? 'השאלה נשלחה למוכר',
+      questionSentBody: d.strQuestionSentBody ?? 'המוכר יענה לכם במייל שאיתו בוצעה ההזמנה.',
     };
     const ORDER_KIND = d.orderKind ?? 'order';
+    const QUESTION_REASON = d.questionReason ?? 'question';
     const kindEl = document.getElementById('report-kind') as HTMLSelectElement;
     const orderFields = document.getElementById('order-fields');
     const messageField = document.getElementById('report-message-field');
@@ -230,21 +245,33 @@ const REASONS = [
      * thing either way (`order-access.ts`) — so this function cannot tell the difference between
      * "opened a case" and "no such order", and deliberately does not try. */
     const submitOrderCase = async (): Promise<void> => {
-      const res = await fetch('/api/returns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'open',
-          reason: (document.getElementById('order-reason') as HTMLSelectElement).value,
-          note: (document.getElementById('order-note') as HTMLTextAreaElement).value.trim(),
-          ...(d.orderId
-            ? { orderId: d.orderId, token: d.orderToken }
-            : {
-                orderRef: (document.getElementById('order-ref') as HTMLInputElement).value.trim(),
-                email: (document.getElementById('order-email') as HTMLInputElement).value.trim(),
-              }),
-        }),
-      });
+      const reason = (document.getElementById('order-reason') as HTMLSelectElement).value;
+      const note = (document.getElementById('order-note') as HTMLTextAreaElement).value.trim();
+      // The credential is whatever the visitor has, and it is the SAME either way — the signed link
+      // they arrived on, or the order number plus the address they bought with. Built once here
+      // because both destinations below take it and `order-access.ts` resolves it identically.
+      const credential = d.orderId
+        ? { orderId: d.orderId, token: d.orderToken }
+        : {
+            orderRef: (document.getElementById('order-ref') as HTMLInputElement).value.trim(),
+            email: (document.getElementById('order-email') as HTMLInputElement).value.trim(),
+          };
+
+      // **A question is not a case.** It goes to the SELLER — the person who packed and shipped it
+      // and the only one who can answer "when is this arriving" — instead of opening a return
+      // against them. Same credential, different destination.
+      const isQuestion = reason === QUESTION_REASON;
+      const res = isQuestion
+        ? await fetch('/api/order-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: note, ...credential }),
+          })
+        : await fetch('/api/returns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'open', reason, note, ...credential }),
+          });
       if (res.status === 429) {
         const body = await res.json() as { retryAfterMinutes?: number };
         say(str.throttled.replace('{n}', String(body.retryAfterMinutes ?? 60)), true);
@@ -258,8 +285,10 @@ const REASONS = [
       const done2 = document.getElementById('report-done');
       if (done2) {
         const [h, b] = done2.querySelectorAll('p');
-        if (h) h.textContent = str.orderSent;
-        if (b) b.textContent = str.orderSentBody;
+        // The two outcomes say different things because two different people will answer. Promising
+        // "we'll update you" for a question would have the buyer waiting on the wrong party's mail.
+        if (h) h.textContent = isQuestion ? str.questionSent : str.orderSent;
+        if (b) b.textContent = isQuestion ? str.questionSentBody : str.orderSentBody;
         done2.hidden = false;
       }
       form.hidden = true;
@@ -270,6 +299,16 @@ const REASONS = [
       const orderBranch = isOrder();
       const message = messageEl.value.trim();
       if (!orderBranch && !message) { say(str.empty, true); return; }
+      // A return case can be filed on the reason alone — the note is genuinely optional there. A
+      // QUESTION is nothing but its note, so an empty one would post a blank message to a seller
+      // and come back a 400 the visitor cannot read the cause of.
+      if (orderBranch
+          && (document.getElementById('order-reason') as HTMLSelectElement).value === QUESTION_REASON
+          && !(document.getElementById('order-note') as HTMLTextAreaElement).value.trim()) {
+        say(str.empty, true);
+        (document.getElementById('order-note') as HTMLTextAreaElement).focus();
+        return;
+      }
 
       submit.disabled = true;
       submit.textContent = str.sending;

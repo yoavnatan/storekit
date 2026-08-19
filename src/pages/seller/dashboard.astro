@@ -2723,7 +2723,22 @@ const orderStatusColors: Record<string, string> = {
             (CURRENT_TASK 2 — Messages previously had neither a sticky head nor
             a one-row toolbar on mobile). */}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)] flex flex-col items-start gap-[0.6rem]">
-          <h2 class="m-0 text-base font-semibold">{t.dashboard.tabMessages}</h2>
+          <div class="w-full flex items-center justify-between gap-2">
+            <h2 class="m-0 text-base font-semibold">{t.dashboard.tabMessages}</h2>
+            {/* The seller's way to START a conversation with us, which did not exist until
+                2026-08-19 — they could only reply inside a thread the admin had opened, and a
+                question meant leaving the product for a mailto. Here rather than in Settings
+                because the answer arrives in this tab. */}
+            <button type="button" id="seller-inquiry-toggle" class="btn btn--ghost btn--sm" aria-expanded="false" aria-controls="seller-inquiry-form">
+              {d.platformInquiry}
+            </button>
+          </div>
+          <div id="seller-inquiry-form" class="w-full" hidden>
+            <textarea id="seller-inquiry-text" class="seller-msg-reply-textarea" rows="3" maxlength="2000" placeholder={d.platformInquiryPlaceholder} style="resize:none"></textarea>
+            <div class="flex justify-end mt-2">
+              <button type="button" id="seller-inquiry-send" class="btn btn--accent btn--sm">{d.platformInquirySend}</button>
+            </div>
+          </div>
           <div class="dash-toolbar w-full">
             <div class="relative flex-1 min-w-[110px] max-w-[280px]">
               <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -3832,8 +3847,11 @@ const orderStatusColors: Record<string, string> = {
     },
 
     messages: async () => {
-      const { initMessagesTab } = await import('../../scripts/dashboard/messages.js');
-      return () => initMessagesTab(updateSwitcherAlertDot);
+      const [{ initMessagesTab }, { initPlatformInquiry }] = await Promise.all([
+        import('../../scripts/dashboard/messages.js'),
+        import('../../scripts/dashboard/platform-inquiry.js'),
+      ]);
+      return () => { initMessagesTab(updateSwitcherAlertDot); initPlatformInquiry(); };
     },
 
     performance: async () => {

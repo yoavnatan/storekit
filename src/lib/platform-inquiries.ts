@@ -112,11 +112,16 @@ export async function createPlatformInquiry(input: NewInquiryInput): Promise<boo
       // buyer can never be read back as the owner of a store (`createInquiryThread` re-checks).
       ...(role === 'seller' && actor.actorId ? { sellerId: actor.actorId } : {}),
       ...(actor.actorId ? { id: actor.actorId } : {}),
-      // No name is resolved here on purpose. `request-actor.ts` answers "who was this" with an id
-      // and a role, and adding a name lookup would put a second query on the path of every fault
-      // report — including the ones filed while the site is already failing. The panel names a
-      // signed-in sender from the id it has.
-      ...(clamp(input.senderEmail, MAX_EMAIL_LEN) ? { email: clamp(input.senderEmail, MAX_EMAIL_LEN)! } : {}),
+      // The address to answer at: what they typed, or — for a signed-in sender who typed nothing —
+      // the one on their account, which `request-actor.ts` already resolved for the admin screens
+      // (`actorLabel`). No extra query, and it closes the case where a seller writes from inside
+      // the product and the inbox has no way back to them.
+      //
+      // No NAME is resolved here on purpose: that would be a second lookup on the path of every
+      // fault report, including the ones filed while the site is already failing.
+      ...(clamp(input.senderEmail, MAX_EMAIL_LEN) ?? clamp(actor.actorLabel, MAX_EMAIL_LEN)
+        ? { email: (clamp(input.senderEmail, MAX_EMAIL_LEN) ?? clamp(actor.actorLabel, MAX_EMAIL_LEN))! }
+        : {}),
     },
     kind,
     ...(pageUrl ? { pageUrl } : {}),

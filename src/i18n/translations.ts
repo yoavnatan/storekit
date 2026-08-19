@@ -1831,6 +1831,11 @@ export const translations = {
       filterColFrom: 'שולח',
       filterNoProduct: 'ללא מוצר',
       msgSearchPlaceholder: 'חיפוש הודעות…',
+      // The seller's way to START a conversation with the platform — no such thing existed until
+      // 2026-08-19, so a seller with a question left the product for a mailto.
+      platformInquiry: 'פנייה לפלטפורמה',
+      platformInquiryPlaceholder: 'מה תרצו לשאול אותנו?',
+      platformInquirySend: 'שלח פנייה',
       ordersSearchPlaceholder: 'חיפוש הזמנות…',
       orderSortOptDateDesc: 'תאריך: חדש — ישן',
       orderSortOptDateAsc: 'תאריך: ישן — חדש',
@@ -2266,6 +2271,7 @@ export const translations = {
       orderRefHint: 'מופיע במייל אישור ההזמנה, 8 תווים.',
       orderEmail: 'האימייל שאיתו בוצעה ההזמנה',
       orderReason: 'מה קרה?',
+      orderReasonQuestion: 'יש לי שאלה על ההזמנה',
       orderReasonChanged: 'התחרטתי',
       orderReasonDamaged: 'הגיע פגום',
       orderReasonWrong: 'לא מה שהזמנתי',
@@ -2277,6 +2283,10 @@ export const translations = {
       // the form be used to discover which order numbers exist.
       orderSent: 'הפנייה התקבלה',
       orderSentBody: 'נטפל בה ונעדכן אתכם במייל.',
+      // A question goes to the SELLER, so the answer comes from them — saying "we" here would
+      // promise a reply from the wrong party, and the buyer would wait for the wrong mail.
+      questionSent: 'השאלה נשלחה למוכר',
+      questionSentBody: 'המוכר יענה לכם במייל שאיתו בוצעה ההזמנה.',
     },
     /** ShareMenu.astro. The network names stay in Latin script — a WhatsApp menu item that says
      *  "ווטסאפ" is harder to scan than the name every Israeli reads on the app itself. */
@@ -3672,6 +3682,9 @@ export const translations = {
       filterColFrom: 'Sender',
       filterNoProduct: 'No product',
       msgSearchPlaceholder: 'Search messages…',
+      platformInquiry: 'Ask the platform',
+      platformInquiryPlaceholder: 'What would you like to ask us?',
+      platformInquirySend: 'Send',
       ordersSearchPlaceholder: 'Search orders…',
       orderSortOptDateDesc: 'Date: Newest → Oldest',
       orderSortOptDateAsc: 'Date: Oldest → Newest',
@@ -4033,6 +4046,7 @@ export const translations = {
       orderRefHint: 'On your order confirmation email, 8 characters.',
       orderEmail: 'The email the order was placed with',
       orderReason: 'What happened?',
+      orderReasonQuestion: 'I have a question about the order',
       orderReasonChanged: 'Changed my mind',
       orderReasonDamaged: 'Arrived damaged',
       orderReasonWrong: 'Not what I ordered',
@@ -4042,6 +4056,8 @@ export const translations = {
       orderSubmit: 'Send',
       orderSent: 'We have your message',
       orderSentBody: "We'll handle it and update you by email.",
+      questionSent: 'Your question is on its way to the seller',
+      questionSentBody: 'They will reply to the email address the order was placed with.',
     },
     share: {
       button: 'Share',
