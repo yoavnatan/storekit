@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import { rows, firstRow, query, withTransaction, type Queryable } from './db.js';
 import { reviewerDisplayName, type RatingAggregate } from './reviews.js';
 import { REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES } from './order-status-rules.js';
+import { BUSINESS_TIMEZONE } from './business-day.js';
+import { reviewSearchTerms, type AdminReviewQuery } from './admin-reviews-filter.js';
 
 /**
  * Product reviews, stored.
@@ -211,37 +213,132 @@ export async function getReviewedProductIds(orderId: string): Promise<string[]> 
 }
 
 /**
- * The platform's most recent reviews, blocked ones INCLUDED — the admin's takedown list.
+ * The platform's reviews as the admin's Reviews tab reads them, blocked ones INCLUDED.
  *
  * Blocked rows are in it on purpose and it is the whole point of the screen: an admin who hid
  * something has to be able to see what they hid and put it back. The product and store names ride
  * along because a review with no product beside it is unactionable, and the alternative is one
- * lookup per row on a page that renders twenty-five.
+ * lookup per row on a page that renders fifteen. `sellerId` rides along for the same reason the
+ * toolbar can filter by it — one account can run several stores.
  */
 export interface AdminReviewRow extends ProductReview {
   productName: string;
   productSlug: string;
   storeName: string;
+  sellerId: string;
 }
 
-export async function getRecentReviews(limit = 25): Promise<AdminReviewRow[]> {
-  const found = await rows<Row & { product_name: string; product_slug: string; store_name: string }>(
-    `SELECT r.id, r.product_id, r.store_slug, r.order_id, r.buyer_id, r.reviewer_name, r.rating,
-            r.body, r.blocked, r.created_at,
-            p.name AS product_name, p.slug AS product_slug, s.name AS store_name
-       FROM product_reviews r
+export interface AdminReviewsPage {
+  reviews: AdminReviewRow[];
+  /** Rows matching the narrowing, across all pages. */
+  total: number;
+}
+
+/**
+ * One page of reviews, narrowed, ordered, counted and sliced entirely in the query.
+ *
+ * **Why not the old `getRecentReviews`, which took the newest 25 and rendered them.** This table
+ * grows with every delivered purchase on the platform, and a fixed head with no way to ask anything
+ * meant the answer to "show me what this store's buyers wrote" was to page until it appeared — so
+ * there was no such answer. Narrowing in SQL rather than in JS is the same decision the money
+ * journal reached (`money-events.ts#getMoneyEventsPage`) and for the same three costs: the network
+ * transfer, the allocation, and a (terms × rows) scan on a single-threaded SSR server.
+ *
+ * **`LEFT JOIN … ON true`, not `count(*) OVER ()`** — copied deliberately from the journal, where
+ * it is a real bug rather than a style choice: a window function has no row to ride on when the
+ * page is past the end of the result (a hand-typed `?vpage=999`), so the total would come back 0
+ * and the pager would report an empty tab.
+ *
+ * **`r.demo` is in the SELECT, and its absence was a live bug.** `AdminReviewsPanel.astro` renders
+ * the same "לדוגמה" mark the shopper sees, and argues on its own header why that matters precisely
+ * here — this is the screen used to decide whether to take a review down, and 83 seeded ratings
+ * that look exactly like buyers' own is the wrong basis for that decision. The column was never
+ * selected, so `demo` arrived `undefined`, and the badge had never once rendered.
+ * `tests/admin-reviews-query-db.test.ts` pins it.
+ */
+export async function getAdminReviewsPage(
+  query: AdminReviewQuery,
+  offset: number,
+  limit: number,
+): Promise<AdminReviewsPage> {
+  const params: unknown[] = [];
+  const where: string[] = [];
+
+  const bind = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  if (query.store) where.push(`r.store_slug = ${bind(query.store)}`);
+  if (query.seller) where.push(`s.seller_id::text = ${bind(query.seller)}`);
+  if (query.state !== 'all') where.push(`r.blocked = ${bind(query.state === 'hidden')}`);
+  // Bounds are the admin's local calendar, not UTC — the same rule every dated admin filter obeys
+  // (`business-day.ts`). A review written at 01:00 Jerusalem belongs to the day he would name.
+  if (query.from) {
+    where.push(`r.created_at >= (${bind(query.from)}::date)::timestamp AT TIME ZONE ${bind(BUSINESS_TIMEZONE)}`);
+  }
+  if (query.to) {
+    where.push(`r.created_at < (${bind(query.to)}::date + 1)::timestamp AT TIME ZONE ${bind(BUSINESS_TIMEZONE)}`);
+  }
+  // Terms are ANDed, each matching the review's text, its author's name or the product's — the
+  // three things somebody arriving at this tab actually remembers. Bounded by the parser.
+  for (const term of reviewSearchTerms(query.q)) {
+    const like = bind(`%${term}%`);
+    where.push(`(r.body ILIKE ${like} OR r.reviewer_name ILIKE ${like} OR p.name ILIKE ${like})`);
+  }
+
+  const clause = where.length ? where.join(' AND ') : 'true';
+  const from = `FROM product_reviews r
        JOIN store_products p ON p.id = r.product_id
        JOIN stores s ON s.id = p.store_id
-      ORDER BY r.created_at DESC, r.id
-      LIMIT $1`,
-    [limit],
+      WHERE ${clause}`;
+  const limitParam = bind(limit);
+  const offsetParam = bind(offset);
+
+  const found = await rows<Partial<Row> & {
+    total_count: string | number;
+    product_name?: string;
+    product_slug?: string;
+    store_name?: string;
+    seller_id?: string;
+  }>(
+    `WITH n AS (SELECT count(*) AS total_count ${from}),
+          pg AS (SELECT r.id, r.product_id, r.store_slug, r.order_id, r.buyer_id, r.reviewer_name,
+                        r.rating, r.body, r.blocked, r.demo, r.created_at,
+                        p.name AS product_name, p.slug AS product_slug,
+                        s.name AS store_name, s.seller_id::text AS seller_id
+                   ${from}
+                  ORDER BY r.created_at DESC, r.id
+                  LIMIT ${limitParam} OFFSET ${offsetParam})
+     SELECT n.total_count, pg.* FROM n LEFT JOIN pg ON true`,
+    params,
   );
-  return found.map((row) => ({
-    ...toReview(row),
-    productName: row.product_name,
-    productSlug: row.product_slug,
-    storeName: row.store_name,
-  }));
+
+  return {
+    // A page past the end still returns the count row, with every review column NULL.
+    reviews: found.filter((row) => row.id).map((row) => ({
+      ...toReview(row as Row),
+      productName: row.product_name ?? '',
+      productSlug: row.product_slug ?? '',
+      storeName: row.store_name ?? '',
+      sellerId: row.seller_id ?? '',
+    })),
+    // `count` is a bigint: a string from `pg`, a number from PGlite (§8).
+    total: Number(found[0]?.total_count ?? 0),
+  };
+}
+
+/**
+ * Every review on the platform, hidden ones included — the denominator the Reviews tab prints.
+ *
+ * Distinct from `countPublishedReviews` next door, which excludes blocked and demo rows because it
+ * answers a PUBLIC question. This one answers an administrative one: "3 מתוך 412" only means
+ * something if 412 is everything there is, and a tab that quietly excluded what an admin had hidden
+ * would misreport itself to the one person who can act on it.
+ */
+export async function countAllReviews(): Promise<number> {
+  const row = await firstRow<{ n: string | number }>('SELECT count(*) AS n FROM product_reviews');
+  return Number(row?.n ?? 0);
 }
 
 /**

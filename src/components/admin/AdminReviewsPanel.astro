@@ -1,80 +1,142 @@
 ---
 /**
- * Product reviews, with a takedown button — under the visitor reports on the Alerts tab.
+ * The Reviews tab — every review buyers wrote, with the button that takes one down.
  *
- * **Why the platform needs this at all, when nothing else here is moderated by hand.** A review is
- * the only text on the site written by somebody who is neither the seller nor us. The automatic
- * gates do most of the work — a review needs a paid, shipped order line (`review-eligibility.ts`)
- * and its text goes through the same spam/keyword filter as seller copy — but neither of those can
- * catch a real buyer writing something defamatory, and there is no version of a public review
- * system that has no way to take one down.
+ * **It was a panel on "התראות ושגיאות" until 2026-08-19, and the owner moved it out.** That tab is
+ * a log of failures the machine detected; a published opinion is neither a failure nor machine-
+ * detected. It had been there for one accidental reason — a complaint about a review landed two
+ * panels above it, so the takedown button happened to be within reach — and a complaint is a thread
+ * now, carrying the review and its button inline. What was left was a list with no home.
  *
  * **Not a queue, and deliberately not.** Nothing here waits for approval: a review is published the
- * moment it is written, and this screen exists for the complaint that arrives afterwards — which
- * lands two panels up, in `AdminReportsPanel`. A pre-moderation queue would be the manual
- * gatekeeping the zero-touch rule forbids, and it would also mean every review sits invisible until
- * someone happens to log in.
+ * moment it is written. A pre-moderation queue would be the manual gatekeeping the zero-touch rule
+ * forbids, and it would also mean every review sits invisible until someone happens to log in. The
+ * automatic gates do the work — a review needs a paid, shipped order line
+ * (`review-eligibility.ts`) and its text goes through the same spam filter as seller copy. This
+ * screen is for the one thing neither can catch: a real buyer writing something defamatory.
  *
- * Newest first, blocked ones included — an admin who hid something has to be able to find it again.
+ * **The toolbar is plain controls on purpose** (owner, 2026-08-19: *"שיהיה פשוט. לא עמוס בעין"*).
+ * The money journal's floating menus earn their complexity from a nine-value vocabulary; this tab
+ * has two short lists and a date range, and a `<select>` says the same thing in one line of markup
+ * and no script. Every control writes to the ONE `/admin?` URL and the server re-renders — nothing
+ * here filters DOM rows, because only one page of rows is ever in the DOM.
  */
+import type { AdminReviewRow } from '../../lib/product-reviews.js';
+import { hasActiveReviewFilters, type AdminReviewQuery } from '../../lib/admin-reviews-filter.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { starRowHtml } from '../../lib/star-html.js';
 import { demoProductBadgeHtml } from '../../lib/demo-badge.js';
 import { getLang, getT } from '../../i18n/index.js';
-import type { AdminReviewRow } from '../../lib/product-reviews.js';
+import AdminPager from './AdminPager.astro';
 
 interface Props {
   reviews: AdminReviewRow[];
+  query: AdminReviewQuery;
+  /** Rows matching the current narrowing, across all pages. */
+  total: number;
+  /** Reviews on the platform with nothing narrowed — so the empty state can tell "no reviews yet"
+   *  apart from "your filter matched none", which are different problems with different fixes. */
+  totalAll: number;
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
+  storeOptions: { slug: string; name: string }[];
+  sellerOptions: { id: string; name: string }[];
 }
-const { reviews } = Astro.props;
+const {
+  reviews, query, total, totalAll, page, totalPages, buildUrl, storeOptions, sellerOptions,
+} = Astro.props;
 const t = getT(getLang(Astro.cookies));
-const hiddenCount = reviews.filter((r) => r.blocked).length;
-const demoCount = reviews.filter((r) => r.demo).length;
+const anyFilter = hasActiveReviewFilters(query);
 ---
 
-<section class="admin-card" aria-labelledby="admin-reviews-heading">
-  <h3 id="admin-reviews-heading" class="admin-card__title">
-    ביקורות מוצרים
-    {hiddenCount > 0 && <span class="admin-badge admin-badge--failed">{hiddenCount} מוסתרות</span>}
-    {/* Said on the heading as well as per row: the useful question on this screen is "how many of
-        these did real people write", and counting them by eye down a list of eighty is not it. */}
-    {demoCount > 0 && <span class="admin-badge admin-badge--muted">{demoCount} לדוגמה</span>}
-  </h3>
+<div
+  id="admin-reviews-toolbar"
+  class="flex flex-wrap items-center gap-2 mb-3"
+  data-store={query.store}
+  data-seller={query.seller}
+  data-state={query.state}
+  data-from={query.from}
+  data-to={query.to}
+>
+  <div class="flex-1 min-w-[14rem]">
+    <input
+      type="search"
+      id="admin-reviews-search"
+      class="input"
+      value={query.q}
+      placeholder="חיפוש בטקסט הביקורת, בשם הכותב או בשם המוצר..."
+      aria-label="חיפוש בביקורות"
+    />
+  </div>
 
-  {reviews.length === 0
-    ? <p class="admin-empty">עדיין אין ביקורות.</p>
-    : (
-      <div class="flex flex-col" style="gap:0.6rem">
-        {reviews.map((r) => (
-          <article class="admin-review-row" data-review-row={r.id}
-                   style={`display:flex;gap:0.75rem;align-items:flex-start;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);opacity:${r.blocked ? 0.55 : 1}`}>
-            <div class="min-w-0" style="flex:1 1 auto">
-              <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
-                <Fragment set:html={starRowHtml(r.rating, { px: 13 })} />
-                <a href={`/${r.storeSlug}/${r.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
-                   style="font-size:0.82rem;font-weight:600;color:var(--color-text);text-decoration:none">{r.productName}</a>
-                <span style="font-size:0.75rem;color:var(--color-muted)">{r.storeName}</span>
-                {/* Same mark the shopper sees, so the two screens agree about what this row is.
-                    Without it 83 seeded ratings sit here looking exactly like buyers' own — and
-                    the one screen where that matters is the one used to decide whether to take a
-                    review down. */}
-                {r.demo && <Fragment set:html={demoProductBadgeHtml(t.demo.reviewsBadge, 'inline')} />}
-                <span style="font-size:0.75rem;color:var(--color-muted)">·</span>
-                <span style="font-size:0.75rem;color:var(--color-muted)">{r.reviewerName || '—'}</span>
-                <time datetime={r.createdAt} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">
-                  {formatHeDateTime(r.createdAt)}
-                </time>
-              </div>
-              {r.body
-                ? <p dir="auto" class="whitespace-pre-line" style="margin:0;font-size:0.85rem;line-height:1.5;color:var(--color-muted);overflow-wrap:break-word">{r.body}</p>
-                : <p style="margin:0;font-size:0.8rem;color:var(--color-muted)">דירוג ללא טקסט</p>}
+  <select id="admin-reviews-store" class="input !w-auto" aria-label="סינון לפי חנות">
+    <option value="">כל החנויות</option>
+    {storeOptions.map((s) => (
+      <option value={s.slug} selected={s.slug === query.store}>{s.name}</option>
+    ))}
+  </select>
+
+  <select id="admin-reviews-seller" class="input !w-auto" aria-label="סינון לפי מוכר">
+    <option value="">כל המוכרים</option>
+    {sellerOptions.map((s) => (
+      <option value={s.id} selected={s.id === query.seller}>{s.name}</option>
+    ))}
+  </select>
+
+  <select id="admin-reviews-state" class="input !w-auto" aria-label="סינון לפי מצב">
+    <option value="all" selected={query.state === 'all'}>הכל</option>
+    <option value="published" selected={query.state === 'published'}>מפורסמות</option>
+    <option value="hidden" selected={query.state === 'hidden'}>מוסתרות</option>
+  </select>
+
+  <input type="date" id="admin-reviews-from" class="input !w-auto" value={query.from} aria-label="מתאריך" />
+  <input type="date" id="admin-reviews-to" class="input !w-auto" value={query.to} aria-label="עד תאריך" />
+
+  {/* Offered only when there is something to clear — a permanently visible clear button reads as
+      an active filter (the same rule the money journal's toolbar states). */}
+  {anyFilter && <button type="button" id="admin-reviews-clear" class="btn btn--ghost btn--sm">נקה סינון</button>}
+</div>
+
+<p class="muted" style="font-size:0.8rem;margin:0 0 0.75rem">
+  {anyFilter ? `${total} מתוך ${totalAll} ביקורות` : `${totalAll} ביקורות`}
+</p>
+
+{reviews.length === 0
+  ? <p class="admin-empty">{totalAll === 0 ? 'עדיין אין ביקורות.' : 'אין ביקורות שמתאימות לסינון.'}</p>
+  : (
+    <div class="flex flex-col" style="gap:0.6rem">
+      {reviews.map((r) => (
+        <article class="admin-review-row" data-review-row={r.id}
+                 style={`display:flex;gap:0.75rem;align-items:flex-start;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);opacity:${r.blocked ? 0.55 : 1}`}>
+          <div class="min-w-0" style="flex:1 1 auto">
+            <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
+              <Fragment set:html={starRowHtml(r.rating, { px: 13 })} />
+              <a href={`/${r.storeSlug}/${r.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
+                 style="font-size:0.82rem;font-weight:600;color:var(--color-text);text-decoration:none">{r.productName}</a>
+              <span style="font-size:0.75rem;color:var(--color-muted)">{r.storeName}</span>
+              {/* Same mark the shopper sees, so the two screens agree about what this row is.
+                  Without it 83 seeded ratings sit here looking exactly like buyers' own — and
+                  the one screen where that matters is the one used to decide whether to take a
+                  review down. */}
+              {r.demo && <Fragment set:html={demoProductBadgeHtml(t.demo.reviewsBadge, 'inline')} />}
+              <span style="font-size:0.75rem;color:var(--color-muted)">·</span>
+              <span style="font-size:0.75rem;color:var(--color-muted)">{r.reviewerName || '—'}</span>
+              <time datetime={r.createdAt} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">
+                {formatHeDateTime(r.createdAt)}
+              </time>
             </div>
-            <button type="button" class={`btn btn--sm admin-review-toggle${r.blocked ? '' : ' btn--ghost'}`}
-                    data-review-id={r.id} data-blocked={r.blocked ? '1' : ''} style="flex:0 0 auto">
-              {r.blocked ? 'החזר לפרסום' : 'הסתר'}
-            </button>
-          </article>
-        ))}
-      </div>
-    )}
-</section>
+            {r.body
+              ? <p dir="auto" class="whitespace-pre-line" style="margin:0;font-size:0.85rem;line-height:1.5;color:var(--color-muted);overflow-wrap:break-word">{r.body}</p>
+              : <p style="margin:0;font-size:0.8rem;color:var(--color-muted)">דירוג ללא טקסט</p>}
+          </div>
+          <button type="button" class={`btn btn--sm admin-review-toggle${r.blocked ? '' : ' btn--ghost'}`}
+                  data-review-id={r.id} data-blocked={r.blocked ? '1' : ''} style="flex:0 0 auto">
+            {r.blocked ? 'החזר לפרסום' : 'הסתר'}
+          </button>
+        </article>
+      ))}
+    </div>
+  )}
+
+<AdminPager page={page} totalPages={totalPages} buildUrl={buildUrl} />

@@ -56,6 +56,9 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],
+  // `v*` and not `r*`: the returns tab already owns `rq`/`rpage`, and two tabs told apart by the
+  // second letter of their params is how one of them ends up owned by the wrong list.
+  reviews: ['vq', 'vstore', 'vseller', 'vstate', 'vfrom', 'vto', 'vpage'],
   alerts: ['alsort', 'alsource', 'alsev', 'alref', 'alq', 'alstore', 'alfrom', 'alto', 'alpage', 'alnew'],
   // No params of its own since סשן א׳ §3 — the per-seller table it paged now lives on the seller
   // cards. The key stays so `stripForeignTabParams` still knows this tab exists; an empty list is

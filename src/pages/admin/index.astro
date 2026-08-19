@@ -22,7 +22,8 @@ import { getAdminThreadsPage } from '../../lib/admin-messages.js';
 import { parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames, MAX_ENTRIES as MAX_ERROR_ENTRIES } from '../../lib/error-log.js';
 import { getRecentReports, countOpenReports } from '../../lib/user-reports.js';
-import { getRecentReviews } from '../../lib/product-reviews.js';
+import { getAdminReviewsPage, countAllReviews } from '../../lib/product-reviews.js';
+import { parseAdminReviewQuery, reviewQueryParams } from '../../lib/admin-reviews-filter.js';
 import { getImageModerationState } from '../../lib/image-moderation-health.js';
 import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
 import { getPlatformAdSettings } from '../../lib/platform-ads.js';
@@ -103,6 +104,10 @@ const tabs = [
   { id: 'performance', label: 'ביצועים' },
   { id: 'advertising', label: 'פרסום' },
   { id: 'messages', label: 'הודעות' },
+  // Beside the messages and before the alerts, because that is what it is: text people wrote. It
+  // sat as a panel on "התראות ושגיאות" until the owner moved it out (2026-08-19) — that tab is a
+  // log of failures the machine detected, and a buyer's published opinion is neither.
+  { id: 'reviews', label: 'ביקורות' },
   { id: 'alerts', label: 'התראות ושגיאות' },
   // Beside the journal and before it: this one is what is ABOUT to happen and the journal is what
   // already did, and a number you can still act on comes before a number you can only check.
@@ -194,8 +199,8 @@ const shows = (panel: string): boolean => panel === initialPanel;
 // it is still read whole for those and not read at all for the rest. The two halves have different
 // readers and are gated separately: the Messages tab names sellers and never touches stores, while
 // the Advertising tab and the money journal's reconciliation are the other way round.
-const SELLER_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'performance', 'messages'] as const;
-const STORE_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'advertising', 'performance', 'moneylog'] as const;
+const SELLER_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'performance', 'messages', 'reviews'] as const;
+const STORE_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'advertising', 'performance', 'moneylog', 'reviews'] as const;
 /** Products per store: the counts behind the seller cards, the store rows, the overview's
  *  empty-catalogue figure and the feed figures on the advertising tab. */
 const COUNT_PANELS = ['overview', 'sellers', 'stores', 'advertising'] as const;
@@ -204,6 +209,7 @@ const COUNT_PANELS = ['overview', 'sellers', 'stores', 'advertising'] as const;
 // some of it. Nothing below re-reads `sp` for these.
 const orderQuery = parseOrderQuery(sp);
 const threadQuery = parseAdminThreadQuery(sp);
+const reviewQuery = parseAdminReviewQuery(sp);
 
 // "This month" is decided once, HERE, and handed to the query — the Overview card and the Stores
 // tab used to each ask their own clock what month it was (business-day.ts).
@@ -333,7 +339,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
   productCounts, reconciliation, payoutPlan, heldBreakdown, heldBySeller, platformAccrual, ordersPage, badgeCounts,
-  perfViews, perfPlatformViews, perfSales, productNames, userReports, openReportCount, recentReviews,
+  perfViews, perfPlatformViews, perfSales, productNames, userReports, openReportCount, reviewsPage, reviewsTotalAll,
   imageModerationState, licenceCeiling,
 ] = await Promise.all([
   only(COUNT_PANELS, () => getProductCountsByStore(storeIds), new Map()),
@@ -391,9 +397,11 @@ const [
   // the list is bounded, and "N פתוחים" has to stay true past the end of it.
   only(['alerts'], () => getRecentReports(), []),
   only(['alerts'], () => countOpenReports(), 0),
-  // The review takedown list, on the same tab and for the same reason as the reports above it: a
-  // complaint about a review arrives there, and the button that acts on it has to be within reach.
-  only(['alerts'], () => getRecentReviews(), []),
+  // One page of reviews, narrowed by the toolbar. Its own tab since 2026-08-19 — it used to be a
+  // panel on Alerts, which is a log of machine-detected failures and not a place for what people
+  // wrote (AdminReviewsPanel.astro carries the decision).
+  only(['reviews'], () => getAdminReviewsPage(reviewQuery, (reviewQuery.page - 1) * ADMIN_PAGE_SIZE, ADMIN_PAGE_SIZE), { reviews: [], total: 0 }),
+  only(['reviews'], () => countAllReviews(), 0),
   // Is anybody checking uploaded pictures right now (image-moderation-health.ts). Overview only —
   // it is a card on the landing tab, and with no add-on declared it answers without a query at all.
   // Is anybody checking uploaded pictures right now (image-moderation-health.ts). BOTH tabs, and
@@ -539,6 +547,22 @@ const errorsFiltered = keepNewOnly(
 );
 const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
 const errorStoreOptions = getErrorStoreNames(errorsAll);
+
+// ── Reviews tab ──
+// The page itself was sliced in SQL, so the pager's arithmetic is all that is left here. Clamped
+// the same way `paginate` clamps every other tab: a hand-typed `?vpage=999` shows the last page
+// rather than an empty one that claims the tab is empty.
+const reviewsTotalPages = Math.max(1, Math.ceil(reviewsPage.total / ADMIN_PAGE_SIZE));
+const reviewsPageNumber = Math.min(reviewQuery.page, reviewsTotalPages);
+// The two dropdowns, off the roster this page already read. Sorted by name — the admin is looking
+// for one he can name, and creation order is not an order he knows. Stores that no longer exist
+// cannot be picked, which is correct: their reviews went with them (the query INNER JOINs stores).
+const reviewStoreOptions = stores
+  .map((s) => ({ slug: s.slug, name: s.name }))
+  .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+const reviewSellerOptions = sellers
+  .map((s) => ({ id: s.id, name: s.name || s.email }))
+  .sort((a, b) => a.name.localeCompare(b.name, 'he'));
 
 // ── Performance tab (platform-wide, aggregates every store) ──
 // SSR the default "this month" range so the charts never flash blank; range
@@ -816,10 +840,26 @@ const badgeTotal = Object.values(badgeCounts).reduce((sum, n) => sum + n, 0);
         />}
       </AdminPanelShell>
 
+      <AdminPanelShell panel="reviews" active={shows('reviews')}>
+        <AdminReviewsPanel
+          reviews={reviewsPage.reviews}
+          query={reviewQuery}
+          total={reviewsPage.total}
+          totalAll={reviewsTotalAll}
+          page={reviewsPageNumber}
+          totalPages={reviewsTotalPages}
+          storeOptions={reviewStoreOptions}
+          sellerOptions={reviewSellerOptions}
+          buildUrl={(p) => tabUrl('reviews', {
+            ...reviewQueryParams(reviewQuery),
+            vpage: p > 1 ? String(p) : undefined,
+          })}
+        />
+      </AdminPanelShell>
+
       <AdminPanelShell panel="alerts" active={shows('alerts')}>
         <AdminModerationStatus state={imageModerationState} placement="alerts" />
         <AdminReportsPanel reports={userReports} openCount={openReportCount} newSince={newSince.alerts} />
-        <AdminReviewsPanel reviews={recentReviews} />
         <AdminAlertsPanel
           errors={alertsPageResult.items}
           totalAll={errorsAll.length}
