@@ -235,10 +235,18 @@ describe('the registry itself', () => {
     // (`order-status-change.ts`), which is what stops an automatic cancel and a manual one from
     // disagreeing about stock or about the buyer's refund. Its cases are in
     // `tests/order-sla-run.test.ts`.
+    // And `inbox-digest` (2026-08-19) — the only job whose entire output is a sentence to a PERSON.
+    // Its idempotency argument is the weakest-looking one here and it is deliberate: a second pass
+    // would send the same mail again, because nothing about a count is written down. The SCHEDULE
+    // is the bound instead (`project_scheduler`: a job must INFER NOTHING), and `job_runs` measures
+    // start-to-start, so a restart cannot turn one mail a day into two. The restraint that actually
+    // matters — never mailing about an inquiry already answered, already handled, or newer than the
+    // grace window — is asserted in `tests/inbox-digest-db.test.ts`, because that is what keeps the
+    // channel worth having at all.
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'merchant-status', 'order-sla', 'payout-run', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'payout-run', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact'],
     );
   });
 });

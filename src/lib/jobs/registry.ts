@@ -38,6 +38,7 @@ import { runOrderSla } from '../order-sla-run.js';
 import { runReturnsSweep } from '../returns-run.js';
 import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { businessTodayISO } from '../business-day.js';
+import { runInboxDigest } from '../inbox-digest.js';
 
 export interface Job {
   /** Primary key in `job_runs`. Never rename one — the row is the schedule's memory, and a renamed
@@ -486,4 +487,28 @@ const returnsSweep: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, payoutRun, orderSla, returnsSweep, purgeVisitorDetail];
+/**
+ * Tell the owner, once a day, that somebody is waiting for an answer (`inbox-digest.ts`).
+ *
+ * *What it fixes (owner, 2026-08-19):* the inbox is a screen you have to open. A guest whose
+ * checkout broke can write at 2am and sit there until somebody happens to look. This is the only
+ * job in the registry whose entire output is a sentence to a person.
+ *
+ * *Idempotent:* it derives a count from current state and sends at most one mail per run. A second
+ * pass on the same day would send the same mail again — which is why the SCHEDULE is the bound, not
+ * the job's memory (`project_scheduler`: a job must INFER NOTHING). At 24h that is one mail a day
+ * even after a restart, because `job_runs` measures start-to-start.
+ *
+ * *Silent when there is nothing,* and when `ALERT_EMAIL` is unset — the dev and CI state. Both are
+ * reported on the row rather than swallowed.
+ */
+const inboxDigest: Job = {
+  name: 'inbox-digest',
+  intervalSec: 24 * HOUR,
+  leaseSec: 5 * MINUTE,
+  async run() {
+    return runInboxDigest();
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, payoutRun, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail];
