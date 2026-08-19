@@ -191,6 +191,11 @@ describe('block-destructive-git.sh — the four commands that lost work here', (
     'git show main:src/foo.ts',
     'npm run verify -- --all',
     'git commit -m "a message that mentions git add -A in prose"',
+    // A message file whose PATH contains a dash-letters-a run — which every session's scratchpad
+    // path does here (`…/-Users-yoavnatan-…` contains `-yoa`). Unanchored, the sweeping-commit
+    // pattern matched the path and refused an ordinary commit with a warning about a stale
+    // checkout. An over-block on a safety hook is what teaches the next session to route around it.
+    'git commit -q -F /tmp/claude/-Users-yoavnatan-Desktop-porject-2/scratchpad/msg.txt',
   ];
 
   it.each(allowed)('allows %s', (command) => {

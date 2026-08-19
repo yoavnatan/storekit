@@ -127,7 +127,13 @@ fi
 # ── 4. a sweeping commit from a tree that is missing tracked files ─────────────
 # Gated behind the command pattern so the git call below runs on a commit, not on every Bash tool
 # use in the session.
-if printf '%s' "$cmd" | grep -Eq '\bgit\b[^;&|]*(\bcommit\b[^;&|]*(-[a-zA-Z]*a|--all)|\badd\b[^;&|]*(-A|--all|-u|--update| +\.( |$)))'; then
+#
+# **The flag patterns are anchored to whitespace, and that is a fix rather than tidiness.** Written
+# as a bare `-[a-zA-Z]*a` they also matched the middle of a PATH: `git commit -F
+# /tmp/x/-Users-yoavnatan-…/msg.txt` contains `-yoa`, so a perfectly ordinary commit with a message
+# file was refused with a warning about a stale checkout. An over-block on a safety hook is not
+# harmless — it is what teaches the next session to route around the hook.
+if printf '%s' "$cmd" | grep -Eq '\bgit\b[^;&|]*(\bcommit\b[^;&|]*(^|[[:space:]])-[a-zA-Z]*a[a-zA-Z]*([[:space:]]|$)|\bcommit\b[^;&|]*(^|[[:space:]])--all([[:space:]]|$)|\badd\b[^;&|]*(^|[[:space:]])(-A|--all|-u|--update|\.)([[:space:]]|$))'; then
   # `-C` is not enough: git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE into every hook it runs,
   # and those BEAT the directory you hand a child (tests/helpers/git-env.ts — it cost an evening in
   # this repo on 2026-08-17). A guard that reads the wrong repository would block the innocent case
