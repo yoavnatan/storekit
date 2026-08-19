@@ -83,6 +83,10 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/remind-css-conversion.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/memory-index-budget.sh"
           }
         ]
       }

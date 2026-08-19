@@ -34,7 +34,33 @@ import { fileURLToPath } from 'node:url';
  * So when this fails: merge same-topic index lines, or move a hook's detail down into the memory
  * file it points at. Lowering CEILING is right; raising it is not, unless the number went down.
  */
+/**
+ * **The ratchet, and it is now ADVISORY here rather than a red suite (owner, 2026-08-20).**
+ *
+ * `MEMORY.md` lives OUTSIDE every worktree — one file, symlinked, shared by every session on this
+ * machine. So a session that adds one memory line reddened the verify of every other session,
+ * including sessions that never touched memory and could not act on it: they see a failure about a
+ * file they did not change, in a directory that is not in their tree. That is the shape that cost
+ * the owner an evening — *"לא יהיה מצב שאני 5 שעות מול 3 סשנים שלא מגיבים"* — because the honest
+ * response to it is to stop and trim a shared file under time pressure, which is what I did three
+ * times tonight while another session was editing the same lines.
+ *
+ * The ratchet still matters and has not moved: the budget is the budget, and whoever ADDS a line
+ * pays for it. What changed is who is told. `.claude/hooks/memory-index-budget.sh` says it to the
+ * session that just wrote a memory, at the moment it wrote one — which is the only session that can
+ * do anything about it — and this file now fails only on the number that is actually dangerous.
+ */
 const CEILING = 18_000;
+
+/**
+ * Where the suite genuinely refuses, and it is a different question from the ratchet.
+ *
+ * Past `LOAD_LIMIT` the harness does not truncate the index — it drops it, and a session starts
+ * knowing nothing about this project while looking completely normal. `HARD_FAIL` sits well under
+ * that with room for the growth one session can add between two checks, so crossing it means the
+ * ratchet has been ignored for a while and not that somebody wrote one line an hour ago.
+ */
+const HARD_FAIL = 21_000;
 
 /** What the harness refuses to load. The ceiling exists to keep a wide margin under this. */
 const LOAD_LIMIT = 24_400;
@@ -66,14 +92,16 @@ describe.skipIf(!MEMORY_DIR)('MEMORY.md — the always-loaded memory index', () 
   const bytes = Buffer.byteLength(raw, 'utf8');
   const links = [...raw.matchAll(/\]\((?<file>[a-z0-9_]+\.md)\)/gu)].map((m) => m.groups!.file);
 
-  it(`stays within the ${CEILING.toLocaleString()}-byte ceiling`, () => {
+  it(`stays under the ${HARD_FAIL.toLocaleString()}-byte hard limit`, () => {
+    // The ratchet (CEILING) is the hook's job — see its note above. This is the cliff.
     expect(
       bytes,
-      `MEMORY.md is now ${bytes.toLocaleString()} bytes — ${(bytes - CEILING).toLocaleString()} over ` +
-        `the ceiling, against a ${LOAD_LIMIT.toLocaleString()}-byte load limit past which the whole ` +
-        `index is dropped and a session starts with no project memory at all. Do not raise CEILING: ` +
-        `merge same-topic entries, or move a hook's detail into the memory file it points at.`,
-    ).toBeLessThanOrEqual(CEILING);
+      `MEMORY.md is now ${bytes.toLocaleString()} bytes, past the ${HARD_FAIL.toLocaleString()}-byte ` +
+        `hard limit and closing on the ${LOAD_LIMIT.toLocaleString()} the harness simply REFUSES to ` +
+        `load — past that a session starts with no project memory at all and nothing looks wrong. ` +
+        `The ${CEILING.toLocaleString()} ratchet has been ignored for a while: merge same-topic ` +
+        `entries, or move a hook's detail into the memory file it points at.`,
+    ).toBeLessThanOrEqual(HARD_FAIL);
   });
 
   it('leaves real headroom under the load limit', () => {

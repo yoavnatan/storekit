@@ -9,6 +9,7 @@
 
 import { escapeHtml as esc } from '../../lib/html-escape.js';
 import { showToast, showErrorToast } from '../../lib/toast.js';
+import { showFieldError, clearFieldError } from '../../lib/field-validity.js';
 import { resolvePrice, type ProductDiscount } from '../../lib/discounts.js';
 import { isolateLatinRunsHtml } from '../../lib/bidi-isolate.js';
 import { refreshDiscountFieldsIn } from './discount-field.js';
@@ -115,10 +116,14 @@ function initBulkDiscount(i: Record<string, string>): void {
     body.set('productIds', ids.join(','));
     if (clear) body.set('clear', '1');
     else if (mode === 'apply') {
+      // Under the field, never a toast — the site's one validation shape (`field-validity.ts`).
+      // A toast for a missing field floats away and leaves the form looking exactly as it did.
+      const valueField = panel.querySelector<HTMLInputElement>('[name="discount_value"]');
       if (!(Number(get('discount_value')) > 0)) {
-        showErrorToast(i.discountValueRequired ?? 'הזינו גובה הנחה');
+        if (valueField) { showFieldError(valueField, i.discountValueRequired ?? 'הזינו גובה הנחה'); valueField.focus(); }
         return;
       }
+      if (valueField) clearFieldError(valueField);
       body.set('discount_type', get('discount_type'));
       body.set('discount_value', get('discount_value'));
       body.set('discount_starts', get('discount_starts'));
@@ -273,20 +278,23 @@ function initSaleForm(): void {
       // An active sale with no headline would render as a blank green strip — caught here so the
       // seller sees why instantly, and again server-side (that check is the real one).
       if (active?.checked && !title?.value.trim()) {
-        showErrorToast(i.storeSaleTitleRequired ?? 'צריך כותרת למבצע');
-        title?.focus();
+        if (title) { showFieldError(title, i.storeSaleTitleRequired ?? 'צריך כותרת למבצע'); title.focus(); }
         return;
       }
+      if (title) clearFieldError(title);
       // Category scope with nothing picked would save as a store-wide sale — a much bigger
       // discount than the seller just asked for. Stop it here rather than silently widening it.
       if (scope?.value === 'category' && !scopeInput?.value) {
-        showErrorToast(i.saleScopeCategoryMissing ?? 'בחרו קטגוריה');
+        // The message hangs off the SCOPE control, which is the one the seller can see and change —
+        // `scopeInput` is a hidden field carrying the picked value and has nothing to sit under.
+        if (scope) { showFieldError(scope, i.saleScopeCategoryMissing ?? 'בחרו קטגוריה'); scope.focus(); }
         return;
       }
       if (scope?.value === 'products' && !productIdsInput?.value) {
-        showErrorToast(i.saleScopeProductsMissing ?? 'בחרו לפחות מוצר אחד');
+        if (scope) { showFieldError(scope, i.saleScopeProductsMissing ?? 'בחרו לפחות מוצר אחד'); scope.focus(); }
         return;
       }
+      if (scope) clearFieldError(scope);
       // Success is confirmed ON the button ("נשמר" + ✓), exactly like the Settings tab — this
       // form stays on screen after saving, so the confirmation belongs where the seller's
       // attention already is. A toast is reserved for the failure case, which needs to survive

@@ -2775,6 +2775,11 @@ const orderStatusColors: Record<string, string> = {
                   script only, so the field looked optional right up until it refused (owner,
                   2026-08-20: *"למה זה לא עושה לו את המסגרת של חובה כמו בכל האתר?"*). The red border
                   is `aria-invalid`, which is the one hook `forms.css` styles. */}
+              {/* No error element here on purpose: `lib/field-validity.ts` is the ONE creator of
+                  `.field-error` on this site (its own guard test enforces that), and it inserts and
+                  removes the slot itself. A hand-built one beside it is the second definition that
+                  drifts — and it is also the reason there is no toast: nothing else on this
+                  platform announces a missing field from the corner of the screen. */}
               <input id="seller-inquiry-subject" type="text" class="input" maxlength="120" required
                      placeholder={d.platformInquirySubjectPlaceholder} />
               {/* The ceiling, SHOWN (owner, 2026-08-20). `maxlength` alone stops the typing without

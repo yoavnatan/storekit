@@ -28,6 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { createClient, requireDatabaseUrl } from './lib/pg-connect.mjs';
 
 const MIGRATIONS_DIR = path.join(process.cwd(), 'migrations');
@@ -70,10 +71,47 @@ function migrationFiles() {
  * checkout of the repo, so a fresh environment cannot be proven to reach the same schema — which is
  * the single thing this ledger exists to guarantee. Reported, never auto-deleted: only a person can
  * know whether the row is a renumbering to forget or a migration file somebody lost.
+ *
+ * ── "Not on disk" has to mean not in the REPO, not merely not in MY tree (owner, 2026-08-20) ──
+ * Sessions run in parallel worktrees against ONE shared development database. So the moment any
+ * session writes and applies a migration, every OTHER session's `verify` saw a ledger row whose file
+ * is not in its own checkout, and went red — on work it did not do, cannot see and must not "fix"
+ * (the suggested repair is a DELETE against the shared ledger, which would erase a live session's
+ * migration). Guaranteed to fire, every time, for everyone: exactly the shape that has sessions
+ * sitting unresponsive.
+ *
+ * A file that exists in a SIBLING worktree is not history drift — it is a colleague mid-flight, and
+ * it will arrive here on the next merge. A file that exists in no tree at all is the real thing this
+ * check was built for, and it still fails loudly. The distinction costs one directory read.
  */
+function siblingMigrationNames() {
+  // `git worktree list --porcelain` rather than a glob: it names every checkout of THIS repo,
+  // including the main one from inside a worktree, and does not invent paths that were removed.
+  // Absolute path, not `git` off PATH: this runs in a shell whose PATH a session can have altered,
+  // and the answer decides whether another session's verify goes red. `/usr/bin/git` is present on
+  // every machine this repo runs on; a failure to spawn is handled below as "no siblings", which is
+  // the safe direction — it can only make the check STRICTER, never quieter.
+  let out;
+  try {
+    out = execFileSync('/usr/bin/git', ['worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+  } catch { return new Set(); }
+  const names = new Set();
+  for (const line of out.split('\n')) {
+    if (!line.startsWith('worktree ')) continue;
+    const dir = path.join(line.slice('worktree '.length).trim(), 'migrations');
+    try {
+      for (const f of fs.readdirSync(dir)) if (f.endsWith('.sql')) names.add(f);
+    } catch { /* a worktree without a migrations dir tells us nothing */ }
+  }
+  return names;
+}
+
 function orphanRows(applied) {
   const onDisk = new Set(migrationFiles());
-  return [...applied.keys()].filter((name) => !onDisk.has(name)).sort();
+  const elsewhere = siblingMigrationNames();
+  return [...applied.keys()]
+    .filter((name) => !onDisk.has(name) && !elsewhere.has(name))
+    .sort();
 }
 
 function pendingFiles(applied) {

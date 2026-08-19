@@ -1,4 +1,5 @@
 import { showToast, showErrorToast } from '../../lib/toast.js';
+import { showFieldError, clearFieldError } from '../../lib/field-validity.js';
 
 /**
  * "פנייה לפלטפורמה" — the seller's way to START a conversation with us.
@@ -27,7 +28,7 @@ export function initPlatformInquiry(): void {
   // attribute only and is never the source of the sentence.
   let dict: Record<string, string> = {};
   try { dict = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
-  const needsSubject = dict.platformInquiryNeedsSubject ?? 'צריך נושא — כדי שנדע במה מדובר לפני שנפתח';
+  const needsSubject = dict.platformInquiryNeedsSubject ?? 'יש לכתוב נושא לפנייה';
   const leftTemplate = dict.platformInquiryLeft ?? 'נותרו {n} תווים';
 
   /** Counts DOWN, and only once something is typed: an empty field announcing "120 characters left"
@@ -41,7 +42,9 @@ export function initPlatformInquiry(): void {
     field.addEventListener('input', paint);
     // Typing is the correction, so the red goes the moment it starts — a field that stays marked
     // while being fixed is the version of this that people learn to ignore.
-    field.addEventListener('input', () => field.removeAttribute('aria-invalid'));
+    // Typing is the correction, so the mark goes the moment it starts — a field that stays marked
+    // while being fixed is the version people learn to ignore.
+    field.addEventListener('input', () => clearFieldError(field));
     paint();
     return paint;
   };
@@ -63,7 +66,7 @@ export function initPlatformInquiry(): void {
     if (clear) {
       subject.value = '';
       text.value = '';
-      subject.removeAttribute('aria-invalid');
+      clearFieldError(subject);
       // The counters read the fields, so clearing them has to repaint — or a reopened form still
       // claims the last message's remaining count.
       repaint.forEach((paint) => paint());
@@ -92,10 +95,8 @@ export function initPlatformInquiry(): void {
     // server's fallback keeps a fault report from a stranger out of a "הודעת מערכת" row, and this
     // asks the seller — who is opening a conversation that will be answered — to name it.
     if (!title) {
-      // The site's own invalid state, not a toast alone: a message that scrolls away leaves the
-      // field looking exactly as it did before, and the person has to remember which one it meant.
-      subject.setAttribute('aria-invalid', 'true');
-      showErrorToast(needsSubject);
+      // Under the field, never a toast — `field-validity.ts` owns this shape site-wide.
+      showFieldError(subject, needsSubject);
       subject.focus();
       return;
     }
