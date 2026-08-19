@@ -1535,6 +1535,8 @@ const orderStatusColors: Record<string, string> = {
                 </span>
                 <div class="variant-dims" data-variant-dims></div>
                 <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.25rem">{d.variantAddBtn}</button>
+                <!-- Filled by products.ts#updateVariantLimitNote only while a limit actually applies. -->
+                <p data-variant-limit-note aria-live="polite" style="font-size:0.78rem;margin:0.4rem 0 0" hidden></p>
                 <div class="variant-combos" data-variant-combos style="margin-top:0.75rem" hidden>
                   <p class="field-label" style="margin:0 0 0.3rem">{d.variantComboLabel}</p>
                   <p class="muted" data-variant-combo-hint style="font-size:0.78rem;margin:0 0 0.5rem" hidden>{d.variantComboHint}</p>

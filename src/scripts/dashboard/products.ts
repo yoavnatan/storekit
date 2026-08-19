@@ -9,7 +9,8 @@ import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.j
 import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
 import { takePanelIntent } from './panel-intent.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, remapComboKeys, type VariantDimension } from '../../lib/variant-combo.js';
+import { canonicalDimName, comboCount, LOW_STOCK_THRESHOLD, MAX_VARIANT_COMBOS, comboStockRows, remapComboKeys, type VariantDimension } from '../../lib/variant-combo.js';
+import { CSV_MAX_DIMENSIONS } from '../../lib/csv-bulk.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import { initImageSkeletons, SKELETON_ATTR } from '../../lib/img-skeleton.js';
@@ -848,13 +849,18 @@ function sortComboTable(editor: HTMLElement, col: string): void {
 function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<string, number>, currentStock: number, i18n: Record<string, string>, variantImages: Record<string, string> = {}): string {
   const hasAnyStock = Object.keys(variantStock).length > 0;
   const dimsHtml = variants.map(v => dimHtml(v, i18n, variantImages)).join('');
-  const headerHtml = variants.length ? comboHeaderHtml(variants, i18n) : '';
-  const rowsHtml = variants.length ? comboRowsHtml(variants, variantStock, currentStock, i18n) : '';
-  const totalHtml = variants.length ? comboTotalRowHtml(variants, i18n) : '';
+  // Never expand past the bound, on any path into this table — the same rule refreshVariantCombos
+  // applies while the seller types. Stored data is already within it (both input gates enforce it),
+  // so this only ever fires on a payload that came from somewhere it should not have.
+  const renderable = variants.length > 0 && comboCount(variants) <= MAX_VARIANT_COMBOS;
+  const headerHtml = renderable ? comboHeaderHtml(variants, i18n) : '';
+  const rowsHtml = renderable ? comboRowsHtml(variants, variantStock, currentStock, i18n) : '';
+  const totalHtml = renderable ? comboTotalRowHtml(variants, i18n) : '';
   return `<div class="field variants-editor" data-variants-editor data-combo-dims="${esc(JSON.stringify(variants))}">
     <span class="field-label">${esc(i18n.variantsLabel ?? 'Variants & inventory')}</span>
     <div class="variant-dims" data-variant-dims>${dimsHtml}</div>
     <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.25rem">${esc(i18n.variantAddBtn ?? '+ Add variant type')}</button>
+    <p data-variant-limit-note aria-live="polite" style="font-size:0.78rem;margin:0.4rem 0 0" hidden></p>
     <div class="variant-combos" data-variant-combos style="margin-top:0.75rem" ${variants.length ? '' : 'hidden'}>
       <p class="field-label" style="margin:0 0 0.3rem">${esc(i18n.variantComboLabel ?? 'Stock per combination')}</p>
       <p class="muted" data-variant-combo-hint style="font-size:0.78rem;margin:0 0 0.5rem" ${hasAnyStock ? 'hidden' : ''}>${esc(i18n.variantComboHint ?? '')}</p>
@@ -1189,6 +1195,45 @@ function rememberRenderedDims(editor: HTMLElement, dims: VariantDimension[]): vo
   editor.dataset.comboDims = JSON.stringify(dims);
 }
 
+/**
+ * Say what this product's variant set costs it — while it is being built, not after a save fails.
+ *
+ * Two bounds exist and a seller could meet either without warning (owner, 2026-08-19: *"זה צריך
+ * להיות ברור ליוזר"*). Neither was visible anywhere: the combo limit surfaced only as a rejection
+ * on save, and the dimension limit only as an import error weeks later, on a file the seller was
+ * by then relying on. Shown ONLY when it applies — a permanent caption under a table that is
+ * behaving correctly is furniture, and this one has to still read as news the day it matters.
+ */
+function updateVariantLimitNote(editor: HTMLElement, dims: VariantDimension[], i18n: Record<string, string>): void {
+  const note = editor.querySelector<HTMLElement>('[data-variant-limit-note]');
+  if (!note) return;
+  const combos = comboCount(dims);
+
+  // Over the combo limit the product cannot be saved at all, so this one is a refusal, not a note.
+  if (combos > MAX_VARIANT_COMBOS) {
+    note.textContent = (i18n.variantLimitCombos ?? '{n} combinations, and the maximum is {max}. Remove values or variant types to save.')
+      .replace('{n}', Number.isFinite(combos) ? String(combos) : `>${MAX_VARIANT_COMBOS}`)
+      .replace('{max}', String(MAX_VARIANT_COMBOS));
+    note.style.color = 'var(--color-danger)';
+    note.hidden = false;
+    return;
+  }
+
+  // Past three dimensions the product still works everywhere a shopper sees it — what it loses is
+  // the file: it exports as one flat row, so neither a CSV nor the external inventory sync can
+  // ever move its stock again. That is a decision the seller is making right now, unknowingly.
+  if (dims.length > CSV_MAX_DIMENSIONS) {
+    note.textContent = (i18n.variantLimitDims ?? 'More than {max} variant types — this product\'s stock will then be editable here only. A file or an external inventory sync cannot update it.')
+      .replace('{max}', String(CSV_MAX_DIMENSIONS));
+    note.style.color = 'var(--color-muted)';
+    note.hidden = false;
+    return;
+  }
+
+  note.hidden = true;
+  note.textContent = '';
+}
+
 function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>): void {
   const dims = readVariantDims(editor);
   // A combo's key is built from the dimension NAME and the value, so relabelling either one —
@@ -1207,6 +1252,16 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
   const hint = editor.querySelector<HTMLElement>('[data-variant-combo-hint]');
   if (!combosWrap || !thead || !rowsBody || !tfoot) return;
 
+  // Over the combo limit, do not expand — that expansion is exactly what the limit exists to
+  // prevent, and here it would run on the seller's own machine on every keystroke (three
+  // dimensions of fifty values is 125,000 rows to build). The table is left exactly as it was
+  // rather than emptied, because clearing it would take the counts already typed into it with
+  // it; the note says the product cannot be saved until the set comes back down.
+  if (comboCount(dims) > MAX_VARIANT_COMBOS) {
+    updateVariantLimitNote(editor, dims, i18n);
+    return;
+  }
+
   if (!dims.length) {
     combosWrap.setAttribute('hidden', '');
     thead.innerHTML = '';
@@ -1215,6 +1270,7 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
     delete combosWrap.dataset.sortCol;
     delete combosWrap.dataset.sortDir;
     rememberRenderedDims(editor, dims);
+    updateVariantLimitNote(editor, dims, i18n);
     syncTotalStockField(editor);
     return;
   }
@@ -1236,6 +1292,7 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
   rowsBody.innerHTML = comboRowsHtml(dims, existingStock, fallbackTotal, i18n);
   tfoot.innerHTML = comboTotalRowHtml(dims, i18n);
   rememberRenderedDims(editor, dims);
+  updateVariantLimitNote(editor, dims, i18n);
   combosWrap.removeAttribute('hidden');
   if (hint) hint.hidden = hasAnyStock;
   syncTotalStockField(editor);
@@ -1334,6 +1391,9 @@ export function applyVariantsPayload(
   wrapper.innerHTML = variantsEditorHtml(payload.variants, payload.variantStock, currentStock, getDashI18n(), payload.variantImages);
   const next = wrapper.firstElementChild as HTMLElement;
   editor.replaceWith(next);
+  // The note travels with the payload, not only with the next keystroke — a form re-rendered from
+  // what was just saved must still say why its table is empty.
+  updateVariantLimitNote(next, payload.variants, getDashI18n());
   // Both, and in this order. `comboTotalRowHtml` renders a literal 0 as its starting cell — it is
   // filled in by updateComboTotal, which every other path that builds this table already calls
   // (refreshVariantCombos). Rebuilding without it left "total 0" sitting under a table of real

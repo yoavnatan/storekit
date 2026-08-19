@@ -17,6 +17,17 @@ export const OPTION_SLOTS = [
   { name: 'option3Name', value: 'option3Value' },
 ] as const satisfies ReadonlyArray<{ name: CsvField['key']; value: CsvField['key'] }>;
 
+/** How many variant dimensions a FILE can express — derived from the column set itself rather than
+ *  written as a second literal `3`, since the cap IS the number of option name/value pairs above.
+ *  A product within it round-trips as one row per combo, whatever its dimensions are named; a
+ *  product past it (4+ dimensions, vanishingly rare) exports as a single flat row instead, and its
+ *  stock can then only be edited in the dashboard — so this is also the number the product form
+ *  warns on, live, while the seller is adding the fourth one. It lives HERE, not in
+ *  store-products-bulk.ts (which re-exports it for its existing callers), because that module is
+ *  Node-only and the form's editor runs in the browser: two spellings of this bound would be two
+ *  answers to "can this product be kept in step with the seller's own system at all". */
+export const CSV_MAX_DIMENSIONS = OPTION_SLOTS.length;
+
 // Three separate columns (not one "ביגוד > גברים" path string) — much easier for a seller to
 // fill in a spreadsheet correctly than a delimiter syntax, and maps 1:1 onto MAX_CATEGORY_DEPTH.
 // The trailing columns (group + the three option name/value pairs) are appended, never inserted
