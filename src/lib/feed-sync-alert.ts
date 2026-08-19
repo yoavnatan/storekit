@@ -78,7 +78,11 @@ export function classifyFeedSyncOutcome(status: number, body: Record<string, unk
 }
 
 /**
- * Title + body per problem. Each says what happened and what the seller can do — never a code.
+ * Title + body per problem. Each says what happened and what the seller can do — never a code,
+ * and every title names its SUBJECT (owner, 2026-08-19: *"המוכר לא יודע על מה מדובר, זה מחוץ
+ * להקשר"*). A bell notification arrives with no surroundings at all: "המלאי לא מתעדכן מהקישור"
+ * assumes the reader already has "the link" in mind, and the one person who does not is the
+ * seller who set it up once, months ago, and has not thought about it since.
  *
  * Exported because the products tab says the SAME thing in a card at the top of the page: a bell
  * notification is read once and dismissed, and the sync stays broken long after. Two wordings for
@@ -88,27 +92,27 @@ export function feedSyncProblemCopy(problem: FeedSyncProblem): { title: string; 
   switch (problem) {
     case 'unreachable':
       return {
-        title: 'המלאי לא מתעדכן מהקישור',
+        title: 'המלאי המסונכרן לא מתעדכן',
         body: 'לא הצלחנו למשוך את קובץ המלאי מהקישור שהגדרתם. עד שהקישור יעבוד שוב, המלאי באתר נשאר כפי שהיה בסנכרון האחרון.',
       };
     case 'no-matcher-column':
       return {
-        title: 'הסנכרון לא יודע לאיזה מוצר כל שורה שייכת',
+        title: 'המלאי המסונכרן עצר — אין מק"ט בקובץ',
         body: 'בקובץ שמגיע מהקישור אין עמודת מק"ט, ולכן אי אפשר להתאים שורות למוצרים. פתחו את פאנל הסנכרון והתאימו את העמודות מחדש.',
       };
     case 'empty-file':
       return {
-        title: 'קובץ המלאי שהגיע ריק',
+        title: 'המלאי המסונכרן עצר — הקובץ שהגיע ריק',
         body: 'הקישור החזיר קובץ בלי שורות, והמלאי לא עודכן. בדקו את הייצוא במערכת שממנה הקובץ מגיע.',
       };
     case 'file-rejected':
       return {
-        title: 'קובץ המלאי נדחה',
+        title: 'המלאי המסונכרן עצר — הקובץ לא נקרא',
         body: 'הקובץ שהגיע מהקישור לא בפורמט שאפשר לקרוא. פתחו את פאנל הסנכרון ולחצו "סנכרן עכשיו" כדי לראות מה חסר בו.',
       };
     case 'rows-refused':
       return {
-        title: 'חלק מהמלאי לא עודכן',
+        title: 'חלק מהמלאי המסונכרן לא עודכן',
         body: 'הסנכרון רץ, אבל חלק מהשורות בקובץ נדחו והמוצרים שלהן לא עודכנו. פתחו את פאנל הסנכרון ולחצו "סנכרן עכשיו" כדי לראות אילו.',
       };
   }

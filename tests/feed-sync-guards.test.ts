@@ -133,3 +133,30 @@ describe('a feed row keyed by a per-combo sku still resolves', () => {
     expect(BULK).toContain('...(existing.variantStock ?? {}), ...(row.variantStock ?? {})');
   });
 });
+
+describe('what the panel PROMISES matches what the code does', () => {
+  const COPY = read('src/i18n/translations.ts');
+  const REGISTRY = read('src/lib/jobs/registry.ts');
+
+  it('does not still call the sync manual — the hourly job shipped on 2026-08-03', () => {
+    // It did say that, for sixteen days after the job was built (owner found it on 2026-08-19,
+    // reading the panel: *"ולמה זה עדיין כתוב כך?"*). Copy describing a feature as "coming later"
+    // is a promise with an expiry date and nothing was watching it — so the thing that ships the
+    // feature is what fails this test: the job's own name in the registry.
+    expect(REGISTRY).toContain("name: 'feed-sync'");
+    const note = COPY.match(/feedManualNote: '([^']*)'/)?.[1] ?? '';
+    expect(note.length, 'the note is gone — this guard has nothing to watch').toBeGreaterThan(10);
+    for (const promise of ['יתווסף בהמשך', 'will be added later', 'כרגע הסנכרון ידני', 'manual for now']) {
+      expect(note, `the panel still says the sync is not automatic yet ("${promise}")`).not.toContain(promise);
+    }
+  });
+
+  it('names its SUBJECT in every alert title — a bell arrives with no context around it', () => {
+    const ALERT = read('src/lib/feed-sync-alert.ts');
+    const titles = [...ALERT.matchAll(/title: '([^']*)'/g)].map((m) => m[1]!);
+    expect(titles.length).toBeGreaterThanOrEqual(5);
+    for (const t of titles) {
+      expect(t, `"${t}" does not say what it is about`).toMatch(/מלאי/);
+    }
+  });
+});
