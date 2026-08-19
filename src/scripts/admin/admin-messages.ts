@@ -466,7 +466,6 @@ function wireThreadActions(): void {
       } finally {
         handledBtn.disabled = false;
       }
-      return;
     }
   });
 }

@@ -40,8 +40,15 @@ const posix = (p: string): string => relative('.', p).replaceAll('\\', '/');
  *  wrote a test for. This one covers the routes nobody has thought about yet, and the cheapest
  *  honest thing it can assert about them is that authorization is mentioned at all. Do not read a
  *  green run here as "every route is authorized"; read it as "no route skipped the subject". */
+/** `resolveOrderAccess` joined the list on 2026-08-19, and it belongs there rather than in
+ *  PUBLIC_BY_DESIGN below: it is an ownership resolution like `ownedStore`, just over an ORDER
+ *  instead of a store, and it demands one of three credentials (a session that owns the row, a
+ *  signed link, or the order number plus the address it was placed with — `order-access.ts`). A
+ *  route behind it is not public; it is authorized by something other than a cookie, which is the
+ *  whole point of guest checkout. `tests/order-access-throttle.test.ts` covers the half this scan
+ *  cannot see — that the guessable credential is metered. */
 const ESTABLISHES_IDENTITY =
-  /getSellerSession|getUserSession|getBuyerSession|requireAdmin|isAdminRequest|ownedStore|ownedProduct|verifySignature/;
+  /getSellerSession|getUserSession|getBuyerSession|requireAdmin|isAdminRequest|ownedStore|ownedProduct|verifySignature|resolveOrderAccess/;
 
 const MUTATING_HANDLER = /export (?:const|async function) (?:POST|PUT|PATCH|DELETE)\b/;
 
