@@ -21,6 +21,7 @@ import { parseCsv } from './csv-bulk.js';
 import { guessMapping, confirmedMapping, mappingStatus, buildCanonicalCsv, type MappableKey } from './feed-mapping.js';
 import { runProductImport } from './store-products-import.js';
 import { updateStore, type Store } from './stores.js';
+import { alertOnScheduledSync } from './feed-sync-alert.js';
 
 export interface FeedSyncResult {
   status: number;
@@ -45,6 +46,25 @@ export type FeedSyncTrigger = 'seller' | 'scheduled';
  * scheduler only ever calls it with `true` — a preview nobody reads is a remote fetch for nothing.
  */
 export async function syncStoreFeed(store: Store, commit: boolean, trigger: FeedSyncTrigger = 'seller'): Promise<FeedSyncResult> {
+  const result = await runSync(store, commit, trigger);
+
+  // The unattended run is the one that has to speak up, because nobody is reading this answer: a
+  // dead URL, a renamed sku column or rows refused one by one simply stops moving stock, and the
+  // storefront keeps selling from whatever the last working pull left behind (`feed-sync-alert.ts`,
+  // which also CLEARS the alert once a run comes back clean). A seller who pressed the button is
+  // looking at the result already, so that trigger says nothing extra.
+  //
+  // Out here rather than beside the write, because most of the failures worth telling anyone about
+  // — the fetch, the empty file, the missing matcher column — return long before the write is
+  // reached, which is exactly why they were the silent ones. Never allowed to fail the sync it
+  // reports on: a badge is not worth undoing a pull that worked.
+  if (commit && trigger === 'scheduled') {
+    await alertOnScheduledSync(store, result.status, result.body).catch(() => { /* a badge must not cost the sync */ });
+  }
+  return result;
+}
+
+async function runSync(store: Store, commit: boolean, trigger: FeedSyncTrigger): Promise<FeedSyncResult> {
   const url = store.feedSync?.url?.trim();
   if (!url) return { status: 400, body: { ok: false, error: 'no-feed-url' } };
 

@@ -1245,7 +1245,7 @@ function updateVariantLimitNote(editor: HTMLElement, dims: VariantDimension[], i
   // seller can act on — they are not going to count their way down to 200. What they can act on is
   // the instruction, so that is all it says.
   if (comboCount(dims) > MAX_VARIANT_COMBOS) {
-    note.textContent = i18n.variantLimitCombos ?? 'Too many combinations — this cannot be saved. Remove values or variant types.';
+    note.textContent = i18n.variantLimitCombos ?? 'There are too many combinations — remove one or more of the variant types.';
     note.style.color = 'var(--color-danger)';
     note.hidden = false;
     return;
