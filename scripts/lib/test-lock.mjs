@@ -16,11 +16,22 @@
  * six suites sharing one machine take the same total time whether they interleave or queue, except
  * that queued they all pass.
  *
- * **Why only the test step.** `tsc`, `lint` and `astro check` are CPU-bound but short and have no
- * wall-clock deadline inside them, so contention makes them slower and never wrong. Tests are the
- * only step where being slow IS being wrong, and the only one touching a shared Postgres. So
- * sessions stay parallel for everything — editing, type-checking, linting — and queue for the
- * seconds that actually conflict.
+ * **Why only the test step** — and READ THE AMENDMENT BELOW, because half of this has expired.
+ * `tsc`, `lint` and `astro check` are CPU-bound but short and have no wall-clock deadline inside
+ * them, so contention makes them slower and never wrong. Tests are the only step where being slow
+ * IS being wrong, and the only one touching a shared Postgres. So sessions stay parallel for
+ * everything — editing, type-checking, linting — and queue for the seconds that actually conflict.
+ *
+ * **Amendment, 2026-08-19: "short" stopped being true, and this lock cannot cover the gap.**
+ * `astro check` now measures 54–140s of full-CPU work on this codebase. It still cannot be WRONG
+ * under contention, so it still does not belong in this lock — but while one session holds this
+ * lock and boots its workers, another session's type-check can starve them before they answer, and
+ * the symptom lands on the LOCK HOLDER, which is maximally confusing: it believes it has
+ * exclusivity and it does, over the only thing this lock knows about. Twelve
+ * `[vitest-pool]: Failed to start forks worker` errors in one run, zero failing assertions.
+ * The layer that fixes it is a cap on what one run may demand — `vitest.config.ts`'s `maxForks`,
+ * which carries the measurement. This lock is still right for what it does; it was never the whole
+ * answer, and this paragraph exists so the next session does not widen it instead.
  *
  * **Stale locks cannot wedge the machine.** A holder that dies (crash, killed session, a laptop
  * closing) leaves its directory behind, so the lock records a PID and a timestamp and any waiter

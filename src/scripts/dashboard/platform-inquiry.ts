@@ -19,6 +19,7 @@ export function initPlatformInquiry(): void {
   const subject = document.getElementById('seller-inquiry-subject') as HTMLInputElement | null;
   const text = document.getElementById('seller-inquiry-text') as HTMLTextAreaElement | null;
   const send = document.getElementById('seller-inquiry-send') as HTMLButtonElement | null;
+  const cancel = document.getElementById('seller-inquiry-cancel') as HTMLButtonElement | null;
   if (!toggle || !form || !subject || !text || !send || toggle.dataset.wired) return;
   toggle.dataset.wired = '1';
 
@@ -28,14 +29,24 @@ export function initPlatformInquiry(): void {
   try { dict = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
   const needsSubject = dict.platformInquiryNeedsSubject ?? 'צריך נושא — כדי שנדע במה מדובר לפני שנפתח';
 
+  /** One place that closes it, so the toggle, Cancel and a successful send cannot drift apart. */
+  const close = (clear: boolean) => {
+    if (clear) { subject.value = ''; text.value = ''; }
+    form.setAttribute('hidden', '');
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+
+  cancel?.addEventListener('click', () => { close(true); toggle.focus(); });
+
   toggle.addEventListener('click', () => {
     const open = form.hasAttribute('hidden');
-    if (open) form.removeAttribute('hidden'); else form.setAttribute('hidden', '');
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) { close(false); return; }
+    form.removeAttribute('hidden');
+    toggle.setAttribute('aria-expanded', 'true');
     // Focused only on OPEN, and only because the seller pressed a button that means "I want to
     // write" — the reply boxes further down this page deliberately do not autofocus, since an
     // always-open textarea under every thread reads as a chat window.
-    if (open) subject.focus();
+    subject.focus();
   });
 
   send.addEventListener('click', async () => {
@@ -59,10 +70,7 @@ export function initPlatformInquiry(): void {
         return;
       }
       if (!res.ok) throw new Error('failed');
-      subject.value = '';
-      text.value = '';
-      form.setAttribute('hidden', '');
-      toggle.setAttribute('aria-expanded', 'false');
+      close(true);
       showToast('הפנייה נשלחה. התשובה תופיע כאן, בהודעות.');
     } catch {
       showErrorToast('שליחת הפנייה נכשלה, נסו שוב');

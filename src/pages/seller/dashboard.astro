@@ -2774,7 +2774,13 @@ const orderStatusColors: Record<string, string> = {
               <input id="seller-inquiry-subject" type="text" class="input" maxlength="120" placeholder={d.platformInquirySubjectPlaceholder} />
             </label>
             <textarea id="seller-inquiry-text" class="seller-msg-reply-textarea" rows="4" maxlength="2000" placeholder={d.platformInquiryPlaceholder} style="resize:none"></textarea>
-            <div class="flex justify-end mt-2">
+            {/* A way out that is not "press the toggle again" (owner, 2026-08-19). The panel is
+                opened by a button in the header, and by the time a seller has typed two paragraphs
+                that button is off the top of their attention — so the escape has to be beside the
+                thing they would escape from. Cancel CLEARS: a half-written inquiry restored on the
+                next open is a draft nobody asked us to keep. */}
+            <div class="flex justify-end gap-2 mt-2">
+              <button type="button" id="seller-inquiry-cancel" class="btn btn--ghost btn--sm">{d.platformInquiryCancel}</button>
               <button type="button" id="seller-inquiry-send" class="btn btn--accent btn--sm">{d.platformInquirySend}</button>
             </div>
           </div>
