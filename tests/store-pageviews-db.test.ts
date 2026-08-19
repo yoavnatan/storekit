@@ -66,12 +66,26 @@ async function seedDay(storeId: string, day: string, total: number, visitors: st
   }
 }
 
-const today = businessDayISO(new Date());
+/**
+ * The business day, asked FRESH each time — never frozen at module load.
+ *
+ * **This is what turned CI red on 2026-08-20 at 00:0x local.** The constant used to be computed
+ * when the file was imported, and every assertion then queried that day. A suite that starts before
+ * midnight in Asia/Jerusalem and reaches these tests after it writes its page views into one day and
+ * reads the other, so all three assertions come back 0 — with nothing in the message to suggest a
+ * clock, and every one of them passing on a re-run five minutes later.
+ *
+ * A test that fails once a day, in the hour the people here actually work, is worse than a test that
+ * fails always: it teaches everybody to re-run instead of read.
+ */
+const businessToday = () => businessDayISO(new Date());
 
 describe('recordPageView — the write path that reads nothing', () => {
   it('counts a load and the visitor behind it', async () => {
     const storeId = await freshStore();
     await recordPageView(storeId, 'visitor-a');
+    // Read AFTER the write, so the window cannot be one the write missed.
+    const today = businessToday();
     const stats = await getViewStatsForStore(storeId, today, today, 'day');
     expect(stats.totalViews).toBe(1);
     expect(stats.totalUniqueVisitors).toBe(1);
@@ -83,6 +97,7 @@ describe('recordPageView — the write path that reads nothing', () => {
     await recordPageView(storeId, 'visitor-a');
     await recordPageView(storeId, 'visitor-a');
     await recordPageView(storeId, 'visitor-b');
+    const today = businessToday();
     const stats = await getViewStatsForStore(storeId, today, today, 'day');
     expect(stats.totalViews).toBe(3);
     expect(stats.totalUniqueVisitors).toBe(2);
@@ -92,6 +107,7 @@ describe('recordPageView — the write path that reads nothing', () => {
     const storeId = await freshStore();
     await recordPageView(storeId);
     await recordPageView(storeId, '');
+    const today = businessToday();
     const stats = await getViewStatsForStore(storeId, today, today, 'day');
     expect(stats.totalViews).toBe(2);
     expect(stats.totalUniqueVisitors).toBe(0);

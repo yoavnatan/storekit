@@ -43,7 +43,11 @@ async function seedDay(productId: string, day: string, total: number): Promise<v
   );
 }
 
-const today = businessDayISO(new Date());
+/** Asked FRESH, never frozen at module load — a suite that crosses midnight in Asia/Jerusalem
+ *  otherwise writes into one business day and reads the other, and every assertion comes back 0
+ *  with nothing in the message to suggest a clock. Turned CI red on 2026-08-20 at 00:0x in
+ *  `store-pageviews-db.test.ts`, which carries the full note. */
+const businessToday = () => businessDayISO(new Date());
 
 describe('recordProductView', () => {
   it('counts every view, including repeats by the same person', async () => {
@@ -51,10 +55,10 @@ describe('recordProductView', () => {
     await recordProductView(productId);
     await recordProductView(productId);
     await recordProductView(productId);
-    const stats = await getProductViewStats(productId, today, today, 'day');
+    const stats = await getProductViewStats(productId, businessToday(), businessToday(), 'day');
     // Not a distinct count, on purpose — see this file's header.
     expect(stats.totalViews).toBe(3);
-    expect(stats.buckets).toEqual([{ key: today, views: 3 }]);
+    expect(stats.buckets).toEqual([{ key: businessToday(), views: 3 }]);
   });
 
   it('files the view on the business day the application decided (§7.8)', async () => {

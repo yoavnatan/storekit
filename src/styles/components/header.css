@@ -1,10 +1,34 @@
 /* ── Header ─────────────────────────────────────────────────────────── */
 
+/**
+ * The width the DOCUMENT actually gets, published as a length the fixed header can use.
+ *
+ * `html` carries `scrollbar-gutter: stable` (reset.css), so page content is laid out inside the
+ * viewport MINUS the scrollbar — permanently, scrolling or not. A `position: fixed` element's
+ * containing block is the viewport itself, gutter included, so the header spans a few pixels more
+ * than the page under it. Both then centre a `--max-width` container, around two different
+ * midpoints, and the header sits offset from the content by half the scrollbar (~7px). Reported as
+ * "ההדר לא יושב בול" (owner, 2026-08-20).
+ *
+ * `100% ` on `body` resolves against `html`'s content box — the scrollport — so the difference IS
+ * the reserved gutter. It has to be registered with `@property`, because an unregistered custom
+ * property is substituted as TEXT and `100%` would re-resolve against the viewport at the point of
+ * use, i.e. inside the fixed header, giving exactly 0 and no fix at all. Registered as a `<length>`
+ * it is computed where it is declared, on `body`, which is what makes it the right number.
+ */
+@property --scrollbar-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+body { --scrollbar-width: calc(100vw - 100%); }
+
 .site-header {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
+  /* Inset by the gutter on the side the scrollbar is on, so the header's own box matches the
+     document's. Logical properties, because this site is RTL and the scrollbar moves with it. */
+  inset-inline: 0 var(--scrollbar-width, 0px);
   z-index: 50;
   background: var(--color-surface);
   /* THE HEADER HAS NO SHADOW. Not at rest, not scrolled, not ever — the 1px border is

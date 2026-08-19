@@ -14,7 +14,7 @@
  * refuses to let `ON CONFLICT DO UPDATE` touch twice in one command.
  *
  * Isolation: reads seed their own far-future days by SQL, so they never see another test's rows;
- * writes go to today's business day and are asserted through the ids they used.
+ * writes go to businessToday()'s business day and are asserted through the ids they used.
  */
 import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
@@ -31,7 +31,11 @@ import {
   type AnalyticsEvent,
 } from '../src/lib/analytics.js';
 
-const today = businessDayISO(new Date());
+/** Asked FRESH, never frozen at module load — a suite that crosses midnight in Asia/Jerusalem
+ *  otherwise writes into one business day and reads the other, and every assertion comes back 0
+ *  with nothing in the message to suggest a clock. Turned CI red on 2026-08-20 at 00:0x in
+ *  `store-pageviews-db.test.ts`, which carries the full note. */
+const businessToday = () => businessDayISO(new Date());
 
 /** A fresh id per call, so two tests writing the same event on the same day never collide. */
 const vid = (): string => `vis-${crypto.randomBytes(6).toString('hex')}`;
@@ -79,11 +83,11 @@ describe('recordAnalyticsEvent', () => {
 
     const { rows: sessions } = await query<{ n: number | string }>(
       `SELECT COUNT(*) AS n FROM analytics_visitors WHERE day = $1::date AND event = 'view_item' AND visitor_id = $2`,
-      [today, session],
+      [businessToday(), session],
     );
     // Two fires, one session row: a stage counts people, not clicks.
     expect(Number(sessions[0]!.n)).toBe(1);
-    expect(await productTally(today, 'view_item', productId)).toBe(2);
+    expect(await productTally(businessToday(), 'view_item', productId)).toBe(2);
   });
 
   it('adds two when ONE call names the same product twice', async () => {
@@ -93,14 +97,14 @@ describe('recordAnalyticsEvent', () => {
     const productId = pid();
     await expect(recordAnalyticsEvent('purchase', { vid: vid(), productIds: [productId, productId] }))
       .resolves.toBeUndefined();
-    expect(await productTally(today, 'purchase', productId)).toBe(2);
+    expect(await productTally(businessToday(), 'purchase', productId)).toBe(2);
   });
 
   it('records volume even when no session id is known', async () => {
     // The quick-view API can fire before the visitor cookie exists. That view still happened.
-    const before = (await getEventTotals(today, today)).view_item?.count ?? 0;
+    const before = (await getEventTotals(businessToday(), businessToday())).view_item?.count ?? 0;
     await recordAnalyticsEvent('view_item', {});
-    expect((await getEventTotals(today, today)).view_item!.count).toBe(before + 1);
+    expect((await getEventTotals(businessToday(), businessToday())).view_item!.count).toBe(before + 1);
   });
 
   it('files the event on the business day the application decided (§7.8)', async () => {

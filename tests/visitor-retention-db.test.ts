@@ -43,7 +43,10 @@ import {
 import { getViewStatsForStore, purgeOldStoreViewVisitors } from '../src/lib/store-pageviews.js';
 import { VISITOR_RETENTION_DAYS, visitorRetentionCutoffISO } from '../src/lib/visitor-retention.js';
 
-const today = businessDayISO(new Date());
+/** Asked FRESH, never frozen at import — `tests/frozen-business-day.test.ts` carries the failure
+ *  this prevents. Here the read is the cutoff arithmetic rather than a stored row, so the window is
+ *  narrower, but a run that crosses midnight would still compare two different days. */
+const businessToday = () => businessDayISO(new Date());
 
 /** The oldest day the window keeps, and one day older than that. */
 const cutoff = visitorRetentionCutoffISO();
@@ -98,7 +101,7 @@ async function seedStoreDay(storeId: string, day: string, total: number, visitor
 
 describe('the retention window itself', () => {
   it('names a cutoff exactly VISITOR_RETENTION_DAYS behind the business day', () => {
-    expect(cutoff).toBe(addDaysISO(today, -VISITOR_RETENTION_DAYS));
+    expect(cutoff).toBe(addDaysISO(businessToday(), -VISITOR_RETENTION_DAYS));
   });
 
   it('is derived from the business calendar, not the database — a fixed date gives a fixed cutoff', () => {

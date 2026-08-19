@@ -2772,8 +2772,14 @@ const orderStatusColors: Record<string, string> = {
             <label class="field" style="margin-bottom:.6rem">
               <span>{d.platformInquirySubject}</span>
               <input id="seller-inquiry-subject" type="text" class="input" maxlength="120" placeholder={d.platformInquirySubjectPlaceholder} />
+              {/* The ceiling, SHOWN (owner, 2026-08-20). `maxlength` alone stops the typing without
+                  ever saying why, which reads as a broken keyboard — the count is what turns a
+                  silent refusal into a rule the seller can see coming. Same recipe the report form
+                  on /contact already uses. */}
+              <span class="muted" id="seller-inquiry-subject-left" style="display:block;margin-top:.25rem;font-size:.78rem"></span>
             </label>
             <textarea id="seller-inquiry-text" class="seller-msg-reply-textarea" rows="4" maxlength="2000" placeholder={d.platformInquiryPlaceholder} style="resize:none"></textarea>
+            <span class="muted" id="seller-inquiry-text-left" style="display:block;margin-top:.25rem;font-size:.78rem"></span>
             {/* A way out that is not "press the toggle again" (owner, 2026-08-19). The panel is
                 opened by a button in the header, and by the time a seller has typed two paragraphs
                 that button is off the top of their attention — so the escape has to be beside the

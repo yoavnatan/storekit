@@ -15,7 +15,11 @@ import { businessDayISO } from '../src/lib/business-day.js';
 import { recordPageViewTap } from '../src/lib/page-view-tap.js';
 
 const KERAMIKA = '22222222-2222-4222-8222-000000000001';
-const TODAY = businessDayISO(new Date());
+/** Asked FRESH, never frozen at module load — a suite that crosses midnight in Asia/Jerusalem
+ *  otherwise writes into one business day and reads the other, and every assertion comes back 0
+ *  with nothing in the message to suggest a clock. Turned CI red on 2026-08-20 at 00:0x in
+ *  `store-pageviews-db.test.ts`, which carries the full note. */
+const businessToday = () => businessDayISO(new Date());
 
 let seq = 0;
 async function freshProduct(): Promise<string> {
@@ -33,23 +37,23 @@ const one = async <T>(sql: string, params: unknown[]): Promise<T | undefined> =>
   (await rows<T>(sql, params))[0];
 
 const productViews = (productId: string) =>
-  one<{ total: number }>('SELECT total FROM product_page_views WHERE product_id = $1 AND day = $2::date', [productId, TODAY]);
+  one<{ total: number }>('SELECT total FROM product_page_views WHERE product_id = $1 AND day = $2::date', [productId, businessToday()]);
 const storeViews = (storeId: string) =>
-  one<{ total: number }>('SELECT total FROM store_page_views WHERE store_id = $1 AND day = $2::date', [storeId, TODAY]);
+  one<{ total: number }>('SELECT total FROM store_page_views WHERE store_id = $1 AND day = $2::date', [storeId, businessToday()]);
 const storeUniques = async (storeId: string): Promise<number> =>
   Number((await one<{ n: number | string }>(
-    'SELECT COUNT(*) AS n FROM store_page_view_visitors WHERE store_id = $1 AND day = $2::date', [storeId, TODAY]))?.n ?? 0);
+    'SELECT COUNT(*) AS n FROM store_page_view_visitors WHERE store_id = $1 AND day = $2::date', [storeId, businessToday()]))?.n ?? 0);
 const eventCount = async (event: string): Promise<number> =>
   Number((await one<{ count: number | string }>(
-    'SELECT count FROM analytics_daily WHERE day = $1::date AND event = $2', [TODAY, event]))?.count ?? 0);
+    'SELECT count FROM analytics_daily WHERE day = $1::date AND event = $2', [businessToday(), event]))?.count ?? 0);
 const eventSessions = async (event: string, vid: string): Promise<number> =>
   Number((await one<{ n: number | string }>(
     'SELECT COUNT(*) AS n FROM analytics_visitors WHERE day = $1::date AND event = $2 AND visitor_id = $3',
-    [TODAY, event, vid]))?.n ?? 0);
+    [businessToday(), event, vid]))?.n ?? 0);
 const productTally = async (event: string, productId: string): Promise<number> =>
   Number((await one<{ count: number | string }>(
     'SELECT count FROM analytics_products WHERE day = $1::date AND event = $2 AND product_id = $3',
-    [TODAY, event, productId]))?.count ?? 0);
+    [businessToday(), event, productId]))?.count ?? 0);
 
 describe('one product-page view writes all six tables', () => {
   it('records the funnel, the store counter and the product counter in a single call', async () => {

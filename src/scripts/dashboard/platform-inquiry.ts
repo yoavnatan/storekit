@@ -28,10 +28,42 @@ export function initPlatformInquiry(): void {
   let dict: Record<string, string> = {};
   try { dict = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
   const needsSubject = dict.platformInquiryNeedsSubject ?? 'צריך נושא — כדי שנדע במה מדובר לפני שנפתח';
+  const leftTemplate = dict.platformInquiryLeft ?? 'נותרו {n} תווים';
+
+  /** Counts DOWN, and only once something is typed: an empty field announcing "120 characters left"
+   *  is a limit presented as a target. It reads off `maxlength` rather than a number of its own, so
+   *  the two can never disagree about what the ceiling is. */
+  const wireCounter = (field: HTMLInputElement | HTMLTextAreaElement, out: HTMLElement | null) => {
+    const max = Number(field.getAttribute('maxlength') ?? 0);
+    const paint = () => {
+      if (out) out.textContent = field.value.length ? leftTemplate.replace('{n}', String(max - field.value.length)) : '';
+    };
+    field.addEventListener('input', paint);
+    paint();
+    return paint;
+  };
+  // The repaint is RETURNED and called directly rather than driven by a synthetic `input` event.
+  // Two guards say why, and they are the same lesson from both ends: `unsaved-notice.test.ts`
+  // forbids a hand-rolled `new Event('input')`, and `field-repaint-guard.test.ts` requires anything
+  // using `announceValueChange` to also listen for `dash:fieldsrewritten`. Both exist for WIDGETS —
+  // a control whose state lives in a field and whose picture lives elsewhere in the DOM. A counter
+  // that reads the field it sits under is not one of those; it has no state to announce and nothing
+  // to restore. Reaching for either helper here would be borrowing machinery for a problem this
+  // does not have.
+  const repaint = [
+    wireCounter(subject, document.getElementById('seller-inquiry-subject-left')),
+    wireCounter(text, document.getElementById('seller-inquiry-text-left')),
+  ];
 
   /** One place that closes it, so the toggle, Cancel and a successful send cannot drift apart. */
   const close = (clear: boolean) => {
-    if (clear) { subject.value = ''; text.value = ''; }
+    if (clear) {
+      subject.value = '';
+      text.value = '';
+      // The counters read the fields, so clearing them has to repaint — or a reopened form still
+      // claims the last message's remaining count.
+      repaint.forEach((paint) => paint());
+    }
     form.setAttribute('hidden', '');
     toggle.setAttribute('aria-expanded', 'false');
   };

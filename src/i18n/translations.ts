@@ -1834,15 +1834,23 @@ export const translations = {
       filterNoProduct: 'ללא מוצר',
       msgSearchPlaceholder: 'חיפוש הודעות…',
       // The seller's way to START a conversation with us — no such thing existed until 2026-08-19,
-      // so a seller with a question left the product for a mailto. "לפלטפורמה" was the first label
-      // and the owner rejected it: it names the software, and what a seller is writing to is a
-      // group of people who will answer.
-      platformInquiry: 'פנייה לצוות',
+      // so a seller with a question left the product for a mailto.
+      //
+      // **Third label, and the two rejected ones are the lesson** (owner, 2026-08-19→20).
+      // "פנייה לפלטפורמה" names the software; "פנייה לצוות" invites *"איזה צוות?"*. What the button
+      // does is open an inquiry, so it says that and stops — naming the recipient was the mistake
+      // both times, because the seller is not choosing between recipients.
+      //
+      // The placeholders went the same way: they were written as coaching ("ככל שתכתבו יותר…",
+      // "למשל: לא הצלחתי להעלות מוצר") and he called them what they were. A placeholder names the
+      // field. It is not a place to give advice to somebody who is already typing.
+      platformInquiry: 'לפתיחת פנייה',
       platformInquirySubject: 'נושא',
-      platformInquirySubjectPlaceholder: 'על מה הפנייה? למשל: לא הצלחתי להעלות מוצר',
-      platformInquiryPlaceholder: 'פרטו כאן. ככל שתכתבו יותר, נוכל לענות מדויק יותר.',
+      platformInquirySubjectPlaceholder: 'נושא הפנייה',
+      platformInquiryPlaceholder: 'תוכן הפנייה',
       platformInquirySend: 'שלח פנייה',
       platformInquiryCancel: 'ביטול',
+      platformInquiryLeft: 'נותרו {n} תווים',
       platformInquiryNeedsSubject: 'צריך נושא — כדי שנדע במה מדובר לפני שנפתח',
       ordersSearchPlaceholder: 'חיפוש הזמנות…',
       orderSortOptDateDesc: 'תאריך: חדש — ישן',
@@ -3695,12 +3703,13 @@ export const translations = {
       filterColFrom: 'Sender',
       filterNoProduct: 'No product',
       msgSearchPlaceholder: 'Search messages…',
-      platformInquiry: 'Contact the team',
+      platformInquiry: 'Open an enquiry',
       platformInquirySubject: 'Subject',
-      platformInquirySubjectPlaceholder: "What is it about? e.g. I couldn't upload a product",
-      platformInquiryPlaceholder: 'Tell us more. The more you write, the more precisely we can answer.',
+      platformInquirySubjectPlaceholder: 'Subject',
+      platformInquiryPlaceholder: 'Your message',
       platformInquirySend: 'Send',
       platformInquiryCancel: 'Cancel',
+      platformInquiryLeft: '{n} characters left',
       platformInquiryNeedsSubject: 'A subject, please — so we know what this is before we open it',
       ordersSearchPlaceholder: 'Search orders…',
       orderSortOptDateDesc: 'Date: Newest → Oldest',

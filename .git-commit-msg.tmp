@@ -1,0 +1,30 @@
+A test that failed once a day at midnight, and four things the owner asked for
+
+**The CI failure, which was not the diff it landed on.** Four test files computed
+the business day once at module load and asserted against it. A suite starting
+before midnight in Asia/Jerusalem and reaching those tests after it writes into
+one day and reads the other, so three counts come back 0 with nothing in the
+message pointing at a clock — and everything passes on a re-run. It went red on
+a push whose changes cannot explain it, which is the expensive part: the session
+reads an unrelated diff. `frozen-business-day.test.ts` now fails any test that
+freezes today at import.
+
+A test that fails once a day, in the hour the people here actually work, is
+worse than one that fails always: it teaches everybody to re-run instead of read,
+and then a real failure gets re-run too.
+
+**The header sat a few pixels off the content, and it is the scrollbar.** `html`
+reserves the gutter permanently, so the page is laid out inside the viewport
+minus the scrollbar — but a fixed element's containing block is the viewport
+itself. Both centre the same container around two different midpoints. The
+header is now inset by a registered `--scrollbar-width`; registered, because an
+unregistered custom property substitutes as text and its `100%` would re-resolve
+inside the fixed element and compute to zero.
+
+**And the copy.** "לפתיחת פנייה" — the two earlier labels both named a recipient
+("לפלטפורמה", "לצוות"), which was the wrong half of the sentence. The
+placeholders say what the fields are instead of coaching someone already typing,
+and both now show the characters left, because `maxlength` alone stops the
+typing without ever saying why.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
