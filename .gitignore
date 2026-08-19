@@ -81,3 +81,8 @@ showcase-prompts.csv
 # than read a description. Throwaway by definition — the chosen one becomes the code, and the folder
 # is deleted. Kept as a pattern so the next comparison does not have to remember to add it back.
 .design-preview/
+
+# A vendor inventory export generated from whatever is in the local database, for trying the
+# external sync by hand (`npm run demo:feed`). Regenerated on demand and different on every
+# machine — committing one would just be somebody else's stock numbers.
+demo-feed.csv

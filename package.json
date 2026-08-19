@@ -19,6 +19,7 @@
     "showcase:images": "node --env-file-if-exists=.env ./scripts/generate-showcase-images.mjs",
     "seed:demo": "node --env-file-if-exists=.env ./scripts/seed-demo-data.mjs",
     "seed:reviews": "node --env-file-if-exists=.env ./scripts/seed-reviews.mjs",
+    "demo:feed": "node --env-file-if-exists=.env ./scripts/demo-feed.mjs",
     "verify": "node scripts/verify.mjs",
     "worktree:setup": "node scripts/worktree-setup.mjs",
     "lint": "eslint . --suppressions-location .eslint-baseline.json --pass-on-unpruned-suppressions --quiet",

@@ -26,6 +26,8 @@ import { visitorRetentionCutoffISO } from '../visitor-retention.js';
 import { getStoresWithFeedUrl, getStoresWithCustomDomain, canStoreSell } from '../stores.js';
 import { reverifyCustomDomains } from '../custom-domain-verify.js';
 import { syncStoreFeed, syncedRowCount } from '../store-feed-sync.js';
+import { isPlatformWideFeedFailure } from '../feed-sync-alert.js';
+import { logError } from '../error-log.js';
 import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
 import { runMerchantStatusCheck } from '../merchant-status-check.js';
@@ -108,9 +110,22 @@ const feedSync: Job = {
         else failed++;
       } catch {
         // One store's feed being unreachable, malformed or hostile must not stop the rest. The
-        // count is what the run reports; the seller's own dashboard shows them their lastSyncAt.
+        // count is what the run reports; the seller is told about their own feed by the
+        // notification `syncStoreFeed` raises (feed-sync-alert.ts).
         failed++;
       }
+    }
+    // A broken vendor link is the seller's problem and they have already been told. MOST of them
+    // failing in one run is ours — two hundred vendors do not go down together — and nothing else
+    // would ever say so, since the job "succeeded" either way. Fire-and-forget, like every other
+    // logError: a failed alert must not fail the run it describes.
+    if (isPlatformWideFeedFailure(stores.length, failed)) {
+      void logError({
+        source: 'server',
+        route: 'job:feed-sync',
+        message: `feed-sync: ${failed} of ${stores.length} stores failed in one run`,
+        resolutionHint: 'Each seller was notified about their own feed. This many at once points at us, not at them — check outbound network and the SSRF fetch guard (lib/feed-fetch.ts) before contacting anyone.',
+      });
     }
     const capped = batch.length === FEED_BATCH ? ` · capped at ${FEED_BATCH}, the rest go first next run` : '';
     return `stores ${stores.length} · ok ${ok} · failed ${failed} · rows ${rows}${capped}`;

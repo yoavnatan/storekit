@@ -33,7 +33,27 @@ const REPEAT_AFTER_HOURS = 24;
 const relatedIdFor = (storeId: string, problem: FeedSyncProblem): string => `feed-sync:${storeId}:${problem}`;
 
 /** Every key this store could hold — what a clean run deletes. */
-export const feedSyncAlertIds = (storeId: string): string[] => ALL_PROBLEMS.map((p) => relatedIdFor(storeId, p));
+const feedSyncAlertIds = (storeId: string): string[] => ALL_PROBLEMS.map((p) => relatedIdFor(storeId, p));
+
+/**
+ * When a batch of failures stops being the sellers' problem and starts being ours.
+ *
+ * **One dead feed URL is not an admin's business** (owner asked, 2026-08-19), and making it one is
+ * how the Alerts tab becomes unreadable: at a thousand sellers, a handful of broken vendor links on
+ * any given day is the normal state of the world, and the person who can actually fix each one is
+ * already being told (the notification above). An admin alert per store would bury the entries that
+ * do need a human here.
+ *
+ * What no seller can see, and what nothing else would report, is MOST of them failing at once —
+ * two hundred vendors do not go down together, so that shape means our network, our fetch guard, or
+ * our code. The job counts its own outcomes anyway, so this costs one comparison per run.
+ *
+ * Three stores minimum, because "one of one failed" is a single broken link expressed as 100%, and
+ * paging someone for it would be the same noise by another route.
+ */
+export function isPlatformWideFeedFailure(total: number, failed: number): boolean {
+  return total >= 3 && failed >= Math.ceil(total / 2);
+}
 
 /**
  * What a finished pull amounts to, in the seller's terms rather than the route's.
