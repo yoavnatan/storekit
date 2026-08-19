@@ -126,6 +126,34 @@ describe('the boxes are cropped to the stroked ink', () => {
     }
   });
 
+  /**
+   * …except the FAVICON, which is the one surface that gets a margin (owner,
+   * 2026-08-19: cropped to the ink, the D touched all four edges of a 16px tab
+   * slot and read as a slab). The margin is a property of the tab strip, not of
+   * the drawing — every other surface sits beside something that already gives
+   * it air — so this is asserted here rather than being folded into the rule
+   * above, and the comment inside that file still says "cropped" about the two
+   * boxes that are.
+   *
+   * The exact fraction is the generator's `FAVICON_INK` and is free to move; the
+   * band is not. Above ~0.95 there is no margin left and the fault is back;
+   * below ~0.80 the counter closes at 16px and the letter reads as a blob, which
+   * is the same fault by the opposite route. Both ends were rendered.
+   */
+  it('gives the favicon — and only the favicon — a margin around the ink', () => {
+    const vb = read('public/favicon.svg').match(/viewBox="([^"]+)"/)?.[1];
+    const [fx, fy, fw, fh] = box(vb!);
+    const [ix, iy, iw, ih] = box(MARK_VIEW_BOX);
+
+    expect(fw).toBeCloseTo(fh, 6); // square, because the slot is
+    expect(fx + fw / 2).toBeCloseTo(ix + iw / 2, 4); // ink-centred, both axes
+    expect(fy + fh / 2).toBeCloseTo(iy + ih / 2, 4);
+
+    const fraction = ih / fh;
+    expect(fraction).toBeGreaterThan(0.8);
+    expect(fraction).toBeLessThan(0.95);
+  });
+
   it('keeps the CSS height and the ink width in step with those boxes', () => {
     const [, , wordW, wordH] = box(VIEW_BOX);
     // 1000 units = 1em, which is what lets the component size the svg in em alone.
