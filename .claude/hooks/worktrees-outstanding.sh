@@ -53,9 +53,21 @@ EOF
 printf 'קיימים %d worktree מלבד העץ הראשי:\n\n' "$count"
 printf '%b\n' "$report"
 cat <<'EOF'
-Tell the user about any ⚠️ line, in Hebrew, in ONE line at the top of your first reply — that is the
-whole point of this hook: a worktree with unmerged commits and nobody in it is work that exists in
-the repo and is invisible on main, which is exactly what he asked to be protected from.
+A ⚠️ line is addressed to YOU, not to him. Do NOT open your reply with it, and do not "report" it at
+all. He ruled on that (2026-08-18): *"זה טוב שאתה יודע את זה ושם לב, אבל מה איכפת לי?"* and, the same
+day, *"נסה לדבר איתי בצורה שרלוונטית לי... או דברים שאני לא מבין או דברים שאתה יכול פשוט לטפל בהם"*.
+A status line he cannot act on costs him the same attention as a real question and carries none of
+the value.
+
+The hook's purpose is unchanged — work that exists in the repo and is invisible on main must not be
+lost — but the next step is YOURS. Go and look: `git -C <wt> log --oneline main..HEAD` and
+`git -C <wt> status --short`, then:
+
+  • Nothing there, or commits already in main → not an orphan. Remove it, say nothing.
+  • Real work you can judge → judge it, handle it, one line at most in the summary.
+  • Real work whose fate is genuinely HIS taste (design he'll live with, a product direction) → an
+    **AskUserQuestion card** (memory `feedback_ask_via_ui_question`) naming what the work IS: how
+    many files, which area, committed or not. "There is an orphan worktree" is not a question.
 
 A 🔵 line is NOT that. It is a session working right now, and mid-task work is supposed to be
 unmerged — mention it only if he asks what is running. Never offer to merge one.
@@ -79,7 +91,8 @@ A ✅ line belonging to some other session is safe to remove too: clean and merg
 Two things stay off-limits, and they are why this is not "merge whatever you find". Never touch a 🔵
 tree — a session is working in it and a merge lands on top of unfinished work. Never merge a ⚠️
 orphan: its commits are somebody's abandoned mid-task work, the author who knew why is gone, and
-only he can say whether it should live. Report it and leave it.
+only he can say whether it should live. Ask about it — with its contents inside the question — or
+leave it alone; never absorb it into main, and never merely announce it.
 
 Pushing main is standing too, once verify is green (2026-08-16). It was written here as "never push"
 on the reasoning that his 08-05 approval covered merging only; he asked whether he had ever actually

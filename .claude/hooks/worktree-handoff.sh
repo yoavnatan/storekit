@@ -133,8 +133,11 @@ if [ -n "$orphans" ]; then
   echo "ANOTHER worktree has unmerged work and nobody in it:"
   printf '%b' "$orphans"
   cat <<'EOF'
-  → Tell him it exists and what is on it (`git log --oneline main..<branch>` says it in one line).
-    The decision to merge or delete is his; the point of this line is that it is never made by
-    default, by nobody, because everyone assumed somebody else knew.
+  → Read it first (`git log --oneline main..<branch>`, `git status --short`). Empty, or already on
+    main → remove it and say nothing. Otherwise the keep-or-delete call is his, but it goes out as
+    an **AskUserQuestion card** naming what the work actually is — never as a line reporting that a
+    worktree exists. He ruled 2026-08-18 that a status he cannot act on is noise
+    (`feedback_ask_via_ui_question`). The point is only that the decision is never made by default,
+    by nobody, because everyone assumed somebody else knew.
 EOF
 fi
