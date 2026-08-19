@@ -180,13 +180,24 @@ const TAGLINE_GAP = 0.12;
  *  decision in memory `project_brand_logo`; the letter simply stops filling the
  *  square.
  *
- *  0.875 rather than a rounder-looking number because 16 × 0.875 = 14 exactly:
- *  the D lands on 14 device pixels with one clear pixel above and below, instead
- *  of on a fractional height the rasteriser has to smear. 32px and 48px divide
- *  the same way. Going further was measured and rejected — below ~0.80 the
- *  counter closes at 16px and the letter goes back to reading as a blob, which
- *  is the fault this fixes, not a milder version of it. */
-const FAVICON_INK = 0.875;
+ *  The value is a SIXTEENTH, so the ink lands on whole device pixels in the slot
+ *  it is actually drawn in: 16 × 0.9375 = 15 exactly, with half a pixel of air
+ *  top and bottom, and 32px and 48px divide the same way. A fractional height is
+ *  the thing to avoid here — the rasteriser smears it, and a smeared 16px letter
+ *  is mush.
+ *
+ *  0.9375 and not less: 0.875 was shipped first and read too small (owner, the
+ *  same day: *"מעט קטן מדי, צריך משהו באמצע... כמו פאביקונים רגילים"*), which is
+ *  the right instinct — a tab icon carries a margin, but a mark that retreats
+ *  from its slot stops being the thing you pick out of twenty tabs. One
+ *  sixteenth of clear space is what the ordinary ones wear. And not more: at 1.0
+ *  the D touched all four edges and read as a dark slab rather than as a letter
+ *  (*"קצת מגושם"*), which is what opened this.
+ *
+ *  Below ~0.80 was rendered and rejected — the counter closes at 16px and the
+ *  letter goes back to reading as a blob, i.e. the same fault by the other
+ *  route. `tests/brand-lockup.test.ts` holds the band. */
+const FAVICON_INK = 0.9375;
 
 /** The slogan the poster lockup carries. The site's own line is live text in
  *  BrandLogo.astro, because it follows the visitor's language; this is the

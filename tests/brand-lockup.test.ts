@@ -146,8 +146,12 @@ describe('the boxes are cropped to the stroked ink', () => {
     const [ix, iy, iw, ih] = box(MARK_VIEW_BOX);
 
     expect(fw).toBeCloseTo(fh, 6); // square, because the slot is
-    expect(fx + fw / 2).toBeCloseTo(ix + iw / 2, 4); // ink-centred, both axes
-    expect(fy + fh / 2).toBeCloseTo(iy + ih / 2, 4);
+    // Centred on both axes — to 2 decimals, because the generator serialises the
+    // box to 3 and half a thousandth of a unit is 1/100000 of a pixel in a 16px
+    // tab. Tightening this past the emitted precision tests the rounding, not the
+    // drawing.
+    expect(fx + fw / 2).toBeCloseTo(ix + iw / 2, 2);
+    expect(fy + fh / 2).toBeCloseTo(iy + ih / 2, 2);
 
     const fraction = ih / fh;
     expect(fraction).toBeGreaterThan(0.8);
