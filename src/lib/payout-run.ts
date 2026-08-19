@@ -1,3 +1,4 @@
+import { assertCustodial } from './settlement-model.js';
 import { businessTodayISO } from './business-day.js';
 import { formatAgorot } from './money.js';
 import { MIN_PAYOUT_AGOROT, nextPayoutDayISO } from './payout-schedule.js';
@@ -249,6 +250,11 @@ export async function planPayouts(todayISO: string = businessTodayISO()): Promis
  * the same reason `orderHold` takes one.
  */
 export async function runPayouts(todayISO: string = businessTodayISO()): Promise<PayoutRunResult> {
+  // **The custodial model only.** Under the split model the processor has already paid each seller
+  // directly at the moment of the sale, and running this would send the same money a second time.
+  // A throw rather than an early return: this is called by a scheduled job, and "paid nobody" and
+  // "there was nobody to pay" look identical in a log. See lib/settlement-model.ts.
+  assertCustodial('runPayouts');
   const plan = await planPayouts(todayISO);
   const result: PayoutRunResult = {
     periodKey: plan.periodKey, created: 0, totalAgorot: 0,

@@ -1,3 +1,4 @@
+import { assertCustodial } from './settlement-model.js';
 import { rows, firstRow, isUuid } from './db.js';
 import { recordMoneyEvent } from './money-events.js';
 import { RELEASABLE_SQL, releasableParams, RELEASABLE_PARAM_COUNT } from './payout-hold.js';
@@ -879,6 +880,10 @@ export async function recordAdjustment(input: {
    */
   returnRequestId?: string | null;
 }): Promise<LedgerAdjustment | null> {
+  // Custodial only: an adjustment reduces what WE owe a seller, and under the split model we owe
+  // them nothing — the processor settled at the sale. A clawback here would be a debit against a
+  // balance that does not exist. See lib/settlement-model.ts.
+  assertCustodial('recordAdjustment');
   if (!isUuid(input.sellerId)) return null;
   if (!Number.isInteger(input.amountAgorot) || input.amountAgorot === 0) return null;
 
