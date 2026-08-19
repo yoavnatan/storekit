@@ -150,7 +150,10 @@ try {
     const label = line.combo ? `${line.name} (${line.combo.replace(/=/g, ' ').replace(/,/g, ' / ')})` : line.name;
     return ['MAIN', line.sku, label, String(qty), '2026-08-19'].map(cell).join(',');
   });
-  writeFileSync(OUT, `﻿${[header.join(','), ...body].join('\r\n')}\r\n`, 'utf8');
+  // `\uFEFF` as an ESCAPE rather than the literal character: a raw BOM in source is invisible, which
+  // is exactly why `no-irregular-whitespace` refuses it. The byte in the OUTPUT is unchanged — it is
+  // what makes Excel read the file as UTF-8 instead of as mojibake.
+  writeFileSync(OUT, `\uFEFF${[header.join(','), ...body].join('\r\n')}\r\n`, 'utf8');
 
   const combos = lines.filter((l) => l.combo).length;
   console.log(`
