@@ -6,7 +6,7 @@ import { withTransaction } from './db.js';
 import { resolveOrCreateCategoryPaths, getAncestorChain, type StoreCategory } from './store-categories.js';
 import { CSV_FIELDS, OPTION_SLOTS, BOM, sanitizeCsvCell, toCsvCell } from './csv-bulk.js';
 import { roundMoney } from './money.js';
-import { generateCombos, comboKey } from './variant-combo.js';
+import { generateCombos, comboKey, isFullyPerCombo, sumComboOverrides } from './variant-combo.js';
 import { discountedPrice } from './discounts.js';
 
 export interface BulkUpsertInput {
@@ -34,6 +34,12 @@ export interface BulkUpsertInput {
   variants?: ProductVariant[];
   variantStock?: Record<string, number>;
   variantSku?: Record<string, string>;
+  /** The variant fields above describe only SOME of the product's combos — every row of the group
+   *  was matched by its own per-combo sku, which is how an external inventory feed addresses a
+   *  variant product (variant-sku-match.ts). Merge them into the stored matrix rather than
+   *  replacing it: a feed moves quantities, it never deletes a combo it simply did not mention.
+   *  Ignored on a create (there is nothing to merge into). */
+  variantStockPartial?: boolean;
 }
 
 export interface BulkUpsertResult {
@@ -94,7 +100,23 @@ export async function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[
         if (row.sku !== undefined) updates.sku = row.sku;
         if (row.weightGrams !== undefined) updates.weightGrams = row.weightGrams;
         if (rowDiscount !== undefined) updates.discount = rowDiscount ?? undefined;
-        if (isVariant) {
+        if (isVariant && row.variantStockPartial && existing.variants?.length) {
+          // A per-combo-sku feed: the product's own matrix stands, and only the buckets the feed
+          // named move. Merged HERE, inside the transaction, against the row read under it — the
+          // importer's snapshot is minutes old on a scheduled run, and merging there would write a
+          // sale that landed in between back out of existence.
+          const mergedStock = { ...(existing.variantStock ?? {}), ...(row.variantStock ?? {}) };
+          const mergedSku = { ...(existing.variantSku ?? {}), ...(row.variantSku ?? {}) };
+          updates.variants = existing.variants;
+          updates.variantStock = mergedStock;
+          updates.variantSku = mergedSku;
+          // The group's own `stock` is the sum of the rows it carried, which for a patch is a
+          // fraction of the product — never the product's number. It is the sum of the buckets
+          // exactly when every combo now has one; while any combo still sells from the shared
+          // pool the file says nothing about the pool's size, so the pool is left as it is.
+          if (isFullyPerCombo(existing.variants, mergedStock)) updates.stock = sumComboOverrides(mergedStock);
+          else delete updates.stock;
+        } else if (isVariant) {
           updates.variants = row.variants;
           updates.variantStock = row.variantStock ?? {};
           updates.variantSku = row.variantSku;

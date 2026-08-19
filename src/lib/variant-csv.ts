@@ -29,6 +29,10 @@ export interface MergedProductInput {
   variants?: ProductVariant[];
   variantStock?: Record<string, number>;
   variantSku?: Record<string, string>;
+  /** Set by the importer when every row of this group was matched by a PER-COMBO sku
+   *  (variant-sku-match.ts): the matrix above is then only the combos the feed named, and the
+   *  writer merges it into the stored one instead of replacing it. */
+  variantStockPartial?: boolean;
 }
 
 /** One product's outcome after grouping — `lines` is every source CSV line that fed it (one for a

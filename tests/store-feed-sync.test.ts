@@ -29,7 +29,8 @@ vi.mock('../src/lib/feed-fetch.js', async (importOriginal) => ({
 
 const { syncStoreFeed, syncedRowCount } = await import('../src/lib/store-feed-sync.js');
 const { getStoreById } = await import('../src/lib/stores.js');
-const { getProductsByStoreId } = await import('../src/lib/store-products.js');
+const { getProductsByStoreId, getProductById, createProduct, updateProduct } = await import('../src/lib/store-products.js');
+const { comboKey } = await import('../src/lib/variant-combo.js');
 
 /** The shape a seller's POS exports: their own sku, and what it says the stock is. */
 function vendorCsv(rows: Array<[string, number]>): string {
@@ -270,5 +271,108 @@ describe('who the import runs as', () => {
 
     expect(await stockOf(productId)).toBe(6);
     expect((await getProductsByStoreId(storeId)).find((p) => p.id === productId)?.stock).toBe(6);
+  });
+});
+
+/**
+ * A variant product, synced from the seller's own system.
+ *
+ * This is the shape the feature exists for and the one it could not do until 2026-08-19: a POS
+ * counts blue-L, not "the sweatshirt", so its export is keyed by the PER-COMBO sku. Those codes
+ * live in `variantSku`, which nothing matched on — the rows resolved to no product, fell through as
+ * creates, and came back `sku-duplicate` / `name-required` on every single run.
+ */
+describe('a feed keyed by per-combo skus', () => {
+  const BLUE_L = comboKey({ צבע: 'כחול', מידה: 'L' });
+  const BLUE_S = comboKey({ צבע: 'כחול', מידה: 'S' });
+
+  async function storeWithVariantFeed(): Promise<Fixture> {
+    const { storeId } = await storeWithFeed('A-1', 5);
+    const product = await createProduct(storeId, {
+      name: 'Sweatshirt', price: 129.9, stock: 12, description: '',
+      variants: [{ name: 'צבע', options: ['כחול'] }, { name: 'מידה', options: ['S', 'L'] }],
+      variantStock: { [BLUE_S]: 8, [BLUE_L]: 4 },
+      variantSku: { [BLUE_S]: 'SW-BL-S', [BLUE_L]: 'SW-BL-L' },
+    });
+    return { storeId, productId: product.id };
+  }
+
+  const combos = async (productId: string): Promise<Record<string, number>> =>
+    (await getProductsByStoreId((await getProductById(productId))!.storeId)).find((p) => p.id === productId)!.variantStock ?? {};
+
+  it('moves the combo the sku names, and only that one', async () => {
+    const { storeId, productId } = await storeWithVariantFeed();
+    feed.csv = vendorCsv([['SW-BL-L', 9]]);
+
+    const { status, body } = await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(await combos(productId)).toEqual({ [BLUE_S]: 8, [BLUE_L]: 9 });
+    // Every combo has a bucket, so the product's own number is their sum — the figure the low-stock
+    // badge, the storefront and the ad feed all read.
+    expect(await stockOf(productId)).toBe(17);
+  });
+
+  it('never deletes a combo the feed did not mention', async () => {
+    // The destructive reading of the same file: rebuild the matrix from the rows present, and a
+    // one-line export takes the other three combos off the shelf. A feed moves quantities.
+    const { storeId, productId } = await storeWithVariantFeed();
+    feed.csv = vendorCsv([['SW-BL-S', 2]]);
+
+    await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    const after = (await getProductsByStoreId(storeId)).find((p) => p.id === productId)!;
+    expect(after.variantStock).toEqual({ [BLUE_S]: 2, [BLUE_L]: 4 });
+    expect(after.variants).toEqual([{ name: 'צבע', options: ['כחול'] }, { name: 'מידה', options: ['S', 'L'] }]);
+    expect(after.variantSku).toEqual({ [BLUE_S]: 'SW-BL-S', [BLUE_L]: 'SW-BL-L' });
+  });
+
+  it('running it twice is running it once, per combo too', async () => {
+    const { storeId, productId } = await storeWithVariantFeed();
+    feed.csv = vendorCsv([['SW-BL-S', 3], ['SW-BL-L', 6]]);
+
+    const first = await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+    const second = await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    expect(syncedRowCount(first.body)).toBe(1); // one product, however many combo rows fed it
+    expect(syncedRowCount(second.body), 'the second pass writes nothing at all').toBe(0);
+    expect(await combos(productId)).toEqual({ [BLUE_S]: 3, [BLUE_L]: 6 });
+  });
+
+  it('creates nothing — the codes belong to a product that already exists', async () => {
+    const { storeId } = await storeWithVariantFeed();
+    feed.csv = vendorCsv([['SW-BL-S', 1], ['SW-BL-L', 1]]);
+
+    const { body } = await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    // Not a single errored row: before the fix these came back `sku-duplicate` — the codes ARE the
+    // product's, so the import read its own catalogue as a collision and refused, every hour.
+    const results = body.results as Array<{ action: string; errors: string[] }>;
+    expect(results.flatMap((r) => r.errors)).toEqual([]);
+    expect(results.some((r) => r.action === 'create'), 'nothing is created').toBe(false);
+    const { rows } = await query<{ n: number }>(
+      'SELECT COUNT(*)::bigint AS n FROM store_products WHERE store_id = $1', [storeId],
+    );
+    expect(rows[0]!.n, 'the sweatshirt and the widget, nothing new').toBe(2);
+  });
+
+  it('keeps matching after the seller relabels a dimension in the form', async () => {
+    // The sku is the identity; our own labels are ours to change. Renaming "צבע" → "Color" moves
+    // every combo key at once, and the per-combo codes ride along (variant-combo.ts#remapComboKeys)
+    // — so the vendor's file, which knows nothing about any of it, still lands on the right bucket.
+    const { storeId, productId } = await storeWithVariantFeed();
+    const renamedS = comboKey({ Color: 'כחול', מידה: 'S' });
+    const renamedL = comboKey({ Color: 'כחול', מידה: 'L' });
+    await updateProduct(productId, {
+      variants: [{ name: 'Color', options: ['כחול'] }, { name: 'מידה', options: ['S', 'L'] }],
+      variantStock: { [renamedS]: 8, [renamedL]: 4 },
+      variantSku: { [renamedS]: 'SW-BL-S', [renamedL]: 'SW-BL-L' },
+    });
+    feed.csv = vendorCsv([['SW-BL-L', 7]]);
+
+    await syncStoreFeed((await getStoreById(storeId))!, true, 'scheduled');
+
+    expect(await combos(productId)).toEqual({ [renamedS]: 8, [renamedL]: 7 });
   });
 });

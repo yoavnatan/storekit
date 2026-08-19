@@ -5,7 +5,8 @@ import {
   parseCsv, mapHeader, toRawRows, validateRows, resolveSkuMatches,
   MAX_IMPORT_ROWS, type SkuMatchTarget,
 } from './csv-bulk.js';
-import { mergeVariantGroups } from './variant-csv.js';
+import { mergeVariantGroups, type MergedProductInput } from './variant-csv.js';
+import { buildComboSkuIndex, resolveComboSkuRows } from './variant-sku-match.js';
 import { importSeoAdvisory } from './csv-import-advisory.js';
 import { deleteNotificationsByRelatedIds } from './notifications.js';
 import { getStoreById } from './stores.js';
@@ -62,6 +63,12 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
   const catalogBySku = new Map<string, SkuMatchTarget>();
   for (const p of existingProducts) if (p.sku) catalogBySku.set(p.sku, { id: p.id, name: p.name, price: p.price });
   resolveSkuMatches(rawRows, catalogBySku);
+  // Then the same trick one level down: a row keyed by a PER-COMBO sku is an update to that combo.
+  // Without this an external inventory feed — whose rows are exactly that — could never match a
+  // variant product at all (variant-sku-match.ts). The lines it resolved are remembered, because
+  // those rows and only those rows describe a PARTIAL matrix: what the feed did not mention is
+  // stock the feed knows nothing about, never stock to delete.
+  const comboSkuLines = resolveComboSkuRows(rawRows, buildComboSkuIndex(existingProducts));
 
   // Per-row validation first (name/price/sku/spam/category), then collapse variant-group rows into
   // one product each — errors stay per-line, grouping is a separate testable pass.
@@ -80,7 +87,25 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
     const existing = byId.get(r.id);
     if (!existing) continue;
     r.currentName = existing.name;
-    r.unchanged = !updateChangesProduct(existing, r.input, pathOf(existing.categoryId));
+    // A group assembled ENTIRELY from combo-sku rows carries only the combos the feed named, so it
+    // is a patch, not a replacement. The flag tells the writer to merge it into the stored matrix
+    // inside its own transaction (store-products-bulk.ts) — merging it here would be a lost update:
+    // a sale landing between this snapshot and the commit would be written back out of existence.
+    // The preview below still needs the merged picture, so it is computed separately and thrown away.
+    const partial = r.lines.length > 0
+      && !!r.input.variants?.length
+      && !!existing.variants?.length
+      && r.lines.every((line) => comboSkuLines.has(line));
+    if (partial) r.input.variantStockPartial = true;
+    const diffInput: MergedProductInput = partial
+      ? {
+        ...r.input,
+        variants: existing.variants,
+        variantStock: { ...(existing.variantStock ?? {}), ...(r.input.variantStock ?? {}) },
+        variantSku: { ...(existing.variantSku ?? {}), ...(r.input.variantSku ?? {}) },
+      }
+      : r.input;
+    r.unchanged = !updateChangesProduct(existing, diffInput, pathOf(existing.categoryId));
     // A flat row (no option columns) carrying a NEW stock number for a product whose stock lives
     // per-combo would write a value that governs nothing: a purchase decrements the combo's own
     // bucket (resolveStockField in store-products.ts), so the seller would be told the row updated

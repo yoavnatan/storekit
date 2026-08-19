@@ -192,6 +192,81 @@ describe('runProductImport — a single stock number can never move a per-combo 
   });
 });
 
+/**
+ * Rows keyed by a PER-COMBO sku — an external inventory system's own export, which never carries
+ * our product ids and never carries a product-level code, because the thing it counts is blue-L.
+ */
+describe('runProductImport — a row keyed by a combo sku', () => {
+  const SK0 = comboKey({ צבע: 'אדום', מידה: 'S' });
+  const SK3 = comboKey({ צבע: 'כחול', מידה: 'L' });
+
+  it('a bare sku+stock row lands on that combo, and on nothing else', async () => {
+    // The whole file, as a POS writes it: a code and a number. Before 2026-08-19 this row came back
+    // `name-required` + `price-invalid` + `sku-duplicate` — three errors describing one product the
+    // catalogue already had.
+    const csv = [COLS.join(','), row({ sku: 'SK-0', stock: '9' })].join('\n');
+    const results = await preview(csv);
+    expect(results.length).toBe(1);
+    expect(results[0]!.errors).toEqual([]);
+    expect(results[0]!.action).toBe('update');
+
+    await runProductImport({ storeId, sellerId: 'seller', csv, commit: true });
+    const after = (await getProductById(chairId))!;
+    expect(after.variantStock![SK0]).toBe(9);
+    expect(after.variantStock![SK3], 'a combo the file never named').toBe(5);
+    expect(after.stock, 'every combo has a bucket, so the total is their sum').toBe(24);
+  });
+
+  it('re-running the same file writes nothing the second time', async () => {
+    const csv = [COLS.join(','), row({ sku: 'SK-0', stock: '9' })].join('\n');
+    await runProductImport({ storeId, sellerId: 'seller', csv, commit: true });
+    const second = await preview(csv);
+    expect(second[0]!.unchanged, 'an unattended pull must converge, not churn').toBe(true);
+  });
+
+  it('takes the STORED combo, not the vendor\'s spelling of it', async () => {
+    // Their export calls the colour "Red" and the dimension "Colour". Ours does not, and the sku is
+    // what ties the two together — so the row moves אדום/S and invents no fifth combo.
+    const csv = [
+      COLS.join(','),
+      row({ sku: 'SK-0', name: 'Chair', price: '100', stock: '2', group: 'chair', option1Name: 'Colour', option1Value: 'Red', option2Name: 'Size', option2Value: 'S' }),
+    ].join('\n');
+    await runProductImport({ storeId, sellerId: 'seller', csv, commit: true });
+    const after = (await getProductById(chairId))!;
+    expect(after.variants).toEqual([{ name: 'צבע', options: ['אדום', 'כחול'] }, { name: 'מידה', options: ['S', 'L'] }]);
+    expect(after.variantStock![SK0]).toBe(2);
+    expect(Object.keys(after.variantStock!).length).toBe(4);
+  });
+
+  it('a partial group never drops the combos it left out', async () => {
+    const csv = [
+      COLS.join(','),
+      row({ sku: 'SK-0', stock: '1', group: 'chair' }),
+      row({ sku: 'SK-1', stock: '2', group: 'chair' }),
+    ].join('\n');
+    await runProductImport({ storeId, sellerId: 'seller', csv, commit: true });
+    const after = (await getProductById(chairId))!;
+    expect(Object.keys(after.variantStock!).length).toBe(4);
+    expect(after.variantSku!, 'the codes are untouched').toEqual({ [SK0]: 'SK-0', [comboKey({ צבע: 'אדום', מידה: 'L' })]: 'SK-1', [comboKey({ צבע: 'כחול', מידה: 'S' })]: 'SK-2', [SK3]: 'SK-3' });
+    expect(after.variantStock![SK0]).toBe(1);
+    expect(after.variantStock![SK3], 'untouched by a file that named two combos').toBe(5);
+  });
+
+  it('sends a 4-dimension product to the dashboard instead of guessing', async () => {
+    const { updateProduct } = await import('../src/lib/store-products.js');
+    const chair = (await getProductById(chairId))!;
+    await updateProduct(chairId, {
+      variants: [...chair.variants!, { name: 'חומר', options: ['עץ'] }, { name: 'נפח', options: ['1L'] }],
+      variantSku: { [comboKey({ צבע: 'אדום', מידה: 'S', חומר: 'עץ', נפח: '1L' })]: 'DEEP-1' },
+      variantStock: { [comboKey({ צבע: 'אדום', מידה: 'S', חומר: 'עץ', נפח: '1L' })]: 4 },
+    });
+    const csv = [COLS.join(','), row({ sku: 'DEEP-1', stock: '9' })].join('\n');
+    const results = await preview(csv);
+    expect(results[0]!.action).toBe('error');
+    expect(results[0]!.errors).toContain('variant-stock-dashboard-only');
+  });
+});
+
 describe('what an import announces to IndexNow', () => {
   beforeEach(() => { indexNowPings.length = 0; });
 
