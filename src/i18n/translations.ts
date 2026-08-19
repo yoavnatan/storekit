@@ -2244,6 +2244,7 @@ export const translations = {
       kindFault: 'תקלה באתר — משהו לא עובד',
       kindContent: 'תוכן פוגעני או לא ראוי',
       kindStore: 'בעיה עם חנות או מוכר',
+      kindQuestion: 'שאלה לפלטפורמה',
       // "פנייה בנוגע להזמנה" — ONE label, wherever this door appears (order-token.ts#orderHelpUrl).
       kindOrder: 'פנייה בנוגע להזמנה',
       kindOther: 'אחר',
@@ -4013,6 +4014,7 @@ export const translations = {
       kindFault: 'A fault on the site — something does not work',
       kindContent: 'Offensive or improper content',
       kindStore: 'Problem with a store or seller',
+      kindQuestion: 'A question for the platform',
       kindOrder: 'About an order',
       kindOther: 'Something else',
       message: 'What happened?',

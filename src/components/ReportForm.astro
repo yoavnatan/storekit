@@ -4,13 +4,13 @@
  * **Why a form and not a subject line on a `mailto:`** (which is what the contact page offered, and
  * the shape the question came in as): the three facts that make a report actionable are the three
  * nobody types — which page, which store, who they were. Everything under `page` below is captured,
- * not asked for, and `lib/user-reports.ts` re-derives the store and the identity server-side rather
+ * not asked for, and `lib/platform-inquiries.ts` re-derives the store and the identity server-side rather
  * than believing this form about either.
  *
- * It also has somewhere to land. A mail needs an inbox somebody watches; this lands in the admin's
- * Alerts tab beside the automatic failures, with a count on the tab strip, which is the screen the
- * owner already opens to ask "is anything wrong". No SMTP is wired on this platform yet (memory
- * `project_messaging_email`), so a mail-shaped report is a report with no reader.
+ * It also has somewhere to land, and since 2026-08-19 that somewhere can answer back: it opens a
+ * THREAD in the admin's Messages inbox, so a reply reaches the sender inside the product instead of
+ * from somebody's own mail client. It used to be a one-way slip on the Alerts tab, which the owner
+ * ruled is for machine-detected failures and not for what people write.
  *
  * The strings the SCRIPT writes travel as `data-str-*` on the form, MessageCompose's pattern — this
  * component renders on one route, so a slice in the global i18n island would be weight on every
@@ -18,7 +18,7 @@
  * (memory `project_client_renderer_i18n_drift`).
  */
 import { getLang, getT } from '../i18n/index.js';
-import { MAX_REPORT_LEN, REPORT_KINDS, type ReportKind } from '../lib/user-reports.js';
+import { MAX_REPORT_LEN, REPORT_KINDS, type ReportKind } from '../lib/platform-inquiries.js';
 import { RETURN_NOTE_MAX } from '../lib/returns.js';
 
 interface Props {
@@ -41,18 +41,22 @@ const t = getT(lang);
 const r = t.report;
 
 /** A `Record` over `ReportKind`, not an array of pairs, and that is the whole point: the kinds are
- *  a CHECK constraint on `user_reports` (migration 0025) and a `switch` in the admin panel, so a
+ *  a CHECK constraint on `admin_messages.about_kind` and a `switch` in the admin panel, so a
  *  fifth one added there and forgotten here would render a form that cannot offer it. Typed this
  *  way the omission is a compile error, not a missing option nobody notices. */
 const KIND_LABELS: Record<ReportKind, string> = {
   fault: r.kindFault,
   content: r.kindContent,
   store: r.kindStore,
+  // The kind the old form had no word for, and the absence was load-bearing: a seller with a
+  // question found only "תקלה" / "תוכן" / "בעיה עם חנות", none of which is what they came to say,
+  // so the page sent them to a mailto instead. It is a thread like any other now.
+  question: r.kindQuestion,
   other: r.kindOther,
 };
 const KINDS = REPORT_KINDS.map((value) => ({ value, label: KIND_LABELS[value] }));
 /** `order` is NOT a `ReportKind` — it is the branch that opens a CASE rather than filing a report,
- *  so it deliberately has no row in `user_reports`'s CHECK constraint. It is the form's own option,
+ *  so it deliberately has no row in the `about_kind` CHECK constraint. It is the form's own option,
  *  and the script below sends it to a different endpoint. */
 const ORDER_KIND = 'order';
 const selected = identified || kind === ORDER_KIND

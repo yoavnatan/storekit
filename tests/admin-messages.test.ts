@@ -78,6 +78,8 @@ function thread(overrides: Partial<AdminThread>): AdminThread {
     lastMessage: root,
     unreadForAdmin: 0,
     unreadForSeller: 0,
+    partyRole: 'seller',
+    status: 'open',
     ...overrides,
   };
 }
@@ -88,7 +90,7 @@ describe('filterAndSortAdminThreads', () => {
       thread({ id: 't1', lastMessage: msg({ createdAt: '2026-01-02T00:00:00.000Z' }) }),
       thread({ id: 't2', lastMessage: msg({ createdAt: '2026-01-01T00:00:00.000Z' }) }),
     ];
-    const result = filterAndSortAdminThreads(threads, { sortCol: 'recent', unreadOnly: false });
+    const result = filterAndSortAdminThreads(threads, { sortCol: 'recent', unreadOnly: false, role: 'all', status: 'all' });
     expect(result.map((t) => t.id)).toEqual(['t1', 't2']);
   });
 
@@ -98,7 +100,7 @@ describe('filterAndSortAdminThreads', () => {
       thread({ id: 't2', unreadForAdmin: 2, lastMessage: msg({ createdAt: '2026-01-01T00:00:00.000Z' }) }),
       thread({ id: 't3', unreadForAdmin: 0, lastMessage: msg({ createdAt: '2026-01-02T00:00:00.000Z' }) }),
     ];
-    const result = filterAndSortAdminThreads(threads, { sortCol: 'unread', unreadOnly: false });
+    const result = filterAndSortAdminThreads(threads, { sortCol: 'unread', unreadOnly: false, role: 'all', status: 'all' });
     expect(result.map((t) => t.id)).toEqual(['t2', 't1', 't3']);
   });
 
@@ -107,7 +109,7 @@ describe('filterAndSortAdminThreads', () => {
       thread({ id: 't1', unreadForAdmin: 0 }),
       thread({ id: 't2', unreadForAdmin: 1 }),
     ];
-    const result = filterAndSortAdminThreads(threads, { sortCol: 'recent', unreadOnly: true });
+    const result = filterAndSortAdminThreads(threads, { sortCol: 'recent', unreadOnly: true, role: 'all', status: 'all' });
     expect(result.map((t) => t.id)).toEqual(['t2']);
   });
 });

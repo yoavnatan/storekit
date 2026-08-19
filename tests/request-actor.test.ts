@@ -37,7 +37,7 @@ describe('nothing hand-rolls the actor rule', () => {
   it('keeps the two readers pointed at it', () => {
     // Named explicitly, because the grep above passes just as happily for a file that stopped
     // resolving an actor at all — which would be a silently unattributed admin list, not a fix.
-    for (const reader of [join('src', 'lib', 'error-log.ts'), join('src', 'lib', 'user-reports.ts')]) {
+    for (const reader of [join('src', 'lib', 'error-log.ts'), join('src', 'lib', 'platform-inquiries.ts')]) {
       expect(readFileSync(reader, 'utf8'), `${reader} no longer uses the shared resolver`)
         .toContain('resolveRequestActor');
     }
@@ -55,7 +55,7 @@ describe('what it resolves from a path', () => {
 
   it('leaves the role unset for a visitor with no session', async () => {
     // The absence is the point: "we could not tell" and "nobody was signed in" are the same
-    // observation from here, and `user-reports.ts` is what turns that into `guest`.
+    // observation from here, and `platform-inquiries.ts` is what turns that into `guest`.
     const actor = await resolveRequestActor('/search?q=נעליים', noCookies);
     expect(actor.actorRole).toBeUndefined();
     expect(actor.actorId).toBeUndefined();

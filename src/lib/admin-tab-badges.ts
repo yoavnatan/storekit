@@ -46,11 +46,11 @@ export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBad
        -- cart is one card there, and a badge counting rows would announce "5 new" above a list
        -- showing one (order-reporting.ts#countOrdersSince, which this replaces on this page).
        (SELECT count(DISTINCT ${CHECKOUT_GROUP_KEY_SQL}) FROM orders o WHERE o.created_at > $3::timestamptz) AS orders,
-       -- The Alerts tab holds three things — the automatic error log, the reports visitors wrote
-       -- (AdminReportsPanel.astro) and whether image moderation is running at all
-       -- (AdminModerationStatus.astro) — so its badge counts all three against the same boundary.
-       -- Counting only the errors would leave the one entry a PERSON is waiting on as the one the
-       -- tab strip never mentions.
+       -- The Alerts tab holds two things now — the automatic error log and whether image
+       -- moderation is running at all (AdminModerationStatus.astro). It held a third until
+       -- 2026-08-19: the reports visitors wrote, which moved to the Messages inbox because the
+       -- owner ruled this tab is a log of machine-detected failures. So the badge stopped counting
+       -- them here and the Messages badge counts them instead — the term below is what changed.
        --
        -- **The moderation term is ONE, never a count of its reports, and that is the point (owner,
        -- 2026-08-13: "make stopped add a number").** A stopped filter is reported by the BROWSER
@@ -60,7 +60,6 @@ export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBad
        -- from the error count above (NOT LIKE) and the condition contributes exactly 1.
        (SELECT count(*) FROM error_log
          WHERE created_at > $4::timestamptz AND message NOT LIKE $5) AS alert_errors,
-       (SELECT count(*) FROM user_reports WHERE created_at > $4::timestamptz) AS alert_reports,
        -- Deliberately NOT measured against newSince: every other badge counts things that ARRIVED,
        -- and opening the tab is a complete answer to them. This is a condition that is still true
        -- after it has been read, so it clears when the filter comes back — not when it is looked at.
@@ -70,7 +69,11 @@ export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBad
        (SELECT count(*) FROM error_log
          WHERE message LIKE $5 AND NOT resolved
            AND created_at > now() - make_interval(days => $6)) AS moderation_reports,
-       (SELECT count(*) FROM admin_messages WHERE from_role = 'seller' AND NOT read_by_admin) AS messages`,
+       -- **Compared with <> 'admin', not with = 'seller'.** The inbox holds buyers and guests too
+       -- since the merge,
+       -- and a predicate naming one role silently stops counting the moment a second one exists —
+       -- which would mean a guest's fault report arriving with nothing on the tab strip to say so.
+       (SELECT count(*) FROM admin_messages WHERE from_role <> 'admin' AND NOT read_by_admin) AS messages`,
     [newSince.sellers, newSince.stores, newSince.orders, newSince.alerts,
      `${MODERATION_MISSING_MARKER}%`, MODERATION_STALE_DAYS],
   );
@@ -87,7 +90,7 @@ export async function getAdminTabBadges(newSince: TabViews): Promise<AdminTabBad
     sellers: n(row?.sellers),
     stores: n(row?.stores),
     orders: n(row?.orders),
-    alerts: n(row?.alert_errors) + n(row?.alert_reports) + moderationStopped,
+    alerts: n(row?.alert_errors) + moderationStopped,
     messages: n(row?.messages),
   };
 }

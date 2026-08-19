@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { clientIp } from '../../lib/client-ip.js';
 import { checkAuthRate, countAuthAttempt, reportRules, retryAfterMinutes } from '../../lib/rate-limit.js';
-import { createUserReport } from '../../lib/user-reports.js';
+import { createPlatformInquiry } from '../../lib/platform-inquiries.js';
 import { isValidEmail } from '../../lib/email-address.js';
 
 /**
@@ -16,7 +16,9 @@ import { isValidEmail } from '../../lib/email-address.js';
  * and not from a form on someone else's site.
  *
  * **What it will not take from the body:** which store this is about, and who the reporter is.
- * `lib/user-reports.ts` derives both from the path and the session, for the reason on its header.
+ * `lib/platform-inquiries.ts` derives both from the path and the session, for the reason on its
+ * header. It lands as a THREAD in the Messages inbox, so the platform can answer it — until
+ * 2026-08-19 it was a one-way slip on the alerts tab.
  *
  * The limiter counts ACCEPTED reports rather than rejected ones, which is the opposite of every
  * other caller of `checkAuthRate` — `rate-limit.ts#reportRules` says why.
@@ -34,6 +36,11 @@ interface ReportBody {
   message?: unknown;
   email?: unknown;
   pageUrl?: unknown;
+  /** Which published review this complaint is about, when the reporter came from one. A review id
+   *  is not a permission — it says what the complaint is ABOUT and authorises nothing, which is why
+   *  it is the one identifier this endpoint does take from the body. It is stored as a foreign key,
+   *  so an id naming no review lands as NULL rather than as a claim. */
+  reviewId?: unknown;
 }
 
 export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
@@ -54,12 +61,12 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
   // "ללא כתובת לחזרה" rather than offering a mailto that bounces.
   const email = isValidEmail(read.value.email) ? read.value.email : null;
 
-  const stored = await createUserReport({
+  const stored = await createPlatformInquiry({
     kind: read.value.kind,
     message: read.value.message,
-    reporterEmail: email,
+    senderEmail: email,
     pageUrl: read.value.pageUrl,
-    userAgent: request.headers.get('user-agent'),
+    reviewId: read.value.reviewId,
     cookies,
   });
   // An empty message is the only "invalid" here, and the form already blocks it — so this is the

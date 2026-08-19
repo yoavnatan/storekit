@@ -48,7 +48,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   // the recency order the moment they change, so a page of the most recently active threads is
   // everything the poll can use. It used to fetch every system message on the platform, with every
   // thread's full message array, on a timer.
-  const page = await getAdminThreadsPage({ sortCol: 'recent', unreadOnly: false }, 1, ADMIN_PAGE_SIZE);
+  const page = await getAdminThreadsPage({ sortCol: 'recent', unreadOnly: false, role: 'all', status: 'all' }, 1, ADMIN_PAGE_SIZE);
   return new Response(JSON.stringify({ threads: page.threads }), { headers: json });
 };
 

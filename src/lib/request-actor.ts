@@ -4,8 +4,8 @@
  *
  * **This is one rule with two readers, and it is extracted because two answers to "who was this"
  * would land on two admin screens that sit on the same tab.** The Alerts tab shows the automatic
- * error log above the visitor reports (`AdminReportsPanel.astro`); the error log resolved its own
- * actor and `user-reports.ts` resolved another, and the day one of them learned something — a
+ * error log above the visitor reports; the error log resolved its own
+ * actor and `platform-inquiries.ts` resolved another, and the day one of them learned something — a
  * buyer-only session cookie, say, or a store found through a PREVIOUS slug — the two lists would
  * quietly start describing the same person differently. `tests/request-actor.test.ts` greps `src/`
  * so the next surface that needs this cannot hand-roll a third copy.
@@ -17,7 +17,7 @@
  *    `/search`) simply resolves to nothing; there is no list of "store routes" to keep in step.
  * 2. **Buyer and seller share ONE session cookie.** An account is a seller when it owns a store and
  *    a buyer when it does not — the distinction is ownership, never a separate login. Anything that
- *    needs a third value for "not signed in at all" adds it on top (`user-reports.ts` calls that
+ *    needs a third value for "not signed in at all" adds it on top (`platform-inquiries.ts` calls that
  *    `guest`); this module leaves the field unset, because "we could not tell" and "nobody was
  *    signed in" are the same observation from here.
  *

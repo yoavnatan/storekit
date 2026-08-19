@@ -55,7 +55,9 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opayout', 'oseller', 'opage', 'onew'],
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
-  messages: ['msort', 'munread', 'mpage'],
+  // `mrole`/`mstatus` arrived with the inbox merge (2026-08-19): the list is no longer
+  // admin↔seller only, so it needs to be able to say whose thread and whether it is done.
+  messages: ['msort', 'munread', 'mrole', 'mstatus', 'mpage'],
   // `v*` and not `r*`: the returns tab already owns `rq`/`rpage`, and two tabs told apart by the
   // second letter of their params is how one of them ends up owned by the wrong list.
   reviews: ['vq', 'vstore', 'vseller', 'vstate', 'vfrom', 'vto', 'vpage'],

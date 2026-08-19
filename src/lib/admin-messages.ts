@@ -22,16 +22,34 @@ import type { AdminThreadQuery } from './admin-threads-query.js';
 // while an expression over two columns can use neither. It also keeps the module's one deliberate
 // tolerance intact — a reply whose root was deleted is still reachable by the dead root's id, and
 // `groupAdminThreads` still renders it as a thread of its own rather than dropping it.
+export type InquiryParty = 'seller' | 'buyer' | 'guest';
+export type InquiryKind = 'fault' | 'content' | 'store' | 'question' | 'other';
+
 export interface AdminMessage {
   id: string;
+  /** '' when the counterparty has no seller account — a buyer or a guest. */
   sellerId: string;
-  fromRole: 'admin' | 'seller';
+  fromRole: 'admin' | InquiryParty;
   content: string;
   subject?: string;    // root message only
   replyToId?: string;  // reply -> root message id
   readByAdmin: boolean;
   readBySeller: boolean;
   createdAt: string;
+  // ── Root-only, all of it captured server-side (migration 20260819_133924). A reply carries none
+  //    of it: the thread's identity belongs to its root. ──
+  partyRole?: InquiryParty;
+  partyId?: string;
+  partyName?: string;
+  partyEmail?: string;
+  aboutKind?: InquiryKind;
+  /** Site-relative, already validated through `safe-redirect.ts` on the way in. */
+  pageUrl?: string;
+  storeSlug?: string;
+  /** The published review this complaint is about — the panel renders it inline with its takedown
+   *  button, so reading the complaint and acting on it are one screen (owner, 2026-08-19). */
+  reviewId?: string;
+  status?: 'open' | 'handled';
 }
 
 // Pre-thread rows (and any row whose root was removed) carry no subject —
@@ -52,6 +70,7 @@ export {
 
 export interface AdminThread {
   id: string;              // = root message id
+  /** '' for a buyer or a guest — they have no seller account. */
   sellerId: string;
   subject: string;
   root: AdminMessage;
@@ -59,15 +78,30 @@ export interface AdminThread {
   lastMessage: AdminMessage;
   unreadForAdmin: number;
   unreadForSeller: number;
+  /** Who the platform is talking to. Absent on the threads that predate the inbox merge, which are
+   *  all admin→seller by construction — `partyOf` below is what turns that into an answer rather
+   *  than leaving every caller to guess. */
+  partyRole: InquiryParty;
+  status: 'open' | 'handled';
 }
 
-const SELECT_ADMIN_MESSAGE = `SELECT id, seller_id, from_role, subject, content, reply_to_id,
-                                     read_by_admin, read_by_seller, created_at
-                                FROM admin_messages`;
+/** The counterparty's role, with the pre-merge default made explicit in one place: a thread with no
+ *  `party_role` was opened by the admin against a seller, because until 2026-08-19 that was the only
+ *  thread that could exist. */
+export function partyOf(root: AdminMessage): InquiryParty {
+  return root.partyRole ?? 'seller';
+}
+
+const ADMIN_MESSAGE_COLUMNS = `id, seller_id, from_role, subject, content, reply_to_id,
+                               read_by_admin, read_by_seller, created_at,
+                               party_role, party_id, party_name, party_email,
+                               about_kind, page_url, store_slug, review_id, status`;
+
+const SELECT_ADMIN_MESSAGE = `SELECT ${ADMIN_MESSAGE_COLUMNS} FROM admin_messages`;
 
 interface AdminMessageRow {
   id: string;
-  seller_id: string;
+  seller_id: string | null;
   from_role: string;
   subject: string | null;
   content: string;
@@ -75,13 +109,25 @@ interface AdminMessageRow {
   read_by_admin: boolean;
   read_by_seller: boolean;
   created_at: Date | string;
+  party_role: string | null;
+  party_id: string | null;
+  party_name: string | null;
+  party_email: string | null;
+  about_kind: string | null;
+  page_url: string | null;
+  store_slug: string | null;
+  review_id: string | null;
+  status: string | null;
 }
 
 function toAdminMessage(row: AdminMessageRow): AdminMessage {
   const message: AdminMessage = {
     id: row.id,
-    sellerId: row.seller_id,
-    fromRole: row.from_role as 'admin' | 'seller',
+    // `''` and not `null`: every existing caller compares this to a seller id, and a nullable field
+    // would make each of them decide what "no seller" means. The same answer `messages.ts` gives
+    // for its own unresolvable ids.
+    sellerId: row.seller_id ?? '',
+    fromRole: row.from_role as AdminMessage['fromRole'],
     content: row.content,
     readByAdmin: row.read_by_admin,
     readBySeller: row.read_by_seller,
@@ -89,6 +135,15 @@ function toAdminMessage(row: AdminMessageRow): AdminMessage {
   };
   if (row.subject !== null) message.subject = row.subject;
   if (row.reply_to_id) message.replyToId = row.reply_to_id;
+  if (row.party_role) message.partyRole = row.party_role as InquiryParty;
+  if (row.party_id) message.partyId = row.party_id;
+  if (row.party_name) message.partyName = row.party_name;
+  if (row.party_email) message.partyEmail = row.party_email;
+  if (row.about_kind) message.aboutKind = row.about_kind as InquiryKind;
+  if (row.page_url) message.pageUrl = row.page_url;
+  if (row.store_slug) message.storeSlug = row.store_slug;
+  if (row.review_id) message.reviewId = row.review_id;
+  if (row.status) message.status = row.status as 'open' | 'handled';
   return message;
 }
 
@@ -128,8 +183,14 @@ export function groupAdminThreads(messages: AdminMessage[]): AdminThread[] {
         root,
         messages: sorted,
         lastMessage: sorted[sorted.length - 1]!,
-        unreadForAdmin: sorted.filter((m) => m.fromRole === 'seller' && !m.readByAdmin).length,
+        // **`!== 'admin'`, not `=== 'seller'`.** The counterparty can now be a buyer or a guest,
+        // and a predicate naming one role stops counting the moment a second one exists — which is
+        // the shape that would have made a guest's message land in the inbox and never light the
+        // badge that says something is waiting.
+        unreadForAdmin: sorted.filter((m) => m.fromRole !== 'admin' && !m.readByAdmin).length,
         unreadForSeller: sorted.filter((m) => m.fromRole === 'admin' && !m.readBySeller).length,
+        partyRole: partyOf(root),
+        status: root.status ?? 'open',
       };
     })
     .sort((a, b) => (a.lastMessage.createdAt < b.lastMessage.createdAt ? 1 : a.lastMessage.createdAt > b.lastMessage.createdAt ? -1 : 0));
@@ -167,9 +228,15 @@ export interface AdminThreadsPage {
  *  is the grouping key here — unlike a single-thread lookup, this cannot use the index either way,
  *  because it is asking about all of them. */
 const THREAD_ROLLUP = `
-  SELECT COALESCE(m.reply_to_id, m.id)                                        AS thread_id,
-         MAX(m.created_at)                                                    AS last_at,
-         COUNT(*) FILTER (WHERE m.from_role = 'seller' AND NOT m.read_by_admin) AS unread_admin
+  SELECT COALESCE(m.reply_to_id, m.id)                                         AS thread_id,
+         MAX(m.created_at)                                                     AS last_at,
+         COUNT(*) FILTER (WHERE m.from_role <> 'admin' AND NOT m.read_by_admin) AS unread_admin,
+         -- The root's own facts, hoisted so the toolbar can narrow on them without a second pass.
+         -- A MAX() FILTER over a group whose root is exactly one row IS that row's value; a reply
+         -- carries NULL in all of these, so it cannot outvote its root.
+         MAX(m.party_role)  FILTER (WHERE m.reply_to_id IS NULL)               AS party_role,
+         MAX(m.status)      FILTER (WHERE m.reply_to_id IS NULL)               AS status,
+         MAX(m.about_kind)  FILTER (WHERE m.reply_to_id IS NULL)               AS about_kind
     FROM admin_messages m
    GROUP BY COALESCE(m.reply_to_id, m.id)`;
 
@@ -182,13 +249,24 @@ export async function getAdminThreadsPage(
   // Two numbers over the WHOLE rollup: how many threads the filter leaves (the pager), and how
   // many unread messages exist regardless of it (the tab badge, which must not move because a
   // filter is open — the same rule the other tabs' "(N)" badges follow).
+  // One narrowing expression, written once and spent three times below — the pager's total, the
+  // id page, and nothing else. A second copy is how a filter comes to mean one thing to the list
+  // and another to the count above it.
+  //
+  // The role default is stated in SQL exactly as `partyOf` states it in TypeScript: a thread with
+  // no `party_role` predates the merge and is admin→seller by construction.
+  const NARROW = `($1::boolean IS NOT TRUE OR unread_admin > 0)
+              AND ($2::text = 'all' OR COALESCE(party_role, 'seller') = $2::text)
+              AND ($3::text = 'all' OR COALESCE(status, 'open') = $3::text)`;
+  const narrowArgs = [query.unreadOnly, query.role, query.status];
+
   const totals = await rows<{ total: string | number; every: string | number; unread_total: string | number }>(
     `WITH t AS (${THREAD_ROLLUP})
-     SELECT COUNT(*) FILTER (WHERE $1::boolean IS NOT TRUE OR unread_admin > 0) AS total,
-            COUNT(*)                                                            AS every,
-            COALESCE(SUM(unread_admin), 0)                                      AS unread_total
+     SELECT COUNT(*) FILTER (WHERE ${NARROW}) AS total,
+            COUNT(*)                          AS every,
+            COALESCE(SUM(unread_admin), 0)    AS unread_total
        FROM t`,
-    [query.unreadOnly],
+    narrowArgs,
   );
   const total = Number(totals[0]?.total ?? 0);
   const totalUnfiltered = Number(totals[0]?.every ?? 0);
@@ -199,10 +277,10 @@ export async function getAdminThreadsPage(
   const ids = (await rows<{ thread_id: string }>(
     `WITH t AS (${THREAD_ROLLUP})
      SELECT thread_id FROM t
-      WHERE $1::boolean IS NOT TRUE OR unread_admin > 0
+      WHERE ${NARROW}
       ORDER BY ${unreadFirst ? '(unread_admin > 0) DESC,' : ''} last_at DESC, thread_id
-      LIMIT $2 OFFSET $3`,
-    [query.unreadOnly, pageSize, (safePage - 1) * pageSize],
+      LIMIT $4 OFFSET $5`,
+    [...narrowArgs, pageSize, (safePage - 1) * pageSize],
   )).map((r) => r.thread_id);
 
   if (!ids.length) return { threads: [], total, totalUnfiltered, page: safePage, totalPages, unreadForAdmin };
@@ -240,9 +318,13 @@ export async function getAdminThreadById(threadId: string): Promise<AdminThread 
   return groupAdminThreads(found.map(toAdminMessage))[0] ?? null;
 }
 
-// Only the admin opens a thread — a seller never starts one (there is no
-// "contact the platform" entry point by design; zero-touch self-service).
-// The seller's reply inside an existing thread IS the appeal/response channel.
+/**
+ * The ADMIN opening a thread against a seller — a block notice, a policy change, a question.
+ *
+ * The other direction is `createInquiryThread` below. Until 2026-08-19 there was no other
+ * direction: a seller could only reply inside a thread the admin had already opened, so a seller
+ * with a question had no way in that stayed inside the product.
+ */
 export async function createAdminThread(
   sellerId: string,
   subject: string,
@@ -253,11 +335,91 @@ export async function createAdminThread(
   const { rows: written } = await runner(tx).query<AdminMessageRow>(
     `INSERT INTO admin_messages (id, seller_id, from_role, subject, content, read_by_admin, read_by_seller)
      VALUES ($1, $2, 'admin', $3, $4, true, false)
-     RETURNING id, seller_id, from_role, subject, content, reply_to_id, read_by_admin, read_by_seller, created_at`,
+     RETURNING ${ADMIN_MESSAGE_COLUMNS}`,
     // read_by_admin is true above: the sender has obviously "seen" their own message.
     [id, sellerId, subject.trim() || DEFAULT_ADMIN_SUBJECT, content],
   );
   return toAdminMessage(written[0]!);
+}
+
+/**
+ * A PERSON opening a thread with the platform — the direction that did not exist until 2026-08-19.
+ *
+ * Everything the sender is trusted for is the two fields they typed: `subject` and `content`. Every
+ * other column here is the caller's server-side finding, and that division is the whole point —
+ * `user_reports` (migration 0025) stated it first and this inherits it verbatim: **the reporter
+ * describes, the SERVER attributes.** A thread whose sender could name the store it is about, or
+ * their own role, would be a way to point the admin at a competitor while claiming to be a buyer.
+ *
+ * `sellerId` is passed separately from `party.id` and is not the same thing: it is the typed,
+ * foreign-keyed column the seller's own dashboard reads by, so it is set only when the counterparty
+ * really has a seller account. A buyer's account id lives in `party.id` as text.
+ *
+ * Unread for the admin from the moment it is written — that is what the tab badge counts, and it is
+ * why `read_by_admin` is false here and true in `createAdminThread`.
+ */
+export interface NewInquiry {
+  subject: string;
+  content: string;
+  party: {
+    role: InquiryParty;
+    /** The seller's account id — and ONLY when the role is 'seller'. Anything else lands in
+     *  `party_id`, so a buyer can never be read back as the owner of a store. */
+    sellerId?: string;
+    id?: string;
+    name?: string;
+    email?: string;
+  };
+  kind?: InquiryKind;
+  /** Site-relative. The caller validates it (`safe-redirect.ts`) — this module stores what it is
+   *  given, and the column's comment says why that must not be an absolute URL. */
+  pageUrl?: string;
+  storeSlug?: string;
+  reviewId?: string;
+}
+
+export async function createInquiryThread(input: NewInquiry, tx?: Queryable): Promise<AdminMessage> {
+  const sellerId = input.party.role === 'seller' && isUuid(input.party.sellerId ?? '')
+    ? input.party.sellerId! : null;
+  const { rows: written } = await runner(tx).query<AdminMessageRow>(
+    `INSERT INTO admin_messages (id, seller_id, from_role, subject, content,
+                                 read_by_admin, read_by_seller,
+                                 party_role, party_id, party_name, party_email,
+                                 about_kind, page_url, store_slug, review_id, status)
+     VALUES ($1, $2, $3, $4, $5, false, true, $3, $6, $7, $8, $9, $10, $11, $12, 'open')
+     RETURNING ${ADMIN_MESSAGE_COLUMNS}`,
+    // `read_by_seller` is true: the sender has obviously seen their own message, and leaving it
+    // false would put an unread dot on the seller's own dashboard for something they just wrote.
+    [
+      crypto.randomUUID(), sellerId, input.party.role,
+      input.subject.trim() || DEFAULT_ADMIN_SUBJECT, input.content,
+      input.party.id ?? null, input.party.name ?? null, input.party.email ?? null,
+      input.kind ?? null, input.pageUrl ?? null, input.storeSlug ?? null,
+      input.reviewId && isUuid(input.reviewId) ? input.reviewId : null,
+    ],
+  );
+  return toAdminMessage(written[0]!);
+}
+
+/**
+ * Mark a thread done, or reopen it.
+ *
+ * Separate from "read", and the distinction is the one the reports list had and the threads did
+ * not: read is about attention, this is about the work. A thread the admin has opened, read and not
+ * yet acted on is exactly the one that used to vanish from view.
+ *
+ * Written on the ROOT only — the root is the thread's identity everywhere else in this module, and
+ * a status spread across replies is a status that can disagree with itself.
+ */
+export async function setAdminThreadStatus(threadId: string, handled: boolean): Promise<boolean> {
+  if (!isUuid(threadId)) return false;
+  const { rowCount } = await query(
+    `UPDATE admin_messages
+        SET status = $2, handled_at = CASE WHEN $2 = 'handled' THEN now() ELSE NULL END
+      WHERE id = $1 AND reply_to_id IS NULL`,
+    [threadId, handled ? 'handled' : 'open'],
+  );
+  return rowCount > 0;
 }
 
 /**
@@ -269,17 +431,17 @@ export async function createAdminThread(
  */
 export async function replyToAdminThread(
   threadId: string,
-  fromRole: 'admin' | 'seller',
+  fromRole: 'admin' | InquiryParty,
   content: string,
   tx?: Queryable,
 ): Promise<AdminMessage | null> {
   if (!isUuid(threadId)) return null;
   const { rows: written } = await runner(tx).query<AdminMessageRow>(
     `INSERT INTO admin_messages (id, seller_id, from_role, content, reply_to_id, read_by_admin, read_by_seller)
-     SELECT $1, root.seller_id, $3::text, $4, $2, $3::text = 'admin', $3::text = 'seller'
+     SELECT $1, root.seller_id, $3::text, $4, $2, $3::text = 'admin', $3::text <> 'admin'
        FROM admin_messages root
       WHERE root.id = $2
-     RETURNING id, seller_id, from_role, subject, content, reply_to_id, read_by_admin, read_by_seller, created_at`,
+     RETURNING ${ADMIN_MESSAGE_COLUMNS}`,
     [crypto.randomUUID(), threadId, fromRole, content],
   );
   return written[0] ? toAdminMessage(written[0]) : null;
