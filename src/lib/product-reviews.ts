@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { rows, firstRow, query, withTransaction, type Queryable } from './db.js';
+import { rows, firstRow, isUuid, query, withTransaction, type Queryable } from './db.js';
 import { reviewerDisplayName, type RatingAggregate } from './reviews.js';
 import { REVENUE_PAYMENT_STATUSES, REVIEWABLE_SHIPPING_STATUSES } from './order-status-rules.js';
 import { BUSINESS_TIMEZONE } from './business-day.js';
@@ -326,6 +326,40 @@ export async function getAdminReviewsPage(
     // `count` is a bigint: a string from `pg`, a number from PGlite (§8).
     total: Number(found[0]?.total_count ?? 0),
   };
+}
+
+/**
+ * The reviews a page of complaints points at, in ONE read.
+ *
+ * The admin's Messages tab renders a complaint with the review inside it and the takedown button
+ * beside it, so a page of fifteen threads could ask for fifteen reviews one at a time. That is the
+ * N+1 this dashboard has spent a session removing everywhere else (DB_MIGRATION_PLAN.md §8): free
+ * against a file behind an OS cache, a round trip each against a pool of ten connections.
+ *
+ * Blocked rows included, necessarily — the complaint whose review is already hidden is exactly the
+ * one whose button has to say "החזר לפרסום".
+ */
+export async function getReviewsByIds(ids: readonly string[]): Promise<Map<string, AdminReviewRow>> {
+  const valid = ids.filter((id) => isUuid(id));
+  if (!valid.length) return new Map();
+  const found = await rows<Row & { product_name: string; product_slug: string; store_name: string; seller_id: string }>(
+    `SELECT r.id, r.product_id, r.store_slug, r.order_id, r.buyer_id, r.reviewer_name, r.rating,
+            r.body, r.blocked, r.demo, r.created_at,
+            p.name AS product_name, p.slug AS product_slug,
+            s.name AS store_name, s.seller_id::text AS seller_id
+       FROM product_reviews r
+       JOIN store_products p ON p.id = r.product_id
+       JOIN stores s ON s.id = p.store_id
+      WHERE r.id = ANY($1::uuid[])`,
+    [valid],
+  );
+  return new Map(found.map((row) => [row.id, {
+    ...toReview(row),
+    productName: row.product_name,
+    productSlug: row.product_slug,
+    storeName: row.store_name,
+    sellerId: row.seller_id,
+  }]));
 }
 
 /**

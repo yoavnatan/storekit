@@ -1,6 +1,8 @@
 ---
-import type { AdminThread } from '../../lib/admin-messages.js';
-import type { AdminThreadSortCol } from '../../lib/admin-threads-query.js';
+import type { AdminThread, InquiryKind, InquiryParty } from '../../lib/admin-messages.js';
+import type { AdminThreadSortCol, AdminThreadQuery } from '../../lib/admin-threads-query.js';
+import type { AdminReviewRow } from '../../lib/product-reviews.js';
+import { starRowHtml } from '../../lib/star-html.js';
 import type { Seller } from '../../lib/seller-auth.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
@@ -10,13 +12,33 @@ interface Props {
   sellers: Seller[];
   sortCol: AdminThreadSortCol;
   unreadOnly: boolean;
+  query: AdminThreadQuery;
+  /** The reviews the open complaints point at, resolved once for the page — a per-row lookup on a
+   *  list of fifteen is the N+1 this dashboard has spent a session removing everywhere else. */
+  reviewsById: Map<string, AdminReviewRow>;
   totalAll: number;
   totalFiltered: number;
   page: number;
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { threads, sellers, sortCol, unreadOnly, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+const { threads, sellers, sortCol, unreadOnly, query, reviewsById, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+
+/** What the thread IS, in one word, because the subject alone cannot say whether "לא עובד" came
+ *  from a shopper or from a seller — and the answer changes what you do about it. */
+const ROLE_LABEL: Record<InquiryParty, string> = {
+  seller: 'מוכר',
+  buyer: 'קונה',
+  guest: 'אורח',
+};
+
+const KIND_LABEL: Record<InquiryKind, string> = {
+  fault: 'תקלה',
+  content: 'תוכן',
+  store: 'חנות',
+  question: 'שאלה',
+  other: 'אחר',
+};
 
 const sellerById = new Map(sellers.map((s) => [s.id, s]));
 
@@ -90,6 +112,21 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
       style={unreadOnly ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
       aria-pressed={unreadOnly}
     >לא נקראו בלבד</button>
+
+    {/* Plain selects, not the sort control's portal menu: three values each, and a native control
+        arrives with its keyboard and screen-reader behaviour already right (owner, 2026-08-19:
+        *"שיהיה פשוט. לא עמוס בעין"*). */}
+    <select id="admin-messages-role" class="input !w-auto" aria-label="סינון לפי מי פנה">
+      <option value="all" selected={query.role === 'all'}>כולם</option>
+      <option value="seller" selected={query.role === 'seller'}>מוכרים</option>
+      <option value="buyer" selected={query.role === 'buyer'}>קונים</option>
+      <option value="guest" selected={query.role === 'guest'}>אורחים</option>
+    </select>
+    <select id="admin-messages-status" class="input !w-auto" aria-label="סינון לפי מצב טיפול">
+      <option value="all" selected={query.status === 'all'}>הכל</option>
+      <option value="open" selected={query.status === 'open'}>ממתין לטיפול</option>
+      <option value="handled" selected={query.status === 'handled'}>טופל</option>
+    </select>
   </div>
 )}
 
@@ -104,7 +141,7 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
       <thead>
         <tr>
           <th class="msg-table__th msg-table__th--status"></th>
-          <th class="msg-table__th msg-table__th--from">מוכר/ת</th>
+          <th class="msg-table__th msg-table__th--from">מי פנה</th>
           <th class="msg-table__th msg-table__th--subject">נושא</th>
           <th class="msg-table__th">תצוגה מקדימה</th>
           <th class="msg-table__th msg-table__th--date">תאריך</th>
@@ -112,23 +149,43 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
         </tr>
       </thead>
       <tbody>
-        {threads.map(({ id, sellerId, subject, lastMessage, unreadForAdmin }) => {
+        {threads.map(({ id, sellerId, subject, lastMessage, unreadForAdmin, partyRole, status, root }) => {
           const seller = sellerById.get(sellerId);
+          // Who this is, in the order the answer is actually useful: a seller by the name the
+          // platform knows them by, anyone else by the address they left. A guest who left no
+          // address is named by their role alone — and the panel says so rather than offering a
+          // mailto that bounces, which is the same honesty `api/report.ts` shows when it drops an
+          // unusable address instead of refusing the message.
+          const who = seller
+            ? `${seller.name} (${seller.email})`
+            : root.partyEmail || (partyRole === 'guest' ? 'אורח · ללא כתובת לחזרה' : sellerId || '—');
+          const review = root.reviewId ? reviewsById.get(root.reviewId) : undefined;
           return (
             <>
-              <tr class={`msg-table__row${unreadForAdmin > 0 ? ' msg-table__row--unread' : ''}`} data-thread-id={id} data-seller-id={sellerId} tabindex="0" role="button" aria-expanded="false">
+              <tr class={`msg-table__row${unreadForAdmin > 0 ? ' msg-table__row--unread' : ''}`} data-thread-id={id} data-seller-id={sellerId} data-thread-status={status} tabindex="0" role="button" aria-expanded="false">
                 <td class="msg-table__td msg-table__td--status"></td>
                 <td class="msg-table__td msg-table__td--from">
                   {unreadForAdmin > 0 && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
-                  {seller ? `${seller.name} (${seller.email})` : sellerId}
+                  <span class="admin-badge admin-badge--muted">{ROLE_LABEL[partyRole]}</span>
+                  {' '}{who}
                 </td>
-                <td class="msg-table__td msg-table__td--subject">{subject}</td>
+                <td class="msg-table__td msg-table__td--subject">
+                  {subject}
+                  {root.aboutKind && <span class="admin-badge admin-badge--muted" style="margin-inline-start:0.35rem">{KIND_LABEL[root.aboutKind]}</span>}
+                </td>
                 <td class="msg-table__td msg-table__td--preview">
                   {lastMessage.content}
                   {lastMessage.fromRole === 'admin' && <span class="msg-table__preview-you"> (אתה)</span>}
                 </td>
                 <td class="msg-table__td msg-table__td--date">{formatHeDateTime(lastMessage.createdAt)}</td>
                 <td class="msg-table__td msg-table__td--actions">
+                  {/* Separate from "read", and the distinction is the one the reports list had and
+                      the threads did not: read is attention, this is the work. A thread opened,
+                      read and not yet acted on is exactly the one that used to vanish from view. */}
+                  <button class="btn btn--sm admin-thread-handled" data-thread-id={id}
+                          data-handled={status === 'handled' ? '1' : ''}
+                          aria-pressed={status === 'handled' ? 'true' : 'false'}
+                          type="button">{status === 'handled' ? 'טופל ✓' : 'סמן כטופל'}</button>
                   <button class="seller-msg-delete" data-delete-thread-id={id} data-thread-subject={subject} type="button" aria-label="מחק שיחה">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                   </button>
@@ -138,7 +195,47 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                 <td colspan="6">
                   <div class="msg-thread-head">
                     <p class="msg-thread-head__subject"><span class="msg-thread-head__label">נושא</span>{subject}</p>
+                    {/* The three facts that make an inquiry actionable and that nobody types —
+                        captured server-side (`platform-inquiries.ts`). Rendered only when there is
+                        something to say: an empty "עמוד: —" row on every conversation the admin
+                        started is furniture. */}
+                    {root.pageUrl && (
+                      <p class="msg-thread-head__meta">
+                        <span class="msg-thread-head__label">עמוד</span>
+                        <a href={root.pageUrl} target="_blank" rel="noopener noreferrer">{root.pageUrl}</a>
+                      </p>
+                    )}
+                    {root.storeSlug && (
+                      <p class="msg-thread-head__meta">
+                        <span class="msg-thread-head__label">חנות</span>
+                        <a href={`/${root.storeSlug}`} target="_blank" rel="noopener noreferrer">{root.storeSlug}</a>
+                      </p>
+                    )}
                   </div>
+
+                  {/* **The review, with its button, inside the complaint about it** (owner,
+                      2026-08-19). The takedown list used to sit two panels below the report on the
+                      alerts tab, so acting on a complaint meant reading it on one screen and
+                      hunting for the review on another. It reuses the Reviews tab's own button
+                      class, so both surfaces go through one handler and one endpoint. */}
+                  {review && (
+                    <div class="admin-review-row" data-review-row={review.id}
+                         style={`display:flex;gap:0.75rem;align-items:flex-start;margin:0 1rem 0.75rem;padding:0.6rem 0.7rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-bg);opacity:${review.blocked ? 0.55 : 1}`}>
+                      <div class="min-w-0" style="flex:1 1 auto">
+                        <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
+                          <Fragment set:html={starRowHtml(review.rating, { px: 13 })} />
+                          <a href={`/${review.storeSlug}/${review.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
+                             style="font-size:0.82rem;font-weight:600;color:var(--color-text);text-decoration:none">{review.productName}</a>
+                          <span style="font-size:0.75rem;color:var(--color-muted)">{review.reviewerName || '—'}</span>
+                        </div>
+                        <p dir="auto" class="whitespace-pre-line" style="margin:0;font-size:0.85rem;line-height:1.5;color:var(--color-muted);overflow-wrap:break-word">{review.body}</p>
+                      </div>
+                      <button type="button" class={`btn btn--sm admin-review-toggle${review.blocked ? '' : ' btn--ghost'}`}
+                              data-review-id={review.id} data-blocked={review.blocked ? '1' : ''} style="flex:0 0 auto">
+                        {review.blocked ? 'החזר לפרסום' : 'הסתר'}
+                      </button>
+                    </div>
+                  )}
                   <div class="msg-thread" id={`admin-msg-replies-${id}`}></div>
                   <div class="seller-msg-reply-form" data-reply-for-thread={id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
                     <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>

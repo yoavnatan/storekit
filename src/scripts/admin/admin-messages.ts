@@ -379,10 +379,20 @@ function wireMessagesToolbar(): void {
   let sortCol = (state.sortCol as ThreadSortCol) || 'recent';
   let unreadOnly = state.unreadOnly === '1';
 
+  // Read off the controls the server just rendered rather than kept in variables beside them: the
+  // panel is re-rendered on every navigation, so a variable would be a second copy of state that
+  // one swap can leave behind.
+  const roleSelect = () => document.getElementById('admin-messages-role') as HTMLSelectElement | null;
+  const statusSelect = () => document.getElementById('admin-messages-status') as HTMLSelectElement | null;
+
   function navigate(): void {
+    const role = roleSelect()?.value ?? 'all';
+    const status = statusSelect()?.value ?? 'all';
     const url = buildAdminUrl('messages', {
       msort: sortCol !== 'recent' ? sortCol : undefined,
       munread: unreadOnly ? '1' : undefined,
+      mrole: role !== 'all' ? role : undefined,
+      mstatus: status !== 'all' ? status : undefined,
     });
     swapPanel(url, PANEL_ID, () => initAdminMessagesPanel());
   }
@@ -408,10 +418,87 @@ function wireMessagesToolbar(): void {
     unreadOnly = !unreadOnly;
     navigate();
   });
+
+  roleSelect()?.addEventListener('change', () => navigate());
+  statusSelect()?.addEventListener('change', () => navigate());
+}
+
+/**
+ * "סמן כטופל", and the review takedown button a complaint carries inline.
+ *
+ * Both delegated off the panel and wired ONCE — the container survives every `swapPanel`, only its
+ * innerHTML is replaced, so a per-init binding would stack a listener per navigation and fire the
+ * request as many times as the admin had filtered.
+ *
+ * The review button is the same class and the same endpoint the Reviews tab uses. That is the
+ * point of putting the review in the thread at all: one handler, one endpoint, and reading the
+ * complaint and acting on it are the same screen (owner, 2026-08-19).
+ */
+function wireThreadActions(): void {
+  const panel = document.getElementById(PANEL_ID);
+  if (!panel || panel.dataset.threadActionsWired) return;
+  panel.dataset.threadActionsWired = '1';
+
+  panel.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement | null;
+
+    const handledBtn = target?.closest<HTMLButtonElement>('.admin-thread-handled');
+    if (handledBtn) {
+      // The row toggle must not also open the thread underneath it.
+      e.stopPropagation();
+      const handled = handledBtn.dataset.handled !== '1';
+      handledBtn.disabled = true;
+      try {
+        const res = await fetch('/api/admin/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set-status', threadId: handledBtn.dataset.threadId, handled }),
+        });
+        if (!res.ok) throw new Error('request failed');
+        // The server's answer is what the button ends up reflecting, never the click.
+        const body = await res.json() as { handled: boolean };
+        handledBtn.dataset.handled = body.handled ? '1' : '';
+        handledBtn.setAttribute('aria-pressed', body.handled ? 'true' : 'false');
+        handledBtn.textContent = body.handled ? 'טופל ✓' : 'סמן כטופל';
+        handledBtn.closest<HTMLElement>('[data-thread-id]')?.setAttribute('data-thread-status', body.handled ? 'handled' : 'open');
+      } catch {
+        showErrorToast('הפעולה נכשלה, נסו שוב');
+      } finally {
+        handledBtn.disabled = false;
+      }
+      return;
+    }
+
+    const reviewBtn = target?.closest<HTMLButtonElement>('.admin-review-toggle');
+    if (reviewBtn) {
+      e.stopPropagation();
+      const wasBlocked = reviewBtn.dataset.blocked === '1';
+      reviewBtn.disabled = true;
+      try {
+        const res = await fetch('/api/admin/moderation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: wasBlocked ? 'show-review' : 'hide-review', reviewId: reviewBtn.dataset.reviewId }),
+        });
+        if (!res.ok) throw new Error('request failed');
+        const { blocked } = await res.json() as { blocked: boolean };
+        reviewBtn.dataset.blocked = blocked ? '1' : '';
+        reviewBtn.textContent = blocked ? 'החזר לפרסום' : 'הסתר';
+        reviewBtn.classList.toggle('btn--ghost', !blocked);
+        const row = reviewBtn.closest<HTMLElement>('[data-review-row]');
+        if (row) row.style.opacity = blocked ? '0.55' : '1';
+      } catch {
+        showErrorToast('הפעולה נכשלה, נסו שוב');
+      } finally {
+        reviewBtn.disabled = false;
+      }
+    }
+  });
 }
 
 export function initAdminMessagesPanel(): void {
   wireMessagesToolbar();
+  wireThreadActions();
   wirePanelLinks(PANEL_ID, () => initAdminMessagesPanel());
   wirePopstateReload();
 

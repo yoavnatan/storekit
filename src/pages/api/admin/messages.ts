@@ -9,6 +9,7 @@ import {
   getAdminThreadsPage,
   markAdminThreadReadByAdmin,
   replyToAdminThread,
+  setAdminThreadStatus,
   MAX_ADMIN_CONTENT_LEN,
   MAX_ADMIN_SUBJECT_LEN,
 } from '../../../lib/admin-messages.js';
@@ -68,6 +69,16 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }
     await markAdminThreadReadByAdmin(threadId);
     return new Response(JSON.stringify({ ok: true }), { headers: json });
+  }
+
+  // "Done with this", which is not the same as "read" — read is attention, this is the work. The
+  // reports list had it and the threads did not, so a thread the admin had opened and not yet acted
+  // on was indistinguishable from one already dealt with.
+  if (body.action === 'set-status') {
+    if (!(await setAdminThreadStatus(threadId, body.handled === true))) {
+      return new Response(JSON.stringify({ error: 'Thread not found' }), { status: 404, headers: json });
+    }
+    return new Response(JSON.stringify({ ok: true, handled: body.handled === true }), { headers: json });
   }
 
   // Deleting is admin-only and removes the thread for both sides — the

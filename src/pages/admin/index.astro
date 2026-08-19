@@ -21,7 +21,7 @@ import { sortOrderStoreNames, sortSellerOptions, parseOrderQuery, resolveOrderQu
 import { getAdminThreadsPage } from '../../lib/admin-messages.js';
 import { parseAdminThreadQuery, threadQueryParams } from '../../lib/admin-threads-query.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames, MAX_ENTRIES as MAX_ERROR_ENTRIES } from '../../lib/error-log.js';
-import { getAdminReviewsPage, countAllReviews } from '../../lib/product-reviews.js';
+import { getAdminReviewsPage, countAllReviews, getReviewsByIds } from '../../lib/product-reviews.js';
 import { parseAdminReviewQuery, reviewQueryParams } from '../../lib/admin-reviews-filter.js';
 import { getImageModerationState } from '../../lib/image-moderation-health.js';
 import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
@@ -542,6 +542,13 @@ const errorsFiltered = keepNewOnly(
 const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
 const errorStoreOptions = getErrorStoreNames(errorsAll);
 
+// The reviews the complaints on THIS page of the inbox point at — one read for the page, never one
+// per row (product-reviews.ts#getReviewsByIds). The panel renders each inside its own thread with
+// the takedown button beside it, so reading a complaint and acting on it is one screen.
+const complaintReviews = await getReviewsByIds(
+  (threadsPage?.threads ?? []).map((t) => t.root.reviewId).filter((id): id is string => !!id),
+);
+
 // ── Reviews tab ──
 // The page itself was sliced in SQL, so the pager's arithmetic is all that is left here. Clamped
 // the same way `paginate` clamps every other tab: a hand-typed `?vpage=999` shows the last page
@@ -822,6 +829,8 @@ const badgeTotal = Object.values(badgeCounts).reduce((sum, n) => sum + n, 0);
           sellers={sellers}
           sortCol={threadQuery.sortCol}
           unreadOnly={threadQuery.unreadOnly}
+          query={threadQuery}
+          reviewsById={complaintReviews}
           totalAll={threadsPage!.totalUnfiltered}
           totalFiltered={threadsPage!.total}
           page={threadsPage!.page}

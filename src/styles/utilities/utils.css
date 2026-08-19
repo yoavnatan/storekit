@@ -391,6 +391,13 @@
   margin-bottom: 0.15rem;
 }
 .msg-thread-head__subject { font-size: 0.9rem; font-weight: 600; color: var(--color-text); margin: 0; }
+/* The context an inquiry carries and its sender never typed — which page, which store. Muted and
+   small because it is evidence, not the message: the thing to read first is what the person wrote.
+   Rendered only when there is something to say, so this never becomes a row of em-dashes on the
+   threads the admin started himself. */
+.msg-thread-head__meta { font-size: 0.78rem; color: var(--color-muted); margin: 0; max-width: 100%; overflow-wrap: anywhere; }
+.msg-thread-head__meta a { color: var(--color-accent); text-decoration: none; }
+.msg-thread-head__meta a:hover { text-decoration: underline; }
 /* The product the conversation is about, as a chip — the same border + surface +
    radius-sm recipe MessageCompose uses for its own product-context line, so the
    buyer meets one mark for "this is about that product" in both places. */
