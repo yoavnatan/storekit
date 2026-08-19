@@ -39,6 +39,9 @@ export function initPlatformInquiry(): void {
       if (out) out.textContent = field.value.length ? leftTemplate.replace('{n}', String(max - field.value.length)) : '';
     };
     field.addEventListener('input', paint);
+    // Typing is the correction, so the red goes the moment it starts — a field that stays marked
+    // while being fixed is the version of this that people learn to ignore.
+    field.addEventListener('input', () => field.removeAttribute('aria-invalid'));
     paint();
     return paint;
   };
@@ -60,6 +63,7 @@ export function initPlatformInquiry(): void {
     if (clear) {
       subject.value = '';
       text.value = '';
+      subject.removeAttribute('aria-invalid');
       // The counters read the fields, so clearing them has to repaint — or a reopened form still
       // claims the last message's remaining count.
       repaint.forEach((paint) => paint());
@@ -87,7 +91,14 @@ export function initPlatformInquiry(): void {
     // The subject is required HERE and defaulted on the server, which is not a duplicated rule: the
     // server's fallback keeps a fault report from a stranger out of a "הודעת מערכת" row, and this
     // asks the seller — who is opening a conversation that will be answered — to name it.
-    if (!title) { showErrorToast(needsSubject); subject.focus(); return; }
+    if (!title) {
+      // The site's own invalid state, not a toast alone: a message that scrolls away leaves the
+      // field looking exactly as it did before, and the person has to remember which one it meant.
+      subject.setAttribute('aria-invalid', 'true');
+      showErrorToast(needsSubject);
+      subject.focus();
+      return;
+    }
     if (!message) { text.focus(); return; }
     send.disabled = true;
     try {

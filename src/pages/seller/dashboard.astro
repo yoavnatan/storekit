@@ -2771,7 +2771,12 @@ const orderStatusColors: Record<string, string> = {
                 being scannable at the third one. */}
             <label class="field" style="margin-bottom:.6rem">
               <span>{d.platformInquirySubject}</span>
-              <input id="seller-inquiry-subject" type="text" class="input" maxlength="120" placeholder={d.platformInquirySubjectPlaceholder} />
+              {/* `required`, like every other required field on this site — the guard was in the
+                  script only, so the field looked optional right up until it refused (owner,
+                  2026-08-20: *"למה זה לא עושה לו את המסגרת של חובה כמו בכל האתר?"*). The red border
+                  is `aria-invalid`, which is the one hook `forms.css` styles. */}
+              <input id="seller-inquiry-subject" type="text" class="input" maxlength="120" required
+                     placeholder={d.platformInquirySubjectPlaceholder} />
               {/* The ceiling, SHOWN (owner, 2026-08-20). `maxlength` alone stops the typing without
                   ever saying why, which reads as a broken keyboard — the count is what turns a
                   silent refusal into a rule the seller can see coming. Same recipe the report form
