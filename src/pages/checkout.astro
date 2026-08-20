@@ -160,7 +160,10 @@ for (const s of await getVisibleStores()) {
         </div>
 
         <!-- Grand total + CTA (revealed after render) -->
-        <div id="co-footer" class="hidden">
+        {/* `relative` is the confetti stage's positioning context (lib/savings-celebration.ts): the
+            celebration falls through this whole block, from the savings row past the total and the
+            pay button, and clips at its bottom edge. Nothing else about the layout depends on it. */}
+        <div id="co-footer" class="hidden relative">
           <!-- Hidden when nothing in the cart is payable (showcase items only) —
                a "₪0.00 (0 פריטים)" line under a cart that visibly holds products
                reads as a bug, and the notice below already explains it. -->
@@ -175,7 +178,11 @@ for (const s of await getVisibleStores()) {
             </span>
             <strong class="text-[1.05rem] font-extrabold [color:var(--color-sale)]" id="co-savings-amount"></strong>
           </div>
-          <div id="co-grand-total-row" class="flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
+          {/* `relative` for the candy-stripe sweep that runs along this row's TOP border — the rule
+              under the savings line (owner, 2026-08-20). The stripe is drawn OVER the border for the
+              length of the celebration and then removed, so the border itself is never altered and
+              the resting state of this row is exactly what it was. */}
+          <div id="co-grand-total-row" class="relative flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
             <span class="text-base font-medium [color:var(--color-text)]">{c.total} <span id="grand-total-count" class="text-[.82em] font-normal [color:var(--color-muted)]"></span></span>
             <strong class="text-[1.35rem] font-extrabold [color:var(--color-text)]" id="grand-total-amount"></strong>
           </div>
@@ -295,7 +302,7 @@ for (const s of await getVisibleStores()) {
     import { formatPrice, cdnThumb } from '../config/store.config.js';
     import { escapeHtml as esc } from '../lib/html-escape.js';
     import { spawnRipple } from '../lib/ripple.js';
-    import { spawnConfetti } from '../lib/burst.js';
+    import { armSavingsCelebration } from '../lib/savings-celebration.js';
     import { checkoutAttemptKey, clearCheckoutAttemptKey } from '../lib/checkout-attempt-key.js';
     import { trackInitiateCheckout } from '../lib/tracking.js';
     import { adItemId } from '../lib/ad-item-id.js';
@@ -453,6 +460,10 @@ for (const s of await getVisibleStores()) {
       throttled:   i18n['couponThrottled'] ?? 'נסו שוב בעוד רגע',
       belowMin:    i18n['couponBelowMin'] ?? 'הקוד תקף מ-{min}',
     });
+
+    // Last figure the savings row was rendered with — read by the celebration when it fires, which
+    // is minutes after the page loaded and several re-renders later.
+    let lastTotalSaving = 0;
 
     function renderCart(): void {
       const carts = getOrderedCarts();
@@ -802,6 +813,10 @@ for (const s of await getVisibleStores()) {
         const amountEl = document.getElementById('co-savings-amount');
         if (amountEl) amountEl.textContent = formatPrice(totalSaving);
       }
+      // The figure the celebration below counts up to. Kept here, at the ONE place the saving is
+      // computed, rather than recomputed at the moment it fires — the celebration must never be
+      // able to disagree with the row it decorates, and a second derivation is how it would.
+      lastTotalSaving = totalSaving;
 
       const totalEl = document.getElementById('grand-total-amount');
       if (totalEl) totalEl.textContent = formatPrice(grandTotal);
@@ -1304,30 +1319,27 @@ for (const s of await getVisibleStores()) {
 
     renderCart();
 
-    // ── The savings row's confetti (owner, 2026-08-20) ───────────────────────────────
-    // Fires when "חסכת בהזמנה הזו" actually reaches the shopper's screen — the moment the
-    // number lands, not page load. An IntersectionObserver is what makes "reaches" the
-    // condition rather than "exists": the row is `!hidden` whenever the saving is 0, and a
-    // display:none element never intersects, so a cart with nothing saved silently never
-    // fires this and needs no separate check. Same reason the observer can be installed
-    // once here and left alone across every re-render: renderCart() only toggles the class
-    // and rewrites the amount, it never replaces this element.
-    // ONCE per page load, then unobserved — the row is scrolled past repeatedly during a
-    // checkout (payment accordion, shipping, coupon), and confetti on every pass would be
-    // the ambient looping motion the design line bans. `spawnConfetti` itself is a no-op
-    // under prefers-reduced-motion.
+    // ── The savings row's celebration (owner, 2026-08-20) ────────────────────────────
+    // Confetti + the amount counting up + a candy-stripe sweep along the rule beneath it, all on
+    // one clock — lib/savings-celebration.ts owns every rule about how and when, including the
+    // second-attempt reasoning after the first one came out "כמעט בלתי נראה... די מכוער".
+    // Armed once, here, and left alone across every re-render: renderCart() only toggles the
+    // row's class and rewrites its amount, it never replaces the element. Nothing here has to
+    // ask whether there IS a saving — the row is display:none when there isn't, and a
+    // display:none element never intersects.
     const savingsRowEl = document.getElementById('co-savings-row');
-    if (savingsRowEl && typeof IntersectionObserver !== 'undefined') {
-      const savingsObserver = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          savingsObserver.disconnect();
-          spawnConfetti(entry.target as HTMLElement);
-        }
-      // Most of the row on screen, not a single pixel of its top edge — otherwise the burst
-      // launches from a row still half under the fold and half of it is drawn off-screen.
-      }, { threshold: 0.9 });
-      savingsObserver.observe(savingsRowEl);
+    const savingsAmountEl = document.getElementById('co-savings-amount');
+    const savingsRuleRow = document.getElementById('co-grand-total-row');
+    const coFooterEl = document.getElementById('co-footer');
+    if (savingsRowEl && savingsAmountEl && savingsRuleRow && coFooterEl) {
+      armSavingsCelebration({
+        row: savingsRowEl,
+        host: coFooterEl,
+        ruleRow: savingsRuleRow,
+        amountEl: savingsAmountEl,
+        target: () => lastTotalSaving,
+        format: formatPrice,
+      });
     }
 
     // A cart can sit for days while the seller starts or ends a sale behind it. Re-price against
