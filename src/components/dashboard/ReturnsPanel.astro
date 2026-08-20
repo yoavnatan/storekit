@@ -1,13 +1,14 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
+import { heCount } from '../../lib/he-count.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
   isOpen, handoverDeadlineISO, autoRefundDueISO, responseDeadlineISO,
   inTransitReviewDueISO, offerAnswerDueISO, isPartialReturn, RETURN_REASON_LABELS as REASON,
-  type ReturnStatus,
+  type ReturnStatus, type ReturnReason,
 } from '../../lib/returns.js';
-import type { ReturnRequest } from '../../lib/return-requests.js';
+import type { ReturnRequest, ReturnOrderFacts } from '../../lib/return-requests.js';
 
 /**
  * The seller's returns tab — one CARD per case, saying where it stands and what he can do.
@@ -36,6 +37,13 @@ interface Props {
   requests: ReturnRequest[];
   storeSlug: string;
   /**
+   * The dates on the ORDER behind each case, keyed by order id — see
+   * `return-requests.ts#getOrderFactsForReturns` for why the card needs three dates and not one.
+   * A missing entry simply renders fewer of them; an order can be absent only if it was removed
+   * under the request, which nothing on the platform does.
+   */
+  orderFacts?: Map<string, ReturnOrderFacts>;
+  /**
    * Does this shop take returns over the counter?
    *
    * True for every shop that offers collection in person — the owner's rule (2026-08-17), and not a
@@ -45,17 +53,22 @@ interface Props {
    */
   acceptsInStoreReturns?: boolean;
 }
-const { requests, acceptsInStoreReturns = false } = Astro.props;
+const { requests, acceptsInStoreReturns = false, orderFacts } = Astro.props;
 
 /** What the case IS, in the seller's words. Every status in the machine has one — a card that
  *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
 const STATUS: Record<ReturnStatus, string> = {
   requested: 'הקונה מחכה לתשובה שלך',
   approved: 'אישרת. הקונה אמור לשלוח את המוצר',
-  in_transit: 'הקונה מסר שהוא שלח את המוצר. הוא בדרך אליך',
+  in_transit: 'הקונה מסר שהמוצר בדרך אליך',
   received: 'המוצר הגיע אליך וממתין שתבדוק אותו',
-  disputed: 'העברת את זה אלינו. אנחנו מכריעים',
-  offered: 'הצעת החזר חלקי במקום החזרה. מחכים לתשובת הקונה',
+  // "העברת את זה אלינו. אנחנו מכריעים" until 2026-08-20 — the owner's note was that it *"נשמע לא
+  // טוב"*, and he was right about more than the tone. It addressed the seller as the one who did it,
+  // on a card the sweep can also land here without him touching anything (`in_transit` goes to
+  // `disputed` on its own after a fortnight of silence), and "אנחנו מכריעים" is present tense for
+  // something nobody has started.
+  disputed: 'הועבר לבדיקתנו. ממתין להכרעה',
+  offered: 'הצעת סכום במקום החזרה. מחכים לתשובתו',
   rejected: 'סירבת לבקשה',
   refunded: 'ההחזר אושר. הכסף בדרך לקונה',
   expired: 'הבקשה נסגרה והמוצר לא הוחזר',
@@ -111,12 +124,20 @@ function deadlineLine(r: ReturnRequest): string | null {
   if (r.status === 'requested') {
     // Inside the statutory window there is nothing to answer — it was approved on arrival — so this
     // branch only ever describes a request the seller may really refuse.
+    //
+    // **Every line here now names WHOSE WAY the clock closes and what happens to the money** (owner,
+    // 2026-08-20: *"מה המשמעות של 'הבקשה תיסגר', בעבור המוכר ובעבור הלקוח"*). "הבקשה תיסגר" is the
+    // one thing on this card the seller cannot infer: the four clocks do not all land the same way —
+    // silence on a request he was entitled to refuse becomes a REFUSAL (`returns.ts#responseOverdue`
+    // argues why), an unposted parcel expires in his favour, an unanswered offer expires but leaves
+    // the buyer free to start again, and a parcel he received and ignored refunds the buyer. Naming
+    // the direction is also the honest warning on the two where it costs him.
     if (r.withinStatutory) return null;
-    return `יש לך זמן לענות עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))}. אם לא תענה, הבקשה תיסגר`;
+    return `עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))} — בלי תשובה הבקשה נסגרת כסירוב, והכסף נשאר אצלך`;
   }
   if (r.status === 'approved') {
     const d = handoverDeadlineISO(r.approvedAt);
-    return d ? `הקונה צריך לשלוח את המוצר עד ${formatBusinessDateShort(d)}. אם לא ישלח, הבקשה תיסגר` : null;
+    return d ? `הקונה שולח עד ${formatBusinessDateShort(d)} — אם לא, הבקשה נסגרת לטובתך` : null;
   }
   // A separate clock now, and a separate SENTENCE, because the two used to share both: an approved
   // request that the buyer never posted closes in the seller's favour on day 7, but once the buyer has
@@ -125,17 +146,64 @@ function deadlineLine(r: ReturnRequest): string | null {
   // how he keeps the case out of our hands.
   if (r.status === 'in_transit') {
     const d = inTransitReviewDueISO(r.sentAt);
-    return d ? `אם המוצר יגיע, סמן שקיבלת אותו. אם לא תסמן עד ${formatBusinessDateShort(d)}, נבדוק את המקרה בעצמנו` : null;
+    return d ? `סמן שקיבלת כשהמוצר יגיע. עד ${formatBusinessDateShort(d)} — אחרת נכריע בעצמנו` : null;
   }
   if (r.status === 'offered') {
     const d = offerAnswerDueISO(r.offeredAt);
-    return d ? `הקונה צריך לענות עד ${formatBusinessDateShort(d)}. אם לא יענה, הבקשה תיסגר` : null;
+    return d ? `הקונה עונה עד ${formatBusinessDateShort(d)} — אם לא, הבקשה נסגרת לטובתך` : null;
   }
   if (r.status === 'received') {
     const d = autoRefundDueISO(r.deliveredBackAt);
-    return d ? `אם לא תסמן כלום, הקונה יקבל את כספו בחזרה ב-${formatBusinessDateShort(d)}` : null;
+    return d ? `עד ${formatBusinessDateShort(d)} — בלי תשובה הכסף חוזר לקונה אוטומטית` : null;
   }
   return null;
+}
+
+/**
+ * The reason, plus the ONE thing it implies that the card cannot show otherwise.
+ *
+ * The owner's question was *"מה זה אומר 'התחרט'"* — two words are a category, and a seller needs
+ * what follows from it. The first answer to that was a second line under the reason spelling out the
+ * consequence of each of the four, and looking at the result killed it: two of the four only
+ * restated the words directly above them ("הגיע פגום" → "טוען שהמוצר הגיע פגום"), and the shipping
+ * clause on those two was FALSE on a partial return, where the original delivery is never refunded
+ * (`returns.ts#partialRefundAgorot`). Every card carried a line, one of them wrong.
+ *
+ * So the clause is appended to the reason itself, and only on the two that are genuinely opaque:
+ * `changed_mind`, where a seller's first question is whether the goods are faulty, and `not_arrived`,
+ * which is the one case where nothing comes back and the case is not his to settle. The other two
+ * say what they mean. Who pays the postage is on the next line already.
+ */
+const REASON_EXTRA: Partial<Record<ReturnReason, string>> = {
+  changed_mind: 'אין טענה על המוצר',
+  not_arrived: 'אין מה לשלוח בחזרה — אנחנו מטפלים בזה',
+};
+
+/**
+ * The three dates a case actually turns on, as one line.
+ *
+ * The card used to print ONE date next to the order number — `הזמנה 4cb3f442 · 04.08.26` — and it
+ * was the day the REQUEST opened, which reads exactly like the day the order was placed and is the
+ * least useful of the three (owner, 2026-08-20). What decides a return is how long ago the goods
+ * reached the buyer, because that is what the statutory window is measured from.
+ *
+ * Each part is dropped when its date is absent rather than shown empty: `delivered_at` is stamped by
+ * whoever marked the order delivered, and an order that reached the buyer without anyone pressing
+ * the button is a gap in our records (`returns.ts#withinStatutoryWindow` treats it the same way).
+ */
+function dateLine(r: ReturnRequest): string {
+  const f = orderFacts?.get(r.orderId);
+  const day = (iso: string): string => formatBusinessDateShort(iso);
+  // Paid is shown only when it is NOT the day of the order, which is nearly never: the checkout
+  // authorizes and captures inside one request. Four labelled dates in a row is a table, not a
+  // sentence, and the one that adds nothing is the one that always repeats its neighbour.
+  const paidElsewhere = f?.paidAt && day(f.paidAt) !== day(f.placedAt);
+  return [
+    f && `הוזמנה ${day(f.placedAt)}`,
+    paidElsewhere && `שולמה ${day(f.paidAt!)}`,
+    f?.deliveredAt && `נמסרה ${day(f.deliveredAt)}`,
+    `הבקשה ${day(r.createdAt)}`,
+  ].filter(Boolean).join(' · ');
 }
 
 /** Rows per page. Only ever rendered as a pager when the visible set exceeds it — see the nav below. */
@@ -209,16 +277,20 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
     >
       <div class="flex items-baseline justify-between gap-3 flex-wrap">
         <strong class="text-[0.95rem]">{STATUS[r.status]}</strong>
+        {/* The id in `<bdi>`: it is a Latin run inside a Hebrew line, and without the isolate the
+            date after it joins its left-to-right flow and is painted on the far side of it. */}
         <span class="text-[0.76rem] [color:var(--color-muted)] tabular-nums">
-          הזמנה {r.orderId.slice(0, 8)} · {formatBusinessDateShort(r.createdAt)}
+          הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi>
         </span>
       </div>
 
       <p class="m-0 mt-2 text-[0.86rem]">
-        {REASON[r.reason]}
+        {REASON[r.reason]}{REASON_EXTRA[r.reason] && <span class="[color:var(--color-muted)]"> — {REASON_EXTRA[r.reason]}</span>}
         <span class="[color:var(--color-muted)]"> · צריך להחזיר לו </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
         <span class="[color:var(--color-muted)]"> · המשלוח בחזרה על חשבון </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
       </p>
+
+      <p class="m-0 mt-1 text-[0.76rem] [color:var(--color-muted)] tabular-nums">{dateLine(r)}</p>
 
       {/* A PARTIAL case has to say so, and until this line it did not — found by looking at the two
           side by side on the seeded scenario board (owner, 2026-08-20). A partial and a whole-order
@@ -229,8 +301,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           where he expected the order's total has no way to tell a partial from a mistake. */}
       {isPartialReturn(r.returnedLines) && (
         <p class="m-0 mt-1 text-[0.8rem] [color:var(--color-muted)]">
-          החזרה חלקית — {r.returnedLines!.length} {r.returnedLines!.length === 1 ? 'פריט' : 'פריטים'} מתוך ההזמנה.
-          שאר ההזמנה נשארת אצל הקונה, ודמי המשלוח המקוריים לא חוזרים.
+          החזרה חלקית — {heCount(r.returnedLines!.length, 'פריט', 'פריטים')} מתוך ההזמנה. דמי המשלוח לא חוזרים.
         </p>
       )}
 
@@ -257,6 +328,20 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
       {r.trackingNumber && (
         <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">מספר מעקב: <span class="tabular-nums">{r.trackingNumber}</span></p>
+      )}
+
+      {/* What the offer button IS, said on the one card that shows it (owner, 2026-08-20: *"הצע החזר
+          חלקי במקום החזרה? לא הבנתי באיזה שלב זה בא כי אני רואה שכבר על כרטיסייה של 'אישרת' יש את
+          זה, אז זה לא ברור בכלל"*). His confusion was the button appearing on a case he had just
+          approved, which looks like two contradictory answers offered at once — and the machine
+          agrees with him about where it belongs: `offered` is reachable from `approved` and from
+          nowhere else (`returns.ts#RETURN_TRANSITIONS`), i.e. it is a shortcut THROUGH an approved
+          return, never a way around the decision. Saying that on the card is cheaper than moving the
+          button, and moving it would leave the shortcut unreachable. */}
+      {movesFor(r.status).some((m) => m.to === 'offered') && (
+        <p class="m-0 mt-3 text-[0.8rem] [color:var(--color-muted)]">
+          במקום שהמוצר יחזור: הקונה נשאר איתו ומקבל ממך סכום. ההחלטה שלו.
+        </p>
       )}
 
       {movesFor(r.status).length > 0 && (
@@ -297,17 +382,19 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         </label>
       )}
 
+      {/* The AMOUNT only. The status line at the top already says an offer was made and that we are
+          waiting for an answer; repeating that here in longer words is the shape the owner called
+          מסורבל. (And this comment sits OUTSIDE the `&& (…)` on purpose — inside it, it is a second
+          sibling with no fragment around it, which is the silent `.astro` compile failure that
+          answers every route with a 404 and names no file. See scripts/verify.mjs's header.) */}
       {r.status === 'offered' && r.partialOfferAgorot !== null && (
         <p class="m-0 mt-2 text-[0.82rem]">
-          הצעת לקונה החזר חלקי על סך <strong class="tabular-nums">{formatAgorot(r.partialOfferAgorot)}</strong> במקום
-          החזרת המוצר. מחכים לתשובתו.
+          הסכום שהצעת: <strong class="tabular-nums">{formatAgorot(r.partialOfferAgorot)}</strong>
         </p>
       )}
 
       {r.status === 'disputed' && (
-        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">
-          העברנו את זה להכרעה שלנו. הכסף לא זז עד שנחליט.
-        </p>
+        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">הכסף לא זז עד שנחליט.</p>
       )}
     </article>
   ))}
