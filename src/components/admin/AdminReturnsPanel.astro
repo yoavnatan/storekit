@@ -3,6 +3,7 @@ import { formatAgorot } from '../../lib/money.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
+import AdminReturnFlowDiagram from './AdminReturnFlowDiagram.astro';
 import type { ReturnRequest } from '../../lib/return-requests.js';
 import { disputeCause, RETURN_REASON_LABELS as REASON, type ReturnStatus, type DisputeCause } from '../../lib/returns.js';
 
@@ -119,9 +120,14 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
 ---
 
 <h2 class="m-0 mb-1 text-[1.05rem] font-bold">החזרות</h2>
-<p class="m-0 mb-5 text-[0.8rem] [color:var(--color-muted)]">
+<p class="m-0 mb-3 text-[0.8rem] [color:var(--color-muted)]">
   רוב הבקשות נסגרות לבד. כאן מופיע רק מה שמחכה להחלטה שלך, ומה שעדיין בתהליך.
 </p>
+
+{/* Collapsed by default and ABOVE the queue, which is the one placement decision here: the
+    actionable row must stay the first thing on the screen, and a diagram that is always open pushes
+    it down every day to answer a question asked once a month. Its own header carries the rest. */}
+<AdminReturnFlowDiagram />
 
 {disputes.length > 0 && (
   <div class="rounded-[var(--radius)] border border-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)] p-3.5 mb-5">
