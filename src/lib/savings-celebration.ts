@@ -35,25 +35,41 @@ import { roundMoney } from './money.js';
  * academic point and starts being a laptop fan on a checkout page.
  */
 
-/** Every confetti hue, in order, as one band each — the palette and why a celebration may be
- *  many colours where a surface may not is at `--color-confetti-*` in base/tokens.css. */
-const STRIPE_COLORS = [
-  'var(--color-confetti-1)', 'var(--color-confetti-2)', 'var(--color-confetti-3)',
-  'var(--color-confetti-4)', 'var(--color-confetti-5)', 'var(--color-confetti-6)',
-];
-/** Width of one colour band, and how much of it is spent blending into the next.
+/**
+ * Three tones of ONE colour — the sale green — not the six confetti hues this started with.
  *
- *  Both came out of looking at the first build: hard-edged 14px bands at 3px tall render as a row
- *  of coloured SQUARES — a strip of lego, not a stripe — because at that height no slant is
- *  perceivable and nothing connects one colour to its neighbour. Narrower bands with a soft
- *  hand-off read as one continuous ribbon that happens to change colour, which is the difference
- *  between a decoration and a toy. */
-const BAND = 12;
-const BLEND = 4;
+ * He asked the right question about that rainbow (*"יש בכלל צורך בצבע הזה או שזה מכער?"*) and the
+ * design line answers it: every accent here has exactly one job, and `--color-sale` already owns
+ * "this is what you saved" across the price, the badge and the banner. A band of six unrelated
+ * hues under a savings figure spends colour on nothing — it says no more than a grey rule would,
+ * while competing with the one number on the page the shopper is actually reading.
+ *
+ * **The movement was always the nice part, not the palette**, and movement needs only a tonal
+ * difference to be visible. So the band keeps its drift and gives up its rainbow: mid, light,
+ * deep, blending into each other, which reads as one green line quietly shifting rather than as
+ * a decoration laid over the row.
+ */
+const STRIPE_COLORS = [
+  'var(--color-sale)',
+  'color-mix(in srgb, var(--color-sale) 38%, white)',
+  'color-mix(in srgb, var(--color-sale) 72%, black)',
+];
+/** Width of one band, and how much of it is spent blending into the next.
+ *
+ *  Both came out of looking at the first build: hard-edged 14px bands render as a row of coloured
+ *  SQUARES — a strip of lego, not a stripe — because nothing connects one band to its neighbour.
+ *  A soft hand-off reads as one continuous ribbon instead, which is the difference between a
+ *  decoration and a toy. Wider bands now that they are three tones of one colour rather than six
+ *  hues: with less contrast between neighbours, a short band would blur into a flat line and the
+ *  drift would stop being visible at all. */
+const BAND = 22;
+const BLEND = 10;
 /** One full cycle of the palette — what the strip travels before it repeats seamlessly. */
 const PERIOD = BAND * STRIPE_COLORS.length;
-/** ~9px a second. Slow on purpose: fast enough to be alive, slow enough that the eye lets it be. */
-const CYCLE_MS = 9_000;
+/** Kept at ~9px a second across every retune of BAND — slow on purpose: fast enough to be alive,
+ *  slow enough that the eye lets it be. Derived rather than typed, so widening a band does not
+ *  silently speed the drift up. */
+const CYCLE_MS = Math.round((PERIOD / 9) * 1000);
 /** 2px, exactly covering the row's own border, so the band reads as that rule having colour
  *  rather than as a second thing added above it (owner, 2026-08-20: *"שיהיה מעט יותר דק"*).
  *
