@@ -945,10 +945,17 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                   products, and only one of the two changes when a product does. */}
               <script type="application/json" id="store-category-counts" set:html={jsonForScript(categoryCounts)} />
 
+              {/* Two icons in the button, one shown at a time by `aria-expanded` (store.css). The
+                  funnel says what the button opens; while it IS open the same slot says how to
+                  close it, so the way out sits where the hand already is rather than as a second
+                  control somewhere in the panel. A × BESIDE "נקה סינון" would have been two ×s a
+                  centimetre apart meaning "close this" and "undo your filter" (owner asked for the
+                  ×, 2026-08-20). */}
               {facets.length > 0 && (
                 <button type="button" class="facet-toggle" id="facet-toggle"
                         aria-expanded={selectedFacetCount > 0 ? 'true' : 'false'} aria-controls="facet-panel">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  <svg class="facet-toggle__icon facet-toggle__icon--closed" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  <svg class="facet-toggle__icon facet-toggle__icon--open" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   <span>{t.store.filterByAttribute}</span>
                   {selectedFacetCount > 0 && <span class="facet-toggle__count">{selectedFacetCount}</span>}
                 </button>
@@ -1045,9 +1052,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                     </div>
                   );
                 })}
+                {/* No icon on this link: the × moved to the toggle, where it means CLOSE. Two ×s
+                    in one panel meaning two different things is the confusion this feature does
+                    not need, and "נקה סינון" says what it does in words already. */}
                 {selectedFacetCount > 0 && (
                   <a href={storeViewHref(selectedCategory, 1)} class="facet-clear" rel="nofollow">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     {t.store.filterClearAttributes}
                   </a>
                 )}

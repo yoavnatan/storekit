@@ -1491,7 +1491,7 @@ const orderStatusColors: Record<string, string> = {
                   <span>{d.categoryLabel}</span>
                   <div class="category-picker relative" data-category-picker>
                     <input type="hidden" name="categoryId" value="" />
-                    <button type="button" class="category-picker__trigger group flex items-center justify-between gap-2 w-full px-[0.7rem] py-2 bg-[color:var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius)] cursor-pointer text-sm text-[color:var(--color-text)] text-start transition-colors duration-[120ms] hover:border-[var(--color-muted)] aria-expanded:border-[var(--color-accent)]" aria-haspopup="true" aria-expanded="false">
+                    <button type="button" class="category-picker__trigger input group flex items-center justify-between gap-2 cursor-pointer text-[color:var(--color-text)] text-start transition-colors duration-[120ms]" aria-haspopup="true" aria-expanded="false">
                       <span class="category-picker__label overflow-hidden text-ellipsis whitespace-nowrap">{d.categoryNone}</span>
                       <svg class="category-picker__chevron shrink-0 text-[color:var(--color-muted)] transition-transform duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>

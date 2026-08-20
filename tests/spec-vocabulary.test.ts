@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_SUGGESTED_LABELS,
   MAX_SUGGESTED_VALUES,
+  STARTER_CATEGORY_VALUES,
   STARTER_SPEC_LABELS,
   STARTER_SPEC_VALUES,
   buildSpecVocabulary,
@@ -41,7 +42,11 @@ describe('the starter vocabulary', () => {
   });
 
   it('keeps every suggestion short enough to survive the panel it feeds', () => {
-    const all = [...Object.values(STARTER_SPEC_LABELS).flat(), ...Object.values(STARTER_SPEC_VALUES).flat()];
+    const all = [
+      ...Object.values(STARTER_SPEC_LABELS).flat(),
+      ...Object.values(STARTER_SPEC_VALUES).flat(),
+      ...Object.values(STARTER_CATEGORY_VALUES).flatMap((byLabel) => Object.values(byLabel).flat()),
+    ];
     for (const text of all) {
       expect(text.length, text).toBeLessThanOrEqual(MAX_FACET_TEXT_LENGTH);
     }
@@ -53,6 +58,47 @@ describe('the starter vocabulary', () => {
     for (const label of Object.keys(STARTER_SPEC_VALUES)) {
       expect(offered, label).toContain(facetKey(label));
     }
+  });
+
+  it('keys every per-vertical value list off that vertical\'s OWN labels', () => {
+    // Offering ריהוט's materials under a label ריהוט never suggests is a list a seller of
+    // furniture cannot reach, and the reason the two maps are keyed the same way.
+    for (const [category, byLabel] of Object.entries(STARTER_CATEGORY_VALUES)) {
+      expect(SEED_CATEGORIES, category).toContain(category);
+      const labels = new Set((STARTER_SPEC_LABELS[category] ?? []).map(facetKey));
+      for (const label of Object.keys(byLabel)) {
+        expect(labels, `${category} → ${label}`).toContain(facetKey(label));
+      }
+    }
+  });
+
+  it('gives the common verticals real value lists, not just names', () => {
+    // The owner's ask, 2026-08-20: the names covered nearly every category, the VALUES did not,
+    // and values are the half that stops "עץ מלא" being spelled three ways.
+    for (const category of ['אופנה', 'לבית', 'ריהוט', 'צעצועים', 'ספרים', 'מחשבים', 'ספורט']) {
+      const byLabel = STARTER_CATEGORY_VALUES[category];
+      expect(byLabel, category).toBeDefined();
+      expect(Object.keys(byLabel!).length, category).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps each list an example rather than a form', () => {
+    for (const [category, byLabel] of Object.entries(STARTER_CATEGORY_VALUES)) {
+      for (const [label, values] of Object.entries(byLabel)) {
+        expect(values.length, `${category} → ${label}`).toBeLessThanOrEqual(6);
+        expect(values.length, `${category} → ${label}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('never offers one shop another shop\'s materials', () => {
+    // The whole reason the per-vertical map exists: "חומר" is one word and two different lists.
+    const fashion = STARTER_CATEGORY_VALUES['אופנה']!['חומר']!.map(facetKey);
+    const furniture = STARTER_CATEGORY_VALUES['ריהוט']!['חומר']!.map(facetKey);
+    expect(fashion).toContain('כותנה');
+    expect(fashion).not.toContain('עץ מלא');
+    expect(furniture).toContain('עץ מלא');
+    expect(furniture).not.toContain('כותנה');
   });
 
   it('de-duplicates across a store\'s categories, in the order the seller chose them', () => {
@@ -100,6 +146,16 @@ describe('buildSpecVocabulary', () => {
   it('does not offer the same attribute twice when the store already uses a starter one', () => {
     const { entries } = buildSpecVocabulary([product([{ label: 'גיל', value: '0-2' }])], ['צעצועים']);
     expect(entries.filter((e) => facetKey(e.label) === 'גיל')).toHaveLength(1);
+  });
+
+  it('offers the vertical\'s own values ahead of the generic ones', () => {
+    const { entries } = buildSpecVocabulary([], ['ריהוט']);
+    const material = entries.find((e) => facetKey(e.label) === 'חומר')!;
+    // `סגנון` is in BOTH maps: ריהוט names four, and the universal list names three. The shop's
+    // own list has to lead, or a furniture seller is offered "יומיומי" before "כפרי".
+    const style = entries.find((e) => facetKey(e.label) === 'סגנון')!;
+    expect(material.values[0]).toBe('עץ מלא');
+    expect(style.values[0]).toBe('מודרני');
   });
 
   it('fills an attribute\'s values from the starter list only where history left room', () => {

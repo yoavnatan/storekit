@@ -79,13 +79,12 @@ export const STARTER_SPEC_LABELS: Readonly<Record<string, readonly string[]>> = 
 };
 
 /**
- * Starter VALUES, keyed by the attribute's `facetKey`.
+ * Starter VALUES that mean the same thing in every shop, keyed by the attribute's `facetKey`.
  *
- * A much shorter list than the labels above, and that asymmetry is the point: a seller spells
- * `גיל` the same way every time without help, and spells the range differently every time. These
- * are only the attributes whose values are a small closed set that everyone writes differently —
- * ranges, scales and seasons. An attribute whose values are genuinely open (`חומר`, `סגנון`) gets
- * no starter values at all, because a list that cannot be complete reads as a restriction.
+ * An age band is an age band whether it is on a toy or a book, so these need no vertical. The ones
+ * that DO depend on the shop live in `STARTER_CATEGORY_VALUES` below — and that split is the whole
+ * design here, because "חומר" is the same word and a completely different list in a clothes shop
+ * and a furniture shop. One global list for it would offer oak to someone selling shirts.
  */
 export const STARTER_SPEC_VALUES: Readonly<Record<string, readonly string[]>> = {
   'גיל':        ['0-2', '3-5', '6-8', '9-12', '12+'],
@@ -96,6 +95,73 @@ export const STARTER_SPEC_VALUES: Readonly<Record<string, readonly string[]>> = 
   'רמת טיפוח':  ['קלה', 'בינונית', 'תובענית'],
   'כשרות':      ['פרווה', 'חלבי', 'בשרי'],
   'קהל יעד':    ['לילדים', 'לנשים', 'לגברים', 'לכל המשפחה'],
+  'אחריות':     ['שנה', 'שנתיים', 'שלוש שנים'],
+  'גודל':       ['קטן', 'בינוני', 'גדול'],
+  'סגנון':      ['יומיומי', 'קלאסי', 'מודרני'],
+};
+
+/**
+ * Starter values **per vertical** — the same attribute name, the list that shop actually uses.
+ *
+ * Added 2026-08-20 at the owner's request, after seeing the strip work on one store: "תעשה לי עוד
+ * סוגים של חנויות נפוצות שמקבלות הצעות". The attribute NAMES already covered 23 of the 24 platform
+ * categories; what was thin was the values, and values are the half that matters — a seller spells
+ * "חומר" the same way every time without help and spells "עץ מלא" three ways by the third product.
+ *
+ * **This reverses a position stated in the first draft of this file**, which said an attribute
+ * whose values are open (`חומר`, `סגנון`) gets none, "because a list that cannot be complete reads
+ * as a restriction". The premise was wrong about what the seller sees: this is a strip of dashed
+ * chips beside a text box that accepts anything, filtered live by what they type — the same shape
+ * as the tag suggestions on the same form — not a dropdown that has to enumerate the world. A short
+ * partial list is a hint; only a control that REFUSES the unlisted value would be a restriction,
+ * and nothing here refuses anything.
+ *
+ * Each list stays at four to six. Past that it stops being an example and starts being a form.
+ */
+export const STARTER_CATEGORY_VALUES: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  'אופנה':      { 'חומר': ['כותנה', 'פשתן', 'צמר', 'ויסקוזה', 'דנים', 'עור'],
+                  'סגנון': ['יומיומי', 'ערב', 'ספורטיבי', 'קלאסי'],
+                  'גזרה': ['צמודה', 'רגילה', 'אוברסייז'] },
+  'הנעלה':      { 'חומר': ['עור', 'זמש', 'בד', 'סינתטי'],
+                  'סגנון': ['יומיומי', 'ספורטיבי', 'אלגנטי'] },
+  'תיקים':      { 'חומר': ['עור', 'בד', 'ניילון', 'זמש'],
+                  'סגנון': ['יומיומי', 'ערב', 'עבודה'],
+                  'נפח': ['קטן', 'בינוני', 'גדול'] },
+  'תכשיטים':    { 'חומר': ['כסף', 'זהב', 'גולדפילד', 'פלדת אל־חלד'],
+                  'אבן': ['יהלום', 'זירקון', 'אבן חן', 'פנינה'] },
+  'טיפוח':      { 'סוג עור': ['יבש', 'שמן', 'מעורב', 'רגיש'],
+                  'ריח': ['ללא בישום', 'פרחוני', 'הדרים', 'וניל'] },
+  'אלקטרוניקה': { 'חיבור': ['אלחוטי', 'USB-C', 'HDMI', 'כבל'],
+                  'מקור חשמל': ['סוללה נטענת', 'סוללות', 'חיבור לחשמל'] },
+  'מחשבים':     { 'חיבור': ['USB-C', 'USB-A', 'HDMI', 'אלחוטי'],
+                  'נפח אחסון': ['256GB', '512GB', '1TB', '2TB'] },
+  'סלולר':      { 'תאימות': ['אייפון', 'אנדרואיד', 'אוניברסלי'],
+                  'חיבור': ['USB-C', 'Lightning', 'אלחוטי'],
+                  'חומר': ['סיליקון', 'פלסטיק קשיח', 'עור'] },
+  'אביזרים':    { 'חומר': ['מתכת', 'בד', 'עור', 'פלסטיק'],
+                  'תאימות': ['אוניברסלי'] },
+  'לבית':       { 'חומר': ['עץ', 'קרמיקה', 'זכוכית', 'מתכת', 'בד'],
+                  'חדר': ['סלון', 'מטבח', 'חדר שינה', 'אמבטיה', 'חדר ילדים'],
+                  'סגנון': ['מודרני', 'כפרי', 'סקנדינבי', 'תעשייתי'] },
+  'מטבח':       { 'חומר': ['נירוסטה', 'קרמיקה', 'זכוכית', 'עץ', 'סיליקון'],
+                  'מדיח כלים': ['מתאים', 'לא מתאים'] },
+  'ריהוט':      { 'חומר': ['עץ מלא', 'סנדוויץ׳', 'מתכת', 'בד', 'ראטן'],
+                  'סגנון': ['מודרני', 'כפרי', 'סקנדינבי', 'תעשייתי'] },
+  'ספורט':      { 'ענף': ['ריצה', 'כושר', 'יוגה', 'אופניים', 'שחייה'],
+                  'חומר': ['נושם', 'עמיד למים', 'כותנה'] },
+  'מזון':       { 'אלרגנים': ['גלוטן', 'אגוזים', 'חלב', 'סויה', 'ללא'] },
+  'פרחים':      { 'אירוע': ['יום הולדת', 'אהבה', 'ניחומים', 'תודה', 'חג'] },
+  'צמחים':      { 'גודל עציץ': ['8 ס״מ', '12 ס״מ', '17 ס״מ', '21 ס״מ'] },
+  'צעצועים':    { 'סוג משחק': ['הרכבה', 'חשיבה', 'יצירה', 'כלי רכב', 'בובות', 'משחקי קופסה'] },
+  'לתינוק':     { 'חומר': ['כותנה', 'במבוק', 'סיליקון', 'עץ'] },
+  'חיות מחמד':  { 'סוג חיה': ['כלב', 'חתול', 'מכרסם', 'ציפור', 'דגים'] },
+  'ספרים':      { 'ז׳אנר': ['מתח', 'רומן', 'עיון', 'ילדים', 'פנטזיה', 'ביוגרפיה'],
+                  'שפה': ['עברית', 'אנגלית', 'דו־לשוני'],
+                  'כריכה': ['רכה', 'קשה'] },
+  'כלי עבודה':  { 'מקור חשמל': ['חשמלי', 'נטען', 'ידני', 'פנאומטי'],
+                  'שימוש': ['ביתי', 'מקצועי'] },
+  'רכב':        { 'התאמה לדגם': ['אוניברסלי'] },
+  'מתנות':      { 'אירוע': ['יום הולדת', 'חתונה', 'לידה', 'חג', 'תודה'] },
 };
 
 /** One attribute and the values seen under it, most-used first. */
@@ -199,7 +265,7 @@ export function buildSpecVocabulary(
     taken.add(labelKey);
     entries.push({
       label,
-      values: mergeValues(rankByUse(tally.values, MAX_SUGGESTED_VALUES), labelKey),
+      values: mergeValues(rankByUse(tally.values, MAX_SUGGESTED_VALUES), labelKey, storeCategories),
     });
   }
 
@@ -210,7 +276,7 @@ export function buildSpecVocabulary(
     const labelKey = facetKey(label);
     if (!labelKey || taken.has(labelKey)) continue;
     taken.add(labelKey);
-    entries.push({ label, values: mergeValues([], labelKey) });
+    entries.push({ label, values: mergeValues([], labelKey, storeCategories) });
   }
 
   return { entries };
@@ -234,17 +300,29 @@ export function starterLabelsFor(storeCategories: readonly string[]): string[] {
   return out;
 }
 
-/** Store history first, then any starter value it has not already covered. */
-function mergeValues(own: string[], labelKey: string): string[] {
+/**
+ * Store history first, then the starter values it has not already covered.
+ *
+ * **Order among the starters is vertical-first.** A store tagged ריהוט that has written nothing yet
+ * should be offered עץ מלא before it is offered anything generic, because that is the list its own
+ * catalogue will end up using; a universal value only fills what is left. A store carrying two
+ * categories gets both lists, in the order it chose them, which is the same rule `starterLabelsFor`
+ * follows one level up.
+ */
+function mergeValues(own: string[], labelKey: string, storeCategories: readonly string[]): string[] {
   const out = [...own];
   const seen = new Set(own.map((v) => facetKey(v)));
-  for (const value of STARTER_SPEC_VALUES[labelKey] ?? []) {
-    if (out.length >= MAX_SUGGESTED_VALUES) break;
+  const add = (value: string): void => {
+    if (out.length >= MAX_SUGGESTED_VALUES) return;
     const key = facetKey(value);
-    if (!key || seen.has(key)) continue;
+    if (!key || seen.has(key)) return;
     seen.add(key);
     out.push(value);
+  };
+  for (const category of storeCategories) {
+    for (const value of STARTER_CATEGORY_VALUES[category]?.[labelKey] ?? []) add(value);
   }
+  for (const value of STARTER_SPEC_VALUES[labelKey] ?? []) add(value);
   return out;
 }
 

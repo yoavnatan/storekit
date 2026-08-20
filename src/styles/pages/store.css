@@ -1779,8 +1779,30 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 /* White, never a tint — a tinted hover reads as dirt on this site
    (memory `feedback_hover_light_not_tint`), and one signal is enough. */
 .facet-toggle:hover { background: var(--color-surface); }
-.facet-toggle > svg { color: var(--color-muted); transition: color 0.13s; }
-.facet-toggle:hover > svg { color: var(--color-primary); }
+.facet-toggle__icon { flex-shrink: 0; color: var(--color-muted); transition: color 0.13s; }
+.facet-toggle:hover .facet-toggle__icon { color: var(--color-primary); }
+
+/* OPEN — two signals, and they are deliberately different in kind from the count badge.
+   The badge means "a filter is applied"; this means "the panel is showing". Conflating them
+   was the risk: filling the button the way a SELECTED chip is filled would make an open panel
+   with nothing chosen look like a live filter.
+     • The line takes `--color-primary`. That is this site's one statement that a control is
+       live — settled in forms.css, where six different treatments for it were collapsed into
+       a border colour — and `.category-picker__trigger[aria-expanded="true"]` already says it
+       with the same declaration.
+     • The funnel becomes an ×, so the way out is in the slot the hand is already on.
+   Owner, 2026-08-20: "איקס עדין כשפותחים את הסינון וחיווי על גבי הסינון שהוא לחוץ". */
+.facet-toggle__icon--open { display: none; }
+.facet-toggle[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+}
+.facet-toggle[aria-expanded="true"] .facet-toggle__icon--closed { display: none; }
+/* The × stays MUTED, like the funnel it replaced. The owner asked for a subtle one, and the
+   border is already carrying "this is open" — a second signal at full strength on a 15px glyph
+   sitting in a row of quiet chips is the stacked-signal habit this site rules out. It brightens
+   on hover with the rest of the button, which is when it is about to be used. */
+.facet-toggle[aria-expanded="true"] .facet-toggle__icon--open { display: block; }
 /* The count is the whole reason a collapsed panel is still honest: it says a
    filter is on without the shopper having to open the panel to find out. */
 .facet-toggle__count {
@@ -1797,8 +1819,6 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.facet-toggle[aria-expanded="true"] > svg { color: var(--color-primary); }
-
 .facet-panel {
   display: flex;
   flex-direction: column;
