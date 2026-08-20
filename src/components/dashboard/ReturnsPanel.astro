@@ -5,7 +5,7 @@ import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
   isOpen, handoverDeadlineISO, autoRefundDueISO, responseDeadlineISO,
-  inTransitReviewDueISO, offerAnswerDueISO, isPartialReturn, RETURN_REASON_LABELS as REASON,
+  inTransitReviewDueISO, offerAnswerDueISO, isPartialReturn, OFFER_ANSWER_DAYS, RETURN_REASON_LABELS as REASON,
   type ReturnStatus, type ReturnReason,
 } from '../../lib/returns.js';
 import type { ReturnRequest, ReturnOrderFacts } from '../../lib/return-requests.js';
@@ -60,6 +60,8 @@ const { requests, acceptsInStoreReturns = false, orderFacts } = Astro.props;
 const STATUS: Record<ReturnStatus, string> = {
   requested: 'הקונה מחכה לתשובה שלך',
   approved: 'אישרת. הקונה אמור לשלוח את המוצר',
+  // ⚠️ Read `statusLine()` before using this one directly — inside the statutory window nobody
+  // approved anything, and the card must not tell the seller he did.
   in_transit: 'הקונה מסר שהמוצר בדרך אליך',
   received: 'המוצר הגיע אליך וממתין שתבדוק אותו',
   // "העברת את זה אלינו. אנחנו מכריעים" until 2026-08-20 — the owner's note was that it *"נשמע לא
@@ -73,6 +75,25 @@ const STATUS: Record<ReturnStatus, string> = {
   refunded: 'ההחזר אושר. הכסף בדרך לקונה',
   expired: 'הבקשה נסגרה והמוצר לא הוחזר',
 };
+
+/**
+ * The status sentence, and the one state where the stored word is not the whole truth.
+ *
+ * **A request opened inside the statutory 14 days is `approved` the moment it is made** — the buyer
+ * has a right and the seller has no say (`returns.ts#autoApproved`). The card said "אישרת" for it,
+ * which tells a seller he did something he never did, on the MOST COMMON case there is: eight of the
+ * ten scenarios on the demo board are inside the window. The owner asked what he is supposed to do
+ * with those, which is the question a wrong first sentence produces.
+ *
+ * `within_statutory` is stored on the row at creation precisely so this stays answerable forever
+ * after (migration 0030), so telling the two apart costs nothing.
+ */
+function statusLine(r: ReturnRequest): string {
+  if (r.status === 'approved' && r.withinStatutory) {
+    return 'אושר אוטומטית — זכות הקונה ב-14 יום. הוא אמור לשלוח את המוצר';
+  }
+  return STATUS[r.status];
+}
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
 const TONE: Record<ReturnStatus, string> = {
@@ -191,6 +212,37 @@ const REASON_EXTRA: Partial<Record<ReturnReason, string>> = {
  * whoever marked the order delivered, and an order that reached the buyer without anyone pressing
  * the button is a gap in our records (`returns.ts#withinStatutoryWindow` treats it the same way).
  */
+/**
+ * The goods this case is about, named.
+ *
+ * A partial return names exactly the lines coming back and says what stays; a whole-order return
+ * lists the order's lines. `returnedLines` carries POSITIONS (migration 0031), which is what makes
+ * the partial answerable at all — a product id would be ambiguous the moment one order holds the
+ * same product twice at different variants.
+ *
+ * Capped at three names with a count for the rest: this is a card, not a receipt, and the order
+ * itself is one click away now.
+ */
+function itemsLine(r: ReturnRequest): string {
+  const items = orderFacts?.get(r.orderId)?.items ?? [];
+  if (!items.length) return '';
+  const name = (i: { name: string; qty: number }): string => (i.qty > 1 ? `${i.name} ×${i.qty}` : i.name);
+  const list = (picked: typeof items): string => {
+    const shown = picked.slice(0, 3).map(name).join(', ');
+    return picked.length > 3 ? `${shown} ועוד ${picked.length - 3}` : shown;
+  };
+  if (isPartialReturn(r.returnedLines)) {
+    const back = new Set(r.returnedLines!.map((l) => l.position));
+    const returning = items.filter((i) => back.has(i.position));
+    const keeping = items.filter((i) => !back.has(i.position));
+    if (!returning.length) return `מוחזר: ${list(items)}`;
+    return keeping.length
+      ? `מוחזר: ${list(returning)} · נשאר אצל הקונה: ${list(keeping)}`
+      : `מוחזר: ${list(returning)}`;
+  }
+  return `מוחזר: ${list(items)}`;
+}
+
 function dateLine(r: ReturnRequest): string {
   const f = orderFacts?.get(r.orderId);
   const day = (iso: string): string => formatBusinessDateShort(iso);
@@ -275,13 +327,23 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
       data-return-order={r.orderId.slice(0, 8)}
       hidden={!isOpen(r.status)}
     >
+      {/* The order number is a LINK, and it goes to the ORDER (owner, 2026-08-20: *"איך המוכר מבין
+          איזו הזמנה, אלו פריטים? זה לא אינטואיטיבי בכלל"*). It was eight characters of plain text —
+          true, useless, and the only thing on the card identifying what the case is about. The
+          ADMIN's copy of this list links the same number to the money journal, which is right for
+          him and wrong here: an admin is auditing where money went, a seller is asking what he
+          packed. Same mechanism as the chip going the other way (`scripts/dashboard/panel-intent.ts`),
+          so the two tabs now reach each other from both sides.
+          The id in `<bdi>` because it is a Latin run inside a Hebrew line. */}
       <div class="flex items-baseline justify-between gap-3 flex-wrap">
-        <strong class="text-[0.95rem]">{STATUS[r.status]}</strong>
-        {/* The id in `<bdi>`: it is a Latin run inside a Hebrew line, and without the isolate the
-            date after it joins its left-to-right flow and is painted on the far side of it. */}
-        <span class="text-[0.76rem] [color:var(--color-muted)] tabular-nums">
-          הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi>
-        </span>
+        <strong class="text-[0.95rem]">{statusLine(r)}</strong>
+        <button
+          type="button"
+          class="text-[0.76rem] [color:var(--color-primary)] tabular-nums bg-transparent border-0 p-0 cursor-pointer hover:underline"
+          data-goto-panel="orders"
+          data-goto-intent={`search:${r.orderId.slice(0, 8)}`}
+          data-tooltip="פתח את ההזמנה בלשונית הזמנות"
+        >הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi></button>
       </div>
 
       <p class="m-0 mt-2 text-[0.86rem]">
@@ -289,6 +351,12 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         <span class="[color:var(--color-muted)]"> · צריך להחזיר לו </span><span class="tabular-nums font-semibold">{formatAgorot(r.refundAgorot)}</span>
         <span class="[color:var(--color-muted)]"> · המשלוח בחזרה על חשבון </span>{r.returnShippingPayer === 'buyer' ? 'הקונה' : 'החנות'}
       </p>
+
+      {/* WHAT is coming back, by name. The card named an amount and a reason and never the goods —
+          so a seller with two open cases could not tell them apart without opening another tab. On a
+          partial it names the returned lines specifically, which is the only place in the product
+          that answers "which of the three". */}
+      {itemsLine(r) && <p class="m-0 mt-1 text-[0.84rem]">{itemsLine(r)}</p>}
 
       <p class="m-0 mt-1 text-[0.76rem] [color:var(--color-muted)] tabular-nums">{dateLine(r)}</p>
 
@@ -337,10 +405,16 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           agrees with him about where it belongs: `offered` is reachable from `approved` and from
           nowhere else (`returns.ts#RETURN_TRANSITIONS`), i.e. it is a shortcut THROUGH an approved
           return, never a way around the decision. Saying that on the card is cheaper than moving the
-          button, and moving it would leave the shortcut unreachable. */}
+          button, and moving it would leave the shortcut unreachable.
+
+          The WORDING is his (2026-08-20): the line said what happens without saying it needs the
+          buyer's AGREEMENT, and said nothing about what happens if the buyer never answers.
+          `OFFER_ANSWER_DAYS` is that answer, and it is named here rather than left to the deadline
+          line — the seller reads this BEFORE making the offer, when there is no deadline yet. */}
       {movesFor(r.status).some((m) => m.to === 'offered') && (
         <p class="m-0 mt-3 text-[0.8rem] [color:var(--color-muted)]">
-          במקום שהמוצר יחזור: הקונה נשאר איתו ומקבל ממך סכום. ההחלטה שלו.
+          ניתן להציע ללקוח החזר חלקי במקום החזרה, תלוי בהסכמת הלקוח. אם לא יענה תוך {OFFER_ANSWER_DAYS} ימים,
+          הבקשה נסגרת לטובתך.
         </p>
       )}
 
@@ -352,6 +426,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
               class={`btn btn--sm ${m.kind === 'accent' ? 'btn--accent' : ''}`}
               data-return-move={m.to}
               data-return-target={r.id}
+              data-return-amount={formatAgorot(r.refundAgorot)}
             >{m.label}</button>
           ))}
         </div>

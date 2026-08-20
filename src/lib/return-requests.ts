@@ -520,19 +520,45 @@ export interface ReturnOrderFacts {
   placedAt: string;
   paidAt: string | null;
   deliveredAt: string | null;
+  /** The lines of this order that belong to the store the case is against, in receipt order.
+   *  `position` is what `returned_lines` names on a partial (migration 0031), so it is carried
+   *  rather than dropped — it is the only thing that says WHICH item is coming back. */
+  items: { position: number; name: string; qty: number }[];
 }
 
-export async function getOrderFactsForReturns(orderIds: string[]): Promise<Map<string, ReturnOrderFacts>> {
+export async function getOrderFactsForReturns(
+  orderIds: string[],
+  /** The store whose lines to carry. A multi-store order holds other shops' items too, and a seller
+   *  reading his own return card must not be shown them (the `scopeOrder` rule, one screen over). */
+  storeSlug: string,
+): Promise<Map<string, ReturnOrderFacts>> {
   if (!orderIds.length) return new Map();
-  const r = await rows<{ id: string; created_at: Date | string; paid_at: Date | string | null; delivered_at: Date | string | null }>(
-    'SELECT id, created_at, paid_at, delivered_at FROM orders WHERE id = ANY($1::uuid[])',
-    [orderIds],
-  );
   const iso = (v: Date | string | null): string | null => (v === null ? null : new Date(v).toISOString());
-  return new Map(r.map((row) => [row.id, {
+  // Two reads, one round trip: the dates are one row per order and the lines are several, so a
+  // single join would repeat every date per item for a caller that wants them once.
+  const [orderRows, itemRows] = await Promise.all([
+    rows<{ id: string; created_at: Date | string; paid_at: Date | string | null; delivered_at: Date | string | null }>(
+      'SELECT id, created_at, paid_at, delivered_at FROM orders WHERE id = ANY($1::uuid[])',
+      [orderIds],
+    ),
+    rows<{ order_id: string; position: number; product_name: string; qty: number }>(
+      `SELECT order_id, position, product_name, qty FROM order_items
+        WHERE order_id = ANY($1::uuid[]) AND store_slug = $2
+        ORDER BY order_id, position`,
+      [orderIds, storeSlug],
+    ),
+  ]);
+  const itemsByOrder = new Map<string, ReturnOrderFacts['items']>();
+  for (const it of itemRows) {
+    const list = itemsByOrder.get(it.order_id) ?? [];
+    list.push({ position: Number(it.position), name: it.product_name, qty: Number(it.qty) });
+    itemsByOrder.set(it.order_id, list);
+  }
+  return new Map(orderRows.map((row) => [row.id, {
     placedAt: iso(row.created_at)!,
     paidAt: iso(row.paid_at),
     deliveredAt: iso(row.delivered_at),
+    items: itemsByOrder.get(row.id) ?? [],
   }]));
 }
 

@@ -19,6 +19,43 @@ import { toAgorot } from '../../lib/money.js';
  * audited. A reload is a few hundred milliseconds on a tab that is opened rarely, and it cannot be
  * wrong.
  */
+/**
+ * The moves that ask before they run — and, just as deliberately, the ones that do not.
+ *
+ * **The rule: irreversible AND it decides money or closes the case against somebody** (owner,
+ * 2026-08-20: *"האם על כל אחד מהדברים שהם קריטיים יש גם מודל? שהלחיצה לא תקרה בטעות"*). This tab had
+ * none at all, on a screen whose buttons sit two centimetres apart and move real money.
+ *
+ * The three that are NOT here are why this is a rule and not a habit — a dialog on every button is a
+ * dialog nobody reads:
+ *   · `approved` — grantable and then refusable (`RETURN_TRANSITIONS` allows approved to rejected),
+ *     and inside the statutory window it already happened without him.
+ *   · `received` — "it arrived here"; the case can still go to `disputed`, and the 2-business-day
+ *     clock is stated on the card before and after.
+ *   · `offered` — already two presses with a number typed between them. That IS the confirmation.
+ *
+ * Each dialog NAMES the amount. "Are you sure?" over a decision worth 49 shekels trains people to
+ * press OK, which is worse than no dialog at all — the same reasoning the admin's dispute dialog is
+ * built on, and the reason its own broken `body:` key was worth fixing the same day.
+ */
+const CONFIRMED_MOVES: Record<string, ((amount: string) => { title: string; message: string; okLabel: string }) | undefined> = {
+  refunded: (amount) => ({
+    title: `להחזיר לקונה ${amount}?`,
+    message: 'הסכום יירשם כחוב לקונה וירד לך מהתשלום הבא. אי אפשר לבטל.',
+    okLabel: 'החזר את הכסף',
+  }),
+  rejected: () => ({
+    title: 'לסרב לבקשה?',
+    message: 'הכסף נשאר אצלך והמוצר אצל הקונה. הוא יוכל לבקש מאיתנו לבדוק את הסירוב.',
+    okLabel: 'סרב לבקשה',
+  }),
+  disputed: () => ({
+    title: 'להעביר את המקרה להכרעה שלנו?',
+    message: 'כל השעונים נעצרים והכסף לא זז עד שנחליט. אי אפשר לבטל.',
+    okLabel: 'העבר להכרעה',
+  }),
+};
+
 export function initReturnsTab(): void {
   const list = document.querySelector<HTMLElement>('[data-returns-list]');
   if (!list || list.dataset.wired) return;
@@ -152,7 +189,8 @@ export function initReturnsTab(): void {
       partialOfferAgorot = toAgorot(shekels);
     }
 
-    void (async () => {
+    const send = (): void => {
+      void (async () => {
       try {
         const res = await fetch('/api/returns', {
           method: 'POST',
@@ -172,6 +210,16 @@ export function initReturnsTab(): void {
         showActionFailedToast();
         buttons.forEach((b) => { b.disabled = false; });
       }
-    })();
+      })();
+    };
+
+    const ask = CONFIRMED_MOVES[to];
+    if (!ask) { send(); return; }
+    window.dispatchEvent(new CustomEvent('confirm:open', {
+      detail: { ...ask(btn.dataset.returnAmount ?? ''), tone: 'danger', onConfirm: send },
+    }));
+    // The card's buttons come back on: the seller may still say no in the dialog, and a card left
+    // dead behind a cancelled confirmation is the same bug as a request that failed silently.
+    buttons.forEach((b) => { b.disabled = false; });
   });
 }
