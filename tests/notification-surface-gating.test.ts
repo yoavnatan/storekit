@@ -57,8 +57,12 @@ describe('the notification poller is gated on the page, not on the cookie', () =
 });
 
 describe('the admin tab carries the admin’s own numbers', () => {
-  it('the server seeds the title from the same five badges the strip shows', () => {
-    expect(ADMIN).toMatch(/const badgeTotal = Object\.values\(badgeCounts\)\.reduce/);
+  it('the server seeds the title from the same badges the strip shows', () => {
+    // `badgeFor`, not `badgeCounts` — since 2026-08-20 the strip carries one badge the five-COUNT
+    // query does not produce (`moneylog`, the reconciliation's discrepancy count), and the title has
+    // to sum what is ON the strip. Summing `badgeCounts` would leave the title and the tabs saying
+    // two different numbers, which is the exact disagreement this test exists to refuse.
+    expect(ADMIN).toMatch(/const badgeTotal = Object\.values\(badgeFor\)\.reduce/);
     expect(ADMIN).toMatch(/title=\{badgeTotal > 0 \? `\(\$\{badgeTotal\}\) Admin Dashboard` : 'Admin Dashboard'\}/);
   });
 

@@ -96,8 +96,15 @@ describe('every badge survives a dashboard that only builds one panel', () => {
       expect(expr, 'a panel count must come from badgeCounts — anything else reads 0 when that panel is not built')
         .toMatch(/^badgeCounts\.\w+$/);
     }
-    // The tab strip itself reads the same object, so the badge and the panel cannot disagree.
-    expect(source).toMatch(/const badgeFor: Record<string, number> = badgeCounts;/);
+    // The tab strip reads the same object the panels do, so a badge and its panel cannot disagree.
+    //
+    // `badgeFor` SPREADS `badgeCounts` rather than being it, and the difference is one deliberate
+    // extra key: `moneylog`, the reconciliation's discrepancy count (2026-08-20). It is not one of
+    // the five COUNTs because it is not a count of arrivals — it is a CONDITION, and it clears when
+    // the money reconciles rather than when the tab is opened. What this still refuses is the thing
+    // that matters: every one of the five must reach the strip through `badgeCounts` and not be
+    // recomputed from a list the page only loads for one panel.
+    expect(source).toMatch(/const badgeFor: Record<string, number> = \{ \.\.\.badgeCounts[,}]/);
     expect(source).toMatch(/badgeFor\[tab\.id\]/);
   });
 
