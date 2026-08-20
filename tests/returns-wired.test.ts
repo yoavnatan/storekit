@@ -4,7 +4,9 @@ import path from 'node:path';
 import { NON_RETURNABLE_SUBJECTS } from '../src/lib/return-eligibility.js';
 import {
   RETURN_REASON_LABELS, RETURN_TRANSITIONS, sellerOwesAction, sellerActionSql,
+  returnShippingPayer, refundAmountAgorot,
 } from '../src/lib/returns.js';
+import { translations } from '../src/i18n/translations.js';
 
 /**
  * Nothing in the returns feature may be written and left uncalled.
@@ -131,6 +133,52 @@ describe('the seller\'s returns count means "yours", not "open"', () => {
     expect(read('src/components/dashboard/ReturnsPanel.astro')).toContain('sellerOwesAction');
     // The old shape, in the words it had: an open-case count presented as the seller's queue.
     expect(read('src/components/dashboard/ReturnsPanel.astro')).not.toContain('${open.length} בקשות מחכות לך');
+  });
+});
+
+/**
+ * The buyer is told what a change of mind COSTS, at the moment he is told he may return.
+ *
+ * The sentence on an order already shipped is not silence — it is a promise. It said *"ברגע שתגיע
+ * ניתן יהיה לבקש להחזיר אותה מכאן"* and named no price, while two separate rules meeting behind it
+ * mean he pays both legs: `refundAmountAgorot` withholds the original delivery on `changed_mind`
+ * and `returnShippingPayer` puts the return leg on him. On a small order that is more than the
+ * goods (the owner ruled the policy stays, 2026-08-20 — `docs/returns-policy-decisions.md`).
+ *
+ * A returns-policy page carries the general disclosure and is the right home for it. What it
+ * cannot do is fix a screen that says something else at the deciding moment, which is why this is
+ * pinned HERE and against the CODE: flip either rule and the sentence stops being true.
+ */
+describe('the shipped-order notice states what changing your mind costs', () => {
+  it('only claims the buyer pays while the code actually says so', () => {
+    // This assertion is what makes the copy below a consequence of the rules rather than a
+    // sentence somebody typed once.
+    expect(returnShippingPayer('changed_mind')).toBe('buyer');
+    const order = { totalAgorot: 7900, shippingAgorot: 3000 };
+    expect(refundAmountAgorot(order, 'changed_mind')).toBe(4900);
+    // …and every other reason is the seller's, which is why the sentence has to be conditional.
+    expect(returnShippingPayer('damaged')).toBe('seller');
+    expect(refundAmountAgorot(order, 'damaged')).toBe(7900);
+  });
+
+  it('says it in both languages, on the notice the buyer reads', () => {
+    for (const lang of ['he', 'en'] as const) {
+      const line = translations[lang].buyerDashboard.cancelAfterShip;
+      expect(line.length, `${lang}: cancelAfterShip is missing`).toBeGreaterThan(0);
+      const saysCost = lang === 'he'
+        ? line.includes('על חשבונך') && line.includes('אינם מוחזרים')
+        : /return postage is yours/i.test(line) && /not refunded/i.test(line);
+      expect(
+        saysCost,
+        `${lang}: the notice tells a buyer he may return the parcel and never that a change of\n`
+        + 'mind costs him the delivery charge AND the return postage. It is the one screen he\n'
+        + 'reads at the moment the cost applies.',
+      ).toBe(true);
+      // Conditional, not a flat claim — a faulty item is refunded in full and collected at the
+      // seller's expense, and a notice saying otherwise would be wrong against the buyer.
+      const conditional = lang === 'he' ? line.includes('אם המוצר תקין') : /if the item is fine/i.test(line);
+      expect(conditional, `${lang}: the cost is stated unconditionally, which is false for a faulty item`).toBe(true);
+    }
   });
 });
 
