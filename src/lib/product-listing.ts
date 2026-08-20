@@ -3,6 +3,7 @@ import { isProductInStock } from './variant-combo.js';
 import { productSearchSource } from './product-search-text.js';
 import { performanceTier, PERFORMANCE_TIERS, DEFAULT_LABEL_THRESHOLDS } from './product-labels.js';
 import { effectivePrice, type StoreSale } from './discounts.js';
+import { productMatchesFacets, type FacetSelection } from './product-facets.js';
 
 export type ProductSort = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'newest';
 
@@ -29,6 +30,11 @@ export interface ProductListingQuery {
   // The store's running sale, if any — so "price: low to high" sorts by what the shopper
   // would actually PAY, not by the struck-through figure. Omitted = full price everywhere.
   sale?: StoreSale | null;
+  // Attribute filters chosen in the "סינון" panel — labelKey → value keys (lib/product-facets.ts).
+  // OR within a dimension, AND across them. Empty/omitted = no attribute filter.
+  // Applied AFTER category and search, which is also the order the panel itself is computed in:
+  // the facets a shopper is offered describe the products the other two filters left.
+  facets?: FacetSelection;
 }
 
 // Strongest tier first → highest rank value. Reuses the ad-label tiers so storefront
@@ -110,9 +116,13 @@ export function filterAndSortProducts(products: StoreProduct[], query: ProductLi
   const q = query.q?.trim() ?? '';
   const sort = (query.sort?.trim() || 'default') as ProductSort;
 
+  const facets = query.facets?.size ? query.facets : null;
+
   const filtered = products.filter((p) => {
     const matchesCategory = !categoryIds || (!!p.categoryId && categoryIds.has(p.categoryId));
-    return matchesCategory && matchesSearch(q, p);
+    // Facets last of the three: it is the only one that walks a product's spec rows, and the
+    // cheap tests have already rejected most of the catalogue by the time it runs.
+    return matchesCategory && matchesSearch(q, p) && (!facets || productMatchesFacets(p, facets));
   });
 
   if (sort === 'default') return rankDefault(filtered, query.purchasedUnits ?? {}, query.nowMs ?? Date.now());

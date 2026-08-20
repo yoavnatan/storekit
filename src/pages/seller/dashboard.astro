@@ -3832,7 +3832,7 @@ const orderStatusColors: Record<string, string> = {
    */
   const LOADERS: Record<string, () => Promise<() => void>> = {
     products: async () => {
-      const [p, gallery, csv, picker, select, seo, feed] = await Promise.all([
+      const [p, gallery, csv, picker, select, seo, feed, specs] = await Promise.all([
         import('../../scripts/dashboard/products.js'),
         import('../../scripts/dashboard/gallery.js'),
         import('../../scripts/dashboard/csv-import.js'),
@@ -3845,6 +3845,7 @@ const orderStatusColors: Record<string, string> = {
         // Opening Settings first happened to fix it, which is why it survived every test and every
         // demo. Found 2026-08-19 by driving the panel in a browser rather than reasoning about it.
         import('../../scripts/dashboard/feed-sync.js'),
+        import('../../scripts/dashboard/spec-suggest.js'),
         imageEditors(),
       ]);
       return () => {
@@ -3853,6 +3854,9 @@ const orderStatusColors: Record<string, string> = {
       // never interfere with an editor below, and every one of them writes fields it reads.
       seo.initProductSeoHints();
       p.initSpecsEditors();
+      // After the spec editor, before the rest: it only reads the מפרט rows and writes into them,
+      // and its own listeners are delegated at the document like the editors' are.
+      specs.initSpecSuggestions();
       // Registered before the editors below: its document-level click listener
       // must see the pre-click "is anything armed?" state before either editor's
       // own listener arms a *new* confirm on this same click — otherwise the

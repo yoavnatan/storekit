@@ -42,6 +42,7 @@ import {
 } from './lib/seed-db.mjs';
 import { SHOWCASE_STORES, PRODUCT_VIEWS } from './lib/showcase/identity.mjs';
 import { variantsFor } from './lib/showcase/variants.mjs';
+import { specsFor } from './lib/showcase/specs.mjs';
 import { FASHION_PRODUCTS } from './lib/showcase/catalog-fashion.mjs';
 import { HOME_PRODUCTS } from './lib/showcase/catalog-home.mjs';
 import { TECH_PRODUCTS } from './lib/showcase/catalog-tech.mjs';
@@ -271,6 +272,11 @@ async function seed(db, clean) {
         images: gallery,
         categoryId: leafFor(row),
         weightGrams: row.w,
+        // Attribute rows, read off the product's own copy — this is what the store page's "סינון"
+        // panel filters on (lib/showcase/specs.mjs, src/lib/product-facets.ts). A product whose
+        // description states nothing matchable gets none, which is what a real catalogue looks
+        // like and what the panel's thresholds are there to survive.
+        specs: specsFor(spec.slug, row),
         createdAt: cardAt(spec, row.n) ?? iso(NOW - int(1, 45) * DAY),
       };
       const variants = variantsFor(row.v);

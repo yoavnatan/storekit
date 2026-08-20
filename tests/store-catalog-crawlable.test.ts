@@ -99,7 +99,10 @@ describe('the store page keeps its catalog crawlable', () => {
     // whose click handler cancels the navigation and appends in place. Page 2's own button
     // links to page 3, so the chain reaches the whole catalog.
     expect(page).toMatch(/<a\s+id="load-more-btn"/);
-    expect(page).toContain('href={hasMoreProducts ? storeViewHref(selectedCategory, currentPage + 1) : undefined}');
+    // `facetParam` rides along for the same reason `selectedCategory` does: the link has to mean
+    // the view actually on screen. A filtered shelf whose page 2 dropped the filter would walk a
+    // crawler (and anyone with JS off) straight out of the view they were reading.
+    expect(page).toContain('href={hasMoreProducts ? storeViewHref(selectedCategory, currentPage + 1, facetParam) : undefined}');
     expect(page).not.toMatch(/<button[^>]*id="load-more-btn"/);
   });
 
@@ -154,5 +157,60 @@ describe('the sitemap advertises category pages', () => {
 
   it('skips empty ones — a shelf with nothing on it is a thin page on a shared domain', () => {
     expect(sitemap).toMatch(/counts\[c\.id\] \?\? 0\) === 0\) continue/);
+  });
+});
+
+describe('attribute-filter views are crawlable exactly as far as they should be', () => {
+  /*
+   * Faceted navigation is the classic way a small catalogue turns into an unbounded crawl space:
+   * three dimensions of eight values is 512 combinations of the same products, every one of them a
+   * URL. The rule this pins is the standard answer and it is meant to be self-opening — nothing
+   * has to be revisited when a catalogue deepens:
+   *
+   *   ONE dimension + ONE value + enough products  → a real page, indexable, its own canonical
+   *   anything else                                → noindex, and its links are nofollow
+   *
+   * All four assertions are on the SOURCE rather than on a rendered page, for the same reason the
+   * rest of this file is: each is one markup or expression decision, and the kind that a refactor
+   * looking only at browser behaviour undoes without noticing.
+   */
+  const page = read('src/pages/[storeSlug]/index.astro');
+
+  it('folds a non-indexable filter into the composed-view noindex', () => {
+    expect(page).toContain('const isComposedView = Boolean(initQ || initSort) || (facetSelection.size > 0 && !facetIndexable);');
+  });
+
+  it('canonicalises an indexable filter to itself and every other one to the shelf it narrows', () => {
+    expect(page).toContain("storeViewUrl(selectedCategory, currentPage, facetIndexable ? facetParam : '')");
+  });
+
+  it('only lets a crawler follow the single-value links that can become real pages', () => {
+    // `facetSelection.size === 0` is what bounds the frontier: from an unfiltered shelf a crawler
+    // may reach each value once, and every link BEYOND that first hop is nofollow. Without it the
+    // reachable set is the combinatorial one, all of it noindex and all of it crawled anyway.
+    expect(page).toContain('const crawlable = facetSelection.size === 0 && value.count >= FACET_INDEX_MIN_PRODUCTS;');
+    expect(page).toContain("rel={crawlable ? undefined : 'nofollow'}");
+  });
+
+  it('keeps the chips real links, so filtering works with no JavaScript at all', () => {
+    // Same decision as the category chips in 2026-08-03: a <button> is invisible to a crawler.
+    expect(page).toMatch(/<a href=\{storeViewHref\(selectedCategory, 1, next\)\}/);
+  });
+
+  it('describes an indexable filter as a CollectionPage, never as the Store itself', () => {
+    // The Store node says "this is the business". On a slice of the catalogue that claims a
+    // business at an address it does not have — the error the category rule already prevents.
+    expect(page).toContain('const categoryJsonLd = (selectedCategory || facetIndexable) ? [');
+    expect(page).toContain('!facetSelection.size && currentPage === 1 && !adLanding');
+  });
+
+  it('does NOT enumerate filter views in the sitemap', () => {
+    // They are one click from the store page, which IS listed, so they are discoverable. Listing
+    // them would mean reading every product's `specs` for every store in the sitemap job — the
+    // per-product payload `getVisibleProductRefsByStoreIds` was deliberately narrowed to avoid —
+    // and would push a bounded surface toward the 45,000-URL shard ceiling for nothing.
+    const sitemap = read('src/lib/sitemap-document.ts');
+    expect(sitemap).not.toContain('product-facets');
+    expect(sitemap).not.toContain('?f=');
   });
 });

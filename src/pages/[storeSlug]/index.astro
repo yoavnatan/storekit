@@ -16,6 +16,7 @@ import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '.
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
+import { computeFacets, parseFacetParam, buildFacetParam, isIndexableFacetView, countSelectedFacetValues, toggleFacetValue, FACET_PARAM, FACET_VALUES_SHOWN, FACET_INDEX_MIN_PRODUCTS } from '../../lib/product-facets.js';
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath, countProductsPerCategory, categoryUrlParam, findCategoryByParam } from '../../lib/store-categories.js';
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
@@ -150,7 +151,34 @@ const chipLevelCategories = storeCategories
   .sort((a, b) => a.order - b.order);
 
 const categoryIds = selectedCategory ? resolveCategoryFilterIds(storeCategories, selectedCategory.id) : undefined;
-const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ, purchasedUnits, sale: shopStore.sale });
+
+// Attribute filters ("סינון") — lib/product-facets.ts. Read from the URL rather than held as client
+// state for the same reason the category is: this is a view a shopper bookmarks, shares and can
+// land on from a search result, and one of these views is indexable (see `facetIndexable` below).
+const facetSelection = parseFacetParam(Astro.url.searchParams.get(FACET_PARAM));
+// The set the PANEL describes: category + search applied, attribute filters deliberately not. A
+// panel recomputed from its own output empties itself as it is used — computeFacets' header has
+// the full reasoning, and the value counts inside it still honour the other dimensions.
+const listingQuery = { categoryIds, sort: initSort, q: initQ, purchasedUnits, sale: shopStore.sale };
+const facetBaseProducts = filterAndSortProducts(allProducts, listingQuery);
+const facets = computeFacets(facetBaseProducts, facetSelection);
+/**
+ * The SAME call `/api/store-products` makes, filters included — not `facetBaseProducts.filter(…)`.
+ *
+ * Filtering the already-sorted array would be cheaper and gives an identical result today, because
+ * `rankDefault`'s tiers are absolute thresholds rather than percentiles. It is still the wrong
+ * shape: this page renders page 1 and "load more" fetches page 2 from that route, so the two must
+ * produce one list. Order them by two different routes through the same module and the day a rank
+ * becomes relative to the set — a top-N label, a percentile tier — page 2 silently repeats and
+ * skips products, with nothing failing anywhere. One code path costs one in-memory sort, and only
+ * when a filter is actually on. `tests/product-listing.test.ts` pins the agreement.
+ */
+const filteredProducts = facetSelection.size
+  ? filterAndSortProducts(allProducts, { ...listingQuery, facets: facetSelection })
+  : facetBaseProducts;
+// The canonical spelling of the current selection — sorted, so two click orders are one URL.
+const facetParam = buildFacetParam(facetSelection);
+const selectedFacetCount = countSelectedFacetValues(facetSelection);
 
 /**
  * **Pagination is here so the catalog can be CRAWLED, and that is the whole reason.**
@@ -186,19 +214,26 @@ const storeUrl = storeCanonicalUrl(shopStore);
  *
  * `q` and `sort` are deliberately absent: they are the same products re-ordered or narrowed by
  * something the visitor typed, not a different shelf, and they are `noindex` below for that reason.
+ *
+ * `facets` IS a shelf — "צעצועי עץ" is a set of products, not an ordering of one — so it belongs in
+ * the URL this builder makes. It is passed explicitly rather than read from the closure because the
+ * two kinds of link disagree about it on purpose: the canonical and the pagination carry the current
+ * selection, while a CATEGORY chip clears it. Carrying attributes across a category change offers a
+ * material the new shelf may not stock, and the shopper's next click would land on an empty grid.
  */
-function storeViewUrl(category?: { id: string; name: string } | null, page = 1): string {
+function storeViewUrl(category?: { id: string; name: string } | null, page = 1, facets = ''): string {
   const params = new URLSearchParams();
   // categoryUrlParam, never categorySlug: a name of only symbols or emoji slugs to "", and
   // `?category=` with nothing after it is a link to the whole catalog wearing a category's label.
   if (category) params.set('category', categoryUrlParam(category));
+  if (facets) params.set(FACET_PARAM, facets);
   if (page > 1) params.set('page', String(page));
   const qs = params.toString();
   return qs ? `${storeUrl}?${qs}` : storeUrl;
 }
 /** The same, as an in-page href — relative, so a custom domain doesn't hard-code the platform one. */
-function storeViewHref(category?: { id: string; name: string } | null, page = 1): string {
-  const url = new URL(storeViewUrl(category, page));
+function storeViewHref(category?: { id: string; name: string } | null, page = 1, facets = ''): string {
+  const url = new URL(storeViewUrl(category, page, facets));
   return `${url.pathname}${url.search}`;
 }
 
@@ -208,14 +243,34 @@ function storeViewHref(category?: { id: string; name: string } | null, page = 1)
 // Past the last page there is nothing to show, and an empty shelf is a thin page Google would hold
 // against the whole domain. Send it to the first page of the same view instead of rendering one.
 if (currentPage > totalPages) {
-  return Astro.redirect(storeViewHref(selectedCategory, 1), 302);
+  return Astro.redirect(storeViewHref(selectedCategory, 1, facetParam), 302);
 }
 
-const isComposedView = Boolean(initQ || initSort);
+/**
+ * ONE attribute, ONE value, and enough products behind it to be a real collection — that view is a
+ * page a person searches for ("צעצועי עץ") and it goes to Google. Everything else does not.
+ *
+ * Two facets combined is one of a combinatorial number of views over the same products, which is
+ * the classic faceted-navigation crawl trap; below the product threshold it is a thin page, and a
+ * thin page costs the whole domain rather than only itself. The rule is self-opening: nothing has
+ * to be revisited when a catalogue deepens, because a view crosses the threshold on its own — and
+ * falls back out if the products go (lib/product-facets.ts#isIndexableFacetView).
+ *
+ * These views are reachable but NOT listed in the sitemap — they are one click from the store page,
+ * which is listed, and enumerating them would mean reading every product's `specs` for every store
+ * in the sitemap job (see the reasoning on `getVisibleProductRefsByStoreIds`).
+ */
+const facetIndexable = facetSelection.size > 0
+  && isIndexableFacetView(facetSelection, filteredProducts.length);
+const isComposedView = Boolean(initQ || initSort) || (facetSelection.size > 0 && !facetIndexable);
 // On an ad landing the canonical is the landing itself, and it is `noindex` below — Merchant Center
 // reads the canonical as the real destination, and pointing it at the seller's domain would put the
 // item back on a domain the advertising account cannot claim (custom-domain.ts#AD_LANDING_PARAM).
-const pageCanonical = adLanding ? adLandingUrl(shopStore) : storeViewUrl(selectedCategory, currentPage);
+// An indexable facet view is its own canonical; a composed one is `noindex` above and points at the
+// shelf it narrows, which is the page that should hold the ranking.
+const pageCanonical = adLanding
+  ? adLandingUrl(shopStore)
+  : storeViewUrl(selectedCategory, currentPage, facetIndexable ? facetParam : '');
 const categoryTrail = breadcrumbChain.map((c) => c.name).join(' › ');
 const today = new Date().toDateString();
 
@@ -232,14 +287,33 @@ const t    = getT(lang);
 const demoProductBadge = isDemo ? demoProductBadgeHtml(t.demo.productBadge, 'chip') : '';
 
 const pageSuffix = currentPage > 1 ? ` — ${lang === 'he' ? 'עמוד' : 'page'} ${currentPage}` : '';
-const pageTitle = selectedCategory
-  ? `${categoryTrail} · ${shopStore.name}${pageSuffix}`
+/**
+ * An indexable facet view says what it IS in its own title — "עץ · אדנית", not the store name a
+ * second time. It is the only kind of composed view with a title to earn: every other one is
+ * `noindex`, so naming it buys nothing, and only a single-value selection has a name at all.
+ *
+ * Read off `facets` (the computed panel) rather than off the raw URL, so the words are the store's
+ * own spelling of the attribute and never whatever a hand-built `?f=` said.
+ */
+const facetTitle = facetIndexable
+  ? facets.flatMap((f) => f.values.filter((v) => facetSelection.get(f.key)?.has(v.key)).map((v) => v.value))[0] ?? ''
+  : '';
+const shelfTrail = [categoryTrail, facetTitle].filter(Boolean).join(' · ');
+// The facet clause is appended to the category wording rather than replacing it — a category page's
+// own description is unchanged by this feature, which is what keeps the diff to what it is for.
+const facetClause = facetTitle ? `, ${facetTitle}` : '';
+const pageTitle = shelfTrail
+  ? `${shelfTrail} · ${shopStore.name}${pageSuffix}`
   : `${shopStore.name}${pageSuffix}`;
 const pageDescription = selectedCategory
   ? (lang === 'he'
-      ? `${filteredProducts.length} מוצרים בקטגוריית ${categoryTrail} בחנות ${shopStore.name}. משלוח לכל הארץ.`
-      : `${filteredProducts.length} products in ${categoryTrail} at ${shopStore.name}.`)
-  : (shopStore.tagline || shopStore.description || `Shop at ${shopStore.name} on ${platform.name}`);
+      ? `${filteredProducts.length} מוצרים בקטגוריית ${categoryTrail}${facetClause} בחנות ${shopStore.name}. משלוח לכל הארץ.`
+      : `${filteredProducts.length} products in ${categoryTrail}${facetClause} at ${shopStore.name}.`)
+  : facetTitle
+    ? (lang === 'he'
+        ? `${filteredProducts.length} מוצרים בחנות ${shopStore.name}${facetClause}. משלוח לכל הארץ.`
+        : `${filteredProducts.length} products at ${shopStore.name}${facetClause}.`)
+    : (shopStore.tagline || shopStore.description || `Shop at ${shopStore.name} on ${platform.name}`);
 
 // EVERY sale names its scope on the banner — the category path when it is a category, "on
 // selected items" for a hand-picked list, "on the whole store" otherwise. The widest scope is
@@ -307,7 +381,10 @@ const storeNode = {
  * publisher IS the shop. No `SearchAction` — Google retired the sitelinks search box in 2023, so
  * it would be markup for a feature that no longer renders.
  */
-const declaresOwnSite = hasActiveCustomDomain(shopStore) && !selectedCategory && currentPage === 1 && !adLanding;
+// `!facetSelection.size` for exactly the reason `!selectedCategory` is here: this graph says "this
+// is the site, and this is its home page". A view narrowed to one attribute is a filtered slice of
+// the catalogue, not the home page — the same call the CollectionPage rule below makes.
+const declaresOwnSite = hasActiveCustomDomain(shopStore) && !selectedCategory && !facetSelection.size && currentPage === 1 && !adLanding;
 
 const jsonLd = declaresOwnSite
   ? {
@@ -340,17 +417,25 @@ const jsonLd = declaresOwnSite
  * `mainEntity.numberOfItems` is the count for the WHOLE category (subcategories included, the same
  * number the chip prints), not this page's 24: the collection is what it describes, and the page is
  * a window onto it.
+ *
+ * **An indexable ATTRIBUTE view is the same kind of page and takes the same node** (2026-08-20).
+ * "צעצועי עץ" is a named part of this catalogue exactly as "צעצועים" is; without this it fell
+ * through to the Store node and claimed to BE the business on a page showing a slice of it — the
+ * error this comment already describes, arriving through a second door. Only the indexable ones:
+ * every other filtered view is `noindex`, so structured data on it describes a page Google was
+ * asked not to keep.
  */
-const categoryJsonLd = selectedCategory ? [
+const collectionName = [categoryTrail, facetTitle].filter(Boolean).join(' · ');
+const categoryJsonLd = (selectedCategory || facetIndexable) ? [
   {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name: categoryTrail,
+    name: collectionName,
     url: pageCanonical,
     isPartOf: { '@type': 'Store', name: shopStore.name, url: storeUrl },
     mainEntity: {
       '@type': 'ItemList',
-      name: selectedCategory.name,
+      name: collectionName,
       numberOfItems: filteredProducts.length,
       itemListElement: products.map((p, i) => ({
         '@type': 'ListItem',
@@ -371,6 +456,14 @@ const categoryJsonLd = selectedCategory ? [
         name: c.name,
         item: storeViewUrl(c),
       })),
+      // The attribute closes the trail when it is the thing this page is FOR — a list of one item
+      // is not a breadcrumb, and on an attribute-only view the store alone is all there would be.
+      ...(facetIndexable ? [{
+        '@type': 'ListItem',
+        position: breadcrumbChain.length + 2,
+        name: facetTitle,
+        item: pageCanonical,
+      }] : []),
     ],
   },
 ] : null;
@@ -852,6 +945,15 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                   products, and only one of the two changes when a product does. */}
               <script type="application/json" id="store-category-counts" set:html={jsonForScript(categoryCounts)} />
 
+              {facets.length > 0 && (
+                <button type="button" class="facet-toggle" id="facet-toggle"
+                        aria-expanded={selectedFacetCount > 0 ? 'true' : 'false'} aria-controls="facet-panel">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  <span>{t.store.filterByAttribute}</span>
+                  {selectedFacetCount > 0 && <span class="facet-toggle__count">{selectedFacetCount}</span>}
+                </button>
+              )}
+
               <div class="sort-dropdown-wrap" id="sort-dropdown">
                 <button
                   type="button"
@@ -880,6 +982,77 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 </ul>
               </div>
             </div>
+
+            {/*
+              The attribute filter panel — one shared surface for phone and desktop, expanding in
+              flow under the controls rather than as a drawer or a sidebar. A sidebar fails at 375px
+              (memory `feedback_mobile_first`), and a second drawer would be a second mechanism for
+              a row of chips the page already knows how to draw.
+
+              **The chips NAVIGATE — they are not intercepted, and that is the design.** Category
+              chips became real links in 2026-08-03 because a <button> is invisible to a crawler;
+              the same argument applies here with more force, since a single-value view is the one
+              kind of filtered page that is meant to rank. Letting the browser follow them also
+              means the counts beside each value are always the server's, never a client guess that
+              has to be refreshed, and there is no second copy of this markup in JS to drift from
+              this one (memory `project_client_renderer_i18n_drift`). The cost is a page load per
+              filter click, on a server-rendered page, which is the cheaper half of that trade.
+
+              The panel opens by itself whenever a filter is active, which is why no state has to
+              survive the navigation: the URL already says whether it should be open.
+            */}
+            {facets.length > 0 && (
+              <div class="facet-panel" id="facet-panel" hidden={selectedFacetCount === 0}
+                   role="group" aria-label={t.store.filterAttributesLabel}>
+                {facets.map((facet) => {
+                  const chosen = facetSelection.get(facet.key);
+                  return (
+                    <div class="facet-group">
+                      <span class="facet-group__label">{facet.label}</span>
+                      <div class="facet-group__values">
+                        {facet.values.map((value, i) => {
+                          const on = chosen?.has(value.key) ?? false;
+                          const next = buildFacetParam(toggleFacetValue(facetSelection, facet.key, value.key));
+                          /* Crawlable only where the link leads somewhere worth indexing: from an
+                             unfiltered shelf, to a value with a real collection behind it. That is
+                             exactly `isIndexableFacetView`'s rule stated one click early — and
+                             `value.count` IS the resulting product count while nothing else is
+                             selected, so this is the same test and not an approximation. Every
+                             other chip is `nofollow`, which bounds the crawl frontier to those
+                             single-value URLs instead of the combinatorial set beyond them. */
+                          const crawlable = facetSelection.size === 0 && value.count >= FACET_INDEX_MIN_PRODUCTS;
+                          /* `aria-current="page"`, never `"true"`: that is the attribute
+                             `.category-chip`'s pressed style keys on (`aria-pressed` is invalid on
+                             a link, which is why the category row moved to it). Any other value
+                             renders a selected chip that looks unselected — measured, on the first
+                             draft of this panel. */
+                          return (
+                            <a href={storeViewHref(selectedCategory, 1, next)}
+                               class="category-chip facet-chip"
+                               rel={crawlable ? undefined : 'nofollow'}
+                               aria-current={on ? 'page' : undefined}
+                               hidden={i >= FACET_VALUES_SHOWN && !on}
+                               data-facet-value>
+                              {value.value}
+                              <span class="category-chip__count">{value.count}</span>
+                            </a>
+                          );
+                        })}
+                        {facet.values.length > FACET_VALUES_SHOWN && (
+                          <button type="button" class="facet-more" data-facet-more>{t.store.filterMoreValues}</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {selectedFacetCount > 0 && (
+                  <a href={storeViewHref(selectedCategory, 1)} class="facet-clear" rel="nofollow">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    {t.store.filterClearAttributes}
+                  </a>
+                )}
+              </div>
+            )}
 
           </div>
           {/* Mobile category drawer + overlay live OUTSIDE .store-controls on purpose:
@@ -1098,7 +1271,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
             <a
               id="load-more-btn"
               class="load-more-btn"
-              href={hasMoreProducts ? storeViewHref(selectedCategory, currentPage + 1) : undefined}
+              href={hasMoreProducts ? storeViewHref(selectedCategory, currentPage + 1, facetParam) : undefined}
               data-offset={String(pageStart + products.length)}
             >
               <span id="load-more-label">{t.store.loadMore}</span>
@@ -1505,6 +1678,16 @@ const bannerPreload = !isDemo && shopStore.bannerImage
 
   let currentSort = 'default';
   let activeTag = '';
+  /**
+   * The attribute filter, as the URL spells it. Held verbatim and never re-derived, because the
+   * panel's own chips are links the browser follows — a facet change arrives as a fresh page, not
+   * as client state, so the only job here is to carry it through the requests this script DOES
+   * make. Missing it is not cosmetic: `syncUrl` rewrites the address bar from these variables, and
+   * a sort or a search would otherwise silently drop a filter the shopper can still see applied.
+   */
+  const facetParam = new URLSearchParams(window.location.search).get('f') ?? '';
+  /** The query the server rendered the panel against — see `mustReloadForFacets` below. */
+  const facetPanelQuery = new URLSearchParams(window.location.search).get('q') ?? '';
   // Set true wherever activeTag actually changes; refreshFromServer() consumes
   // it to decide whether renderCategoryNav() needs to run this time (sort/
   // search-only refreshes never touch the category, so should skip it).
@@ -2178,6 +2361,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   async function fetchProductsPage(offset: number): Promise<{ ok: boolean; products: StoreProductDTO[]; hasMore: boolean }> {
     const params = new URLSearchParams({ store: storeSlug, offset: String(offset) });
     if (activeTag) params.set('category', activeTag);
+    if (facetParam) params.set('f', facetParam);
     if (currentSort !== 'default') params.set('sort', currentSort);
     const q = effectiveQuery();
     if (q) params.set('q', q);
@@ -2213,7 +2397,40 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   // already uses elsewhere, and carries its own delay in CSS so a fast filter shows nothing at all.
   const loadingBar = document.getElementById('store-products-loading');
 
+  /**
+   * While an attribute filter is active, can this change be applied in place?
+   *
+   * Only if it is a re-SORT. The panel's chips and — more to the point — the count beside each
+   * value are server-rendered from the set the category and the search left; swapping the grid
+   * underneath them would leave a filter panel describing a catalogue that is no longer on screen,
+   * and a wrong count is worse than a slow one because nothing on the page admits it is wrong.
+   * A re-sort is the one change that cannot move those numbers: same products, another order.
+   *
+   * With no filter active there is no panel to keep honest and nothing here applies.
+   */
+  function mustReloadForFacets(): boolean {
+    if (!facetParam) return false;
+    return pendingCategoryNav || effectiveQuery() !== facetPanelQuery;
+  }
+
   async function refreshFromServer(): Promise<void> {
+    if (mustReloadForFacets()) {
+      // A CATEGORY change drops the filter, exactly as the chip's own href does — an attribute the
+      // old shelf stocked may not exist on the new one, and carrying it over lands the shopper on
+      // an empty grid. A search keeps it: it narrows the same shelf.
+      const params = new URLSearchParams();
+      const q = effectiveQuery();
+      if (q) params.set('q', q);
+      if (activeTag) {
+        const name = flatCategories.find((c) => c.id === activeTag)?.name;
+        params.set('category', (name && toSlug(name)) || activeTag);
+      }
+      if (!pendingCategoryNav && facetParam) params.set('f', facetParam);
+      if (currentSort !== 'default') params.set('sort', currentSort);
+      const qs = params.toString();
+      window.location.assign(qs ? `?${qs}` : window.location.pathname);
+      return;
+    }
     syncUrl();
     const token = ++refreshToken;
     if (!productGrid) return;
@@ -2304,6 +2521,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     const params = new URLSearchParams();
     const q = effectiveQuery();
     if (q) params.set('q', q);
+    if (facetParam) params.set('f', facetParam);
     // The SLUG, not the `data-category-id` this code holds internally. Both resolve
     // (store-categories.ts#findCategoryByParam), but this is the URL a shopper ends up bookmarking
     // or pasting, and it has to be the same one the chip links to, the sitemap lists and the
@@ -2321,6 +2539,38 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     lastQueryString = qs ? `?${qs}` : '';
     history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
   }
+
+  /**
+   * The attribute filter panel — open/close, and "עוד".
+   *
+   * That is deliberately ALL the JavaScript this feature has. The chips are real links the browser
+   * follows (see the panel's own comment above), so filtering works with scripting off, the counts
+   * are never a client guess, and there is no second renderer of this markup to keep in step with
+   * the Astro one. What is left is the two things a link cannot do: reveal the values held back
+   * past `FACET_VALUES_SHOWN`, and collapse the panel.
+   *
+   * The panel's INITIAL state is server-rendered from whether a filter is active, so nothing has to
+   * survive the navigation a chip causes — no sessionStorage, no re-open flicker.
+   */
+  const facetToggle = document.getElementById('facet-toggle');
+  const facetPanel = document.getElementById('facet-panel');
+  facetToggle?.addEventListener('click', () => {
+    if (!facetPanel) return;
+    const open = facetPanel.hasAttribute('hidden');
+    if (open) facetPanel.removeAttribute('hidden');
+    else facetPanel.setAttribute('hidden', '');
+    facetToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  // Delegated: one listener for every "עוד", and it survives nothing being re-rendered here.
+  facetPanel?.addEventListener('click', (event) => {
+    const more = (event.target as Element | null)?.closest<HTMLButtonElement>('[data-facet-more]');
+    if (!more) return;
+    const values = more.parentElement;
+    values?.querySelectorAll<HTMLElement>('[data-facet-value][hidden]').forEach((chip) => chip.removeAttribute('hidden'));
+    // A button that has done its one job is a no-op afterwards, so it goes rather than sitting
+    // there disabled (memory `feedback_noop_interactions_invisible`).
+    more.remove();
+  });
 
   function openSort() {
     sortMenu?.removeAttribute('hidden');

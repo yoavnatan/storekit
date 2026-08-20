@@ -67,12 +67,15 @@ describe('a store on its own domain declares its own site name', () => {
   });
 
   it('the WebSite node is emitted ONLY where Google can act on it', () => {
-    // All four conditions matter and each one is a different way of publishing a claim Google
+    // All five conditions matter and each one is a different way of publishing a claim Google
     // discards — or worse, a claim about the seller's domain from a URL that is not on it:
-    // no custom domain (a subdirectory), a category or page 2 (not the home page Google reads),
-    // an ad landing (a platform URL by construction).
+    // no custom domain (a subdirectory), a category, an ATTRIBUTE FILTER or page 2 (none of them
+    // the home page Google reads), an ad landing (a platform URL by construction).
+    // The filter joined the list on 2026-08-20 with the "סינון" panel: `?f=חומר:עץ` is a slice of
+    // the catalogue reached without ever selecting a category, so `!selectedCategory` alone let it
+    // through and it declared itself the site's home page.
     expect(storePage).toContain(
-      'const declaresOwnSite = hasActiveCustomDomain(shopStore) && !selectedCategory && currentPage === 1 && !adLanding;',
+      'const declaresOwnSite = hasActiveCustomDomain(shopStore) && !selectedCategory && !facetSelection.size && currentPage === 1 && !adLanding;',
     );
     expect(storePage).toMatch(/declaresOwnSite\s*\n?\s*\?/);
     // The Store node keeps its own `@id` so the WebSite's publisher can point at the shop rather

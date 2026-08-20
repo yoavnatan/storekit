@@ -1742,3 +1742,142 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 /* The rule and its keyframes were HERE too, scoped to `.store-page`, and that duplication is what
    hid the bug: the modal lives in BaseLayout and matched neither copy. Single definition now in
    product.css, unscoped — read the comment there before re-scoping either of them. */
+
+
+/* ── Attribute filter panel ────────────────────────────────────────────────
+   The "סינון" control and the chip rows it opens (lib/product-facets.ts).
+
+   Almost no new visual vocabulary on purpose: a value chip IS a `.category-chip`
+   (same geometry, same 10px radius, same pressed state via `aria-current`), so
+   the panel reads as another row of the same shelf rather than as a second
+   filtering system bolted beside the first. What is defined here is only what
+   the category row has no equivalent of — the trigger, the container, and the
+   attribute name that labels each row.
+
+   In FLOW, not floating: this block sits inside `.store-controls` under the
+   chip/sort row and pushes the grid down when it opens. A `position:absolute`
+   menu (the shape `#sort-menu` uses) would have to be clipped or escape the
+   sticky controls' stacking context, and at 375px a panel of three wrapped chip
+   rows is taller than the viewport has room to overlay. */
+.facet-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.35rem 0.8rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s;
+}
+/* White, never a tint — a tinted hover reads as dirt on this site
+   (memory `feedback_hover_light_not_tint`), and one signal is enough. */
+.facet-toggle:hover { background: var(--color-surface); }
+.facet-toggle > svg { color: var(--color-muted); transition: color 0.13s; }
+.facet-toggle:hover > svg { color: var(--color-primary); }
+/* The count is the whole reason a collapsed panel is still honest: it says a
+   filter is on without the shopper having to open the panel to find out. */
+.facet-toggle__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  color: var(--color-surface);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.facet-toggle[aria-expanded="true"] > svg { color: var(--color-primary); }
+
+.facet-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  /* A 1px line, like every other divider on this site — the panel is in flow, so
+     it takes a border and not a shadow (elevation rule, base/tokens.css). */
+  border-top: 1px solid var(--color-border);
+}
+.facet-panel[hidden] { display: none; }
+
+.facet-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  /* Wraps at narrow widths so the attribute name keeps its own line above the
+     chips instead of squeezing them — the row is chips first, label second. */
+  flex-wrap: wrap;
+}
+.facet-group__label {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.facet-group__values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+/* The chips WRAP here, unlike the category row which scrolls. A scroller needs
+   `flex-shrink: 0` on its children and hides what it cannot fit; there are at
+   most `FACET_VALUES_SHOWN` + one chips in a row here, and putting a filter
+   value behind a horizontal scroll is how a filter goes unnoticed. */
+.facet-chip { flex-shrink: 1; }
+.facet-chip[hidden] { display: none; }
+
+.facet-more {
+  padding: 0.35rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: color 0.13s, border-color 0.13s;
+}
+.facet-more:hover { color: var(--color-text); border-color: var(--color-muted); }
+
+.facet-clear {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: color 0.13s;
+}
+.facet-clear:hover { color: var(--color-text); }
+
+@media (max-width: 640px) {
+  /* At phone widths the attribute name earns its own line: `min-width` on the
+     label plus wrapped chips beside it left roughly two chips per row. */
+  .facet-group { flex-direction: column; align-items: stretch; gap: 0.35rem; }
+  .facet-group__label { min-width: 0; }
+  /* `flex-basis` is measured along the MAIN axis, and the main axis just turned
+     vertical — so the row's `flex: 1 1 12rem` stopped meaning "at least 12rem
+     wide" and started meaning "192px TALL". Measured at 375px: a 200px void
+     between each attribute name and its own chips, with the chips sitting at
+     the bottom of it. Nothing about the desktop rule was wrong; it simply does
+     not survive the axis flip, which is why it is re-stated rather than
+     removed. */
+  .facet-group__values { flex: 0 0 auto; }
+}

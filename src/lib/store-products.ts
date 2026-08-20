@@ -780,6 +780,39 @@ export async function getVisibleProductRefsByStoreIds(storeIds: readonly string[
   return byStore;
 }
 
+/**
+ * Every product's `specs` for one store, and nothing else.
+ *
+ * Feeds the product form's attribute suggestions (`spec-vocabulary.ts`), which need the vocabulary
+ * of the WHOLE catalogue — the dashboard only ever holds one page of products, and a seller whose
+ * "גיל" convention lives on page three would be offered nothing and invent a fourth spelling.
+ *
+ * One column, for the same reason `getVisibleProductRefsByStoreIds` exists: the alternative is
+ * shipping every description, image array and variant table across the network to read one JSONB
+ * field per row. Hidden and blocked products are INCLUDED — an attribute a seller used on a
+ * product they took off the shelf is still their house spelling, and re-listing it should not
+ * re-invent the wording.
+ *
+ * **Bounded, and it has to be**: "read every row of a table a seller controls the size of" is the
+ * shape that only misbehaves once someone succeeds. The newest `SPEC_VOCABULARY_SAMPLE` are read,
+ * which is what a convention actually lives in — the answer this feeds is "how does this shop spell
+ * its attributes", and the last few hundred products answer that at least as well as ten thousand.
+ */
+const SPEC_VOCABULARY_SAMPLE = 500;
+
+export async function getSpecRowsByStoreId(storeId: string): Promise<Array<{ specs: ProductSpec[] | null }>> {
+  if (!isUuid(storeId)) return [];
+  const found = await rows<{ specs: ProductSpec[] | null }>(
+    `SELECT p.specs
+       FROM store_products p
+      WHERE p.store_id = $1::uuid AND p.specs IS NOT NULL
+      ORDER BY p.created_at DESC, p.id
+      LIMIT ${SPEC_VOCABULARY_SAMPLE}`,
+    [storeId],
+  );
+  return found.map((row) => ({ specs: row.specs ?? null }));
+}
+
 /** Thumbnails to fetch per store card. Four, not three: a sparse shelf widens its cards and a
  *  fourth thumb restores their proportion (HomeShelf.astro), so four is the most any card can
  *  draw. Fetching the maximum once beats asking the layout first. */

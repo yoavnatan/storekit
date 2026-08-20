@@ -322,6 +322,14 @@ export const translations = {
       filterByCategory: 'סנן לפי קטגוריה',
       filterSearchPlaceholder: 'חיפוש בקטגוריה זו...',
       filterSearchLabel: 'חיפוש בקטגוריה זו',
+      /** The attribute-filter panel (lib/product-facets.ts). "סינון" and not "סנן לפי מאפיין":
+       *  the shopper is not choosing a mechanism, and the panel below the button names each
+       *  attribute itself — a label that explains the control is a label nobody needed. */
+      filterByAttribute: 'סינון',
+      filterAttributesLabel: 'סינון לפי מאפיינים',
+      /** Reveals the values past the first `FACET_VALUES_SHOWN` of one attribute. */
+      filterMoreValues: 'עוד',
+      filterClearAttributes: 'נקה סינון',
       searchResultsFor: 'תוצאות חיפוש ל"{query}"',
       noResultsFor: 'לא נמצאו תוצאות ל"{query}"',
       /** The request for a page of products failed. Says "we could not load", never "there is
@@ -1771,6 +1779,11 @@ export const translations = {
       specsLabelPlaceholder: 'שם (לדוגמה: גודל)',
       specsValuePlaceholder: 'ערך',
       specsRemoveRow: 'הסר שורה',
+      /** Captions on the attribute-suggestion strip (scripts/dashboard/spec-suggest.ts). One word,
+       *  because the chips beside it say what they are — and because the strip must read as an
+       *  offer rather than as a section of the form the seller now has to deal with. */
+      specsSuggestLabels: 'בשימוש בחנות',
+      specsSuggestValues: 'ערכים קיימים',
       variantsLabel: 'גרסאות ומלאי',
       variantNameLabel: 'שם הגרסה',
       variantNamePlaceholder: 'לדוגמה: צבע, מידה, נפח אחסון',
@@ -2487,6 +2500,10 @@ export const translations = {
       filterByCategory: 'Filter by category',
       filterSearchPlaceholder: 'Search in this category...',
       filterSearchLabel: 'Search in this category',
+      filterByAttribute: 'Filter',
+      filterAttributesLabel: 'Filter by attributes',
+      filterMoreValues: 'More',
+      filterClearAttributes: 'Clear filters',
       searchResultsFor: 'Search results for "{query}"',
       noResultsFor: 'No results for "{query}"',
       loadFailedTitle: 'We could not load the products',
@@ -3650,6 +3667,8 @@ export const translations = {
       specsLabel: 'Specifications',
       specsAddRow: '+ Add row',
       specsLabelPlaceholder: 'Label (e.g. Size)',
+      specsSuggestLabels: 'Used in this store',
+      specsSuggestValues: 'Existing values',
       specsValuePlaceholder: 'Value',
       specsRemoveRow: 'Remove row',
       variantsLabel: 'Variants & inventory',

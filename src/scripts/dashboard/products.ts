@@ -548,9 +548,13 @@ function specsEditorHtml(specs: Array<{ label: string; value: string }>, i18n: R
       <input class="input" name="specs_value" value="${esc(s.value)}" placeholder="${vp}" style="width:220px;flex:0 0 auto">
       <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${esc(i18n.specsRemoveRow ?? 'Remove')}">×</button>
     </div>`).join('');
-  return `<div class="field">
+  // `data-specs-field` is the hook the attribute-suggestion strip binds to (scripts/dashboard/
+  // spec-suggest.ts). The strip sits between the rows and the add button so the seller's eye finds
+  // it in the same place whether they are typing an attribute's name or its value.
+  return `<div class="field" data-specs-field>
     <span class="field-label">${esc(i18n.specsLabel ?? 'Specifications')}</span>
     <div class="specs-rows" data-label-placeholder="${lp}" data-value-placeholder="${vp}">${rowsHtml}</div>
+    <div data-spec-suggestions class="spec-suggest-row" style="display:none"></div>
     <button type="button" class="specs-add-row btn btn--ghost btn--sm" style="margin-top:0.5rem">${esc(i18n.specsAddRow ?? '+ Add row')}</button>
   </div>`;
 }

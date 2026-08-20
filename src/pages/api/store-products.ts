@@ -5,6 +5,7 @@ import { getVisibleProductsByStoreId, toPublicProduct } from '../../lib/store-pr
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds, findCategoryByParam } from '../../lib/store-categories.js';
+import { parseFacetParam, FACET_PARAM } from '../../lib/product-facets.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -24,6 +25,9 @@ export const GET: APIRoute = async ({ url }) => {
   const sort = url.searchParams.get('sort') ?? 'default';
   const q = url.searchParams.get('q') ?? '';
   const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10) || 0);
+  // The attribute filters the panel has applied. Parsed here and not trusted as a shape: this is a
+  // public endpoint, so `?f=` is untrusted text and `parseFacetParam` is what bounds it.
+  const facets = parseFacetParam(url.searchParams.get(FACET_PARAM));
 
   // **Three independent reads, issued together — this is the shopper-facing latency (2026-08-03).**
   // Every category chip click on a store page lands here, and the three reads below depend only on
@@ -50,7 +54,7 @@ export const GET: APIRoute = async ({ url }) => {
   const categoryIds = selected ? resolveCategoryFilterIds(categories, selected.id) : undefined;
 
   // `sale` rides along so a "price: low to high" page orders by what the shopper would pay.
-  const filtered = filterAndSortProducts(visibleProducts, { categoryIds, sort, q, purchasedUnits, sale: store.sale });
+  const filtered = filterAndSortProducts(visibleProducts, { categoryIds, sort, q, facets, purchasedUnits, sale: store.sale });
   const products = filtered.slice(offset, offset + PRODUCTS_PAGE_SIZE);
 
   return json({

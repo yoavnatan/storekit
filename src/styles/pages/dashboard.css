@@ -1819,3 +1819,38 @@ textarea.input { resize: none; }
      would fight the `space-between` that already puts each value opposite its own label. */
   .report-num { text-align: start; }
 }
+
+
+/* ── Attribute suggestions on the מפרט rows ───────────────────────────────
+   scripts/dashboard/spec-suggest.ts. Same dashed-chip language as the TAG
+   suggestions on the same form (`data-tag-suggest-chip` in products.ts) —
+   both mean "a thing that is not here yet, click to make it real", and using
+   two vocabularies for one idea on one form is what makes a form feel busy.
+   The dashed border is that convention; it is deliberately NOT the solid
+   chip, which on this site means a value that is already set. */
+.spec-suggest-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.45rem;
+}
+.spec-suggest-caption {
+  font-size: 0.76rem;
+  color: var(--color-muted);
+}
+.spec-suggest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color 0.13s, border-color 0.13s;
+}
+.spec-suggest-chip:hover { color: var(--color-text); border-color: var(--color-muted); }
