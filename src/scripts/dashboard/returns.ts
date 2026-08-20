@@ -59,8 +59,8 @@ import { toAgorot } from '../../lib/money.js';
  */
 type ConfirmSpec = { title: string; message: string; okLabel: string; tone: 'danger' | 'primary' };
 
-const CONFIRMED_MOVES: Record<string, ((amount: string) => ConfirmSpec) | undefined> = {
-  approved: (amount) => ({
+const CONFIRMED_MOVES: Record<string, ((amount: string, items: number) => ConfirmSpec) | undefined> = {
+  approved: (amount, items) => ({
     title: 'לאשר את ההחזרה?',
     // "אישור אי אפשר לבטל אחרי שהוא כבר שלח" until 2026-08-20 — the owner's note was that it
     // *"לא נשמע טוב"*, and the shape is why: it hangs the finality on something the buyer does
@@ -68,19 +68,26 @@ const CONFIRMED_MOVES: Record<string, ((amount: string) => ConfirmSpec) | undefi
     // not — the approved card offers him no undo (`ReturnsPanel.astro#MOVES`) — so the plain
     // sentence is both kinder and more accurate. ("יישלח" was also simply the wrong verb: future
     // הפעיל is ישלח; יישלח is passive.)
-    message: `הקונה ישלח לך את המוצר בחזרה, ו-${amount} יוקפאו עד שיגיע. אישור זה אינו ניתן לביטול.`,
+    // Singular or plural, from the case's own line count (owner, 2026-08-21) — a dialog that says
+    // "המוצר" over a three-item return is describing a different case from the one being approved.
+    message: items > 1
+      ? `הקונה ישלח לך את המוצרים בחזרה, והסכום של ${amount} יוקפא עד הגעתם. שים לב שאישור זה אינו ניתן לביטול.`
+      : `הקונה ישלח לך את המוצר בחזרה, והסכום של ${amount} יוקפא עד הגעתו. שים לב שאישור זה אינו ניתן לביטול.`,
     okLabel: 'אשר את ההחזרה',
     tone: 'primary',
   }),
   refunded: (amount) => ({
     title: `להחזיר לקונה ${amount}?`,
-    message: 'הסכום יירשם כחוב לקונה וירד לך מהתשלום הבא. החזר שבוצע אי אפשר להחזיר אחורה.',
+    message: 'הסכום יירשם כחוב לקונה וירד לך מהתשלום הבא. שים לב שהחזר שבוצע אינו ניתן לביטול.',
     okLabel: 'החזר את הכסף',
-    tone: 'danger',
+    // Primary, not danger (owner, 2026-08-21). It moves money out, which is why it is confirmed at
+    // all — but it is the ordinary, expected end of a return and the seller saying the goods came
+    // back fine. Red is for the moves that close a case AGAINST somebody: refusing, and escalating.
+    tone: 'primary',
   }),
   rejected: () => ({
     title: 'לסרב לבקשה?',
-    message: 'הכסף נשאר אצלך והמוצר אצל הקונה. הוא יוכל לבקש מאיתנו לבדוק את הסירוב.',
+    message: 'הכסף יישאר אצלך והמוצר יישאר אצל הקונה. הוא יוכל לבקש מאיתנו לבדוק את הסירוב.',
     okLabel: 'סרב לבקשה',
     tone: 'danger',
   }),
@@ -89,7 +96,7 @@ const CONFIRMED_MOVES: Record<string, ((amount: string) => ConfirmSpec) | undefi
     // Names what TRAVELS with it, since 2026-08-20 — the claim now carries the seller's sentence and,
     // if he attached one, his picture. A dialog that describes only the consequence and not the
     // evidence leaves him thinking somebody will come and ask him; nobody will.
-    message: 'מה שכתבת והתמונה שצירפת יעברו אלינו, ונחליט לפיהם למי מגיע הכסף. עד ההחלטה הכסף של ההזמנה הזאת לא ישוחרר אליך, ואי אפשר למשוך את הפנייה בחזרה.',
+    message: 'מה שכתבת והתמונה שצירפת יגיעו אלינו, ולפיהם נכריע. עד ההכרעה הכסף של ההזמנה הזאת לא ישוחרר אליך, ואי אפשר לבטל את הפנייה.',
     okLabel: 'העבר להכרעה',
     tone: 'danger',
   }),
@@ -229,6 +236,26 @@ export function initReturnsTab(): void {
     })();
   });
 
+  // ── The offer row's own two buttons ──
+  //
+  // `שלח` forwards to the card's `הצע החזר חלקי` button, which already owns the whole move: this
+  // way the validation, the request and the failure handling stay in ONE place instead of becoming
+  // a second copy that drifts the first time either changes. `ביטול` closes the field and clears
+  // it, so re-opening never offers a number the seller decided against.
+  list.addEventListener('click', (e) => {
+    const el = e.target as HTMLElement | null;
+    const send = el?.closest<HTMLButtonElement>('[data-offer-send]');
+    const cancel = el?.closest<HTMLButtonElement>('[data-offer-cancel]');
+    if (!send && !cancel) return;
+    const card = el!.closest<HTMLElement>('[data-return-id]');
+    const field = card?.querySelector<HTMLInputElement>('[data-offer-amount]');
+    if (cancel) {
+      if (field) { field.value = ''; clearFieldError(field); field.hidden = true; }
+      return;
+    }
+    card?.querySelector<HTMLButtonElement>('[data-return-move="offered"]')?.click();
+  });
+
   list.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-return-move]');
     if (!btn) return;
@@ -269,7 +296,7 @@ export function initReturnsTab(): void {
       const said = (field?.value ?? '').trim();
       if (field) clearFieldError(field);
       if (said.length < 3) {
-        if (field) showFieldError(field, 'כמה מילים על מה שהיה בחבילה');
+        if (field) showFieldError(field, 'כתוב כמה מילים על מה שהיה בחבילה');
         field?.focus();
         buttons.forEach((b) => { b.disabled = false; });
         return;
@@ -281,21 +308,42 @@ export function initReturnsTab(): void {
     // prompt-free inline field rather than `prompt()`, which is banned platform-wide — the field is
     // already on the card, hidden until this button is pressed.
     let partialOfferAgorot: number | undefined;
+    /**
+     * The offer, and the two faults the owner found in its first shape (2026-08-21).
+     *
+     * It used to be the same button twice: the first press revealed a field, the second sent it.
+     * *"לא ברור איפה צריך ללחוץ, אין שם עוד כפתור"* — and he had worked it out and still said so,
+     * which is the tell. A revealed field with nothing beside it looks like it is waiting for
+     * Enter, and the button that opened it has visibly already been used. It now opens a row with
+     * its own שלח and ביטול, wired below; this branch only ever RUNS from that שלח.
+     *
+     * And the amount has a CEILING. The server has always clamped to the case's full refund, but
+     * silently — so 900 typed on a 49 ₪ return was accepted, stored as 49, and nothing said so.
+     * A number quietly changed on its way to the database is worse than a refusal.
+     */
     if (to === 'offered') {
       const field = card?.querySelector<HTMLInputElement>('[data-offer-amount]');
       if (field && field.hidden) {
         field.hidden = false;
+        field.value = '';
         field.focus();
         buttons.forEach((b) => { b.disabled = false; });
         return;
       }
       const shekels = Number(field?.value ?? '');
+      const ceiling = Number(field?.max ?? '') || Infinity;
       if (field) clearFieldError(field);
       if (!Number.isFinite(shekels) || shekels <= 0) {
         // On the field, not in a toast — the same correction the admin's decision screen took the
         // same day (owner, 2026-08-20). A toast reports something that happened elsewhere; a field
         // that is wrong says so where it is wrong, in the site's one style (`lib/field-validity.ts`).
-        if (field) showFieldError(field, 'סכום גדול מאפס');
+        if (field) showFieldError(field, 'צריך סכום גדול מאפס');
+        field?.focus();
+        buttons.forEach((b) => { b.disabled = false; });
+        return;
+      }
+      if (shekels > ceiling) {
+        if (field) showFieldError(field, `הסכום גבוה מההחזר עצמו. אפשר להציע עד ${ceiling} ₪`);
         field?.focus();
         buttons.forEach((b) => { b.disabled = false; });
         return;
@@ -340,7 +388,7 @@ export function initReturnsTab(): void {
     // The tone comes from the spec, never from here: a constant at the dispatch is how "approve"
     // ended up wearing the delete button's colour in the first place.
     window.dispatchEvent(new CustomEvent('confirm:open', {
-      detail: { ...ask(btn.dataset.returnAmount ?? ''), onConfirm: send },
+      detail: { ...ask(btn.dataset.returnAmount ?? '', Number(btn.dataset.returnItems) || 1), onConfirm: send },
     }));
     // The card's buttons come back on: the seller may still say no in the dialog, and a card left
     // dead behind a cancelled confirmation is the same bug as a request that failed silently.

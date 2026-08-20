@@ -372,7 +372,7 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
   if (!admin && to === 'disputed') {
     const said = typeof data.sellerNote === 'string' ? data.sellerNote.trim() : '';
     if (said.length < 3) {
-      return json({ error: 'צריך לכתוב מה היה בחבילה — זה מה שנכריע לפיו' }, 400);
+      return json({ error: 'צריך לכתוב מה היה בחבילה, כי זה מה שנכריע לפיו' }, 400);
     }
   }
 
