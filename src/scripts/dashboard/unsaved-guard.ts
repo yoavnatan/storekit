@@ -96,7 +96,17 @@ function isLive(form: HTMLFormElement): boolean {
   return true;
 }
 
-/** Baselines are taken lazily on first contact: edit rows are built on demand (products.ts), and both events land BEFORE the value they are about to change — including on widgets that write to a hidden input without ever focusing it. */
+/** Baselines are taken lazily on first contact: edit rows are built on demand (products.ts), and both events land BEFORE the value they are about to change — including on widgets that write to a hidden input without ever focusing it.
+ *
+ * "First contact" is a focus or a pointer press INSIDE the form, and that covers everything the
+ * seller types — but not everything that fills a form. A draft restore writes every recovered field
+ * at once, from a button that is often the FLOATING notice, i.e. outside the form entirely. No
+ * contact, so no baseline, so `isDirty` answered false about a form that had just been filled with
+ * unsaved work: restoring and then walking to another tab said nothing at all (owner, סשן א׳ §1;
+ * pressing the bar INSIDE the form happened to work only because that press is a pointerdown on the
+ * form). `dash:willrewritefields` is the fix and it is dispatched BEFORE the write, so what this
+ * captures is still the state the server rendered — which is exactly what a later "discard" must
+ * come back to. */
 function remember(target: EventTarget | null): void {
   if (!(target instanceof Element)) return;
   const form = target.closest(GUARDED) as HTMLFormElement | null;
@@ -180,6 +190,10 @@ function refreshUnsavedNotice(): void {
   const bar = document.getElementById('dash-unsaved-bar');
   const msgEl = document.getElementById('dash-unsaved-msg');
   if (!bar || !msgEl) return;
+  const preEl = msgEl.querySelector<HTMLElement>('[data-notice-pre]');
+  const linkEl = document.getElementById('dash-unsaved-go');
+  const postEl = msgEl.querySelector<HTMLElement>('[data-notice-post]');
+  if (!preEl || !linkEl || !postEl) return;
 
   const dirtyTabs: HTMLElement[] = [];
   for (const tab of document.querySelectorAll<HTMLElement>('.dash-tab')) {
@@ -196,15 +210,23 @@ function refreshUnsavedNotice(): void {
     if (Array.from(panel.querySelectorAll<HTMLFormElement>(GUARDED)).some(isDirty)) dirtyTabs.push(tab);
   }
 
+  // ONE section at a time, always the first in tab order. There used to be a second sentence for
+  // "in more than one place", which existed because the bar ended in a button that could not point
+  // at two forms at once. Now that the section's own NAME is the control, a sentence naming none of
+  // them would be a link with nothing to link to — and the offer bar settled the same question the
+  // same way (FormFallbackGuard#refreshNotice). Deal with this one and the next takes its place.
   noticeTarget = dirtyTabs[0] ?? null;
-  const message = !noticeTarget ? ''
-    : dirtyTabs.length > 1
-      ? i18nDash('unsavedNoticeMany', 'You have unsaved changes in more than one place')
-      : i18nDash('unsavedNotice', 'You have unsaved changes in {section}')
-          .replace('{section}', tabLabel(noticeTarget));
+  const section = noticeTarget ? tabLabel(noticeTarget) : '';
+  const [pre, post] = section
+    ? i18nDash('unsavedNotice', 'You have unsaved changes in {section}').split('{section}')
+    : ['', ''];
 
-  if (msgEl.textContent !== message) msgEl.textContent = message;
-  bar.classList.toggle('!hidden', !message);
+  // Written only when it actually changed: `aria-live="polite"` re-announces an identical sentence
+  // otherwise, and a fixed element rewritten on every keystroke re-runs layout for nothing.
+  if (preEl.textContent !== pre) preEl.textContent = pre;
+  if (linkEl.textContent !== section) linkEl.textContent = section;
+  if (postEl.textContent !== (post ?? '')) postEl.textContent = post ?? '';
+  bar.classList.toggle('!hidden', !section);
 }
 
 /**
@@ -288,6 +310,13 @@ export function initUnsavedGuard(): void {
 
   document.addEventListener('focusin', (e) => remember(e.target), true);
   document.addEventListener('pointerdown', (e) => remember(e.target), true);
+
+  // "This form's fields are ABOUT to be replaced" — fired by the draft restore in
+  // FormFallbackGuard.astro just before it writes. It is a baseline trigger and nothing else: see
+  // `remember` for the case it closes. The mirror event, `dash:fieldsrewritten`, is fired AFTER the
+  // write and is for widgets that have to repaint; this one has to arrive first or it would capture
+  // the recovered values as if they had been saved.
+  document.addEventListener('dash:willrewritefields', (e) => remember(e.target));
 
   // Both phases matter: `remember` above runs in CAPTURE, before the value changes, so a baseline
   // exists; these run in BUBBLE, after it changed, so the notice reflects the new state. `input`

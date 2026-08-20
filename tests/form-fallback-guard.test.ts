@@ -18,6 +18,7 @@ const FOUND = 'unsaved changes from last time';
 const RESTORE = 'restore';
 const DISCARD = 'dismiss';
 const NOTICE = 'unsaved work in {section}';
+const NOT_ON_PAGE = 'not on this page';
 
 /**
  * The <script is:inline define:vars={…}> body, with its vars bound the way Astro binds them.
@@ -29,8 +30,8 @@ function installGuard(): void {
   const file = readFileSync(SOURCE, 'utf8');
   const body = file.match(/<script is:inline define:vars=\{\{[^}]*\}\}>([\s\S]*?)<\/script>/)?.[1];
   if (!body) throw new Error('guard script not found — did the <script is:inline> tag change?');
-  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', body)(
-    MSG, FOUND, RESTORE, DISCARD, NOTICE,
+  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', 'draftOpenFailed', body)(
+    MSG, FOUND, RESTORE, DISCARD, NOTICE, NOT_ON_PAGE,
   );
 }
 installGuard();
@@ -48,8 +49,12 @@ Element.prototype.scrollIntoView = vi.fn();
 /** The floating notice, as the component server-renders it — the script only ever fills it in.
  *  Its two buttons are the same two the in-form bar carries, and they call the same functions. */
 const NOTICE_BAR =
-  `<div id="dash-draft-bar" class="!hidden bottom-6"><span id="dash-draft-msg"></span>` +
-  `<button type="button" id="dash-draft-go" class="!hidden">go</button>` +
+  `<div id="dash-draft-bar" class="!hidden bottom-6">` +
+  // The sentence is three server-rendered pieces, with the section's NAME as the control between
+  // them — there is no "take me there" button beside it any more (owner, סשן א׳ §3).
+  `<span id="dash-draft-msg"><span data-notice-pre></span>` +
+  `<button type="button" id="dash-draft-go" class="!hidden"></button>` +
+  `<span data-notice-post></span></span>` +
   `<button type="button" id="dash-draft-restore" class="!hidden">${RESTORE}</button>` +
   `<button type="button" id="dash-draft-discard" class="!hidden">${DISCARD}</button></div>` +
   // The two mid-task bars it has to stay clear of, in their resting (hidden) state.
@@ -526,8 +531,10 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
 
     expect(noticeShown()).toBe(true);
     expect(noticeText()).toBe('unsaved work in Store settings');
-    // Restoring into a closed panel would be a change with nothing on screen to show for it.
+    // Restoring into a closed panel would be a change with nothing on screen to show for it, so
+    // the only control out is the section's own name.
     expect(noticeButtons()).toEqual(['dash-draft-go']);
+    expect(document.getElementById('dash-draft-go')!.textContent).toBe('Store settings');
 
     let opened = '';
     document.getElementById('tab-settings')!.addEventListener('click', () => { opened = 'tab-settings'; });
@@ -680,7 +687,13 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     expect(noticeShown()).toBe(false);
   });
 
-  it('sits at the bottom, and steps up only when another bar is already there', () => {
+  /**
+   * Where the bar SITS stopped being this script's business on 2026-08-20: it reserved a slot per
+   * bar, which put a bar's worth of empty air in the stack whenever the reserved slot below it was
+   * unfilled (owner, סשן א׳ §3). `scripts/dashboard/bar-stack.ts` computes the offsets from what is
+   * actually on screen; this file must not fight it by toggling a position class of its own.
+   */
+  it('leaves its own position alone — bar-stack.ts owns where it sits', () => {
     leaveDraft();
     renderPanels([
       { tab: 'tab-products', label: 'Products', open: true, form: '' },
@@ -690,16 +703,13 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     document.dispatchEvent(new Event('DOMContentLoaded'));
 
     const notice = document.getElementById('dash-draft-bar')!;
-    // The case that actually happens — a fresh load, nothing else out. It belongs at the bottom.
     expect(notice.classList.contains('bottom-6')).toBe(true);
-    expect(notice.classList.contains('bottom-[9.5rem]')).toBe(false);
 
-    // unsaved-guard.ts raises its own bar once he has edited something; this one has to get out of
-    // the way rather than land on top of it.
     document.getElementById('dash-unsaved-bar')!.classList.remove('!hidden');
     document.dispatchEvent(new Event('DOMContentLoaded'));
-    expect(notice.classList.contains('bottom-[9.5rem]')).toBe(true);
-    expect(notice.classList.contains('bottom-6')).toBe(false);
+    // Still the markup's resting class, untouched — the stack moves it with an inline offset.
+    expect(notice.classList.contains('bottom-6')).toBe(true);
+    expect(notice.className).not.toContain('9.5rem');
   });
 
   it('leaves the values alone when he says no from the bottom bar', () => {

@@ -2383,6 +2383,34 @@ function editToggleBlocked(btn: Element | null | undefined): boolean {
   return true;
 }
 
+/**
+ * Open ONE product's edit row from outside this module, by id.
+ *
+ * The caller is the inline draft guard (components/dashboard/FormFallbackGuard.astro), and the
+ * problem it solves is that a product draft has nowhere to be offered back: the row it belongs to
+ * is closed after a reload, so the seller only meets his own unsaved work if he happens to reopen
+ * that exact product (owner, 2026-08-20). The guard can name the product from the draft itself —
+ * what it cannot do is build the editor, which is this module's job and is deliberately on demand.
+ *
+ * It presses the row's own "ערוך" rather than reimplementing what that press does: the image-panel
+ * lock, the pending-row build, the scroll and the bulk label all hang off that one handler, and a
+ * second way in is a second place for them to be forgotten.
+ *
+ * **False means "not on the table's current page"** — which is a real answer, not a failure: the
+ * table shows one page and the draft may belong to a product three pages away. The caller decides
+ * what to say about that; opening a row that is not on screen is not something this can do.
+ */
+export function openProductEditRow(productId: string): boolean {
+  const toggle = document.querySelector<HTMLButtonElement>(`[data-edit-toggle="${CSS.escape(productId)}"]`);
+  if (!toggle) return false;
+  const row = document.querySelector<HTMLElement>(`[data-product-edit="${CSS.escape(productId)}"]`);
+  // Already open — pressing again would close nothing and rebuild nothing, but `scrollEditRowIntoView`
+  // inside the handler is worth having, so it still goes through the button.
+  if (row && !row.hidden) { scrollEditRowIntoView(row); return true; }
+  toggle.click();
+  return true;
+}
+
 export function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRowElement, cloud: string, preset: string): void {
   originalEditHtml.set(edit, edit.innerHTML);
   const editToggle = display.querySelector('[data-edit-toggle]');

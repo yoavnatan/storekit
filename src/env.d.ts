@@ -34,6 +34,11 @@ interface Window {
    *  the click that opens it — those forms do not exist when the load scan runs. Defined by the
    *  inline <FormFallbackGuard />, which is deliberately outside the module graph. */
   __dashScanDrafts?: (root?: ParentNode) => void;
+  /** Opens one product's inline edit row by id, and answers false when that product is not on the
+   *  table's current page. Published by the products panel's init (seller/dashboard.astro) for the
+   *  inline <FormFallbackGuard />, which knows a draft is waiting for a product but cannot build
+   *  the editor it belongs in — see products.ts#openProductEditRow. */
+  __dashOpenProductEdit?: (productId: string) => boolean;
   /** Re-arms every `[data-sticky-glass]` bar on the page — i.e. gives it back the sentinel that
    *  toggles `.is-stuck` when it pins. Defined by the inline <StickyGlassBoot />, which is
    *  deliberately outside the module graph; only a page that REPLACES a bar's DOM (the /stores

@@ -1006,7 +1006,7 @@ const orderStatusColors: Record<string, string> = {
     <CreateStoreCard first={hasNoStore} error={error} vocabulary={categoryVocabulary} />
   ) : store ? (
   <Fragment>
-  <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} draftNotice={d.draftNotice} goLabel={d.unsavedGo} />
+  <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} draftNotice={d.draftNotice} draftOpenFailed={d.draftOpenFailed} />
   {/* The store's category tree, for every client renderer that has to turn a `categoryId` back into
       a readable path: the products table's chip, its category filter and sort, and the category
       picker inside a product's edit form.
@@ -1310,7 +1310,7 @@ const orderStatusColors: Record<string, string> = {
 
       {/* Raised by unsaved-guard.ts while any dashboard form holds work that has not been saved.
           Each bar owns its own fixed position; they are offset so they cannot overlap. */}
-      <UnsavedChangesBar goLabel={d.unsavedGo} />
+      <UnsavedChangesBar />
 
       <!-- ── Panel: Overview ── -->
       <SellerPanelShell panel="overview" active={shows('overview')} hydrating={false}>
@@ -3660,6 +3660,7 @@ const orderStatusColors: Record<string, string> = {
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks, initStorePreviewLink } from '../../scripts/dashboard/ui.js';
   import { initInfoTooltips } from '../../scripts/tooltip.js';
   import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
+  import { initDashBarStack } from '../../scripts/dashboard/bar-stack.js';
   import { initCopyValueButtons } from '../../scripts/dashboard/copy-value.js';
   import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
   import { initDiscountFields, refreshDiscountFieldsIn } from '../../scripts/dashboard/discount-field.js';
@@ -3694,6 +3695,10 @@ const orderStatusColors: Record<string, string> = {
   // registered exactly once.
   initDiscountFields();
   initUnsavedGuard();
+  // The three floating notices are raised by three unrelated owners (one of them the inline draft
+  // guard); this is the one thing that knows where each of them SITS, so that two showing at once
+  // stack tight and one showing alone sits on the bottom edge.
+  initDashBarStack();
   // Delegated, so it covers the copy button in the header AND the ones in the settings panel,
   // which only exists after the click that opens it.
   initCopyValueButtons();
@@ -3894,6 +3899,9 @@ const orderStatusColors: Record<string, string> = {
       // the reason a widget in some other panel appears to work.
       document.querySelectorAll<Element>('#dash-panel-products .gallery-widget').forEach((g) => gallery.initGalleryWidget(g));
       p.bindExistingRows(CLOUD, PRESET);
+      // The inline draft guard's way in: it can tell the seller a product has unsaved work waiting
+      // from last time, but only this panel can open the row it belongs in.
+      window.__dashOpenProductEdit = p.openProductEditRow;
       // Scoped to THIS panel, and that is part of the fix rather than a tidy-up: while it swept the
       // whole document it also bound the pickers of two panels that wire none of their own, so
       // those worked or did not depending on which tab the seller opened first — and in the

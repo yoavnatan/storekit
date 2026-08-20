@@ -517,9 +517,14 @@ export const translations = {
       // The floating notice for an offer sitting in a tab he is not looking at. {section} is the
       // tab's own label, read at runtime — never a second name for the panel that could drift.
       draftNotice: 'יש שינויים שלא הספקת לשמור ב{section}',
-      // Said only when the form is in a tab he is NOT in — there the notice leads him over
-      // (`unsavedGo`) instead of answering. In his own tab it is `draftFound` + `draftRestore` /
-      // `draftDiscard`, word for word the bar inside the form. FormFallbackGuard's `refreshNotice`.
+      // A product draft has no form waiting for it after a reload — the row is closed. The notice
+      // names the product and opens its editor; this is what it says when that product is not on
+      // the page the table is currently showing. Nothing is lost, so it says that too.
+      draftOpenFailed: 'המוצר לא נמצא בעמוד הזה של הרשימה. חפש אותו והשחזור יוצע שוב.',
+      // Said only when the form is in a tab he is NOT in — there the section's NAME inside the
+      // sentence is what leads him over, instead of the notice answering for him. In his own tab it
+      // is `draftFound` + `draftRestore` / `draftDiscard`, word for word the bar inside the form.
+      // FormFallbackGuard's `refreshNotice`.
       storeOverview: 'סקירת חנות',
       products: 'מוצרים',
       inStock: 'במלאי',
@@ -581,9 +586,10 @@ export const translations = {
       // The floating "not saved yet" notice (UnsavedChangesBar). A sentence, not a marker: the
       // seller has never met an editor's unsaved-document convention and a symbol can only puzzle
       // them. {section} is the tab's own label, so no section needs a second name here.
+      // ONE section at a time, always the first: the name is the CONTROL, so a "more than one
+      // place" wording would be a link with nothing to link to. Answer it and the next takes its
+      // place. The "קח אותי לשם" button beside it went the same day, for the same reason.
       unsavedNotice: 'יש שינויים שלא שמרת ב{section}',
-      unsavedNoticeMany: 'יש שינויים שלא שמרת ביותר ממקום אחד',
-      unsavedGo: 'קח אותי לשם',
       discardChanges: 'בטל שינויים',
       discardTitle: 'לבטל את השינויים?',
       discardMsg: 'כל מה ששינית מאז השמירה האחרונה יחזור לקדמותו.',
@@ -2666,6 +2672,7 @@ export const translations = {
       draftRestore: 'Restore them',
       draftDiscard: 'Delete them',
       draftNotice: 'You have unsaved changes from last time in {section}',
+      draftOpenFailed: 'That product is not on this page of the list. Find it and the draft will be offered again.',
       storeOverview: 'Store overview',
       products: 'Products',
       inStock: 'In stock',
@@ -2716,8 +2723,6 @@ export const translations = {
       removingBg: 'Removing background',
       removeBackgroundFailed: 'We couldn’t remove the background. Please try again.',
       unsavedNotice: 'You have unsaved changes in {section}',
-      unsavedNoticeMany: 'You have unsaved changes in more than one place',
-      unsavedGo: 'Take me there',
       discardChanges: 'Discard changes',
       discardTitle: 'Discard your changes?',
       discardMsg: 'Everything you changed since the last save will go back to how it was.',

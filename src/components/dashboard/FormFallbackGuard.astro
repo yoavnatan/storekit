@@ -76,12 +76,14 @@ interface Props {
   draftRestore: string;
   draftDiscard: string;
   /** The floating notice, when the offer is in a tab he is NOT in: it names the section
-   *  (`{section}` is the tab's own label) and leads him there instead of answering for him. */
+   *  (`{section}` is the tab's own label, and it is the CONTROL that leads him there — see the
+   *  markup) instead of answering for him. */
   draftNotice: string;
-  /** That button. `unsavedGo` — "קח אותי לשם", the words the site already owns for the act. */
-  goLabel: string;
+  /** Said when the product a waiting draft belongs to is not on the table's page — the draft is
+   *  kept and offered again the moment that row comes up. */
+  draftOpenFailed: string;
 }
-const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } = Astro.props;
+const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftOpenFailed } = Astro.props;
 ---
 
 {/* The offer he would otherwise miss. Server-rendered and hidden rather than injected by the
@@ -92,14 +94,14 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
     `!hidden`, not the `hidden` attribute: this is display:flex and a flex utility beats the
     attribute's display:none (the trap is documented across the dashboard).
 
-    **It sits at the BOTTOM, and only steps up when it would land on another bar.** The first
-    version parked it permanently in a third slot above UnsavedChangesBar (bottom-6) and
-    StaleDataBar (bottom-[5.5rem]) — which meant that in the ONLY case that actually happens, this
-    bar alone on a fresh load, it floated a third of the way up the phone for no visible reason
-    (owner, 2026-08-07: "פתאום עלתה למעלה, היא אמורה להיות בתחתית"). The other two are mid-task
-    notices raised by a module; this one is raised at load, so the overlap needs the seller to have
-    ALSO started editing elsewhere while leaving the offer unanswered. Paying for that case with the
-    common one was the wrong way round. `refreshNotice` picks between the two positions.
+    **It sits at the BOTTOM** — the common case is this bar alone on a fresh load, and the first
+    version's permanent third slot floated it a third of the way up the phone for no visible reason
+    (owner, 2026-08-07: "פתאום עלתה למעלה, היא אמורה להיות בתחתית"). It used to step over BOTH
+    reserved slots when either of the other two was out, which left an empty bar's worth of air
+    whenever only the lower one was filled (owner, סשן א׳ §3). The offsets are now computed from
+    what is actually on screen — `scripts/dashboard/bar-stack.ts` — and this markup only carries the
+    resting value, which is also the right answer on the dead-module-graph load this component
+    exists for, where no other bar can appear.
 
     Still positions ITSELF rather than sharing a stack container — the elevation guard wants the
     element casting a shadow to declare that it floats, and an ancestor cannot vouch for it. */}
@@ -112,16 +114,27 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
   <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
   </svg>
-  <span id="dash-draft-msg"></span>
+  {/* Three server-rendered pieces, filled by `refreshNotice` — so the section's name can be the
+      control that leads him there without any script building markup. It replaced a "קח אותי לשם"
+      button beside the sentence (owner, סשן א׳ §3): the sentence already names the one place the
+      press could mean, and two bars can be out at once, each ending in the same three words. */}
+  <span id="dash-draft-msg">
+    <span data-notice-pre></span
+    ><button
+      type="button"
+      id="dash-draft-go"
+      class="!hidden p-0 bg-transparent border-0 font-[inherit] text-[inherit] cursor-pointer underline underline-offset-[3px] [color:var(--color-text)] transition-colors duration-100 hover:[color:var(--color-primary)]"
+    ></button
+    ><span data-notice-post></span>
+  </span>
   {/* Which of these is out depends on WHERE the offer is, not on which bar is showing — see
-      `refreshNotice`. All three carry `!hidden` rather than the `hidden` attribute for the usual
+      `refreshNotice`. All carry `!hidden` rather than the `hidden` attribute for the usual
       reason: `.btn` is display:inline-flex and beats the attribute's display:none. */}
-  <button type="button" id="dash-draft-go" class="!hidden btn btn--sm shrink-0">{goLabel}</button>
   <button type="button" id="dash-draft-restore" class="!hidden btn btn--sm shrink-0">{draftRestore}</button>
   <button type="button" id="dash-draft-discard" class="!hidden btn btn--ghost btn--sm shrink-0">{draftDiscard}</button>
 </div>
 
-<script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice }}>
+<script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice, draftOpenFailed }}>
   (function () {
     var PREFIX = 'dz-draft:';
     var MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -342,6 +355,13 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
     /** Returns the FIRST element it actually changed, so the caller can put THAT in front of him
      *  rather than the form. See `reveal`. */
     function apply(form, values) {
+      // BEFORE anything moves: what is in these fields right now is what was last saved, and the
+      // moment the draft lands on top of it this form holds unsaved work. The unsaved guard takes
+      // its baseline on the first focus/pointer press inside the form, which a restore pressed on
+      // the FLOATING notice never produces — so it had no baseline, `isDirty` answered false, and
+      // walking to another tab said nothing about work that had just been put back (owner,
+      // סשן א׳ §1). unsaved-guard.ts#remember owns the other half.
+      form.dispatchEvent(new CustomEvent('dash:willrewritefields', { bubbles: true }));
       var firstChanged = null;
       for (var i = 0; i < form.elements.length; i++) {
         var el = form.elements[i];
@@ -377,6 +397,18 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       bar.className = 'flex items-center gap-2 flex-wrap mb-3 py-2 px-2.5 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] text-[0.82rem]';
       bar.setAttribute('role', 'status');
 
+      // The same mark its floating twin carries, in the same warning colour. The bar was a line of
+      // plain text on a plain surface inside a form full of plain text on the same surface, and it
+      // read as part of the form (owner, סשן א׳ §2: *"לא מספיק נראית לעין"*) — an icon is the one
+      // thing on that row that is not a sentence, so it is what the eye lands on. It is the CLOCK,
+      // not the floppy: this bar offers work back from last time, it does not ask for a save.
+      // `innerHTML` on a constant, because an inline script cannot import and createElementNS for
+      // four paths would bury the meaning.
+      var icon = document.createElement('span');
+      icon.className = 'shrink-0 inline-flex [color:var(--color-warning)]';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = '<svg class="max-w-none" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>';
+
       var text = document.createElement('span');
       text.className = 'flex-1 min-w-0';
       text.textContent = draftFound;
@@ -394,6 +426,7 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       yes.addEventListener('click', function () { acceptOffer(key); });
       no.addEventListener('click', function () { rejectOffer(key); });
 
+      bar.appendChild(icon);
       bar.appendChild(text);
       bar.appendChild(yes);
       bar.appendChild(no);
@@ -472,10 +505,143 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       else target.scrollIntoView({ block: 'center' });
     }
 
+    /* ---- drafts with no form to be offered into ---- */
+
+    /**
+     * A draft whose form is not on this page, by storage key → `{ record, label }`.
+     *
+     * Everything above assumes the form the draft belongs to is here to receive it. For the store
+     * settings that is true; for a PRODUCT it is the exception. The inline editor is one row of a
+     * table, closed by default and built only when the seller opens it — so a reload left his own
+     * typing sitting in localStorage with nothing on the page to offer it back, and he met it again
+     * only if he happened to reopen that exact product (owner, 2026-08-20: *"אי אפשר לדעת בעצם
+     * אחרי ריענון מה היה פתוח קודם וההודעה של השינוי בכלל לא מופיעה"*).
+     *
+     * **What this deliberately does NOT do is open anything to find out.** Fifty products could
+     * have been edited; building fifty editors to ask fifty questions would be the cost he was
+     * right to be afraid of. The draft already carries what the notice needs — the product's name,
+     * as the server rendered it, in the draft's own `base` — so the whole scan is one pass over
+     * localStorage (a handful of keys, synchronous, once per load) and no DOM at all. A row is
+     * built only when he presses the notice, and then exactly one.
+     */
+    var orphans = {};
+
+    /** Did the seller actually change anything, measured against what the page had rendered? The
+     *  on-page path asks this of the live form (`edits`); with no form, `base` is the only witness —
+     *  and a draft written before `base` existed is offered rather than silently dropped. */
+    function draftHasEdits(draft) {
+      if (!draft.base) return true;
+      for (var k in draft.values) {
+        if (JSON.stringify(draft.base[k]) !== JSON.stringify(draft.values[k])) return true;
+      }
+      return false;
+    }
+
+    /** What to call the product in the sentence: its name as the SERVER had it, so the notice says
+     *  where the work belongs rather than what the half-finished edit renamed it to. */
+    function draftLabel(draft) {
+      var from = draft.base && draft.base['name#0'] ? draft.base : draft.values;
+      var field = from && from['name#0'];
+      return field && typeof field.v === 'string' ? field.v.trim() : '';
+    }
+
+    /**
+     * Forget the orphans whose form has since arrived — the cheap half, and the one that runs often.
+     *
+     * `scanOrphans` reads localStorage; this reads a map already in memory. The distinction is the
+     * whole performance answer: the SCAN happens once per page load, while this runs every time a
+     * panel is filled or an edit row is opened, which on a busy afternoon is dozens of times. A
+     * re-scan there would re-parse every stored draft on each of them, for an answer that can only
+     * have changed in one direction.
+     */
+    function pruneOrphans() {
+      for (var k in orphans) if (claimedKeys[k] && claimedKeys[k].isConnected) delete orphans[k];
+    }
+
+    function scanOrphans() {
+      orphans = {};
+      var store = (document.getElementById('upload-config') || { dataset: {} }).dataset.storeId || '';
+      if (!store) return;
+      // Product editors only. Every other guarded form on this dashboard is a single form inside a
+      // panel, so its draft is offered the moment that panel is filled; the inline row is the one
+      // that has to be asked for by name.
+      var prefix = PREFIX + store + ':/api/product:';
+      var keys = [];
+      try { for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); }
+      catch { return; }   // private mode — there was never a draft to find
+      for (var n = 0; n < keys.length; n++) {
+        var key = keys[n];
+        if (!key || key.indexOf(prefix) !== 0) continue;
+        var record = key.slice(prefix.length);
+        // No id at all is the ADD-product form (`keyFor` falls back to the store), and an ordinal
+        // suffix means a second editor for the same product — neither is a row this can open.
+        if (!record || record === store || record.indexOf('#') >= 0) continue;
+        // Its form IS here: the ordinary path already owns it, and two bars asking about one draft
+        // is exactly the duplication the notice was cleaned up to avoid.
+        if (claimedKeys[key] && claimedKeys[key].isConnected) continue;
+        var draft;
+        try { draft = JSON.parse(localStorage.getItem(key)); }
+        catch (err) { try { localStorage.removeItem(key); } catch (e2) { /* ignore */ } continue; }
+        if (!draft || !draft.values || Date.now() - (draft.at || 0) > MAX_AGE) {
+          try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
+          continue;
+        }
+        var label = draftLabel(draft);
+        // Nothing edited, or nothing to call it by: either way there is no sentence worth writing,
+        // and a notice pointing at "" is worse than none.
+        if (!label || !draftHasEdits(draft)) continue;
+        orphans[key] = { record: record, label: label };
+      }
+    }
+
+    /**
+     * Press the name in the notice: open the product's editor, and stop there.
+     *
+     * The offer itself is then raised by the ordinary path — `ensureEditRow` hands the new row to
+     * `__dashScanDrafts`, which finds this very draft and puts the bar inside the form. So nothing
+     * here restores anything: the decision belongs on the bar he can see, exactly as it does for an
+     * offer sitting in another tab.
+     *
+     * The retry is for the panel, not the row: on a load into any other tab the Products panel has
+     * never been filled, so the tab click above starts a fetch and neither the rows nor
+     * `__dashOpenProductEdit` exist for a moment.
+     */
+    var openingOrphan = '';
+    function openOrphan(key) {
+      var o = orphans[key];
+      // `openingOrphan`: a second press while the panel is still arriving would start a second
+      // retry loop, and two of them reaching the end is two identical toasts about one product.
+      if (!o || openingOrphan === key) return;
+      openingOrphan = key;
+      var tab = document.querySelector('[role="tab"][data-panel="products"]');
+      if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
+      var tries = 0;
+      (function attempt() {
+        if (window.__dashOpenProductEdit && window.__dashOpenProductEdit(o.record)) {
+          // The row's own arrival already handed it to `__dashScanDrafts`, which pruned this key —
+          // all that is left is to redraw the notice around whatever is still waiting.
+          openingOrphan = '';
+          refreshNotice();
+          return;
+        }
+        if (++tries > 40) {
+          openingOrphan = '';
+          // Not on the page the table is showing. Saying so is the honest end: the draft is still
+          // there, and it is offered the moment that product's row comes up.
+          window.dispatchEvent(new CustomEvent('toast:show', { detail: { title: draftOpenFailed, body: '', duration: 7000 } }));
+          return;
+        }
+        setTimeout(attempt, 100);
+      })();
+    }
+
     /* ---- the floating notice: an offer he cannot see says so from the bottom of every tab ---- */
 
     /** Which offer the notice is currently pointing at, and therefore where its button goes. */
     var noticeTarget = null;
+    /** …or, when no offer is out, which orphan draft it is naming (a storage key). Exactly one of
+     *  the two is ever set — see `refreshNotice`. */
+    var noticeOrphan = null;
 
     function panelOf(form) {
       return form.closest ? form.closest('.dash-panel') : null;
@@ -547,31 +713,49 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
        *    a change with nothing on screen to show for it. It names the section and LEADS him
        *    there; the bar inside that form does the asking, once he can see what it is asking about.
        */
-      var away = !!(noticeTarget && (function (p) { return p && p.hidden; })(panelOf(noticeTarget.form)));
-      var section = away ? sectionOf(noticeTarget.form) : '';
+      // "Away" means BOTH that the form is out of sight and that there is a name to send him by —
+      // since the name is now the only control this bar carries in that state, a hidden panel it
+      // cannot name would leave a sentence with nothing to press. That form is then treated as one
+      // he can reach, which is the lesser wrong: the answer buttons are at least an answer.
+      var awayForm = noticeTarget && (function (p) { return p && p.hidden; })(panelOf(noticeTarget.form));
+      var away = !!(awayForm && sectionOf(noticeTarget.form));
+      // A draft with no form at all is the third case, and it comes LAST: an offer already on
+      // screen is one the seller can answer in a press, while this one costs him a row being built.
+      // Same sentence and the same shape as "in another tab", because it is the same statement —
+      // there is work over there, and the name is the way to it. `{section}` is the product's name
+      // here rather than a tab's, which reads as the same sentence and needs no second wording.
+      noticeOrphan = null;
+      if (!noticeTarget) for (var ok in orphans) { noticeOrphan = ok; break; }
       // A form outside the tab shell has no section to name; the plain sentence still says the one
       // thing that matters, which is that something is waiting.
-      var message = !noticeTarget ? ''
-        : section ? draftNotice.replace('{section}', section) : draftFound;
-      if (msgEl.textContent !== message) msgEl.textContent = message;
-      bar.classList.toggle('!hidden', !message);
-      toggleBtn('dash-draft-go', !!message && away);
-      toggleBtn('dash-draft-restore', !!message && !away);
-      toggleBtn('dash-draft-discard', !!message && !away);
+      var section = noticeOrphan ? orphans[noticeOrphan].label : (away ? sectionOf(noticeTarget.form) : '');
 
-      // The bottom slot is this bar's home; it only steps clear when one of the mid-task bars is
-      // actually out. One step over BOTH of them rather than arithmetic per bar — the gap when only
-      // the lower one is showing costs nothing, and a rule with no arithmetic in it cannot land this
-      // on top of another bar. Both class names are written out in full so Tailwind's scanner, which
-      // reads this file as text, generates them (a computed string would produce neither).
-      var others = ['dash-unsaved-bar', 'dash-stale-bar'];
-      var stacked = false;
-      for (var i = 0; i < others.length; i++) {
-        var el = document.getElementById(others[i]);
-        if (el && !el.classList.contains('!hidden')) stacked = true;
-      }
-      bar.classList.toggle('bottom-6', !stacked);
-      bar.classList.toggle('bottom-[9.5rem]', stacked);
+      var anything = !!noticeTarget || !!noticeOrphan;
+      // Two shapes for one sentence: with a name it is "…ב<name>", and the NAME is the control that
+      // leads him there; without one (same tab, or a form outside the tab shell) it is the plain
+      // offer and the two answer buttons. `pre`/`post` are the sentence either side of the name, so
+      // nothing here builds markup — see the three spans above.
+      var pre = !anything ? '' : section ? draftNotice.split('{section}')[0] : draftFound;
+      var post = anything && section ? (draftNotice.split('{section}')[1] || '') : '';
+      setText('dash-draft-msg', '[data-notice-pre]', pre);
+      setText('dash-draft-msg', '[data-notice-post]', post);
+      var link = document.getElementById('dash-draft-go');
+      if (link && link.textContent !== section) link.textContent = section;
+      bar.classList.toggle('!hidden', !anything);
+      toggleBtn('dash-draft-go', anything && !!section);
+      toggleBtn('dash-draft-restore', !!noticeTarget && !away);
+      toggleBtn('dash-draft-discard', !!noticeTarget && !away);
+      // Where the bar SITS is scripts/dashboard/bar-stack.ts's answer, not this one's: it watches
+      // the `!hidden` toggles above and packs whatever is out against the bottom edge. Reserving a
+      // slot per bar from here was what left a gap when the slot below was empty.
+    }
+
+    /** One piece of the assembled sentence. Only ever writes when it changed — `aria-live="polite"`
+     *  re-announces an identical line otherwise, and this runs on every scroll frame. */
+    function setText(barId, sel, text) {
+      var el = document.getElementById(barId);
+      var part = el && el.querySelector(sel);
+      if (part && part.textContent !== text) part.textContent = text;
     }
 
     /** Cheap enough per call (one rect per offer, and there are at most a handful), but it runs on
@@ -616,13 +800,17 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
         var btn = document.getElementById(pairs[i][0]);
         if (!btn || btn.hasAttribute('data-wired')) continue;
         btn.setAttribute('data-wired', '');
-        btn.addEventListener('click', (function (act) {
+        btn.addEventListener('click', (function (act, id) {
           return function () {
+            // The name is one control with two possible subjects: an offer already on the page, or
+            // a draft whose form still has to be opened. `refreshNotice` guarantees only one of
+            // them is set, so this cannot be ambiguous.
+            if (id === 'dash-draft-go' && noticeOrphan) { openOrphan(noticeOrphan); return; }
             var o = noticeTarget;
             if (!o) return;
             act(keyFor(o.form));
           };
-        })(pairs[i][1]));
+        })(pairs[i][1], pairs[i][0]));
       }
     }
 
@@ -720,7 +908,7 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
      *  does not put a scroll listener on the page. */
     var noticeWatched = false;
     function watchNotice() {
-      if (!Object.keys(offers).length) return;
+      if (!Object.keys(offers).length && !Object.keys(orphans).length) return;
       refreshNotice();
       // The listeners below are on `window`/`document` and outlive any one panel, so they are
       // registered once — but the refresh above is not: a panel filled later can produce the offer
@@ -750,6 +938,9 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
      */
     window.__dashScanDrafts = function (root) {
       scanForms(root || document);
+      // A panel or a row that just arrived may be the home of a draft this was naming from the
+      // outside a moment ago — that draft now has a form, and its own bar takes over.
+      pruneOrphans();
       watchNotice();
     };
 
@@ -764,6 +955,7 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       var seen = document.querySelectorAll('form[data-draft-live]');
       for (var s = 0; s < seen.length; s++) seen[s].removeAttribute('data-draft-live');
       scanForms(document);
+      scanOrphans();
       watchNotice();
     });
   })();
