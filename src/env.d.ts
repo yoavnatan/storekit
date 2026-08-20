@@ -39,6 +39,13 @@ interface Window {
    *  inline <FormFallbackGuard />, which knows a draft is waiting for a product but cannot build
    *  the editor it belongs in — see products.ts#openProductEditRow. */
   __dashOpenProductEdit?: (productId: string) => boolean;
+  /** The product ids whose unsaved draft has no form on this page — what the products table marks,
+   *  so the seller can see every one of them at once instead of meeting them one notice at a time.
+   *  Defined by the inline <FormFallbackGuard />. */
+  __dashDraftProducts?: () => string[];
+  /** Redraws those marks. Published by the products panel; the draft guard calls it whenever the
+   *  set changes, and the table calls it itself after any redraw of its rows. */
+  __dashMarkDraftRows?: () => void;
   /** Re-arms every `[data-sticky-glass]` bar on the page — i.e. gives it back the sentinel that
    *  toggles `.is-stuck` when it pins. Defined by the inline <StickyGlassBoot />, which is
    *  deliberately outside the module graph; only a page that REPLACES a bar's DOM (the /stores

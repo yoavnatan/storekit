@@ -29,14 +29,16 @@ const RESTORE = 'restore';
 const DISCARD = 'discard';
 const NOTICE = 'unsaved work in {section}';
 const NOT_ON_PAGE = 'not on this page';
+const MORE_ONE = ' and one more';
+const MORE_N = ' and {count} more';
 
 /** The shipped inline script, with its vars bound the way Astro binds them — never a copy. */
 function installGuard(): void {
   const file = readFileSync(SOURCE, 'utf8');
   const body = file.match(/<script is:inline define:vars=\{\{[^}]*\}\}>([\s\S]*?)<\/script>/)?.[1];
   if (!body) throw new Error('guard script not found — did the <script is:inline> tag change?');
-  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', 'draftOpenFailed', body)(
-    'blocked', FOUND, RESTORE, DISCARD, NOTICE, NOT_ON_PAGE,
+  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', 'draftOpenFailed', 'draftNoticeMoreOne', 'draftNoticeMore', body)(
+    'blocked', FOUND, RESTORE, DISCARD, NOTICE, NOT_ON_PAGE, MORE_ONE, MORE_N,
   );
 }
 Element.prototype.scrollIntoView = vi.fn();

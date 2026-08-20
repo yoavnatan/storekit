@@ -22,13 +22,15 @@ const SOURCE = resolve(process.cwd(), 'src/components/dashboard/FormFallbackGuar
 const FOUND = 'draft found';
 const NOTICE = 'unsaved work in {section}';
 const NOT_ON_PAGE = 'not on this page';
+const MORE_ONE = ' and one more';
+const MORE_N = ' and {count} more';
 
 function installGuard(): void {
   const file = readFileSync(SOURCE, 'utf8');
   const body = file.match(/<script is:inline define:vars=\{\{[^}]*\}\}>([\s\S]*?)<\/script>/)?.[1];
   if (!body) throw new Error('guard script not found — did the <script is:inline> tag change?');
-  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', 'draftOpenFailed', body)(
-    'blocked', FOUND, 'restore', 'discard', NOTICE, NOT_ON_PAGE,
+  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', 'draftOpenFailed', 'draftNoticeMoreOne', 'draftNoticeMore', body)(
+    'blocked', FOUND, 'restore', 'discard', NOTICE, NOT_ON_PAGE, MORE_ONE, MORE_N,
   );
 }
 Element.prototype.scrollIntoView = vi.fn();
@@ -161,6 +163,37 @@ describe('a draft with no form on the page', () => {
     expect(toasts).toEqual([NOT_ON_PAGE]);
     // Nothing was thrown away — the draft is still there for the load that does show that row.
     expect(localStorage.getItem(key('p1'))).not.toBe(null);
+  });
+
+  it('says how many others are waiting, so the count is not something he has to count', () => {
+    leaveProductDraft('p1', '\u05db\u05d9\u05e1\u05d0 \u05e2\u05e5', 'edited');
+    leaveProductDraft('p2', 'shirt', 'edited');
+    leaveProductDraft('p3', 'hat', 'edited');
+    load();
+    // One is named — that is the one the press opens — and the rest are a number, because the marks
+    // that show WHICH ones live in the products table and he may be reading this from any tab.
+    expect(noticeText().endsWith(MORE_N.replace('{count}', '2').trim())).toBe(true);
+  });
+
+  it('says "one more" rather than "1 more" — a count of one is not a plural', () => {
+    leaveProductDraft('p1', '\u05db\u05d9\u05e1\u05d0 \u05e2\u05e5', 'edited');
+    leaveProductDraft('p2', 'shirt', 'edited');
+    load();
+    expect(noticeText().endsWith(MORE_ONE.trim())).toBe(true);
+  });
+
+  it('adds nothing when only one product is waiting', () => {
+    leaveProductDraft('p1', '\u05db\u05d9\u05e1\u05d0 \u05e2\u05e5', 'edited');
+    load();
+    expect(noticeText()).toBe('unsaved work in \u05db\u05d9\u05e1\u05d0 \u05e2\u05e5');
+  });
+
+  it('hands the ids to the products table so it can mark the rows', () => {
+    leaveProductDraft('p1', 'a', 'edited');
+    leaveProductDraft('p2', 'b', 'edited');
+    load();
+    const w = window as unknown as { __dashDraftProducts?: () => string[] };
+    expect((w.__dashDraftProducts?.() ?? []).sort()).toEqual(['p1', 'p2']);
   });
 
   it('reads localStorage ONCE per load, not once per row the seller opens', () => {

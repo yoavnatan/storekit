@@ -244,11 +244,35 @@ function featureHintText(i: Record<string, string>): string {
 }
 function getGalleryI18n() { return getRawI18n().gallery ?? {}; }
 
+/**
+ * Every edit row currently open, whoever opened it — the row menu's own "ערוך" or the toolbar.
+ *
+ * The CLOSE half acts on all of them. It used to act on the selection, so a row the seller had
+ * opened from its own menu was invisible to it — the button said "סגור עריכה", he pressed it, and
+ * one editor stayed open with nothing on the toolbar able to reach it (owner, 2026-08-20:
+ * *"יכול להיות שהיוזר רוצה בכלל לסגור את כולם"*).
+ *
+ * **Opening and closing are not symmetrical, on purpose:** you open what you PICKED, because that
+ * is a choice about which products, and you close what is OPEN, because "close editing" is a
+ * statement about the table. Which of the two words the button shows still comes from the selection
+ * (`refreshBulkEditLabel`) — otherwise a row opened from a menu would turn the button into "סגור
+ * עריכה" before he had opened anything he chose, costing him a press.
+ */
+function openEditRows(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-product-edit]'))
+    .filter((row) => !row.hidden);
+}
+
 // Re-derives the bulk-edit button's "ערוך"/"סגור עריכה" label from actual row state (which
 // selected products currently have their edit row open) rather than trusting whatever it was
 // last set to — a row can close via its own save/cancel, not just via this button, and the
 // label needs to reflect that too. Reads the ticked checkboxes rather than the shared
 // selection, on purpose: only a rendered row can have an edit row open at all.
+//
+// **The SELECTION decides which of the two words it shows, and that is not the same set the close
+// half acts on** (see `openEditRows`). It has to be the selection, or a row the seller opened from
+// its own menu would flip this button to "סגור עריכה" before he had opened anything he picked —
+// costing him a press that closes something else instead of opening what he just chose.
 function refreshBulkEditLabel(): void {
   const bulkEditBtn = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
   const bulkEditLabel = document.getElementById('bulk-edit-label') as HTMLElement | null;
@@ -2384,6 +2408,43 @@ function editToggleBlocked(btn: Element | null | undefined): boolean {
 }
 
 /**
+ * Mark the rows whose product has unsaved work waiting from a previous page life.
+ *
+ * The draft guard knows WHICH products (`__dashDraftProducts` — one localStorage pass at load, no
+ * DOM), and the notice at the bottom can only name one of them at a time. This is the other half:
+ * a mark on the row itself, so a seller with several waiting sees all of them at once, in the list
+ * he already knows, and opens whichever he wants (owner, 2026-08-20 — the alternative, one press
+ * opening all twenty editors, was measured at ~950ms of frozen page and a document 42 screens long,
+ * with twenty bars still to answer).
+ *
+ * The mark is a BUTTON, not a chip: the only thing to do about it is open that row, and a passive
+ * icon would leave the seller looking for the way in. It is drawn here rather than in `buildRows`
+ * because the state is localStorage's — the server has no idea a draft exists, and the first page
+ * of rows is server-rendered.
+ */
+export function markDraftRows(): void {
+  const waiting = new Set(window.__dashDraftProducts?.() ?? []);
+  for (const row of document.querySelectorAll<HTMLElement>('[data-product-display]')) {
+    const productId = row.dataset.productDisplay ?? '';
+    const existing = row.querySelector<HTMLElement>('[data-draft-mark]');
+    if (!waiting.has(productId)) { existing?.remove(); continue; }
+    if (existing) continue;
+    const name = row.querySelector('.product-name');
+    if (!name) continue;
+    const i = getDashI18n();
+    const mark = document.createElement('button');
+    mark.type = 'button';
+    mark.dataset.draftMark = productId;
+    mark.className = 'inline-flex items-center align-middle ms-1 p-0 bg-transparent border-0 cursor-pointer [color:var(--color-warning)] transition-opacity duration-100 opacity-80 hover:opacity-100';
+    const label = i.draftRowMark ?? 'יש שינויים שלא הספקת לשמור';
+    mark.title = label;
+    mark.setAttribute('aria-label', label);
+    mark.innerHTML = '<svg class="max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>';
+    name.after(mark);
+  }
+}
+
+/**
  * Open ONE product's edit row from outside this module, by id.
  *
  * The caller is the inline draft guard (components/dashboard/FormFallbackGuard.astro), and the
@@ -2409,6 +2470,16 @@ export function openProductEditRow(productId: string): boolean {
   if (row && !row.hidden) { scrollEditRowIntoView(row); return true; }
   toggle.click();
   return true;
+}
+
+/** The marks' one action, delegated at the document so a rebuilt table needs no rewiring. */
+export function initDraftMarks(): void {
+  window.__dashMarkDraftRows = markDraftRows;
+  document.addEventListener('click', (e) => {
+    const mark = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-draft-mark]');
+    if (mark) openProductEditRow(mark.dataset.draftMark ?? '');
+  });
+  markDraftRows();
 }
 
 export function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRowElement, cloud: string, preset: string): void {
@@ -2897,6 +2968,9 @@ export async function applyPagination(): Promise<void> {
     initThumbs(display);
   });
   tbody.replaceChildren(rows);
+  // Every row here is brand new, so the marks for waiting drafts have to be drawn again — they are
+  // localStorage's state, which `buildRows` knows nothing about.
+  markDraftRows();
   // Chips can only be measured once they are in the document — see initCategoryChipTips.
   initCategoryChipTips(tbody);
   // Every row above is brand new and therefore unticked — re-apply the live
@@ -4066,28 +4140,35 @@ export function initBulkSelect(cloud: string, preset: string): void {
     updateBar();
   }
 
-  // Bulk edit — toggle: if any selected edit row is open → close all; else open all
+  // Bulk edit — a toggle whose two halves have different subjects (see `openEditRows`): anything
+  // open → close EVERYTHING open; nothing open → open the selection.
   bulkEditBtn?.addEventListener('click', () => {
     const ids = selectedRowIds();
     if (!ids.length) return;
+    // Decided by the SELECTION, acted out on everything open — see `openEditRows` for why.
     const anyOpen = ids.some((productId) =>
       !(document.querySelector<HTMLElement>(`[data-product-edit="${productId}"]`)?.hidden ?? true)
     );
     let firstRow: HTMLElement | undefined;
-    ids.forEach((productId) => {
-      const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
+    if (anyOpen) {
+      // Hidden, not rebuilt: whatever the seller typed stays in the fields, so reopening the row
+      // shows it again. Throwing it away is what the row's own "ביטול" is for, and that one says so
+      // (`restoreEditRow` drops the stored draft with it).
+      openEditRows().forEach((editRow) => {
+        const productId = editRow.getAttribute('data-product-edit') ?? '';
+        editRow.hidden = true;
+        const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(productId)}"]`);
+        if (displayRow) displayRow.hidden = false;
+      });
+    } else ids.forEach((productId) => {
+      const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(productId)}"]`);
       // Through `ensureEditRow`, like the row menu's own "ערוך": the server does not render these
       // forms any more, so opening one straight off the DOM would show an empty row.
       const editRow    = ensureEditRow(productId, cloud, preset);
       if (displayRow && editRow) {
-        if (anyOpen) {
-          editRow.hidden = true;
-          displayRow.hidden = false;
-        } else {
-          displayRow.hidden = true;
-          editRow.hidden = false;
-          if (!firstRow) firstRow = editRow;
-        }
+        displayRow.hidden = true;
+        editRow.hidden = false;
+        if (!firstRow) firstRow = editRow;
       }
     });
     refreshBulkEditLabel();

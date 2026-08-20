@@ -521,6 +521,13 @@ export const translations = {
       // names the product and opens its editor; this is what it says when that product is not on
       // the page the table is currently showing. Nothing is lost, so it says that too.
       draftOpenFailed: 'המוצר לא נמצא בעמוד הזה של הרשימה. חפש אותו והשחזור יוצע שוב.',
+      // The mark on the product's own row in the table. The notice at the bottom can name only one
+      // product at a time; this is how several of them are one glance instead of one round each.
+      draftRowMark: 'יש שינויים שלא הספקת לשמור',
+      // Said after the product's name when more are waiting: the notice leads him to one, the marks
+      // in the table show him the rest. Two forms, because "ובעוד 1 מוצרים" is not Hebrew.
+      draftNoticeMoreOne: ' ובעוד מוצר אחד',
+      draftNoticeMore: ' ובעוד {count} מוצרים',
       // Said only when the form is in a tab he is NOT in — there the section's NAME inside the
       // sentence is what leads him over, instead of the notice answering for him. In his own tab it
       // is `draftFound` + `draftRestore` / `draftDiscard`, word for word the bar inside the form.
@@ -2673,6 +2680,9 @@ export const translations = {
       draftDiscard: 'Delete them',
       draftNotice: 'You have unsaved changes from last time in {section}',
       draftOpenFailed: 'That product is not on this page of the list. Find it and the draft will be offered again.',
+      draftRowMark: 'You have unsaved changes here',
+      draftNoticeMoreOne: ' and one more product',
+      draftNoticeMore: ' and {count} more products',
       storeOverview: 'Store overview',
       products: 'Products',
       inStock: 'In stock',
