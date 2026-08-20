@@ -672,7 +672,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
       one, so this nested a second <main> carrying the SAME id, and the skip link then
       resolves to whichever one comes first rather than to this page content. */}
   <div class="section container dash-section">
-    <div id="dash-main-card" class="card">
+    <div id="dash-main-card" class="card admin-dash">
       <div class="dash-head">
         <div class="dash-head__top">
           <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">דשבורד ניהול</h1>
@@ -990,7 +990,13 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
   import { initAdminMoneyLogPanel } from '../../scripts/admin/moneylog.js';
   import { initAdminStatementPanel } from '../../scripts/admin/statement.js';
   import { initLazyAdminPanels } from '../../scripts/admin/lazy-panels.js';
+  import { initStickyOffsets } from '../../scripts/dashboard/sticky-offsets.js';
   initDashTabs();
+  // The tab strip pins under the site header (dashboard.css, `.admin-dash .dash-tabs`), so the two
+  // bars' real heights have to be measured — the CSS fallbacks are guesses and a guess leaves a
+  // fraction of a pixel of daylight that the page then scrolls behind. Its own tiny module, not the
+  // seller's products bundle where it used to live: see sticky-offsets.ts.
+  initStickyOffsets();
   // Ten of the eleven panels arrive on the click that opens them. Every init below still runs on
   // load: each one early-returns on the elements it cannot find, and the ones that matter — the
   // delegated pager/link listeners bound to the panel CONTAINER, which survives every swap — have

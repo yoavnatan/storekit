@@ -1615,11 +1615,18 @@ textarea.input { resize: none; }
 /* Tab panels */
 .dash-panel { padding: 1.25rem 1.5rem 1.5rem; }
 
-/* Seller dashboard only (.seller-dash on #dash-main-card) — .dash-tabs/
-   .dash-panel are the same shared shell the admin dashboard and homepage
-   tabs (Discover/Liked/BuyAgain/New) reuse, so the sticky behavior below
-   must not leak onto those via the bare classnames. */
-.seller-dash .dash-tabs {
+/* Seller AND admin dashboards (.seller-dash / .admin-dash on #dash-main-card) — .dash-tabs/
+   .dash-panel are the same shared shell the homepage tabs (Discover/Liked/BuyAgain/New) reuse, so
+   the sticky behavior below must not leak onto those via the bare classnames; the homepage strip
+   pins itself, on its own terms, in index.astro.
+   `.admin-dash` joined this rule in סשן ד׳ (owner: *"צריך להיות צמוד ללשוניות"*). The admin
+   dashboard had nothing pinned at all — fourteen tabs, several of them long tables, and the strip
+   naming which one you are in scrolled away with the first screenful. Sharing the rule rather than
+   copying it is deliberate: this offset is the top of a chain (.dash-panel-head reads it back
+   through --dash-tabs-h), and two copies of the chain's first link is how the two dashboards would
+   start disagreeing about where a bar ends. */
+.seller-dash .dash-tabs,
+.admin-dash .dash-tabs {
   position: sticky;
   top: var(--site-header-h, 3.3rem);
   z-index: 7;
@@ -1715,7 +1722,8 @@ textarea.input { resize: none; }
    picker sits lower, above the campaign list, but the header is sticky by request
    for consistency with the other tabs). Overview/Categories — bare title, no
    control — stay plain/static (sticky would be pure redundancy there). */
-.seller-dash .dash-panel-head {
+.seller-dash .dash-panel-head,
+.admin-dash .dash-panel-head {
   position: sticky;
   top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
   z-index: 6;
@@ -1723,6 +1731,7 @@ textarea.input { resize: none; }
 }
 
 .seller-dash .dash-panel-head h2,
+.admin-dash .dash-panel-head h2,
 .seller-dash .products-header h2 {
   font-size: 1rem;
   font-weight: 600;
