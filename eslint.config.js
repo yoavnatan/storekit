@@ -25,15 +25,59 @@
 //
 // And if a rule becomes noise, turn it off HERE with the reason written next to it. The
 // alternative — learning to skim past it — is how a gate stops working while still passing.
+import { execFileSync } from 'node:child_process';
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import sonarjs from 'eslint-plugin-sonarjs';
 import astro from 'eslint-plugin-astro';
 
+/**
+ * Every UNTRACKED file sitting at the repo root — ignored, whatever it is called.
+ *
+ * The naming conventions below (`.*.mjs`, `*.tmp.mjs`, and the root-anchored `check-*`/`test-*`/
+ * `debug-*` in .gitignore) exist for exactly one failure and have now failed to prevent it three
+ * times: a session writes a throwaway Playwright probe into the repo root — it has to be inside the
+ * tree, or `import { chromium } from 'playwright'` cannot resolve — and another session's push is
+ * refused because `npm run lint` went red on somebody else's scratch. 2026-08-01 it was
+ * `tabs-probe.tmp.mjs`; 2026-08-20 it was `zz-which.mjs`, which matched no pattern at all.
+ *
+ * A convention that depends on the next session remembering a filename is not a guard. This does
+ * not depend on the name: git already knows which files are real, and CI lints a CLEAN checkout, so
+ * an untracked file can never reach the actual gate — linting it locally only produces a red that
+ * has to be explained away, and a gate you learn to explain away has stopped working.
+ *
+ * **Root only, and that is the whole safety of it.** A new SOURCE file is untracked too, between
+ * being written and being added, and it must keep being linted — that is the loop that catches a
+ * bug before it is committed. Nothing real in this repo lives at the root: source is `src/`, tools
+ * are `scripts/`, tests are `tests/`. So the depth limit is what separates "not yet added" from
+ * "never going to be added", without asking anyone to name a file correctly.
+ *
+ * Fails open. If git is unavailable (a tarball, a container with no git), the list is empty and
+ * everything is linted, which is the safe direction: too much linting is noise, too little is a
+ * missed bug.
+ */
+function untrackedRootFiles() {
+  try {
+    // Absolute path, the same rule `scripts/lib/test-concurrency.mjs` follows and for the same
+    // reason: resolving a command through PATH runs whatever a writable directory earlier in it
+    // happens to be called (`sonarjs/no-os-command-from-path`), and this one runs on every lint.
+    return execFileSync('/usr/bin/git', ['ls-files', '--others', '--exclude-standard', '--directory'], {
+      encoding: 'utf8',
+      cwd: import.meta.dirname,
+    })
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.includes('/'));
+  } catch {
+    return [];
+  }
+}
+
 export default tseslint.config(
   {
     ignores: [
+      ...untrackedRootFiles(),
       'dist/',
       '.astro/',
       'node_modules/',
