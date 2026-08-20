@@ -229,7 +229,16 @@ const highlightId = targetMissing ? '' : query.eventId;
                               <a href={traceUrl(e.orderId!)} title="כל האירועים של הזמנה זו" class="[color:var(--color-primary)] no-underline hover:underline">הזמנה <bdi>{e.orderId!.slice(0, 8)}</bdi></a>
                             )}
                             {part === 'ref' && (
-                              <a href={traceUrl(e.checkoutRef!)} title="כל הקנייה — כל החנויות שנקנו יחד באסמכתא הזאת" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא <bdi>{e.checkoutRef}</bdi></a>
+                              /* **"אסמכתא של מה?"** (owner, סשן ד׳). The word is right — it is the
+                                 platform's word for this number everywhere, including the buyer's
+                                 own order mail (`lib/email/parts.ts`) — and a bare noun was what
+                                 made it unreadable: it named a reference without naming what it
+                                 refers to, on a line that already carries an order id beside it.
+                                 Two words instead of one say which of the two ids this is, and the
+                                 tooltip says the rest. Renaming it to "קנייה" was the alternative
+                                 and it was rejected: the buyer, the invoice and the emails would
+                                 then be using a different word for the same number. */
+                              <a href={traceUrl(e.checkoutRef!)} title="מספר התשלום אצל ספק הסליקה — חיוב אחד שמכסה את כל הקנייה, כל החנויות יחד. אותו מספר מופיע במייל לקונה. לחיצה מציגה את כל אירועי הקנייה." class="[color:var(--color-primary)] no-underline hover:underline">אסמכתת תשלום <bdi>{e.checkoutRef}</bdi></a>
                             )}
                             {part === 'actor' && `בוצע ע״י ${moneyActorLabel(e.actor)}`}
                           </Fragment>

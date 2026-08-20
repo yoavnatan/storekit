@@ -243,7 +243,7 @@ function chargeWithNoOrder(checkoutRef: string, amount: number): Discrepancy {
   return {
     severity: 'error',
     check: JOURNAL_ONLY_CHECKS[2]!,
-    subject: `אסמכתא ${checkoutRef}`,
+    subject: `אסמכתת תשלום ${checkoutRef}`,
     lookup: checkoutRef,
     expectedAgorot: 0,
     actualAgorot: amount,

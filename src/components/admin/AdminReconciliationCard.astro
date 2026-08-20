@@ -66,6 +66,20 @@ const trailHref = (lookup: string): string => buildAdminUrl('moneylog', { mq: lo
     שני חישובים עצמאיים של אותו מספר לא הסכימו. כל שורה למטה מפרטת מה נבדק, מה יצא, ומה זה אומר.
     {reconciliation.truncated && ' יש עוד — מוצגות כאן הראשונות בלבד.'}
   </p>
+  {/* **What to DO with them, on the card itself** (owner, סשן ד׳: *"מה עושים איתן? אין שם שום דרך
+      לטפל בהן, הם יישארו שם לנצח?"*). The answer is a property of the screen rather than a missing
+      feature, and it had nowhere to be said: this list is RECOMPUTED from the live data on every
+      page load — it is not a queue of tickets — so a row leaves the moment the fact behind it stops
+      being true, and no row can be dismissed while it is still true.
+      There is deliberately no "סמן כטופל" here, and that is the one control this card must never
+      grow: acknowledging a disagreement between two independent calculations without changing the
+      data would silence the alarm and leave the money wrong, which is the exact failure the whole
+      module exists to catch. Contrast the Messages tab, where "טופל" is right precisely because
+      the thing being marked is a conversation, not a number. */}
+  <p class="m-0 mt-2 text-[0.75rem] [color:var(--color-muted)] leading-relaxed">
+    הרשימה מחושבת מחדש בכל טעינה של הדף. שורה נעלמת מעצמה ברגע שהעובדה שמאחוריה תוקנה — הכסף הוחזר,
+    ההזמנה נסגרה, או הבאג תוקן. אין כאן "סימן כטופל" בכוונה: אין דרך לסמן פער כמטופל בלי לסגור אותו.
+  </p>
 
   <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-2.5">
     {reconciliation.discrepancies.map((d) => (
