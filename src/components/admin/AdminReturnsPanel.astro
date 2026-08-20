@@ -145,13 +145,35 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
               list, which named the seller's empty-parcel claim on every case including the ones that
               never had one. */}
           <div class="mt-1 text-[0.78rem] font-semibold">{CAUSE[disputeCause(r)]}</div>
+{/* ── CONTRAST on this card is not decoration (owner, 2026-08-20) ──
+              *"כל ההכרעות שלי כמעט הכל שם בצבע אפור כמעט בלתי נראה... בעיקר את המקומות שאני צריך
+              לענות על שאלה או לכתוב תשובה... זה כמעט שקוף"*.
+
+              Everything here had been `--color-muted` at 0.76–0.78rem, on a background already
+              tinted 8% danger — a combination that measures acceptably on white and does not read
+              on this card. And it was applied to the wrong things: the EVIDENCE he decides on and
+              the LABELS of the fields he types into are the primary content of this screen, not
+              secondary notes. Muted is kept for what genuinely is secondary — the money-journal
+              link and the shop/reason line — so the greyness still means something.
+
+              The speaker's name stays muted while the quotation takes full contrast, which is the
+              same split the seller's card uses: the label is furniture, the sentence is the case. */}
           {r.trackingNumber && (
-            <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">מספר מעקב: <span class="tabular-nums">{r.trackingNumber}</span></div>
+
+            <div class="mt-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">מספר מעקב:</span> <span class="tabular-nums">{r.trackingNumber}</span></div>
           )}
-          {r.sellerNote && <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">המוכר: "{r.sellerNote}"</div>}
+          {r.sellerNote && (
+            <div class="mt-1 text-[0.8rem]">
+              <span class="[color:var(--color-muted)]">המוכר:</span> <span class="italic">"{r.sellerNote}"</span>
+            </div>
+          )}
           {/* The buyer's own words. On an appeal this IS the case — deciding one without reading what
               he wrote is deciding it on the seller's account alone. */}
-          {r.buyerNote && <div class="mt-1 [color:var(--color-muted)] text-[0.78rem]">הקונה: "{r.buyerNote}"</div>}
+          {r.buyerNote && (
+            <div class="mt-1 text-[0.8rem]">
+              <span class="[color:var(--color-muted)]">הקונה:</span> <span class="italic">"{r.buyerNote}"</span>
+            </div>
+          )}
           {/* BOTH pictures, side by side and each labelled — which is the whole point of the
               seller's half existing (2026-08-20). One unlabelled thumbnail on a screen weighing two
               people's accounts is worse than none: it reads as evidence without saying whose. */}
@@ -181,13 +203,13 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
               is often the one where neither extreme is true — a product that came back USED is not "as
               sold" and not "never returned" — and two buttons could only ever serve one side of it. */}
           <label class="block mt-2">
-            <span class="[color:var(--color-muted)] text-[0.76rem]">למה החלטת ככה (חובה — יישמר בתיק)</span>
+            <span class="text-[0.82rem] font-semibold">למה החלטת ככה <span class="font-normal [color:var(--color-muted)]">(חובה — יישמר בתיק)</span></span>
             <textarea rows="2" maxlength="2000" data-admin-note-for={r.id}
               class="w-full mt-1 px-2 py-1.5 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)] text-[0.8rem] resize-none"
             ></textarea>
           </label>
           <label class="flex items-center gap-2 mt-2 text-[0.8rem]">
-            <span class="[color:var(--color-muted)]">כמה להחזיר לקונה, בשקלים</span>
+            <span class="font-semibold">כמה להחזיר לקונה, בשקלים</span>
             <input type="number" min="0" step="1" inputmode="numeric" data-admin-award-for={r.id}
               placeholder={`הכל — ${formatAgorot(r.refundAgorot)}`}
               class="w-32 px-2 py-1 border [border-color:var(--color-border)] rounded-[var(--radius-sm)] [background:var(--color-surface-2)] [color:var(--color-text)]" />

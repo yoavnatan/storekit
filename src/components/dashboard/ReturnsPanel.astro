@@ -268,7 +268,34 @@ function dateLine(r: ReturnRequest): string {
     f && `הוזמנה ${day(f.placedAt)}`,
     paidElsewhere && `שולמה ${day(f.paidAt!)}`,
     f?.deliveredAt && `נמסרה ${day(f.deliveredAt)}`,
-    `הבקשה ${day(r.createdAt)}`,
+    `בקשה ${day(r.createdAt)}`,
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * The two dates that sit beside the order number — and why it is two and not all of them.
+ *
+ * The owner asked for the dates up there rather than in the grid, with one hard condition:
+ * *"שלא יישברו או ירדו שורה במובייל בשום אופן"*. Measured on a real render at 375px, the row has
+ * about 206px left after the order number, and the full set needs 287 — four dates on a
+ * multi-store order need 428. It does not fit, and no amount of shortening the labels closes a gap
+ * that size without turning the dates into unlabelled numbers.
+ *
+ * So the row carries the two that DECIDE a return and the grid keeps the complete record below.
+ * Which two is not a guess: the statutory window is measured from the day the goods reached the
+ * buyer (`returns.ts#withinStatutoryWindow`), and the day the case opened is what that window is
+ * compared against. The order date and the payment date answer "which purchase was this", which is
+ * what the order number beside them is already for.
+ *
+ * `deliveredAt` is absent when nobody marked the order delivered, and then the row is simply the
+ * request date — never a label with an empty value.
+ */
+function headDates(r: ReturnRequest): string {
+  const f = orderFacts?.get(r.orderId);
+  const day = (iso: string): string => formatBusinessDateShort(iso);
+  return [
+    f?.deliveredAt && `נמסרה ${day(f.deliveredAt)}`,
+    `בקשה ${day(r.createdAt)}`,
   ].filter(Boolean).join(' · ');
 }
 
@@ -291,10 +318,23 @@ const RETURNS_PAGE_SIZE = 20;
  * decide, this one tells the seller where he stands and what, if anything, is left for him to do.
  */
 const DISPUTE_CAUSE: Record<DisputeCause, string> = {
-  seller_claim: 'אתה אמרת שהחבילה הגיעה ריקה או שהמוצר משומש, והקונה טוען אחרת. אנחנו מכריעים.',
-  parcel_unconfirmed: 'הקונה מסר שהוא שלח, ואף אחד לא אישר שהמוצר הגיע. עברו שבועיים, ואנחנו מכריעים.',
-  refusal_appeal: 'סירבת לבקשה, והקונה ביקש שנבדוק את הסירוב. אנחנו מכריעים.',
-  unknown: 'הבקשה מחכה להכרעה שלנו.',
+  // ── The REGISTER here is the whole thing, and the first version got it wrong ──
+  //
+  // It read *"אתה אמרת שהחבילה הגיעה ריקה... אנחנו מכריעים"*, and the owner's verdict was
+  // *"משפט גרוע, זה נשמע כמו האשמה"*. He is right, and it is not a matter of taste: "אתה אמרת"
+  // and "טוען" are the words a person uses when they doubt you, on a card shown to a seller who
+  // did exactly what the button told him to. The wording below is his, and the fix generalises —
+  // **name the ACTION he took, never the claim he made.** "סימנת" is a fact about a button;
+  // "אתה אמרת" is an account of his honesty.
+  //
+  // The tail was his too. It carried three more clauses — the money is frozen, there is nothing
+  // for you to do, we will write if we need more — and *"זהו"* was the answer: a seller reading
+  // "ממתין להכרעת המערכת" already knows all three, and spelling them out is the reassurance that
+  // makes a person wonder what he is being reassured about.
+  seller_claim: 'סימנת שהחבילה הגיעה ריקה או שהמוצר משומש, והקונה טען אחרת. ממתין להכרעת המערכת.',
+  parcel_unconfirmed: 'הקונה מסר שהוא שלח, ולא סומן שהמוצר הגיע. עברו שבועיים. ממתין להכרעת המערכת.',
+  refusal_appeal: 'סימנת סירוב, והקונה ביקש שנבדוק אותו. ממתין להכרעת המערכת.',
+  unknown: 'ממתין להכרעת המערכת.',
 };
 
 const open = requests.filter((r) => isOpen(r.status));
@@ -407,13 +447,27 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
             hover is only discoverable by pointing at it — no help on a touch screen, and his
             "easy to miss" exactly. Dotted at rest, solid on hover: one signal, changing state,
             which is the site's hover rule rather than a second effect stacked on. */}
-        <button
-          type="button"
-          class="mt-[0.35rem] text-[0.78rem] [color:var(--color-primary)] tabular-nums bg-transparent border-0 p-0 cursor-pointer underline decoration-dotted underline-offset-[3px] hover:decoration-solid"
-          data-goto-panel="orders"
-          data-goto-intent={`search:${r.orderId.slice(0, 8)}`}
-          data-tooltip="פתח את ההזמנה בלשונית הזמנות"
-        >הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi></button>
+        {/* The dates sit BESIDE the order number, not as a row in the grid below (owner,
+            2026-08-20) — they are the same kind of fact as the order id, "which purchase is this
+            and when did it happen", and the grid is for what the CASE is about.
+
+            **The line may not wrap, at any width**, which is his rule and the constraint that
+            shapes it: `flex-nowrap`, every part `whitespace-nowrap`, and the labels shortened until
+            the whole row measures inside 375px on a real render (`dateLine` carries the wording).
+            Nothing here truncates — a hidden date is worse than a wrapped one — so if a fourth date
+            is ever added it has to be paid for by dropping one, not by letting the row break. */}
+        <div class="mt-[0.35rem] flex flex-nowrap items-baseline gap-x-2">
+          <button
+            type="button"
+            class="shrink-0 text-[0.78rem] [color:var(--color-primary)] tabular-nums whitespace-nowrap bg-transparent border-0 p-0 cursor-pointer underline decoration-dotted underline-offset-[3px] hover:decoration-solid"
+            data-goto-panel="orders"
+            data-goto-intent={`search:${r.orderId.slice(0, 8)}`}
+            data-tooltip="פתח את ההזמנה בלשונית הזמנות"
+          >הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi></button>
+          {headDates(r) && (
+            <span class="text-[0.7rem] [color:var(--color-muted)] tabular-nums whitespace-nowrap">{headDates(r)}</span>
+          )}
+        </div>
       </div>
 
       {/* ── The facts, as a LABELLED GRID rather than a sentence (owner, 2026-08-20) ──
@@ -434,19 +488,19 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           each pair because a `<dl>` cannot hold a wrapper element between it and its own children
           without breaking the grid, and the whole point is one grid per card, not one per row. */}
       <dl class="m-0 mt-3 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-[0.45rem] text-[0.85rem] items-baseline">
-        <dt class="[color:var(--color-muted)]">סיבת החזרה</dt>
+        <dt class="[color:var(--color-muted)]">סיבת החזרה:</dt>
         <dd class="m-0">
           {REASON[r.reason]}{REASON_EXTRA[r.reason] && <span class="[color:var(--color-muted)]"> — {REASON_EXTRA[r.reason]}</span>}
         </dd>
 
         {itemsLine(r) && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">מה חוזר</dt>
+            <dt class="[color:var(--color-muted)]">פריטים בבקשה:</dt>
             <dd class="m-0">{itemsLine(r)}</dd>
           </Fragment>
         )}
 
-        <dt class="[color:var(--color-muted)]">סכום לזיכוי</dt>
+        <dt class="[color:var(--color-muted)]">סכום לזיכוי:</dt>
         <dd class="m-0 tabular-nums font-semibold">
           {formatAgorot(r.refundAgorot)}
           {/* A partial's amount is smaller than the order and that is not a mistake — said HERE,
@@ -457,7 +511,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           )}
         </dd>
 
-        <dt class="[color:var(--color-muted)]">משלוח חזרה</dt>
+        <dt class="[color:var(--color-muted)]">משלוח חזרה:</dt>
         <dd class="m-0">
           {r.returnShippingPayer === 'buyer' ? 'על חשבון הקונה' : 'על חשבון החנות'}
           {isPartialReturn(r.returnedLines) && (
@@ -467,21 +521,25 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
         {r.trackingNumber && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">מספר מעקב</dt>
+            <dt class="[color:var(--color-muted)]">מספר מעקב:</dt>
             <dd class="m-0 tabular-nums">{r.trackingNumber}</dd>
           </Fragment>
         )}
 
+        {/* The COMPLETE record, including the two the header shows. Repeating them costs a line and
+            buys the thing the header cannot have: every date this case has, in one place, in order.
+            The header is a summary you read at a glance; this is what you read when the dates are
+            the question. */}
         {dateLine(r) && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">תאריכים</dt>
+            <dt class="[color:var(--color-muted)]">תאריכים:</dt>
             <dd class="m-0 tabular-nums [color:var(--color-muted)] text-[0.8rem]">{dateLine(r)}</dd>
           </Fragment>
         )}
 
         {r.buyerNote && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">הערת הקונה</dt>
+            <dt class="[color:var(--color-muted)]">הערת הקונה:</dt>
             <dd class="m-0 italic">"{r.buyerNote}"</dd>
           </Fragment>
         )}
@@ -491,7 +549,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
             the row simply is not there. */}
         {r.buyerPhotoUrl && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">תמונה מהקונה</dt>
+            <dt class="[color:var(--color-muted)]">תמונה מהקונה:</dt>
             <dd class="m-0">
               <a href={r.buyerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block">
                 <img
@@ -507,14 +565,14 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
         {r.sellerNote && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">מה שכתבת</dt>
+            <dt class="[color:var(--color-muted)]">מה שכתבת:</dt>
             <dd class="m-0 italic">"{r.sellerNote}"</dd>
           </Fragment>
         )}
 
         {r.sellerPhotoUrl && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">התמונה שצירפת</dt>
+            <dt class="[color:var(--color-muted)]">התמונה שצירפת:</dt>
             <dd class="m-0">
               <a href={r.sellerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block">
                 <img
@@ -656,10 +714,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
       )}
 
       {r.status === 'disputed' && (
-        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">
-          {DISPUTE_CAUSE[disputeCause(r)]} הכסף לא זז עד שנחליט, ואין לך מה לעשות — אם נצטרך פרטים
-          נוספים נפנה אליך בהודעות.
-        </p>
+        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">{DISPUTE_CAUSE[disputeCause(r)]}</p>
       )}
     </article>
   ))}
