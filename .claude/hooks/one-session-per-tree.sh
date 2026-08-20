@@ -50,12 +50,33 @@ mkdir -p "$SESSIONS" 2>/dev/null || exit 0
 
 now=$(date +%s)
 mine=$PPID
-others=0
 
+# The CWD of a live process, or empty.
+#
+# **Registered here and WORKING here stopped being the same sentence** the day worktrees became
+# routine (found 2026-08-20). A session registers its PID once, at SessionStart, in the tree it
+# started in — and `EnterWorktree` moves the session without moving the entry. So this hook was
+# reading "three others registered in main" and reporting them as three others IN main, when all
+# three had been in their own worktrees for hours. That is a false positive in the expensive
+# direction: the new session is sent to build a worktree it does not need — ~2.5 min of `npm ci`,
+# plus a checkout whose tree hash matches nobody, so it shares no verify marker with any session
+# alive. Exactly the waste the owner was asking about when he asked what verify was costing him.
+#
+# `lsof -d cwd` is the only handle macOS gives on another process's working directory. It costs
+# ~100ms per PID over at most a handful of them, well inside this hook's 15s.
+cwd_of() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1; }
+
+# **A machine-wide session ceiling was written here on 2026-08-20 and deleted the same hour.** It
+# warned above two live sessions, on a diagnosis that turned out to be wrong: the cost was never the
+# session count. It was `verify` serialising every suite behind one machine-wide lock, on a machine
+# with six physical cores that every worker cap had been sized against as though it had twelve — see
+# `scripts/lib/test-concurrency.mjs`, where both are fixed. The owner's requirement is that more than
+# two sessions must work. A hook nagging about a third would be arguing with him about a number that
+# was not the cause. Don't re-add it; fix whatever is making a session expensive instead.
+here=0
 for entry in "$SESSIONS"/*; do
   [ -e "$entry" ] || continue
   pid="$(basename "$entry")"
-  [ "$pid" = "$mine" ] && continue
   started="$(cat "$entry" 2>/dev/null || echo 0)"
   # Dead process, or an entry old enough that a reused PID is the likelier explanation than a session
   # that has been open for half a day. `ps -p`, not `kill -0`: kill reports EPERM (i.e. "dead") for a
@@ -65,15 +86,16 @@ for entry in "$SESSIONS"/*; do
     rm -f "$entry"
     continue
   fi
-  others=$((others + 1))
+  [ "$pid" = "$mine" ] && continue
+  [ "$(cwd_of "$pid")" = "$REPO_ROOT" ] && here=$((here + 1))
 done
 
 echo "$now" > "$SESSIONS/$mine"
 
-[ "$others" -gt 0 ] || exit 0
+[ "$here" -gt 0 ] || exit 0
 
 cat <<EOF
-⚠️ $others other Claude session(s) are already live in THIS working tree, and you are the later one.
+⚠️ $here other Claude session(s) are live in THIS working tree, and you are the later one.
 
 Two sessions in one tree deadlock — not because you might edit the same files (you probably won't),
 but because every gate keys off a fingerprint of the whole tree, so their keystroke voids your verify
