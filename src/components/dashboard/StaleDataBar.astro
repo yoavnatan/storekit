@@ -45,7 +45,12 @@ const { message, refreshLabel, dismissLabel } = Astro.props;
   </div>
   {/* Same unit as the draft bar's pair, for the same reason: an action and the way to dismiss it
       belong on one line as each other's alternatives. */}
-  <div class="flex items-center gap-2 shrink-0 ms-auto">
+  {/* `mx-auto`, not `ms-auto`, and the difference only shows on a phone. Beside the sentence there
+      is no free space to absorb — the sentence has `grow` and takes it — so the pair sits where it
+      always did, at the end of the line. On its OWN row there is nothing else, so the two auto
+      margins split what is left and centre it. End-aligning a row with nothing else in it reads as
+      the buttons having fallen off the bar (owner, 2026-08-20). */}
+  <div class="flex items-center gap-2 shrink-0 mx-auto">
   <button type="button" id="dash-stale-refresh" class="btn btn--sm shrink-0">{refreshLabel}</button>
   <button
     type="button"

@@ -148,7 +148,12 @@ const {
   {/* The two answers are ONE unit. Left as loose flex children they wrapped independently, so on a
       phone "שחזר אותם" stayed beside the sentence and "מחק אותם" dropped to a row of its own —
       two halves of one question, on two different lines. */}
-  <div class="flex items-center gap-2 shrink-0 ms-auto">
+  {/* `mx-auto`, not `ms-auto`, and the difference only shows on a phone. Beside the sentence there
+      is no free space to absorb — the sentence has `grow` and takes it — so the pair sits where it
+      always did, at the end of the line. On its OWN row there is nothing else, so the two auto
+      margins split what is left and centre it. End-aligning a row with nothing else in it reads as
+      the buttons having fallen off the bar (owner, 2026-08-20). */}
+  <div class="flex items-center gap-2 shrink-0 mx-auto">
     <button type="button" id="dash-draft-restore" class="!hidden btn btn--sm shrink-0">{draftRestore}</button>
     <button type="button" id="dash-draft-discard" class="!hidden btn btn--ghost btn--sm shrink-0">{draftDiscard}</button>
   </div>
@@ -430,8 +435,18 @@ const {
       icon.innerHTML = '<svg class="max-w-none" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>';
 
       var text = document.createElement('span');
-      text.className = 'flex-1 min-w-0';
+      text.className = 'min-w-0';
       text.textContent = draftFound;
+
+      // Icon and sentence are ONE flex item with a floor under it, exactly as in the floating bar
+      // above — and for the same measured reason. With `flex-1` alone the sentence shrank to
+      // whatever the buttons left it: 113px of a 333px bar on a phone, four lines tall (owner,
+      // 2026-08-20: "ההודעה הזאת מעל המוצר… מופיעה לגובה ולא מסודרת טוב במובייל"). Given 12rem to
+      // start from, the pair wraps to its own row instead and the sentence gets the width.
+      var lead = document.createElement('div');
+      lead.className = 'flex items-center gap-2 min-w-0 grow basis-[12rem] sm:basis-auto sm:flex-1';
+      lead.appendChild(icon);
+      lead.appendChild(text);
 
       var yes = document.createElement('button');
       yes.type = 'button';
@@ -450,12 +465,12 @@ const {
       // bar's pair: loose flex children wrap independently, and "restore" beside the sentence with
       // "delete" alone on the next line is one question served as two.
       var answers = document.createElement('div');
-      answers.className = 'flex items-center gap-2 shrink-0 ms-auto';
+      // Same `mx-auto` as the floating bar's pair, and for the same reason — see the markup above.
+      answers.className = 'flex items-center gap-2 shrink-0 mx-auto';
       answers.appendChild(yes);
       answers.appendChild(no);
 
-      bar.appendChild(icon);
-      bar.appendChild(text);
+      bar.appendChild(lead);
       bar.appendChild(answers);
       form.insertBefore(bar, form.firstChild);
       offers[key] = { form: form, bar: bar, values: values };
