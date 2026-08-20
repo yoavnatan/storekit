@@ -221,9 +221,74 @@ export async function purge(db, scopeName, opts = {}) {
  * No child rows to walk, which is the point of the change that produced this: a demo review has no
  * order, so there is nothing underneath it and nothing to delete in an order.
  */
+/**
+ * The mark every order `seed-returns.mjs` writes carries, in its `payment_ref`.
+ *
+ * A prefix rather than a flag column, and it earns that: `orders.payment_ref` is UNIQUE and is a
+ * gateway's own reference, so nothing on the platform can write this string except the seeder — a
+ * real charge's ref comes from a provider, and there is no provider connected. It is the whole purge
+ * predicate below, exactly as `product_reviews.demo` is for the ratings.
+ */
+export const RETURN_DEMO_PAYMENT_REF = 'demo-returns-';
+
+/**
+ * Remove the staged return scenarios and the orders they were staged on.
+ *
+ * It lives here for the reason every purge does: `tests/seed-purge-gate.test.ts` refuses a `DELETE`
+ * on an account, a store or an order written anywhere else under `scripts/` — a seeder NAMES what it
+ * disposes of and never composes its own `WHERE`.
+ *
+ * Children first, `orders` last: `order_items`, `order_stores` and `return_requests` all reference
+ * `orders` with `ON DELETE RESTRICT`. `money_events` names its order by TEXT with no foreign key, so
+ * it would not block the delete — it is swept anyway, because a journal row pointing at an order that
+ * is gone is what `reconcile.ts` reads as a real debt to a real buyer (see `purgeOrdersOfStores`,
+ * which learned this from 48 phantom ones).
+ *
+ * @returns {Promise<{ orders: number, requests: number }>}
+ */
+export async function purgeReturnDemo(db) {
+  const { rows } = await db.query(
+    'SELECT id FROM orders WHERE payment_ref LIKE $1', [`${RETURN_DEMO_PAYMENT_REF}%`]);
+  const ids = rows.map((r) => r.id);
+  if (!ids.length) return { orders: 0, requests: 0 };
+  const requests = await db.query('DELETE FROM return_requests WHERE order_id = ANY($1::uuid[])', [ids]);
+  await purgeOrderLedger(db, ids);
+  await db.query('DELETE FROM money_events WHERE order_id = ANY($1::text[])', [ids]);
+  await db.query('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [ids]);
+  await db.query('DELETE FROM order_stores WHERE order_id = ANY($1::uuid[])', [ids]);
+  const orders = await db.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [ids]);
+  return { orders: orders.rowCount ?? 0, requests: requests.rowCount ?? 0 };
+}
+
 export async function purgeDemoReviews(db) {
   const gone = await db.query('DELETE FROM product_reviews WHERE demo');
   return gone.rowCount ?? 0;
+}
+
+/**
+ * The two money tables that reference an order with `ON DELETE SET NULL` — and therefore SURVIVE it.
+ *
+ * **A foreign key that does not block a delete is not the same as one that does not matter.**
+ * `seller_ledger_adjustments` is a deduction from a seller's NEXT PAYOUT (migration 0032) and
+ * `invoice_documents` is a tax document planned against a specific sale (0023). `SET NULL` is the
+ * right production behaviour for both, because in production nothing ever deletes an order: an
+ * adjustment is a fact about a balance and rightly outlives the case that caused it.
+ *
+ * Under a seeder it is the 48-phantom-`refund_due`-rows bug in a worse shape. The row survives with
+ * `order_id` NULL, so no screen can say what it is FOR any more — and it goes on reducing a real
+ * payout figure forever, on a dashboard the owner reads as true.
+ *
+ * That path opened the day `seed-returns.mjs` was written: pressing "החזר לו את הכסף" on a staged
+ * case runs the real `moveReturnRequest`, which writes a `refund_clawback` against the seller's
+ * balance — and the purge that removes the case would have left the deduction standing.
+ *
+ * Scoped by `order_id`, which is what makes it safe rather than merely tidy: a `platform_to_seller`
+ * invoice is a MONTHLY document carrying no order and is never matched, and neither is an adjustment
+ * somebody entered by hand.
+ */
+async function purgeOrderLedger(db, ids) {
+  await db.query('DELETE FROM seller_ledger_adjustments WHERE order_id = ANY($1::uuid[])', [ids]);
+  await db.query('DELETE FROM invoice_documents WHERE order_id = ANY($1::uuid[])', [ids]);
 }
 
 export async function purgeOrdersOfStores(db, scopeName) {
@@ -277,6 +342,13 @@ export async function purgeOrdersOfStores(db, scopeName) {
   // ⚠️ The general rule this is the second instance of: a new child table with a RESTRICT FK onto
   // `orders` must be added here, or the seeder breaks the next time a demo order has one.
   await db.query('DELETE FROM product_reviews WHERE order_id = ANY($1::uuid[])', [ids]);
+  // The third instance of that rule, and it was already broken before anything seeded one:
+  // `return_requests.order_id` is `REFERENCES orders ON DELETE RESTRICT` (migration 0030) and was
+  // never added here, so a single return opened against a demo order — by `seed:returns`, or by
+  // clicking through the buyer's own screen in dev — would have made every later `seed:demo` die on
+  // the purge instead of on anything a person could read.
+  await db.query('DELETE FROM return_requests WHERE order_id = ANY($1::uuid[])', [ids]);
+  await purgeOrderLedger(db, ids);
   await db.query('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [ids]);
   await db.query('DELETE FROM order_stores WHERE order_id = ANY($1::uuid[])', [ids]);
   const res = await db.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [ids]);
