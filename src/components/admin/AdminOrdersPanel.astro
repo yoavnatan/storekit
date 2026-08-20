@@ -269,11 +269,20 @@ const purchases = groupBuyerPurchases(orders);
               <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
                 <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#{purchase.ref.toUpperCase()}</span>
                 <span class="text-[0.72rem] text-[color:var(--color-muted)] whitespace-nowrap">{formatHeDateTime(purchase.createdAt)}</span>
+                {/* The chip OPENS the case (owner, 2026-08-20). On the seller's card it has been a
+                    link to his returns tab, narrowed to this one order, since the chip was built —
+                    the admin's copy drew the identical badge and did nothing when pressed, which is
+                    worse than not drawing it: it looks like the way in. Same eight characters the
+                    returns tab now searches on, so what it names is what it finds. */}
                 {returnStateByOrderId.get(o.id) && (
-                  <span class="inline-flex items-center gap-1 text-[0.68rem] font-semibold rounded-[var(--radius-sm)] px-1.5 py-0.5 [background:color-mix(in_srgb,var(--color-warning)_12%,transparent)] [color:var(--color-warning)] whitespace-nowrap">
+                  <a
+                    href={buildAdminUrl('returns', { rq: o.id.slice(0, 8) })}
+                    class="inline-flex items-center gap-1 text-[0.68rem] font-semibold rounded-[var(--radius-sm)] px-1.5 py-0.5 [background:color-mix(in_srgb,var(--color-warning)_12%,transparent)] [color:var(--color-warning)] whitespace-nowrap no-underline hover:underline"
+                    title="פתח את בקשת ההחזרה"
+                  >
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
                     {returnStateByOrderId.get(o.id)}
-                  </span>
+                  </a>
                 )}
               </div>
               <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:flex-1 @[640px]/ordcard:items-center @[640px]/ordcard:gap-3 @[640px]/ordcard:min-w-0">

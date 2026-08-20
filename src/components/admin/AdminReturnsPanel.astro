@@ -73,8 +73,31 @@ const CAUSE: Record<DisputeCause, string> = {
   unknown: 'הבקשה מחכה להכרעה שלך. פרטי המקרה בהזמנה ובהערות למטה.',
 };
 
-const disputes = requests.filter((r) => r.status === 'disputed');
-const running = requests.filter((r) => r.status !== 'disputed');
+/**
+ * The search reaches the OPEN cases, not only the history (owner, 2026-08-20).
+ *
+ * `rq` used to filter the closed list alone, which made the box mean "search history" — and left
+ * the admin with no way at all to get from an order to the one live case about it. The seller has
+ * had that since the return chip was built: his order card carries a chip that opens the returns
+ * tab already narrowed to that case. The admin's copy of the same chip was a dead `<span>`.
+ * *"מרגיש לי שאת הדשבורד אדמין אתה עושה יותר מעפן"* — he is right, and this is one of the places.
+ *
+ * Matched on the same eight characters both sides already use (`return-chip.ts#lookup`,
+ * `data-return-order` on the seller's card), plus the store slug, because those are the two things
+ * an admin has in his hand when he arrives here from somewhere else. Filtering in the component
+ * rather than in the query: `requests` is the whole OPEN set and always small — that is the point
+ * of the sweep — while the closed list is paged in SQL precisely because it is not.
+ */
+const q = closedQuery.trim().toLowerCase();
+const matches = (r: ReturnRequest): boolean =>
+  !q || r.orderId.slice(0, 8).toLowerCase().includes(q) || r.storeSlug.toLowerCase().includes(q);
+
+const open = requests.filter(matches);
+const disputes = open.filter((r) => r.status === 'disputed');
+const running = open.filter((r) => r.status !== 'disputed');
+/** Open cases the search hid — said out loud, because a filtered queue that looks empty reads as
+ *  "nothing needs you" and this is the one screen where that must never be guessed wrong. */
+const hiddenOpen = requests.length - open.length;
 
 const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius)] [background:var(--color-surface)] p-3.5';
 /**
@@ -181,7 +204,16 @@ const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: o
 )}
 
 {running.length === 0 && disputes.length === 0 && (
-  <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">אין בקשות החזר פתוחות.</p>
+  <p class="m-0 py-8 text-center text-[0.9rem] [color:var(--color-muted)]">
+    {q ? 'אין בקשות פתוחות שתואמות לחיפוש.' : 'אין בקשות החזר פתוחות.'}
+  </p>
+)}
+
+{q && hiddenOpen > 0 && (
+  <p class="m-0 mb-4 text-[0.78rem] [color:var(--color-muted)]">
+    החיפוש "{closedQuery}" מסתיר {hiddenOpen} בקשות פתוחות נוספות.
+    <a href={histUrl({ rq: undefined })} class="ms-1 [color:var(--color-primary)] no-underline hover:underline">הצג הכול</a>
+  </p>
 )}
 
 {outliers.length > 0 && (
