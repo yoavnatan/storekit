@@ -1,4 +1,5 @@
 import { esc } from '../../lib/gallery-widget.js';
+import { SPECS_ROW_CLASS, specsRowHtml } from './specs-row.js';
 import { showActionFailedToast } from '../../lib/toast.js';
 import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery, finalizeGallery, closeGalleryPanel } from './gallery.js';
 import { isUploadRefusal } from './cloudinary.js';
@@ -566,12 +567,13 @@ export function initTagsEditor(): void {
 function specsEditorHtml(specs: Array<{ label: string; value: string }>, i18n: Record<string, string>): string {
   const lp = esc(i18n.specsLabelPlaceholder ?? '');
   const vp = esc(i18n.specsValuePlaceholder ?? '');
-  const rowsHtml = specs.map(s => `
-    <div class="specs-row" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
-      <input class="input" name="specs_label" value="${esc(s.label)}" placeholder="${lp}" style="width:170px;flex:0 0 auto">
-      <input class="input" name="specs_value" value="${esc(s.value)}" placeholder="${vp}" style="width:220px;flex:0 0 auto">
-      <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${esc(i18n.specsRemoveRow ?? 'Remove')}">×</button>
-    </div>`).join('');
+  const strings = {
+    labelPlaceholder: i18n.specsLabelPlaceholder ?? '',
+    valuePlaceholder: i18n.specsValuePlaceholder ?? '',
+    removeLabel: i18n.specsRemoveRow ?? 'Remove',
+  };
+  const rowsHtml = specs.map(s =>
+    `<div class="${SPECS_ROW_CLASS}">${specsRowHtml(s.label, s.value, strings, esc)}</div>`).join('');
   // `data-specs-field` is the hook the attribute-suggestion strip binds to (scripts/dashboard/
   // spec-suggest.ts). The strip sits between the rows and the add button so the seller's eye finds
   // it in the same place whether they are typing an attribute's name or its value.
@@ -1703,12 +1705,10 @@ export function initSpecsEditors(): void {
       const vp = container.dataset.valuePlaceholder ?? '';
       const i18n = getDashI18n();
       const row = document.createElement('div');
-      row.className = 'specs-row';
-      row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem';
-      row.innerHTML = `
-        <input class="input" name="specs_label" placeholder="${esc(lp)}" style="width:170px;flex:0 0 auto">
-        <input class="input" name="specs_value" placeholder="${esc(vp)}" style="width:220px;flex:0 0 auto">
-        <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${esc(i18n.specsRemoveRow ?? 'Remove')}">×</button>`;
+      row.className = SPECS_ROW_CLASS;
+      row.innerHTML = specsRowHtml('', '', {
+        labelPlaceholder: lp, valuePlaceholder: vp, removeLabel: i18n.specsRemoveRow ?? 'Remove',
+      }, esc);
       container.appendChild(row);
       row.querySelector<HTMLInputElement>('input')?.focus();
       return;
@@ -1804,10 +1804,27 @@ export function buildEditRow(p: ProductData): HTMLTableRowElement {
   edit.className = 'edit-row';
   edit.dataset.productEdit = p.id;
   edit.hidden = true;
+  /**
+   * **Two things in the markup below are about a phone, and both were measured before they were
+   * changed (owner, 2026-08-20).**
+   *
+   * `max-w-[calc(100vw-2.5rem)]` on the form is what stops this row from moving the whole page
+   * sideways. The form sits in a table cell, and a cell grows to whatever its content needs — so
+   * the variants/stock grid inside it (380px, inside its own `overflow:auto` box that therefore
+   * never got to do its job) widened the products table, which widened the document to 457px on a
+   * 375px screen. An explicit max-width caps the cell's max-content contribution, and the scroller
+   * then scrolls, which is what it was written for. `lg:` rather than `sm:`, because a tablet's
+   * table can legitimately be wider than its viewport and the cap would fight it.
+   *
+   * And three fields to a row is a desktop layout. On a phone the name takes a row of its own, and
+   * so does the CATEGORY — it shows a path ("נשים › חולצות וגופיות"), so it is the one field here
+   * that genuinely needs the width, which is exactly why sharing a row left מק"ט and מותג with
+   * 61px each, about six characters.
+   */
   edit.innerHTML = `
     <td class="num row-num pe-[0.2rem]"></td>
     <td colspan="20">
-      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard data-base-rev="${esc(p.rev ?? '')}">
+      <form method="POST" action="/api/product" class="mt-4 inline-edit-form max-w-[calc(100vw-2.5rem)] lg:max-w-none" data-unsaved-guard data-base-rev="${esc(p.rev ?? '')}">
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
         <div class="edit-row-header">
@@ -1818,14 +1835,14 @@ export function buildEditRow(p: ProductData): HTMLTableRowElement {
             <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit="${p.id}">${i.cancel ?? 'Cancel'}</button>
           </div>
         </div>
-        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
-          <label class="field"><span>${i.nameReq ?? 'Name *'}</span><input class="input" name="name" value="${esc(p.name)}" required></label>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-[2fr_1fr_1fr]">
+          <label class="field col-span-2 sm:col-span-1"><span>${i.nameReq ?? 'Name *'}</span><input class="input" name="name" value="${esc(p.name)}" required></label>
           <label class="field"><span>${i.priceLabel ?? 'Price'}</span><input class="input" name="price" type="number" min="0" step="0.01" value="${p.price}"></label>
           <label class="field"><span>${i.colStock ?? 'Stock'}</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
         </div>
         ${discountFieldHtml(p.discount, discountFieldLabels(i))}
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
-        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}${brandFieldHtml(p.brand ?? '', i)}</div>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-[2fr_1fr_1fr] [&>*:first-child]:col-span-2 sm:[&>*:first-child]:col-span-1">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}${brandFieldHtml(p.brand ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
         ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {}, p.variantSku ?? {})}
         ${specsEditorHtml(p.specs ?? [], i)}

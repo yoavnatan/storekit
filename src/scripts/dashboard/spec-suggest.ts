@@ -24,6 +24,7 @@
  * (memory `project_dashboard_html_weight`).
  */
 import { matchSuggestions, MAX_SUGGESTED_VALUES, type SpecVocabulary } from '../../lib/spec-vocabulary.js';
+import { SPECS_ROW_CLASS, specsRowHtml } from './specs-row.js';
 import { facetKey } from '../../lib/product-facets.js';
 import { escapeHtml } from '../../lib/html-escape.js';
 import { announceValueChange } from './unsaved-guard.js';
@@ -146,12 +147,12 @@ function addRow(field: HTMLElement, label: string): HTMLInputElement | null {
     return empty.closest('.specs-row')?.querySelector<HTMLInputElement>('input[name="specs_value"]') ?? null;
   }
   const row = document.createElement('div');
-  row.className = 'specs-row';
-  row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem';
-  row.innerHTML = `
-    <input class="input" name="specs_label" value="${escapeHtml(label)}" placeholder="${escapeHtml(rows.dataset.labelPlaceholder ?? '')}" style="width:170px;flex:0 0 auto">
-    <input class="input" name="specs_value" placeholder="${escapeHtml(rows.dataset.valuePlaceholder ?? '')}" style="width:220px;flex:0 0 auto">
-    <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${escapeHtml(t.specsRemoveRow ?? 'Remove')}">×</button>`;
+  row.className = SPECS_ROW_CLASS;
+  row.innerHTML = specsRowHtml(label, '', {
+    labelPlaceholder: rows.dataset.labelPlaceholder ?? '',
+    valuePlaceholder: rows.dataset.valuePlaceholder ?? '',
+    removeLabel: t.specsRemoveRow ?? 'Remove',
+  }, escapeHtml);
   rows.appendChild(row);
   return row.querySelector<HTMLInputElement>('input[name="specs_value"]');
 }

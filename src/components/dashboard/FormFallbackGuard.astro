@@ -117,14 +117,16 @@ const {
   id="dash-draft-bar"
   role="status"
   aria-live="polite"
-  class="!hidden fixed bottom-6 inset-x-4 z-[9998] flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2 ps-3 pe-2 rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.82rem] sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:max-w-[calc(100vw-2rem)] sm:flex-nowrap sm:gap-3 sm:py-[0.55rem] sm:ps-[0.9rem] sm:pe-[0.55rem] sm:text-[0.85rem]" data-bottom-bar
+  class="!hidden fixed bottom-6 inset-x-4 z-[9998] flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2 ps-3 pe-2 rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.82rem] mx-auto max-w-[34rem] sm:gap-3 sm:py-[0.55rem] sm:ps-[0.9rem] sm:pe-[0.55rem] sm:text-[0.85rem]" data-bottom-bar
 >
-    {/* Icon and sentence are ONE flex item, and its `basis` is what decides where the row breaks
-        on a phone: given 12rem to start from, a short line still leaves room for its buttons beside
-        it, and a long one pushes them onto their own row instead of squeezing the words into a
-        column three lines tall. `grow` then lets the sentence take whatever is left. Above `sm` it
-        is an ordinary flex child and everything sits on one line. */}
-  <div class="flex items-center gap-2.5 min-w-0 grow basis-[12rem] sm:basis-auto sm:flex-1 sm:gap-3">
+    {/* Icon and sentence are ONE flex item, and its 19rem `basis` is the whole layout rule: it is
+        about a line of this sentence, so either the buttons fit beside it or they go under it —
+        the words are never squeezed into a column. ONE rule at every width, deliberately (owner,
+        2026-08-20: *"זה צריך להיות כמו במובייל פשוט"*). The first attempt gated the wrap at `sm`,
+        which fixed a phone and left the middle of the range worse than it started: measured across
+        twelve widths, 640px produced a bar 320px wide and 106px tall. It is 76px below 500 and
+        49–51px above 600 now, at every step. */}
+  <div class="flex items-center gap-2.5 min-w-0 grow basis-[19rem] sm:gap-3">
     <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
     </svg>
@@ -444,7 +446,7 @@ const {
       // 2026-08-20: "ההודעה הזאת מעל המוצר… מופיעה לגובה ולא מסודרת טוב במובייל"). Given 12rem to
       // start from, the pair wraps to its own row instead and the sentence gets the width.
       var lead = document.createElement('div');
-      lead.className = 'flex items-center gap-2 min-w-0 grow basis-[12rem] sm:basis-auto sm:flex-1';
+      lead.className = 'flex items-center gap-2 min-w-0 grow basis-[19rem]';
       lead.appendChild(icon);
       lead.appendChild(text);
 
