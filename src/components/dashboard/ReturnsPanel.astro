@@ -303,34 +303,7 @@ function dateLine(r: ReturnRequest): string {
     f && `הוזמנה ${day(f.placedAt)}`,
     paidElsewhere && `שולמה ${day(f.paidAt!)}`,
     f?.deliveredAt && `נמסרה ${day(f.deliveredAt)}`,
-    `בקשה ${day(r.createdAt)}`,
-  ].filter(Boolean).join(' · ');
-}
-
-/**
- * The two dates that sit beside the order number — and why it is two and not all of them.
- *
- * The owner asked for the dates up there rather than in the grid, with one hard condition:
- * *"שלא יישברו או ירדו שורה במובייל בשום אופן"*. Measured on a real render at 375px, the row has
- * about 206px left after the order number, and the full set needs 287 — four dates on a
- * multi-store order need 428. It does not fit, and no amount of shortening the labels closes a gap
- * that size without turning the dates into unlabelled numbers.
- *
- * So the row carries the two that DECIDE a return and the grid keeps the complete record below.
- * Which two is not a guess: the statutory window is measured from the day the goods reached the
- * buyer (`returns.ts#withinStatutoryWindow`), and the day the case opened is what that window is
- * compared against. The order date and the payment date answer "which purchase was this", which is
- * what the order number beside them is already for.
- *
- * `deliveredAt` is absent when nobody marked the order delivered, and then the row is simply the
- * request date — never a label with an empty value.
- */
-function headDates(r: ReturnRequest): string {
-  const f = orderFacts?.get(r.orderId);
-  const day = (iso: string): string => formatBusinessDateShort(iso);
-  return [
-    f?.deliveredAt && `נמסרה ${day(f.deliveredAt)}`,
-    `בקשה ${day(r.createdAt)}`,
+    `הבקשה ${day(r.createdAt)}`,
   ].filter(Boolean).join(' · ');
 }
 
@@ -482,27 +455,17 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
             hover is only discoverable by pointing at it — no help on a touch screen, and his
             "easy to miss" exactly. Dotted at rest, solid on hover: one signal, changing state,
             which is the site's hover rule rather than a second effect stacked on. */}
-        {/* The dates sit BESIDE the order number, not as a row in the grid below (owner,
-            2026-08-20) — they are the same kind of fact as the order id, "which purchase is this
-            and when did it happen", and the grid is for what the CASE is about.
-
-            **The line may not wrap, at any width**, which is his rule and the constraint that
-            shapes it: `flex-nowrap`, every part `whitespace-nowrap`, and the labels shortened until
-            the whole row measures inside 375px on a real render (`dateLine` carries the wording).
-            Nothing here truncates — a hidden date is worse than a wrapped one — so if a fourth date
-            is ever added it has to be paid for by dropping one, not by letting the row break. */}
-        <div class="mt-[0.35rem] flex flex-nowrap items-baseline gap-x-2">
-          <button
-            type="button"
-            class="shrink-0 text-[0.78rem] [color:var(--color-primary)] tabular-nums whitespace-nowrap bg-transparent border-0 p-0 cursor-pointer underline decoration-dotted underline-offset-[3px] hover:decoration-solid"
-            data-goto-panel="orders"
-            data-goto-intent={`search:${r.orderId.slice(0, 8)}`}
-            data-tooltip="פתח את ההזמנה בלשונית הזמנות"
-          >הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi></button>
-          {headDates(r) && (
-            <span class="text-[0.7rem] [color:var(--color-muted)] tabular-nums whitespace-nowrap">{headDates(r)}</span>
-          )}
-        </div>
+        {/* The dates were beside the order number for a day and are not any more (owner,
+            2026-08-21): with the grid's own "תאריכים" row below, the same three dates were on the
+            card twice. The summary was the copy worth cutting — the row underneath is the complete
+            record and the one a person reads when the dates are the question. */}
+        <button
+          type="button"
+          class="mt-[0.35rem] text-[0.78rem] [color:var(--color-primary)] tabular-nums bg-transparent border-0 p-0 cursor-pointer underline decoration-dotted underline-offset-[3px] hover:decoration-solid"
+          data-goto-panel="orders"
+          data-goto-intent={`search:${r.orderId.slice(0, 8)}`}
+          data-tooltip="פתח את ההזמנה בלשונית הזמנות"
+        >הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi></button>
       </div>
 
       {/* ── The facts, as a LABELLED GRID rather than a sentence (owner, 2026-08-20) ──
