@@ -112,7 +112,14 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // for them the platform mails it, exactly as it does when a seller answers a guest. The earlier
     // cut offered a `mailto:` here instead, which the owner rejected and was right to: it leaves
     // the product, sends from a private address, and leaves the thread with no record of the reply.
-    const byEmail = thread.partyRole !== 'seller';
+    // **Keyed on whether a seller ACCOUNT is attached, not on the role** (סשן ד׳). The two used to
+    // be the same question and are not any more: a fault report from a seller deliberately carries
+    // `party_role: 'seller'` and no `seller_id`, because it must not land in his Messages tab
+    // (`platform-inquiries.ts` says why). Read off the role, this would have called `notifySeller`
+    // with an empty id — a notification row nobody can read, and an answer that left through no
+    // door. `thread.sellerId` is the column the seller's own inbox selects by, so it is also the
+    // exact answer to "will a dashboard notification reach them".
+    const byEmail = !thread.sellerId;
     const replyTo = thread.root.partyEmail ?? '';
     // Nothing to send and nowhere to send it — refused rather than written, so a thread never shows
     // an answer that left the building through no door.

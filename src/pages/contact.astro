@@ -117,23 +117,15 @@ const description = lang === 'he'
     {/* **The two doors are one inbox, and only the seller could not tell** (owner, סשן ד׳: *"מצד
         אחד הוא יכול ליצור קשר דרך הטופס ומצד שני לפתוח פנייה לדזבין — אולי כדאי להשאיר רק את צור
         קשר?"*, then: *"רק שיהיה ברור שעדיין מוכר צריך להיות מסוגל לדווח על תקלה דרך צור קשר"*).
-        Neither door is removed: this page is what Merchant Center and Meta look for and what every
-        buyer and guest uses, and a fault report belongs on it precisely because the context that
-        makes a fault actionable — which page, which store, who — is captured here and typed
-        nowhere. What was missing was the sentence saying they are the same thread: a seller wrote
-        from here and then watched this page for an answer that was never going to arrive on it.
-        Only for a seller. A buyer or a guest is answered by mail (see AdminMessagesPanel), so
-        pointing them at a dashboard they do not have would be the same mistake in reverse. */}
-    {hasStore && (
-      <p class="muted" style="max-width:60ch;margin-top:0.35rem">
-        {lang === 'he' ? (
-          <Fragment>אתם מחוברים כמוכרים — התשובה תחזור אליכם ל<a href="/seller/dashboard?panel=messages">לשונית ההודעות בלוח הניהול</a>, לאותו שרשור. אפשר גם לפתוח פנייה משם.</Fragment>
-        ) : (
-          <Fragment>You are signed in as a seller — the reply comes back to the <a href="/seller/dashboard?panel=messages">Messages tab in your dashboard</a>, in this same thread. You can also start one from there.</Fragment>
-        )}
-      </p>
-    )}
-    <ReportForm kind={reportKind} page={reportPage} orderId={helpOrderId} orderToken={helpToken} />
+        Neither door is removed: this page is what Merchant Center and Meta look for, it is what
+        every buyer and guest uses, and a fault report belongs on it precisely because the context
+        that makes a fault actionable — which page, which store, who — is captured here and typed
+        nowhere.
+        The sentence that was missing is now INSIDE the form, under the kind picker, because the
+        answer differs by kind and the picker is what chooses: a fault is filed and never opens a
+        conversation, everything else comes back to this seller's Messages tab. A paragraph up here
+        could only have said one of the two, and would have been wrong half the time. */}
+    <ReportForm kind={reportKind} page={reportPage} orderId={helpOrderId} orderToken={helpToken} sellerInbox={hasStore} />
 
     <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
       {lang === 'he' ? 'פרטי המפעיל' : 'Operator'}

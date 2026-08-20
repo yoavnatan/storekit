@@ -128,15 +128,58 @@ describe('the money journal explains itself', () => {
   });
 });
 
-describe('contact form and the dashboard inbox are one thread', () => {
-  it('still offers a signed-in seller the fault-report form', () => {
-    // The owner's line: *"רק שיהיה ברור שעדיין מוכר צריך להיות מסוגל לדווח על תקלה דרך צור קשר"*.
-    // The form is rendered unconditionally; only an explanatory line is conditional.
-    expect(contact).toMatch(/<ReportForm[^>]*\/>/);
-    expect(contact).not.toMatch(/hasStore \?[^]*<ReportForm/);
+describe('a fault report is filed, not answered', () => {
+  const inquiries = read('src/lib/platform-inquiries.ts');
+  const form = read('src/components/ReportForm.astro');
+  const replyRoute = read('src/pages/api/admin/messages.ts');
+
+  it('never links a fault report to the reporter\'s seller account', () => {
+    // seller_id is the ONLY column putting a thread in a seller's own Messages tab, so this is
+    // what keeps "the checkout page is broken" out of his inbox (owner, סשן ד׳).
+    expect(inquiries).toContain("role === 'seller' && kind !== 'fault'");
   });
 
-  it('tells a seller where the answer will arrive', () => {
-    expect(contact).toContain('/seller/dashboard?panel=messages');
+  it('routes the admin\'s reply by the ACCOUNT on the thread, not by the role', () => {
+    // With the role as the test, a fault report from a seller would have called notifySeller with
+    // an empty id — a notification row nobody can read.
+    expect(replyRoute).toContain('const byEmail = !thread.sellerId');
+    expect(replyRoute).not.toContain("thread.partyRole !== 'seller'");
+    expect(panel).toContain('const byDashboard = !!sellerId');
+    expect(poll).toContain('const byDashboard = !!sellerId');
+  });
+
+  it('says so on the form, before anything is typed, and again on the confirmation', () => {
+    expect(form).toContain('report-kind-hint');
+    expect(form).toContain('faultSentBody');
+  });
+
+  it('still offers a signed-in seller the fault-report form', () => {
+    // The owner's line: *"רק שיהיה ברור שעדיין מוכר צריך להיות מסוגל לדווח על תקלה דרך צור קשר"*.
+    // The form is rendered unconditionally — nothing about it is behind a session check.
+    expect(contact).toMatch(/<ReportForm[^>]*\/>/);
+    expect(contact).not.toMatch(/hasStore &&[^]*<ReportForm/);
+  });
+});
+
+describe('the sticky offsets are measured on every tab, not only Products', () => {
+  const sellerDash = read('src/pages/seller/dashboard.astro');
+  it('runs at page load on the seller dashboard', () => {
+    // It used to run only inside the products panel's loader, so every other tab pinned its title
+    // 1.2px below the strip above it and the page scrolled through the slit.
+    expect(sellerDash).toMatch(/initDashTabs\(\);[^]*?initStickyOffsets\(\);/);
+  });
+  it('never writes 0px for a bar that has not been opened yet', () => {
+    // 0px is a value and beats the CSS fallback, which would pin the bar below it under the site
+    // header until its panel is first shown.
+    expect(read('src/scripts/dashboard/sticky-offsets.ts')).toContain('removeProperty');
+  });
+});
+
+describe('leaving a tab counts when the keyboard does it', () => {
+  it('tracks departures on dashtab:show, not on the tab button click', () => {
+    // The arrow keys activate a tab without dispatching a click, so a keyboard user never left a
+    // tab as far as the badge and the "new only" chip were concerned.
+    expect(tabNav).toContain("document.addEventListener('dashtab:show'");
+    expect(tabNav).not.toContain("tab.addEventListener('click'");
   });
 });

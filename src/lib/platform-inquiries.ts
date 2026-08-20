@@ -125,7 +125,18 @@ export async function createPlatformInquiry(input: NewInquiryInput): Promise<boo
       role,
       // The typed, foreign-keyed column only when the sender really holds a seller account — so a
       // buyer can never be read back as the owner of a store (`createInquiryThread` re-checks).
-      ...(role === 'seller' && actor.actorId ? { sellerId: actor.actorId } : {}),
+      //
+      // **And never for a FAULT report** (owner, סשן ד׳: *"על תקלה אני לא מצפה שהמוכר יחכה
+      // לתשובה. זה גם לא אמור להגיע להודעות שלו בדשבורד בכלל"*). That column is the ONLY thing
+      // putting a thread in a seller's own Messages tab, so setting it turned "the checkout page
+      // is broken" into a conversation sitting unanswered in his inbox — a promise the platform
+      // never made and does not intend to keep. A fault is a report about the SOFTWARE: it is
+      // filed, it is read, and it is fixed or it is not. Everything identifying the reporter is
+      // still captured (`party_id`, `party_email`, the role, the page, the store), so the admin
+      // knows exactly who hit it and can still write back by mail if there is a reason to.
+      // The other kinds — a question, a complaint about content, a problem with a store — ARE
+      // conversations and keep the link.
+      ...(role === 'seller' && kind !== 'fault' && actor.actorId ? { sellerId: actor.actorId } : {}),
       ...(actor.actorId ? { id: actor.actorId } : {}),
       // The address to answer at: what they typed, or — for a signed-in sender who typed nothing —
       // the one on their account, which `request-actor.ts` already resolved for the admin screens

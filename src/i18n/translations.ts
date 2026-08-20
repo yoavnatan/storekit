@@ -2325,6 +2325,14 @@ export const translations = {
       sending: 'שולח…',
       sent: 'הדיווח נשלח — תודה',
       sentBody: 'קיבלנו את הפנייה. אם השארתם אימייל, נחזור אליכם.',
+      // A FAULT is a report about the software, not the opening of a conversation — so it does not
+      // promise an answer, and for a signed-in seller it deliberately opens no thread in his
+      // dashboard (owner, סשן ד׳: *"על תקלה אני לא מצפה שהמוכר יחכה לתשובה"*). The hint under the
+      // kind picker says the same thing BEFORE he writes, which is where it actually saves him
+      // the wait.
+      faultSentBody: 'התקלה נרשמה ותיבדק. אין צורך להמתין לתשובה — אם נצטרך פרטים נוספים ניצור קשר.',
+      hintFault: 'דיווח על תקלה נרשם ונבדק. לא נפתחת שיחה ואין צורך להמתין לתשובה.',
+      hintThreadSeller: 'התשובה תחזור אליכם ללשונית ההודעות בלוח הניהול, לאותו שרשור.',
       errorEmpty: 'צריך לכתוב מה קרה',
       error: 'הדיווח לא נשלח. נסו שוב.',
       throttled: 'נשלחו כבר כמה דיווחים מהכתובת הזו. אפשר לנסות שוב בעוד {n} דקות.',
@@ -4123,6 +4131,9 @@ export const translations = {
       sending: 'Sending…',
       sent: 'Report sent — thank you',
       sentBody: 'We have it. If you left an email, we will get back to you.',
+      faultSentBody: 'The fault is logged and will be looked at. No need to wait for a reply — we will get in touch if we need more detail.',
+      hintFault: 'A fault report is logged and looked at. It opens no conversation and needs no reply.',
+      hintThreadSeller: 'The reply comes back to the Messages tab in your dashboard, in this same thread.',
       errorEmpty: 'Please describe what happened',
       error: 'The report was not sent. Please try again.',
       throttled: 'Several reports have already been sent from this address. Try again in {n} minutes.',

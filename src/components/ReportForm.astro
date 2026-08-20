@@ -24,6 +24,10 @@ import { RETURN_NOTE_MAX } from '../lib/returns.js';
 interface Props {
   /** Preselected `kind`, so an in-context "report this" link arrives on the right option. */
   kind?: string;
+  /** The sender holds a store, so a thread opened here lands in their dashboard's Messages tab —
+   *  which is true of every kind EXCEPT a fault (`platform-inquiries.ts`). Decides which of the two
+   *  hints under the kind picker applies; false for a buyer, a guest, or a seller with no store. */
+  sellerInbox?: boolean;
   /** The page being reported, when the visitor came from one. Site-relative; the server validates
    *  it again on arrival and does not trust this value either. */
   page?: string;
@@ -33,7 +37,7 @@ interface Props {
   orderId?: string;
   orderToken?: string;
 }
-const { kind = 'fault', page = '', orderId = '', orderToken = '' } = Astro.props;
+const { kind = 'fault', page = '', orderId = '', orderToken = '', sellerInbox = false } = Astro.props;
 const identified = !!(orderId && orderToken);
 
 const lang = getLang(Astro.cookies);
@@ -92,6 +96,7 @@ const REASONS = [
   data-str-order-sent-body={r.orderSentBody}
   data-str-question-sent={r.questionSent}
   data-str-question-sent-body={r.questionSentBody}
+  data-str-fault-sent-body={r.faultSentBody}
   data-question-reason={QUESTION_REASON}
   style="max-width:44rem;margin-top:1rem"
 >
@@ -102,6 +107,17 @@ const REASONS = [
       {KINDS.map((k) => <option value={k.value} selected={k.value === selected}>{k.label}</option>)}
     </select>
   </label>
+
+  {/* **What happens to this after you press send, said before you write it** (owner, סשן ד׳: *"על
+      תקלה אני לא מצפה שהמוכר יחכה לתשובה"*). The two kinds behave differently and always did — a
+      fault is filed and fixed, everything else is a conversation — and nothing on the form said so,
+      so a seller reported a bug and then waited. It sits under the picker because that is the
+      control that decides which of the two it is, and it moves with it. Both strings are
+      server-rendered onto the form (this component's own rule); the second one only exists when
+      the sender actually has a dashboard for a reply to land in. */}
+  <p id="report-kind-hint" class="muted" data-str-fault={r.hintFault}
+     data-str-thread={sellerInbox ? r.hintThreadSeller : ''}
+     style="font-size:0.82rem;margin:-0.35rem 0 1rem"></p>
 
 
   {/* ── The order branch ──
@@ -210,6 +226,7 @@ const REASONS = [
       orderSentBody: d.strOrderSentBody ?? 'נטפל בה ונעדכן אתכם במייל.',
       questionSent: d.strQuestionSent ?? 'השאלה נשלחה למוכר',
       questionSentBody: d.strQuestionSentBody ?? 'המוכר יענה לכם במייל שאיתו בוצעה ההזמנה.',
+      faultSentBody: d.strFaultSentBody ?? 'התקלה נרשמה ותיבדק. אין צורך להמתין לתשובה.',
     };
     const ORDER_KIND = d.orderKind ?? 'order';
     const QUESTION_REASON = d.questionReason ?? 'question';
@@ -233,6 +250,8 @@ const REASONS = [
      *  form half of which does not apply to them. `required` moves with it — a hidden required
      *  field blocks submission with a validation bubble pointing at nothing. */
     const isOrder = () => kindEl.value === ORDER_KIND;
+    const isFault = () => kindEl.value === 'fault';
+    const hint = document.getElementById('report-kind-hint');
     const syncKind = () => {
       const order = isOrder();
       if (orderFields) orderFields.hidden = !order;
@@ -240,6 +259,13 @@ const REASONS = [
       if (emailField) emailField.hidden = order;
       messageEl.required = !order;
       submit.textContent = order ? str.orderSubmit : str.submit;
+      if (hint) {
+        // The order branch has its own copy further down and needs nothing here; an empty string
+        // (a sender with no dashboard) leaves the line off the page rather than blank.
+        const text = order ? '' : isFault() ? (hint.dataset.strFault ?? '') : (hint.dataset.strThread ?? '');
+        hint.textContent = text;
+        hint.hidden = !text;
+      }
     };
     kindEl.addEventListener('change', syncKind);
     syncKind();
@@ -348,7 +374,14 @@ const REASONS = [
         }
         if (!res.ok) throw new Error('failed');
         form.hidden = true;
-        if (done) done.hidden = false;
+        if (done) {
+          // A fault promises no reply; every other kind does. Same reason the order branch above
+          // writes two different bodies — a screen that says "we will get back to you" for
+          // something nobody is going to answer is the wait this change exists to remove.
+          const body = done.querySelectorAll('p')[1];
+          if (body && isFault()) body.textContent = str.faultSentBody;
+          done.hidden = false;
+        }
       } catch {
         say(str.error, true);
         submit.disabled = false;

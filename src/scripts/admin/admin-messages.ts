@@ -229,7 +229,8 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
   const ROLE_WORD: Record<InquiryParty, string> = { seller: 'מוכר', buyer: 'קונה', guest: 'אורח' };
   // Mirrors the SSR row: a seller is reachable through their dashboard, anyone else only through
   // the address they left. Both renderers or neither — see this function's header.
-  const canReply = partyRole === 'seller' || !!partyEmail;
+  const byDashboard = !!sellerId;
+  const canReply = byDashboard || !!partyEmail;
   // Name only in the cell, address in the opened thread — the SSR row's rule, and both renderers
   // or neither (see this function's header).
   const whoEmail = seller?.email || partyEmail || '';
@@ -259,7 +260,7 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
       <div class="msg-thread" id="admin-msg-replies-${escapeHtml(threadId)}">${bubbleHtml(message)}</div>
       <div class="seller-msg-reply-form" data-reply-for-thread="${escapeHtml(threadId)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
         ${canReply ? `
-        ${partyRole !== 'seller' ? `<p class="msg-thread-head__meta" style="margin:0 0 .6rem">${partyRole === 'guest' ? 'אורח ללא חשבון' : 'הפונה אינו מחובר'} — התשובה תישלח אליו במייל (<span dir="ltr">${escapeHtml(partyEmail)}</span>), והמשך ההתכתבות יהיה שם.</p>` : ''}
+        ${!byDashboard ? `<p class="msg-thread-head__meta" style="margin:0 0 .6rem">${partyRole === 'guest' ? 'אורח ללא חשבון' : partyRole === 'seller' ? 'דיווח על תקלה — לא נפתחה שיחה בדשבורד של המוכר' : 'הפונה אינו מחובר'} — התשובה תישלח אליו במייל (<span dir="ltr">${escapeHtml(partyEmail)}</span>), והמשך ההתכתבות יהיה שם.</p>` : ''}
         <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3" hidden></textarea>
         <div class="seller-msg-reply-actions">
           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>

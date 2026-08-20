@@ -171,9 +171,12 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
           // for a guest who has no account either, the plain fact.
           const who = whoName || whoEmail || (sellerId ? sellerId : 'ללא כתובת לחזרה');
           const review = root.reviewId ? reviewsById.get(root.reviewId) : undefined;
-          // A seller is reachable through their dashboard; anyone else only through the address
-          // they left. No address and no account means the answer has nowhere to go.
-          const canReply = partyRole === 'seller' || !!root.partyEmail;
+          // A thread with a seller ACCOUNT on it is reachable through their dashboard; anything
+          // else only through the address the sender left. Keyed on the account and not on the
+          // role since סשן ד׳: a fault report carries the role and deliberately no account, so
+          // that it stays out of the seller's Messages tab — see `platform-inquiries.ts`.
+          const byDashboard = !!sellerId;
+          const canReply = byDashboard || !!root.partyEmail;
           return (
             <>
               <tr class={`msg-table__row${unreadForAdmin > 0 ? ' msg-table__row--unread' : ''}`} data-thread-id={id} data-seller-id={sellerId} data-thread-status={status} tabindex="0" role="button" aria-expanded="false">
@@ -298,9 +301,9 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                         will be read in a mailbox cannot say "see the panel below". */}
                     {canReply ? (
                       <>
-                        {partyRole !== 'seller' && (
+                        {!byDashboard && (
                           <p class="msg-thread-head__meta" style="margin:0 0 .6rem">
-                            {partyRole === 'guest' ? 'אורח ללא חשבון' : 'הפונה אינו מחובר'} — התשובה תישלח אליו במייל
+                            {partyRole === 'guest' ? 'אורח ללא חשבון' : partyRole === 'seller' ? 'דיווח על תקלה — לא נפתחה שיחה בדשבורד של המוכר' : 'הפונה אינו מחובר'} — התשובה תישלח אליו במייל
                             (<span dir="ltr">{root.partyEmail}</span>), והמשך ההתכתבות יהיה שם.
                           </p>
                         )}
