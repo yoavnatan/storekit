@@ -103,16 +103,23 @@ export function initAdminTabNav(): void {
   // time this runs.
   let activePanel = document.querySelector<HTMLButtonElement>('[role="tab"].dash-tab--active')?.dataset.panel ?? 'overview';
 
-  document.querySelectorAll<HTMLButtonElement>('[role="tab"][data-panel]').forEach((tab) => {
-    const panel = tab.dataset.panel;
-    if (!panel) return;
-    tab.addEventListener('click', () => {
-      if (panel === activePanel) return; // re-clicking the tab you're already on — not a "leave"
-      const leftPanel = activePanel;
-      activePanel = panel;
-      if (isTrackedAdminTab(leftPanel)) clearTabBadgeAndTitle(leftPanel);
-      recordLeft(leftPanel);
-    });
+  // **On `dashtab:show`, not on the tab button's `click`** — the same correction
+  // `wireTabParamCleanup` above already made, for the same reason and it was never applied here:
+  // the arrow keys activate a tab WITHOUT dispatching a click (initDashTabs calls
+  // `__dashTabActivate` directly), so an admin moving through the strip by keyboard never left a
+  // tab as far as this was concerned. Nothing was acknowledged, nothing was cleared, and the
+  // "(N)" plus the "חדשים בלבד" chip both survived a departure that had really happened.
+  // `DashTabsBoot` replays this event once on DOMContentLoaded for the panel it activated early;
+  // the `=== activePanel` guard below absorbs that, exactly as it absorbed a re-click.
+  document.addEventListener('dashtab:show', (e) => {
+    const panelId = (e.target as HTMLElement | null)?.id;
+    if (!panelId?.startsWith('dash-panel-')) return;
+    const panel = panelId.slice('dash-panel-'.length);
+    if (panel === activePanel) return; // already here — not a "leave"
+    const leftPanel = activePanel;
+    activePanel = panel;
+    if (isTrackedAdminTab(leftPanel)) clearTabBadgeAndTitle(leftPanel);
+    recordLeft(leftPanel);
   });
 
   // Closing the browser / navigating away is also "leaving the tab" — without
