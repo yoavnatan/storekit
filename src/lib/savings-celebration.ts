@@ -64,12 +64,37 @@ const STRIPE_COLORS = [
  *  drift would stop being visible at all. */
 const BAND = 22;
 const BLEND = 10;
-/** One full cycle of the palette — what the strip travels before it repeats seamlessly. */
+/** One full cycle of the palette, measured ALONG THE GRADIENT LINE. */
 const PERIOD = BAND * STRIPE_COLORS.length;
-/** Kept at ~9px a second across every retune of BAND — slow on purpose: fast enough to be alive,
- *  slow enough that the eye lets it be. Derived rather than typed, so widening a band does not
- *  silently speed the drift up. */
-const CYCLE_MS = Math.round((PERIOD / 9) * 1000);
+
+/** The stripe's tilt. Steep enough that the slant is visible at 2px tall — a stripe's edge shifts
+ *  sideways by `height / tan(angle)`, and the 55° first tried moved it about two pixels, i.e. an
+ *  invisible slant, i.e. a rectangle. */
+const ANGLE_DEG = 25;
+
+/**
+ * How far the strip must travel HORIZONTALLY to land exactly one palette-cycle on from where it
+ * started — which is the only distance at which the loop is invisible.
+ *
+ * **This is the bug the owner saw** (2026-08-20: *"התנועה קופצת ולא רציפה"*). The first version
+ * moved by `PERIOD`, on the reasoning that the pattern repeats every `PERIOD`. It does — but along
+ * the GRADIENT LINE, not along x, and the two are only the same for an upright stripe. A CSS
+ * gradient at angle θ has its line pointing `(sin θ, −cos θ)`, so a purely horizontal shift of Δx
+ * advances the pattern by `Δx · sin θ`. At 25° that is 0.42 of the distance moved: travelling
+ * `PERIOD` advanced the pattern only two fifths of a cycle, and every iteration boundary snapped
+ * the remaining three fifths back in a single frame. Hence a visible jump, once per loop, on an
+ * animation whose whole job is to be continuous.
+ *
+ * Derived rather than measured by eye, because the number is not guessable and the failure is
+ * subtle enough to ship: at some angles the mismatch is small enough to read as a stutter rather
+ * than a jump, which is worse — it looks like jank rather than like a bug.
+ */
+const TRAVEL = PERIOD / Math.sin((ANGLE_DEG * Math.PI) / 180);
+
+/** Kept at ~9px a second across every retune of BAND or ANGLE_DEG — slow on purpose: fast enough
+ *  to be alive, slow enough that the eye lets it be. Derived from the real travel distance rather
+ *  than typed, so a retune cannot silently change the speed. */
+const CYCLE_MS = Math.round((TRAVEL / 9) * 1000);
 /** 2px, exactly covering the row's own border, so the band reads as that rule having colour
  *  rather than as a second thing added above it (owner, 2026-08-20: *"שיהיה מעט יותר דק"*).
  *
@@ -129,10 +154,10 @@ function countUp(el: HTMLElement, target: number, format: (n: number) => string)
   requestAnimationFrame(frame);
 }
 
-/** The band itself: a clip the width of the row, holding a strip twice as wide that slides one
- *  full palette-cycle and starts over. Two cycles of the gradient are painted so the strip is
- *  seamless at the wrap — at the end of the travel the pixel under any point is the same colour
- *  it was at the start, which is what makes the loop invisible. */
+/** The band itself: a clip the width of the row, holding an over-wide strip that slides exactly
+ *  one palette-cycle (`TRAVEL`) and starts over. The strip overhangs by that same distance at each
+ *  end so the travel can never expose an edge — at the end of it the pixel under any point is the
+ *  colour it was at the start, which is what makes the loop invisible. */
 function buildBand(): { band: HTMLElement; strip: HTMLElement } {
   const band = document.createElement('span');
   band.setAttribute('aria-hidden', 'true');
@@ -157,12 +182,10 @@ function buildBand(): { band: HTMLElement; strip: HTMLElement } {
     insetBlock: '0',
     // Wider than the clip by a whole palette cycle at each end, so the travel never exposes an
     // edge no matter how wide the summary column gets.
-    insetInline: `${-PERIOD}px`,
-    // 25°, and the angle is doing real work at this height: a stripe's edge shifts sideways by
-    // `height / tan(angle)`, so the 55° first tried moved the edge about two pixels — an invisible
-    // slant, i.e. a rectangle. 25° moves it most of a band's width even at 2px tall, which is what
-    // reads as a diagonal rather than as a row of blocks.
-    background: `repeating-linear-gradient(25deg, ${stops})`,
+    insetInline: `${-TRAVEL}px`,
+    // Why this angle, and what it costs the loop, are both at ANGLE_DEG / TRAVEL above — they are
+    // one decision, and splitting them is how the travel distance came to disagree with it.
+    background: `repeating-linear-gradient(${ANGLE_DEG}deg, ${stops})`,
     willChange: 'transform',
   });
   band.appendChild(strip);
@@ -202,7 +225,7 @@ export function mountSavingsRowMoment(c: SavingsRowMoment): SavingsRowHandle {
   // Still: the colours are the point, the movement is not, and someone who asked the OS for less
   // motion did not ask for less colour.
   const drift = reduced() ? null : strip.animate(
-    [{ transform: 'translateX(0)' }, { transform: `translateX(${PERIOD}px)` }],
+    [{ transform: 'translateX(0)' }, { transform: `translateX(${TRAVEL}px)` }],
     { duration: CYCLE_MS, iterations: Infinity, easing: 'linear' },
   );
   drift?.pause();
