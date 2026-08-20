@@ -3671,6 +3671,7 @@ const orderStatusColors: Record<string, string> = {
   import { initDashBarStack } from '../../scripts/dashboard/bar-stack.js';
   import { initCopyValueButtons } from '../../scripts/dashboard/copy-value.js';
   import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
+  import { initStickyOffsets } from '../../scripts/dashboard/sticky-offsets.js';
   import { initDiscountFields, refreshDiscountFieldsIn } from '../../scripts/dashboard/discount-field.js';
   // The panel filler. Stage 1 on purpose: a panel that has never been opened has no chunk of its
   // own yet, so the thing that FETCHES one cannot live inside it.
@@ -3699,6 +3700,14 @@ const orderStatusColors: Record<string, string> = {
   // First: it observes fetch, so it should be in place before anything can save.
   initDashTabSync(uploadCfg?.dataset.storeId ?? '');
   initDashTabs();
+  // **At page LOAD, not when the products panel opens** (owner, סשן ד׳: a small gap above a
+  // panel's pinned title, *"שכשגוללים רואים תוכן שעובר מאחורה"*). This measures the site header
+  // and the tab strip into the two custom properties every sticky `top:` on this page is written
+  // against. It used to run only inside the products panel's loader — so on any OTHER tab the CSS
+  // fell back to its guessed heights (3.3rem/2.9rem against a real 54.39px/45.17px), the strip
+  // pinned 1.59px under the header and the panel title 1.2px under the strip. 1.2px of daylight is
+  // not a misaligned edge: the page scrolls through it, so it reads as a moving line.
+  initStickyOffsets();
   // The document-level halves, which have nothing to do with which panel is on screen and must be
   // registered exactly once.
   initDiscountFields();
@@ -3947,6 +3956,9 @@ const orderStatusColors: Record<string, string> = {
         menuAutoWidth: true,
         menuHeading: dashI18n().itemsPerPageLabel,
       });
+      // Called again here, and only for one of the three bars it measures: `.products-header`
+      // lives INSIDE this panel, so at page load it does not exist yet and its var falls back.
+      // The header and the strip were already measured then and are not observed twice.
       p.initStickyOffsets();
       p.initViewProduct();
       };
