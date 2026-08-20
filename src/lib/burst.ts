@@ -106,3 +106,76 @@ export function spawnHeartBurst(el: HTMLElement) {
     anim.onfinish = () => span.remove();
   }
 }
+
+/** The one multi-hue flourish on the site — see the `--color-confetti-*` block in
+ *  base/tokens.css for why a celebration may be many colours where a surface may not.
+ *  Six is enough that no two neighbouring pieces match; the list is walked in order and
+ *  only the jitter is random, so a burst can never come out all one colour by chance. */
+const CONFETTI_COLORS = [
+  'var(--color-confetti-1)', 'var(--color-confetti-2)', 'var(--color-confetti-3)',
+  'var(--color-confetti-4)', 'var(--color-confetti-5)', 'var(--color-confetti-6)',
+];
+
+/** A short confetti fall over `el` — pieces launch upward from along the element's own
+ *  width, tumble, and drop past it. Used once, when the checkout's savings row scrolls
+ *  into view (`checkout.astro`): the shopper reaches the number they saved and the page
+ *  reacts to it. Deliberately NOT a click cue — `spawnBurst`/`spawnHeartBurst` above are
+ *  that, and they stay restrained and near-monochrome because they fire many times a
+ *  session, where this fires at most once.
+ *
+ *  `fixed`, off the target's viewport box, for the same reason as the two above: a
+ *  rounded / overflow-hidden ancestor (the checkout summary card is one) would otherwise
+ *  clip every piece that leaves the row. That also makes it correct to fire only while the
+ *  row is ON SCREEN — a fixed-position burst drawn for an element scrolled away lands in
+ *  the middle of whatever the shopper is actually looking at instead. */
+export function spawnConfetti(el: HTMLElement) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+  const rect = el.getBoundingClientRect();
+  // Nothing to decorate — the row is display:none (no saving) or has no box yet.
+  if (rect.width === 0 || rect.height === 0) return;
+
+  const count = 22;
+  for (let i = 0; i < count; i++) {
+    // Spread along the row rather than out of its centre: the row is wide and short, so a
+    // radial burst from the middle reads as an explosion inside the text, not as confetti
+    // over it.
+    const x = rect.left + rect.width * ((i + 0.5) / count + (Math.random() - 0.5) * 0.04);
+    const y = rect.top + rect.height * 0.5;
+    // Outward from the row's centre, so the fan follows the row's own shape.
+    const spread = (x - (rect.left + rect.width / 2)) * 0.35 + (Math.random() - 0.5) * 60;
+    const rise = 34 + Math.random() * 46;
+    const fall = rise + 90 + Math.random() * 70;
+    const spin = (Math.random() - 0.5) * 720;
+    const w = 4 + Math.random() * 4;
+    const h = w * (1.4 + Math.random());
+    const round = i % 3 === 0;
+
+    const piece = document.createElement('span');
+    Object.assign(piece.style, {
+      position: 'fixed',
+      left: `${x}px`,
+      top: `${y}px`,
+      width: `${w}px`,
+      height: `${round ? w : h}px`,
+      borderRadius: round ? '50%' : '1px',
+      background: CONFETTI_COLORS[i % CONFETTI_COLORS.length]!,
+      pointerEvents: 'none',
+      zIndex: '9999',
+      willChange: 'transform, opacity',
+    });
+    document.body.appendChild(piece);
+
+    const anim = piece.animate(
+      [
+        { transform: 'translate(-50%,-50%) translate(0,0) rotate(0deg)', opacity: 1, offset: 0 },
+        { transform: `translate(-50%,-50%) translate(${spread * 0.6}px, ${-rise}px) rotate(${spin * 0.45}deg)`, opacity: 1, offset: 0.38 },
+        { transform: `translate(-50%,-50%) translate(${spread}px, ${fall}px) rotate(${spin}deg)`, opacity: 0, offset: 1 },
+      ],
+      // Long enough to read as a fall rather than a pop, and each piece slightly out of step
+      // with the next so the group never moves as one block.
+      { duration: 1100 + Math.random() * 500, easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)', fill: 'forwards' }
+    );
+    anim.onfinish = () => piece.remove();
+  }
+}

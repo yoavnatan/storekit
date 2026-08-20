@@ -295,6 +295,7 @@ for (const s of await getVisibleStores()) {
     import { formatPrice, cdnThumb } from '../config/store.config.js';
     import { escapeHtml as esc } from '../lib/html-escape.js';
     import { spawnRipple } from '../lib/ripple.js';
+    import { spawnConfetti } from '../lib/burst.js';
     import { checkoutAttemptKey, clearCheckoutAttemptKey } from '../lib/checkout-attempt-key.js';
     import { trackInitiateCheckout } from '../lib/tracking.js';
     import { adItemId } from '../lib/ad-item-id.js';
@@ -1302,6 +1303,32 @@ for (const s of await getVisibleStores()) {
     });
 
     renderCart();
+
+    // ── The savings row's confetti (owner, 2026-08-20) ───────────────────────────────
+    // Fires when "חסכת בהזמנה הזו" actually reaches the shopper's screen — the moment the
+    // number lands, not page load. An IntersectionObserver is what makes "reaches" the
+    // condition rather than "exists": the row is `!hidden` whenever the saving is 0, and a
+    // display:none element never intersects, so a cart with nothing saved silently never
+    // fires this and needs no separate check. Same reason the observer can be installed
+    // once here and left alone across every re-render: renderCart() only toggles the class
+    // and rewrites the amount, it never replaces this element.
+    // ONCE per page load, then unobserved — the row is scrolled past repeatedly during a
+    // checkout (payment accordion, shipping, coupon), and confetti on every pass would be
+    // the ambient looping motion the design line bans. `spawnConfetti` itself is a no-op
+    // under prefers-reduced-motion.
+    const savingsRowEl = document.getElementById('co-savings-row');
+    if (savingsRowEl && typeof IntersectionObserver !== 'undefined') {
+      const savingsObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          savingsObserver.disconnect();
+          spawnConfetti(entry.target as HTMLElement);
+        }
+      // Most of the row on screen, not a single pixel of its top edge — otherwise the burst
+      // launches from a row still half under the fold and half of it is drawn off-screen.
+      }, { threshold: 0.9 });
+      savingsObserver.observe(savingsRowEl);
+    }
 
     // A cart can sit for days while the seller starts or ends a sale behind it. Re-price against
     // the catalog and re-render if anything moved, so the summary the buyer reads is the one

@@ -25,6 +25,25 @@
      4.5:1 on white (it sits at ~5:1; do not lighten it toward #16a34a). */
   --color-sale: #15803d;
 
+  /* ── Confetti (lib/burst.ts#spawnConfetti) ──
+     The one place on the site that is deliberately multi-hue (owner, 2026-08-20: "קונפטי יפה
+     ועם כל מיני גוונים"). It does not break the one-accent-one-job rule because nothing here is
+     ever a STATE: the pieces exist for about a second, carry no meaning, and are gone — a
+     shopper cannot learn a mark from them and so cannot have one diluted. They are a list of
+     their own rather than a reuse of --color-tile-* (a store's identity, pinned equal to
+     lib/store-image.ts by tests/store-image.test.ts) or --color-invite-* (the placeholder
+     cards): borrowing either would tie a celebration to a palette that exists to say who
+     somebody is, and re-tinting one of those lists would then silently re-tint this.
+     Sale green leads because the row it fires at is the savings row and is already that green;
+     the rest are the same muted, mid-value family the site draws everything else in — nothing
+     neon, so the burst reads as a flourish on this page rather than a party sticker. */
+  --color-confetti-1: #15803d;
+  --color-confetti-2: #4870c0;
+  --color-confetti-3: #d99a1f;
+  --color-confetti-4: #c0568f;
+  --color-confetti-5: #159c96;
+  --color-confetti-6: #d4713c;
+
   /* ── The rating star ──
      
      Two stops, not one colour, and the row interpolates between them star by star — so five stars
