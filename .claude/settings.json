@@ -5,6 +5,12 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash .claude/hooks/reap-orphan-verify.sh",
+            "timeout": 15,
+            "statusMessage": "Reaping test runs left behind by removed worktrees..."
+          },
+          {
+            "type": "command",
             "command": "bash .claude/hooks/one-session-per-tree.sh",
             "timeout": 15,
             "statusMessage": "Checking for another session in this tree..."
@@ -94,6 +100,12 @@
     "Stop": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/reap-orphan-verify.sh",
+            "timeout": 15,
+            "statusMessage": "Reaping test runs left behind by removed worktrees..."
+          },
           {
             "type": "command",
             "command": "bash .claude/hooks/require-review.sh",
