@@ -408,8 +408,15 @@ export function initGotoPanelLinks(): void {
       // for any seller who had not already opened the tab they lead to (owner, 2026-08-16).
       const intent = el.dataset.gotoIntent;
       if (intent) {
-        const [kind, value] = intent.split(':');
-        setPanelIntent(el.dataset.gotoPanel ?? '', kind === 'status' ? { status: [value ?? ''] } : { stockAttention: true });
+        // `kind:value`, split ONCE — a search term is free text and may hold a colon of its own,
+        // which a plain `split(':')` would silently truncate at.
+        const at = intent.indexOf(':');
+        const kind = at === -1 ? intent : intent.slice(0, at);
+        const value = at === -1 ? '' : intent.slice(at + 1);
+        setPanelIntent(el.dataset.gotoPanel ?? '',
+          kind === 'status' ? { status: [value] }
+          : kind === 'search' ? { search: value }
+          : { stockAttention: true });
       }
       tab.click();
       // A source that names a control (data-goto-open) also opens it. The onboarding checklist's

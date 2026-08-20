@@ -3,7 +3,7 @@ import { showActionFailedToast } from '../../lib/toast.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { CANCELLABLE_FROM } from '../../lib/order-status-rules.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
-import { takePanelIntent } from './panel-intent.js';
+import { onPanelIntent } from './panel-intent.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
@@ -17,6 +17,7 @@ import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
 import { orderInvoiceRowHtml, orderInvoiceChipHtml, type OrderInvoiceRowState } from '../../lib/order-invoice-row.js';
+import { orderReturnChipHtml, type OrderReturnChip } from '../../lib/return-chip.js';
 import { initInfoTooltips } from '../tooltip.js';
 import { cloudinaryUploadInvoice, INVOICE_ACCEPT_ATTR } from './cloudinary.js';
 
@@ -758,6 +759,11 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
      *  (`/api/seller/orders`) so the strip is right in the first paint rather than after a
      *  correction. Absent on an order placed before this surface existed — same as "not yet". */
     invoice?: OrderInvoiceRowState | null;
+    /** The return running on this order, as a dictionary key plus the id the returns tab searches by
+     *  (`lib/return-chip.ts`). It rides with the page for the same reason `invoice` does — and it is
+     *  here at all because this renderer used to omit the chip entirely, so it vanished from every
+     *  card the moment a seller typed in the search box. */
+    returnChip?: OrderReturnChip | null;
   }): string {
     const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
     const color    = colorMap[o.shippingStatus] ?? '#888';
@@ -803,6 +809,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
             <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">${fmtAgorot(total)}</span>
             <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
+              ${orderReturnChipHtml(o.returnChip ?? null, o.returnChip ? tt(o.returnChip.key) : '', tt('returnChipOpenCase'))}
               <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden">${orderAgeChipHtml(o.createdAt, o.shippingStatus, ordersLang)}</span>
               <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)] cursor-help"${notes.length ? '' : ' hidden'} data-tooltip="${esc(tt('orderNoteChip'))}" aria-label="${esc(tt('orderNoteChip'))}" tabindex="0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3.5h15v10.5l-5.5 5.5h-9.5z"/><path d="M19.5 14h-5.5v5.5"/><line x1="8" y1="8.5" x2="16" y2="8.5"/><line x1="8" y1="12" x2="13" y2="12"/></svg></span>
               ${orderInvoiceChipHtml(o.invoice ?? null, tt('orderInvoiceChip'))}
@@ -1085,8 +1092,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // Arrived here from an overview tile? Apply what it asked for, once. The tile itself is bound by
   // the OVERVIEW's own module — it does not reach into this one, which is what stopped those tiles
   // being dead for a seller who had never opened this tab (panel-intent.ts).
-  const intent = takePanelIntent('orders');
-  if (intent?.status) jumpToOrdersWithStatus(intent.status);
+  onPanelIntent('orders', (intent) => { if (intent.status) jumpToOrdersWithStatus(intent.status); });
 
   const ordersSortTrigger = document.getElementById('orders-sort-trigger') as HTMLButtonElement | null;
   ordersSortTrigger?.addEventListener('click', () => {

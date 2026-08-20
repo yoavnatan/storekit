@@ -18,6 +18,8 @@ import { toAgorot } from '../../../lib/money.js';
 import { SHIPPING_STATUS_RULES, canTransition, type ShippingStatus } from '../../../lib/order-status-rules.js';
 import { isValidEmail } from '../../../lib/email-address.js';
 import { getBuyerInvoiceStates } from '../../../lib/invoicing/buyer-invoice.js';
+import { getLatestReturnsByOrder } from '../../../lib/return-requests.js';
+import { orderReturnChip } from '../../../lib/return-chip.js';
 
 // Never ship the whole per-store sellerNotes map to the client — on a multi-store
 // order that would expose another store's seller's private notes. Replace it with
@@ -76,10 +78,26 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // being a second request from the client because the card renders the strip in its first paint —
   // fetching it afterwards would show every order as "not provided" for a moment and then correct
   // itself, which reads as the platform losing the seller's answer.
-  const invoices = await getBuyerInvoiceStates(sellerId, page.orders.map((o) => o.id));
+  // Both ride along with the orders for the same reason: the card draws them in its FIRST paint, so
+  // a second request would show every row as "no invoice, no return" for a moment and then correct
+  // itself — which reads as the platform losing what it knows. Two queries for the page either way,
+  // never one per card, and they are independent so they go in one wave.
+  const [invoices, returns] = await Promise.all([
+    getBuyerInvoiceStates(sellerId, page.orders.map((o) => o.id)),
+    getLatestReturnsByOrder(page.orders.map((o) => o.id), storeSlug),
+  ]);
   return json({
     ok: true,
-    items: page.orders.map((o) => ({ ...scopeOrder(o, storeSlug), invoice: invoices.get(o.id) ?? null })),
+    items: page.orders.map((o) => ({
+      ...scopeOrder(o, storeSlug),
+      invoice: invoices.get(o.id) ?? null,
+      // The chip's dictionary KEY, never its words — the client looks it up in its own language
+      // (`lib/return-chip.ts`). Additive, so a client mid-deploy simply ignores it.
+      returnChip: (() => {
+        const r = returns.get(o.id);
+        return r ? orderReturnChip(r.status, o.id) : null;
+      })(),
+    })),
     page: page.page, totalPages: page.totalPages, total: page.total,
   });
 }

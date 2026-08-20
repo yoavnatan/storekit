@@ -7,7 +7,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
 import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.js';
 import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
-import { takePanelIntent } from './panel-intent.js';
+import { onPanelIntent } from './panel-intent.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { canonicalDimName, comboCount, LOW_STOCK_THRESHOLD, MAX_VARIANT_COMBOS, comboStockRows, remapComboKeys, type VariantDimension } from '../../lib/variant-combo.js';
 import { CSV_MAX_DIMENSIONS } from '../../lib/csv-bulk.js';
@@ -2900,7 +2900,7 @@ export function initPagination(): void {
 
   // Arrived from the overview's "stock needs attention" tile? Apply it, once. The tile is bound by
   // the overview's own module and records an intent rather than reaching in here (panel-intent.ts).
-  if (takePanelIntent('products')?.stockAttention) applyStockAttentionFilter();
+  onPanelIntent('products', (intent) => { if (intent.stockAttention) applyStockAttentionFilter(); });
 
   initListPager({
     name: 'products',

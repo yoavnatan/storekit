@@ -55,6 +55,7 @@ import { SHIPPING_SORT_ORDER, type AdminOrderQuery } from './admin-orders-filter
 // page below, which routes through the shared rule rather than restating it in SQL.
 import { URGENCY_STATUSES, URGENCY_RANKS, filterAndSortSellerOrders, type SellerOrderQuery } from './seller-orders-query.js';
 import { CHECKOUT_GROUP_KEY_SQL } from './checkout-group.js';
+import { openReturnSql } from './returns.js';
 import { PAYOUT_CLASS_SQL, RELEASABLE_PARAM_COUNT, releasableParams } from './payout-hold.js';
 
 export interface OrderItem {
@@ -717,7 +718,22 @@ export async function getSellerOrdersPage(
    */
   if (query.payoutStatus.length) {
     const all = await getOrdersByStoreSlug(storeSlug);
-    const filtered = filterAndSortSellerOrders(all, storeSlug, query);
+    // The JS route has to answer the same widened question the SQL one does, and it cannot see
+    // `return_requests` — so the ids come with it, in one query for the whole store's list.
+    //
+    // Asked here rather than through `return-requests.ts#ordersWithOpenReturns`, which is the same
+    // read: that module imports THIS one (it moves orders when a case settles), and importing it
+    // back would close a runtime cycle in the module that carries the money. The RULE is not
+    // duplicated — `openReturnSql` generates the predicate from `returns.ts`'s own list, so both
+    // spellings of the query ask the identical question.
+    const openReturns = query.includeOpenReturns
+      ? new Set((await rows<{ order_id: string }>(
+        `SELECT DISTINCT order_id FROM return_requests
+          WHERE order_id = ANY($1::uuid[]) AND store_slug = $2 AND ${openReturnSql('status')}`,
+        [all.map((o) => o.id), storeSlug],
+      )).map((r) => r.order_id))
+      : new Set<string>();
+    const filtered = filterAndSortSellerOrders(all, storeSlug, query, openReturns);
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     const safePage = Math.min(Math.max(1, page), totalPages);
     return {
@@ -737,12 +753,20 @@ export async function getSellerOrdersPage(
   // a NULL check and not `= ANY('{}')` — the latter matches nothing and would blank the tab.
   const statuses = query.shippingStatus.length ? query.shippingStatus : null;
   const q = query.q ? query.q.toLowerCase() : null;
+  // An order with an OPEN RETURN survives the status filter when the seller has expressed no
+  // opinion — see `SellerOrderQuery.includeOpenReturns` for the decision and why it is the default
+  // only. `EXISTS` rather than a join, like the payout hold's: an order with no case pays nothing
+  // for the rule. The state list is GENERATED from `returns.ts#isOpen`'s own array, never typed.
+  const keptByReturn = query.includeOpenReturns
+    ? `OR EXISTS (SELECT 1 FROM return_requests rr WHERE rr.order_id = o.id
+                    AND rr.store_slug = $1[1] AND ${openReturnSql('rr.status')})`
+    : '';
   // Exactly the three the WHERE names. A parameter the statement does not mention is a bind error,
   // not spare capacity — `bind message supplies 4 parameters, but prepared statement requires 3`,
   // which is how the admin Orders tab once 500'd on every load (DB_MIGRATION_PLAN §3).
   const scope: unknown[] = [[storeSlug], statuses, q];
   const where = `${BELONGS_TO_SLUGS}
-     AND ($2::text[] IS NULL OR o.shipping_status = ANY($2::text[]))
+     AND ($2::text[] IS NULL OR o.shipping_status = ANY($2::text[]) ${keptByReturn})
      AND ($3::text   IS NULL OR position($3::text in ${HAYSTACK}) > 0)`;
 
   const total = bigIntOf((await firstRow<{ n: string | number }>(

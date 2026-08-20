@@ -15,7 +15,7 @@ function order(id: string, shippingStatus: string, createdAt: string): Order {
   } as unknown as Order;
 }
 
-const urgencyQuery: SellerOrderQuery = { q: '', sortCol: 'urgency', sortDir: 'asc', shippingStatus: [], payoutStatus: [] };
+const urgencyQuery: SellerOrderQuery = { q: '', sortCol: 'urgency', sortDir: 'asc', shippingStatus: [], payoutStatus: [], includeOpenReturns: false };
 
 describe('filterAndSortSellerOrders — urgency sort', () => {
   it('floats owe-action orders (pending/processing/ready) above shipped, then delivered last', () => {
@@ -88,5 +88,53 @@ describe('seller dashboard — Orders filter badge is SSR-computed', () => {
     const badge = dashboard.split('\n').find((l) => l.includes('id="orders-filter-count"')) ?? '';
     expect(badge).toContain('hidden={ordersActiveFilterCount === 0}');
     expect(badge).toContain('{ordersActiveFilterCount}');
+  });
+});
+
+/**
+ * A DELIVERED order with an open return stays on the seller's default screen.
+ *
+ * ── The gap this closes (owner's decision, 2026-08-20) ──
+ * A return can only be opened on a delivered order, and `ORDER_ACTIVE_STATUSES` excludes delivered.
+ * So the "בתהליך החזרה" chip — built 2026-08-17 to tell a seller that one of his orders is coming
+ * back — had been rendering on a card the default view never shows. He found it by asking whether
+ * the information was on the order card at all, and the honest answer was "yes, on a screen you
+ * would have to know to go looking for".
+ *
+ * The widening applies to the DEFAULT and nothing else, which is the half worth pinning: a seller
+ * who picks "בוטלו" and is shown a delivered order has been lied to by his own filter.
+ */
+describe('an open return keeps its order on the default screen', () => {
+  const dflt = parseSellerOrderQuery(new URLSearchParams(''));
+  const chosen = parseSellerOrderQuery(new URLSearchParams('ostatus=cancelled'));
+  const delivered = order('back', 'delivered', '2026-07-20T10:00:00Z');
+  const openReturns = new Set(['back']);
+
+  it('is filtered out when nothing says it has a return', () => {
+    expect(filterAndSortSellerOrders([delivered], 's', dflt).map((o) => o.id)).toEqual([]);
+  });
+
+  it('survives the default status filter when it does', () => {
+    expect(filterAndSortSellerOrders([delivered], 's', dflt, openReturns).map((o) => o.id)).toEqual(['back']);
+  });
+
+  it('does NOT survive a filter the seller chose himself', () => {
+    expect(chosen.includeOpenReturns, 'a narrowed ?ostatus must switch the widening off').toBe(false);
+    expect(filterAndSortSellerOrders([delivered], 's', chosen, openReturns).map((o) => o.id)).toEqual([]);
+  });
+
+  it('survives when the CLIENT re-sends the active set explicitly — the twin case', () => {
+    // `/api/seller/orders` is how every search, sort and page change re-fetches, and the toolbar
+    // always sends its current selection: seeded from the active set, so spelled out rather than
+    // absent. Keying the widening off "no ?ostatus" made the server's first paint show a returning
+    // order and the first keystroke drop it.
+    const fromClient = parseSellerOrderQuery(new URLSearchParams(`ostatus=${dflt.shippingStatus.join(',')}`));
+    expect(fromClient.includeOpenReturns).toBe(true);
+    expect(filterAndSortSellerOrders([delivered], 's', fromClient, openReturns).map((o) => o.id)).toEqual(['back']);
+  });
+
+  it('the default really does exclude delivered, or this whole rule is a no-op', () => {
+    expect(dflt.includeOpenReturns).toBe(true);
+    expect(dflt.shippingStatus).not.toContain('delivered');
   });
 });

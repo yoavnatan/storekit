@@ -1,4 +1,5 @@
 import { showToast, showActionFailedToast } from '../../lib/toast.js';
+import { onPanelIntent } from './panel-intent.js';
 import { toAgorot } from '../../lib/money.js';
 
 /**
@@ -90,6 +91,26 @@ export function initReturnsTab(): void {
     closedBtn.setAttribute('aria-pressed', String(!on));
     closedBtn.classList.toggle('!border-[color:var(--color-primary)]', !on);
     applyFilters();
+  });
+
+  // ── Arrived from an order card's return chip? ──
+  //
+  // The chip records the intent and clicks the tab; this collects it, exactly once
+  // (`panel-intent.ts` argues why the traffic runs in this direction and not the other).
+  //
+  // **It turns the closed cases ON, and that is the whole point rather than a nicety.** The chip is
+  // drawn from the LATEST request on that order, open or not, so following one for a case that has
+  // since been refused or refunded would land on a filtered list that hides the very row it named —
+  // a link that goes somewhere and shows nothing, which reads as the feature being broken.
+  onPanelIntent('returns', (intent) => {
+    if (!intent.search) return;
+    if (search) search.value = intent.search;
+    // Closed cases ON, and that is the point rather than a nicety. The chip is drawn from the
+    // LATEST request on that order, open or not, so following one for a case that has since been
+    // refused or refunded would land on a filtered list hiding the very row it named — a link that
+    // goes somewhere and shows nothing, which reads as the feature being broken.
+    if (closedBtn && closedBtn.getAttribute('aria-pressed') !== 'true') closedBtn.click();
+    else applyFilters();
   });
 
   // Paint once, so a shop with more than one page arrives on page 1 rather than showing everything.

@@ -22,19 +22,47 @@ export interface PanelIntent {
   status?: string[];
   /** The products tab's "stock needs attention" view. */
   stockAttention?: true;
+  /** Land in the target panel with its search box already holding this — what an order card's
+   *  return chip uses to open the one case it is about (`lib/return-chip.ts`). */
+  search?: string;
 }
 
+/**
+ * ── An intent set AFTER the panel is already live (2026-08-20) ──
+ *
+ * Reading the intent once, at the target's init, was only ever half the mechanism — and the missing
+ * half is invisible until a source is pressed TWICE. A panel is hydrated once per page load
+ * (`fillPanel`/`hydrate` in dashboard.astro memoise it), so the second press recorded an intent that
+ * nothing would ever read again: the tab opened and arrived with nothing applied. Rare for an
+ * overview tile, which a seller passes through once; certain for the order card's return chip, which
+ * sits on every row of a list he works down.
+ *
+ * So the panel REGISTERS what to do rather than asking once, and a later intent is delivered
+ * straight to it. One applier per panel, two ways in — never two code paths doing the same thing.
+ */
 const pending: Record<string, PanelIntent | undefined> = {};
+const appliers: Record<string, ((intent: PanelIntent) => void) | undefined> = {};
 
 export function setPanelIntent(panel: string, intent: PanelIntent): void {
-  pending[panel] = intent;
+  const applier = appliers[panel];
+  // ONE intent per panel while nobody is listening: an intent is a single act of navigation, not a
+  // setting, so two presses before the panel lands mean the second one.
+  if (applier) applier(intent);
+  else pending[panel] = intent;
 }
 
-/** What the caller was asked to arrive with — and it is consumed, so a later re-init of the same
- *  panel (a cross-tab refresh, a store switch) does not silently re-apply a filter nobody asked
- *  for a second time. */
-export function takePanelIntent(panel: string): PanelIntent | undefined {
-  const intent = pending[panel];
-  delete pending[panel];
-  return intent;
+/**
+ * The panel says what to do with an intent, and immediately drains one recorded before it existed.
+ *
+ * Called from the panel's own init. Registering replaces any previous applier, which is what a
+ * store switch or a cross-tab refresh re-initialising the panel should do — the newest DOM is the
+ * one the filter has to be applied to.
+ */
+export function onPanelIntent(panel: string, apply: (intent: PanelIntent) => void): void {
+  appliers[panel] = apply;
+  const waiting = pending[panel];
+  if (waiting) {
+    delete pending[panel];
+    apply(waiting);
+  }
 }

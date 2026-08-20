@@ -23,8 +23,8 @@ import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
 import { offersSelfPickup } from '../../lib/shipping.js';
-import { getReturnsForStore, countOpenReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
-import { isOpen as returnIsOpen, type ReturnStatus } from '../../lib/returns.js';
+import { getReturnsForStore, countOpenReturns, getLatestReturnsByOrder, getOrderFactsForReturns } from '../../lib/return-requests.js';
+import { orderReturnChip, orderReturnChipHtml, type OrderReturnChip } from '../../lib/return-chip.js';
 
 /** The chip's word per state — short, because it sits in a crowded row beside the age and the
  *  totals. The seller's full sentence lives on the returns tab; this only has to say "this order is
@@ -854,34 +854,32 @@ const newOrdersCount = orderStatusCounts.pending ?? 0;
 // Both are skipped entirely when there is no store selected: `store` is null on an account whose
 // shop was just deleted, and a query keyed on a slug that does not exist is a round trip whose
 // only possible answer is "none".
-const RETURN_CHIP: Record<ReturnStatus, string> = {
-  requested: d.returnChipWaiting,
-  approved: d.returnChipReturning,
-  in_transit: d.returnChipOnTheWay,
-  received: d.returnChipArrived,
-  disputed: d.returnChipDeciding,
-  offered: d.returnChipOffered,
-  // Closed states carry no chip: the order is no longer in the middle of anything, and a chip that
-  // says "finished" on a row is one more thing to read past.
-  rejected: '',
-  refunded: '',
-  expired: '',
-};
-
 const openReturnsCount = store ? await countOpenReturns(store.slug) : 0;
 // The words for the chip above, per order — one batched read, and only on the tab that renders
 // order cards. `openReturnsCount` above is the badge and runs everywhere; this is the detail and
 // runs where it is drawn.
-const returnStateByOrderId = new Map<string, string>();
+//
+// The KEY, not the word (`lib/return-chip.ts`) — the client twin renders this same card after every
+// search, sort and poll and has to draw the same chip from its own dictionary. It did not draw one
+// at all until 2026-08-20, which is why the chip vanished the first time a seller typed in the
+// search box.
+const returnChipByOrderId = new Map<string, OrderReturnChip>();
 if (store && shows('orders') && ordersPage.orders.length) {
-  const live = await getLatestReturnsByOrder(ordersPage.orders.map((o: Order) => o.id));
+  const live = await getLatestReturnsByOrder(ordersPage.orders.map((o: Order) => o.id), store.slug);
   for (const [orderId, r] of live) {
-    if (returnIsOpen(r.status)) returnStateByOrderId.set(orderId, RETURN_CHIP[r.status] ?? 'בקשת החזרה');
+    const chip = orderReturnChip(r.status, orderId);
+    if (chip) returnChipByOrderId.set(orderId, chip);
   }
 }
 const returnRequests = store
   ? await only(['returns'], () => getReturnsForStore(store.slug), [])
   : [];
+// The order dates each card shows (`return-requests.ts#getOrderFactsForReturns`). One query for the
+// whole tab, after the list because the ids are its output — and it is not asked at all on a store
+// with no cases, where its only possible answer is "none".
+const returnOrderFacts = returnRequests.length
+  ? await getOrderFactsForReturns(returnRequests.map((r) => r.orderId))
+  : new Map();
 // Whether the seller has already provided each of these orders' buyer invoices. One query for the
 // page, after it, because the ids are its output — and skipped entirely when there are no orders,
 // so an empty store's first paint does not pay for a round trip that can only answer "none".
@@ -2258,12 +2256,15 @@ const orderStatusColors: Record<string, string> = {
                               looking at his orders has to see that one of them is in the middle of
                               coming back — otherwise the tab is a place he has to remember to
                               visit, which is the same as not being told. */}
-                          {returnStateByOrderId.get(order.id) && (
-                            <span class="order-return-chip inline-flex items-center gap-1 shrink-0 text-[0.72rem] font-semibold rounded-[var(--radius-sm)] px-1.5 py-0.5 [background:color-mix(in_srgb,var(--color-warning)_12%,transparent)] [color:var(--color-warning)]">
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-                              {returnStateByOrderId.get(order.id)}
-                            </span>
-                          )}
+                          {/* Through the shared builder, like the invoice chip beside it — the
+                              client renders this same card after every search and poll, and the two
+                              had already drifted to "drawn" and "not drawn at all"
+                              (`lib/return-chip.ts`). */}
+                          <Fragment set:html={orderReturnChipHtml(
+                            returnChipByOrderId.get(order.id) ?? null,
+                            (() => { const c = returnChipByOrderId.get(order.id); return c ? d[c.key] : ''; })(),
+                            d.returnChipOpenCase,
+                          )} />
                           <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                           <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)] cursor-help" data-tooltip={d.orderNoteChip} aria-label={d.orderNoteChip} hidden={noteList.length === 0} tabindex="0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3.5h15v10.5l-5.5 5.5h-9.5z"/><path d="M19.5 14h-5.5v5.5"/><line x1="8" y1="8.5" x2="16" y2="8.5"/><line x1="8" y1="12" x2="13" y2="12"/></svg></span>
                           <Fragment set:html={orderInvoiceChipHtml(invoiceStates.get(order.id) ?? null, d.orderInvoiceChip)} />
@@ -2893,7 +2894,7 @@ const orderStatusColors: Record<string, string> = {
       <SellerPanelShell panel="returns" active={shows('returns')}>
         {/* A shop that offers collection in person must also take returns in person (owner,
             2026-08-17) — so the flag is DERIVED from the pickup setting, never a switch of its own. */}
-        <ReturnsPanel requests={returnRequests} storeSlug={store?.slug ?? ''}
+        <ReturnsPanel requests={returnRequests} storeSlug={store?.slug ?? ''} orderFacts={returnOrderFacts}
           acceptsInStoreReturns={offersSelfPickup(store)} />
       </SellerPanelShell>
 

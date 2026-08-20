@@ -13,7 +13,7 @@
  * this screen with a rule inside a rule (owed-action group first, and OLDEST first inside it), and
  * it is now written twice — once in JS and once as an `ORDER BY`.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -65,7 +65,7 @@ const SEEDS: Seed[] = [
 
 /** Everything the store has, unfiltered — the array the JS reference used to be handed. */
 const ALL = async (): Promise<Order[]> =>
-  (await getSellerOrdersPage(SLUG, { q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [] }, 1, 10_000)).orders;
+  (await getSellerOrdersPage(SLUG, { q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], includeOpenReturns: false }, 1, 10_000)).orders;
 
 beforeAll(async () => {
   // A clean table for this file: the fixture's own orders would make "the two agree" true while
@@ -111,7 +111,11 @@ beforeAll(async () => {
 });
 
 const q = (over: Partial<SellerOrderQuery> = {}): SellerOrderQuery =>
-  ({ q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], ...over });
+  // `includeOpenReturns: false` by default here, and this file says why rather than inheriting it:
+  // the flag widens the DEFAULT status set with a fact from another table, so a parity case that
+  // left it on would be comparing two routes over a set neither test row can produce. The widening
+  // has its own cases in `seller-orders-query.test.ts`.
+  ({ q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], includeOpenReturns: false, ...over });
 
 /** Run both routes over the same rows and require the same list of order ids, in order. */
 async function bothAgree(query: SellerOrderQuery, label: string): Promise<Order[]> {
@@ -452,5 +456,103 @@ describe('the urgency grouping stays derived from the status table', () => {
   it('puts the terminal statuses last', () => {
     const last = URGENCY_GROUPS[URGENCY_GROUPS.length - 1]!;
     expect(last.every((s) => SHIPPING_STATUS_RULES[s as keyof typeof SHIPPING_STATUS_RULES].terminal)).toBe(true);
+  });
+});
+
+/**
+ * The one query shape the two routes could disagree on, and the only one with a real table behind it.
+ *
+ * Every other case here filters on columns of `orders`, so both routes read the same row and the
+ * comparison is arithmetic. The widened default is different: the SQL asks `EXISTS (… FROM
+ * return_requests …)` inside the WHERE, and the pure function is handed a Set of ids it cannot
+ * derive. Two independent answers to "does this order have a live return", and a disagreement means
+ * the seller's first paint and his first keystroke show different lists.
+ *
+ * The predicate itself is generated from one array (`returns.ts#openReturnSql`), so what this pins
+ * is the JOIN: that the query really applies the branch, that the caller really collects the ids,
+ * and that a CLOSED case widens nothing on either side.
+ */
+describe('the widened default agrees on both routes', () => {
+  const openId = crypto.randomUUID();
+  const closedId = crypto.randomUUID();
+
+  beforeAll(async () => {
+    const delivered = await query<{ id: string }>(
+      "SELECT id FROM orders WHERE shipping_status = 'delivered' ORDER BY created_at LIMIT 2");
+    expect(delivered.rows.length, 'the seed needs two delivered orders for this').toBeGreaterThan(0);
+    await query(
+      `INSERT INTO return_requests (id, order_id, store_slug, reason, status, within_statutory, refund_agorot)
+       VALUES ($1, $2, $3, 'damaged', 'received', true, 100)`,
+      [openId, delivered.rows[0]!.id, SLUG]);
+    if (delivered.rows[1]) {
+      await query(
+        `INSERT INTO return_requests (id, order_id, store_slug, reason, status, within_statutory, refund_agorot)
+         VALUES ($1, $2, $3, 'damaged', 'rejected', true, 100)`,
+        [closedId, delivered.rows[1]!.id, SLUG]);
+    }
+  });
+
+  afterAll(async () => {
+    await query('DELETE FROM return_requests WHERE id = ANY($1::uuid[])', [[openId, closedId]]);
+  });
+
+  it('a delivered order with an OPEN case is on both lists', async () => {
+    const q = parseSellerOrderQuery(new URLSearchParams(''));
+    expect(q.includeOpenReturns).toBe(true);
+    const page = await getSellerOrdersPage(SLUG, q, 1, 10_000);
+    const openReturns = new Set((await query<{ order_id: string }>(
+      "SELECT order_id FROM return_requests WHERE status = 'received'")).rows.map((r) => r.order_id));
+    const pure = filterAndSortSellerOrders(await ALL(), SLUG, q, openReturns);
+    expect(page.orders.some((o) => o.shippingStatus === 'delivered'), 'the SQL route kept it').toBe(true);
+    expect(page.orders.map((o) => o.id).sort()).toEqual(pure.map((o) => o.id).sort());
+  });
+
+  it("another store's case on a SHARED order does not claim this seller's slice", async () => {
+    // One DELIVERED order with a line in each shop, and the return belongs to the other one.
+    // Unscoped, the `EXISTS` keeps it on THIS seller's default list and the chip tells him his goods
+    // are coming back — not a leak of anyone's data, but a claim about his own that is untrue and
+    // that he cannot act on. `return_requests.store_slug` is denormalised for exactly this
+    // (migration 0030).
+    //
+    // Built here rather than taken from the seed: the seed's only multi-store order is `processing`,
+    // so a test that went looking for a shared DELIVERED one found none and passed by doing nothing.
+    // It did — measured, by deleting the scope and watching it stay green.
+    const shared = crypto.randomUUID();
+    const foreign = crypto.randomUUID();
+    await query(
+      `INSERT INTO orders (id, checkout_ref, buyer_name, buyer_email, buyer_phone, total_agorot,
+                           payment_status, shipping_status, created_at)
+       VALUES ($1, 'SO-SHARED', 'קונה משותף', 'shared@example.com', '0509999999', 10000,
+               'paid', 'delivered', '2026-07-05T09:00:00.000Z'::timestamptz)`, [shared]);
+    await query(
+      `INSERT INTO order_items (id, order_id, product_name, store_slug, store_name, price_agorot, qty, position)
+       VALUES ($1, $2, 'שלי', $3, 'קרמיקה', 5000, 1, 0), ($4, $2, 'שלו', $5, 'תכשיטים', 5000, 1, 1)`,
+      [crypto.randomUUID(), shared, SLUG, crypto.randomUUID(), OTHER]);
+    await query(
+      `INSERT INTO return_requests (id, order_id, store_slug, reason, status, within_statutory, refund_agorot)
+       VALUES ($1, $2, $3, 'damaged', 'received', true, 100)`, [foreign, shared, OTHER]);
+    try {
+      const q = parseSellerOrderQuery(new URLSearchParams(''));
+      const mine = await getSellerOrdersPage(SLUG, q, 1, 10_000);
+      expect(mine.orders.map((o) => o.id), 'the other shop\u2019s case must not widen MY default').not.toContain(shared);
+      // …and the shop the case really belongs to does see it, or the scope is simply a filter that
+      // hides everything.
+      const theirs = await getSellerOrdersPage(OTHER, q, 1, 10_000);
+      expect(theirs.orders.map((o) => o.id)).toContain(shared);
+    } finally {
+      await query('DELETE FROM return_requests WHERE id = $1', [foreign]);
+      await query('DELETE FROM order_items WHERE order_id = $1', [shared]);
+      await query('DELETE FROM orders WHERE id = $1', [shared]);
+    }
+  });
+
+  it('a delivered order whose case is CLOSED is on neither', async () => {
+    const q = parseSellerOrderQuery(new URLSearchParams(''));
+    const page = await getSellerOrdersPage(SLUG, q, 1, 10_000);
+    const closed = (await query<{ order_id: string }>(
+      "SELECT order_id FROM return_requests WHERE status = 'rejected'")).rows[0]?.order_id;
+    if (!closed) return;
+    expect(page.orders.map((o) => o.id)).not.toContain(closed);
+    expect(filterAndSortSellerOrders(await ALL(), SLUG, q, new Set()).map((o) => o.id)).not.toContain(closed);
   });
 });
