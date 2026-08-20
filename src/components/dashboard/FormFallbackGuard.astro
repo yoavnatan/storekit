@@ -117,16 +117,22 @@ const {
   id="dash-draft-bar"
   role="status"
   aria-live="polite"
-  class="!hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
+  class="!hidden fixed bottom-6 inset-x-4 z-[9998] flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2 ps-3 pe-2 rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.82rem] sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:max-w-[calc(100vw-2rem)] sm:flex-nowrap sm:gap-3 sm:py-[0.55rem] sm:ps-[0.9rem] sm:pe-[0.55rem] sm:text-[0.85rem]" data-bottom-bar
 >
-  <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
-  </svg>
+    {/* Icon and sentence are ONE flex item, and its `basis` is what decides where the row breaks
+        on a phone: given 12rem to start from, a short line still leaves room for its buttons beside
+        it, and a long one pushes them onto their own row instead of squeezing the words into a
+        column three lines tall. `grow` then lets the sentence take whatever is left. Above `sm` it
+        is an ordinary flex child and everything sits on one line. */}
+  <div class="flex items-center gap-2.5 min-w-0 grow basis-[12rem] sm:basis-auto sm:flex-1 sm:gap-3">
+    <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
+    </svg>
   {/* Three server-rendered pieces, filled by `refreshNotice` — so the section's name can be the
       control that leads him there without any script building markup. It replaced a "קח אותי לשם"
       button beside the sentence (owner, סשן א׳ §3): the sentence already names the one place the
       press could mean, and two bars can be out at once, each ending in the same three words. */}
-  <span id="dash-draft-msg">
+  <span id="dash-draft-msg" class="min-w-0">
     <span data-notice-pre></span
     ><button
       type="button"
@@ -134,12 +140,18 @@ const {
       class="!hidden p-0 bg-transparent border-0 font-[inherit] text-[inherit] cursor-pointer underline underline-offset-[3px] [color:var(--color-text)] transition-colors duration-100 hover:[color:var(--color-primary)]"
     ></button
     ><span data-notice-post></span>
-  </span>
+    </span>
+  </div>
   {/* Which of these is out depends on WHERE the offer is, not on which bar is showing — see
       `refreshNotice`. All carry `!hidden` rather than the `hidden` attribute for the usual
       reason: `.btn` is display:inline-flex and beats the attribute's display:none. */}
-  <button type="button" id="dash-draft-restore" class="!hidden btn btn--sm shrink-0">{draftRestore}</button>
-  <button type="button" id="dash-draft-discard" class="!hidden btn btn--ghost btn--sm shrink-0">{draftDiscard}</button>
+  {/* The two answers are ONE unit. Left as loose flex children they wrapped independently, so on a
+      phone "שחזר אותם" stayed beside the sentence and "מחק אותם" dropped to a row of its own —
+      two halves of one question, on two different lines. */}
+  <div class="flex items-center gap-2 shrink-0 ms-auto">
+    <button type="button" id="dash-draft-restore" class="!hidden btn btn--sm shrink-0">{draftRestore}</button>
+    <button type="button" id="dash-draft-discard" class="!hidden btn btn--ghost btn--sm shrink-0">{draftDiscard}</button>
+  </div>
 </div>
 
 <script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice, draftOpenFailed, draftNoticeMoreOne, draftNoticeMore }}>
@@ -434,10 +446,17 @@ const {
       yes.addEventListener('click', function () { acceptOffer(key); });
       no.addEventListener('click', function () { rejectOffer(key); });
 
+      // The two answers stay together on a narrow screen, for the same reason as the floating
+      // bar's pair: loose flex children wrap independently, and "restore" beside the sentence with
+      // "delete" alone on the next line is one question served as two.
+      var answers = document.createElement('div');
+      answers.className = 'flex items-center gap-2 shrink-0 ms-auto';
+      answers.appendChild(yes);
+      answers.appendChild(no);
+
       bar.appendChild(icon);
       bar.appendChild(text);
-      bar.appendChild(yes);
-      bar.appendChild(no);
+      bar.appendChild(answers);
       form.insertBefore(bar, form.firstChild);
       offers[key] = { form: form, bar: bar, values: values };
     }

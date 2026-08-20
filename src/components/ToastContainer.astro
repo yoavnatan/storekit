@@ -33,7 +33,23 @@ const t = getT(getLang(Astro.cookies));
     const cartPreview = document.querySelector<HTMLElement>('#cart-preview.is-open');
     const barHeight = bar ? window.innerHeight - bar.getBoundingClientRect().top : 0;
     const previewHeight = cartPreview ? window.innerHeight - cartPreview.getBoundingClientRect().top : 0;
-    const height = Math.max(barHeight, previewHeight);
+    /**
+     * **And anything that declares itself a bottom bar** — the seller dashboard's three floating
+     * notices (unsaved changes, a draft waiting, another tab changed this store). On a phone this
+     * container is `left:1rem; right:1rem; bottom:1.5rem`, which is exactly where those sit, and it
+     * carries the higher z-index — so a toast landed ON one of them and hid it completely (owner,
+     * 2026-08-20). The toast is the newer and shorter-lived of the two, so it is the one that
+     * moves, which is the same rule already applied to the two surfaces above.
+     *
+     * Measured by HEIGHT rather than by asking whether each is hidden: they are put away with a
+     * `display:none` utility, so an invisible one has no box and contributes nothing here without
+     * this file having to know how any of them is toggled.
+     */
+    const declared = [...document.querySelectorAll<HTMLElement>('[data-bottom-bar]')]
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.height > 0)
+      .map((r) => window.innerHeight - r.top);
+    const height = Math.max(barHeight, previewHeight, ...declared);
     container.style.setProperty('--toast-bottom-offset', height > 0 ? `${height + 12}px` : '');
   }
 
