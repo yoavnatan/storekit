@@ -137,47 +137,56 @@ describe('the seller\'s returns count means "yours", not "open"', () => {
 });
 
 /**
- * The buyer is told what a change of mind COSTS, at the moment he is told he may return.
+ * What a change of mind costs is stated ON THE POLICY PAGE, and the notice points at it.
  *
- * The sentence on an order already shipped is not silence — it is a promise. It said *"ברגע שתגיע
- * ניתן יהיה לבקש להחזיר אותה מכאן"* and named no price, while two separate rules meeting behind it
- * mean he pays both legs: `refundAmountAgorot` withholds the original delivery on `changed_mind`
- * and `returnShippingPayer` puts the return leg on him. On a small order that is more than the
- * goods (the owner ruled the policy stays, 2026-08-20 — `docs/returns-policy-decisions.md`).
+ * ── The two versions this went through, and why the second is right ──
+ * The notice on an order already shipped used to promise a return and name no price, while two
+ * rules meeting behind it mean the buyer pays both legs: `refundAmountAgorot` withholds the
+ * original delivery on `changed_mind` and `returnShippingPayer` puts the return leg on him. The
+ * first fix put the whole cost in the notice, and the owner cut it (2026-08-21): it is a screen
+ * with no action on it, carrying three clauses about a price most buyers never pay. His wording —
+ * *"החבילה בדרכה אליך, בקשת החזר תתאפשר לאחר קבלתה ע״פ מדיניות ההחזרות"* — makes it a POINTER
+ * rather than either a promise or a lecture.
  *
- * A returns-policy page carries the general disclosure and is the right home for it. What it
- * cannot do is fix a screen that says something else at the deciding moment, which is why this is
- * pinned HERE and against the CODE: flip either rule and the sentence stops being true.
+ * That only works while the page it points to actually answers the question, so this pins both
+ * halves against the code: the rules, then the page that states them, then that the notice still
+ * defers instead of promising. Change the policy and the suite fails rather than leaving a screen
+ * quietly sending people to a page that no longer says it.
  */
-describe('the shipped-order notice states what changing your mind costs', () => {
-  it('only claims the buyer pays while the code actually says so', () => {
-    // This assertion is what makes the copy below a consequence of the rules rather than a
-    // sentence somebody typed once.
+describe('the shipped-order notice defers, and the policy page delivers', () => {
+  it('the rules really do put both legs on a buyer who changed his mind', () => {
     expect(returnShippingPayer('changed_mind')).toBe('buyer');
     const order = { totalAgorot: 7900, shippingAgorot: 3000 };
     expect(refundAmountAgorot(order, 'changed_mind')).toBe(4900);
-    // …and every other reason is the seller's, which is why the sentence has to be conditional.
+    // …and every other reason is the seller's, which is what the page has to distinguish.
     expect(returnShippingPayer('damaged')).toBe('seller');
     expect(refundAmountAgorot(order, 'damaged')).toBe(7900);
   });
 
-  it('says it in both languages, on the notice the buyer reads', () => {
+  it('the policy page states both cases, not just the flattering one', () => {
+    const page = fs.readFileSync('src/pages/returns-policy.astro', 'utf8');
+    expect(
+      page.includes('אינם מוחזרים') && page.includes('על חשבון הקונה'),
+      'A buyer who changed his mind pays the delivery he already had AND the postage back. The\n'
+      + 'shipped-order notice sends him here for exactly that answer.',
+    ).toBe(true);
+    expect(
+      page.includes('על חשבון המוכר'),
+      'A faulty or wrong item is collected at the seller\'s expense. A page that named only the\n'
+      + 'buyer-pays case would read as the harsher rule applying to everything.',
+    ).toBe(true);
+  });
+
+  it('the notice points at the policy instead of promising a free return', () => {
     for (const lang of ['he', 'en'] as const) {
       const line = translations[lang].buyerDashboard.cancelAfterShip;
-      expect(line.length, `${lang}: cancelAfterShip is missing`).toBeGreaterThan(0);
-      const saysCost = lang === 'he'
-        ? line.includes('על חשבונך') && line.includes('אינם מוחזרים')
-        : /return postage is yours/i.test(line) && /not refunded/i.test(line);
+      const defers = lang === 'he' ? line.includes('מדיניות ההחזרות') : /returns policy/i.test(line);
       expect(
-        saysCost,
-        `${lang}: the notice tells a buyer he may return the parcel and never that a change of\n`
-        + 'mind costs him the delivery charge AND the return postage. It is the one screen he\n'
-        + 'reads at the moment the cost applies.',
+        defers,
+        `${lang}: this is the one screen a buyer reads at the moment he wants out, and it has no\n`
+        + 'button on it. Saying a return will be possible without saying under what terms is the\n'
+        + 'shape that reads as a free option.',
       ).toBe(true);
-      // Conditional, not a flat claim — a faulty item is refunded in full and collected at the
-      // seller's expense, and a notice saying otherwise would be wrong against the buyer.
-      const conditional = lang === 'he' ? line.includes('אם המוצר תקין') : /if the item is fine/i.test(line);
-      expect(conditional, `${lang}: the cost is stated unconditionally, which is false for a faulty item`).toBe(true);
     }
   });
 });
