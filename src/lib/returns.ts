@@ -375,6 +375,27 @@ export function isOpen(status: ReturnStatus): boolean {
 }
 
 /**
+ * The same question for a `WHERE` clause — GENERATED from the list above, never typed again.
+ *
+ * `status NOT IN ('rejected', 'refunded', 'expired')` had been hand-spelled in six places by
+ * 2026-08-20: four queries in `return-requests.ts`, the payout hold, and migration 0030's partial
+ * index. Every one was correct, and that is exactly the state `order-status-rules.ts` exists to
+ * prevent one level up — the list is a business rule with a documented reason for each member
+ * (`OPEN_STATUSES` argues why a REFUSAL is closed even though the buyer may still escalate it), and
+ * six copies means the seventh reader adds a state to the machine and quietly fixes five of them.
+ *
+ * Written as `IN (open)` rather than `NOT IN (closed)` because the list above is the one that is
+ * maintained: a new state added to the machine and forgotten here is then EXCLUDED, which shows up
+ * as a case missing from a queue rather than as a payout released on a live dispute.
+ *
+ * The migration's index keeps its own literal, and must: an index predicate is frozen in the
+ * database at the moment it was created, and it is not this module's to regenerate.
+ */
+export function openReturnSql(column = 'status'): string {
+  return `${column} IN (${OPEN_STATUSES.map((s) => `'${s}'`).join(', ')})`;
+}
+
+/**
  * How long after a refusal the buyer may still ask us to look at it.
  *
  * Not a limit on the buyer's rights — those are not ours to time — but on this button. A case has to

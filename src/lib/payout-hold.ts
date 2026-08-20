@@ -9,6 +9,7 @@ import {
   PAYOUT_CLOCK_SHIPPING_STATUSES,
   PICKUP_PAYOUT_CLOCK_SHIPPING_STATUSES,
 } from './order-status-rules.js';
+import { openReturnSql } from './returns.js';
 import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from './payout-schedule.js';
 import type { Order } from './orders.js';
 import type { DeliveryMethod } from './shipping.js';
@@ -228,14 +229,15 @@ export const RELEASABLE_SQL = `
   -- so two cases on one order — which the partial unique index already forbids — could not double a
   -- row if it ever became possible.
   --
-  -- The closed states are spelled out because they are the CHECK's own vocabulary (migration 0030)
-  -- and this is SQL: there is no import here. returns.ts#isOpen is the same rule in TypeScript, and
-  -- tests/returns-hold-parity.test.ts is what refuses to let the two drift.
+  -- The states are no longer spelled out here (2026-08-20). This is a template literal, so the one
+  -- list in returns.ts generates them: openReturnSql is built FROM the same array isOpen tests, and
+  -- the two cannot drift because there is only one of them. It had been hand-written in six places.
+  -- tests/payout-hold.test.ts still runs the SQL and the TypeScript side by side.
   -- (No backticks in this comment either — see the note above.)
   AND NOT EXISTS (
         SELECT 1 FROM return_requests rr
          WHERE rr.order_id = o.id
-           AND rr.status NOT IN ('rejected', 'refunded', 'expired'))
+           AND ${openReturnSql('rr.status')})
   -- The seller has to have done their part. ANDed with the revenue list rather than replacing it:
   -- revenue excludes a cancelled order, this excludes one that was never sent, and they are
   -- different questions. Both lists come off the status table, so a new status propagates here by

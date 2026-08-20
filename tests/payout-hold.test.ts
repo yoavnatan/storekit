@@ -234,20 +234,24 @@ describe('the SQL twin agrees with the JS rule', () => {
 
 describe('the SQL and the JS agree on which return states hold a payout', () => {
   /**
-   * `RELEASABLE_SQL` names the CLOSED states as a literal list, and `isOpen` names the open ones in
-   * TypeScript. They are two spellings of one set, in two languages, and nothing connected them —
-   * so a status added to the machine would have been treated as open by every screen and as closed
-   * by the query that decides whether a seller gets paid. That is money moving out of the company on
-   * a case still under decision, and it would have looked correct on every screen a person can see.
+   * `RELEASABLE_SQL` used to name the CLOSED states as a literal list while `isOpen` named the open
+   * ones in TypeScript — two spellings of one set, in two languages, with nothing connecting them.
+   * A status added to the machine would then have been open to every screen and closed to the query
+   * that decides whether a seller gets paid: money leaving the company on a case still under
+   * decision, looking correct everywhere a person can see. Found by reviewing the change that added
+   * `offered`; the previous one to add a state got it right by hand, which is not a mechanism.
    *
-   * Found by reviewing this change, which added a state (`offered`) to that machine — the previous
-   * one to do so got it right by hand, which is not a mechanism.
+   * **Since 2026-08-20 the SQL is GENERATED from that same array** (`returns.ts#openReturnSql`), so
+   * drift is no longer possible rather than merely detected. This test stays, and it is not
+   * redundant: it asserts the generated clause is still IN the predicate and still spells the right
+   * set — i.e. that the hold rule did not quietly lose its return branch in a refactor, which the
+   * generator cannot notice.
    */
-  it('every status the SQL calls closed is one `isOpen` calls closed, and no other', () => {
-    const inSql = /rr\.status NOT IN \(([^)]*)\)/.exec(RELEASABLE_SQL)?.[1];
+  it('every status the SQL calls open is one `isOpen` calls open, and no other', () => {
+    const inSql = /rr\.status IN \(([^)]*)\)/.exec(RELEASABLE_SQL)?.[1];
     expect(inSql, 'the return clause is no longer in RELEASABLE_SQL — has the hold rule moved?').toBeTruthy();
-    const closedInSql = [...inSql!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!).sort();
-    const closedInTs = (Object.keys(RETURN_TRANSITIONS) as ReturnStatus[]).filter((s) => !isOpen(s)).sort();
-    expect(closedInSql).toEqual(closedInTs);
+    const openInSql = [...inSql!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!).sort();
+    const openInTs = (Object.keys(RETURN_TRANSITIONS) as ReturnStatus[]).filter((s) => isOpen(s)).sort();
+    expect(openInSql).toEqual(openInTs);
   });
 });

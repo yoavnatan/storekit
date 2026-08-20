@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { NON_RETURNABLE_SUBJECTS } from '../src/lib/return-eligibility.js';
+import { RETURN_REASON_LABELS } from '../src/lib/returns.js';
 
 /**
  * Nothing in the returns feature may be written and left uncalled.
@@ -116,17 +117,28 @@ describe('the policy page names every exclusion the code enforces', () => {
  * Two identical copies are not a bug yet, which is exactly why nobody fixed them. The bug is the
  * shape: a rule with no single home is a rule the next caller cannot find.
  *
- * Grepped by SHAPE — a file that maps `changed_mind` to a string — rather than by the constant's
- * name, because a second copy will never be called `RETURN_REASON_LABELS`.
+ * Grepped by the WORDS, not by the constant's name — a second copy will never be called
+ * `RETURN_REASON_LABELS`. And not by the shape either: a file mapping the four codes to something
+ * ELSE is legitimate and there is one, `ReturnsPanel.astro`'s `REASON_MEANS`, which says what each
+ * reason costs the seller rather than restating what it is called. Two maps over one vocabulary are
+ * only a bug when they are the same map.
  */
 describe('the return reasons are spelled out in exactly one place', () => {
-  it('no file outside lib/returns.ts maps a reason code to its own words', () => {
+  it('no file outside lib/returns.ts repeats a reason LABEL', () => {
     const owner = 'src/lib/returns.ts';
+    const labels = Object.values(RETURN_REASON_LABELS);
+    // `translations.ts` is exempt, and it is the one exemption. The BUYER picks a reason from his
+    // own screen, in his own language, and `returnR2: 'הגיע פגום'` is that picker's word — the same
+    // two words for a different reader on a different surface, living in the one place words are
+    // supposed to live. The rule here is about a file inventing a SECOND seller-side map.
     const offenders = [...allSources()]
-      .filter(([file]) => file !== owner && !file.startsWith('tests'))
-      // `changed_mind:` as an object KEY with a value after it. A file naming the code in a
-      // comparison (`reason === 'changed_mind'`) is reading the vocabulary, not redefining it.
-      .filter(([, src]) => /\bchanged_mind\s*:\s*['"`]/.test(src))
+      .filter(([file]) => file !== owner && !file.startsWith('tests') && file !== 'src/i18n/translations.ts')
+      // Comments stripped first: this file's own header quotes the owner quoting a label, and a
+      // guard that fails on the sentence explaining it is a guard nobody keeps.
+      .filter(([, src]) => {
+        const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+        return labels.some((label) => code.includes(`'${label}'`));
+      })
       .map(([file]) => file);
 
     expect(

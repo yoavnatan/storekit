@@ -6,7 +6,7 @@ import { canTransition } from './order-status-rules.js';
 import { notifyBuyerReturnStatus, notifySellerReturnOpened } from './return-notify.js';
 import {
   autoApproved, canMove, refundForRequest, returnShippingPayer, withinStatutoryWindow,
-  isPartialReturn, RETURN_REASON_LABELS, type ReturnedLine, type ReturnReason, type ReturnStatus,
+  isPartialReturn, openReturnSql, RETURN_REASON_LABELS, type ReturnedLine, type ReturnReason, type ReturnStatus,
 } from './returns.js';
 import { recordMoneyEvent } from './money-events.js';
 import { formatAgorot } from './money.js';
@@ -144,7 +144,7 @@ export async function getReturnsForStore(storeSlug: string): Promise<ReturnReque
 /** The admin's queue: every OPEN case across the platform, longest-waiting first. */
 export async function getOpenReturns(): Promise<ReturnRequest[]> {
   return (await rows<Row>(
-    `${SELECT} WHERE status NOT IN ('rejected','refunded','expired') ORDER BY created_at ASC`,
+    `${SELECT} WHERE ${openReturnSql()} ORDER BY created_at ASC`,
   )).map(toRequest);
 }
 
@@ -193,7 +193,7 @@ export async function getClosedReturns(
 export async function hasOpenReturn(orderId: string): Promise<boolean> {
   const r = await firstRow<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM return_requests
-      WHERE order_id = $1 AND status NOT IN ('rejected','refunded','expired')`,
+      WHERE order_id = $1 AND ${openReturnSql()}`,
     [orderId],
   );
   return (r?.n ?? 0) > 0;
@@ -205,7 +205,7 @@ export async function ordersWithOpenReturns(orderIds: string[]): Promise<Set<str
   if (!orderIds.length) return new Set();
   const r = await rows<{ order_id: string }>(
     `SELECT DISTINCT order_id FROM return_requests
-      WHERE order_id = ANY($1::uuid[]) AND status NOT IN ('rejected','refunded','expired')`,
+      WHERE order_id = ANY($1::uuid[]) AND ${openReturnSql()}`,
     [orderIds],
   );
   return new Set(r.map((x) => x.order_id));
@@ -496,10 +496,44 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
 export async function countOpenReturns(storeSlug?: string): Promise<number> {
   const r = await firstRow<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM return_requests
-      WHERE status NOT IN ('rejected','refunded','expired')${storeSlug ? ' AND store_slug = $1' : ''}`,
+      WHERE ${openReturnSql()}${storeSlug ? ' AND store_slug = $1' : ''}`,
     storeSlug ? [storeSlug] : [],
   );
   return r?.n ?? 0;
+}
+
+/**
+ * The dates on the ORDER behind a return — for a whole list of them, in one query.
+ *
+ * **Why the returns card needs them (owner, 2026-08-20): *"לא ברור מהכרטיסיות בעצם מה קרה, מתי
+ * ההזמנה בוצעה, איזו הזמנה? מתי שולם?"*.** The card carried one date and labelled it with the order
+ * number beside it, so `הזמנה 4cb3f442 · 04.08.26` read as the day the order was placed. It is the
+ * day the REQUEST was opened, which is a different fact and the least useful of the three: the
+ * question a seller is actually answering is how long the buyer has had the goods.
+ *
+ * Three columns and nothing else, deliberately. Hydrating the whole `Order` would pull every line
+ * item and every per-store subtotal for a list that shows none of them; a return card that wanted
+ * the money already has `refund_agorot` on the request itself, computed when the case opened and
+ * therefore right even if the order has been edited since.
+ */
+export interface ReturnOrderFacts {
+  placedAt: string;
+  paidAt: string | null;
+  deliveredAt: string | null;
+}
+
+export async function getOrderFactsForReturns(orderIds: string[]): Promise<Map<string, ReturnOrderFacts>> {
+  if (!orderIds.length) return new Map();
+  const r = await rows<{ id: string; created_at: Date | string; paid_at: Date | string | null; delivered_at: Date | string | null }>(
+    'SELECT id, created_at, paid_at, delivered_at FROM orders WHERE id = ANY($1::uuid[])',
+    [orderIds],
+  );
+  const iso = (v: Date | string | null): string | null => (v === null ? null : new Date(v).toISOString());
+  return new Map(r.map((row) => [row.id, {
+    placedAt: iso(row.created_at)!,
+    paidAt: iso(row.paid_at),
+    deliveredAt: iso(row.delivered_at),
+  }]));
 }
 
 /**
@@ -514,13 +548,26 @@ export async function countOpenReturns(storeSlug?: string): Promise<number> {
  * "what is happening with my return" is always the most recent — including when it is closed, which
  * is exactly when the screen has to say why.
  */
-export async function getLatestReturnsByOrder(orderIds: string[]): Promise<Map<string, ReturnRequest>> {
+export async function getLatestReturnsByOrder(
+  orderIds: string[],
+  /**
+   * Narrow to ONE store's cases.
+   *
+   * An order can span several stores (`order_stores`, one row each), and a return belongs to exactly
+   * one of those slices — which is what `store_slug` on this table is for. Unscoped, a seller whose
+   * cart-mate had a return would see "בתהליך החזרה" on his own slice of that order: not a leak of
+   * anybody's data, but a claim about his goods that is simply untrue, and one he cannot act on. The
+   * SELLER's dashboard passes its slug; the buyer's and the admin's do not, because both are asking
+   * about the whole purchase.
+   */
+  storeSlug?: string,
+): Promise<Map<string, ReturnRequest>> {
   if (!orderIds.length) return new Map();
   const r = await rows<Row>(
     `SELECT DISTINCT ON (order_id) * FROM return_requests
-      WHERE order_id = ANY($1::uuid[])
+      WHERE order_id = ANY($1::uuid[])${storeSlug ? ' AND store_slug = $2' : ''}
       ORDER BY order_id, created_at DESC`,
-    [orderIds],
+    storeSlug ? [orderIds, storeSlug] : [orderIds],
   );
   return new Map(r.map((row) => [row.order_id, toRequest(row)]));
 }
