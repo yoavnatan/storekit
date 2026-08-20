@@ -331,7 +331,8 @@ textarea.input { resize: none; }
    the whole complaint: 16px with real padding beside it is a target the hand finds without aiming.
    `opacity` on top, because at full strength a black × competes with the text the seller is
    reading; the header's own search settled on the same value. */
-.dash-toolbar input[type="search"]::-webkit-search-cancel-button {
+.dash-toolbar input[type="search"]::-webkit-search-cancel-button,
+.admin-dash input[type="search"]::-webkit-search-cancel-button {
   -webkit-appearance: none;
   appearance: none;
   width: 16px;
@@ -347,7 +348,8 @@ textarea.input { resize: none; }
      written in — it is the one place on the platform a token cannot travel. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='3' stroke-linecap='round'%3E%3Cline x1='5' y1='5' x2='19' y2='19'/%3E%3Cline x1='19' y1='5' x2='5' y2='19'/%3E%3C/svg%3E");
 }
-.dash-toolbar input[type="search"]::-webkit-search-cancel-button:hover { opacity: 0.85; }
+.dash-toolbar input[type="search"]::-webkit-search-cancel-button:hover,
+.admin-dash input[type="search"]::-webkit-search-cancel-button:hover { opacity: 0.85; }
 /* Inside a sticky .dash-panel-head (Orders/Messages) the head's own padding +
    flex gap already space it — don't stack a second bottom pad. */
 .dash-panel-head .dash-toolbar { padding-bottom: 0; }

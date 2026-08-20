@@ -183,3 +183,58 @@ describe('leaving a tab counts when the keyboard does it', () => {
     expect(tabNav).not.toContain("tab.addEventListener('click'");
   });
 });
+
+describe('every admin tab has a heading pinned under the strip', () => {
+  const PANEL_FILE: Record<string, string> = {
+    data: 'AdminDataPanel',
+    performance: 'AdminPerformancePanel',
+    advertising: 'AdminAdvertisingPanel',
+    statement: 'AdminStatementPanel',
+  };
+
+  it('gives every panel either a shell title or a `.dash-panel-head` of its own', () => {
+    // The gap this closes was reported as a whole (owner, סשן ד׳: *"התת כותרת בדשבורד אדמין לא
+    // סטיקי… ממש קשה שאתה מזניח את הדשבורד אדמין"*). The strip pins; whatever is under it must too,
+    // or three screens into a list there is nothing on screen naming what you are looking at.
+    // Asserted over EVERY shell call site rather than a list of names, so a fifteenth tab added
+    // later cannot arrive without one.
+    const shells = [...adminPage.matchAll(/<AdminPanelShell panel="([a-z]+)"([^>]*)>/g)];
+    expect(shells.length).toBeGreaterThanOrEqual(14);
+    for (const [, panel, attrs] of shells) {
+      if ((attrs ?? '').includes('title=')) continue;
+      // No shell title — then the panel composes its own heading, and that one has to be a
+      // `.dash-panel-head` or it is not pinned to anything.
+      const file = PANEL_FILE[panel!];
+      expect(file, `panel "${panel}" has neither a shell title nor a known component`).toBeTruthy();
+      expect(read(`src/components/admin/${file}.astro`), `${file} must pin its own heading`)
+        .toContain('dash-panel-head');
+    }
+  });
+
+  it('does not leave a second copy of a heading the shell now renders', () => {
+    expect(read('src/components/admin/AdminReturnsPanel.astro')).not.toContain('>החזרות</h2>');
+    expect(moneyLog).not.toContain('>יומן אירועים כספיים</h2>');
+  });
+});
+
+describe('the admin search fields', () => {
+  it('take the height and the shape of the chips beside them', () => {
+    const css = read('src/styles/pages/admin.css');
+    expect(css).toContain('.admin-dash input[type="search"]');
+    expect(css).toContain('--dash-ctl-h');   // the seller toolbar's own control height, reused
+    expect(css).toContain('border-radius: 999px');
+  });
+});
+
+describe('the "טופל" mark is a disc, at text size', () => {
+  it('cannot shrink, and is round', () => {
+    // owner, סשן ד׳: *"הוי של הטופל קטן מאוד בצד כמעט בלתי נראה… צריך להיות גם בתוך עיגול…
+    // שיהיה בגודל של הטקסט ושלא יתכווץ"*.
+    const css = read('src/styles/utilities/utils.css');
+    expect(css).toMatch(/\.msg-handled-mark \{[^}]*border-radius: 50%/s);
+    expect(css).toMatch(/\.msg-handled-mark \{[^}]*flex: 0 0 auto/s);
+    // And the column it sits in was widened for the admin only — the seller and buyer render the
+    // same table with no mark in it.
+    expect(css).toContain('.admin-dash .msg-table__td--status');
+  });
+});

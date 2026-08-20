@@ -380,11 +380,33 @@
 .msg-table__td--actions { width: 36px; padding-block: 0.2rem; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
 /* "טופל", readable from the list. It shares the status cell with the unread bar, which is drawn on
    that cell's inline-start BORDER — so a handled thread that has since had a reply shows the red
-   edge and the green tick at once, which is exactly the state it is in. A tick and not a word: the
-   column is 12px wide (see .msg-table__th--status) and a word there forces the table sideways, the
-   same way the "סמן כטופל" button did when it was tried in the actions column. */
-.msg-handled-mark { display: inline-flex; align-items: center; color: var(--color-success); }
+   edge and the green tick at once, which is exactly the state it is in. A mark and not a word: a
+   word in this column forces the table sideways, the same way the "סמן כטופל" button did when it
+   was tried in the actions column.
+   **A DISC, at text size, and it may not shrink** (owner, סשן ד׳: *"הוי של הטופל הוא קטן מאוד בצד
+   כמעט בלתי נראה… צריך להיות גם בתוך עיגול כך שיהיה ברור שזה טופל. שיהיה בגודל של הטקסט ושלא
+   יתכווץ"*). A bare 12px tick against a row of 14px Hebrew read as a stray glyph rather than as a
+   state — the disc is what turns it into a mark, the same way the unread bar is a bar and not a
+   dot. `flex: 0 0 auto` because the cell it lives in is a flex box in card mode, where a plain
+   inline-flex child is free to be squeezed by the text beside it. The tint is 16% and not the full
+   success green: this is a resting state on every handled row, not an alert. */
+.msg-handled-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+  color: var(--color-success);
+}
 .msg-handled-mark[hidden] { display: none; }
+/* The status column was 12px — enough for the unread bar it was built for, and 8px short of the
+   disc. Widened for the ADMIN's inbox only: the seller's and the buyer's render the same table and
+   have no handled mark, so there it would be 18px of empty column taken off the preview. */
+.admin-dash .msg-table__th--status,
+.admin-dash .msg-table__td--status { width: 30px; padding-inline-end: 0.35rem; }
 .inline-alert-dot { display: inline-block; width: 7px; height: 7px; background: #ef4444; border: 1px solid var(--color-border); border-radius: 50%; flex-shrink: 0; }
 .msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
 /* The line that CLOSES the table belongs to the wrapper, and only to it. Every `td` draws a

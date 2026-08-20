@@ -240,7 +240,7 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
   const previewTag = message.fromRole === 'admin' ? ' <span class="msg-table__preview-you">(אתה)</span>' : '';
   const unreadMarker = unread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : '';
   const rowHtml = `<tr class="msg-table__row${unread ? ' msg-table__row--unread' : ''}" data-thread-id="${escapeHtml(threadId)}" data-seller-id="${escapeHtml(sellerId)}" data-thread-status="open" tabindex="0" role="button" aria-expanded="false">
-    <td class="msg-table__td msg-table__td--status"><span class="msg-handled-mark" hidden title="טופל" aria-label="טופל"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span></td>
+    <td class="msg-table__td msg-table__td--status"><span class="msg-handled-mark" hidden title="טופל" aria-label="טופל"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span></td>
     <td class="msg-table__td msg-table__td--from">${unreadMarker}<span class="admin-badge admin-badge--muted">${ROLE_WORD[partyRole]}</span> ${escapeHtml(label)}</td>
     <td class="msg-table__td msg-table__td--subject">${escapeHtml(subject)}</td>
     <td class="msg-table__td msg-table__td--preview">${escapeHtml(message.content)}${previewTag}</td>
@@ -454,9 +454,16 @@ function wireMessagesToolbar(): void {
   });
 
   // Upgraded to the site's dropdown, never left native — see `reviews.ts` for the standing rule.
+  // The menu sizes itself to its longest option now (select-dropdown.ts, and the default it carries
+  // for a compact trigger), and it names itself: the pill shows only the value that is CHOSEN, so
+  // "כולם" beside "הכל" says nothing about which filter is which. The heading is the same words the
+  // control already offers a screen reader, rather than a second wording to keep in step.
   for (const el of [roleSelect(), statusSelect()]) {
     if (!el) continue;
-    initSelectDropdown(el, { triggerClassName: COMPACT_TRIGGER_CLASS });
+    initSelectDropdown(el, {
+      triggerClassName: COMPACT_TRIGGER_CLASS,
+      menuHeading: el.getAttribute('aria-label') ?? undefined,
+    });
     el.addEventListener('change', () => navigate());
   }
 }

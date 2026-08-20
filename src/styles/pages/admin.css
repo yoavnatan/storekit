@@ -279,6 +279,24 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 /* ── Orders tab: search box + status badges (card list itself reuses
    .orders-toolbar/.order-card* from dashboard.css, see orders-filter.ts) ── */
 .admin-orders-search { margin-bottom: 1rem; max-width: 360px; }
+/* **The search boxes on this dashboard are pills, and the height of the chips beside them**
+   (owner, סשן ד׳: *"תקטין שם את אינפוטי החיפוש שיהיו קצת יותר מעודנים ומעוגלים"*).
+   Nothing is invented here — the value and the shape are both already on the row. `.input`'s
+   0.65rem block padding makes a ~2.6rem field, while every sort/filter control beside it is a
+   `rounded-full` chip at the seller toolbar's `--dash-ctl-h` (2.15rem, dashboard.css, where the
+   argument for pinning one height across a control row is written out). So the field was both the
+   tallest thing in its row and the only square one. Matching the chips settles both at once, and
+   it is the design line's first test: prefer what the system already has over a value chosen for
+   one control.
+   Scoped to `.admin-dash` — the seller's toolbar search already answers to its own rule, and the
+   two must not start fighting over the same element. */
+.admin-dash input[type="search"] {
+  height: var(--dash-ctl-h, 2.15rem);
+  padding-block: 0;
+  padding-inline: 0.85rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
 .admin-table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--color-border); }
 .admin-table {
   width: 100%; border-collapse: collapse; font-size: 0.875rem;
