@@ -46,7 +46,6 @@ function renderDashboard({ collapsed = false } = {}): void {
     <script type="application/json" id="i18n-data">${JSON.stringify({
       dashboard: {
         unsavedNotice: 'יש שינויים שלא שמרת ב{section}',
-        unsavedNoticeMany: 'יש שינויים שלא שמרת ביותר ממקום אחד',
       },
     })}</script>
     <div class="dash-tabs" role="tablist">
@@ -66,7 +65,7 @@ function renderDashboard({ collapsed = false } = {}): void {
         </form>
       </div>
     </div>
-    <div id="dash-unsaved-bar" class="!hidden"><span id="dash-unsaved-msg"></span><button id="dash-unsaved-go"></button></div>`;
+    <div id="dash-unsaved-bar" class="!hidden"><span id="dash-unsaved-msg"><span data-notice-pre></span><button id="dash-unsaved-go"></button><span data-notice-post></span></span></div>`;
 }
 
 /** The baseline is taken on first contact, exactly as a click on any widget button does it. */
@@ -144,14 +143,27 @@ describe('the unsaved-changes notice', () => {
     expect(msg()).toContain('הגדרות');
   });
 
-  it('stops naming one section once two are out of sight and unsaved', () => {
+  it('names ONE section at a time, the first in tab order, even when two are unsaved', () => {
+    // There used to be a second sentence here — "in more than one place" — which existed because
+    // the bar ended in a button that could not point at two forms at once. The section's own name
+    // is the control now (owner, סשן א׳ §3), so a sentence naming neither would be a link with
+    // nothing to link to. Products comes first in the strip, so Products is what it offers.
     for (const p of document.querySelectorAll<HTMLElement>('.dash-panel')) p.hidden = true;
     editSettingsFromElsewhere();
     touch('prod-form');
     const sku = document.querySelector<HTMLInputElement>('[name="sku"]')!;
     sku.value = 'B2';
     sku.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(msg()).toBe('יש שינויים שלא שמרת ביותר ממקום אחד');
+    expect(msg()).toBe('יש שינויים שלא שמרת במוצרים');
+  });
+
+  it('makes the section name itself the control — there is no second "take me there"', () => {
+    editSettingsFromElsewhere();
+    const link = document.getElementById('dash-unsaved-go')!;
+    expect(link.textContent).toBe('הגדרות');
+    // The sentence reads whole, with the name inside it rather than a verb tacked on the end.
+    expect(msg().replace(/\s+/g, ' ').trim()).toBe('יש שינויים שלא שמרת בהגדרות');
+    expect(document.querySelectorAll('#dash-unsaved-bar button').length).toBe(1);
   });
 
   it('goes away when the value comes back to what it was', () => {

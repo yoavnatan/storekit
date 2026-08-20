@@ -13,31 +13,43 @@
 // from EVERY tab, which is the whole complaint that started this — panels are hidden, not
 // destroyed, so an edit in Settings survives a trip to Products with nothing on screen saying so.
 //
-// It never saves anything. The button carries the seller TO the save button and focuses it; a
+// It never saves anything. Pressing it carries the seller TO the save button and focuses it; a
 // floating control that submitted a form they cannot see would be the opposite of clarity.
 //
-// It takes the bottom slot and StaleDataBar sits 5.5rem above it: this one is the frequent,
-// actionable notice, so it belongs nearest the thumb. Each bar positions ITSELF rather than sharing
-// a stack container — the elevation guard wants the element casting a shadow to declare that it
-// floats, and an ancestor cannot vouch for it.
+// **The thing that carries them there is the section's NAME, underlined, inside the sentence** —
+// there is no second "קח אותי לשם" button any more (owner, סשן א׳ §3: *"ושם הלשונית עם קו תחתון
+// מתחתיה והיא לחיצה, בלי ׳קח אותי לשם׳"*). The sentence already names the one place the press could
+// possibly mean, so a button repeating it in a verb was a second subject for one destination — and
+// two of these bars can be out at once, each ending in the same three words.
+//
+// It is `bottom-6` at rest and `scripts/dashboard/bar-stack.ts` moves it when another bar is out —
+// the offsets used to be reserved per bar, which left a gap whenever a reserved slot was empty.
+// Each bar still positions ITSELF rather than sharing a flex container: the elevation guard wants
+// the element casting a shadow to declare that it floats, and an ancestor cannot vouch for it.
 //
 // Hidden with the `!hidden` utility, not the `hidden` attribute: this element is display:flex and a
 // flex utility beats the attribute's display:none (the trap is documented across the dashboard).
-interface Props {
-  goLabel: string;
-}
-const { goLabel } = Astro.props;
 ---
 
 <div
   id="dash-unsaved-bar"
   role="status"
   aria-live="polite"
-  class="!hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
+  class="!hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] px-[0.9rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
 >
   <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
   </svg>
-  <span id="dash-unsaved-msg"></span>
-  <button type="button" id="dash-unsaved-go" class="btn btn--sm shrink-0">{goLabel}</button>
+  {/* The sentence is assembled from three server-rendered pieces rather than written into one span,
+      so the section's name can be a real control without any script building markup: the guard sets
+      three strings and nothing else. `unsaved-guard.ts#refreshUnsavedNotice` fills them. */}
+  <span id="dash-unsaved-msg">
+    <span data-notice-pre></span
+    ><button
+      type="button"
+      id="dash-unsaved-go"
+      class="p-0 bg-transparent border-0 font-[inherit] text-[inherit] cursor-pointer underline underline-offset-[3px] [color:var(--color-text)] transition-colors duration-100 hover:[color:var(--color-primary)]"
+    ></button
+    ><span data-notice-post></span>
+  </span>
 </div>

@@ -10,12 +10,14 @@
 // display:flex, and a flex utility beats the attribute's display:none (see the
 // same trap elsewhere in the dashboard).
 //
-// `bottom-[5.5rem]`, not `bottom-6`, since UnsavedChangesBar arrived: two bars that both position
-// themselves at the bottom edge land on top of each other, and whichever painted second would hide
-// the first with nothing saying so. A fixed offset rather than a shared stack container, because
-// the elevation guard (tests/design-shadow-rule.test.ts) requires the element CASTING a shadow to
-// declare that it floats — an ancestor's `fixed` deliberately cannot vouch for it, so hoisting the
-// positioning out of here would have made the shadow look unjustified exactly where it is earned.
+// `bottom-6` is the resting value; `scripts/dashboard/bar-stack.ts` moves it up when a bar below it
+// is out. It used to carry a fixed `bottom-[5.5rem]` so it could never land on UnsavedChangesBar —
+// which meant that when this bar was the only one showing, it hovered a bar's height above nothing
+// (owner, סשן א׳ §3). The offsets are computed from what is on screen instead. The element still
+// positions itself rather than sitting in a shared flex container, because the elevation guard
+// (tests/design-shadow-rule.test.ts) requires the element CASTING a shadow to declare that it
+// floats — an ancestor's `fixed` deliberately cannot vouch for it, so hoisting the positioning out
+// of here would have made the shadow look unjustified exactly where it is earned.
 interface Props {
   message: string;
   refreshLabel: string;
@@ -28,7 +30,7 @@ const { message, refreshLabel, dismissLabel } = Astro.props;
   id="dash-stale-bar"
   role="status"
   aria-live="polite"
-  class="!hidden fixed bottom-[5.5rem] left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
+  class="!hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
 >
   <svg class="shrink-0 max-w-none [color:var(--color-primary)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/>
