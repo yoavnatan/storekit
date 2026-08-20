@@ -3061,8 +3061,19 @@ export async function applyPagination(): Promise<void> {
     // form over is what puts the offer back in front of him instead of losing the edit in silence.
     window.__dashScanDrafts?.(edit);
   }
-  // Every row here is brand new, so the marks for waiting drafts have to be drawn again — they are
-  // localStorage's state, which `buildRows` knows nothing about.
+  /**
+   * Every row here is brand new, so the marks for waiting drafts have to be drawn again — they are
+   * localStorage's state, which `buildRows` knows nothing about.
+   *
+   * **And the SET has to be recomputed, not just repainted** (found 2026-08-20, by paging away from
+   * an edited product and back). The orphan scan runs at load; after that only pruning runs, which
+   * can take an entry out and never put one in. So a draft written during THIS page life, whose row
+   * then left the page, became invisible: back on page 1 the row was there, the typing was in
+   * localStorage, and nothing said so until a full reload. A rebuild is exactly the moment that
+   * answer can change, and it is a seller-initiated action rather than a hot path — one pass over a
+   * handful of keys.
+   */
+  window.__dashRescanDrafts?.();
   markDraftRows();
   // Chips can only be measured once they are in the document — see initCategoryChipTips.
   initCategoryChipTips(tbody);

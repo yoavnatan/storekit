@@ -185,6 +185,19 @@ describe('every editor the seller opens is known to the draft guard', () => {
   });
 });
 
+describe('a draft written after load is still findable', () => {
+  it('recomputes which products are waiting when the table rebuilds', async () => {
+    // The load-time scan and its pruning can only ever SHRINK the set. So a draft written during
+    // this page life, for a row that then left the page — a filter, a sort, the next page — sat in
+    // localStorage with nothing on screen saying so: the row came back unmarked and the notice
+    // stayed silent until a full reload. Found by paging away from an edited product and back.
+    let rescans = 0;
+    window.__dashRescanDrafts = (): void => { rescans++; };
+    await applyPagination();
+    expect(rescans).toBe(1);
+  });
+});
+
 describe('a draft never outlives what it belongs to', () => {
   it('is forgotten when the product is deleted', async () => {
     await confirmNext(() => {

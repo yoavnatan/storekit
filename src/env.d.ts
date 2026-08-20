@@ -49,6 +49,10 @@ interface Window {
   /** Writes every pending debounced draft immediately. Called by anything about to take a form out
    *  of reach — the products table replacing its rows, the tab going away. */
   __dashFlushDrafts?: () => void;
+  /** Recomputes which products have a draft waiting — the load-time scan and its pruning can only
+   *  shrink that set, so a draft written after load for a row that later left the page had nothing
+   *  to announce it. Called by the products table when it rebuilds its rows. */
+  __dashRescanDrafts?: () => void;
   /** Redraws those marks. Published by the products panel; the draft guard calls it whenever the
    *  set changes, and the table calls it itself after any redraw of its rows. */
   __dashMarkDraftRows?: () => void;

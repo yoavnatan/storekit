@@ -1030,6 +1030,22 @@ const {
       }
     };
 
+    /**
+     * Recompute the whole orphan set — the answer to "which products have work waiting" from
+     * scratch, rather than only forgetting the ones whose form has arrived.
+     *
+     * The load-time scan plus `pruneOrphans` can only ever SHRINK the set, and that left a real
+     * gap: a draft written during this page life, for a row that then left the page (a filter, a
+     * sort, a different page), was in localStorage with nothing on screen saying so — the row came
+     * back unmarked and the notice stayed silent until a full reload. The products table calls this
+     * when it rebuilds, which is the only moment the answer can change.
+     */
+    window.__dashRescanDrafts = function () {
+      scanOrphans();
+      refreshNotice();
+      watchNotice();
+    };
+
     window.__dashDraftProducts = function () {
       var out = [];
       for (var k in orphans) out.push(orphans[k].record);
