@@ -163,6 +163,28 @@ describe('an open editor survives the table being rebuilt under it', () => {
   });
 });
 
+describe('every editor the seller opens is known to the draft guard', () => {
+  it('announces a row the CLIENT built, not only one the server left pending', async () => {
+    // The one that mattered, and it hid behind a fresh page load. Only the `data-edit-pending`
+    // branch announced its form, so drafting worked on a page nobody had touched and nowhere else:
+    // every rebuild of the table — search, filter, sort, page, and the end of every delete —
+    // replaces the rows with client-built ones that are already full and therefore NOT pending.
+    // Opening one of those gave a form the guard had never met: nothing drafted, no offer possible,
+    // no mark on the row. Found by deleting a product and watching a neighbour's typing go nowhere.
+    await applyPagination();
+    expect(document.querySelector('[data-product-edit="p1"]')?.hasAttribute('data-edit-pending')).toBe(false);
+    scanned = [];
+    openFromRowMenu('p1');
+    expect(scanned).toContain('p1');
+  });
+
+  it('announces a pending row too, the one path that always worked', () => {
+    scanned = [];
+    openFromRowMenu('p3');
+    expect(scanned).toContain('p3');
+  });
+});
+
 describe('a draft never outlives what it belongs to', () => {
   it('is forgotten when the product is deleted', async () => {
     await confirmNext(() => {

@@ -2402,7 +2402,23 @@ export function ensureEditRow(productId: string, cloud: string, preset: string):
   // `hasAttribute`, never `dataset.editPending` — the server writes it as a bare `data-edit-pending`
   // with no value, so `dataset` hands back `''`, which is FALSY. Read as a truthiness test this
   // silently never built a single row: the form simply opened empty, with no error anywhere.
-  if (!row.hasAttribute('data-edit-pending')) return row;
+  if (!row.hasAttribute('data-edit-pending')) {
+    /**
+     * **A row the CLIENT built was never handed to the draft guard, and that is most of them**
+     * (found 2026-08-20, by deleting a product and watching a neighbour's typing go nowhere).
+     *
+     * Only the `data-edit-pending` branch below announced its form, so drafting worked for rows the
+     * server rendered — i.e. on a freshly loaded page and nowhere else. Every rebuild of the table
+     * replaces them with client-built rows that are already full and therefore NOT pending: after
+     * any search, filter, sort, page change or delete, opening an editor gave a form the guard had
+     * never met. Nothing was drafted from it, so a crash lost the typing, no offer could ever be
+     * made for it, and the row carried no mark. Silent in every direction.
+     *
+     * Cheap to do on every open: `scanForms` skips a form already carrying `data-draft-live`.
+     */
+    window.__dashScanDrafts?.(row);
+    return row;
+  }
   row.removeAttribute('data-edit-pending');
   pageProductCache ??= pageProducts();
   const p = pageProductCache[productId];
