@@ -240,7 +240,7 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
   const previewTag = message.fromRole === 'admin' ? ' <span class="msg-table__preview-you">(אתה)</span>' : '';
   const unreadMarker = unread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : '';
   const rowHtml = `<tr class="msg-table__row${unread ? ' msg-table__row--unread' : ''}" data-thread-id="${escapeHtml(threadId)}" data-seller-id="${escapeHtml(sellerId)}" data-thread-status="open" tabindex="0" role="button" aria-expanded="false">
-    <td class="msg-table__td msg-table__td--status"><span class="msg-handled-mark" hidden title="טופל" aria-label="טופל"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span></td>
+    <td class="msg-table__td msg-table__td--status"><button type="button" class="msg-handled-mark" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" aria-label="סמן כטופל"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button></td>
     <td class="msg-table__td msg-table__td--from">${unreadMarker}<span class="admin-badge admin-badge--muted">${ROLE_WORD[partyRole]}</span> ${escapeHtml(label)}</td>
     <td class="msg-table__td msg-table__td--subject">${escapeHtml(subject)}</td>
     <td class="msg-table__td msg-table__td--preview">${escapeHtml(message.content)}${previewTag}</td>
@@ -265,13 +265,11 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
         <div class="seller-msg-reply-actions">
           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
           <button class="seller-msg-reply-cancel" type="button" hidden>ביטול</button>
-          <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" type="button">סמן כטופל</button>
           <button class="seller-msg-reply-open" type="button" aria-expanded="false">כתוב תגובה</button>
           <button class="seller-msg-reply-send" type="button" hidden>שלח</button>
         </div>` : `
         <div class="seller-msg-reply-actions">
           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-          <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" type="button">סמן כטופל</button>
           <span class="muted" style="font-size:0.8rem">הפונה לא השאיר כתובת לחזרה — אין דרך לענות</span>
         </div>`}
       </div>
@@ -486,9 +484,11 @@ function wireThreadActions(): void {
   panel.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement | null;
 
-    const handledBtn = target?.closest<HTMLButtonElement>('.admin-thread-handled');
+    // The tick ON THE ROW is the only control for this now (owner, סשן ד׳ — the in-thread
+    // "סמן כטופל" button is gone). It sits inside the row, whose own click opens the thread, so the
+    // first thing this does is take the click out of that path.
+    const handledBtn = target?.closest<HTMLButtonElement>('.msg-handled-mark');
     if (handledBtn) {
-      // The row toggle must not also open the thread underneath it.
       e.stopPropagation();
       const handled = handledBtn.dataset.handled !== '1';
       handledBtn.disabled = true;
@@ -499,23 +499,25 @@ function wireThreadActions(): void {
           body: JSON.stringify({ action: 'set-status', threadId: handledBtn.dataset.threadId, handled }),
         });
         if (!res.ok) throw new Error('request failed');
-        // The server's answer is what the button ends up reflecting, never the click.
+        // The server's answer is what the mark ends up reflecting, never the click.
         const body = await res.json() as { handled: boolean };
+        const label = body.handled ? 'טופל — לחצו כדי לבטל' : 'סמן כטופל';
         handledBtn.dataset.handled = body.handled ? '1' : '';
         handledBtn.setAttribute('aria-pressed', body.handled ? 'true' : 'false');
-        handledBtn.textContent = body.handled ? 'טופל ✓' : 'סמן כטופל';
-        // The SUMMARY row, found by its thread id — not `closest('[data-thread-id]')`, which
-        // returned the button itself (it carries that attribute) and so wrote the new state onto
-        // the button and nowhere else. The row is what the list is read and filtered by, and since
-        // סשן ד׳ it is also what paints the "טופל" tick, so a miss here is the state changing in
-        // the database and on one button while the list goes on saying the opposite.
+        // `aria-label` only — the site's own tooltip is built from it, and it skips any element
+        // carrying a `title` (icon-tooltips.ts). A static title would also never have followed the
+        // state, which is the whole point of a control that toggles.
+        handledBtn.setAttribute('aria-label', label);
+        // The ROW carries the state the list is filtered and read by, and it is a different element
+        // from the button — `closest('[data-thread-id]')` used to return the button itself, which
+        // carries that attribute too, so the new state was written onto the control and nowhere
+        // else. Found by id instead.
         const threadId = handledBtn.dataset.threadId ?? '';
-        const row = threadId
-          ? panel.querySelector<HTMLElement>(`tr.msg-table__row[data-thread-id="${CSS.escape(threadId)}"]`)
-          : null;
-        row?.setAttribute('data-thread-status', body.handled ? 'handled' : 'open');
-        const mark = row?.querySelector<HTMLElement>('.msg-handled-mark');
-        if (mark) mark.hidden = !body.handled;
+        if (threadId) {
+          panel
+            .querySelector<HTMLElement>(`tr.msg-table__row[data-thread-id="${CSS.escape(threadId)}"]`)
+            ?.setAttribute('data-thread-status', body.handled ? 'handled' : 'open');
+        }
       } catch {
         showErrorToast('הפעולה נכשלה, נסו שוב');
       } finally {

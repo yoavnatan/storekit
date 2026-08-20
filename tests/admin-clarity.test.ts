@@ -63,11 +63,22 @@ describe('admin inbox — "טופל" is visible from the list', () => {
     expect(poll).toContain('msg-handled-mark');
   });
 
-  it('repaints the mark and the row state when the button is toggled', () => {
-    // The old handler wrote the new state onto `closest('[data-thread-id]')`, which is the button
-    // itself — so the list never learned. It has to find the summary row.
+  it('is the control as well as the report, and nothing else sets the state', () => {
+    // owner, סשן ד׳: *"הוי הזה צריך תמיד להופיע שם, להיות אפור, וכשטופל פשוט להיות ירוק — ואז
+    // בפנים אפשר להעיף את ה'סמן כטופל'"*. One control, on the row, always present.
+    expect(poll).toContain(".closest<HTMLButtonElement>('.msg-handled-mark')");
+    expect(poll).toContain('e.stopPropagation()');   // the row's own click opens the thread
+    expect(panel).not.toContain('admin-thread-handled');
+    expect(poll).not.toContain('admin-thread-handled');
+    // And the row still learns, which the old handler got wrong by writing onto the button.
     expect(poll).toContain('tr.msg-table__row[data-thread-id=');
-    expect(poll).toMatch(/mark\.hidden = !body\.handled/);
+  });
+
+  it('is never hidden — grey at rest, green when handled', () => {
+    const css = read('src/styles/utilities/utils.css');
+    expect(css).toContain('.msg-handled-mark[data-handled="1"]');
+    expect(css).not.toContain('.msg-handled-mark[hidden]');
+    expect(panel).not.toContain('class="msg-handled-mark" hidden');
   });
 
   it('gives the mark a colour of its own rather than borrowing the unread bar', () => {
@@ -233,6 +244,7 @@ describe('the "טופל" mark is a disc, at text size', () => {
     const css = read('src/styles/utilities/utils.css');
     expect(css).toMatch(/\.msg-handled-mark \{[^}]*border-radius: 50%/s);
     expect(css).toMatch(/\.msg-handled-mark \{[^}]*flex: 0 0 auto/s);
+    expect(css).toMatch(/\.msg-handled-mark \{[^}]*cursor: pointer/s);
     // And the column it sits in was widened for the admin only — the seller and buyer render the
     // same table with no mark in it.
     expect(css).toContain('.admin-dash .msg-table__td--status');

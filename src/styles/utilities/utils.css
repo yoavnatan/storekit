@@ -397,11 +397,24 @@
   flex: 0 0 auto;
   width: 1.15rem;
   height: 1.15rem;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
+  cursor: pointer;
+  /* Grey at rest, green when handled — and PRESENT either way (owner, סשן ד׳). A control that
+     appears only once it has been used cannot be discovered; the grey tick is what teaches the
+     green one. The two states differ in colour alone, which is why the tick is also the row's
+     `aria-pressed` and its title, never colour by itself. */
+  background: var(--color-bg);
+  color: var(--color-muted);
+  transition: background 0.12s, color 0.12s;
+}
+.msg-handled-mark:hover { background: color-mix(in srgb, var(--color-success) 12%, var(--color-bg)); color: var(--color-success); }
+.msg-handled-mark[data-handled="1"] {
   background: color-mix(in srgb, var(--color-success) 16%, transparent);
   color: var(--color-success);
 }
-.msg-handled-mark[hidden] { display: none; }
+.msg-handled-mark:disabled { cursor: default; opacity: 0.5; }
 /* The status column was 12px — enough for the unread bar it was built for, and 8px short of the
    disc. Widened for the ADMIN's inbox only: the seller's and the buyer's render the same table and
    have no handled mark, so there it would be 18px of empty column taken off the preview. */

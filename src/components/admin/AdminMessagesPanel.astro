@@ -180,18 +180,29 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
           return (
             <>
               <tr class={`msg-table__row${unreadForAdmin > 0 ? ' msg-table__row--unread' : ''}`} data-thread-id={id} data-seller-id={sellerId} data-thread-status={status} tabindex="0" role="button" aria-expanded="false">
-                {/* **"טופל" has to be visible from OUTSIDE the thread** (owner, סשן ד׳: *"מה עוזר
-                    לי שיש שם 'סמן כטופל' אם בחוץ אין שום חיווי לכך שזה טופל?"*). The button that
-                    sets it lives inside the open thread — which is right, that is where the
-                    decision is made — but a state you have to open a row to read is a state the
-                    list cannot be scanned by, and the status filter above then had nothing on
-                    screen to agree with. The mark goes in the status cell, which already exists and
-                    was empty: the unread bar is drawn on that cell's border, so the two never
-                    contend for the same pixels and a handled thread with a new reply shows both. */}
+                {/* **The mark IS the control, and it is always on the row** (owner, סשן ד׳:
+                    first *"מה עוזר לי שיש שם 'סמן כטופל' אם בחוץ אין שום חיווי לכך שזה טופל?"*,
+                    then *"הייתי רוצה שיהיה דרך לסמן כטופל גם על גבי ההודעה הסגורה… הוי הזה צריך
+                    תמיד להופיע שם, להיות אפור, וכשטופל פשוט להיות ירוק — ואז בפנים אפשר להעיף את
+                    ה'סמן כטופל'"*).
+                    Three things collapse into one tick. It REPORTS the state without opening the
+                    row, it SETS it from the same place, and being present on every row — grey,
+                    then green — it teaches what it is: an absent control cannot be discovered, and
+                    a green tick that only ever appears on rows that already have it explains
+                    nothing about how they got it.
+                    In the status cell, which the unread bar draws on its BORDER, so the two never
+                    contend for the same pixels and a handled thread with a new reply shows both.
+                    `stopPropagation` in the handler is what keeps the row's own click (which opens
+                    the thread) out of the way. */}
                 <td class="msg-table__td msg-table__td--status">
-                  <span class="msg-handled-mark" hidden={status !== 'handled'} title="טופל" aria-label="טופל">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                  </span>
+                  <button
+                    type="button"
+                    class="msg-handled-mark"
+                    data-thread-id={id}
+                    data-handled={status === 'handled' ? '1' : ''}
+                    aria-pressed={status === 'handled' ? 'true' : 'false'}
+                    aria-label={status === 'handled' ? 'טופל — לחצו כדי לבטל' : 'סמן כטופל'}
+                  ><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
                 </td>
                 <td class="msg-table__td msg-table__td--from">
                   {unreadForAdmin > 0 && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
@@ -311,10 +322,6 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                         <div class="seller-msg-reply-actions">
                           <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
                           <button class="seller-msg-reply-cancel" type="button" hidden>ביטול</button>
-                          <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id={id}
-                                  data-handled={status === 'handled' ? '1' : ''}
-                                  aria-pressed={status === 'handled' ? 'true' : 'false'}
-                                  type="button">{status === 'handled' ? 'טופל ✓' : 'סמן כטופל'}</button>
                           <button class="seller-msg-reply-open" type="button" aria-expanded="false">כתוב תגובה</button>
                           <button class="seller-msg-reply-send" type="button" hidden>שלח</button>
                         </div>
@@ -326,10 +333,6 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                          accepting words that could never leave. */
                       <div class="seller-msg-reply-actions">
                         <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-                        <button class="admin-thread-handled btn btn--ghost btn--sm" data-thread-id={id}
-                                data-handled={status === 'handled' ? '1' : ''}
-                                aria-pressed={status === 'handled' ? 'true' : 'false'}
-                                type="button">{status === 'handled' ? 'טופל ✓' : 'סמן כטופל'}</button>
                         <span class="muted" style="font-size:0.8rem">הפונה לא השאיר כתובת לחזרה — אין דרך לענות</span>
                       </div>
                     )}
