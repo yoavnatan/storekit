@@ -704,7 +704,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
       </div>
       <DashTabsBoot />
 
-      <AdminPanelShell panel="overview" active={shows('overview')}>
+      <AdminPanelShell panel="overview" title="סקירה כללית" active={shows('overview')}>
         {/* Where the money is, above the counting stats: the accounting question comes first for
             someone opening this dashboard to run a business (סשן ב׳ §3). */}
         {ledger && <AdminLedgerCard
@@ -734,7 +734,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         />}
       </AdminPanelShell>
 
-      <AdminPanelShell panel="sellers" active={!!sellersTab}>
+      <AdminPanelShell panel="sellers" title="מוכרים" active={!!sellersTab}>
         {sellersTab && <AdminSellersPanel
           sellerCards={sellersTab!.cards}
           balanceBySeller={sellersTab!.balanceBySeller}
@@ -764,7 +764,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         />}
       </AdminPanelShell>
 
-      <AdminPanelShell panel="stores" active={shows('stores')}>
+      <AdminPanelShell panel="stores" title="חנויות" active={shows('stores')}>
         <AdminStoresPanel
           storeRows={storePageResult.items}
           q={storeQuery.q}
@@ -792,7 +792,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         />
       </AdminPanelShell>
 
-      <AdminPanelShell panel="orders" active={!!ordersPage}>
+      <AdminPanelShell panel="orders" title="הזמנות" active={!!ordersPage}>
         {ordersPage && <AdminOrdersPanel
           orders={ordersPage!.orders}
           returnStateByOrderId={returnStateByOrderId}
@@ -844,7 +844,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         {advertisingTab && <AdminAdvertisingPanel overview={advertisingTab!.overview} brandCampaigns={brandCampaigns} range={adRange} activePreset={adPreset} compare={advertisingTab!.compare} />}
       </AdminPanelShell>
 
-      <AdminPanelShell panel="messages" active={!!threadsPage}>
+      <AdminPanelShell panel="messages" title="הודעות" active={!!threadsPage}>
         {threadsPage && <AdminMessagesPanel
           threads={threadsPage!.threads}
           sellers={sellers}
@@ -863,7 +863,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         />}
       </AdminPanelShell>
 
-      <AdminPanelShell panel="reviews" active={shows('reviews')}>
+      <AdminPanelShell panel="reviews" title="ביקורות" active={shows('reviews')}>
         <AdminReviewsPanel
           reviews={reviewsPage.reviews}
           query={reviewQuery}
@@ -880,7 +880,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         />
       </AdminPanelShell>
 
-      <AdminPanelShell panel="alerts" active={shows('alerts')}>
+      <AdminPanelShell panel="alerts" title="התראות ושגיאות" active={shows('alerts')}>
         <AdminModerationStatus state={imageModerationState} placement="alerts" />
         <AdminAlertsPanel
           errors={alertsPageResult.items}
@@ -922,7 +922,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
           two panels would be open at once and this one would lose its `data-lazy` marker. Every
           other shell here asks the same question; this is the one where the answer stopped being
           the same. */}
-      <AdminPanelShell panel="payouts" active={shows('payouts') && !!payoutPlan}>
+      <AdminPanelShell panel="payouts" title="תשלומים למוכרים" active={shows('payouts') && !!payoutPlan}>
         {payoutPlan && <AdminPayoutPlanCard
           plan={payoutPlan}
           sellersHref={(state: string) => tabUrl('sellers', { spayout: state })}
@@ -946,14 +946,14 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
 
       {/* Returns. Its normal state is empty — the sweep closes seven of the eight states on
           its own, and the one that needs a person arrives by mail before anyone opens this. */}
-      <AdminPanelShell panel="returns" active={shows('returns')}>
+      <AdminPanelShell panel="returns" title="החזרות" active={shows('returns')}>
         <AdminReturnsPanel requests={openReturns} outliers={returnRates.outliers} platformRate={returnRates.platformRate} disputeOutliers={returnRates.disputeOutliers} closed={closedReturns} closedQuery={sp.get('rq') ?? ''} tabUrl={tabUrl} />
       </AdminPanelShell>
 
       {/* `reconciliation` is no longer part of the condition: it is computed on every render now
           (it feeds this tab's own badge), so only the journal page decides whether the panel is
           built. */}
-      <AdminPanelShell panel="moneylog" active={!!moneyLog}>
+      <AdminPanelShell panel="moneylog" title="יומן אירועים כספיים" active={!!moneyLog}>
         {moneyLog && <AdminMoneyLogPanel
           events={moneyLog!.events}
           query={moneyLog!.query}

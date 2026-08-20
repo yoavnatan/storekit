@@ -87,7 +87,10 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
 </div>
 
 <section id="admin-statement-doc">
-  <header class="mb-4">
+  {/* `.dash-panel-head` so it pins under the tab strip like every other admin panel's heading. This
+      one keeps its own header rather than taking the shell's (AdminPanelShell) because its title is
+      composed from the period being shown, and it carries the dates under it. */}
+  <header class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
     <h2 class="m-0 text-[1.05rem] font-semibold">דוח חשבונאי — {title}</h2>
     <p class={`m-0 mt-1 ${NOTE}`}>
       {formatBusinessDayLabel(s.period.fromISO)} — {formatBusinessDayLabel(s.period.toISO)} · הופק {formatBusinessDayLabel(s.generatedAtISO)}

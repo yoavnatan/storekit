@@ -4,8 +4,31 @@ interface Props {
   panel: string;
   /** Is this the panel this request was asked for? */
   active: boolean;
+  /**
+   * The panel's own heading, pinned under the tab strip.
+   *
+   * **Why it is rendered HERE and not in each panel** (owner, סשן ד׳: *"התת כותרת בדשבורד אדמין
+   * לא סטיקי… ממש קשה שאתה מזניח את הדשבורד אדמין"*). The tab strip pins, and until now the next
+   * thing under it was the first row of data — so an admin three screens into a list of sellers
+   * had lost which tab he was in as soon as the strip's own label scrolled past his attention. The
+   * seller's dashboard has had this for weeks (`.dash-panel-head`, dashboard.css); the admin's
+   * fourteen panels each rolled their own top row or none at all, which is why none of them had it.
+   *
+   * Passing it through the shell rather than adding a header to each panel means one recipe, one
+   * height and one offset for all of them — the same argument that put the sticky rule itself in
+   * one declaration shared by both dashboards. It sits inside `#dash-panel-<id>`, so it travels
+   * with the panel through every `swapPanel` refresh like the rest of the panel's markup.
+   *
+   * **Four panels pass no title, and each has its own reason.** Data, Performance and Advertising
+   * already carry a `.dash-panel-head` holding a date-range picker beside their title. Statement's
+   * title names the period it is showing, so it is composed from the data and lives with the dates
+   * under it. All four are pinned where they are; a second heading above them would be furniture,
+   * and `tests/admin-clarity.test.ts` checks that a panel with no title here is one of exactly
+   * those four.
+   */
+  title?: string;
 }
-const { panel, active } = Astro.props;
+const { panel, active, title } = Astro.props;
 
 /**
  * One admin tab's container — rendered for all eleven, filled for one.
@@ -37,6 +60,11 @@ const BAR_WIDTHS = ['38%', '92%', '76%', '84%', '61%'];
   hidden={!active}
   data-lazy={active ? undefined : ''}
 >
+  {active && title && (
+    <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
+      <h2 class="m-0 [color:var(--color-text)]">{title}</h2>
+    </div>
+  )}
   {active ? <slot /> : (
     <div class="flex flex-col gap-3 py-2" aria-hidden="true">
       {BAR_WIDTHS.map((width) => (

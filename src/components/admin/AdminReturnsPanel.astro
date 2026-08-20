@@ -119,7 +119,10 @@ const orderHref = (orderId: string): string => buildAdminUrl('orders', { oq: ord
 const trailHref = (orderId: string): string => buildAdminUrl('moneylog', { mq: orderId.slice(0, 8) });
 ---
 
-<h2 class="m-0 mb-1 text-[1.05rem] font-bold">החזרות</h2>
+{/* The heading moved to AdminPanelShell, where it is pinned under the tab strip like every other
+    panel's — see that component. What is left here is the line that says what the LIST is, which
+    belongs with the list and not with the tab name. `mb-3` is the tightened value from the session
+    that put the flow diagram below this line — kept, since that spacing is about the diagram. */}
 <p class="m-0 mb-3 text-[0.8rem] [color:var(--color-muted)]">
   רוב הבקשות נסגרות לבד. כאן מופיע רק מה שמחכה להחלטה שלך, ומה שעדיין בתהליך.
 </p>

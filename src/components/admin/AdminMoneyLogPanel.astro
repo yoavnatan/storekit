@@ -121,10 +121,9 @@ const highlightId = targetMissing ? '' : query.eventId;
       purchase; and the append-only nature of the journal is a property of the data, not something
       a reader has to be told before every reading of it. A paragraph nobody re-reads after the
       first visit is a permanent tax on the ones who do. */}
-  <header class="mb-4">
-    <h2 class="m-0 text-[1.05rem] font-semibold">יומן אירועים כספיים</h2>
-  </header>
-
+  {/* The heading moved to AdminPanelShell, which pins it under the tab strip like every other
+      panel's. It kept its own longer wording there — the tab is called "יומן כספי" and this is a
+      journal of EVENTS, which is the distinction the panel exists to make. */}
   <AdminReconciliationCard reconciliation={reconciliation} />
   <AdminMoneyLogToolbar query={query} total={total} />
 

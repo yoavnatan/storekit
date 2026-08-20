@@ -45,7 +45,11 @@ describe('every tab has a shell, and only one is filled', () => {
     // contents render at all. A shell with `active={true}` hardcoded would put its tab's data back
     // on every request — the thing this change removed.
     const source = read(ADMIN_PAGE);
-    const actives = [...source.matchAll(/<AdminPanelShell panel="[a-z]+" active=\{([^}]*(?:\}[^}]*)*?)\}>/g)].map((m) => m[1]!);
+    // `[^>]*?` between the two attributes, not a space: since סשן ד׳ most shells also carry a
+    // `title` (the heading pinned under the tab strip), and a regex that assumed `active` came
+    // immediately after `panel` silently matched only the four that do not — which is a gate that
+    // reports green while checking a third of what it was written to check.
+    const actives = [...source.matchAll(/<AdminPanelShell panel="[a-z]+"[^>]*? active=\{([^}]*(?:\}[^}]*)*?)\}>/g)].map((m) => m[1]!);
     expect(actives).toHaveLength(declaredPanels().length);
     for (const expr of actives) {
       expect(expr, 'a shell must be gated on shows() or on data that is only loaded for it')
