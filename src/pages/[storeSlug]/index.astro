@@ -16,7 +16,7 @@ import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '.
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
-import { computeFacets, parseFacetParam, buildFacetParam, isIndexableFacetView, countSelectedFacetValues, toggleFacetValue, FACET_PARAM, FACET_VALUES_SHOWN, FACET_INDEX_MIN_PRODUCTS } from '../../lib/product-facets.js';
+import { computeFacets, parseFacetParam, buildFacetParam, productMatchesFacets, isIndexableFacetView, countSelectedFacetValues, toggleFacetValue, FACET_PARAM, FACET_VALUES_SHOWN, FACET_INDEX_MIN_PRODUCTS } from '../../lib/product-facets.js';
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath, countProductsPerCategory, categoryUrlParam, findCategoryByParam } from '../../lib/store-categories.js';
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
@@ -163,18 +163,18 @@ const listingQuery = { categoryIds, sort: initSort, q: initQ, purchasedUnits, sa
 const facetBaseProducts = filterAndSortProducts(allProducts, listingQuery);
 const facets = computeFacets(facetBaseProducts, facetSelection);
 /**
- * The SAME call `/api/store-products` makes, filters included — not `facetBaseProducts.filter(…)`.
+ * The grid: the panel's base, narrowed by the selection.
  *
- * Filtering the already-sorted array would be cheaper and gives an identical result today, because
- * `rankDefault`'s tiers are absolute thresholds rather than percentiles. It is still the wrong
- * shape: this page renders page 1 and "load more" fetches page 2 from that route, so the two must
- * produce one list. Order them by two different routes through the same module and the day a rank
- * becomes relative to the set — a top-N label, a percentile tier — page 2 silently repeats and
- * skips products, with nothing failing anywhere. One code path costs one in-memory sort, and only
- * when a filter is actually on. `tests/product-listing.test.ts` pins the agreement.
+ * **Byte for byte the two lines `/api/store-products` runs**, and that matters more than which of
+ * the two shapes is used: this page renders page 1 and that route serves page 2 of the same list,
+ * so a difference between them shows up as a product repeated on page 2 and another never seen,
+ * with nothing failing anywhere. `Array.prototype.filter` preserves order, so this is the ranking
+ * above with rows removed. `tests/product-facets.test.ts` pins it against the fuller
+ * `filterAndSortProducts(…, { facets })` route through the same module, so the day a rank becomes
+ * relative to the set — a top-N label, a percentile tier — the disagreement fails there instead.
  */
 const filteredProducts = facetSelection.size
-  ? filterAndSortProducts(allProducts, { ...listingQuery, facets: facetSelection })
+  ? facetBaseProducts.filter((p) => productMatchesFacets(p, facetSelection))
   : facetBaseProducts;
 // The canonical spelling of the current selection — sorted, so two click orders are one URL.
 const facetParam = buildFacetParam(facetSelection);
@@ -483,6 +483,7 @@ const pmI18n = {
   loadingMore: t.store.loadingMore,
   filterAll: t.store.filterAll,
   filterByCategory: t.store.filterByCategory,
+  filterMoreValues: t.store.filterMoreValues,
   searchResultsFor: t.store.searchResultsFor,
   noResultsFor: t.store.noResultsFor,
   loadFailedTitle: t.store.loadFailedTitle,
@@ -956,7 +957,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                         aria-expanded={selectedFacetCount > 0 ? 'true' : 'false'} aria-controls="facet-panel">
                   <svg class="facet-toggle__icon facet-toggle__icon--closed" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                   <svg class="facet-toggle__icon facet-toggle__icon--open" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  <span>{t.store.filterByAttribute}</span>
+                  <span class="facet-toggle__label">{t.store.filterByAttribute}</span>
                   {selectedFacetCount > 0 && <span class="facet-toggle__count">{selectedFacetCount}</span>}
                 </button>
               )}
@@ -1011,10 +1012,19 @@ const bannerPreload = !isDemo && shopStore.bannerImage
             {facets.length > 0 && (
               <div class="facet-panel" id="facet-panel" hidden={selectedFacetCount === 0}
                    role="group" aria-label={t.store.filterAttributesLabel}>
+                {/* The panel's own way out, at its top corner — the toggle carries one too, but a
+                    shopper who has scrolled the panel into view is looking HERE, not back up at the
+                    control they pressed (owner, 2026-08-20). `order:-1` + `align-self` rather than
+                    absolute positioning: it takes its own line at the top instead of floating over
+                    whatever the first attribute row happens to be. */}
+                <button type="button" class="facet-panel__close" data-facet-close
+                        aria-controls="facet-panel" aria-label={lang === 'he' ? 'סגור' : 'Close'}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
                 {facets.map((facet) => {
                   const chosen = facetSelection.get(facet.key);
                   return (
-                    <div class="facet-group">
+                    <div class="facet-group" data-facet-group={facet.key}>
                       <span class="facet-group__label">{facet.label}</span>
                       <div class="facet-group__values">
                         {facet.values.map((value, i) => {
@@ -1039,7 +1049,8 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                                rel={crawlable ? undefined : 'nofollow'}
                                aria-current={on ? 'page' : undefined}
                                hidden={i >= FACET_VALUES_SHOWN && !on}
-                               data-facet-value>
+                               data-facet-key={facet.key}
+                               data-facet-value={value.key}>
                               {value.value}
                               <span class="category-chip__count">{value.count}</span>
                             </a>
@@ -1052,14 +1063,6 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                     </div>
                   );
                 })}
-                {/* No icon on this link: the × moved to the toggle, where it means CLOSE. Two ×s
-                    in one panel meaning two different things is the confusion this feature does
-                    not need, and "נקה סינון" says what it does in words already. */}
-                {selectedFacetCount > 0 && (
-                  <a href={storeViewHref(selectedCategory, 1)} class="facet-clear" rel="nofollow">
-                    {t.store.filterClearAttributes}
-                  </a>
-                )}
               </div>
             )}
 
@@ -1687,16 +1690,6 @@ const bannerPreload = !isDemo && shopStore.bannerImage
 
   let currentSort = 'default';
   let activeTag = '';
-  /**
-   * The attribute filter, as the URL spells it. Held verbatim and never re-derived, because the
-   * panel's own chips are links the browser follows — a facet change arrives as a fresh page, not
-   * as client state, so the only job here is to carry it through the requests this script DOES
-   * make. Missing it is not cosmetic: `syncUrl` rewrites the address bar from these variables, and
-   * a sort or a search would otherwise silently drop a filter the shopper can still see applied.
-   */
-  const facetParam = new URLSearchParams(window.location.search).get('f') ?? '';
-  /** The query the server rendered the panel against — see `mustReloadForFacets` below. */
-  const facetPanelQuery = new URLSearchParams(window.location.search).get('q') ?? '';
   // Set true wherever activeTag actually changes; refreshFromServer() consumes
   // it to decide whether renderCategoryNav() needs to run this time (sort/
   // search-only refreshes never touch the category, so should skip it).
@@ -2367,18 +2360,20 @@ const bannerPreload = !isDemo && shopStore.bannerImage
    * caller does with a failure is its own business — the shared part is only that neither may
    * treat one as the other.
    */
-  async function fetchProductsPage(offset: number): Promise<{ ok: boolean; products: StoreProductDTO[]; hasMore: boolean }> {
+  async function fetchProductsPage(offset: number): Promise<{ ok: boolean; products: StoreProductDTO[]; hasMore: boolean; facets?: FacetDTO[] }> {
     const params = new URLSearchParams({ store: storeSlug, offset: String(offset) });
     if (activeTag) params.set('category', activeTag);
-    if (facetParam) params.set('f', facetParam);
+    const facets = facetParamFrom(facetSelection);
+    if (facets) params.set('f', facets);
     if (currentSort !== 'default') params.set('sort', currentSort);
     const q = effectiveQuery();
     if (q) params.set('q', q);
     try {
       const res = await fetch(`/api/store-products?${params.toString()}`);
-      const data = await res.json() as { ok: boolean; products?: StoreProductDTO[]; hasMore?: boolean };
+      const data = await res.json() as { ok: boolean; products?: StoreProductDTO[]; hasMore?: boolean; facets?: FacetDTO[] };
       if (!data.ok) return { ok: false, products: [], hasMore: false };
-      return { ok: true, products: data.products ?? [], hasMore: !!data.hasMore };
+      // `facets` rides only on page 1 — "load more" asks for products, not for a new panel.
+      return { ok: true, products: data.products ?? [], hasMore: !!data.hasMore, facets: data.facets };
     } catch {
       // silent: reported by the callers — both of them turn `ok: false` into a toast and keep
       // whatever is on screen, rather than drawing an empty catalogue.
@@ -2406,40 +2401,12 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   // already uses elsewhere, and carries its own delay in CSS so a fast filter shows nothing at all.
   const loadingBar = document.getElementById('store-products-loading');
 
-  /**
-   * While an attribute filter is active, can this change be applied in place?
-   *
-   * Only if it is a re-SORT. The panel's chips and — more to the point — the count beside each
-   * value are server-rendered from the set the category and the search left; swapping the grid
-   * underneath them would leave a filter panel describing a catalogue that is no longer on screen,
-   * and a wrong count is worse than a slow one because nothing on the page admits it is wrong.
-   * A re-sort is the one change that cannot move those numbers: same products, another order.
-   *
-   * With no filter active there is no panel to keep honest and nothing here applies.
-   */
-  function mustReloadForFacets(): boolean {
-    if (!facetParam) return false;
-    return pendingCategoryNav || effectiveQuery() !== facetPanelQuery;
-  }
-
   async function refreshFromServer(): Promise<void> {
-    if (mustReloadForFacets()) {
-      // A CATEGORY change drops the filter, exactly as the chip's own href does — an attribute the
-      // old shelf stocked may not exist on the new one, and carrying it over lands the shopper on
-      // an empty grid. A search keeps it: it narrows the same shelf.
-      const params = new URLSearchParams();
-      const q = effectiveQuery();
-      if (q) params.set('q', q);
-      if (activeTag) {
-        const name = flatCategories.find((c) => c.id === activeTag)?.name;
-        params.set('category', (name && toSlug(name)) || activeTag);
-      }
-      if (!pendingCategoryNav && facetParam) params.set('f', facetParam);
-      if (currentSort !== 'default') params.set('sort', currentSort);
-      const qs = params.toString();
-      window.location.assign(qs ? `?${qs}` : window.location.pathname);
-      return;
-    }
+    // A CATEGORY change drops the attribute filter, exactly as a category chip's own href does: an
+    // attribute the old shelf stocked may not exist on the new one, and carrying it over lands the
+    // shopper on an empty grid with no clue why. A sort or a search keeps it — both narrow or
+    // reorder the same shelf.
+    if (pendingCategoryNav && facetSelection.size) facetSelection = new Map();
     syncUrl();
     const token = ++refreshToken;
     if (!productGrid) return;
@@ -2451,7 +2418,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     // renderings reads as the layout "resetting". The bar above the grid is
     // that marker now — see LoadingSweep.astro for why it replaced dimming.
     startLoadingSweep(loadingBar);
-    const { ok, products: page, hasMore } = await fetchProductsPage(0);
+    const { ok, products: page, hasMore, facets: nextFacets } = await fetchProductsPage(0);
     // A newer filter is already in flight: it owns the bar and the grid now.
     if (token !== refreshToken) return;
     stopLoadingSweep(loadingBar);
@@ -2476,6 +2443,9 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       renderCategoryNav();
       pendingCategoryNav = false;
     }
+    // The panel is redrawn in the SAME synchronous block as the grid, for the reason the category
+    // nav above is: two reflows separated by nothing read as the page resetting itself.
+    if (nextFacets) renderFacetPanel(nextFacets);
     productGrid.innerHTML = '';
     loadedCount = 0;
     appendProductCards(page, true);
@@ -2530,7 +2500,8 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     const params = new URLSearchParams();
     const q = effectiveQuery();
     if (q) params.set('q', q);
-    if (facetParam) params.set('f', facetParam);
+    const facets = facetParamFrom(facetSelection);
+    if (facets) params.set('f', facets);
     // The SLUG, not the `data-category-id` this code holds internally. Both resolve
     // (store-categories.ts#findCategoryByParam), but this is the URL a shopper ends up bookmarking
     // or pasting, and it has to be the same one the chip links to, the sitemap lists and the
@@ -2550,35 +2521,175 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   }
 
   /**
-   * The attribute filter panel — open/close, and "עוד".
+   * The attribute filter panel.
    *
-   * That is deliberately ALL the JavaScript this feature has. The chips are real links the browser
-   * follows (see the panel's own comment above), so filtering works with scripting off, the counts
-   * are never a client guess, and there is no second renderer of this markup to keep in step with
-   * the Astro one. What is left is the two things a link cannot do: reveal the values held back
-   * past `FACET_VALUES_SHOWN`, and collapse the panel.
+   * **The chips FILTER IN PLACE.** They are still real `<a href>` — a crawler follows them, and so
+   * does a browser with scripting off, which is the whole reason the category chips became links in
+   * 2026-08-03 and the reason a single-value view can rank. But a plain left click is intercepted
+   * and handled here, exactly as a category chip's is: filtering in place is what a filter IS, and
+   * reloading the page on every chip was wrong (owner, 2026-08-20: "זה צריך להתנהג כמו פילטור").
    *
-   * The panel's INITIAL state is server-rendered from whether a filter is active, so nothing has to
-   * survive the navigation a chip causes — no sessionStorage, no re-open flicker.
+   * **The panel is redrawn from the SERVER's own numbers, never from a guess.** `/api/store-products`
+   * returns the recomputed facets with page 1, so the count beside each value is the number the
+   * server would have rendered. That is what makes this safe to do client-side: the only thing this
+   * renderer decides is markup, and it has to match the Astro block above — the same SSR/AJAX parity
+   * this page already lives with for product cards.
    */
-  const facetToggle = document.getElementById('facet-toggle');
+  const facetToggle = document.getElementById('facet-toggle') as HTMLElement | null;
   const facetPanel = document.getElementById('facet-panel');
-  facetToggle?.addEventListener('click', () => {
+
+  interface FacetValueDTO { value: string; key: string; count: number }
+  interface FacetDTO { label: string; key: string; values: FacetValueDTO[] }
+
+  /** Mirrors lib/product-facets.ts. Literals rather than an import, so this script does not pull a
+   *  server module's graph into the page bundle for four integers. */
+  const FACET_VALUES_SHOWN = 8;
+  const FACET_INDEX_MIN_PRODUCTS = 8;
+  const MAX_FACETS = 3;
+  const MAX_VALUES_PER_FACET = 20;
+
+  function parseFacetParamClient(raw: string): Map<string, Set<string>> {
+    const out = new Map<string, Set<string>>();
+    for (const group of raw.split(',')) {
+      if (out.size >= MAX_FACETS) break;
+      const at = group.indexOf(':');
+      if (at <= 0) continue;
+      const values = group.slice(at + 1).split('~').filter(Boolean).slice(0, MAX_VALUES_PER_FACET);
+      if (values.length) out.set(group.slice(0, at), new Set(values));
+    }
+    return out;
+  }
+
+  /** labelKey → chosen value keys. The client's copy of `FacetSelection`. */
+  let facetSelection = parseFacetParamClient(new URLSearchParams(window.location.search).get('f') ?? '');
+
+  /** Sorted, always — one selection has exactly one spelling, or the URL a shopper copies depends on
+   *  the order they clicked (lib/product-facets.ts#buildFacetParam says it at length). */
+  function facetParamFrom(selection: Map<string, Set<string>>): string {
+    return [...selection.keys()].sort()
+      .map((k) => `${k}:${[...(selection.get(k) ?? [])].sort().join('~')}`)
+      .join(',');
+  }
+
+  function countSelectedFacets(): number {
+    let total = 0;
+    for (const values of facetSelection.values()) total += values.size;
+    return total;
+  }
+
+  /** Toggle one value, returning a NEW selection — same contract as `toggleFacetValue` server-side,
+   *  so the href a chip advertises and the state a click produces cannot disagree. */
+  function toggledFacets(labelKey: string, valueKey: string): Map<string, Set<string>> {
+    const next = new Map<string, Set<string>>();
+    for (const [k, v] of facetSelection) next.set(k, new Set(v));
+    const current = next.get(labelKey);
+    if (current?.has(valueKey)) {
+      current.delete(valueKey);
+      if (!current.size) next.delete(labelKey);
+    } else if (current) {
+      if (current.size < MAX_VALUES_PER_FACET) current.add(valueKey);
+    } else if (next.size < MAX_FACETS) {
+      next.set(labelKey, new Set([valueKey]));
+    }
+    return next;
+  }
+
+  /** The URL this chip leads to — kept real so a middle click, "copy link" and a crawler all still
+   *  get an address that resolves to exactly this view. */
+  function facetChipHref(labelKey: string, valueKey: string): string {
+    const params = new URLSearchParams();
+    if (activeTag) {
+      const name = flatCategories.find((c) => c.id === activeTag)?.name;
+      params.set('category', (name && toSlug(name)) || activeTag);
+    }
+    const f = facetParamFrom(toggledFacets(labelKey, valueKey));
+    if (f) params.set('f', f);
+    const qs = params.toString();
+    return qs ? `?${qs}` : window.location.pathname;
+  }
+
+  /** Redraw the panel and the button from a server-computed facet list. */
+  function renderFacetPanel(facets: FacetDTO[]): void {
     if (!facetPanel) return;
-    const open = facetPanel.hasAttribute('hidden');
+    const i18n = getPMI18n();
+    const closeHtml = `<button type="button" class="facet-panel__close" data-facet-close`
+      + ` aria-controls="facet-panel" aria-label="${escHtml(i18n?.close ?? '')}">`
+      + `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+    facetPanel.innerHTML = closeHtml + facets.map((facet) => {
+      const chosen = facetSelection.get(facet.key);
+      const chips = facet.values.map((value, i) => {
+        const on = chosen?.has(value.key) ?? false;
+        const crawlable = facetSelection.size === 0 && value.count >= FACET_INDEX_MIN_PRODUCTS;
+        return `<a href="${escHtml(facetChipHref(facet.key, value.key))}" class="category-chip facet-chip"`
+          + `${crawlable ? '' : ' rel="nofollow"'}${on ? ' aria-current="page"' : ''}`
+          + `${i >= FACET_VALUES_SHOWN && !on ? ' hidden' : ''}`
+          + ` data-facet-key="${escHtml(facet.key)}" data-facet-value="${escHtml(value.key)}">`
+          + `${escHtml(value.value)}<span class="category-chip__count">${value.count}</span></a>`;
+      }).join('');
+      const more = facet.values.length > FACET_VALUES_SHOWN
+        ? `<button type="button" class="facet-more" data-facet-more>${escHtml(i18n?.filterMoreValues ?? '')}</button>`
+        : '';
+      return `<div class="facet-group" data-facet-group="${escHtml(facet.key)}">`
+        + `<span class="facet-group__label">${escHtml(facet.label)}</span>`
+        + `<div class="facet-group__values">${chips}${more}</div></div>`;
+    }).join('');
+
+    // A view whose products share no attribute has no panel, and the button goes with it rather
+    // than opening an empty box. It comes back the moment a wider view does.
+    const count = countSelectedFacets();
+    if (facetToggle) {
+      facetToggle.hidden = facets.length === 0;
+      const badge = facetToggle.querySelector('.facet-toggle__count');
+      if (count > 0) {
+        if (badge) badge.textContent = String(count);
+        else facetToggle.insertAdjacentHTML('beforeend', `<span class="facet-toggle__count">${count}</span>`);
+      } else badge?.remove();
+    }
+    if (!facets.length) openFacetPanel(false);
+  }
+
+  function openFacetPanel(open: boolean): void {
+    if (!facetPanel) return;
     if (open) facetPanel.removeAttribute('hidden');
     else facetPanel.setAttribute('hidden', '');
-    facetToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-  });
-  // Delegated: one listener for every "עוד", and it survives nothing being re-rendered here.
+    facetToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  facetToggle?.addEventListener('click', () => openFacetPanel(!!facetPanel?.hasAttribute('hidden')));
+
   facetPanel?.addEventListener('click', (event) => {
-    const more = (event.target as Element | null)?.closest<HTMLButtonElement>('[data-facet-more]');
-    if (!more) return;
-    const values = more.parentElement;
-    values?.querySelectorAll<HTMLElement>('[data-facet-value][hidden]').forEach((chip) => chip.removeAttribute('hidden'));
-    // A button that has done its one job is a no-op afterwards, so it goes rather than sitting
-    // there disabled (memory `feedback_noop_interactions_invisible`).
-    more.remove();
+    const target = event.target as Element | null;
+
+    if (target?.closest('[data-facet-close]')) { openFacetPanel(false); return; }
+
+    // "עוד" — reveal the values held back past FACET_VALUES_SHOWN.
+    const more = target?.closest<HTMLButtonElement>('[data-facet-more]');
+    if (more) {
+      more.parentElement?.querySelectorAll<HTMLElement>('[data-facet-value][hidden]')
+        .forEach((chip) => chip.removeAttribute('hidden'));
+      // A button that has done its one job is a no-op afterwards, so it goes rather than sitting
+      // there disabled (memory `feedback_noop_interactions_invisible`).
+      more.remove();
+      return;
+    }
+
+    const chip = target?.closest<HTMLElement>('[data-facet-value]');
+    if (!chip) return;
+    const mouse = event as MouseEvent;
+    // A modified click is left alone deliberately: opening a filtered view in a new tab is a
+    // reasonable thing to want from something that IS a link.
+    if (mouse.button !== 0 || mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey) return;
+    event.preventDefault();
+    const labelKey = chip.dataset.facetKey ?? '';
+    const valueKey = chip.dataset.facetValue ?? '';
+    if (!labelKey || !valueKey) return;
+    facetSelection = toggledFacets(labelKey, valueKey);
+    // Paint the chip immediately. The grid takes a round trip, and a filter that looks inert until
+    // the network answers reads as a dead control; the COUNTS wait for the server, because they are
+    // the one thing here that cannot honestly be guessed.
+    if (chip.getAttribute('aria-current') === 'page') chip.removeAttribute('aria-current');
+    else chip.setAttribute('aria-current', 'page');
+    void refreshFromServer();
   });
 
   function openSort() {

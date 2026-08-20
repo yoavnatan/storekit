@@ -194,7 +194,11 @@ describe('attribute-filter views are crawlable exactly as far as they should be'
 
   it('keeps the chips real links, so filtering works with no JavaScript at all', () => {
     // Same decision as the category chips in 2026-08-03: a <button> is invisible to a crawler.
+    // A plain left click is intercepted and filters in place — the href is what a crawler, a
+    // middle click and a scripting-off browser get, not what a shopper sees happen.
     expect(page).toMatch(/<a href=\{storeViewHref\(selectedCategory, 1, next\)\}/);
+    expect(page).toContain("const chip = target?.closest<HTMLElement>('[data-facet-value]');");
+    expect(page).toContain('event.preventDefault();');
   });
 
   it('describes an indexable filter as a CollectionPage, never as the Store itself', () => {

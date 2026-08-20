@@ -5,7 +5,7 @@ import { getVisibleProductsByStoreId, toPublicProduct } from '../../lib/store-pr
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds, findCategoryByParam } from '../../lib/store-categories.js';
-import { parseFacetParam, FACET_PARAM } from '../../lib/product-facets.js';
+import { parseFacetParam, computeFacets, productMatchesFacets, FACET_PARAM } from '../../lib/product-facets.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -54,7 +54,13 @@ export const GET: APIRoute = async ({ url }) => {
   const categoryIds = selected ? resolveCategoryFilterIds(categories, selected.id) : undefined;
 
   // `sale` rides along so a "price: low to high" page orders by what the shopper would pay.
-  const filtered = filterAndSortProducts(visibleProducts, { categoryIds, sort, q, facets, purchasedUnits, sale: store.sale });
+  //
+  // Two steps, in the SAME order the store page's own render uses them, because the attribute
+  // panel and the grid are answers to different questions: the panel describes what the category
+  // and the search left (or picking one age would make every other age vanish), while the grid is
+  // that set narrowed by the panel.
+  const base = filterAndSortProducts(visibleProducts, { categoryIds, sort, q, purchasedUnits, sale: store.sale });
+  const filtered = facets.size ? base.filter((p) => productMatchesFacets(p, facets)) : base;
   const products = filtered.slice(offset, offset + PRODUCTS_PAGE_SIZE);
 
   return json({
@@ -62,5 +68,10 @@ export const GET: APIRoute = async ({ url }) => {
     // Never the raw rows — they carry the seller's private note (see toPublicProduct).
     products: products.map(toPublicProduct),
     hasMore: offset + products.length < filtered.length,
+    // The panel, recomputed for the view being returned — but only on the FIRST page. "Load more"
+    // asks for products, not for a new panel, and re-sending it would let a slow page-3 response
+    // redraw a panel the shopper has since changed. Counts here are the server's own, which is the
+    // whole reason the client does not try to guess them while a filter is applied.
+    ...(offset === 0 ? { facets: computeFacets(base, facets) } : {}),
   });
 };

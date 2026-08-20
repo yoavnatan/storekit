@@ -127,6 +127,23 @@ describe('the unsaved-changes notice', () => {
     expect(msg()).toContain('(חנות)');
   });
 
+  it('leaves the tab\'s alert badge out of the sentence', () => {
+    /*
+     * Reported by the owner 2026-08-20 as "יש שינויים שבוצעו בשינויים6" — the number is a stock
+     * alert badge, a <span> inside the tab button, and `textContent` swept it into the name. The
+     * badges were added after this reader was written, so nothing failed anywhere; the notice just
+     * started naming a section that does not exist.
+     */
+    const tab = document.getElementById('tab-settings')!;
+    const badge = document.createElement('span');
+    badge.className = 'dash-tab-badge';
+    badge.textContent = '6';
+    tab.appendChild(badge);
+    editSettingsFromElsewhere();
+    expect(msg()).not.toContain('6');
+    expect(msg()).toContain('הגדרות');
+  });
+
   it('stops naming one section once two are out of sight and unsaved', () => {
     for (const p of document.querySelectorAll<HTMLElement>('.dash-panel')) p.hidden = true;
     editSettingsFromElsewhere();

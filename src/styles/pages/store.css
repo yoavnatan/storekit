@@ -996,14 +996,21 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   display: none;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.35rem 0.9rem;
+  padding: 0.35rem 0.8rem;
   font-size: 0.82rem;
   font-weight: 500;
   font-family: inherit;
+  line-height: 1.5;
   color: var(--color-text);
   background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: 9999px;
+  /* 10px, not a capsule (owner, 2026-08-20: "שלא תהיה עגולה לגמרי אלא שתתאים … לכפתור הסינון
+     החדש"). It stands beside `.facet-toggle` and `#sort-trigger` on exactly the devices where it
+     appears, and both of those are `var(--radius)` — which is also what the chips took in
+     2026-08-18 when the row stopped being a row of pills. A single capsule left in a row of 10px
+     controls is what made this one read as a different kind of object. Padding and line-height
+     match the same two, so all three are one height. */
+  border-radius: var(--radius);
   cursor: pointer;
   flex: 1 1 auto;
   min-width: 0;
@@ -1831,6 +1838,30 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 }
 .facet-panel[hidden] { display: none; }
 
+/* Its own line at the top of the panel, at the inline END (the left, in Hebrew). `order` + a flex
+   alignment rather than `position:absolute`, so it can never land on top of whatever the first
+   attribute row turns out to be — the rows are rebuilt from the server on every filter and their
+   height is not knowable from here. */
+.facet-panel__close {
+  order: -1;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-block: -0.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-icon);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color 0.13s, background 0.13s;
+}
+/* White, never a tint (memory `feedback_hover_light_not_tint`). */
+.facet-panel__close:hover { color: var(--color-text); background: var(--color-surface); }
+
 .facet-group {
   display: flex;
   align-items: baseline;
@@ -1888,6 +1919,36 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 .facet-clear:hover { color: var(--color-text); }
 
 @media (max-width: 640px) {
+  /* THE WORD GOES, AND THE ROW GETS ITS SCROLLER BACK (owner, 2026-08-20: "הרוחב של החנות
+     נשבר באמצע").
+
+     `.store-controls__row` is `flex-wrap: nowrap` on purpose — the category chips scroll inside
+     it rather than ever taking a second line — so every control in it is taken out of the chips'
+     width. At 375px the row is 348px and this button was 74 of them, which squeezed the chip
+     scroller down to about one chip and a stub of the next: not an overflow (the document still
+     measured 375) but a row that reads as broken, which is exactly what was reported.
+
+     Icon only, which is what `#sort-trigger` beside it has always been — its label is
+     `visually-hidden` at every width. Two small icon buttons either side of a scrolling chip row
+     is the shape this row was designed as; the word was the thing out of place. The name is kept
+     for assistive tech by hiding it the same way, rather than by `display: none`. */
+  .facet-toggle {
+    padding-inline: 0.55rem;
+    /* Hiding the label takes its LINE BOX with it, and the line box was what gave this button its
+       height — icon-only it measured 28px beside the drawer toggle's 33, which is the ragged row
+       the shape fix was meant to end. Restated from the same three tokens the rule above sets
+       (font-size × line-height + both paddings + both borders) rather than as a measured number,
+       so changing any of them cannot leave this behind. */
+    min-height: calc(0.82rem * 1.5 + 0.7rem + 2px);
+  }
+  .facet-toggle__label {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0);
+    white-space: nowrap; border: 0;
+  }
+
   /* At phone widths the attribute name earns its own line: `min-width` on the
      label plus wrapped chips beside it left roughly two chips per row. */
   .facet-group { flex-direction: column; align-items: stretch; gap: 0.35rem; }

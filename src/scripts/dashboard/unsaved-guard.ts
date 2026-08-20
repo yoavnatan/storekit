@@ -139,8 +139,24 @@ function i18nDash(key: string, fallback: string): string {
 }
 
 /** The visible text of a tab button — its icon is an <svg>, so `textContent` is already the label. */
+/**
+ * A tab's NAME — not everything inside it.
+ *
+ * `textContent` swept up the alert badge too, so with six stock alerts the notice read
+ * "יש שינויים שלא שמרת במוצרים6" (owner, 2026-08-20). The badge is a `<span>` and the name is a
+ * bare text node, so taking only the direct text children is exact rather than a list of things to
+ * exclude — which matters because the badges arrived after this function did, and the next one to
+ * be added would have re-broken an exclusion list without touching this file.
+ */
 function tabLabel(tab: Element): string {
-  return (tab.textContent ?? '').trim();
+  const own = [...tab.childNodes]
+    .filter((n) => n.nodeType === Node.TEXT_NODE)
+    .map((n) => n.textContent ?? '')
+    .join('')
+    .trim();
+  // A tab that wraps its label in an element instead has nothing to take here; the whole
+  // textContent is still a better answer than an empty notice.
+  return own || (tab.textContent ?? '').trim();
 }
 
 /** Where the notice sends the seller: the panel holding the FIRST unsaved form, in tab order. */
