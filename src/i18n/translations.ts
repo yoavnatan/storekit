@@ -1920,6 +1920,11 @@ export const translations = {
       imagePrev: 'התמונה הקודמת',
       imageNext: 'התמונה הבאה',
       moreFrom: 'עוד מ-',
+      // The heading of the related row when it IS one shelf of the shop (related-products.ts).
+      // No hyphen, unlike `moreFrom` above: "עוד מ-" prefixes a store NAME, which is a proper
+      // noun that needs the separator, where this prefixes a common noun and reads as one word
+      // — "עוד בכלי מטבח".
+      moreIn: 'עוד ב',
       clickToZoom: 'לחץ להגדלה',
       specsTitle: 'פרטים ומידות',
       categoryLabel: 'קטגוריה',
@@ -3763,6 +3768,7 @@ export const translations = {
       imagePrev: 'Previous image',
       imageNext: 'Next image',
       moreFrom: 'More from ',
+      moreIn: 'More in ',
       clickToZoom: 'Click to zoom',
       specsTitle: 'Specifications',
       categoryLabel: 'Category',

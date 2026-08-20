@@ -23,6 +23,7 @@ import { getLang, getT } from '../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
+import { buildRelatedGroups } from '../../lib/related-products.js';
 import { nonReturnableNotice } from '../../lib/return-eligibility.js';
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { jsonForScript } from '../../lib/json-script.js';
@@ -213,9 +214,16 @@ const [allStoreProducts, storeCategoriesForProduct, productReviews, productRatin
   (product.reviewCount ?? 0) > 0 ? getRatingCountsForProduct(product.id) : Promise.resolve([]),
   userId ? getReviewableOrderForProduct(userId, product.id) : Promise.resolve(null),
 ]);
-const relatedProducts = allStoreProducts
-  .filter((p) => p.slug !== product.slug)
-  .slice(0, 4);
+// Was `.slice(0, 4)` off this list — the four NEWEST products in the shop, which is a fact about
+// the shop and not about the product on screen (owner, 2026-08-20). `related-products.ts` owns the
+// ranking and says what it ranks on; here it is given only what it is allowed to see: the store's
+// other VISIBLE products (`allStoreProducts` is already filtered) and the seller's own category
+// tree, both already in hand from the Promise.all above, so this costs no extra query.
+const relatedGroups = buildRelatedGroups(
+  product,
+  allStoreProducts.filter((p) => p.slug !== product.slug),
+  storeCategoriesForProduct,
+);
 
 const productCategoryName = product.categoryId ? storeCategoriesForProduct.find((c) => c.id === product.categoryId)?.name ?? '' : '';
 const productCategoryPathStr = product.categoryId ? categoryPath(storeCategoriesForProduct, product.categoryId) : '';
@@ -964,11 +972,22 @@ const pmI18n = {
         </section>
       )}
 
-      <!-- Related products -->
-      {relatedProducts.length > 0 && (
-        <section style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border)" aria-labelledby="related-heading">
-          <p id="related-heading" style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
-            {t.product.moreFrom}{shopStore.name}
+      <!-- Related products — one row per group (lib/related-products.ts decides which groups
+           exist and what goes in them). Up to two: the product's own shelf, then the rest of
+           the shop. The heading NAMES the connection rather than leaving the shopper to look
+           for one, which is half of what was wrong with the old single unlabelled row. -->
+      {relatedGroups.map((group, gi) => (
+        <section
+          style={gi === 0
+            ? 'margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border)'
+            /* No second rule between the two rows — they are one block about this product, and a
+               divider between them would read as two unrelated sections of the page. */
+            : 'margin-top:1.5rem'}
+          aria-labelledby={`related-heading-${gi}`}>
+          <p id={`related-heading-${gi}`} style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
+            {group.kind === 'category'
+              ? `${t.product.moreIn}${group.categoryName}`
+              : `${t.product.moreFrom}${shopStore.name}`}
           </p>
           <!-- overflow-x:auto forces overflow-y to compute to `auto`, so the box clips
                the cards' hover shadow + 2px lift on every side (top/bottom and the
@@ -977,7 +996,7 @@ const pmI18n = {
                cancels it out exactly, so the strip's height/position is unchanged
                from before the shadow existed. -->
           <div style="display:flex;gap:0.625rem;overflow-x:auto;scrollbar-width:none;padding:0.375rem 0.6rem 0.5rem;margin:-0.375rem -0.6rem -0.5rem">
-            {relatedProducts.map((p) => {
+            {group.products.map((p) => {
               const pImgs = p.images ?? [];
               return (
                 <div class="related-card"
@@ -1015,7 +1034,7 @@ const pmI18n = {
             })}
           </div>
         </section>
-      )}
+      ))}
 
       <!-- Mobile-only sticky duplicate of the cart actions — fades in once the
            inline row above scrolls out of view, so "add to cart" stays reachable
