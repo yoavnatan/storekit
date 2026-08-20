@@ -7,3 +7,16 @@
 
 .site-footer .container { flex-wrap: wrap; row-gap: 0.6rem; }
 .site-footer a:hover { color: var(--color-primary); }
+
+/* The link ROW wraps; the links themselves do not (owner, סשן ד׳: *"הפוטר במובייל נראה נורא, כל
+   קישור שם נשבר לשתי שורות"*).
+   `.container.flex.gap` wraps, so the <nav> drops onto its own line as intended — but the <ul>
+   inside it is `.flex.gap` with no wrap of its own, so at 375-390px its five items could not fit
+   on one line and, being flex items, shrank to their min-content width instead of moving down:
+   every label broke mid-phrase ("פתח / חנות", "ביטולים / והחזרות", "צור / קשר"). Wrapping the list
+   is the fix and `white-space: nowrap` is what makes it stick — without it a shrunk item is still
+   allowed to break internally, so the row would wrap AND the labels would still split.
+   `row-gap` narrower than the 1rem column gap on purpose: two lines of links a full 1rem apart read
+   as two separate lists rather than one wrapped row. */
+.site-footer nav ul { flex-wrap: wrap; row-gap: 0.45rem; }
+.site-footer nav ul > li { white-space: nowrap; }

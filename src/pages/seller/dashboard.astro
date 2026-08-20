@@ -1111,7 +1111,15 @@ const orderStatusColors: Record<string, string> = {
             seller looks when someone asks him where his store is. It is also the copy source, so
             what he hands over is a working address rather than a fragment he has to complete.
             No scheme, deliberately — see the note on `cd-local-addr` further down. */}
-        <p class="muted flex items-center gap-1.5 flex-wrap" style="margin:0.25rem 0 0;font-size:0.82rem">
+        {/* `mt-3 sm:mt-1` — the address line needs air on a phone and does not on a desktop, and
+            that is a difference in LAYOUT, not in taste (owner, סשן ד׳: *"הכתובת למעלה ליד 'החנות
+            שלך' והכפתור העתק נדבק לכפתור של 'צפה חנות' — צפוף שם מדי"*). On a wide row the name
+            and the "צפה בחנות" button sit side by side and this line runs clear underneath both;
+            at 390px the button is alone on the inline-start edge and the copy button lands
+            directly beneath it — measured 4px apart, two buttons of different kinds reading as one
+            stack. 12px on the phone, the original 4px from `sm:` up where nothing was wrong.
+            (Inline `style` converted to utilities on contact — Hard rules → Tailwind v4 only.) */}
+        <p class="muted flex items-center gap-1.5 flex-wrap m-0 mt-3 sm:mt-1 text-[0.82rem]">
           <span>{d.storeSubtitle} ·</span>
           <code id="dash-store-address" dir="ltr" data-has-custom-domain={store.customDomain?.status === 'active' ? '1' : ''} style="font-size:0.78rem">{store.customDomain?.status === 'active' ? store.customDomain.hostname : `${platformHost}/${store.slug}`}</code>
           {/* No size override. It carried `!py-0 !px-1` to sit lightly on a 0.82rem line, and what
