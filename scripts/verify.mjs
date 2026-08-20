@@ -415,6 +415,18 @@ function salient(check) {
     return lines.filter((l) => /error ts\(|error TS|^- \d+ error/.test(l)).slice(0, 12);
   }
   if (check.name === 'lint') return lines.filter(Boolean).slice(-25);
+  // ── A test step that failed with NOTHING failing (2026-08-20) ──
+  //
+  // The summary lines match this filter, so a run where every assertion passed and vitest still
+  // exited non-zero printed "Tests 4587 passed" under a FAILED header and hid the one line that
+  // said why — `[vitest-pool]: Failed to start forks worker`, or a worker that never answered.
+  // The owner met this three times in one session and each time it read as "the suite is red for
+  // no reason", which is the most expensive kind of report: it costs a re-run and teaches nobody.
+  //
+  // So the summary alone is not enough to explain a failure. When no line names a failing TEST,
+  // return nothing and let the caller print the raw tail, which is where the real error is.
+  const failing = lines.filter((l) => /✗|×|FAIL/.test(l));
+  if (!failing.length) return [];
   return lines.filter((l) => /✗|×|FAIL|Tests {2}|Test Files {2}/.test(l)).slice(0, 15);
 }
 
