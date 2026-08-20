@@ -1,4 +1,5 @@
 import { showToast, showActionFailedToast } from '../../lib/toast.js';
+import { showFieldError, clearFieldError } from '../../lib/field-validity.js';
 import { onPanelIntent } from './panel-intent.js';
 import { toAgorot } from '../../lib/money.js';
 
@@ -180,8 +181,13 @@ export function initReturnsTab(): void {
         return;
       }
       const shekels = Number(field?.value ?? '');
+      if (field) clearFieldError(field);
       if (!Number.isFinite(shekels) || shekels <= 0) {
-        showToast('לא בוצע', 'צריך לכתוב סכום גדול מאפס');
+        // On the field, not in a toast — the same correction the admin's decision screen took the
+        // same day (owner, 2026-08-20). A toast reports something that happened elsewhere; a field
+        // that is wrong says so where it is wrong, in the site's one style (`lib/field-validity.ts`).
+        if (field) showFieldError(field, 'סכום גדול מאפס');
+        field?.focus();
         buttons.forEach((b) => { b.disabled = false; });
         return;
       }

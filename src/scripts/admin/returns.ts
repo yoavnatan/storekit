@@ -1,4 +1,5 @@
 import { showToast, showActionFailedToast } from '../../lib/toast.js';
+import { showFieldError, clearFieldError } from '../../lib/field-validity.js';
 import { toAgorot, formatAgorot } from '../../lib/money.js';
 
 /**
@@ -25,25 +26,36 @@ export function initAdminReturnsPanel(): void {
       const to = btn.dataset.adminTo ?? '';
       const forBuyer = to === 'refunded';
 
+      const noteEl = document.querySelector<HTMLTextAreaElement>(`[data-admin-note-for="${id}"]`);
+      const awardEl = document.querySelector<HTMLInputElement>(`[data-admin-award-for="${id}"]`);
+      // Both cleared before either is judged: a second press must not leave the previous press's
+      // red line under a field the admin has since fixed.
+      if (noteEl) clearFieldError(noteEl);
+      if (awardEl) clearFieldError(awardEl);
+
       // The reason is required and the server enforces it; this is the half that says so BEFORE the
       // dialog, because being refused after confirming an irreversible action is the worst order to
-      // learn it in. Focused rather than only announced — the field is what he has to go back to.
-      const noteEl = document.querySelector<HTMLTextAreaElement>(`[data-admin-note-for="${id}"]`);
+      // learn it in.
+      //
+      // **On the FIELD, never in a toast (owner, 2026-08-20).** A toast is for something that
+      // happened somewhere else; a field that is wrong says so where it is wrong, in the site's one
+      // style — the red rule and a line underneath (`lib/field-validity.ts`, which every other form
+      // here already uses). This screen predates that helper and kept its own toast, so the platform
+      // had two answers to one question on the single screen that decides a dispute.
       const note = noteEl?.value.trim() ?? '';
       if (note.length < 3) {
-        showToast('חסר הסבר', 'צריך לכתוב למה החלטת. זה נשמר בתיק ומסביר את ההחלטה אם מישהו יחזור אליה.');
+        if (noteEl) showFieldError(noteEl, 'צריך לכתוב למה החלטת — זה נשמר בתיק.');
         noteEl?.focus();
         return;
       }
 
       // Empty = the whole refund, which is what the placeholder says. Shekels here because that is
       // what a person types; it converts to agorot at this boundary and nowhere else.
-      const awardEl = document.querySelector<HTMLInputElement>(`[data-admin-award-for="${id}"]`);
       const typed = awardEl?.value.trim() ?? '';
       const fullAgorot = Number(btn.dataset.adminFull ?? '0');
       const awardAgorot = typed === '' ? null : toAgorot(Number(typed));
       if (forBuyer && awardAgorot !== null && (!Number.isFinite(awardAgorot) || awardAgorot < 0)) {
-        showToast('סכום לא תקין', 'אפשר להשאיר ריק כדי להחזיר הכל, או לכתוב מספר.');
+        if (awardEl) showFieldError(awardEl, 'מספר, או ריק כדי להחזיר הכל.');
         awardEl?.focus();
         return;
       }
