@@ -89,8 +89,15 @@ describe('a positive confirmation is not red', () => {
   const FILES = ['src/scripts', 'src/components', 'src/pages']
     .flatMap((d) => walk(d, /\.(ts|astro)$/));
 
-  /** OK labels that say the button GIVES something back. */
-  const POSITIVE = ['אשר את ההחזרה', 'בטל חסימה'];
+  /**
+   * OK labels that say the button GIVES something back.
+   *
+   * The two refund labels joined the list on 2026-08-21, when the owner found them still red:
+   * paying a return IS the ordinary end of one, and an admin deciding a dispute in the buyer's
+   * favour is the ordinary outcome too. What stays red is the branch that closes a case AGAINST
+   * somebody — refusing, escalating, and "סגור בלי החזר".
+   */
+  const POSITIVE = ['אשר את ההחזרה', 'בטל חסימה', 'החזר את הכסף', 'החזר לקונה'];
 
   it('finds the positive labels it is written about — a rename must not silence it', () => {
     const all = FILES.map(read).join('\n');
@@ -105,10 +112,25 @@ describe('a positive confirmation is not red', () => {
         // Each occurrence AS AN okLabel, then the object literal around it. 400 characters each way
         // covers the biggest of these specs (title + message + workingLabel) and stops well short of
         // the next sibling's tone.
-        for (const m of src.matchAll(new RegExp(`okLabel:\\s*'${label}'`, 'g'))) {
+        // An `okLabel:` LINE containing the literal — not the literal on its own, and not
+        // `okLabel: '…'` either. One of these is the true half of a ternary
+        // (`okLabel: forBuyer ? 'החזר לקונה' : 'סגור בלי החזר'`) which the strict form missed, and
+        // the same words also appear as ordinary button text in menu markup, which the loose form
+        // wrongly claimed. The line is the thing that is unambiguously a dialog's label.
+        for (const m of src.matchAll(new RegExp(`okLabel:[^\\n]*'${label}'`, 'g'))) {
           const at = m.index ?? 0;
-          const around = src.slice(Math.max(0, at - 400), at + 400);
-          if (!/tone:\s*'primary'/.test(around)) offenders.push(`${file} — "${label}"`);
+          // From the label to the END of its own spec, rather than a fixed window: `onConfirm` is
+          // where every one of these objects stops describing itself and starts doing the work, and
+          // a character count guessed instead would have to grow every time somebody writes a
+          // comment — which is exactly how this check first reported a dialog that was correct.
+          const stops = [src.indexOf('onConfirm', at), src.indexOf('okLabel:', at + 1)]
+            .filter((i) => i > -1);
+          const end = stops.length ? Math.min(...stops) : src.length;
+          const spec = src.slice(Math.max(0, at - 400), end);
+          // `tone:` AND a primary in it — the tone may itself be a ternary
+          // (`tone: forBuyer ? ('primary' as const) : ('danger' as const)`), which is correct and
+          // which a pattern demanding `tone: 'primary'` verbatim would reject.
+          if (!(/tone:/.test(spec) && /'primary'/.test(spec))) offenders.push(`${file} — "${label}"`);
         }
       }
     }

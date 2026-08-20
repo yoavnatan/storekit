@@ -83,6 +83,11 @@ export function initAdminReturnsPanel(): void {
               ? `${asShekels(awardAgorot!)} מתוך ${asShekels(fullAgorot)} יירשמו כחוב לקונה, וירדו למוכר מהתשלום הבא שלו. ההזמנה נשארת כפי שהיא. אי אפשר לבטל את זה כאן.`
               : 'הכסף יירשם כחוב לקונה, וירד למוכר מהתשלום הבא שלו. אי אפשר לבטל את זה כאן.',
           okLabel: forBuyer ? 'החזר לקונה' : 'סגור בלי החזר',
+          // Red is for the branch that closes the case against somebody — here, ending it with the
+          // buyer getting nothing. Awarding him the refund is the ordinary outcome of a return and
+          // wears the primary skin, same rule as the seller's own approve dialog (owner,
+          // 2026-08-20/21). Guarded by `confirm-modal-contract`.
+          tone: forBuyer ? ('primary' as const) : ('danger' as const),
           onConfirm: async () => {
             try {
               const res = await fetch('/api/returns', {
