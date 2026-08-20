@@ -319,7 +319,9 @@ export const translations = {
       // `working` below did not. The dot-pulse IS the ellipsis.
       loadingMore: 'טוען',
       filterAll: 'הכל',
-      filterByCategory: 'סנן לפי קטגוריה',
+      /** The drawer's heading and the toggle's resting label. Plain noun, not an instruction:
+       *  "הכותרת של ״סנן לפי קטגוריה״ צריכה להיות פשוט ״קטגוריות״" (owner, 2026-08-20). */
+      filterByCategory: 'קטגוריות',
       filterSearchPlaceholder: 'חיפוש בקטגוריה זו...',
       filterSearchLabel: 'חיפוש בקטגוריה זו',
       /** The attribute-filter panel (lib/product-facets.ts). "סינון" and not "סנן לפי מאפיין":
@@ -329,7 +331,6 @@ export const translations = {
       filterAttributesLabel: 'סינון לפי מאפיינים',
       /** Reveals the values past the first `FACET_VALUES_SHOWN` of one attribute. */
       filterMoreValues: 'עוד',
-      filterClearAttributes: 'נקה סינון',
       searchResultsFor: 'תוצאות חיפוש ל"{query}"',
       noResultsFor: 'לא נמצאו תוצאות ל"{query}"',
       /** The request for a page of products failed. Says "we could not load", never "there is
@@ -2497,13 +2498,12 @@ export const translations = {
       loadMore: 'Load more',
       loadingMore: 'Loading',
       filterAll: 'All',
-      filterByCategory: 'Filter by category',
+      filterByCategory: 'Categories',
       filterSearchPlaceholder: 'Search in this category...',
       filterSearchLabel: 'Search in this category',
       filterByAttribute: 'Filter',
       filterAttributesLabel: 'Filter by attributes',
       filterMoreValues: 'More',
-      filterClearAttributes: 'Clear filters',
       searchResultsFor: 'Search results for "{query}"',
       noResultsFor: 'No results for "{query}"',
       loadFailedTitle: 'We could not load the products',

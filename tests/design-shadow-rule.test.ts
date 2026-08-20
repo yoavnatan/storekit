@@ -58,6 +58,7 @@ const FLOATING = new Map<string, string>([
   ['.user-dropdown', 'dropdown anchored to the header account button'],
   ['.header-search__dropdown', 'search suggestions, absolutely positioned over the page'],
   ['.category-chip-dropdown', 'dropdown anchored to a category chip'],
+  ['.facet-panel', 'the attribute filter menu, anchored to its own trigger beside the sort one — it FLOATS as of 2026-08-20, when it stopped expanding in the flow and pushing the catalogue down the page'],
   ['.cart-info__bubble', 'tooltip bubble over the cart drawer'],
   ['.gallery-slot__check', 'absolute selection badge over the thumbnail it marks'],
   ['#sticky-cart-bar', 'fixed mobile buy bar — the product page scrolls under it'],

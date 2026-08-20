@@ -1751,27 +1751,30 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    product.css, unscoped — read the comment there before re-scoping either of them. */
 
 
-/* ── Attribute filter panel ────────────────────────────────────────────────
-   The "סינון" control and the chip rows it opens (lib/product-facets.ts).
+/* ── Attribute filter ──────────────────────────────────────────────────────
+   The trigger and the menu it opens (lib/product-facets.ts).
 
-   Almost no new visual vocabulary on purpose: a value chip IS a `.category-chip`
-   (same geometry, same 10px radius, same pressed state via `aria-current`), so
-   the panel reads as another row of the same shelf rather than as a second
-   filtering system bolted beside the first. What is defined here is only what
-   the category row has no equivalent of — the trigger, the container, and the
-   attribute name that labels each row.
+   Both are DELIBERATE TWINS of the sort control beside them. The trigger takes
+   `.sort-trigger`'s recipe — the two sit in one row, do the same kind of job and
+   were reading as different species of object once one of them had a word and an
+   × in it (owner, 2026-08-20). The panel takes `#sort-menu`'s: absolutely
+   positioned under its own trigger, so opening it moves nothing. It used to
+   expand in the flow and push the whole catalogue down the page, which on a
+   phone pushed the grid out of the viewport entirely.
 
-   In FLOW, not floating: this block sits inside `.store-controls` under the
-   chip/sort row and pushes the grid down when it opens. A `position:absolute`
-   menu (the shape `#sort-menu` uses) would have to be clipped or escape the
-   sticky controls' stacking context, and at 375px a panel of three wrapped chip
-   rows is taller than the viewport has room to overlay. */
+   Almost nothing else is new: a value chip IS a `.category-chip`, same geometry,
+   same 10px corner, same pressed fill via `aria-current`. */
+.facet-dropdown-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .facet-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   flex-shrink: 0;
-  padding: 0.35rem 0.8rem;
+  padding: 0.35rem 0.9rem;
   font-family: inherit;
   font-size: 0.82rem;
   font-weight: 500;
@@ -1781,37 +1784,24 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: background 0.13s, border-color 0.13s;
+  transition: background 0.13s, border-color 0.13s, box-shadow 0.13s;
 }
-/* White, never a tint — a tinted hover reads as dirt on this site
-   (memory `feedback_hover_light_not_tint`), and one signal is enough. */
-.facet-toggle:hover { background: var(--color-surface); }
-.facet-toggle__icon { flex-shrink: 0; color: var(--color-muted); transition: color 0.13s; }
-.facet-toggle:hover .facet-toggle__icon { color: var(--color-primary); }
+.facet-toggle > svg { color: var(--color-muted); transition: color 0.13s; }
+.facet-toggle:hover > svg { color: var(--color-primary); }
 
-/* OPEN — two signals, and they are deliberately different in kind from the count badge.
-   The badge means "a filter is applied"; this means "the panel is showing". Conflating them
-   was the risk: filling the button the way a SELECTED chip is filled would make an open panel
-   with nothing chosen look like a live filter.
-     • The line takes `--color-primary`. That is this site's one statement that a control is
-       live — settled in forms.css, where six different treatments for it were collapsed into
-       a border colour — and `.category-picker__trigger[aria-expanded="true"]` already says it
-       with the same declaration.
-     • The funnel becomes an ×, so the way out is in the slot the hand is already on.
-   Owner, 2026-08-20: "איקס עדין כשפותחים את הסינון וחיווי על גבי הסינון שהוא לחוץ". */
-.facet-toggle__icon--open { display: none; }
+/* Hover and open, the same two declarations `#sort-trigger` uses. A flat black
+   border was tried first and did not sit well next to it — "הסימון של השחור על
+   גבי הסינון לא נראה טוב" — and it was also a second vocabulary for a state this
+   row already had a way of showing. */
+.facet-toggle:hover { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); }
 .facet-toggle[aria-expanded="true"] {
-  border-color: var(--color-primary);
-  background: var(--color-surface);
+  border-color: transparent;
+  box-shadow: var(--shadow-hover);
 }
-.facet-toggle[aria-expanded="true"] .facet-toggle__icon--closed { display: none; }
-/* The × stays MUTED, like the funnel it replaced. The owner asked for a subtle one, and the
-   border is already carrying "this is open" — a second signal at full strength on a 15px glyph
-   sitting in a row of quiet chips is the stacked-signal habit this site rules out. It brightens
-   on hover with the rest of the button, which is when it is about to be used. */
-.facet-toggle[aria-expanded="true"] .facet-toggle__icon--open { display: block; }
-/* The count is the whole reason a collapsed panel is still honest: it says a
-   filter is on without the shopper having to open the panel to find out. */
+.facet-toggle[aria-expanded="true"] > svg { color: var(--color-primary); }
+
+/* The count is what says a filter is ON while the menu is shut — which is why
+   the menu no longer opens itself on a filtered load. */
 .facet-toggle__count {
   display: inline-flex;
   align-items: center;
@@ -1826,48 +1816,37 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
 .facet-panel {
+  position: absolute;
+  top: 100%;
+  inset-inline-end: 0;
+  z-index: 20;
+  margin-top: 0.25rem;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  margin-top: 0.6rem;
-  padding-top: 0.6rem;
-  /* A 1px line, like every other divider on this site — the panel is in flow, so
-     it takes a border and not a shadow (elevation rule, base/tokens.css). */
-  border-top: 1px solid var(--color-border);
+  padding: 0.7rem 0.8rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  animation: sort-menu-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Wide enough for the attribute name and three chips to share a line, never wider than the
+     phone it is on. At 15rem the label took a line of its own and the chips came one per row,
+     which is how a two-attribute menu grew to eight rows — and this menu covers a real part of
+     the screen, so an unnecessary row costs something. */
+  min-width: 22rem;
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(60vh, 26rem);
+  overflow-y: auto;
 }
 .facet-panel[hidden] { display: none; }
-
-/* Its own line at the top of the panel, at the inline END (the left, in Hebrew). `order` + a flex
-   alignment rather than `position:absolute`, so it can never land on top of whatever the first
-   attribute row turns out to be — the rows are rebuilt from the server on every filter and their
-   height is not knowable from here. */
-.facet-panel__close {
-  order: -1;
-  align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  margin-block: -0.15rem;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-icon);
-  background: none;
-  color: var(--color-muted);
-  cursor: pointer;
-  transition: color 0.13s, background 0.13s;
-}
-/* White, never a tint (memory `feedback_hover_light_not_tint`). */
-.facet-panel__close:hover { color: var(--color-text); background: var(--color-surface); }
 
 .facet-group {
   display: flex;
   align-items: baseline;
   gap: 0.6rem;
-  /* Wraps at narrow widths so the attribute name keeps its own line above the
-     chips instead of squeezing them — the row is chips first, label second. */
   flex-wrap: wrap;
 }
 .facet-group__label {
@@ -1882,15 +1861,20 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-  flex: 1 1 12rem;
+  flex: 1 1 10rem;
   min-width: 0;
 }
-/* The chips WRAP here, unlike the category row which scrolls. A scroller needs
-   `flex-shrink: 0` on its children and hides what it cannot fit; there are at
-   most `FACET_VALUES_SHOWN` + one chips in a row here, and putting a filter
-   value behind a horizontal scroll is how a filter goes unnoticed. */
+/* The chips WRAP here, unlike the category row which scrolls: there are at most
+   `FACET_VALUES_SHOWN` + one of them, and putting a filter value behind a
+   horizontal scroll is how a filter goes unnoticed. */
 .facet-chip { flex-shrink: 1; }
 .facet-chip[hidden] { display: none; }
+
+/* Only on the chosen chip, and it is the whole "remove this filter" affordance —
+   there is no clear-all link and no × on the trigger, both of which were tried
+   and left three ×s on one screen meaning three different things. */
+.facet-chip__remove { opacity: 0.75; flex-shrink: 0; }
+.facet-chip:hover > .facet-chip__remove { opacity: 1; }
 
 .facet-more {
   padding: 0.35rem 0.7rem;
@@ -1906,47 +1890,19 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 }
 .facet-more:hover { color: var(--color-text); border-color: var(--color-muted); }
 
-.facet-clear {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.78rem;
-  color: var(--color-muted);
-  text-decoration: none;
-  transition: color 0.13s;
-}
-.facet-clear:hover { color: var(--color-text); }
-
 @media (max-width: 640px) {
-  /* THE WORD GOES, AND THE ROW GETS ITS SCROLLER BACK (owner, 2026-08-20: "הרוחב של החנות
-     נשבר באמצע").
-
-     `.store-controls__row` is `flex-wrap: nowrap` on purpose — the category chips scroll inside
-     it rather than ever taking a second line — so every control in it is taken out of the chips'
-     width. At 375px the row is 348px and this button was 74 of them, which squeezed the chip
-     scroller down to about one chip and a stub of the next: not an overflow (the document still
-     measured 375) but a row that reads as broken, which is exactly what was reported.
-
-     Icon only, which is what `#sort-trigger` beside it has always been — its label is
-     `visually-hidden` at every width. Two small icon buttons either side of a scrolling chip row
-     is the shape this row was designed as; the word was the thing out of place. The name is kept
-     for assistive tech by hiding it the same way, rather than by `display: none`. */
-  .facet-toggle {
-    padding-inline: 0.55rem;
-    /* Hiding the label takes its LINE BOX with it, and the line box was what gave this button its
-       height — icon-only it measured 28px beside the drawer toggle's 33, which is the ragged row
-       the shape fix was meant to end. Restated from the same three tokens the rule above sets
-       (font-size × line-height + both paddings + both borders) rather than as a measured number,
-       so changing any of them cannot leave this behind. */
-    min-height: calc(0.82rem * 1.5 + 0.7rem + 2px);
-  }
-  .facet-toggle__label {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
-    overflow: hidden; clip: rect(0 0 0 0);
-    white-space: nowrap; border: 0;
+  /* ANCHORED TO THE ROW, NOT TO ITS BUTTON. A 22rem menu hung off a button sitting mid-row has
+     nowhere to go on a 375px screen: `inset-inline-end` is the LEFT edge in RTL, so it grew
+     rightward off the viewport and cut the attribute names off. Dropping the containing block to
+     the row lets the same `inset-inline-end: 0` mean "the row's edge", which is the full width
+     the menu is allowed anyway. The sort menu keeps its own wrapper and is unaffected — it is
+     11rem and starts at the row's other end. */
+  .store-controls__row { position: relative; }
+  .facet-dropdown-wrap { position: static; }
+  .facet-panel {
+    min-width: 0;
+    width: 100%;
+    inset-inline-end: 0;
   }
 
   /* At phone widths the attribute name earns its own line: `min-width` on the

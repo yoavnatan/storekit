@@ -952,75 +952,40 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                   control somewhere in the panel. A × BESIDE "נקה סינון" would have been two ×s a
                   centimetre apart meaning "close this" and "undo your filter" (owner asked for the
                   ×, 2026-08-20). */}
+              {/* A TWIN of `#sort-trigger`, deliberately: same size, same corner, same icon +
+                  chevron, same open state, and the panel below it opens the way `#sort-menu` does.
+                  It shipped as a labelled button with an × for an icon and read as a different
+                  species of control beside it (owner, 2026-08-20: "הכפתורים של המיון והסינון עכשיו
+                  יותר מדי שונים, במהות שלהם"). The word went with the same change that made them
+                  twins — sort has never shown its label either. */}
               {facets.length > 0 && (
-                <button type="button" class="facet-toggle" id="facet-toggle"
-                        aria-expanded={selectedFacetCount > 0 ? 'true' : 'false'} aria-controls="facet-panel">
-                  <svg class="facet-toggle__icon facet-toggle__icon--closed" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                  <svg class="facet-toggle__icon facet-toggle__icon--open" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  <span class="facet-toggle__label">{t.store.filterByAttribute}</span>
-                  {selectedFacetCount > 0 && <span class="facet-toggle__count">{selectedFacetCount}</span>}
-                </button>
-              )}
+                <div class="facet-dropdown-wrap" id="facet-dropdown">
+                  <button type="button" class="facet-toggle" id="facet-toggle"
+                          aria-haspopup="true" aria-expanded="false" aria-controls="facet-panel"
+                          aria-label={t.store.filterAttributesLabel}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <svg id="facet-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
+                    {selectedFacetCount > 0 && <span class="facet-toggle__count">{selectedFacetCount}</span>}
+                  </button>
 
-              <div class="sort-dropdown-wrap" id="sort-dropdown">
-                <button
-                  type="button"
-                  id="sort-trigger"
-                  aria-haspopup="listbox"
-                  aria-expanded="false"
-                  class="sort-trigger"
-                  aria-label={t.store.sortDefault}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
-                  <svg id="sort-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
-                  <span id="sort-label" class="visually-hidden">{t.store.sortDefault}</span>
-                </button>
-                <ul
-                  id="sort-menu"
-                  role="listbox"
-                  aria-labelledby="sort-trigger"
-                  hidden
-                  class="absolute top-full z-20 mt-1"
-                  style="inset-inline-end:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1);min-width:11rem;max-width:calc(100vw - 1.5rem);white-space:nowrap">
-                  <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortDefault}</li>
-                  <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameAsc}</li>
-                  <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameDesc}</li>
-                  <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceAsc}</li>
-                  <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceDesc}</li>
-                  <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNewest}</li>
-                </ul>
-              </div>
-            </div>
+                  {/*
+                    A MENU, not a block in the flow. It opened in place and pushed the whole
+                    catalogue down the screen — "התפריט סינון *לא אמור* להוריד את כל החנות למטה"
+                    (owner, 2026-08-20) — which on a phone meant the grid left the viewport
+                    entirely. Absolutely positioned under its own trigger now, exactly as
+                    `#sort-menu` is: nothing below it moves, and the two controls in this row open
+                    the same kind of thing.
 
-            {/*
-              The attribute filter panel — one shared surface for phone and desktop, expanding in
-              flow under the controls rather than as a drawer or a sidebar. A sidebar fails at 375px
-              (memory `feedback_mobile_first`), and a second drawer would be a second mechanism for
-              a row of chips the page already knows how to draw.
+                    Closed on load, always. It used to open itself whenever a filter was active,
+                    which is how a shopper arriving on a filtered link met the panel before the
+                    products; the count on the trigger is what says a filter is on.
 
-              **The chips NAVIGATE — they are not intercepted, and that is the design.** Category
-              chips became real links in 2026-08-03 because a <button> is invisible to a crawler;
-              the same argument applies here with more force, since a single-value view is the one
-              kind of filtered page that is meant to rank. Letting the browser follow them also
-              means the counts beside each value are always the server's, never a client guess that
-              has to be refreshed, and there is no second copy of this markup in JS to drift from
-              this one (memory `project_client_renderer_i18n_drift`). The cost is a page load per
-              filter click, on a server-rendered page, which is the cheaper half of that trade.
-
-              The panel opens by itself whenever a filter is active, which is why no state has to
-              survive the navigation: the URL already says whether it should be open.
-            */}
-            {facets.length > 0 && (
-              <div class="facet-panel" id="facet-panel" hidden={selectedFacetCount === 0}
-                   role="group" aria-label={t.store.filterAttributesLabel}>
-                {/* The panel's own way out, at its top corner — the toggle carries one too, but a
-                    shopper who has scrolled the panel into view is looking HERE, not back up at the
-                    control they pressed (owner, 2026-08-20). `order:-1` + `align-self` rather than
-                    absolute positioning: it takes its own line at the top instead of floating over
-                    whatever the first attribute row happens to be. */}
-                <button type="button" class="facet-panel__close" data-facet-close
-                        aria-controls="facet-panel" aria-label={lang === 'he' ? 'סגור' : 'Close'}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
+                    The chips are real `<a href>` a plain left click INTERCEPTS — a crawler and a
+                    scripting-off browser follow them, everyone else filters in place. The counts
+                    come back from the server on every change, so nothing here is a guess.
+                  */}
+                  <div class="facet-panel" id="facet-panel" hidden
+                       role="group" aria-label={t.store.filterAttributesLabel}>
                 {facets.map((facet) => {
                   const chosen = facetSelection.get(facet.key);
                   return (
@@ -1053,6 +1018,13 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                                data-facet-value={value.key}>
                               {value.value}
                               <span class="category-chip__count">{value.count}</span>
+                              {/* The × belongs to the CHOSEN VALUE, not to the button that opens
+                                  the panel — "התכוונתי לסינון עצמו שנבחר" (owner, 2026-08-20). It
+                                  appears only while the chip is on, where it says what clicking
+                                  does: take this one off. */}
+                              {on && (
+                                <svg class="facet-chip__remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              )}
                             </a>
                           );
                         })}
@@ -1063,8 +1035,38 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                     </div>
                   );
                 })}
+                  </div>
+                </div>
+              )}
+
+              <div class="sort-dropdown-wrap" id="sort-dropdown">
+                <button
+                  type="button"
+                  id="sort-trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  class="sort-trigger"
+                  aria-label={t.store.sortDefault}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                  <svg id="sort-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
+                  <span id="sort-label" class="visually-hidden">{t.store.sortDefault}</span>
+                </button>
+                <ul
+                  id="sort-menu"
+                  role="listbox"
+                  aria-labelledby="sort-trigger"
+                  hidden
+                  class="absolute top-full z-20 mt-1"
+                  style="inset-inline-end:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1);min-width:11rem;max-width:calc(100vw - 1.5rem);white-space:nowrap">
+                  <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortDefault}</li>
+                  <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameAsc}</li>
+                  <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameDesc}</li>
+                  <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceAsc}</li>
+                  <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceDesc}</li>
+                  <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNewest}</li>
+                </ul>
               </div>
-            )}
+            </div>
 
           </div>
           {/* Mobile category drawer + overlay live OUTSIDE .store-controls on purpose:
@@ -2612,10 +2614,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   function renderFacetPanel(facets: FacetDTO[]): void {
     if (!facetPanel) return;
     const i18n = getPMI18n();
-    const closeHtml = `<button type="button" class="facet-panel__close" data-facet-close`
-      + ` aria-controls="facet-panel" aria-label="${escHtml(i18n?.close ?? '')}">`
-      + `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
-    facetPanel.innerHTML = closeHtml + facets.map((facet) => {
+    facetPanel.innerHTML = facets.map((facet) => {
       const chosen = facetSelection.get(facet.key);
       const chips = facet.values.map((value, i) => {
         const on = chosen?.has(value.key) ?? false;
@@ -2624,7 +2623,9 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           + `${crawlable ? '' : ' rel="nofollow"'}${on ? ' aria-current="page"' : ''}`
           + `${i >= FACET_VALUES_SHOWN && !on ? ' hidden' : ''}`
           + ` data-facet-key="${escHtml(facet.key)}" data-facet-value="${escHtml(value.key)}">`
-          + `${escHtml(value.value)}<span class="category-chip__count">${value.count}</span></a>`;
+          + `${escHtml(value.value)}<span class="category-chip__count">${value.count}</span>`
+          + (on ? '<svg class="facet-chip__remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' : '')
+          + '</a>';
       }).join('');
       const more = facet.values.length > FACET_VALUES_SHOWN
         ? `<button type="button" class="facet-more" data-facet-more>${escHtml(i18n?.filterMoreValues ?? '')}</button>`
@@ -2646,21 +2647,40 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       } else badge?.remove();
     }
     if (!facets.length) openFacetPanel(false);
+    else if (facetToggle) facetToggle.hidden = false;
   }
+
+  const facetChevron = document.getElementById('facet-chevron') as HTMLElement | null;
 
   function openFacetPanel(open: boolean): void {
     if (!facetPanel) return;
     if (open) facetPanel.removeAttribute('hidden');
     else facetPanel.setAttribute('hidden', '');
     facetToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (facetChevron) facetChevron.style.transform = open ? 'rotate(180deg)' : '';
   }
 
-  facetToggle?.addEventListener('click', () => openFacetPanel(!!facetPanel?.hasAttribute('hidden')));
+  facetToggle?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openFacetPanel(!!facetPanel?.hasAttribute('hidden'));
+  });
+
+  // A menu closes when you look away from it — the same two exits `#sort-menu` offers, and the
+  // reason the panel needs no × of its own.
+  document.addEventListener('click', (event) => {
+    if (facetPanel?.hasAttribute('hidden')) return;
+    if ((event.target as Element | null)?.closest('#facet-dropdown')) return;
+    openFacetPanel(false);
+  });
+  document.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && !facetPanel?.hasAttribute('hidden')) {
+      openFacetPanel(false);
+      facetToggle?.focus();
+    }
+  });
 
   facetPanel?.addEventListener('click', (event) => {
     const target = event.target as Element | null;
-
-    if (target?.closest('[data-facet-close]')) { openFacetPanel(false); return; }
 
     // "עוד" — reveal the values held back past FACET_VALUES_SHOWN.
     const more = target?.closest<HTMLButtonElement>('[data-facet-more]');
