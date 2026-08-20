@@ -172,6 +172,14 @@ async function runBlockToggle(trigger: HTMLElement): Promise<void> {
   }
 }
 
+/**
+ * Block, and unblock — and they do NOT share a button colour.
+ *
+ * `ConfirmModal` defaults its OK to the danger skin, which is right for the blocking half and wrong
+ * for the half that gives the shop back: red is the platform's one signal for "this takes something
+ * away", and spending it on the undo empties it (owner, 2026-08-20, about the returns tab's approve
+ * dialog — same pair, admin side). Guarded by `confirm-modal-contract`.
+ */
 function openStoreBlockConfirm(trigger: HTMLElement): void {
   const wasBlocked = trigger.dataset.blocked === '1';
   const name = trigger.dataset.storeName ?? '';
@@ -181,6 +189,7 @@ function openStoreBlockConfirm(trigger: HTMLElement): void {
           title: 'לבטל את חסימת החנות?',
           message: `"${name}" תחזור להיות גלויה באתר.`,
           okLabel: 'בטל חסימה',
+          tone: 'primary' as const,
           workingLabel: 'מבטל…',
           onConfirm: () => runBlockToggle(trigger),
         }
@@ -396,6 +405,7 @@ function openProductBlockConfirm(btn: HTMLButtonElement): void {
           title: 'לבטל את חסימת המוצר?',
           message: `"${name}" יחזור להיות גלוי באתר.`,
           okLabel: 'בטל חסימה',
+          tone: 'primary' as const,   // see openStoreBlockConfirm — same rule, product-sized.
           workingLabel: 'מבטל…',
           onConfirm: () => runProductBlockToggle(btn),
         }

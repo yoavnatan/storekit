@@ -68,6 +68,58 @@ describe('every confirmation dialog states what it is about', () => {
   });
 });
 
+/**
+ * A dialog that CONFIRMS something positive does not wear the delete button's red.
+ *
+ * `ConfirmModal.astro` ships its OK in the danger skin, deliberately: nearly every confirmation on
+ * this site guards a delete, a block or a cancellation, and that default is what makes red mean
+ * "this one takes something away". A caller with a positive OK — approving a return, lifting a block
+ * — must pass `tone: 'primary'`, or it spends the platform's one such signal on the opposite act
+ * (owner, 2026-08-20: *"מודלים של אישורים לא צריך שיהיה בתוכם כפתור אדום, כי אם מאשרים משהו זה דבר
+ * שהוא נתפס כחיובי"*).
+ *
+ * Matched on the OK LABEL, which is the only part of a dialog that always states the act in the
+ * seller's own words — a title can be phrased either way ("לבטל את חסימת החנות?") and a message says
+ * consequences. The list is literal phrases rather than a stem: `בטל חסימה` is restorative while
+ * `בטל קידום` and `בטל הזמנה` take something away, and a rule keyed on `בטל` would get all three
+ * wrong. Add a phrase here when a new positive confirmation is written; a label built from the
+ * dictionary at runtime is out of reach of any file scan, and lands on review instead.
+ */
+describe('a positive confirmation is not red', () => {
+  const FILES = ['src/scripts', 'src/components', 'src/pages']
+    .flatMap((d) => walk(d, /\.(ts|astro)$/));
+
+  /** OK labels that say the button GIVES something back. */
+  const POSITIVE = ['אשר את ההחזרה', 'בטל חסימה'];
+
+  it('finds the positive labels it is written about — a rename must not silence it', () => {
+    const all = FILES.map(read).join('\n');
+    for (const label of POSITIVE) expect(all, `no caller says "${label}" any more`).toContain(label);
+  });
+
+  it("every positive okLabel sits beside tone: 'primary'", () => {
+    const offenders: string[] = [];
+    for (const file of FILES) {
+      const src = read(file);
+      for (const label of POSITIVE) {
+        // Each occurrence AS AN okLabel, then the object literal around it. 400 characters each way
+        // covers the biggest of these specs (title + message + workingLabel) and stops well short of
+        // the next sibling's tone.
+        for (const m of src.matchAll(new RegExp(`okLabel:\\s*'${label}'`, 'g'))) {
+          const at = m.index ?? 0;
+          const around = src.slice(Math.max(0, at - 400), at + 400);
+          if (!/tone:\s*'primary'/.test(around)) offenders.push(`${file} — "${label}"`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      "ConfirmModal defaults its OK button to the danger skin. A confirmation that APPROVES or\n"
+      + "RESTORES something must pass tone: 'primary', or red stops meaning \"this takes something away\".",
+    ).toEqual([]);
+  });
+});
+
 describe('an .astro comment is never the first child of a && block', () => {
   const ASTRO = ['src/components', 'src/pages', 'src/layouts'].flatMap((d) => walk(d, /\.astro$/));
 

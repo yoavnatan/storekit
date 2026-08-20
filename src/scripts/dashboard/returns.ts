@@ -43,26 +43,52 @@ import { toAgorot } from '../../lib/money.js';
  * press OK, which is worse than no dialog at all — the same reasoning the admin's dispute dialog is
  * built on, and the reason its own broken `body:` key was worth fixing the same day.
  */
-const CONFIRMED_MOVES: Record<string, ((amount: string) => { title: string; message: string; okLabel: string }) | undefined> = {
+/**
+ * ── The COLOUR of the OK button is part of what the dialog says (owner, 2026-08-20) ──
+ *
+ * *"מודלים של אישורים לא צריך שיהיה בתוכם כפתור אדום, כי אם מאשרים משהו זה דבר שהוא נתפס כחיובי"*.
+ * `ConfirmModal` ships its OK in the danger skin because most confirmations on this site guard a
+ * delete, a block or a cancellation — and that default is exactly what makes red MEAN something.
+ * Spending it on "אשר את ההחזרה" spends the only signal the platform has for "this one takes
+ * something away", and it also contradicts the sentence beside it: approving is the seller doing the
+ * ordinary, lawful thing, most often one he has no say in at all.
+ *
+ * So the tone travels with the words, per move, instead of being one constant at the dispatch below.
+ * Positive/ordinary → `primary`; the three that close a case against somebody or move money out →
+ * `danger`.
+ */
+type ConfirmSpec = { title: string; message: string; okLabel: string; tone: 'danger' | 'primary' };
+
+const CONFIRMED_MOVES: Record<string, ((amount: string) => ConfirmSpec) | undefined> = {
   approved: (amount) => ({
     title: 'לאשר את ההחזרה?',
-    message: `הקונה יישלח לך את המוצר בחזרה, ו-${amount} יוקפאו עד שיגיע. אישור אי אפשר לבטל אחרי שהוא כבר שלח.`,
+    // "אישור אי אפשר לבטל אחרי שהוא כבר שלח" until 2026-08-20 — the owner's note was that it
+    // *"לא נשמע טוב"*, and the shape is why: it hangs the finality on something the buyer does
+    // later, so a seller reading it cannot tell whether he still has a way back RIGHT NOW. He does
+    // not — the approved card offers him no undo (`ReturnsPanel.astro#MOVES`) — so the plain
+    // sentence is both kinder and more accurate. ("יישלח" was also simply the wrong verb: future
+    // הפעיל is ישלח; יישלח is passive.)
+    message: `הקונה ישלח לך את המוצר בחזרה, ו-${amount} יוקפאו עד שיגיע. אישור זה אינו ניתן לביטול.`,
     okLabel: 'אשר את ההחזרה',
+    tone: 'primary',
   }),
   refunded: (amount) => ({
     title: `להחזיר לקונה ${amount}?`,
     message: 'הסכום יירשם כחוב לקונה וירד לך מהתשלום הבא. החזר שבוצע אי אפשר להחזיר אחורה.',
     okLabel: 'החזר את הכסף',
+    tone: 'danger',
   }),
   rejected: () => ({
     title: 'לסרב לבקשה?',
     message: 'הכסף נשאר אצלך והמוצר אצל הקונה. הוא יוכל לבקש מאיתנו לבדוק את הסירוב.',
     okLabel: 'סרב לבקשה',
+    tone: 'danger',
   }),
   disputed: () => ({
     title: 'להעביר את המקרה להכרעה שלנו?',
     message: 'אנחנו נבדוק ונחליט למי מגיע הכסף. עד ההחלטה הכסף של ההזמנה הזאת לא ישוחרר אליך, ואי אפשר למשוך את הפנייה בחזרה.',
     okLabel: 'העבר להכרעה',
+    tone: 'danger',
   }),
 };
 
@@ -232,8 +258,10 @@ export function initReturnsTab(): void {
 
     const ask = CONFIRMED_MOVES[to];
     if (!ask) { send(); return; }
+    // The tone comes from the spec, never from here: a constant at the dispatch is how "approve"
+    // ended up wearing the delete button's colour in the first place.
     window.dispatchEvent(new CustomEvent('confirm:open', {
-      detail: { ...ask(btn.dataset.returnAmount ?? ''), tone: 'danger', onConfirm: send },
+      detail: { ...ask(btn.dataset.returnAmount ?? ''), onConfirm: send },
     }));
     // The card's buttons come back on: the seller may still say no in the dialog, and a card left
     // dead behind a cancelled confirmation is the same bug as a request that failed silently.
