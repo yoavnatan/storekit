@@ -369,6 +369,15 @@
 .msg-table__td--actions { width: 36px; padding-block: 0.2rem; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
 .inline-alert-dot { display: inline-block; width: 7px; height: 7px; background: #ef4444; border: 1px solid var(--color-border); border-radius: 50%; flex-shrink: 0; }
 .msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
+/* The line that CLOSES the table belongs to the wrapper, and only to it. Every `td` draws a
+   separator under itself, so the bottom-most row drew a second 1px line directly on top of the
+   wrapper's own — 2px where every separator above it is 1px, and straight across the corners the
+   wrapper rounds (owner, 2026-08-20: "בורדר כזה עבה למטה... משהו שם גס לי").
+   `:has()` and not `:last-child`: the search, the column filters and the pager hide rows with the
+   `hidden` attribute, and a collapsed thread row is hidden too — so the row that ENDS the table is
+   not the last child, it is the last one still on screen, and that is what this selects. Applies to
+   the admin's inbox as well, which renders the same table. */
+.msg-table tbody > tr:not([hidden]):not(:has(~ tr:not([hidden]))) > td { border-bottom: 0; }
 
 /* Thread header — the opened thread's own title block.
    It exists because the table CLIPS: the subject column ellipsises a long subject
