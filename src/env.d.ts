@@ -43,6 +43,12 @@ interface Window {
    *  so the seller can see every one of them at once instead of meeting them one notice at a time.
    *  Defined by the inline <FormFallbackGuard />. */
   __dashDraftProducts?: () => string[];
+  /** Forgets one product's draft — the product was deleted, so nothing will ever open a form for
+   *  it again and every other way of dropping a draft is anchored to that form. */
+  __dashDropProductDraft?: (productId: string) => void;
+  /** Writes every pending debounced draft immediately. Called by anything about to take a form out
+   *  of reach — the products table replacing its rows, the tab going away. */
+  __dashFlushDrafts?: () => void;
   /** Redraws those marks. Published by the products panel; the draft guard calls it whenever the
    *  set changes, and the table calls it itself after any redraw of its rows. */
   __dashMarkDraftRows?: () => void;

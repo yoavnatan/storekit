@@ -861,10 +861,7 @@ const {
     // it. `visibilitychange` rather than `unload`, which mobile browsers do not reliably fire.
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState !== 'hidden') return;
-      var forms = document.querySelectorAll('form[data-unsaved-guard][data-draft-live]');
-      for (var i = 0; i < forms.length; i++) {
-        if (timers[keyFor(forms[i])]) save(forms[i]);   // save() cancels the timer it supersedes
-      }
+      window.__dashFlushDrafts();
     });
 
     // The work reached the server, or the seller took it back on purpose (unsaved-guard.ts): either
@@ -966,6 +963,37 @@ const {
      * A plain accessor rather than an event, because the table redraws on every filter, sort and
      * page change and would have to re-ask anyway.
      */
+    /**
+     * Forget a product's draft entirely — the product is gone.
+     *
+     * A deleted product's draft used to sit in localStorage for its full seven days with nothing
+     * able to clear it, because everything that drops a draft is anchored to the FORM that owns it
+     * and there is no longer a form or a row (found 2026-08-20). Harmless while the draft was
+     * invisible; the moment drafts are announced it becomes a notice naming a product that does not
+     * exist, and pressing it can only ever answer "not on this page" — for a week.
+     */
+    window.__dashDropProductDraft = function (productId) {
+      var store = (document.getElementById('upload-config') || { dataset: {} }).dataset.storeId || '';
+      if (!store || !productId) return;
+      var key = PREFIX + store + ':/api/product:' + productId;
+      cancel(key);
+      closeOffer(key);
+      delete orphans[key];
+      try { localStorage.removeItem(key); } catch { /* private mode — nothing was stored */ }
+      refreshNotice();
+      if (window.__dashMarkDraftRows) window.__dashMarkDraftRows();
+    };
+
+    /** Write every pending debounced draft NOW. The 700ms window is generous while a page sits
+     *  still and exactly wrong at the moment something is about to destroy the form — a table
+     *  rebuild, a tab going away. Both callers are about to take the fields out of reach. */
+    window.__dashFlushDrafts = function () {
+      var forms = document.querySelectorAll('form[data-unsaved-guard][data-draft-live]');
+      for (var i = 0; i < forms.length; i++) {
+        if (timers[keyFor(forms[i])]) save(forms[i]);   // save() cancels the timer it supersedes
+      }
+    };
+
     window.__dashDraftProducts = function () {
       var out = [];
       for (var k in orphans) out.push(orphans[k].record);

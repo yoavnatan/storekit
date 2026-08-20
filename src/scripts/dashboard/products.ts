@@ -247,16 +247,16 @@ function getGalleryI18n() { return getRawI18n().gallery ?? {}; }
 /**
  * Every edit row currently open, whoever opened it — the row menu's own "ערוך" or the toolbar.
  *
- * The CLOSE half acts on all of them. It used to act on the selection, so a row the seller had
- * opened from its own menu was invisible to it — the button said "סגור עריכה", he pressed it, and
- * one editor stayed open with nothing on the toolbar able to reach it (owner, 2026-08-20:
- * *"יכול להיות שהיוזר רוצה בכלל לסגור את כולם"*).
+ * Used by the rebuild in `applyPagination`, which has to put back what it is about to destroy.
  *
- * **Opening and closing are not symmetrical, on purpose:** you open what you PICKED, because that
- * is a choice about which products, and you close what is OPEN, because "close editing" is a
- * statement about the table. Which of the two words the button shows still comes from the selection
- * (`refreshBulkEditLabel`) — otherwise a row opened from a menu would turn the button into "סגור
- * עריכה" before he had opened anything he chose, costing him a press.
+ * **It is NOT what the toolbar's "סגור עריכה" acts on, and that was decided rather than assumed**
+ * (owner, 2026-08-20). Making the close half global was tried first — it answers the complaint that
+ * started this, a row opened from its own menu surviving a press of "סגור עריכה" — and he rejected
+ * it on sight: *"מה קורה אם הוא לוחץ מחק? מה קורה אם הוא לוחץ על עריכת תמונות? אתה עושה פה סלט."*
+ * He is right. That bar only exists while something is ticked, it counts what is ticked, and מחק /
+ * עריכת תמונות / הנחה all act on exactly that set; one button in it with a wider reach is a second
+ * rule nobody can see. So the toolbar means the SELECTION, without exception, and a row the seller
+ * opened himself is closed by its own "ביטול".
  */
 function openEditRows(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>('[data-product-edit]'))
@@ -2217,6 +2217,23 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
       syncPageProductFromRow(displayRow, data.rev);
     }
 
+    /**
+     * **This save was silent to everything that tracks unsaved work, and that is two bugs rather
+     * than an omission** (found 2026-08-20). Every other save on this dashboard says `dash:saved`
+     * — settings (ui.ts), promotions, payouts — and two listeners are waiting for it:
+     *
+     *  · `unsaved-guard.ts` retakes the form's baseline. Without it the baseline stayed at the
+     *    values from before this save, so REOPENING the row read as unsaved work and the floating
+     *    "יש שינויים שלא שמרת במוצרים" appeared for a product that had just been written.
+     *  · `FormFallbackGuard.astro` drops the stored draft. Without it a successful save left the
+     *    draft in localStorage — where the next load offers back, as unsaved work, exactly what the
+     *    server already has.
+     *
+     * Fired here rather than after the 1.5s row-close below: the record is written NOW, and a
+     * reload landing in that second and a half would have found the draft still there.
+     */
+    window.dispatchEvent(new CustomEvent('dash:saved', { detail: { form } }));
+
     // Lock width → swap label → animate → close after delay (same pattern as add-to-cart btn)
     submitBtns.forEach(btn => {
       btn.style.minWidth = `${btn.offsetWidth}px`;
@@ -2560,6 +2577,10 @@ export function initAddProduct(cloud: string, preset: string): void {
       productsCurrentPage = 1;
       applyPagination();
 
+      // The product exists now, so what was typed to create it is not unsaved work any more.
+      // `form.reset()` below fires no input event, so nothing else would ever say so and the next
+      // load offered the whole thing back — see `handleEditSubmit` for the pair of listeners.
+      window.dispatchEvent(new CustomEvent('dash:saved', { detail: { form: addForm } }));
       addForm.reset();
       resetVariantsEditor(addForm);
       resetTagsField(addForm);
@@ -2654,6 +2675,10 @@ export function initDeleteProduct(): void {
           const res = await fetch('/api/product', { method: 'POST', body: fd });
           const data = await res.json() as { ok: boolean; error?: string };
           if (!data.ok) { showStatus(data.error ?? (i18n.errorDeleting ?? 'Error deleting.'), true); return; }
+          // Nothing will ever open a form for this product again, and every other way a draft is
+          // dropped runs from that form — so without this it sits in localStorage for its full week
+          // and is announced as unsaved work on a product that no longer exists.
+          window.__dashDropProductDraft?.(productId);
 
           // applyPagination() re-fetches the current page from the server,
           // which both drops the deleted row and clamps the page back down
@@ -2953,6 +2978,27 @@ export async function applyPagination(): Promise<void> {
     if (id && wrap && thumbIsResolved(wrap)) decodedThumbs.set(id, wrap);
   });
 
+  /**
+   * **Which editors are open, and what is in them, has to survive this rebuild** (found and
+   * confirmed in the browser, 2026-08-20).
+   *
+   * `replaceChildren` below throws away every row, so an open edit row went with it — taking what
+   * the seller had typed and saying nothing. It is not an edge case: this function is the end of
+   * BOTH deletes and the whole of search, filter, sort, page and page-size, so deleting one product
+   * silently discarded a half-written edit of a different one. The cross-tab refresh had been
+   * protected from exactly this since it was written (`tab-sync.ts#isBusy` refuses while an edit row
+   * is open); the seller's own filter had not.
+   *
+   * Two steps, and both are needed. The FLUSH, because a draft is debounced 700ms and the last
+   * words typed would otherwise never reach localStorage. The REOPEN, because a form that vanishes
+   * is a form he has to find again — the rebuilt row carries the server's values, and handing it to
+   * the draft guard is what offers his own back on top.
+   */
+  const reopenIds = openEditRows()
+    .map((row) => row.getAttribute('data-product-edit') ?? '')
+    .filter(Boolean);
+  window.__dashFlushDrafts?.();
+
   // One fragment, one insertion: building straight into the live tbody reflows
   // the table once per row.
   const rows = document.createDocumentFragment();
@@ -2968,6 +3014,19 @@ export async function applyPagination(): Promise<void> {
     initThumbs(display);
   });
   tbody.replaceChildren(rows);
+  // Back to what was open, for every product this view still shows. One that has been filtered out
+  // (or deleted) is not reopened — there is no row to open — and its draft is what the mark below
+  // is for.
+  for (const productId of reopenIds) {
+    const display = tbody.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(productId)}"]`);
+    const edit = ensureEditRow(productId, cloud, preset);
+    if (!display || !edit) continue;
+    display.hidden = true;
+    edit.hidden = false;
+    // The row is a fresh copy of the SERVER's values; what he typed is in the draft. Handing the
+    // form over is what puts the offer back in front of him instead of losing the edit in silence.
+    window.__dashScanDrafts?.(edit);
+  }
   // Every row here is brand new, so the marks for waiting drafts have to be drawn again — they are
   // localStorage's state, which `buildRows` knows nothing about.
   markDraftRows();
@@ -2977,6 +3036,11 @@ export async function applyPagination(): Promise<void> {
   // selection so filtering or paging can't silently empty a selection, and so
   // an armed "select all" takes in the rows this view just brought up.
   syncBulkSelectionToRows(tbody);
+  // **After the re-tick, never before it.** The label is derived from the ticked checkboxes, and
+  // every one of them was unticked a moment ago — asked here it reads the live selection, asked
+  // above it read an empty one and returned without writing anything, leaving "ערוך" on a button
+  // whose press would close.
+  refreshBulkEditLabel();
 
   const total = data.total ?? 0;
   // Any column's filter counts, not just the category one — a stock filter that
@@ -3987,6 +4051,23 @@ export function initBulkSelect(cloud: string, preset: string): void {
     // re-hides the delete/edit/discount buttons those lines just brought back, and re-disables
     // checkboxes a tbody rebuild handed back live. See `applyImagePanelLock`.
     applyImagePanelLock();
+    /**
+     * **The word on the edit button, last — because the selection is what decides it and the
+     * selection has just changed** (found 2026-08-20, from the owner's point that these mechanisms
+     * have to be tested MEETING each other).
+     *
+     * `refreshBulkEditLabel` exists precisely so the label is never "whatever it was last set to",
+     * and it was called from every place that opens or closes a row — but from nowhere that changes
+     * the SELECTION. So: open a product from its own row menu (the toolbar is hidden, nothing is
+     * ticked, so the refresh returns without writing), then tick that same product. The button
+     * appears reading "ערוך" — the value left over from the last time the selection emptied — while
+     * its press closes the row that is open. One line here covers every tick, untick, select-all and
+     * rebuild at once, which is why it goes in the funnel rather than at each call site.
+     *
+     * After the `empty` branch above, never before it: with nothing selected the button is hidden
+     * and this returns without writing, so the reset to "ערוך" up there is what stands.
+     */
+    refreshBulkEditLabel();
   }
 
   // A re-render of the table (filter/sort/search/page) re-ticks the rows from
@@ -4076,7 +4157,11 @@ export function initBulkSelect(cloud: string, preset: string): void {
             try {
               const res = await fetch('/api/product', { method: 'POST', body: fd });
               const data = await res.json() as { ok: boolean };
-              if (data.ok) setBulkSelected(productId, false);
+              if (data.ok) {
+                setBulkSelected(productId, false);
+                // Same reason as the single delete: the draft outlives the product otherwise.
+                window.__dashDropProductDraft?.(productId);
+              }
               return data.ok;
             } catch {
               // silent: counted, not announced per item — the tally below is the one message, and
@@ -4140,35 +4225,32 @@ export function initBulkSelect(cloud: string, preset: string): void {
     updateBar();
   }
 
-  // Bulk edit — a toggle whose two halves have different subjects (see `openEditRows`): anything
-  // open → close EVERYTHING open; nothing open → open the selection.
+  // Bulk edit — toggle over the SELECTION, like every other button in this bar (see `openEditRows`
+  // for the alternative that was tried and rejected): if any selected edit row is open → close
+  // those; else open them.
   bulkEditBtn?.addEventListener('click', () => {
     const ids = selectedRowIds();
     if (!ids.length) return;
-    // Decided by the SELECTION, acted out on everything open — see `openEditRows` for why.
     const anyOpen = ids.some((productId) =>
       !(document.querySelector<HTMLElement>(`[data-product-edit="${productId}"]`)?.hidden ?? true)
     );
     let firstRow: HTMLElement | undefined;
-    if (anyOpen) {
-      // Hidden, not rebuilt: whatever the seller typed stays in the fields, so reopening the row
-      // shows it again. Throwing it away is what the row's own "ביטול" is for, and that one says so
-      // (`restoreEditRow` drops the stored draft with it).
-      openEditRows().forEach((editRow) => {
-        const productId = editRow.getAttribute('data-product-edit') ?? '';
-        editRow.hidden = true;
-        const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(productId)}"]`);
-        if (displayRow) displayRow.hidden = false;
-      });
-    } else ids.forEach((productId) => {
+    ids.forEach((productId) => {
       const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${CSS.escape(productId)}"]`);
       // Through `ensureEditRow`, like the row menu's own "ערוך": the server does not render these
       // forms any more, so opening one straight off the DOM would show an empty row.
       const editRow    = ensureEditRow(productId, cloud, preset);
       if (displayRow && editRow) {
-        displayRow.hidden = true;
-        editRow.hidden = false;
-        if (!firstRow) firstRow = editRow;
+        if (anyOpen) {
+          // Hidden, not rebuilt: whatever the seller typed stays in the fields, so reopening the
+          // row shows it again. Throwing it away is what "ביטול" is for, and that one says so.
+          editRow.hidden = true;
+          displayRow.hidden = false;
+        } else {
+          displayRow.hidden = true;
+          editRow.hidden = false;
+          if (!firstRow) firstRow = editRow;
+        }
       }
     });
     refreshBulkEditLabel();

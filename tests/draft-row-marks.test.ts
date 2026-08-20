@@ -10,10 +10,13 @@
  * twenty bars still to answer — it front-loads the wait without saving any of the work. A mark on
  * each row costs nothing, shows all of them at once, and opens exactly one when pressed.
  *
- * **Close editing** (owner, same day). The toolbar's toggle acted on the SELECTION, so a row opened
- * from its own "ערוך" menu was invisible to it: the button read "סגור עריכה", he pressed it, and an
- * editor stayed open with nothing on the toolbar able to reach it. The two halves are deliberately
- * asymmetric now — you open what you PICKED, you close what is OPEN.
+ * **Close editing** (owner, same day, and the answer is the opposite of the first attempt). A row
+ * opened from its own "ערוך" menu survives a press of the toolbar's "סגור עריכה", which reads as a
+ * contradiction. Making that button global was tried and rejected on sight: *"מה קורה אם הוא לוחץ
+ * מחק? מה קורה אם הוא לוחץ על עריכת תמונות? אתה עושה פה סלט."* The bar exists only while something
+ * is ticked, it counts what is ticked, and מחק / עריכת תמונות / הנחה all act on that set — one
+ * button in it with a wider reach is a second rule nobody can see. So the toolbar means the
+ * SELECTION, and a row the seller opened himself is closed by its own "ביטול".
  */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { clearBulkSelection, syncBulkSelectionToRows } from '../src/scripts/dashboard/bulk-selection.js';
@@ -167,40 +170,30 @@ describe('the rows say which products have work waiting', () => {
   });
 });
 
-describe('"סגור עריכה" closes what is open, not what is selected', () => {
-  it('closes a row opened from its own menu, alongside the selected ones', () => {
+describe('the toolbar means the selection, every button of it', () => {
+  it('opens and closes exactly the ticked products, and leaves an unrelated editor alone', () => {
     // Exactly the seller's sequence: edit one product from its menu, then tick some others.
     openFromRowMenu('p1');
     tick('p2');
     tick('p3');
     expect(isOpen('p1')).toBe(true);
+    expect(bulkEditLabel()).toBe('ערוך');
 
     bulkEditBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect([isOpen('p2'), isOpen('p3')]).toEqual([true, true]);
-
-    bulkEditBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    // p1 was never ticked, and it used to survive this press with nothing able to reach it.
-    expect([isOpen('p1'), isOpen('p2'), isOpen('p3')]).toEqual([false, false, false]);
-    expect([displayRow('p1').hidden, displayRow('p2').hidden]).toEqual([false, false]);
-  });
-
-  it('still reads "ערוך" while nothing HE PICKED is open, so the press opens rather than closes', () => {
-    openFromRowMenu('p1');
-    tick('p2');
-    // The word comes from the selection even though the close half is wider. Taking it from every
-    // open row instead reads tidier and costs a press: he ticks two products, the button already
-    // says "סגור עריכה" because of an unrelated row, and pressing it closes that row instead of
-    // opening the two he just chose.
-    expect(bulkEditLabel()).toBe('ערוך');
-    bulkEditBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(isOpen('p2')).toBe(true);
     expect(bulkEditLabel()).toBe('סגור עריכה');
+
+    bulkEditBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // p1 is the seller's own editing session and none of the toolbar's business — מחק and
+    // עריכת תמונות do not touch it either, and one button reaching wider than the count beside it
+    // is the "salad" this was rejected for.
+    expect([isOpen('p1'), isOpen('p2'), isOpen('p3')]).toEqual([true, false, false]);
+    expect([displayRow('p2').hidden, displayRow('p3').hidden]).toEqual([false, false]);
   });
 
-  it('still opens only what was picked', () => {
+  it('opens only what was picked', () => {
     tick('p2');
     bulkEditBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    // Opening is a statement about which products; closing is a statement about the table.
     expect([isOpen('p1'), isOpen('p2'), isOpen('p3')]).toEqual([false, true, false]);
   });
 
