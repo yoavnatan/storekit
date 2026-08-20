@@ -43,6 +43,21 @@ describe('isolateLatinRunsHtml', () => {
     expect(isolateLatinRunsHtml('מידה S/M זמינה')).toContain('<bdi>S/M</bdi>');
   });
 
+  it('leaves a line with no Hebrew as ONE isolate, because per-word would reverse it', () => {
+    // Measured (2026-08-20, Chromium, RTL page): eight isolates in a row are eight neutral objects
+    // to the paragraph, so it lays them out right-to-left — "seller edited items / shipping /
+    // discount on this order" came back as "order this on discount / shipping / items edited
+    // seller". The money journal records several event details in English on purpose, so this stopped
+    // being theoretical the day it gained a second caller.
+    const html = isolateLatinRunsHtml('seller edited items / shipping / discount on this order');
+    expect(html.match(/<bdi>/g)).toHaveLength(1);
+    expect(html).toBe('<bdi>seller edited items / shipping / discount on this order</bdi>');
+  });
+
+  it('still escapes a Hebrew-free line', () => {
+    expect(isolateLatinRunsHtml('a <b> & c')).toBe('<bdi>a &lt;b&gt; &amp; c</bdi>');
+  });
+
   it('isolates each run separately, so several codes each keep their place', () => {
     const html = isolateLatinRunsHtml('קוד DEZABIN או קוד SUMMER');
     expect(html.match(/<bdi>/g)).toHaveLength(2);

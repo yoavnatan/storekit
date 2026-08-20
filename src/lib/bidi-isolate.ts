@@ -60,6 +60,26 @@ const LATIN_RUN = /[A-Za-z][A-Za-z0-9'’&/-]*[.,:;!?]*/g;
  * splitting the entity down the middle and printing it as text.
  */
 export function isolateLatinRunsHtml(text: string): string {
+  // ── A line with NO Hebrew in it is not a mixed line, and isolating each word REVERSES it ──
+  //
+  // Measured in Chromium, 2026-08-20, inside an RTL page:
+  //   "seller edited items / shipping / discount on this order"
+  //   → per-word isolates → "order this on discount / shipping / items edited seller"
+  // and that is the algorithm behaving correctly. Each `<bdi>` is a neutral object to the paragraph
+  // around it, so eight of them in an RTL line are laid out right-to-left however sensible each one
+  // is on its own. Untouched, the whole sentence is ONE left-to-right run and reads perfectly.
+  //
+  // It was latent while the only callers were a seller's sale strip, where a fully-English title is
+  // possible but unusual. The money journal's detail column made it certain: several event kinds are
+  // recorded in English on purpose, because they are notes to a developer rather than to a shopper.
+  //
+  // ONE isolate around the whole thing rather than nothing at all: that keeps a foreign sentence
+  // from dragging the punctuation of the Hebrew line it sits inside, which is the same reason the
+  // per-run isolate exists. The "whole line in `<bdi>`" failure the header above describes is a
+  // different case — it needs Hebrew in the line to go wrong, and there is none here.
+  if (!text) return '';
+  if (!/[\u0590-\u05ff]/.test(text)) return `<bdi>${escapeHtml(text)}</bdi>`;
+
   let out = '';
   let last = 0;
   for (const m of text.matchAll(LATIN_RUN)) {

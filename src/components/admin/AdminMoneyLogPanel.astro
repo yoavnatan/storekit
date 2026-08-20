@@ -1,5 +1,6 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
+import { isolateLatinRunsHtml } from '../../lib/bidi-isolate.js';
 import { formatBusinessTime, formatBusinessDateShort, formatBusinessDayLabel } from '../../lib/format-date.js';
 import { MONEY_EVENT_LABELS, moneyActorLabel, moneyEventStateWord, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
 import { businessDayISO } from '../../lib/business-day.js';
@@ -89,6 +90,26 @@ for (const e of events) {
 /** Clicking an order/checkout reference searches for it — the per-order timeline the
  *  journal was built for ("what happened to this order"), with no extra query surface. */
 const traceUrl = (term: string) => buildAdminUrl('moneylog', { mq: term });
+/**
+ * The reference line under a detail, as PARTS — joined only where there is something on both sides.
+ *
+ * It used to be written as markup, with the `·` living inside the checkout-ref fragment: `{orderId
+ * && <a/>}{checkoutRef && <> · <a/></>}{` · בוצע ע״י …`}`. A separator that belongs to the thing
+ * AFTER it is a separator that shows up with nothing in front of it, and this journal's most common
+ * row is exactly that case — a `payment_attempted` has a checkout ref and no order yet, so the line
+ * opened with a stray dot (owner, 2026-08-20: *"יש שם אי סדר בטקסט"*). Built as a list instead, so
+ * the join is a property of how many parts exist rather than a guess each part makes about its
+ * neighbours.
+ */
+type MetaPart = 'order' | 'ref' | 'actor';
+function metaParts(e: MoneyEvent): MetaPart[] {
+  const parts: MetaPart[] = [];
+  if (e.orderId) parts.push('order');
+  if (e.checkoutRef) parts.push('ref');
+  parts.push('actor');
+  return parts;
+}
+
 const highlightId = targetMissing ? '' : query.eventId;
 ---
 
@@ -184,21 +205,35 @@ const highlightId = targetMissing ? '' : query.eventId;
                     </td>
                     <td class="py-2 pe-3 [color:var(--color-muted)]">{e.storeSlug ?? '—'}</td>
                     <td class="py-2 pe-3 [color:var(--color-muted)] break-words">
-                      {e.detail ?? '—'}
+                      {/* Every Latin run isolated (`lib/bidi-isolate.ts`). A detail line is Hebrew
+                          prose carrying machine values — a gateway reference, an eight-character
+                          order id — and the Unicode bidi algorithm resolves the neutral space and
+                          the digit after such a run left-to-right, so `אסמכתת סליקה MOCK-B85303C8 ·
+                          1 הזמנה` painted the count on the far side of the reference, detached from
+                          the word it counts. The owner read it as a number belonging to nothing.
+                          Isolating in the RENDERER and not in the stored string is that module's own
+                          rule: the journal is append-only, and what it recorded is what it recorded. */}
+                      <Fragment set:html={isolateLatinRunsHtml(e.detail ?? '—')} />
                       {/* No opacity dimming on this line: the order/checkout refs inside it are
                           links, and fading them took the one affordance saying so. */}
+                      {/* Labelled, and the label is not decoration. Unlabelled behind the same `·`
+                          as the links beside it, the actor read as part of the reference — the owner
+                          asked what an "אסמכתא … buyer" was, which is exactly what that line said.
+                          The ids go in `<bdi>` for the reason the detail above does: they are Latin
+                          runs inside a Hebrew line. */}
                       <span class="block mt-0.5 text-[0.7rem]">
-                        {e.orderId && (
-                          <a href={traceUrl(e.orderId)} title="כל האירועים של הזמנה זו" class="[color:var(--color-primary)] no-underline hover:underline">הזמנה {e.orderId.slice(0, 8)}</a>
-                        )}
-                        {e.checkoutRef && (
-                          <Fragment> · <a href={traceUrl(e.checkoutRef)} title="כל הקנייה — כל החנויות שנקנו יחד באסמכתא הזאת" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא {e.checkoutRef}</a></Fragment>
-                        )}
-                        {/* Labelled, and it is not decoration. Unlabelled behind the same `·` as
-                            the two links above it, the raw value read as part of the reference
-                            beside it — the owner asked what an "אסמכתא … buyer" was, which is
-                            exactly what that line said. */}
-                        {` · בוצע ע״י ${moneyActorLabel(e.actor)}`}
+                        {metaParts(e).map((part, i) => (
+                          <Fragment>
+                            {i > 0 && ' · '}
+                            {part === 'order' && (
+                              <a href={traceUrl(e.orderId!)} title="כל האירועים של הזמנה זו" class="[color:var(--color-primary)] no-underline hover:underline">הזמנה <bdi>{e.orderId!.slice(0, 8)}</bdi></a>
+                            )}
+                            {part === 'ref' && (
+                              <a href={traceUrl(e.checkoutRef!)} title="כל הקנייה — כל החנויות שנקנו יחד באסמכתא הזאת" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא <bdi>{e.checkoutRef}</bdi></a>
+                            )}
+                            {part === 'actor' && `בוצע ע״י ${moneyActorLabel(e.actor)}`}
+                          </Fragment>
+                        ))}
                       </span>
                     </td>
                     <td class="py-2 text-center">

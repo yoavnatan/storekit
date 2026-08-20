@@ -20,6 +20,7 @@ import { recordAnalyticsEvent } from '../../lib/analytics.js';
 import { effectivePrice } from '../../lib/discounts.js';
 import { claimCheckout, completeCheckout, releaseCheckout, isValidIdempotencyKey, checkoutOwner } from '../../lib/checkout-idempotency.js';
 import { recordMoneyEvent } from '../../lib/money-events.js';
+import { heCount } from '../../lib/he-count.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
@@ -146,7 +147,7 @@ async function failCapture(orderIds: string[], checkoutRef: string, amountAgorot
     amountAgorot,
     to: 'failed',
     actor: 'buyer',
-    detail: `החיוב נכשל (${error ?? 'סיבה לא ידועה'}) — ${orderIds.length} הזמנות בוטלו והמלאי הוחזר`,
+    detail: `החיוב נכשל (${error ?? 'סיבה לא ידועה'}) — ${heCount(orderIds.length, 'הזמנה', 'הזמנות')} בוטלו והמלאי הוחזר`,
   }).catch(() => { /* the endpoint's own logError still fires */ });
 }
 
@@ -161,7 +162,7 @@ async function markOrdersPaid(orderIds: string[], checkoutRef: string, paymentRe
     checkoutRef,
     to: 'paid',
     actor: 'buyer',
-    detail: `הכסף נגבה בפועל · אסמכתת סליקה ${paymentRef ?? '—'} · ${orderIds.length} הזמנות`,
+    detail: `הכסף נגבה בפועל · אסמכתת סליקה ${paymentRef ?? '—'} · ${heCount(orderIds.length, 'הזמנה', 'הזמנות')}`,
   });
 }
 
@@ -608,7 +609,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         // journal shows three of these — and a reader scrolled away from the panel's explanation
         // has nothing on the row itself saying they are the same purchase. Omitted at one store,
         // where "חנות 1 מתוך 1" would be noise on the overwhelmingly common case.
-        detail: `${storeSlices.length > 1 ? `חנות ${sliceIndex + 1} מתוך ${storeSlices.length} בקנייה זו · ` : ''}${storeItems.length} פריטים · אסמכתת סליקה ${payment.paymentRef ?? '—'}`,
+        detail: `${storeSlices.length > 1 ? `חנות ${sliceIndex + 1} מתוך ${storeSlices.length} בקנייה זו · ` : ''}${heCount(storeItems.length, 'פריט', 'פריטים')} · אסמכתת סליקה ${payment.paymentRef ?? '—'}`,
       });
     }
 
