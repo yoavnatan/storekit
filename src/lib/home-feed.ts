@@ -65,8 +65,12 @@ function mulberry32(seed: number): () => number {
 
 /** Fisher–Yates shuffle seeded off `seed` — same seed always produces the same order, so a
  *  "discovery"/"spotlight" row stays stable across requests within the same seed window
- *  (see dailySeed()) instead of reshuffling on every single page load. */
-function seededShuffle<T>(arr: T[], seed: string): T[] {
+ *  (see dailySeed()) instead of reshuffling on every single page load.
+ *
+ *  Exported for `discover-stores.ts`, which needs the same property against a different seed
+ *  (an order id rather than the day). It is exported rather than copied on purpose: a second
+ *  PRNG would be a second definition of "stable random order" that could drift from this one. */
+export function seededShuffle<T>(arr: T[], seed: string): T[] {
   const rand = mulberry32(hashSeed(seed));
   const out = arr.slice();
   for (let i = out.length - 1; i > 0; i--) {

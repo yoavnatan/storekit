@@ -1,7 +1,11 @@
 ---
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import HomeShelf from '../../components/HomeShelf.astro';
 import { getLang, getT } from '../../i18n/index.js';
+import { getCategoryTranslations } from '../../lib/category-translations.js';
+import { pickDiscoverStores } from '../../lib/discover-stores.js';
+import { getOrderById } from '../../lib/orders.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 
@@ -10,7 +14,36 @@ const t = getT(lang);
 const c = t.checkout;
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
-const hasStore = userId ? (await getStoresBySellerId(userId)).length > 0 : false;
+
+// ── "גלה עוד" after the purchase (owner, 2026-08-20) ─────────────────────────────────
+// The confirmation page used to end at "המשך קנייה", a single link back to the homepage.
+// This is the homepage's own discovery row, small, in the one place a shopper is finished
+// with what they came for and has nothing else to do (lib/discover-stores.ts).
+// The order is read for ONE reason — which stores were just bought from, so those cards
+// don't come back as something to discover — and nothing from it is rendered, so an id out
+// of a stale or shared link reveals nothing it didn't already carry. `getOrderById` returns
+// null on a malformed uuid rather than throwing, so a hand-edited `?order=` just means no
+// exclusions rather than a 500 on the page that confirms someone's payment.
+const orderId = (Astro.url.searchParams.get('order') ?? '').trim();
+// Independent reads, so one round trip rather than three (Hard rules → Scalability).
+const [ownStores, justOrdered, categoryTranslations] = await Promise.all([
+  userId ? getStoresBySellerId(userId) : Promise.resolve([]),
+  orderId ? getOrderById(orderId) : Promise.resolve(null),
+  getCategoryTranslations(),
+]);
+const hasStore = ownStores.length > 0;
+const boughtSlugs = [...new Set((justOrdered?.items ?? []).map((i) => i.storeSlug))];
+// Three, not the homepage's ten: this is a coda under a 480px column, not a shelf someone came
+// to browse — "סקשן קטן". Three is also the desktop `--shelf-fit` (store-card.css), so the row
+// ends flush on the line at every width from 776px up instead of cutting a fourth card in half.
+// Below that it scrolls at two-up, exactly as every other shelf on the site does.
+const DISCOVER_COUNT = 3;
+// Seeded on the order id, so a refresh — or the back button, which lands here often —
+// deals the same four stores. `pickDiscoverStores` says why that matters. Seeded on the
+// RESOLVED id rather than on `orderId`, so no request-supplied string reaches the hash: a
+// `?order=` that matched nothing is a page with no order behind it, and it gets the same
+// row every visitor with no order gets.
+const discoverStores = await pickDiscoverStores(DISCOVER_COUNT, boughtSlugs, justOrdered?.id ?? 'checkout-success');
 ---
 
 {/* storeMode isn't "this is a store" — it is the flag Header.astro uses to pick its ONE row
@@ -23,7 +56,10 @@ const hasStore = userId ? (await getStoresBySellerId(userId)).length > 0 : false
   {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in one,
       so the old markup nested two mains and put the same id on both, which sends the skip link
       to whichever the browser finds first. */}
-  <div class="container pt-12 pb-16 text-center">
+  {/* The bottom gutter belongs to whatever is LAST on the page — with a discovery shelf below,
+      this block's own 4rem plus the shelf's padding stacked into a gap that read as the page
+      having ended twice. */}
+  <div class={`container pt-12 text-center ${discoverStores.length > 0 ? 'pb-6' : 'pb-16'}`}>
 
     <div class="max-w-[480px] mx-auto">
       <!-- Success icon -->
@@ -58,6 +94,18 @@ const hasStore = userId ? (await getStoresBySellerId(userId)).length > 0 : false
     </div>
 
   </div>
+
+  {/* Below the leftover carts, and OUTSIDE the 480px column + its `.container` — HomeShelf
+      renders its own container, and nesting two doubles the page gutter. The row reads
+      exactly as it does on the homepage because it IS that component; the only thing this
+      page decides is which stores go in it and how many.
+      `text-start` because the block above is `text-center` and a shelf heading inherits it. */}
+  {discoverStores.length > 0 && (
+    <div class="text-start pb-16">
+      <HomeShelf categoryLabels={categoryTranslations} id="success-discovery"
+                 title={t.home.shelfDiscovery} stores={discoverStores} />
+    </div>
+  )}
 
   <script>
     import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';
