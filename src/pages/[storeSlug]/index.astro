@@ -484,6 +484,11 @@ const pmI18n = {
   filterAll: t.store.filterAll,
   filterByCategory: t.store.filterByCategory,
   filterMoreValues: t.store.filterMoreValues,
+  // Every string the facet renderer draws has to be HERE as well as in the Astro block, or the
+  // first client re-render replaces it with an empty one — which is exactly what this key did:
+  // "נקה סינון" rendered fine from the server and became a 0×0 link the moment a chip was
+  // clicked (memory `project_client_renderer_i18n_drift`).
+  filterClearAttributes: t.store.filterClearAttributes,
   searchResultsFor: t.store.searchResultsFor,
   noResultsFor: t.store.noResultsFor,
   loadFailedTitle: t.store.loadFailedTitle,
@@ -986,6 +991,15 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                   */}
                   <div class="facet-panel" id="facet-panel" hidden
                        role="group" aria-label={t.store.filterAttributesLabel}>
+                    {/* The menu's header. A dropdown has a top edge to hang this on, which an
+                        in-flow panel did not — there it was a whole extra row of a block already
+                        pushing the catalogue down, and it was cut for that. Rendered only when
+                        there is something to clear: a control that does nothing is furniture. */}
+                    {selectedFacetCount > 0 && (
+                      <a href={storeViewHref(selectedCategory, 1)} class="facet-clear" rel="nofollow" data-facet-clear>
+                        {t.store.filterClearAttributes}
+                      </a>
+                    )}
                 {facets.map((facet) => {
                   const chosen = facetSelection.get(facet.key);
                   return (
@@ -1049,7 +1063,6 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                   aria-label={t.store.sortDefault}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
                   <svg id="sort-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
-                  <span id="sort-label" class="visually-hidden">{t.store.sortDefault}</span>
                 </button>
                 <ul
                   id="sort-menu"
@@ -1661,7 +1674,6 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   const searchInput = document.getElementById('product-search') as HTMLInputElement | null;
   const sortTrigger = document.getElementById('sort-trigger')   as HTMLButtonElement | null;
   const sortMenu    = document.getElementById('sort-menu')      as HTMLUListElement | null;
-  const sortLabel   = document.getElementById('sort-label')     as HTMLSpanElement | null;
   const sortChevron = document.getElementById('sort-chevron')   as SVGElement | null;
   const productGrid = document.querySelector<HTMLElement>('.product-grid');
   const noResults   = document.getElementById('no-results');
@@ -2610,11 +2622,25 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     return qs ? `?${qs}` : window.location.pathname;
   }
 
+  /** The shelf with no attribute filter on it — where "נקה סינון" leads. */
+  function facetClearHref(): string {
+    const params = new URLSearchParams();
+    if (activeTag) {
+      const name = flatCategories.find((c) => c.id === activeTag)?.name;
+      params.set('category', (name && toSlug(name)) || activeTag);
+    }
+    const qs = params.toString();
+    return qs ? `?${qs}` : window.location.pathname;
+  }
+
   /** Redraw the panel and the button from a server-computed facet list. */
   function renderFacetPanel(facets: FacetDTO[]): void {
     if (!facetPanel) return;
     const i18n = getPMI18n();
-    facetPanel.innerHTML = facets.map((facet) => {
+    const clearHtml = countSelectedFacets() > 0
+      ? `<a href="${escHtml(facetClearHref())}" class="facet-clear" rel="nofollow" data-facet-clear>${escHtml(i18n?.filterClearAttributes ?? '')}</a>`
+      : '';
+    facetPanel.innerHTML = clearHtml + facets.map((facet) => {
       const chosen = facetSelection.get(facet.key);
       const chips = facet.values.map((value, i) => {
         const on = chosen?.has(value.key) ?? false;
@@ -2693,6 +2719,18 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       return;
     }
 
+    // "נקה סינון" — a real link to the unfiltered shelf, intercepted like the chips so it
+    // filters in place rather than reloading.
+    const clear = target?.closest<HTMLElement>('[data-facet-clear]');
+    if (clear) {
+      const click = event as MouseEvent;
+      if (click.button !== 0 || click.metaKey || click.ctrlKey || click.shiftKey || click.altKey) return;
+      event.preventDefault();
+      facetSelection = new Map();
+      void refreshFromServer();
+      return;
+    }
+
     const chip = target?.closest<HTMLElement>('[data-facet-value]');
     if (!chip) return;
     const mouse = event as MouseEvent;
@@ -2733,7 +2771,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     opt.setAttribute('aria-selected', 'true');
     currentSort = opt.dataset.value ?? 'default';
     const label = opt.textContent?.trim() ?? '';
-    if (sortLabel) sortLabel.textContent = label;
+    // The `aria-label` is the ONLY copy of this name, and it is the accessible name outright —
+    // an aria-label overrides a subtree, so the `visually-hidden` span that used to sit beside it
+    // told assistive tech nothing. What it did do was suppress the button's hover tooltip: the
+    // tooltip script skips a control whose label is already on screen, and it asks `innerText`,
+    // which reads a clipped span as rendered (owner, 2026-08-20: "למיון אין טולטיפ").
     if (sortTrigger) sortTrigger.setAttribute('aria-label', label);
     closeSort();
     sortTrigger?.focus();
@@ -2837,7 +2879,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         sortOptions.forEach(o => o.setAttribute('aria-selected', 'false'));
         matchingOpt.setAttribute('aria-selected', 'true');
         currentSort = initSortVal;
-        if (sortLabel) sortLabel.textContent = matchingOpt.textContent?.trim() ?? '';
+        sortTrigger?.setAttribute('aria-label', matchingOpt.textContent?.trim() ?? '');
       }
     }
 

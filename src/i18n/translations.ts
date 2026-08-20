@@ -331,6 +331,10 @@ export const translations = {
       filterAttributesLabel: 'סינון לפי מאפיינים',
       /** Reveals the values past the first `FACET_VALUES_SHOWN` of one attribute. */
       filterMoreValues: 'עוד',
+      /** The menu's own header row. It was dropped when the panel expanded in the flow and every
+       *  row cost the catalogue screen space; a dropdown has a header to put it in, which is what
+       *  brought it back (owner, 2026-08-20). */
+      filterClearAttributes: 'נקה סינון',
       searchResultsFor: 'תוצאות חיפוש ל"{query}"',
       noResultsFor: 'לא נמצאו תוצאות ל"{query}"',
       /** The request for a page of products failed. Says "we could not load", never "there is
@@ -2504,6 +2508,7 @@ export const translations = {
       filterByAttribute: 'Filter',
       filterAttributesLabel: 'Filter by attributes',
       filterMoreValues: 'More',
+      filterClearAttributes: 'Clear filters',
       searchResultsFor: 'Search results for "{query}"',
       noResultsFor: 'No results for "{query}"',
       loadFailedTitle: 'We could not load the products',

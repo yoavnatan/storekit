@@ -1786,6 +1786,15 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   cursor: pointer;
   transition: background 0.13s, border-color 0.13s, box-shadow 0.13s;
 }
+/* THE HEIGHT OF A CHIP, and it has to be stated rather than inherited (owner, 2026-08-20: "למה
+   כפתורי הסינון והמיון מעט יותר נמוכים מהכפתורים של הקטגוריות?"). `.category-chip` and these two
+   share every box value — 0.35rem/0.9rem padding, 0.82rem at line-height 1.5 — but a chip's
+   content is TEXT, so its line box is 19.7px, while these hold only a 14px icon: 33px against 27.
+   The declaration below restates the chip's own line box from the same numbers, so a change to
+   the type scale carries all three together instead of splitting them again. */
+.facet-toggle,
+.sort-trigger { min-height: calc(0.82rem * 1.5 + 0.7rem + 2px); }
+
 .facet-toggle > svg { color: var(--color-muted); transition: color 0.13s; }
 .facet-toggle:hover > svg { color: var(--color-primary); }
 
@@ -1832,16 +1841,31 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
   animation: sort-menu-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* Wide enough for the attribute name and three chips to share a line, never wider than the
-     phone it is on. At 15rem the label took a line of its own and the chips came one per row,
-     which is how a two-attribute menu grew to eight rows — and this menu covers a real part of
-     the screen, so an unnecessary row costs something. */
-  min-width: 22rem;
+  /* Wide enough for the attribute name and its chips to share a line, never wider than the phone
+     it is on. It has been narrowed twice and widened twice: at 15rem the label took a line of its
+     own and the chips came one per row, which is how a two-attribute menu grew to eight rows;
+     at 22rem it still read as a column ("למה בדסקטופ הדרופדאון סינון כל כך צר?"). This is not a
+     panel that wants the page's width — it is a menu — so it stops here rather than tracking the
+     viewport. */
+  min-width: 27rem;
   max-width: calc(100vw - 1.5rem);
   max-height: min(60vh, 26rem);
   overflow-y: auto;
 }
 .facet-panel[hidden] { display: none; }
+
+/* The menu's header row: one quiet link at the top edge, and only while there is something to
+   clear. Aligned to the inline END so it sits under the trigger's own corner rather than over the
+   first attribute's name. */
+.facet-clear {
+  align-self: flex-end;
+  margin-bottom: -0.15rem;
+  font-size: 0.76rem;
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: color 0.13s;
+}
+.facet-clear:hover { color: var(--color-text); text-decoration: underline; }
 
 .facet-group {
   display: flex;
