@@ -96,13 +96,27 @@ const discoverStores = await pickDiscoverStores(DISCOVER_COUNT, boughtSlugs, jus
   </div>
 
   {/* Below the leftover carts, and OUTSIDE the 480px column + its `.container` — HomeShelf
-      renders its own container, and nesting two doubles the page gutter. The row reads
-      exactly as it does on the homepage because it IS that component; the only thing this
-      page decides is which stores go in it and how many.
-      `text-start` because the block above is `text-center` and a shelf heading inherits it. */}
+      renders its own container, and nesting two doubles the page gutter.
+      `text-start` because the block above is `text-center` and a shelf heading inherits it.
+
+      `grid`, NOT the default scroll row (owner, 2026-08-20: *"במובייל הכרטיסיות למטה הופכות
+      להיות צרות מדי והכל מכווץ מדי"* + *"לא ברור שניתן לגלול לצד שם"*). Both complaints are the
+      same fact about the scroller and both are answered by wrapping instead:
+
+      · A scroll row fits TWO cards under 776px, so at 375px each is ~166px and the four preview
+        thumbs come out ~30px. That is the exact measurement behind the homepage's own one-column
+        rule (HomeShelf's `grid` note, 2026-08-16) — the same cards are 343px wide here with
+        ~73px thumbs, which is the size they were designed at.
+      · Sideways scrolling has to be DISCOVERED, and it only announces itself with a card cut by
+        the viewport edge. On the homepage a long shelf always has one; three cards on a phone
+        end flush, so the row looks complete and the other two are simply unreachable. A grid
+        has nothing to find: it wraps, and everything is on the page.
+
+      Three stays the right count either way — `grid` is 3 columns from 900px, so the row still
+      ends on the line where a desktop shopper sees it. */}
   {discoverStores.length > 0 && (
     <div class="text-start pb-16">
-      <HomeShelf categoryLabels={categoryTranslations} id="success-discovery"
+      <HomeShelf categoryLabels={categoryTranslations} id="success-discovery" grid={true}
                  title={t.home.shelfDiscovery} stores={discoverStores} />
     </div>
   )}
