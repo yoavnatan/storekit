@@ -69,7 +69,7 @@ const STATUS: Record<ReturnStatus, string> = {
   // on a card the sweep can also land here without him touching anything (`in_transit` goes to
   // `disputed` on its own after a fortnight of silence), and "אנחנו מכריעים" is present tense for
   // something nobody has started.
-  disputed: 'הועבר לבדיקתנו. ממתין להכרעה',
+  disputed: 'הועבר לבדיקת המערכת. ממתין להכרעה',
   offered: 'הצעת סכום במקום החזרה. מחכים לתשובתו',
   rejected: 'סירבת לבקשה',
   refunded: 'ההחזר אושר. הכסף בדרך לקונה',
@@ -281,22 +281,33 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         <input
           type="search" id="returns-search" data-returns-search
           placeholder="חיפוש לפי מספר הזמנה…"
-          class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]"
+          class="returns-search w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]"
         />
       </div>
-      {/* Two states and no menu: there are only two, and a dropdown to choose between two is a click
-          more than the question deserves. The closed count is on the button, so a seller knows there
-          IS a history before opening it. */}
-      <button
-        type="button" data-returns-show-closed
-        class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)]"
-        aria-pressed="false"
+      {/* A CHECKBOX, not a pressed button (owner, 2026-08-20: *"וכשבוחרים נהיה שם רק קו בורדר ולא
+          נראה שכל הכפתור לחוץ בכלל. לדעתי זה בכלל צריך להיות צ׳קבוקס"*). He is right about both
+          halves: this is a standing "also include these", which is what a checkbox means, and the
+          pressed state of a pill button on this toolbar is a border colour — legible next to a row
+          of unpressed twins, invisible when it is the only one. A ticked box is unambiguous alone.
+
+          It DISABLES itself when it cannot change anything: a shop with no closed cases, or a search
+          that no closed case matches. A control that is on screen and does nothing is a control the
+          seller presses twice and then distrusts — and `returns.ts` drives the state, because only
+          the client knows what the current search matched. */}
+      <label
+        class="inline-flex items-center gap-[.45rem] text-[.82rem] cursor-pointer select-none has-[:disabled]:opacity-50 has-[:disabled]:cursor-default"
+        data-returns-closed-wrap
       >
-        <span class="toolbar-btn-label">הצג גם בקשות שנסגרו</span>
+        <input
+          type="checkbox" data-returns-show-closed
+          class="w-[.95rem] h-[.95rem] accent-[color:var(--color-primary)] cursor-pointer disabled:cursor-default"
+          disabled={closed.length === 0}
+        />
+        <span>הצג גם בקשות שנסגרו</span>
         {closed.length > 0 && (
           <span class="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-muted)] text-white text-[.68rem] font-bold leading-none">{closed.length}</span>
         )}
-      </button>
+      </label>
     </div>
   )}
 </div>

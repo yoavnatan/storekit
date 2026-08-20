@@ -325,6 +325,29 @@ textarea.input { resize: none; }
 .dash-toolbar .table-toolbar-btn {
   height: var(--dash-ctl-h);
 }
+/* The browser's own clear "×" on a search box is about 10px of target sitting hard against the
+   field's edge, and the owner had to hunt for it with the pointer (2026-08-20). It cannot be
+   restyled — WebKit draws it as an image — but its SIZE and the space around it can be, and that is
+   the whole complaint: 16px with real padding beside it is a target the hand finds without aiming.
+   `opacity` on top, because at full strength a black × competes with the text the seller is
+   reading; the header's own search settled on the same value. */
+.dash-toolbar input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-inline-start: 0.35rem;
+  cursor: pointer;
+  opacity: 0.45;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px 10px;
+  /* The site's own × rather than the platform's, so it matches the stroke weight of every other
+     glyph on this toolbar. `currentColor` cannot reach a background image, so the muted grey is
+     written in — it is the one place on the platform a token cannot travel. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='3' stroke-linecap='round'%3E%3Cline x1='5' y1='5' x2='19' y2='19'/%3E%3Cline x1='19' y1='5' x2='5' y2='19'/%3E%3C/svg%3E");
+}
+.dash-toolbar input[type="search"]::-webkit-search-cancel-button:hover { opacity: 0.85; }
 /* Inside a sticky .dash-panel-head (Orders/Messages) the head's own padding +
    flex gap already space it — don't stack a second bottom pad. */
 .dash-panel-head .dash-toolbar { padding-bottom: 0; }

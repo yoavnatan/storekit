@@ -27,12 +27,16 @@ import { toAgorot } from '../../lib/money.js';
  * 2026-08-20: *"האם על כל אחד מהדברים שהם קריטיים יש גם מודל? שהלחיצה לא תקרה בטעות"*). This tab had
  * none at all, on a screen whose buttons sit two centimetres apart and move real money.
  *
- * The three that are NOT here are why this is a rule and not a habit — a dialog on every button is a
- * dialog nobody reads:
- *   · `approved` — grantable and then refusable (`RETURN_TRANSITIONS` allows approved to rejected),
- *     and inside the statutory window it already happened without him.
+ * **`approved` was left out and that was wrong (owner, 2026-08-20: *"גם אישורים צריכים מודל
+ * בהחזרות, זה תנועה של כסף"*).** The reasoning had been that it is reversible — the machine does
+ * allow approved → rejected — and reversibility is the wrong test here. Approving tells the buyer to
+ * post the goods back, and from that moment the money is frozen and a refund is the expected end.
+ * Undoing it after he has posted is not a correction, it is a second decision against him. The test
+ * is whether the press COMMITS you, and this one does.
+ *
+ * The two that are still not here:
  *   · `received` — "it arrived here"; the case can still go to `disputed`, and the 2-business-day
- *     clock is stated on the card before and after.
+ *     wait is stated on the card before and after.
  *   · `offered` — already two presses with a number typed between them. That IS the confirmation.
  *
  * Each dialog NAMES the amount. "Are you sure?" over a decision worth 49 shekels trains people to
@@ -40,9 +44,14 @@ import { toAgorot } from '../../lib/money.js';
  * built on, and the reason its own broken `body:` key was worth fixing the same day.
  */
 const CONFIRMED_MOVES: Record<string, ((amount: string) => { title: string; message: string; okLabel: string }) | undefined> = {
+  approved: (amount) => ({
+    title: 'לאשר את ההחזרה?',
+    message: `הקונה יישלח לך את המוצר בחזרה, ו-${amount} יוקפאו עד שיגיע. אישור אי אפשר לבטל אחרי שהוא כבר שלח.`,
+    okLabel: 'אשר את ההחזרה',
+  }),
   refunded: (amount) => ({
     title: `להחזיר לקונה ${amount}?`,
-    message: 'הסכום יירשם כחוב לקונה וירד לך מהתשלום הבא. אי אפשר לבטל.',
+    message: 'הסכום יירשם כחוב לקונה וירד לך מהתשלום הבא. החזר שבוצע אי אפשר להחזיר אחורה.',
     okLabel: 'החזר את הכסף',
   }),
   rejected: () => ({
@@ -52,7 +61,7 @@ const CONFIRMED_MOVES: Record<string, ((amount: string) => { title: string; mess
   }),
   disputed: () => ({
     title: 'להעביר את המקרה להכרעה שלנו?',
-    message: 'כל השעונים נעצרים והכסף לא זז עד שנחליט. אי אפשר לבטל.',
+    message: 'אנחנו נבדוק ונחליט למי מגיע הכסף. עד ההחלטה הכסף של ההזמנה הזאת לא ישוחרר אליך, ואי אפשר למשוך את הפנייה בחזרה.',
     okLabel: 'העבר להכרעה',
   }),
 };
@@ -69,7 +78,7 @@ export function initReturnsTab(): void {
   // visibility from both controls at once — two independent handlers each hiding rows is how a filter
   // and a search end up fighting over the same element.
   const search = document.querySelector<HTMLInputElement>('[data-returns-search]');
-  const closedBtn = document.querySelector<HTMLButtonElement>('[data-returns-show-closed]');
+  const closedBox = document.querySelector<HTMLInputElement>('[data-returns-show-closed]');
   const emptyMsg = document.querySelector<HTMLElement>('[data-returns-empty]');
 
   // ── The pager, and it only exists when there is something to page ──
@@ -90,16 +99,23 @@ export function initReturnsTab(): void {
   function applyFilters(resetPage = true): void {
     if (resetPage) page = 1;
     const q = (search?.value ?? '').trim().toLowerCase();
-    const showClosed = closedBtn?.getAttribute('aria-pressed') === 'true';
+    const showClosed = closedBox?.checked === true;
 
     // Pass 1: which cards MATCH, regardless of page.
     const matching: HTMLElement[] = [];
+    // …and, in the same pass, whether ticking the box could add anything AT ALL under the current
+    // search. A control that is on screen and does nothing is one the seller presses twice and then
+    // stops trusting (owner, 2026-08-20) — so it goes grey instead of lying about being available.
+    let closedMatches = 0;
     list!.querySelectorAll<HTMLElement>('[data-return-id]').forEach((card) => {
       const isClosed = card.hasAttribute('data-return-closed');
       const matches = !q || (card.dataset.returnOrder ?? '').toLowerCase().includes(q);
+      if (matches && isClosed) closedMatches++;
       if (matches && (showClosed || !isClosed)) matching.push(card);
       else card.hidden = true;
     });
+    // Never disabled while it is ON: that would strand the seller inside a view he cannot leave.
+    if (closedBox) closedBox.disabled = closedMatches === 0 && !closedBox.checked;
 
     const pages = Math.max(1, Math.ceil(matching.length / pageSize));
     if (page > pages) page = pages;
@@ -124,12 +140,7 @@ export function initReturnsTab(): void {
   nextBtn?.addEventListener('click', () => { page++; applyFilters(false); });
 
   search?.addEventListener('input', () => applyFilters());
-  closedBtn?.addEventListener('click', () => {
-    const on = closedBtn.getAttribute('aria-pressed') === 'true';
-    closedBtn.setAttribute('aria-pressed', String(!on));
-    closedBtn.classList.toggle('!border-[color:var(--color-primary)]', !on);
-    applyFilters();
-  });
+  closedBox?.addEventListener('change', () => applyFilters());
 
   // ── Arrived from an order card's return chip? ──
   //
@@ -147,8 +158,8 @@ export function initReturnsTab(): void {
     // LATEST request on that order, open or not, so following one for a case that has since been
     // refused or refunded would land on a filtered list hiding the very row it named — a link that
     // goes somewhere and shows nothing, which reads as the feature being broken.
-    if (closedBtn && closedBtn.getAttribute('aria-pressed') !== 'true') closedBtn.click();
-    else applyFilters();
+    if (closedBox) { closedBox.disabled = false; closedBox.checked = true; }
+    applyFilters();
   });
 
   // Paint once, so a shop with more than one page arrives on page 1 rather than showing everything.
