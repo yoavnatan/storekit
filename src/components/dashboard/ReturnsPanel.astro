@@ -346,11 +346,22 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           packed. Same mechanism as the chip going the other way (`scripts/dashboard/panel-intent.ts`),
           so the two tabs now reach each other from both sides.
           The id in `<bdi>` because it is a Latin run inside a Hebrew line. */}
-      <div class="flex items-baseline justify-between gap-3 flex-wrap">
-        <strong class="text-[0.95rem]">{statusLine(r)}</strong>
+      <div>
+        <strong class="block text-[0.95rem]">{statusLine(r)}</strong>
+        {/* UNDER the title, not opposite it (owner, 2026-08-20: *"צריך שההזמנה הלחיצה תהיה מתחת
+            לכותרת, כי כרגע זה בצד וזה קל לפספס יש שם בלאגן"*). It was the far end of a
+            `justify-between` row, which is the one position on a card that competes with the
+            heading instead of belonging to it: on a narrow card the row wrapped and the two
+            swapped places, and on a wide one the eye reads the status and stops. Below the title it
+            is the first thing after it, in reading order.
+
+            It also LOOKS like a link at rest now. A coloured word with the underline held back for
+            hover is only discoverable by pointing at it — no help on a touch screen, and his
+            "easy to miss" exactly. Dotted at rest, solid on hover: one signal, changing state,
+            which is the site's hover rule rather than a second effect stacked on. */}
         <button
           type="button"
-          class="text-[0.76rem] [color:var(--color-primary)] tabular-nums bg-transparent border-0 p-0 cursor-pointer hover:underline"
+          class="mt-[0.35rem] text-[0.78rem] [color:var(--color-primary)] tabular-nums bg-transparent border-0 p-0 cursor-pointer underline decoration-dotted underline-offset-[3px] hover:decoration-solid"
           data-goto-panel="orders"
           data-goto-intent={`search:${r.orderId.slice(0, 8)}`}
           data-tooltip="פתח את ההזמנה בלשונית הזמנות"
