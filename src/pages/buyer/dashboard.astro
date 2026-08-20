@@ -630,6 +630,10 @@ const STORES_NAMED = 2;
       font: inherit; font-size: 0.8rem; font-weight: 600;
       color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px;
     }
+    /* The sentence that replaces the button while the parcel is in transit. Muted and unadorned —
+       it is an explanation, not a control, and giving it a card or a colour would make it look like
+       something went wrong. */
+    .o-return-note { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; }
     .o-return-why { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
     .o-return-q { font-size: 0.78rem; color: var(--color-muted); }
     .o-return-why button {
@@ -1109,7 +1113,18 @@ const STORES_NAMED = 2;
                             );
                           }
                           const act = buyerActionFor(s.order);
-                          if (act === 'none') return null;
+                          if (act === 'none') {
+                            // **Silence is honest and it is not an answer** (owner, 2026-08-20:
+                            // *"מה קורה במידה והקונה רוצה לבטל וההזמנה כבר נשלחה?"*). A parcel that
+                            // is already with the courier cannot be recalled and is not yet
+                            // returnable — `buyerActionFor` correctly offers nothing, and the screen
+                            // then said nothing at all, which reads as a right that vanished. One
+                            // sentence, and only in that state: every other `none` is a finished
+                            // order, where a note about what you cannot do is noise.
+                            return s.order.shippingStatus === 'shipped'
+                              ? <p class="o-return-note">{t.buyerDashboard.cancelAfterShip}</p>
+                              : null;
+                          }
                           if (act === 'return' && nothingReturnable.has(s.order.id)) return null;
                           return (
                             <div class="o-return">
@@ -2622,7 +2637,11 @@ const STORES_NAMED = 2;
       window.dispatchEvent(new CustomEvent('confirm:open', {
         detail: {
           title: I.cancelConfirmTitle,
-          body: I.cancelConfirmBody,
+          // `message`, not `body` — ConfirmModal reads only the former, so this dialog had been
+          // showing the generic "cannot be undone" default in place of the sentence written for it.
+          // Second instance of the same silent slip found on 2026-08-20; `confirm-modal-contract`
+          // is what stops a third.
+          message: I.cancelConfirmBody,
           okLabel: I.cancelConfirmOk,
           onConfirm: send,
           // Re-enabled on the way out, or a buyer who changed their mind is left with dead buttons.

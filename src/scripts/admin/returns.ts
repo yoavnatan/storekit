@@ -58,7 +58,14 @@ export function initAdminReturnsPanel(): void {
           title: !forBuyer ? 'לסגור את הבקשה בלי להחזיר כסף?'
             : partial ? `להחזיר לקונה ${asShekels(awardAgorot!)}?`
             : 'להחזיר לקונה את כל הכסף?',
-          body: !forBuyer
+          // `message`, not `body` — `ConfirmModal` reads `detail.message` and nothing else, so this
+          // dialog had been showing the generic "אי אפשר לבטל את זה" default instead of the sentence
+          // that names the amount. On the platform's single most money-critical confirmation: the
+          // admin deciding a dispute, where the whole point of the dialog is to state WHAT it is
+          // about before he presses it. Every other caller on the platform already said `message`;
+          // this one was written alone and nothing connected the two (owner asked whether the
+          // critical actions have a dialog at all, 2026-08-20).
+          message: !forBuyer
             ? 'הקונה לא יקבל כסף בחזרה והבקשה תיסגר. אי אפשר לבטל את זה כאן.'
             : partial
               ? `${asShekels(awardAgorot!)} מתוך ${asShekels(fullAgorot)} יירשמו כחוב לקונה, וירדו למוכר מהתשלום הבא שלו. ההזמנה נשארת כפי שהיא. אי אפשר לבטל את זה כאן.`
