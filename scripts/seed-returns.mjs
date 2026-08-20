@@ -518,12 +518,22 @@ function report(seeded, skipped = []) {
 
   // Grouped, because they are two different ACTS and live on two different screens (decisions §0).
   // A single flat list would have the reader hunting for which of them is even in the returns tab.
+  // ── The ORDER NUMBER is what makes this list usable, and it was missing ──
+  //
+  // The board is 22 rows now, and the report named each one by its STATUS — of which there are nine,
+  // so five of the words appear two and three times over. Standing in front of the returns tab there
+  // was no way to tell which `received` card was the partial and which was the in-store handover
+  // (owner, 2026-08-20: *"אני לא מבין בעצם עכשיו איזה תרחיש יש לכל דמו דאטה, איך אדע?"*).
+  //
+  // Eight characters of the order id is the answer, because it is the one string that is BOTH on the
+  // card and in the tab's search box: paste it and the list filters to that single scenario. Printed
+  // for the cancellations too, where the same id is what the orders tab searches by.
   const section = (title, rows, label) => {
     if (!rows.length) return;
     console.log(`   ── ${title} ──\n`);
-    for (const { sc, store, refundAgorot } of rows) {
+    for (const { sc, store, orderId, refundAgorot } of rows) {
       const amount = refundAgorot === null ? '' : money(refundAgorot).padStart(9);
-      console.log(`   ${label(sc).padEnd(13)} ${amount}  ${store.slug}`);
+      console.log(`   ${label(sc).padEnd(13)} ${orderId.slice(0, 8)} ${amount}  ${store.slug}`);
       console.log(`      ${sc.what}`);
       console.log(`      איפה רואים: ${sc.where}\n`);
     }
@@ -540,7 +550,8 @@ function report(seeded, skipped = []) {
   }
 
   console.log('   שים לב: בקשות שנסגרו (סורב / הוחזר / פג תוקף) מוסתרות עד שמסמנים');
-  console.log('   "הצג גם בקשות שנסגרו" בלשונית ההחזרות.\n');
+  console.log('   "הצג גם בקשות שנסגרו" בלשונית ההחזרות.');
+  console.log('   כדי לבודד תרחיש אחד: העתק את מספר ההזמנה שלו לתיבת החיפוש בלשונית.\n');
   console.log('   להסיר:  npm run seed:returns -- --clean\n');
 }
 
