@@ -26,11 +26,24 @@ function clearTabBadge(panel: string): void {
   if (!panelEl) return;
   panelEl.querySelectorAll('.admin-new-chip').forEach((chip) => chip.remove());
 
-  // The toggle itself stays (it may be the active filter) — only its now-stale
-  // count is dropped.
+  // The toggle GOES with the count, unless it is the filter currently applied.
+  //
+  // Dropping only the number was the wrong half (owner, סשן ד׳: *"הכפתור הזה עדיין שם למרות
+  // ש*אין* מה לראות כשלוחצים עליו"*). Leaving the tab advances the server-side boundary, so from
+  // that moment "חדשים בלבד" matches nothing — and the chip that stayed behind was a control
+  // offering a filter whose result set is empty by construction. That is worse than a stale
+  // number: a stale number is read once, a live-looking button gets pressed.
+  //
+  // Still kept while `aria-pressed="true"`: that is the filter the admin is standing inside, and
+  // removing it would leave the narrowed list with no way back out. The count comes off it either
+  // way — the rows on screen are real, the number beside the label is not.
   const newOnlyToggle = document.getElementById(`admin-${panel}-new-toggle`);
   if (newOnlyToggle) {
-    newOnlyToggle.textContent = (newOnlyToggle.textContent ?? '').replace(/\s*\(\d+\)\s*$/, '');
+    if (newOnlyToggle.getAttribute('aria-pressed') === 'true') {
+      newOnlyToggle.textContent = (newOnlyToggle.textContent ?? '').replace(/\s*\(\d+\)\s*$/, '');
+    } else {
+      newOnlyToggle.remove();
+    }
   }
 }
 
