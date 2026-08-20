@@ -30,6 +30,26 @@ import type { Order } from './orders.js';
 export type ReturnReason = 'changed_mind' | 'damaged' | 'wrong_item' | 'not_arrived';
 
 /**
+ * The same four reasons in the words a person reads.
+ *
+ * Here rather than on a panel because there are now three readers of them — the seller's card, the
+ * admin's queue and the money journal's own detail line — and the third one is how this arrived: the
+ * journal wrote the raw code, so an owner reading his own money log saw `סיבה: changed_mind` beside
+ * a Hebrew sentence. Two of the three already had identical private copies of this map, which is the
+ * shape a third reader turns from duplication into a bug.
+ *
+ * Hebrew literals with no `getT`: a data vocabulary on Hebrew-only surfaces, exactly like
+ * `store-taxonomy.ts` (`tests/i18n-hardcoded-strings.test.ts` decides scope by whether a file calls
+ * the translator, and this one deliberately does not).
+ */
+export const RETURN_REASON_LABELS: Record<ReturnReason, string> = {
+  changed_mind: 'התחרט',
+  damaged: 'הגיע פגום',
+  wrong_item: 'לא מה שהוזמן',
+  not_arrived: 'לא הגיע כלל',
+};
+
+/**
  * What the buyer may do with this order RIGHT NOW — the one function every surface asks.
  *
  * ── Why this exists, and it is a bug's headstone ──

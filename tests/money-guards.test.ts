@@ -234,6 +234,40 @@ describe('agorot never reach a shekel formatter', () => {
     }
   });
 
+  it('no raw agorot integer lands inside a sentence a person reads', () => {
+    // The other half of the rule above, and the half that shipped: `formatPrice(agorot)` prints a
+    // number 100× too large and this guard already refused it — but interpolating the integer
+    // STRAIGHT into a Hebrew sentence bypassed the formatter entirely and so bypassed the guard.
+    // The money journal carried `זיכוי 12500 אגורות` for every settled return (owner, 2026-08-20:
+    // *"המספרים שמוצגים לי לפעמים מוצגים שם באגורות"*), on the one screen whose entire purpose is
+    // to be believed. Nothing threw and nothing was wrong in the data — only the reading of it.
+    //
+    // Two discriminators, because `Agorot` is the correct name for a machine value and most
+    // interpolations of one are exactly that: the expression must not already go through a
+    // formatter, and there must be HEBREW within a few dozen characters of the interpolation. The
+    // second is what separates prose from `data-price-agorot="${String(x)}"` and from an English
+    // job summary that names its unit out loud. Both were measured against the tree: this catches
+    // the shipped bug and nothing else.
+    const INTERPOLATION = /\$\{([^{}]*[Aa]gorot[^{}]*)\}/g;
+    const FORMATTED = /formatAgorot|fmtAgorot|fmtAgorotBuyer|fromAgorot|agorotToDecimalString|asShekels|formatPrice|toAgorot|money\(/;
+    const HEBREW = /[\u0590-\u05ff]/;
+    const NEAR = 45;
+    for (const file of FILES) {
+      const src = code(file);
+      for (const m of src.matchAll(INTERPOLATION)) {
+        if (FORMATTED.test(m[1] ?? '')) continue;
+        const at = m.index ?? 0;
+        const before = src.slice(Math.max(0, at - NEAR), at);
+        const after = src.slice(at + m[0].length, at + m[0].length + NEAR);
+        if (!HEBREW.test(before) && !HEBREW.test(after)) continue;
+        expect.fail(
+          `${file}: \`\${${(m[1] ?? '').trim()}}\` sits inside Hebrew copy — that prints agorot to a person `
+          + '(e.g. "12500" for ₪125). Wrap it in formatAgorot() from lib/money.ts.',
+        );
+      }
+    }
+  });
+
   it('scans the presentation tree too, where the bug actually shipped', () => {
     expect(FILES.some((f) => f.endsWith('.astro')), 'no .astro files scanned — a root was renamed').toBe(true);
   });

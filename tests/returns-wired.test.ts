@@ -101,3 +101,39 @@ describe('the policy page names every exclusion the code enforces', () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * The four reasons have ONE set of words, and it lives in `lib/returns.ts`.
+ *
+ * ── The bug this is the headstone for (owner, 2026-08-20) ──
+ * `changed_mind` / `damaged` / `wrong_item` / `not_arrived` are database values. Two panels — the
+ * seller's card and the admin's queue — each carried their own private map turning them into Hebrew,
+ * identical to each other and invisible to anybody adding a THIRD reader. The third reader was the
+ * money journal, and it did what a file with no map in it does: it wrote the raw code. An owner
+ * reading his own money log saw `סיבה: changed_mind` in the middle of a Hebrew sentence, on the one
+ * screen whose entire job is to be believed.
+ *
+ * Two identical copies are not a bug yet, which is exactly why nobody fixed them. The bug is the
+ * shape: a rule with no single home is a rule the next caller cannot find.
+ *
+ * Grepped by SHAPE — a file that maps `changed_mind` to a string — rather than by the constant's
+ * name, because a second copy will never be called `RETURN_REASON_LABELS`.
+ */
+describe('the return reasons are spelled out in exactly one place', () => {
+  it('no file outside lib/returns.ts maps a reason code to its own words', () => {
+    const owner = 'src/lib/returns.ts';
+    const offenders = [...allSources()]
+      .filter(([file]) => file !== owner && !file.startsWith('tests'))
+      // `changed_mind:` as an object KEY with a value after it. A file naming the code in a
+      // comparison (`reason === 'changed_mind'`) is reading the vocabulary, not redefining it.
+      .filter(([, src]) => /\bchanged_mind\s*:\s*['"`]/.test(src))
+      .map(([file]) => file);
+
+    expect(
+      offenders,
+      'These build their own map of the return reasons. Import RETURN_REASON_LABELS from\n'
+      + 'lib/returns.ts instead — a second copy is how the money journal came to print a raw\n'
+      + 'database value at a person.',
+    ).toEqual([]);
+  });
+});
