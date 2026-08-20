@@ -1,56 +1,49 @@
+/* eslint-disable sonarjs/pseudo-random -- decorative jitter only: the launch angle, flutter and
+ * size of confetti pieces. Nothing here is a token, an id or a choice anyone could exploit by
+ * predicting it, and a CSPRNG would buy nothing but a slower animation. */
 import { roundMoney } from './money.js';
 
 /**
- * The checkout's "חסכת בהזמנה הזו" row: a slow band of colour along the rule beneath it, and the
- * amount counting up the first time the shopper reaches the row.
+ * The checkout's "חסכת בהזמנה הזו" row: the amount counts up, and a small confetti burst goes off
+ * ON THE NUMBER, once, the first time the shopper reaches it.
  *
- * **This is the third shape, and the two it replaced are why it is this one** (owner, 2026-08-20).
- * It began as a confetti burst, which he asked for and then rejected twice: first because it was
- * drawn in screen coordinates and vanished the moment the page kept scrolling, then — once that
- * was fixed and the burst genuinely worked — because *"כרגע זה יותר מדי אלמנטים"*. His own
- * replacement is the one kept here: **coloured stripes under the line, drifting slowly, in a
- * loop.** Not a burst that demands attention for three seconds; a surface that is quietly alive.
- * Do not re-propose confetti. It was built properly, seen, and turned down on the merits.
+ * **Read the three shapes this went through before changing it, because each one was built,
+ * looked at, and rejected on the merits** (owner, 2026-08-20, all in one round):
  *
- * **This is the site's one deliberate exception to "no ambient looping motion".** That ban is his
- * rule and it stands everywhere else — nothing on this site may animate forever to be noticed.
- * The exception is his too, asked for in those words, and it is bounded three ways so it stays an
- * exception rather than a precedent: the band exists ONLY while there is a saving to celebrate
- * (`setActive`), it is PAUSED whenever it is off screen, and it moves at ~9px a second, which is
- * slow enough to read as drift rather than as something trying to be looked at.
+ *  1. A confetti burst drawn in SCREEN coordinates (`position: fixed`). The trigger is a scroll,
+ *     so the page was still moving when it fired — the pieces stayed where the row had been while
+ *     the row slid away. *"כמעט בלתי נראה, הוא מופיע לשניה בעת הגלילה וזהו, הוא גם די מכוער"*.
+ *  2. A full-width burst falling through the whole summary, plus a candy stripe sweeping the rule
+ *     beneath the row. It worked — and that was the problem: *"כרגע זה יותר מדי אלמנטים"*.
+ *  3. His own next suggestion, built as asked: the rule under the row became a slow loop of
+ *     coloured stripes. *"לא זה מכוער, עזוב. תוריד את הצבע מהקו"*.
  *
- * The motion is a `translateX` on a strip twice the width of its clip, not an animated
- * `background-position` — a transform is the only thing here that runs on the compositor, and an
- * animation that never ends is exactly where "it repaints every frame forever" stops being an
- * academic point and starts being a laptop fan on a checkout page.
+ * What is left is the smallest version of the idea, which is where it should have started:
+ * **the number, and confetti on the number.** The rule under the row is a plain border again and
+ * nothing about the checkout's resting state has been touched. Nothing here loops — the site's
+ * ban on ambient looping motion is back in force with no exception.
+ *
+ * So the two lessons worth keeping if this is ever revisited: a decoration anchored to CONTENT is
+ * positioned in the content's coordinate space, never the screen's; and every round of this went
+ * the same way — the smaller version was the better one.
  */
 
-/** Every confetti hue, in order, as one band each — the palette and why a celebration may be
- *  many colours where a surface may not is at `--color-confetti-*` in base/tokens.css. */
-const STRIPE_COLORS = [
+/** Walked in order, never picked at random, so a burst can never come out all one colour by
+ *  chance and no two neighbouring pieces match. The palette itself, and why a celebration may be
+ *  many colours where a surface may not, is at `--color-confetti-*` in base/tokens.css. */
+const CONFETTI_COLORS = [
   'var(--color-confetti-1)', 'var(--color-confetti-2)', 'var(--color-confetti-3)',
   'var(--color-confetti-4)', 'var(--color-confetti-5)', 'var(--color-confetti-6)',
 ];
-/** Width of one colour band, and how much of it is spent blending into the next.
- *
- *  Both came out of looking at the first build: hard-edged 14px bands at 3px tall render as a row
- *  of coloured SQUARES — a strip of lego, not a stripe — because at that height no slant is
- *  perceivable and nothing connects one colour to its neighbour. Narrower bands with a soft
- *  hand-off read as one continuous ribbon that happens to change colour, which is the difference
- *  between a decoration and a toy. */
-const BAND = 12;
-const BLEND = 4;
-/** One full cycle of the palette — what the strip travels before it repeats seamlessly. */
-const PERIOD = BAND * STRIPE_COLORS.length;
-/** ~9px a second. Slow on purpose: fast enough to be alive, slow enough that the eye lets it be. */
-const CYCLE_MS = 9_000;
-/** 3px, over the row's own 2px border. Below 3 a slanted band has nowhere to slant and the whole
- *  thing collapses into a dashed line — which is what the first version of this actually looked
- *  like. Not 4: this one is permanent, and a permanent 4px rainbow is a decoration rather than a
- *  rule. */
-const HEIGHT = 3;
-/** How long the row must stay on screen before the count-up counts as "the shopper reached it"
- *  rather than "the shopper scrolled past it". */
+
+/** Sized for ONE number rather than for a page. The earlier full-width version used 46 and read as
+ *  too much; this is a flourish around a two-digit figure. */
+const PIECES = 20;
+/** Keyframes per piece. The trajectory is sampled rather than eased, because no single cubic
+ *  bezier describes "up, over, and accelerating down while spinning on three axes". */
+const SAMPLES = 16;
+/** How long the row must stay on screen before this counts as "the shopper reached it" rather
+ *  than "the shopper scrolled past it" — long enough to survive a flick past. */
 const SETTLE_MS = 220;
 
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -98,124 +91,148 @@ function countUp(el: HTMLElement, target: number, format: (n: number) => string)
   requestAnimationFrame(frame);
 }
 
-/** The band itself: a clip the width of the row, holding a strip twice as wide that slides one
- *  full palette-cycle and starts over. Two cycles of the gradient are painted so the strip is
- *  seamless at the wrap — at the end of the travel the pixel under any point is the same colour
- *  it was at the start, which is what makes the loop invisible. */
-function buildBand(): { band: HTMLElement; strip: HTMLElement } {
-  const band = document.createElement('span');
-  band.setAttribute('aria-hidden', 'true');
-  Object.assign(band.style, {
-    position: 'absolute',
-    insetInline: '0',
-    top: `${-HEIGHT + 1}px`,
-    height: `${HEIGHT}px`,
-    overflow: 'hidden',
-    pointerEvents: 'none',
-    borderRadius: '2px',
-  });
+/** One piece's flight, sampled into keyframes. Every value is per-piece: two pieces sharing a
+ *  trajectory would read as a pattern, which is the one thing confetti must not do. */
+function pieceKeyframes(): { frames: Keyframe[]; duration: number; delay: number } {
+  // Apex early, so the eye sees a launch and then a fall — not a lob.
+  const apexAt = 0.2 + Math.random() * 0.1;
+  const rise = 22 + Math.random() * 34;
+  // y(t) = At + Bt², solved so the peak is `rise` above the start at t = apexAt; the fall depth
+  // then follows from the physics rather than being invented.
+  const b = rise / (apexAt * apexAt);
+  const a = (-2 * rise) / apexAt;
 
-  // Each colour holds for BAND - BLEND and then the gradient interpolates across the gap into the
-  // next one.
-  const stops = STRIPE_COLORS
-    .map((c, i) => `${c} ${i * BAND}px ${(i + 1) * BAND - BLEND}px`)
-    .join(', ');
-  const strip = document.createElement('span');
-  Object.assign(strip.style, {
-    position: 'absolute',
-    insetBlock: '0',
-    // Wider than the clip by a whole palette cycle at each end, so the travel never exposes an
-    // edge no matter how wide the summary column gets.
-    insetInline: `${-PERIOD}px`,
-    // 25°, and the angle is doing real work at this height: a stripe's edge shifts sideways by
-    // `height / tan(angle)`, so at 3px tall the 55° first tried moved the edge two pixels — an
-    // invisible slant, i.e. a rectangle. 25° moves it most of a band's width, which is what
-    // finally reads as a diagonal rather than as a block.
-    background: `repeating-linear-gradient(25deg, ${stops})`,
-    willChange: 'transform',
-  });
-  band.appendChild(strip);
-  return { band, strip };
+  const drift = (Math.random() - 0.5) * 110;
+  const sway = 3 + Math.random() * 9;
+  const swayCycles = 1 + Math.random() * 1.5;
+  const spinZ = (Math.random() - 0.5) * 700;
+  // The flutter, and the single biggest reason this reads as paper rather than as particles:
+  // rotateY without a perspective foreshortens the piece's width by cos(angle), so every piece
+  // turns edge-on and back on its way down. Always at least a full turn.
+  const spinY = 360 + Math.random() * 720;
+  const spinX = (Math.random() - 0.5) * 420;
+
+  const frames: Keyframe[] = [];
+  for (let k = 0; k <= SAMPLES; k++) {
+    const t = k / SAMPLES;
+    const y = a * t + b * t * t;
+    const x = drift * t + Math.sin(t * swayCycles * Math.PI * 2) * sway;
+    frames.push({
+      offset: t,
+      transform: `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`
+        + ` rotateX(${(spinX * t).toFixed(0)}deg)`
+        + ` rotateY(${(spinY * t).toFixed(0)}deg)`
+        + ` rotateZ(${(spinZ * t).toFixed(0)}deg)`,
+      // Held solid for most of the flight and faded only at the end — a piece that fades from the
+      // start never looks like paper, it looks like a particle effect.
+      opacity: t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3),
+    });
+  }
+  return { frames, duration: 1500 + Math.random() * 600, delay: Math.random() * 120 };
+}
+
+/**
+ * The burst, centred on `el` and emitted into `stageHost`.
+ *
+ * No clipping box, deliberately: the whole point of the rejected versions was that they were too
+ * big, so this one is small enough that it never needs one. Every piece stays within ~60px above
+ * and ~150px below the number, which on this page is still inside the summary — so nothing is cut
+ * off and, equally, the document's scroll height cannot grow under it.
+ */
+function burstOnNumber(stageHost: HTMLElement, el: HTMLElement): void {
+  const hostRect = stageHost.getBoundingClientRect();
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left - hostRect.left + rect.width / 2;
+  const cy = rect.top - hostRect.top + rect.height / 2;
+
+  const layer = document.createElement('span');
+  layer.setAttribute('aria-hidden', 'true');
+  Object.assign(layer.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '1' });
+  stageHost.appendChild(layer);
+
+  let alive = PIECES;
+  for (let i = 0; i < PIECES; i++) {
+    const { frames, duration, delay } = pieceKeyframes();
+    // Ribbons, not dots: a rectangle roughly 1:2.5 is what reads as a piece of paper once it is
+    // turning. Every third piece is round, which keeps the group from looking like a barcode.
+    const round = i % 3 === 0;
+    const w = round ? 3 + Math.random() * 3 : 2.5 + Math.random() * 2.5;
+    const h = round ? w : w * (2 + Math.random() * 1.2);
+
+    const piece = document.createElement('span');
+    Object.assign(piece.style, {
+      position: 'absolute',
+      // Spread across the number's own width, not out of a single point — a radial burst from the
+      // centre of a two-digit figure reads as an explosion inside the text.
+      left: `${cx + (Math.random() - 0.5) * (rect.width + 12)}px`,
+      top: `${cy}px`,
+      width: `${w.toFixed(1)}px`,
+      height: `${h.toFixed(1)}px`,
+      borderRadius: round ? '50%' : '1px',
+      background: CONFETTI_COLORS[i % CONFETTI_COLORS.length]!,
+      willChange: 'transform, opacity',
+      opacity: '0',
+    });
+    layer.appendChild(piece);
+
+    // The physics is in the samples; an easing on top would be a second, invisible force acting
+    // on every piece.
+    const anim = piece.animate(frames, { duration, delay, easing: 'linear', fill: 'forwards' });
+    anim.onfinish = () => {
+      piece.remove();
+      // The layer goes with the last piece — a stray absolutely-positioned element left on a
+      // checkout is the kind of thing that quietly changes a layout six months later.
+      if (--alive === 0) layer.remove();
+    };
+  }
 }
 
 export interface SavingsRowMoment {
-  /** The savings row — what has to be ON SCREEN before the count-up runs. */
+  /** The savings row — what has to be ON SCREEN, and the positioning context for the burst. */
   row: HTMLElement;
-  /** The row whose TOP border is the rule under the savings line; the band is mounted on it. */
-  ruleRow: HTMLElement;
-  /** The element holding the formatted amount, plus the figure and formatter behind it.
-   *  `target` is a GETTER: the cart re-renders between mounting this and the shopper reaching the
-   *  row, so the figure to count up to is whatever is true at the moment it fires — never the one
-   *  that was true when the page loaded. */
+  /** The element holding the formatted amount: the count-up's target and the burst's centre.
+   *  `target` is a GETTER, because the cart re-renders between arming this and the shopper
+   *  reaching the row — the figure is whatever is true at the moment it fires, never the one that
+   *  was true at page load. */
   amountEl: HTMLElement;
   target: () => number;
   format: (n: number) => string;
 }
 
-export interface SavingsRowHandle {
-  /** Call it wherever the savings row itself is shown or hidden. The band is the rule under a
-   *  saving; with no saving there is nothing under, and a rainbow along the top of the summary
-   *  would be decoration with nothing to say. */
-  setActive: (on: boolean) => void;
-}
+/**
+ * Arms the moment. Nothing else has to check whether there IS a saving: the row is `display:none`
+ * when there isn't, and a `display:none` element never intersects.
+ *
+ * Fires ONCE, and does not stop watching until it has — so a shopper who flicks past the row and
+ * scrolls back gets the moment they missed rather than nothing.
+ */
+export function armSavingsRowMoment(c: SavingsRowMoment): void {
+  if (reduced() || typeof IntersectionObserver === 'undefined') return;
 
-/** Mounts the band and arms the count-up. Safe to call once, at page setup, before the cart has
- *  rendered — nothing is visible until `setActive(true)`. */
-export function mountSavingsRowMoment(c: SavingsRowMoment): SavingsRowHandle {
-  if (getComputedStyle(c.ruleRow).position === 'static') c.ruleRow.style.position = 'relative';
-
-  const { band, strip } = buildBand();
-  band.style.display = 'none';
-  c.ruleRow.appendChild(band);
-
-  // Still: the colours are the point, the movement is not, and someone who asked the OS for less
-  // motion did not ask for less colour.
-  const drift = reduced() ? null : strip.animate(
-    [{ transform: 'translateX(0)' }, { transform: `translateX(${PERIOD}px)` }],
-    { duration: CYCLE_MS, iterations: Infinity, easing: 'linear' },
-  );
-  drift?.pause();
-
-  let active = false;
-  let counted = false;
   let settleTimer: number | undefined;
+  let fired = false;
 
-  const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver((entries) => {
+  const fire = () => {
+    if (fired) return;
+    fired = true;
+    observer.disconnect();
+    if (getComputedStyle(c.row).position === 'static') c.row.style.position = 'relative';
+    countUp(c.amountEl, c.target(), c.format);
+    burstOnNumber(c.row, c.amountEl);
+  };
+
+  const observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
-      // Nothing moves while nobody is looking. A loop that runs on a backgrounded tab, or three
-      // screens above the fold, is the part of "ambient motion" that is a cost rather than a
-      // choice — and this is the one animation on the site with no end of its own.
-      if (entry.isIntersecting && active) drift?.play(); else drift?.pause();
-
-      if (!counted && entry.isIntersecting) {
-        // Not fired on the crossing itself: a fast scroll passes the row on its way somewhere
-        // else, and a number that races itself while sliding off screen is worse than a number.
-        settleTimer ??= window.setTimeout(() => {
-          counted = true;
-          if (!reduced()) countUp(c.amountEl, c.target(), c.format);
-        }, SETTLE_MS);
-      } else if (!entry.isIntersecting) {
+      if (entry.isIntersecting) {
+        // Not fired on the crossing itself: a fast scroll crosses this threshold on its way past,
+        // and a celebration for a row the shopper never stopped at is the first version's
+        // "appears for a second" complaint in a different costume.
+        settleTimer ??= window.setTimeout(fire, SETTLE_MS);
+      } else {
         window.clearTimeout(settleTimer);
         settleTimer = undefined;
       }
     }
   }, { threshold: 0.85 });
-  observer?.observe(c.row);
-
-  /** The observer only speaks when intersection CHANGES, and the row is usually already where it
-   *  is by the time the cart finishes rendering — so switching the band on has to answer "is it
-   *  on screen" itself rather than wait for a callback that will not come. */
-  const onScreen = () => {
-    const r = c.row.getBoundingClientRect();
-    return r.height > 0 && r.bottom > 0 && r.top < (window.innerHeight || 0);
-  };
-
-  return {
-    setActive(on: boolean) {
-      if (on === active) return;
-      active = on;
-      band.style.display = on ? 'block' : 'none';
-      if (on && onScreen()) drift?.play(); else drift?.pause();
-    },
-  };
+  observer.observe(c.row);
 }

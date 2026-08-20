@@ -175,11 +175,7 @@ for (const s of await getVisibleStores()) {
             </span>
             <strong class="text-[1.05rem] font-extrabold [color:var(--color-sale)]" id="co-savings-amount"></strong>
           </div>
-          {/* `relative` for the coloured band that sits on this row's TOP border — the rule under
-              the savings line (owner, 2026-08-20; lib/savings-celebration.ts). It is mounted only
-              while there IS a saving, and it is drawn OVER the border rather than replacing it, so
-              a cart with nothing saved renders exactly the row that was always here. */}
-          <div id="co-grand-total-row" class="relative flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
+          <div id="co-grand-total-row" class="flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
             <span class="text-base font-medium [color:var(--color-text)]">{c.total} <span id="grand-total-count" class="text-[.82em] font-normal [color:var(--color-muted)]"></span></span>
             <strong class="text-[1.35rem] font-extrabold [color:var(--color-text)]" id="grand-total-amount"></strong>
           </div>
@@ -299,7 +295,7 @@ for (const s of await getVisibleStores()) {
     import { formatPrice, cdnThumb } from '../config/store.config.js';
     import { escapeHtml as esc } from '../lib/html-escape.js';
     import { spawnRipple } from '../lib/ripple.js';
-    import { mountSavingsRowMoment } from '../lib/savings-celebration.js';
+    import { armSavingsRowMoment } from '../lib/savings-celebration.js';
     import { checkoutAttemptKey, clearCheckoutAttemptKey } from '../lib/checkout-attempt-key.js';
     import { trackInitiateCheckout } from '../lib/tracking.js';
     import { adItemId } from '../lib/ad-item-id.js';
@@ -458,26 +454,25 @@ for (const s of await getVisibleStores()) {
       belowMin:    i18n['couponBelowMin'] ?? 'הקוד תקף מ-{min}',
     });
 
-    // ── The savings row's colour band + count-up (owner, 2026-08-20) ─────────────────────
-    // lib/savings-celebration.ts owns every rule about it, including why it is a slow loop and
-    // not the confetti burst it started as. Mounted once, before the first render, and then only
-    // switched on and off by renderCart — it never rebuilds, because the row it decorates never
-    // does either.
+    // ── The savings row's moment (owner, 2026-08-20) ─────────────────────────────────────
+    // The amount counts up and a small confetti burst goes off on the number itself, once, when
+    // the shopper actually reaches the row. lib/savings-celebration.ts owns every rule about it,
+    // including the two bigger versions that were built and rejected before this one.
+    // Armed once, here, and left alone across every re-render: renderCart() only toggles the
+    // row's class and rewrites its amount, it never replaces the element.
     const savingsRowEl = document.getElementById('co-savings-row');
     const savingsAmountEl = document.getElementById('co-savings-amount');
-    const savingsRuleRow = document.getElementById('co-grand-total-row');
     // Last figure the savings row was rendered with — read when the count-up fires, which is
     // several re-renders after the page loaded.
     let lastTotalSaving = 0;
-    const savingsBand = savingsRowEl && savingsAmountEl && savingsRuleRow
-      ? mountSavingsRowMoment({
-          row: savingsRowEl,
-          ruleRow: savingsRuleRow,
-          amountEl: savingsAmountEl,
-          target: () => lastTotalSaving,
-          format: formatPrice,
-        })
-      : null;
+    if (savingsRowEl && savingsAmountEl) {
+      armSavingsRowMoment({
+        row: savingsRowEl,
+        amountEl: savingsAmountEl,
+        target: () => lastTotalSaving,
+        format: formatPrice,
+      });
+    }
 
     function renderCart(): void {
       const carts = getOrderedCarts();
@@ -827,12 +822,10 @@ for (const s of await getVisibleStores()) {
         const amountEl = document.getElementById('co-savings-amount');
         if (amountEl) amountEl.textContent = formatPrice(totalSaving);
       }
-      // The figure the count-up runs to, and whether the coloured band under the row exists at
-      // all. Both taken from the ONE place the saving is computed rather than re-derived at the
-      // moment they are needed — the decoration must never be able to disagree with the row it
-      // decorates, and a second derivation is how it would.
+      // The figure the count-up runs to, taken from the ONE place the saving is computed rather
+      // than re-derived at the moment it fires — the animation must never be able to disagree
+      // with the row it runs on, and a second derivation is how it would.
       lastTotalSaving = totalSaving;
-      savingsBand?.setActive(totalSaving > 0);
 
       const totalEl = document.getElementById('grand-total-amount');
       if (totalEl) totalEl.textContent = formatPrice(grandTotal);
