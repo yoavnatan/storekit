@@ -6,7 +6,8 @@ import { canTransition } from './order-status-rules.js';
 import { notifyBuyerReturnStatus, notifySellerReturnOpened } from './return-notify.js';
 import {
   autoApproved, canMove, refundForRequest, returnShippingPayer, withinStatutoryWindow,
-  isPartialReturn, openReturnSql, RETURN_REASON_LABELS, type ReturnedLine, type ReturnReason, type ReturnStatus,
+  isPartialReturn, openReturnSql, sellerActionSql, RETURN_REASON_LABELS,
+  type ReturnedLine, type ReturnReason, type ReturnStatus,
 } from './returns.js';
 import { recordMoneyEvent } from './money-events.js';
 import { formatAgorot } from './money.js';
@@ -54,6 +55,14 @@ export interface ReturnRequest {
   returnedLines: ReturnedLine[] | null;
   trackingNumber: string | null;
   sellerNote: string;
+  /**
+   * What the SELLER attached when he claimed the parcel came back empty or used.
+   *
+   * Optional on purpose, exactly like the buyer's: an empty carton photographs as an empty carton
+   * whoever emptied it, so it is a contribution to a human decision and never proof. The SENTENCE
+   * beside it is the part `/api/returns` refuses the claim without.
+   */
+  sellerPhotoUrl: string | null;
   adminNote: string;
   createdAt: string;
   approvedAt: string | null;
@@ -81,7 +90,8 @@ interface Row {
   refund_agorot: string | number; partial_offer_agorot: string | number | null;
   admin_award_agorot: number | null;
   returned_lines: ReturnedLine[] | null;
-  tracking_number: string | null; seller_note: string; admin_note: string;
+  tracking_number: string | null; seller_note: string; seller_photo_url: string | null;
+  admin_note: string;
   created_at: Date | string; approved_at: Date | string | null;
   sent_at: Date | string | null; offered_at: Date | string | null;
   delivered_back_at: Date | string | null; closed_at: Date | string | null;
@@ -107,6 +117,7 @@ function toRequest(r: Row): ReturnRequest {
     returnedLines: r.returned_lines ?? null,
     trackingNumber: r.tracking_number,
     sellerNote: r.seller_note,
+    sellerPhotoUrl: r.seller_photo_url,
     adminNote: r.admin_note,
     createdAt: iso(r.created_at)!,
     approvedAt: iso(r.approved_at),
@@ -279,6 +290,8 @@ export interface MoveInput {
   store: StatusChangeStore;
   trackingNumber?: string;
   sellerNote?: string;
+  /** The seller's picture, on the one move that is a claim about goods nobody else saw. */
+  sellerPhotoUrl?: string | null;
   /**
    * Something the buyer adds later — how he sent it, or why he thinks the refusal is wrong.
    *
@@ -324,6 +337,7 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
        status = $2,
        tracking_number = COALESCE($3, tracking_number),
        seller_note = COALESCE($4, seller_note),
+       seller_photo_url = COALESCE($9, seller_photo_url),
        admin_note = COALESCE($5, admin_note),
        partial_offer_agorot = COALESCE($6, partial_offer_agorot),
        admin_award_agorot = COALESCE($8, admin_award_agorot),
@@ -345,7 +359,7 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
      WHERE id = $1 RETURNING *`,
     [input.id, input.to, input.trackingNumber ?? null, input.sellerNote ?? null,
      input.adminNote ?? null, input.partialOfferAgorot ?? null, input.buyerNote ?? null,
-     input.adminAwardAgorot ?? null],
+     input.adminAwardAgorot ?? null, input.sellerPhotoUrl ?? null],
   );
   const moved = toRequest(r!);
 
@@ -492,12 +506,24 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
   return { request: moved };
 }
 
-/** Counts for the seller's tab badge and the admin's. Open cases only — a closed one is not a task. */
-export async function countOpenReturns(storeSlug?: string): Promise<number> {
+/**
+ * The number on the seller's returns tab — cases HE has to act on, not cases that are open.
+ *
+ * Changed 2026-08-20 (owner): a badge is a claim that something needs doing, and this one was
+ * counting every open case including the ones waiting on the buyer to post a parcel and the ones
+ * waiting on our own decision. `sellerActionSql` is the single definition, shared with the panel
+ * header so a seller can never read one number on the tab and a different one inside it.
+ *
+ * There is no open-case counter any more: `countOpenReturns` was this function before the change,
+ * the seller's dashboard was its only caller, and a returns helper nothing calls is exactly what
+ * `returns-wired.test.ts` exists to refuse. The admin's panel needs no count — it renders the
+ * disputes and the in-flight list and says how many of each it drew.
+ */
+export async function countSellerActionReturns(storeSlug: string): Promise<number> {
   const r = await firstRow<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM return_requests
-      WHERE ${openReturnSql()}${storeSlug ? ' AND store_slug = $1' : ''}`,
-    storeSlug ? [storeSlug] : [],
+      WHERE ${sellerActionSql()} AND store_slug = $1`,
+    [storeSlug],
   );
   return r?.n ?? 0;
 }

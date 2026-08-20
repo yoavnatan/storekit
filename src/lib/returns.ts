@@ -396,6 +396,46 @@ export function openReturnSql(column = 'status'): string {
 }
 
 /**
+ * Of the open cases, the ones the SELLER actually has to do something about.
+ *
+ * ── Why this is not `isOpen` (owner, 2026-08-20) ──
+ * The returns tab said *"13 בקשות מחכות לך"* over every open case, and most of them were not
+ * waiting on him at all: *"יש שם בקשות שלא מחכות לו! מחכות להכרעה... או שמחכות שהקונה ישלח את
+ * המוצר"*. A count that names the reader as the person holding things up, when eleven of the
+ * thirteen are waiting on somebody else, is the shape that teaches a seller to stop reading his own
+ * badge — and then the two that ARE his go unanswered too.
+ *
+ * The three that are his, and nothing else:
+ *  · `requested` — he must answer or the clock closes it as a refusal. (Inside the statutory window
+ *    a request is never `requested`; it is `approved` on arrival, which is why this one is always a
+ *    real decision.)
+ *  · `in_transit` — the buyer says it is on its way, and only the seller can say it arrived. His
+ *    silence for a fortnight is what sends the case to us, so the button is genuinely his.
+ *  · `received` — it is in his hands and he has two business days before the money goes back on its
+ *    own.
+ *
+ * `approved` and `offered` wait on the BUYER; `disputed` waits on US. A seller can act on none of
+ * them, and the card says so in words either way.
+ *
+ * Listed rather than derived from the button table, for the same reason `OPEN_RETURN_STATUSES` is:
+ * "has a button" and "owes an action" agree today and are different questions — a state the seller
+ * may optionally move (the offer, from `approved`) is not one he is holding up.
+ */
+// Not exported: `sellerOwesAction` and `sellerActionSql` are the whole of this rule's surface, and
+// a third door onto the same list is a third place a new state can be forgotten.
+const SELLER_ACTION_STATUSES: readonly ReturnStatus[] = ['requested', 'in_transit', 'received'];
+
+/** Does this case need the seller to do something? What his tab badge and its header count. */
+export function sellerOwesAction(status: ReturnStatus): boolean {
+  return SELLER_ACTION_STATUSES.includes(status);
+}
+
+/** The same question for a `WHERE` clause — GENERATED from the list above, never typed again. */
+export function sellerActionSql(column = 'status'): string {
+  return `${column} IN (${SELLER_ACTION_STATUSES.map((s) => `'${s}'`).join(', ')})`;
+}
+
+/**
  * How long after a refusal the buyer may still ask us to look at it.
  *
  * Not a limit on the buyer's rights — those are not ours to time — but on this button. A case has to

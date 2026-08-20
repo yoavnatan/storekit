@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { NON_RETURNABLE_SUBJECTS } from '../src/lib/return-eligibility.js';
-import { RETURN_REASON_LABELS } from '../src/lib/returns.js';
+import {
+  RETURN_REASON_LABELS, RETURN_TRANSITIONS, sellerOwesAction, sellerActionSql,
+} from '../src/lib/returns.js';
 
 /**
  * Nothing in the returns feature may be written and left uncalled.
@@ -86,6 +88,52 @@ describe('the returns feature has no code nothing calls', () => {
  * and not to the page is a right removed in silence — and the page is the only place a buyer could
  * have found out.
  */
+/**
+ * The number on the tab and the sentence inside the panel come from ONE rule.
+ *
+ * The returns tab counted every OPEN case and called all of them "מחכות לך", which named the seller
+ * as the person holding up requests that were waiting on the buyer to post a parcel or on our own
+ * decision (owner, 2026-08-20). The fix is only worth anything if it stays single: a badge and a
+ * header that drift apart give a seller two different answers to "how many of these are mine", on
+ * the same screen, and the badge is the one he sees from every other tab.
+ *
+ * So this pins three things — the rule's membership, that both SQL and TS spell it the same way,
+ * and that neither surface has gone back to counting open cases.
+ */
+describe('the seller\'s returns count means "yours", not "open"', () => {
+  const read = (f: string) => fs.readFileSync(path.join(process.cwd(), f), 'utf8');
+
+  it('claims exactly the three states a seller can act on', () => {
+    expect(sellerOwesAction('requested')).toBe(true);   // answer, or the clock refuses for him
+    expect(sellerOwesAction('in_transit')).toBe(true);  // only he can say the parcel arrived
+    expect(sellerOwesAction('received')).toBe(true);    // two business days before it auto-refunds
+
+    expect(sellerOwesAction('approved')).toBe(false);   // the buyer posts it
+    expect(sellerOwesAction('offered')).toBe(false);    // the buyer answers
+    expect(sellerOwesAction('disputed')).toBe(false);   // we decide
+    for (const closed of ['rejected', 'refunded', 'expired'] as const) {
+      expect(sellerOwesAction(closed)).toBe(false);
+    }
+  });
+
+  it('spells the same list in SQL as in TypeScript', () => {
+    const sql = sellerActionSql();
+    const named = [...sql.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
+    expect(named.length).toBeGreaterThan(0);
+    const ALL = Object.keys(RETURN_TRANSITIONS) as (keyof typeof RETURN_TRANSITIONS)[];
+    for (const st of ALL) {
+      expect(named.includes(st), `${st}: SQL and sellerOwesAction disagree`).toBe(sellerOwesAction(st));
+    }
+  });
+
+  it('is what the tab badge and the panel header both use', () => {
+    expect(read('src/pages/seller/dashboard.astro')).toContain('countSellerActionReturns');
+    expect(read('src/components/dashboard/ReturnsPanel.astro')).toContain('sellerOwesAction');
+    // The old shape, in the words it had: an open-case count presented as the seller's queue.
+    expect(read('src/components/dashboard/ReturnsPanel.astro')).not.toContain('${open.length} בקשות מחכות לך');
+  });
+});
+
 describe('the policy page names every exclusion the code enforces', () => {
   it('mentions each non-returnable term', () => {
     const page = fs.readFileSync('src/pages/returns-policy.astro', 'utf8');

@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { translations } from '../src/i18n/translations.js';
+import { ORDER_FILTER_STATUSES } from '../src/lib/seller-orders-query.js';
 
 const SOURCE = readFileSync(join(process.cwd(), 'src/scripts/dashboard/orders.ts'), 'utf8');
 
@@ -38,6 +39,40 @@ describe('orders tab i18n', () => {
     const en = translations.en.dashboard as unknown as Record<string, string>;
     const missing = [...new Set(keys)].filter((k) => !he[k] || !en[k]);
     expect(missing).toEqual([]);
+  });
+
+  /**
+   * Every status the filter menu can offer has a NAME, in both renderers.
+   *
+   * `ORDER_FILTER_STATUSES` is generated from the status table so a new status is filterable the
+   * day it is added — which is the right design and is exactly what made this fail silently:
+   * `returned` became filterable and neither label map knew it, so the menu rendered `?? value`
+   * and put the raw English word next to "בוטלה". Two rows that read as the same thing, one of
+   * them untranslated, on a Hebrew screen (owner, 2026-08-20).
+   *
+   * Checked against the SOURCE of both renderers rather than by importing the maps: they are
+   * function-local in the client bundle and frontmatter consts in the `.astro`, and neither is
+   * reachable from a test. What matters is that the key is there.
+   */
+  it('names every filterable shipping status, in both renderers', () => {
+    const ssr = readFileSync(join(process.cwd(), 'src/pages/seller/dashboard.astro'), 'utf8');
+    const labelBlock = (src: string, marker: string): string => {
+      const at = src.indexOf(marker);
+      expect(at, `${marker} not found — the label map was renamed`).toBeGreaterThan(-1);
+      return src.slice(at, src.indexOf('};', at));
+    };
+    const clientLabels = labelBlock(SOURCE, 'const labelMap: Record<string, string> = {');
+    const ssrLabels = labelBlock(ssr, 'const orderShippingLabels: Record<string, string> = {');
+    const ssrColors = labelBlock(ssr, 'const orderStatusColors: Record<string, string> = {');
+
+    for (const status of ORDER_FILTER_STATUSES) {
+      expect(clientLabels, `${status}: the client renderer would print the raw English word`)
+        .toMatch(new RegExp(`\\b${status}\\s*:`));
+      expect(ssrLabels, `${status}: the server renderer would print the raw English word`)
+        .toMatch(new RegExp(`\\b${status}\\s*:`));
+      expect(ssrColors, `${status}: no colour, so its badge falls back to grey`)
+        .toMatch(new RegExp(`\\b${status}\\s*:`));
+    }
   });
 
   it('keeps the {n} placeholder in every counted string', () => {

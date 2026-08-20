@@ -23,7 +23,7 @@ import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
 import { offersSelfPickup } from '../../lib/shipping.js';
-import { getReturnsForStore, countOpenReturns, getLatestReturnsByOrder, getOrderFactsForReturns } from '../../lib/return-requests.js';
+import { getReturnsForStore, countSellerActionReturns, getLatestReturnsByOrder, getOrderFactsForReturns } from '../../lib/return-requests.js';
 import { orderReturnChip, orderReturnChipHtml, type OrderReturnChip } from '../../lib/return-chip.js';
 
 /** The chip's word per state — short, because it sits in a crowded row beside the age and the
@@ -854,7 +854,11 @@ const newOrdersCount = orderStatusCounts.pending ?? 0;
 // Both are skipped entirely when there is no store selected: `store` is null on an account whose
 // shop was just deleted, and a query keyed on a slug that does not exist is a round trip whose
 // only possible answer is "none".
-const openReturnsCount = store ? await countOpenReturns(store.slug) : 0;
+// Cases HE has to act on — not cases that are open. A badge is a claim that something needs doing,
+// and this one used to include every request waiting on the buyer to post a parcel and every one
+// waiting on our own decision (owner, 2026-08-20). `returns.ts#sellerActionSql` is the single
+// definition, shared with the panel's own header line.
+const openReturnsCount = store ? await countSellerActionReturns(store.slug) : 0;
 // The words for the chip above, per order — one batched read, and only on the tab that renders
 // order cards. `openReturnsCount` above is the badge and runs everywhere; this is the detail and
 // runs where it is drawn.
@@ -959,6 +963,20 @@ const otherStoreLevels = store
 const otherStoresLevel: StoreAlertLevel | null =
   otherStoreLevels.includes('danger') ? 'danger' : otherStoreLevels.length > 0 ? 'warning' : null;
 
+/**
+ * Every shipping status the seller can SEE, named — and `returned` was the one that was not.
+ *
+ * It is a real status: `return-requests.ts` moves the order to it when a whole-order return is
+ * refunded, and it is deliberately not a flavour of `cancelled` (`order-status-rules.ts` argues
+ * why). It reached this map through no door at all, so the filter menu — which is generated from
+ * the status table, exactly so a new status cannot be forgotten — fell back to `?? value` and
+ * printed the raw English word beside "בוטלה" (owner, 2026-08-20: *"יש שם כפילות מוזרה! כשהאתר
+ * בעברית לפחות"*). Two rows in a filter, one of them in the wrong language, reading as the same
+ * thing.
+ *
+ * `dashboard.shippingReturned` had existed in both dictionaries the whole time. Pinned now by
+ * `orders-i18n.test.ts`, which fails if a filterable status has no name here or in the client twin.
+ */
 const orderShippingLabels: Record<string, string> = {
   pending: d.shippingPending,
   processing: d.shippingProcessing,
@@ -966,6 +984,7 @@ const orderShippingLabels: Record<string, string> = {
   shipped: d.shippingShipped,
   delivered: d.shippingDelivered,
   cancelled: d.shippingCancelled,
+  returned: d.shippingReturned,
 };
 
 const orderStatusColors: Record<string, string> = {
@@ -975,6 +994,9 @@ const orderStatusColors: Record<string, string> = {
   shipped: '#8b5cf6',
   delivered: '#16a34a',
   cancelled: '#6b7280',
+  // Its own colour, not the cancellation's grey: the two orders look identical in every money
+  // column and are different events, which is the whole reason they are separate statuses.
+  returned: '#0d9488',
 };
 
 ---

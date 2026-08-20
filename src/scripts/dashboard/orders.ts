@@ -65,13 +65,17 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const ordersLang = document.documentElement.lang === 'en' ? 'en' : 'he';
 
   // ── Order cards: accordion + save status/tracking ────────────
-  const colorMap = { pending:'#ef4444', processing:'#3b82f6', ready:'#f59e0b', shipped:'#8b5cf6', delivered:'#16a34a', cancelled:'#6b7280' } as Record<string, string>;
+  const colorMap = { pending:'#ef4444', processing:'#3b82f6', ready:'#f59e0b', shipped:'#8b5cf6', delivered:'#16a34a', cancelled:'#6b7280', returned:'#0d9488' } as Record<string, string>;
   // Status wording is the translations' own (`shipping*`), not a second copy of
   // it here — this map was Hebrew literals, so an English dashboard labelled
   // every rebuilt card in Hebrew.
+  // `returned` was missing and the filter menu is generated from the status table, so it printed the
+  // raw English word next to "בוטלה" (owner, 2026-08-20). Guarded by `orders-i18n.test.ts` now: a
+  // status the menu can show must be named in this map and in the SSR twin.
   const labelMap: Record<string, string> = {
     pending: tt('shippingPending'), processing: tt('shippingProcessing'), ready: tt('shippingReady'),
     shipped: tt('shippingShipped'), delivered: tt('shippingDelivered'), cancelled: tt('shippingCancelled'),
+    returned: tt('shippingReturned'),
   };
 
   // Body-anchored (position:fixed, clamped to viewport) instead of the old
