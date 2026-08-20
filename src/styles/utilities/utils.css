@@ -347,6 +347,17 @@
    panel id — an ID beats the class above it, so nothing here fights for order. */
 #dash-panel-messages .msg-table__th--from { width: 13%; }
 #dash-panel-messages .msg-table__th--subject { width: 29%; }
+/* The ADMIN's inbox is the same panel id and needed the opposite of 13% (owner, סשן ד׳: *"אי אפשר
+   לראות שם מי פנה, זה מופיע רק בכותרת חתוך"*). Both dashboards render `#dash-panel-messages`, so
+   the rule written for the seller — whose cell holds a bare name — was silently sizing the admin's,
+   whose cell holds a ROLE BADGE and then the name. The badge eats ~44px before a letter is drawn,
+   so at 13% "Dezabin Admin" clipped to "…abin Admin" and the one column whose entire job is to say
+   who wrote this was the one that could not. Nine points back, taken from the preview column, which
+   is `auto` and is the one cell whose whole job is to be truncated.
+   `.admin-dash` (on #dash-main-card, admin/index.astro) is what separates the two: a class plus the
+   id outranks the id alone, so this wins without `!important` and without touching the seller. */
+.admin-dash #dash-panel-messages .msg-table__th--from { width: 22%; }
+.admin-dash #dash-panel-messages .msg-table__th--subject { width: 26%; }
 /* Wide enough for the longest "30.7.2026, 14:32" + cell padding — a date that
    ellipsises is worse than one that costs 28 extra px. */
 .msg-table__th--date { width: 124px; }
@@ -367,6 +378,13 @@
 .msg-table__td--product { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--color-accent); }
 .msg-table__td--date { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--color-muted); }
 .msg-table__td--actions { width: 36px; padding-block: 0.2rem; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
+/* "טופל", readable from the list. It shares the status cell with the unread bar, which is drawn on
+   that cell's inline-start BORDER — so a handled thread that has since had a reply shows the red
+   edge and the green tick at once, which is exactly the state it is in. A tick and not a word: the
+   column is 12px wide (see .msg-table__th--status) and a word there forces the table sideways, the
+   same way the "סמן כטופל" button did when it was tried in the actions column. */
+.msg-handled-mark { display: inline-flex; align-items: center; color: var(--color-success); }
+.msg-handled-mark[hidden] { display: none; }
 .inline-alert-dot { display: inline-block; width: 7px; height: 7px; background: #ef4444; border: 1px solid var(--color-border); border-radius: 50%; flex-shrink: 0; }
 .msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
 /* The line that CLOSES the table belongs to the wrapper, and only to it. Every `td` draws a

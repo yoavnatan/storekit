@@ -152,13 +152,24 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
         {threads.map(({ id, sellerId, subject, lastMessage, unreadForAdmin, partyRole, status, root }) => {
           const seller = sellerById.get(sellerId);
           // Who this is, in the order the answer is actually useful: a seller by the name the
-          // platform knows them by, anyone else by the address they left. A guest who left no
-          // address is named by their role alone — and the panel says so rather than offering a
-          // mailto that bounces, which is the same honesty `api/report.ts` shows when it drops an
-          // unusable address instead of refusing the message.
-          const who = seller
-            ? `${seller.name} (${seller.email})`
-            : root.partyEmail || (partyRole === 'guest' ? 'אורח · ללא כתובת לחזרה' : sellerId || '—');
+          // platform knows them by, anyone else by the name or the address they left. A guest who
+          // left no address is named by their role alone — and the panel says so rather than
+          // offering a mailto that bounces, which is the same honesty `api/report.ts` shows when it
+          // drops an unusable address instead of refusing the message.
+          //
+          // **The address is NOT in this cell** (owner, סשן ד׳: *"אי אפשר לראות שם מי פנה, זה
+          // מופיע רק בכותרת חתוך"*). The column is 16% of a fixed-layout table and clips with an
+          // ellipsis, and `שם (כתובת)` spends most of that width on the half nobody scans by — so
+          // the name itself was what got cut. The full identity, address included, now opens with
+          // the thread (`msg-thread-head` below), which is the same shortening-not-losing trade the
+          // subject column already makes.
+          const whoName = seller?.name || root.partyName || '';
+          const whoEmail = seller?.email || root.partyEmail || '';
+          // The badge beside this already says מוכר/קונה/אורח, so the fallback must not say it a
+          // second time — it used to read "אורח · אורח · ללא כתובת לחזרה" once the badge was
+          // there. What is left when there is neither a name nor an address is the account id, or,
+          // for a guest who has no account either, the plain fact.
+          const who = whoName || whoEmail || (sellerId ? sellerId : 'ללא כתובת לחזרה');
           const review = root.reviewId ? reviewsById.get(root.reviewId) : undefined;
           // A seller is reachable through their dashboard; anyone else only through the address
           // they left. No address and no account means the answer has nowhere to go.
@@ -166,7 +177,19 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
           return (
             <>
               <tr class={`msg-table__row${unreadForAdmin > 0 ? ' msg-table__row--unread' : ''}`} data-thread-id={id} data-seller-id={sellerId} data-thread-status={status} tabindex="0" role="button" aria-expanded="false">
-                <td class="msg-table__td msg-table__td--status"></td>
+                {/* **"טופל" has to be visible from OUTSIDE the thread** (owner, סשן ד׳: *"מה עוזר
+                    לי שיש שם 'סמן כטופל' אם בחוץ אין שום חיווי לכך שזה טופל?"*). The button that
+                    sets it lives inside the open thread — which is right, that is where the
+                    decision is made — but a state you have to open a row to read is a state the
+                    list cannot be scanned by, and the status filter above then had nothing on
+                    screen to agree with. The mark goes in the status cell, which already exists and
+                    was empty: the unread bar is drawn on that cell's border, so the two never
+                    contend for the same pixels and a handled thread with a new reply shows both. */}
+                <td class="msg-table__td msg-table__td--status">
+                  <span class="msg-handled-mark" hidden={status !== 'handled'} title="טופל" aria-label="טופל">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                  </span>
+                </td>
                 <td class="msg-table__td msg-table__td--from">
                   {unreadForAdmin > 0 && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
                   <span class="admin-badge admin-badge--muted">{ROLE_LABEL[partyRole]}</span>
@@ -197,13 +220,31 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                 <td colspan="6">
                   <div class="msg-thread-head">
                     <p class="msg-thread-head__subject"><span class="msg-thread-head__label">נושא</span>{subject}</p>
+                    {/* **Who wrote it, inside the thread** (owner, סשן ד׳: *"כשפותחים את ההודעה
+                        אין אזכור למי פנה"*). The row above clips to a name; this is the full
+                        answer — what they are, what they are called, and the address an answer
+                        would travel to — and it is the first thing under the subject because it is
+                        what decides how the rest of the screen is read. `dir="ltr"` on the address
+                        only: a Latin run inside a Hebrew line otherwise takes its punctuation with
+                        it to the wrong end. */}
+                    <p class="msg-thread-head__meta">
+                      <span class="msg-thread-head__label">מי פנה</span>
+                      <span class="admin-badge admin-badge--muted">{ROLE_LABEL[partyRole]}</span>
+                      {whoName && <Fragment> {whoName}</Fragment>}
+                      {whoEmail && <Fragment> · <bdi dir="ltr">{whoEmail}</bdi></Fragment>}
+                      {!whoName && !whoEmail && <Fragment> · {sellerId ? <bdi dir="ltr">{sellerId}</bdi> : 'ללא כתובת לחזרה'}</Fragment>}
+                    </p>
                     {/* The three facts that make an inquiry actionable and that nobody types —
                         captured server-side (`platform-inquiries.ts`). Rendered only when there is
                         something to say: an empty "עמוד: —" row on every conversation the admin
-                        started is furniture. */}
+                        started is furniture.
+                        The label is a SENTENCE, not the noun it used to be (owner, סשן ד׳: *"למה
+                        יש שם 'עמוד'? מה זה?"*) — "עמוד" beside a URL reads as a property of the
+                        message, and what it actually records is where the sender was standing when
+                        they wrote it, which is the only reason it is worth capturing. */}
                     {root.pageUrl && (
                       <p class="msg-thread-head__meta">
-                        <span class="msg-thread-head__label">עמוד</span>
+                        <span class="msg-thread-head__label">נשלח מהעמוד</span>
                         <a href={root.pageUrl} target="_blank" rel="noopener noreferrer">{root.pageUrl}</a>
                       </p>
                     )}

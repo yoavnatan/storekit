@@ -230,14 +230,17 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
   // Mirrors the SSR row: a seller is reachable through their dashboard, anyone else only through
   // the address they left. Both renderers or neither — see this function's header.
   const canReply = partyRole === 'seller' || !!partyEmail;
-  const label = seller
-    ? `${seller.name} (${seller.email})`
-    : partyEmail || sellerId || `${ROLE_WORD[partyRole]} · ללא כתובת לחזרה`;
+  // Name only in the cell, address in the opened thread — the SSR row's rule, and both renderers
+  // or neither (see this function's header).
+  const whoEmail = seller?.email || partyEmail || '';
+  // The badge beside it already names the role, so the fallback must not repeat it — same rule the
+  // SSR row follows.
+  const label = seller?.name || partyEmail || sellerId || 'ללא כתובת לחזרה';
   const previewTag = message.fromRole === 'admin' ? ' <span class="msg-table__preview-you">(אתה)</span>' : '';
   const unreadMarker = unread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : '';
-  const rowHtml = `<tr class="msg-table__row${unread ? ' msg-table__row--unread' : ''}" data-thread-id="${escapeHtml(threadId)}" data-seller-id="${escapeHtml(sellerId)}" tabindex="0" role="button" aria-expanded="false">
-    <td class="msg-table__td msg-table__td--status"></td>
-    <td class="msg-table__td msg-table__td--from">${unreadMarker}${escapeHtml(label)}</td>
+  const rowHtml = `<tr class="msg-table__row${unread ? ' msg-table__row--unread' : ''}" data-thread-id="${escapeHtml(threadId)}" data-seller-id="${escapeHtml(sellerId)}" data-thread-status="open" tabindex="0" role="button" aria-expanded="false">
+    <td class="msg-table__td msg-table__td--status"><span class="msg-handled-mark" hidden title="טופל" aria-label="טופל"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span></td>
+    <td class="msg-table__td msg-table__td--from">${unreadMarker}<span class="admin-badge admin-badge--muted">${ROLE_WORD[partyRole]}</span> ${escapeHtml(label)}</td>
     <td class="msg-table__td msg-table__td--subject">${escapeHtml(subject)}</td>
     <td class="msg-table__td msg-table__td--preview">${escapeHtml(message.content)}${previewTag}</td>
     <td class="msg-table__td msg-table__td--date">${escapeHtml(formatHeDateTime(message.createdAt))}</td>
@@ -251,6 +254,7 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
     <td colspan="6">
       <div class="msg-thread-head">
         <p class="msg-thread-head__subject"><span class="msg-thread-head__label">נושא</span>${escapeHtml(subject)}</p>
+        <p class="msg-thread-head__meta"><span class="msg-thread-head__label">מי פנה</span><span class="admin-badge admin-badge--muted">${ROLE_WORD[partyRole]}</span>${seller ? ` ${escapeHtml(seller.name)}` : ''}${whoEmail ? ` · <bdi dir="ltr">${escapeHtml(whoEmail)}</bdi>` : ' · לא השאיר/ה כתובת לחזרה'}</p>
       </div>
       <div class="msg-thread" id="admin-msg-replies-${escapeHtml(threadId)}">${bubbleHtml(message)}</div>
       <div class="seller-msg-reply-form" data-reply-for-thread="${escapeHtml(threadId)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
@@ -492,7 +496,18 @@ function wireThreadActions(): void {
         handledBtn.dataset.handled = body.handled ? '1' : '';
         handledBtn.setAttribute('aria-pressed', body.handled ? 'true' : 'false');
         handledBtn.textContent = body.handled ? 'טופל ✓' : 'סמן כטופל';
-        handledBtn.closest<HTMLElement>('[data-thread-id]')?.setAttribute('data-thread-status', body.handled ? 'handled' : 'open');
+        // The SUMMARY row, found by its thread id — not `closest('[data-thread-id]')`, which
+        // returned the button itself (it carries that attribute) and so wrote the new state onto
+        // the button and nowhere else. The row is what the list is read and filtered by, and since
+        // סשן ד׳ it is also what paints the "טופל" tick, so a miss here is the state changing in
+        // the database and on one button while the list goes on saying the opposite.
+        const threadId = handledBtn.dataset.threadId ?? '';
+        const row = threadId
+          ? panel.querySelector<HTMLElement>(`tr.msg-table__row[data-thread-id="${CSS.escape(threadId)}"]`)
+          : null;
+        row?.setAttribute('data-thread-status', body.handled ? 'handled' : 'open');
+        const mark = row?.querySelector<HTMLElement>('.msg-handled-mark');
+        if (mark) mark.hidden = !body.handled;
       } catch {
         showErrorToast('הפעולה נכשלה, נסו שוב');
       } finally {
