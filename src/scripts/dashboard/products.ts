@@ -270,10 +270,11 @@ function openEditRows(): HTMLElement[] {
 // label needs to reflect that too. Reads the ticked checkboxes rather than the shared
 // selection, on purpose: only a rendered row can have an edit row open at all.
 //
-// **The SELECTION decides which of the two words it shows, and that is not the same set the close
-// half acts on** (see `openEditRows`). It has to be the selection, or a row the seller opened from
-// its own menu would flip this button to "סגור עריכה" before he had opened anything he picked —
-// costing him a press that closes something else instead of opening what he just chose.
+// **And it is called from `updateBar`, i.e. on every change to the SELECTION** — not only when a
+// row opens or closes. That was the gap: open a product from its own row menu (the toolbar is
+// hidden, nothing is ticked, so this returns without writing), then tick that same product, and
+// the button appeared reading "ערוך" — the value left from the last time the selection emptied —
+// while its press would close the row that was open (found 2026-08-20).
 function refreshBulkEditLabel(): void {
   const bulkEditBtn = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
   const bulkEditLabel = document.getElementById('bulk-edit-label') as HTMLElement | null;
