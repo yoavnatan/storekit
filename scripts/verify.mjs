@@ -84,7 +84,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { withTestLock } from './lib/test-lock.mjs';
+import { withWorkerShare, workerBudget } from './lib/test-concurrency.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = (name) => resolve(ROOT, 'node_modules/.bin', name);
@@ -267,7 +267,7 @@ function installHash() {
  * The key is `<tree content>-<installed deps>`, so sharing can only ever happen between checkouts
  * that would run the identical checks over the identical inputs. `tmpdir()` because this is an
  * optimisation and losing it costs a re-run, not correctness — the same reasoning, and the same
- * neighbourhood, as `scripts/lib/test-lock.mjs`.
+ * neighbourhood, as `scripts/lib/test-concurrency.mjs`.
  */
 const STATE = resolve(tmpdir(), 'storekit-verify-state');
 const HASH = NO_CACHE ? null : treeHash();
@@ -366,11 +366,34 @@ if (checks.length === 0) {
   process.exit(0);
 }
 
+/**
+ * **Every check except `test` yields the CPU, and that one word is a fix on its own.**
+ *
+ * `test-concurrency.mjs` bounds what the test runs demand between them. It cannot see the steps
+ * beside them, and those are not small: `astro check` measures 54-140s of full-CPU work on this
+ * codebase — 85s in the 2026-08-20 measurement — and while it runs, some other session's vitest is
+ * forking workers. A worker that does not answer inside its boot window is not a slow test, so no
+ * `testTimeout` reaches it; the run dies with `[vitest-pool]: Failed to start forks worker` and
+ * every assertion that ran having passed. Three sessions hit that six times over 2026-08-19/20, and
+ * each one costs a full re-run, which puts another suite on the machine and makes the next session's
+ * boot worse. That is the loop the owner meant when he said two sessions still wedge.
+ *
+ * Lowering the others is the only direction available — raising a priority needs root — and `nice`
+ * is inherited by children, so one word covers `astro check`'s whole process tree. It costs the
+ * yielding checks nothing that matters: they have no wall-clock deadline inside them, which is the
+ * same property that always kept them out of the old lock. It gives the one step whose failure mode
+ * IS a deadline the cores it needs at the moment it needs them.
+ */
+const NICE = existsSync('/usr/bin/nice') ? '/usr/bin/nice' : null;
+
 const spawnCheck = (check) =>
   new Promise((done) => {
     const started = Date.now();
     let out = '';
-    const child = spawn(check.cmd, check.args, { cwd: ROOT, env: process.env });
+    const yields = NICE && check.name !== 'test';
+    const child = yields
+      ? spawn(NICE, ['-n', '10', check.cmd, ...check.args], { cwd: ROOT, env: process.env })
+      : spawn(check.cmd, check.args, { cwd: ROOT, env: process.env });
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (out += d));
     child.on('error', (err) => done({ ...check, code: 1, out: String(err), secs: 0 }));
@@ -380,28 +403,62 @@ const spawnCheck = (check) =>
   });
 
 /**
- * **The test step queues behind every other session on this machine; nothing else does.**
+ * Did the suite die on a worker that never booted, rather than on a test?
  *
- * Six sessions running at once turned six DIFFERENT database-backed test files red at ~32s against
- * the 30s per-test ceiling — a different random subset each run, all of them passing in ~2s alone
- * (2026-08-17). `vitest` sizes its pool from the CPU count, so six suites asked for six machines,
- * and a wall-clock deadline under a fraction of a core is a failure that says nothing about the
- * code. `scripts/lib/test-lock.mjs` carries the full argument, including why raising the timeout
- * again — the fix applied the last time this happened — is the wrong one.
+ * Both halves are required. `Failed to start forks worker` / `Timeout waiting for worker to respond`
+ * is the infrastructure signature; the absence of any FAIL line is what proves nothing the code does
+ * is implicated. `salient()` below leans on the same absence, for the same reason.
+ */
+const starvedWorker = (out) => {
+  const text = strip(out);
+  return /Failed to start \S+ worker|Timeout waiting for worker to respond|vitest-pool/.test(text)
+    && !/✗|×|FAIL/.test(text);
+};
+
+/**
+ * **The test step takes a share of the machine; nothing waits for anything.**
  *
- * Only this step waits. `tsc`, `lint` and `astro check` get slower under contention and never
- * wrong, so they keep running concurrently with everyone; the queue costs nothing but the seconds
- * that genuinely conflict, and a queued suite is not slower overall — six suites sharing one
- * machine take the same total time interleaved or serialised, except serialised they pass.
+ * This replaced a machine-wide lock on 2026-08-20. The lock stopped several sessions' suites from
+ * over-subscribing the CPU, which was a real failure — six suites once asked for six machines and
+ * put a different random subset of database-backed files past the 30s ceiling every run. It stopped
+ * it by letting exactly one suite exist at a time, and that is what made the machine unusable at the
+ * scale the owner works at: a measured `verify --all` took 8m40s of which five minutes was queueing,
+ * at 123% CPU on twelve cores. `scripts/lib/test-concurrency.mjs` carries the full argument and the
+ * measurement.
+ *
+ * So the bound stayed and the queue went. Every live run claims a share of one machine-wide worker
+ * budget, and `--maxWorkers` on the command line overrides `vitest.config.ts`'s own cap for this run
+ * only — the config keeps the four-worker default for anyone running `npm test` by hand.
  */
 const run = async (check) => {
   if (check.name !== 'test') return spawnCheck(check);
-  const release = await withTestLock((own) => {
-    // Said once, and only when it actually waits — a hang with no explanation is the thing this is
-    // most likely to be mistaken for.
-    if (!COMPACT) console.log(`verify: waiting for another session's tests (pid ${own?.pid ?? '?'})…`);
+  const { workers, release } = await withWorkerShare((share, runs) => {
+    // Said once, and only when the machine is actually shared. A run that is slower than usual
+    // because it is one of four should say so; a lone run should print nothing.
+    if (!COMPACT && runs > 1) {
+      console.log(`verify: ${runs} test runs on this machine — taking ${share} of ${workerBudget()} workers.`);
+    }
   });
-  try { return await spawnCheck(check); } finally { release(); }
+  const sized = { ...check, args: [...check.args, '--maxWorkers', String(workers)] };
+  try {
+    const first = await spawnCheck(sized);
+    if (first.code === 0 || !starvedWorker(first.out)) return first;
+    // ── A red run with nothing red in it is retried ONCE, out loud ──
+    //
+    // Only this exact shape: a non-zero exit where the output names a worker that never started and
+    // no line names a failing test. That is the machine, not the code — every assertion that ran
+    // passed, and the rest never ran at all. Re-running is what a person does here anyway (the owner
+    // did it three times in one session, and a peer session three more), so the choice is not
+    // whether to re-run but whether a human has to notice first.
+    //
+    // It cannot mask a real failure: one failing assertion anywhere puts a FAIL line in the output
+    // and the red returns immediately. It cannot loop: one retry, then whatever it says stands. And
+    // it is never silent, because a gate that quietly re-runs itself is how a genuinely flaky suite
+    // stays invisible.
+    if (!COMPACT) console.log('verify: red with no failing test — a worker never started. Re-running the suite once…');
+    const second = await spawnCheck(sized);
+    return second.code === 0 ? { ...second, secs: second.secs + first.secs, retried: true } : second;
+  } finally { release(); }
 };
 
 // Keep only the lines that say what broke — a full vitest or eslint dump buries the one useful line.
@@ -440,6 +497,9 @@ if (failed.length === 0) {
     console.log(`verify: green — ${ran || 'nothing to re-run'}`);
     // Both kinds of not-running are named. Silence is what would turn either into "it all passed".
     if (fromCache.length) console.log(`        unchanged since it last passed: ${fromCache.join(', ')} — \`npm run verify -- --no-cache\` re-runs them.`);
+    // A green that took two attempts is still a green, but it is not the same event, and reporting
+    // it as one would hide a suite that has started needing the retry every time.
+    if (results.some((r) => r.retried)) console.log('        the test step needed its one retry — the first attempt lost a worker to the machine, not to a test.');
     const skipped = ['astro check', 'lint', 'test'].filter((n) => !checks.some((c) => c.name === n));
     if (skipped.length) console.log(`        skipped (untouched): ${skipped.join(', ')} — \`npm run verify -- --all\` forces them.`);
   }

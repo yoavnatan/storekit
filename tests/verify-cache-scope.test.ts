@@ -7,9 +7,9 @@
  * markers lived under each checkout's `node_modules/.cache`, so a worktree that verified green,
  * rebased and fast-forwarded into main handed `pre-push` a tree it had *just* proved, and pre-push
  * ran the whole suite again from scratch because main had never seen that hash. With several
- * sessions live those runs also queue behind each other on the machine-wide test lock
- * (`scripts/lib/test-lock.mjs`), so the duplicate is not merely wasteful, it is the thing that
- * turns a checkpoint into ten minutes of waiting. The owner hit exactly that.
+ * sessions live, those duplicate runs also took a share of the machine's test workers away from
+ * everyone else (`scripts/lib/test-concurrency.mjs`) — so the duplicate is not merely wasteful, it
+ * is the thing that turns a checkpoint into ten minutes of waiting. The owner hit exactly that.
  *
  * Why this needs a test at all: reverting it breaks NOTHING. Every check still runs, every answer
  * is still right, main still cannot go red — the only symptom is that the session is slow again,

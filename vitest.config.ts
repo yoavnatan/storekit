@@ -31,16 +31,19 @@ export default defineConfig({
     // That note ends "throttling workers would have hidden it and cost every future run", and on
     // 2026-08-04 that was the right call: the symptom was a TEST timing out, throttling would have
     // masked a possible real bug, and the honest fix was to find out whether the tests were slow.
-    // They were not — `scripts/lib/test-lock.mjs` then serialised the suite across sessions and the
-    // failures stopped.
+    // They were not — a machine-wide lock then serialised the suite across sessions and the
+    // failures stopped. (That lock is gone as of 2026-08-20; `scripts/lib/test-concurrency.mjs`
+    // divides a worker budget between concurrent runs instead of letting only one exist, because
+    // serialising cost five of one measured verify's eight minutes. The bound it enforced is what
+    // this cap is the per-run half of, so the reasoning below is unchanged by that.)
     //
     // **The failure came back on 2026-08-19 wearing a different face, and neither earlier fix can
     // touch it:** `[vitest-pool]: Failed to start forks worker` / "Timeout waiting for worker to
     // respond" — twelve of them in one run, with every test that DID run passing. A worker that
-    // never starts is not a slow test, so no `testTimeout` reaches it; and the lock cannot help
-    // either, because the process competing for the cores is not another test run. It is the other
-    // session's `astro check`, which `test-lock.mjs` deliberately leaves unlocked on the premise
-    // that type-checking is "CPU-bound but short". **That premise expired** — this suite's own
+    // never starts is not a slow test, so no `testTimeout` reaches it; and no amount of test-run
+    // bounding helps, because the process competing for the cores is not another test run. It is the
+    // other session's `astro check`, which was left unbounded on the premise that type-checking is
+    // "CPU-bound but short". **That premise expired** — this suite's own
     // `astro check` now measures 54–140s of full-CPU work, so two sessions reliably hand twelve
     // vitest workers a fraction of a core each at exactly the moment they are trying to boot.
     //
@@ -68,6 +71,19 @@ export default defineConfig({
     // the older docs describe no longer type-checks (`astro check` refused it, which is the gate
     // doing its job). The top-level option is the one that survived the version, and it applies
     // whichever pool is in use rather than only to the one it happens to be named after.
+    //
+    // ⚠️ Read "twelve contended cores" above as SIX. Measured 2026-08-20: this machine is an
+    // i7-9750H — `hw.physicalcpu` 6, `hw.logicalcpu` 12 — and every worker number in this file's
+    // history was reasoned about as if the logical count were cores. A booting worker needs a real
+    // core on time, so that error is the whole distance between "four each is polite" and two
+    // sessions reliably killing each other's workers. `test-concurrency.mjs` counts the physical
+    // ones; four here is right because it is the ceiling for a run that is ALONE on the machine.
+    //
+    // This is the value for a run nobody is coordinating — `npm test` by hand, CI, an editor. Since
+    // 2026-08-20 `npm run verify` passes `--maxWorkers` on the command line and overrides it with a
+    // share of a machine-wide budget, so several sessions' suites can run at once without any of
+    // them queueing (`scripts/lib/test-concurrency.mjs`). Four remains the right default here: it is
+    // what one run alone should take, and it is the ceiling that share is clamped to.
     maxWorkers: 4,
   },
 });
