@@ -65,7 +65,7 @@ const SEEDS: Seed[] = [
 
 /** Everything the store has, unfiltered — the array the JS reference used to be handed. */
 const ALL = async (): Promise<Order[]> =>
-  (await getSellerOrdersPage(SLUG, { q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], includeOpenReturns: false }, 1, 10_000)).orders;
+  (await getSellerOrdersPage(SLUG, { q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], returnState: [], includeOpenReturns: false }, 1, 10_000)).orders;
 
 beforeAll(async () => {
   // A clean table for this file: the fixture's own orders would make "the two agree" true while
@@ -115,7 +115,7 @@ const q = (over: Partial<SellerOrderQuery> = {}): SellerOrderQuery =>
   // the flag widens the DEFAULT status set with a fact from another table, so a parity case that
   // left it on would be comparing two routes over a set neither test row can produce. The widening
   // has its own cases in `seller-orders-query.test.ts`.
-  ({ q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], includeOpenReturns: false, ...over });
+  ({ q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], returnState: [], includeOpenReturns: false, ...over });
 
 /** Run both routes over the same rows and require the same list of order ids, in order. */
 async function bothAgree(query: SellerOrderQuery, label: string): Promise<Order[]> {
@@ -500,11 +500,30 @@ describe('the widened default agrees on both routes', () => {
     const q = parseSellerOrderQuery(new URLSearchParams(''));
     expect(q.includeOpenReturns).toBe(true);
     const page = await getSellerOrdersPage(SLUG, q, 1, 10_000);
-    const openReturns = new Set((await query<{ order_id: string }>(
-      "SELECT order_id FROM return_requests WHERE status = 'received'")).rows.map((r) => r.order_id));
+    const openReturns = new Map((await query<{ order_id: string; status: string }>(
+      "SELECT order_id, status FROM return_requests WHERE status = 'received'"))
+      .rows.map((r) => [r.order_id, r.status] as const));
     const pure = filterAndSortSellerOrders(await ALL(), SLUG, q, openReturns);
     expect(page.orders.some((o) => o.shippingStatus === 'delivered'), 'the SQL route kept it').toBe(true);
     expect(page.orders.map((o) => o.id).sort()).toEqual(pure.map((o) => o.id).sort());
+  });
+
+  it('the return COLUMN narrows both routes identically', async () => {
+    // The column is a WHERE on `return_requests` in one route and a Map lookup in the other. Same
+    // split as the widening above, same failure if they disagree: the seller's first paint and his
+    // first keystroke show different lists.
+    const q = parseSellerOrderQuery(new URLSearchParams('oret=received'));
+    const page = await getSellerOrdersPage(SLUG, q, 1, 10_000);
+    const live = new Map((await query<{ order_id: string; status: string }>(
+      "SELECT order_id, status FROM return_requests WHERE status = 'received'"))
+      .rows.map((r) => [r.order_id, r.status] as const));
+    const pure = filterAndSortSellerOrders(await ALL(), SLUG, q, live);
+    expect(page.orders.length, 'the fixture must have one, or this asserts nothing').toBeGreaterThan(0);
+    expect(page.orders.map((o) => o.id).sort()).toEqual(pure.map((o) => o.id).sort());
+    // …and a state nothing is in empties both.
+    const none = parseSellerOrderQuery(new URLSearchParams('oret=in_transit'));
+    expect((await getSellerOrdersPage(SLUG, none, 1, 10_000)).orders).toEqual([]);
+    expect(filterAndSortSellerOrders(await ALL(), SLUG, none, live)).toEqual([]);
   });
 
   it("another store's case on a SHARED order does not claim this seller's slice", async () => {
@@ -553,6 +572,6 @@ describe('the widened default agrees on both routes', () => {
       "SELECT order_id FROM return_requests WHERE status = 'rejected'")).rows[0]?.order_id;
     if (!closed) return;
     expect(page.orders.map((o) => o.id)).not.toContain(closed);
-    expect(filterAndSortSellerOrders(await ALL(), SLUG, q, new Set()).map((o) => o.id)).not.toContain(closed);
+    expect(filterAndSortSellerOrders(await ALL(), SLUG, q, new Map()).map((o) => o.id)).not.toContain(closed);
   });
 });

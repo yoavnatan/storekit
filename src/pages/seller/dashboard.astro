@@ -878,7 +878,7 @@ const returnRequests = store
 // whole tab, after the list because the ids are its output — and it is not asked at all on a store
 // with no cases, where its only possible answer is "none".
 const returnOrderFacts = returnRequests.length
-  ? await getOrderFactsForReturns(returnRequests.map((r) => r.orderId))
+  ? await getOrderFactsForReturns(returnRequests.map((r) => r.orderId), store!.slug)
   : new Map();
 // Whether the seller has already provided each of these orders' buyer invoices. One query for the
 // page, after it, because the ids are its output — and skipped entirely when there are no orders,
@@ -2129,7 +2129,7 @@ const orderStatusColors: Record<string, string> = {
               a comment as that expression's first child and fails with no file and no line —
               scripts/verify.mjs's header carries the case.) */}
           {storeOrdersTotal > 0 && (
-            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')} data-payout={sellerOrderQuery.payoutStatus.join(',')}>
+            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')} data-payout={sellerOrderQuery.payoutStatus.join(',')} data-return={sellerOrderQuery.returnState.join(',')}>
               <div class="relative flex-1 min-w-[110px] max-w-[280px]">
                 <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="search" id="orders-search-input" value={sellerOrderQuery.q} placeholder={d.ordersSearchPlaceholder ?? 'חיפוש הזמנות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
@@ -2206,7 +2206,7 @@ const orderStatusColors: Record<string, string> = {
                  and the one `buildOrderCard` rebuilds after a page turn cannot answer differently. */
               const payText    = payoutLineText(payLine);
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-delivery-method={storeSub?.deliveryMethod ?? ''} data-payout={payoutFilterValue(payLine)} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-delivery-method={storeSub?.deliveryMethod ?? ''} data-payout={payoutFilterValue(payLine)} data-return-state={returnChipByOrderId.get(order.id)?.state ?? ''} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the

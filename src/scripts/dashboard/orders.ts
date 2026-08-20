@@ -17,7 +17,8 @@ import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
 import { orderInvoiceRowHtml, orderInvoiceChipHtml, type OrderInvoiceRowState } from '../../lib/order-invoice-row.js';
-import { orderReturnChipHtml, type OrderReturnChip } from '../../lib/return-chip.js';
+import { orderReturnChipHtml, RETURN_CHIP_KEY, type OrderReturnChip } from '../../lib/return-chip.js';
+import { OPEN_RETURN_STATUSES, type ReturnStatus } from '../../lib/returns.js';
 import { initInfoTooltips } from '../tooltip.js';
 import { cloudinaryUploadInvoice, INVOICE_ACCEPT_ATTR } from './cloudinary.js';
 
@@ -648,7 +649,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // Two independent columns. 'payout' answers "where is the money on this order", which is a
   // different question from "where is the parcel" and one a seller now reaches from the payments
   // tab (owner, 2026-08-11 — it used to be faked by naming shipping statuses in the link).
-  const ORDER_FILTER_COLUMNS = ['status', 'payout'];
+  // Three independent columns. 'payout' answers "where is the money on this order", which is a
+  // different question from "where is the parcel" and one a seller now reaches from the payments
+  // tab (owner, 2026-08-11 — it used to be faked by naming shipping statuses in the link).
+  // 'return' is the third, and it exists because neither of the others can express it: a return in
+  // progress leaves the order at 'delivered' and it stays there (owner, 2026-08-20).
+  const ORDER_FILTER_COLUMNS = ['status', 'payout', 'return'];
   /**
    * Seeded from what the SERVER rendered, not from this module's own default.
    *
@@ -671,6 +677,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // box in the menu rather than as a narrowed list nobody can account for.
     const initialPayout = (ordersToolbarEl?.dataset.payout ?? '').split(',').filter(Boolean);
     if (initialPayout.length) ordersFilters.set('payout', new Set(initialPayout));
+    const initialReturn = (ordersToolbarEl?.dataset.return ?? '').split(',').filter(Boolean);
+    if (initialReturn.length) ordersFilters.set('return', new Set(initialReturn));
   }
 
   /**
@@ -795,7 +803,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // Header layout mirrors the SSR card in seller/dashboard.astro exactly — a
     // 3-column grid below 640px OF THE CARD (container query) and the desktop
     // row above it. Keep the two in sync; the comment there explains why.
-    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-delivery-method="${esc(storeSub.deliveryMethod ?? '')}" data-payout="${esc(orderPayoutFilterValueOf(o))}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-delivery-method="${esc(storeSub.deliveryMethod ?? '')}" data-payout="${esc(orderPayoutFilterValueOf(o))}" data-return-state="${esc(o.returnChip?.state ?? '')}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
         <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? `<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="${esc(tt('orderNewLabel'))}"></span>` : ''}</span>
@@ -888,12 +896,16 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // Written onto the card by BOTH renderers from `order-payout-line.ts`, never recomputed here —
     // a client-side copy of the hold rule is the drift this module's header already warns about.
     if (col === 'payout') return card.dataset.payout ?? '';
+    // '' when no case is running, which is what makes an unticked column mean "no opinion" and a
+    // ticked one exclude every order that is not coming back.
+    if (col === 'return') return card.dataset.returnState ?? '';
     return '';
   }
 
   function orderFilterColumnLabel(col: string): string {
     if (col === 'status') return tt('filterColStatus');
     if (col === 'payout') return tt('filterColPayout');
+    if (col === 'return') return tt('filterColReturn');
     return col;
   }
 
@@ -905,6 +917,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // The full vocabulary, not what happens to be on THIS page — a value that vanishes from the
     // menu because the current page has none of it is a filter that cannot be reached.
     if (col === 'payout') return [...PAYOUT_FILTER_VALUES];
+    // The machine's own open states, in the order a case travels — same reasoning as 'status'.
+    if (col === 'return') return [...OPEN_RETURN_STATUSES];
     const values = new Set<string>();
     document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => values.add(getOrderFilterValue(card, col)));
     return [...values].sort();
@@ -913,6 +927,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   function orderFilterValueHtml(col: string, value: string): string {
     if (col === 'status') return `<span class="order-status-dot" style="background:${colorMap[value] ?? '#888'}"></span>${labelMap[value] ?? value}`;
     if (col === 'payout') return esc(payoutFilterLabel(value));
+    // The chip's own words, so the menu and the chip on the row can never say different things
+    // about one case (`lib/return-chip.ts`).
+    if (col === 'return') return esc(tt(RETURN_CHIP_KEY[value as ReturnStatus] || '') || value);
     return value;
   }
 
@@ -1092,7 +1109,21 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // Arrived here from an overview tile? Apply what it asked for, once. The tile itself is bound by
   // the OVERVIEW's own module — it does not reach into this one, which is what stopped those tiles
   // being dead for a seller who had never opened this tab (panel-intent.ts).
-  onPanelIntent('orders', (intent) => { if (intent.status) jumpToOrdersWithStatus(intent.status); });
+  onPanelIntent('orders', (intent) => {
+    if (intent.status) jumpToOrdersWithStatus(intent.status);
+    // A returns card naming its order lands here. It clears the status filter as well as the search:
+    // the order it names is DELIVERED by construction (a return needs one), and the default view
+    // excludes delivered — so leaving the filter on would open the tab and show nothing, which is
+    // the shape of link that reads as broken.
+    if (intent.search) {
+      ordersSearchQuery = intent.search;
+      const box = document.getElementById('orders-search-input') as HTMLInputElement | null;
+      if (box) box.value = intent.search;
+      ordersFilters.clear();
+      ordersCurrentPage = 1;
+      applyOrdersFilter();
+    }
+  });
 
   const ordersSortTrigger = document.getElementById('orders-sort-trigger') as HTMLButtonElement | null;
   ordersSortTrigger?.addEventListener('click', () => {
@@ -1127,6 +1158,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // absent one means "use the default", while this column simply has no default to distinguish.
     const payoutValues = ordersFilters.get('payout');
     if (payoutValues?.size) params.set('opay', encodeList([...payoutValues]));
+    const returnValues = ordersFilters.get('return');
+    if (returnValues?.size) params.set('oret', encodeList([...returnValues]));
 
     let data: { ok: boolean; items?: Parameters<typeof buildOrderCard>[0][]; page?: number; totalPages?: number; total?: number };
     // The cards about to be replaced, dimmed while their replacements are in flight — see

@@ -365,13 +365,13 @@ export function canMove(from: ReturnStatus, to: ReturnStatus): { ok: true } | { 
  * waiting on. "Can still move" and "is still open" looked like the same property and are not: a
  * refusal is finished business that a buyer may nonetheless ask us to look at again.
  */
-const OPEN_STATUSES: readonly ReturnStatus[] = [
+export const OPEN_RETURN_STATUSES: readonly ReturnStatus[] = [
   'requested', 'approved', 'offered', 'in_transit', 'received', 'disputed',
 ];
 
 /** Is this case still waiting on somebody? What the seller's tab and the admin's queue count. */
 export function isOpen(status: ReturnStatus): boolean {
-  return OPEN_STATUSES.includes(status);
+  return OPEN_RETURN_STATUSES.includes(status);
 }
 
 /**
@@ -381,7 +381,7 @@ export function isOpen(status: ReturnStatus): boolean {
  * 2026-08-20: four queries in `return-requests.ts`, the payout hold, and migration 0030's partial
  * index. Every one was correct, and that is exactly the state `order-status-rules.ts` exists to
  * prevent one level up — the list is a business rule with a documented reason for each member
- * (`OPEN_STATUSES` argues why a REFUSAL is closed even though the buyer may still escalate it), and
+ * (`OPEN_RETURN_STATUSES` argues why a REFUSAL is closed even though the buyer may still escalate it), and
  * six copies means the seventh reader adds a state to the machine and quietly fixes five of them.
  *
  * Written as `IN (open)` rather than `NOT IN (closed)` because the list above is the one that is
@@ -392,7 +392,7 @@ export function isOpen(status: ReturnStatus): boolean {
  * database at the moment it was created, and it is not this module's to regenerate.
  */
 export function openReturnSql(column = 'status'): string {
-  return `${column} IN (${OPEN_STATUSES.map((s) => `'${s}'`).join(', ')})`;
+  return `${column} IN (${OPEN_RETURN_STATUSES.map((s) => `'${s}'`).join(', ')})`;
 }
 
 /**

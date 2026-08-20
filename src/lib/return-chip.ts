@@ -51,11 +51,14 @@ export interface OrderReturnChip {
   key: ReturnChipKey;
   /** The order's first 8 characters — what the returns tab's search matches on. */
   lookup: string;
+  /** The raw machine state. The chip DISPLAYS `key`; the orders filter MATCHES this — a filter
+   *  keyed on a dictionary key would break the day a wording pass renames one. */
+  state: ReturnStatus;
 }
 
 export function orderReturnChip(status: ReturnStatus, orderId: string): OrderReturnChip | null {
   const key = RETURN_CHIP_KEY[status];
-  return key ? { key, lookup: orderId.slice(0, 8) } : null;
+  return key ? { key, lookup: orderId.slice(0, 8), state: status } : null;
 }
 
 /**

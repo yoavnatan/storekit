@@ -1,4 +1,5 @@
 import type { Order } from './orders.js';
+import { OPEN_RETURN_STATUSES } from './returns.js';
 import { SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
 import { decodeList } from './admin-nav.js';
 import { orderPayoutLine, payoutFilterValue, PAYOUT_FILTER_VALUES } from './order-payout-line.js';
@@ -98,6 +99,20 @@ export interface SellerOrderQuery {
    * a different table.
    */
   includeOpenReturns: boolean;
+  /**
+   * Narrow to orders with a LIVE return case, by its state — a third independent column beside
+   * status and payout.
+   *
+   * It exists because none of the other two can express it (owner, 2026-08-20: *"ניתן לסנן הזמנות
+   * עם תהליך החזרה או ביטול?"*). A cancellation IS a shipping status and always was filterable; a
+   * finished return is `returned` and likewise. A return still RUNNING is neither: the order sits at
+   * `delivered` and stays there — deliberately, because the sale did complete (decisions §0) — so
+   * until now nothing on this screen could gather them.
+   *
+   * The values are the return machine's own OPEN states, so "מחכה לתשובתך" and "בהכרעה" are separate
+   * answers rather than one lump. Empty means no opinion, exactly like the payout column.
+   */
+  returnState: string[];
   sortCol: SellerOrderSortCol;
   sortDir: SellerOrderSortDir;
   shippingStatus: string[];
@@ -141,6 +156,9 @@ export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
     sortDir,
     shippingStatus: chosen,
     includeOpenReturns: isActiveSet(chosen),
+    // Whitelisted rather than echoed — an unrecognised state would match nothing and read to the
+    // seller as "you have no returns", which is the one answer this filter must never invent.
+    returnState: decodeList(sp.get('oret') ?? '').filter((v) => (OPEN_RETURN_STATUSES as readonly string[]).includes(v)),
     // No default: absent means "every payout status", which is what a seller who has never touched
     // this column expects. Whitelisted rather than echoed — an unrecognised value would otherwise
     // match nothing and read as "you have no orders".
@@ -178,18 +196,23 @@ export function filterAndSortSellerOrders(
   orders: Order[],
   storeSlug: string,
   query: SellerOrderQuery,
-  /** Ids of the orders that currently have an OPEN return — the fact the status column cannot carry.
+  /** The live return STATE of each order that has one — the fact the status column cannot carry.
    *  Passed in rather than read here because this function is pure and the caller has already made
-   *  the one query (`return-requests.ts#ordersWithOpenReturns`). Empty is the honest default: a
-   *  caller that does not know simply filters by status, exactly as before. */
-  openReturnOrderIds: ReadonlySet<string> = new Set(),
+   *  the one query. A Map and not a Set because two questions are asked of it: whether the order
+   *  stays on the default screen, and which state it is in. Empty is the honest default — a caller
+   *  that does not know simply filters by status, exactly as before. */
+  openReturnByOrder: ReadonlyMap<string, string> = new Map(),
 ): Order[] {
   const statusSet = query.shippingStatus.length ? new Set(query.shippingStatus) : null;
   const paySet = query.payoutStatus.length ? new Set(query.payoutStatus) : null;
   const q = query.q.toLowerCase();
 
   const filtered = orders.filter((o) => {
-    const keptByReturn = query.includeOpenReturns && openReturnOrderIds.has(o.id);
+    const returnState = openReturnByOrder.get(o.id);
+    // The return column is a NARROWING and runs before the widening: an order with no live case
+    // fails it outright, whatever its shipping status.
+    if (query.returnState.length && (!returnState || !query.returnState.includes(returnState))) return false;
+    const keptByReturn = query.includeOpenReturns && returnState !== undefined;
     if (statusSet && !statusSet.has(o.shippingStatus) && !keptByReturn) return false;
     // Computed per row rather than pre-indexed: it is a pure function of four fields already on the
     // order, this list is one page of one store, and a second copy of the hold rule keyed by id is

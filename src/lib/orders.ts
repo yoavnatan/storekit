@@ -726,13 +726,15 @@ export async function getSellerOrdersPage(
     // back would close a runtime cycle in the module that carries the money. The RULE is not
     // duplicated — `openReturnSql` generates the predicate from `returns.ts`'s own list, so both
     // spellings of the query ask the identical question.
-    const openReturns = query.includeOpenReturns
-      ? new Set((await rows<{ order_id: string }>(
-        `SELECT DISTINCT order_id FROM return_requests
-          WHERE order_id = ANY($1::uuid[]) AND store_slug = $2 AND ${openReturnSql('status')}`,
+    const needsReturns = query.includeOpenReturns || query.returnState.length > 0;
+    const openReturns = needsReturns
+      ? new Map((await rows<{ order_id: string; status: string }>(
+        `SELECT DISTINCT ON (order_id) order_id, status FROM return_requests
+          WHERE order_id = ANY($1::uuid[]) AND store_slug = $2 AND ${openReturnSql('status')}
+          ORDER BY order_id, created_at DESC`,
         [all.map((o) => o.id), storeSlug],
-      )).map((r) => r.order_id))
-      : new Set<string>();
+      )).map((r) => [r.order_id, r.status] as const))
+      : new Map<string, string>();
     const filtered = filterAndSortSellerOrders(all, storeSlug, query, openReturns);
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     const safePage = Math.min(Math.max(1, page), totalPages);
@@ -764,10 +766,20 @@ export async function getSellerOrdersPage(
   // Exactly the three the WHERE names. A parameter the statement does not mention is a bind error,
   // not spare capacity — `bind message supplies 4 parameters, but prepared statement requires 3`,
   // which is how the admin Orders tab once 500'd on every load (DB_MIGRATION_PLAN §3).
-  const scope: unknown[] = [[storeSlug], statuses, q];
+  // A NARROWING on the live return case, and it runs whatever the status filter says: an order with
+  // no case fails it outright. `$4` only exists when the column is in play — a parameter the
+  // statement does not mention is a bind error, per the note above.
+  const returnStates = query.returnState.length ? query.returnState : null;
+  const returnNarrowing = returnStates
+    ? `AND EXISTS (SELECT 1 FROM return_requests rr
+                    WHERE rr.order_id = o.id AND rr.store_slug = $1[1]
+                      AND rr.status = ANY($4::text[]))`
+    : '';
+  const scope: unknown[] = [[storeSlug], statuses, q, ...(returnStates ? [returnStates] : [])];
   const where = `${BELONGS_TO_SLUGS}
      AND ($2::text[] IS NULL OR o.shipping_status = ANY($2::text[]) ${keptByReturn})
-     AND ($3::text   IS NULL OR position($3::text in ${HAYSTACK}) > 0)`;
+     AND ($3::text   IS NULL OR position($3::text in ${HAYSTACK}) > 0)
+     ${returnNarrowing}`;
 
   const total = bigIntOf((await firstRow<{ n: string | number }>(
     `SELECT COUNT(*) AS n FROM orders o WHERE ${where}`, scope,
@@ -778,6 +790,13 @@ export async function getSellerOrdersPage(
 
   // Each sort brings its OWN parameters and nothing else — see the bind-error note above; a `$4`
   // that only the amount sort mentions must not be sent when the date sort is running.
+  //
+  // **Their NUMBERS are computed, not written (2026-08-20).** They used to be the literals `$4` and
+  // `$5`, which was true only while the WHERE consumed exactly three — and the return-state column
+  // added a conditional fourth. A sort that then reached for `$4` would have read the RETURN STATE
+  // ARRAY as a store slug, on the two sorts a seller reaches by one click. Postgres would have said
+  // so loudly, which is the good case; what it must never do is quietly sort by the wrong column.
+  const sortAt = (n: number): string => `$${scope.length + n}`;
   const asc = query.sortDir === 'asc';
   const dir = asc ? 'ASC' : 'DESC';
   const sortParams: unknown[] = [];
@@ -792,7 +811,7 @@ export async function getSellerOrdersPage(
     // head the list while `storeSliceTotalAgorot(undefined)` puts it last at 0. The two routes have
     // to agree on the row nobody thought about, which is the whole point of the parity test.
     orderBy = `COALESCE((SELECT ${SLICE_TOTAL_SQL} FROM order_stores os
-                 WHERE os.order_id = o.id AND os.store_slug = $4::text), 0) ${dir}, o.created_at DESC, o.id`;
+                 WHERE os.order_id = o.id AND os.store_slug = ${sortAt(1)}::text), 0) ${dir}, o.created_at DESC, o.id`;
   } else if (query.sortCol === 'urgency') {
     // Group first; inside the owes-an-action group the OLDEST is the most urgent, inside every
     // other group the newest is the most interesting; and the direction flips the whole
@@ -800,7 +819,7 @@ export async function getSellerOrdersPage(
     // DATA (`seller-orders-query.ts#URGENCY_GROUPS`): a `CASE WHEN 'pending' THEN 0 …` written
     // here would be a second copy of that table in a language no guard test can read.
     sortParams.push(URGENCY_STATUSES, URGENCY_RANKS);
-    const rank = `COALESCE(($5::int[])[array_position($4::text[], o.shipping_status)], 9)`;
+    const rank = `COALESCE((${sortAt(2)}::int[])[array_position(${sortAt(1)}::text[], o.shipping_status)], 9)`;
     orderBy = `${rank} ${dir},
                CASE WHEN ${rank} = 0 THEN o.created_at END ${asc ? 'ASC' : 'DESC'},
                CASE WHEN ${rank} > 0 THEN o.created_at END ${asc ? 'DESC' : 'ASC'},

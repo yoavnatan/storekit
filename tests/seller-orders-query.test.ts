@@ -15,7 +15,7 @@ function order(id: string, shippingStatus: string, createdAt: string): Order {
   } as unknown as Order;
 }
 
-const urgencyQuery: SellerOrderQuery = { q: '', sortCol: 'urgency', sortDir: 'asc', shippingStatus: [], payoutStatus: [], includeOpenReturns: false };
+const urgencyQuery: SellerOrderQuery = { q: '', sortCol: 'urgency', sortDir: 'asc', shippingStatus: [], payoutStatus: [], returnState: [], includeOpenReturns: false };
 
 describe('filterAndSortSellerOrders — urgency sort', () => {
   it('floats owe-action orders (pending/processing/ready) above shipped, then delivered last', () => {
@@ -108,7 +108,9 @@ describe('an open return keeps its order on the default screen', () => {
   const dflt = parseSellerOrderQuery(new URLSearchParams(''));
   const chosen = parseSellerOrderQuery(new URLSearchParams('ostatus=cancelled'));
   const delivered = order('back', 'delivered', '2026-07-20T10:00:00Z');
-  const openReturns = new Set(['back']);
+  // A MAP now, not a Set: the same input answers both questions the filter asks — whether the
+  // order stays on the default screen, and which state it is in (the return column).
+  const openReturns = new Map([['back', 'received']]);
 
   it('is filtered out when nothing says it has a return', () => {
     expect(filterAndSortSellerOrders([delivered], 's', dflt).map((o) => o.id)).toEqual([]);
@@ -136,5 +138,59 @@ describe('an open return keeps its order on the default screen', () => {
   it('the default really does exclude delivered, or this whole rule is a no-op', () => {
     expect(dflt.includeOpenReturns).toBe(true);
     expect(dflt.shippingStatus).not.toContain('delivered');
+  });
+});
+
+/**
+ * Filtering the orders list BY the return case — the third column.
+ *
+ * The other two cannot express it and it is not an oversight: a cancellation is a shipping status
+ * and always was filterable, a finished return is `returned` and likewise, and a return still
+ * running leaves the order at `delivered` on purpose (decisions §0 — the sale did complete). So the
+ * question "show me what is coming back" had no answer on this screen until the column existed.
+ */
+describe('the return column', () => {
+  const delivered = order('back', 'delivered', '2026-07-20T10:00:00Z');
+  const plain = order('plain', 'delivered', '2026-07-20T10:00:00Z');
+  const live = new Map([['back', 'received']]);
+
+  it('keeps only the orders whose case is in a chosen state', () => {
+    const q = parseSellerOrderQuery(new URLSearchParams('oret=received'));
+    expect(q.returnState).toEqual(['received']);
+    expect(filterAndSortSellerOrders([delivered, plain], 's', q, live).map((o) => o.id)).toEqual(['back']);
+  });
+
+  it('excludes an order whose case is in a DIFFERENT state', () => {
+    const q = parseSellerOrderQuery(new URLSearchParams('oret=disputed'));
+    expect(filterAndSortSellerOrders([delivered, plain], 's', q, live).map((o) => o.id)).toEqual([]);
+  });
+
+  it('excludes an order with no live case at all, whatever its status', () => {
+    const q = parseSellerOrderQuery(new URLSearchParams('oret=received'));
+    expect(filterAndSortSellerOrders([plain], 's', q, live).map((o) => o.id)).toEqual([]);
+  });
+
+  it('refuses a state the machine does not have, rather than matching nothing', () => {
+    // Echoed straight through, an unrecognised value would narrow the list to zero and read to the
+    // seller as "you have no returns" — the one answer this filter must never invent.
+    expect(parseSellerOrderQuery(new URLSearchParams('oret=banana')).returnState).toEqual([]);
+  });
+
+  it('an empty column is no opinion, not "match nothing"', () => {
+    // Asked with the STATUS filter cleared (`?ostatus=` present and empty), so the only thing that
+    // could be narrowing the list is this column — and it is not.
+    const q = parseSellerOrderQuery(new URLSearchParams('ostatus='));
+    expect(q.returnState).toEqual([]);
+    expect(filterAndSortSellerOrders([delivered, plain], 's', q, live).map((o) => o.id).sort())
+      .toEqual(['back', 'plain']);
+  });
+
+  it('narrows the DEFAULT view too, where the widening would otherwise have kept it', () => {
+    // The two rules meet here: `includeOpenReturns` puts a delivered order back on the default
+    // screen, and this column then narrows that screen. A seller who ticks "בהכרעה" must not be
+    // handed the `received` case the widening had just rescued.
+    const q = parseSellerOrderQuery(new URLSearchParams('oret=disputed'));
+    expect(q.includeOpenReturns, 'no ?ostatus, so the default set is in play').toBe(true);
+    expect(filterAndSortSellerOrders([delivered], 's', q, live).map((o) => o.id)).toEqual([]);
   });
 });
