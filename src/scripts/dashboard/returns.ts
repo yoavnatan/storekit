@@ -86,7 +86,10 @@ const CONFIRMED_MOVES: Record<string, ((amount: string) => ConfirmSpec) | undefi
   }),
   disputed: () => ({
     title: 'להעביר את המקרה להכרעה שלנו?',
-    message: 'אנחנו נבדוק ונחליט למי מגיע הכסף. עד ההחלטה הכסף של ההזמנה הזאת לא ישוחרר אליך, ואי אפשר למשוך את הפנייה בחזרה.',
+    // Names what TRAVELS with it, since 2026-08-20 — the claim now carries the seller's sentence and,
+    // if he attached one, his picture. A dialog that describes only the consequence and not the
+    // evidence leaves him thinking somebody will come and ask him; nobody will.
+    message: 'מה שכתבת והתמונה שצירפת יעברו אלינו, ונחליט לפיהם למי מגיע הכסף. עד ההחלטה הכסף של ההזמנה הזאת לא ישוחרר אליך, ואי אפשר למשוך את הפנייה בחזרה.',
     okLabel: 'העבר להכרעה',
     tone: 'danger',
   }),
@@ -191,6 +194,41 @@ export function initReturnsTab(): void {
   // Paint once, so a shop with more than one page arrives on page 1 rather than showing everything.
   applyFilters();
 
+  /**
+   * Photos already uploaded, per card — the URL Cloudinary answered with, waiting for the press
+   * that sends the claim.
+   *
+   * A `WeakMap` keyed by the card element rather than a field on it: the value is a URL, and a URL
+   * parked in the DOM is a URL some other renderer can read back and put in an attribute. It also
+   * disappears with the card, which is what a page-reload-after-move wants.
+   */
+  const uploadedPhoto = new WeakMap<HTMLElement, string>();
+
+  // The upload happens on CHOOSING the file, not on submitting the claim — a file crossing the
+  // network while the seller stares at a dead button is how an upload gets pressed twice. Every
+  // outcome is spoken beside the field (audit row 11: a dropped request must never look idle).
+  list.addEventListener('change', (e) => {
+    const input = (e.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-dispute-photo]');
+    if (!input?.files?.length) return;
+    const card = input.closest<HTMLElement>('[data-return-id]');
+    const state = card?.querySelector<HTMLElement>('[data-dispute-photo-state]');
+    const cloud = input.dataset.cloudName ?? '';
+    const preset = input.dataset.cloudPreset ?? '';
+    if (!cloud || !preset) return;
+    if (state) state.textContent = 'מעלה…';
+    void (async () => {
+      try {
+        const { cloudinaryUpload } = await import('./cloudinary.js');
+        const url = await cloudinaryUpload(input.files![0]!, cloud, preset);
+        if (card) uploadedPhoto.set(card, url);
+        if (state) state.textContent = 'התמונה צורפה';
+      } catch {
+        if (state) state.textContent = 'ההעלאה נכשלה. אפשר להמשיך בלי תמונה.';
+        input.value = '';
+      }
+    })();
+  });
+
   list.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-return-move]');
     if (!btn) return;
@@ -204,6 +242,40 @@ export function initReturnsTab(): void {
     const card = btn.closest<HTMLElement>('[data-return-id]');
     const buttons = card ? [...card.querySelectorAll<HTMLButtonElement>('button')] : [btn];
     buttons.forEach((b) => { b.disabled = true; });
+
+    /**
+     * The empty-parcel claim, and why it is the same two-press shape as the offer.
+     *
+     * `received → disputed` is the seller asserting something about goods only he has seen, and it
+     * used to be one press that sent nothing at all — so the case reached a person carrying the
+     * buyer's note and photo and none of his (owner, 2026-08-20: *"מה זה עוזר שזה מגיע אליי
+     * להכרעה, מה אני אמור לעשות עם זה?"*). First press reveals the fields, second press sends.
+     *
+     * The sentence is required and the server refuses without it (`/api/returns`); the error lands
+     * ON the field, in the site's one style, because a toast reports something that happened
+     * elsewhere. The photo is optional and uploaded when chosen, not when submitted — a file
+     * crossing the network while the seller stares at a dead button is how an upload gets pressed
+     * twice.
+     */
+    let sellerNote: string | undefined;
+    if (to === 'disputed') {
+      const field = card?.querySelector<HTMLTextAreaElement>('[data-dispute-note]');
+      if (field && field.hidden) {
+        field.hidden = false;
+        field.focus();
+        buttons.forEach((b) => { b.disabled = false; });
+        return;
+      }
+      const said = (field?.value ?? '').trim();
+      if (field) clearFieldError(field);
+      if (said.length < 3) {
+        if (field) showFieldError(field, 'כמה מילים על מה שהיה בחבילה');
+        field?.focus();
+        buttons.forEach((b) => { b.disabled = false; });
+        return;
+      }
+      sellerNote = said;
+    }
 
     // An offer needs a number, and it is the only move on this screen that does. Asked with a
     // prompt-free inline field rather than `prompt()`, which is banned platform-wide — the field is
@@ -238,7 +310,14 @@ export function initReturnsTab(): void {
         const res = await fetch('/api/returns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, to, ...(partialOfferAgorot ? { partialOfferAgorot } : {}) }),
+          body: JSON.stringify({
+            id, to,
+            ...(partialOfferAgorot ? { partialOfferAgorot } : {}),
+            ...(sellerNote ? { sellerNote } : {}),
+            // Only when an upload actually finished. Sending the key with `undefined` would be the
+            // same as omitting it; sending it EMPTY would COALESCE a stored URL away on a later move.
+            ...(card && uploadedPhoto.get(card) ? { sellerPhotoUrl: uploadedPhoto.get(card) } : {}),
+          }),
         });
         if (!res.ok) {
           const said = await res.json().catch(() => null) as { error?: string } | null;

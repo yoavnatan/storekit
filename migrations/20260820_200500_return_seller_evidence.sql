@@ -1,0 +1,26 @@
+-- The seller's side of an empty-parcel claim, so a dispute reaches us with two accounts and not one.
+--
+-- ── What was wrong (owner, 2026-08-20) ──
+-- *"לא רואה שהמוכר בכלל מתבקש להעלות תמונה של הגיע ריק או משומש, ושוב — מה זה עוזר שזה מגיע אליי
+-- להכרעה, מה אני אמור לעשות עם זה?"* — and the second half is a consequence of the first. The BUYER
+-- is offered a photo when he opens a damaged/wrong-item case (`buyer_photo_url`, 0030). The seller
+-- pressing "הגיע ריק או משומש" was asked for nothing at all: no sentence, no picture. So the one
+-- case in the whole mechanism that exists BECAUSE two people disagree arrived on the admin's desk
+-- carrying exactly one of their accounts, and the decision screen — which does have both buttons
+-- and does demand a written reason — had nothing to weigh them against.
+--
+-- `seller_note` already existed (0030) and the seller's UI never wrote to it, which is why this is
+-- one column and not two: the sentence had a home and no door. The API now REFUSES the claim
+-- without a sentence, because a field that is optional in practice is empty exactly when it matters
+-- — the same reasoning `admin_note` was made mandatory on (0038).
+--
+-- The photo stays OPTIONAL on both sides, deliberately. An empty carton photographs as an empty
+-- carton whoever emptied it, so a picture is a contribution and never proof; requiring one would
+-- bar an honest seller with no camera to hand and would dress the evidence up as more than it is.
+-- What it does do is put the two pictures side by side on the decision screen, which is the whole
+-- of what a person can act on.
+--
+-- Timestamp-named rather than numbered: parallel sessions cannot reserve a NUMBER between them
+-- (memory `feedback_parallel_sessions`), and this tree was one of two open when it was written.
+ALTER TABLE return_requests
+  ADD COLUMN IF NOT EXISTS seller_photo_url text;

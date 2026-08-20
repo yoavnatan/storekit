@@ -20,6 +20,7 @@ import { addDaysISO } from '../src/lib/date-range.js';
 import { buyerReturnCta } from '../src/lib/return-buyer-cta.js';
 import { POST as returnsRoute } from '../src/pages/api/returns.js';
 import { setAdminCookie } from '../src/lib/admin-auth.js';
+import { setSellerSession } from '../src/lib/seller-auth.js';
 
 /**
  * ═══ EVERY WAY A RETURN CAN END, DRIVEN END TO END AGAINST A REAL DATABASE ═══
@@ -159,6 +160,29 @@ async function adminDecides(body: Record<string, unknown>): Promise<Response> {
     has: (n: string) => jar.has(n),
   } as unknown as AstroCookies;
   setAdminCookie(cookies);
+  return returnsRoute({
+    request: new Request('http://localhost/api/returns', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }),
+    cookies,
+    clientAddress: '127.0.0.1',
+  } as unknown as APIContext);
+}
+
+/**
+ * The SELLER's own move through the real route — the twin of `adminDecides`, and here for the same
+ * reason: the rule this exercises (an empty-parcel claim must say what was in the box) lives in the
+ * route, because that is where "who is moving this" is known. `moveReturnRequest` would walk past it.
+ */
+async function sellerMoves(body: Record<string, unknown>): Promise<Response> {
+  const jar = new Map<string, string>();
+  const cookies = {
+    get: (n: string) => (jar.has(n) ? { value: jar.get(n)! } : undefined),
+    set: (n: string, v: string) => { jar.set(n, v); },
+    delete: (n: string) => { jar.delete(n); },
+    has: (n: string) => jar.has(n),
+  } as unknown as AstroCookies;
+  setSellerSession(cookies, STORE.sellerId);
   return returnsRoute({
     request: new Request('http://localhost/api/returns', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -393,6 +417,71 @@ describe('the parcel came back wrong — the one claim nothing can verify', () =
     await move(req.id, 'rejected', 'admin', { adminNote: 'הוכרע לטובת המוכר' });
     expect((await getReturnRequest(req.id))!.status).toBe('rejected');
     expect(await hasOpenReturn(order.id)).toBe(false);
+  });
+
+  /**
+   * The claim has to SAY something, and the case has to carry it (owner, 2026-08-20).
+   *
+   * Until this, `received → disputed` was one press that sent nothing: the buyer's note and photo
+   * travelled with the case and the seller's side of it did not exist at all. So the one state in
+   * the mechanism that reaches a person BECAUSE two people disagree arrived carrying one account,
+   * and the decision screen — which does demand a written reason of the admin — had nothing to
+   * weigh it against.
+   *
+   * Driven through the ROUTE with a seller session, because the refusal is the route's: the store
+   * function will happily move a case with no note, and should, since the sweep and the admin both
+   * move cases through it.
+   */
+  it('refuses an empty-parcel claim that says nothing, and keeps both sides on the case that does', async () => {
+    const order = await deliveredOrder();
+    const req = await open(order);
+    // The buyer's own words on the case, so the assertion below can prove the seller's are ADDED
+    // beside them rather than written over them.
+    await query(`UPDATE return_requests SET buyer_note = $2 WHERE id = $1`,
+      [req.id, 'שלחתי את המוצר ביום חמישי']);
+    await move(req.id, 'in_transit', BUYER);
+    await move(req.id, 'received');
+
+    const silent = await sellerMoves({ id: req.id, to: 'disputed' });
+    expect(silent.status).toBe(400);
+    expect((await getReturnRequest(req.id))!.status).toBe('received');
+
+    const tooShort = await sellerMoves({ id: req.id, to: 'disputed', sellerNote: '  x ' });
+    expect(tooShort.status).toBe(400);
+    expect((await getReturnRequest(req.id))!.status).toBe('received');
+
+    const said = await sellerMoves({
+      id: req.id, to: 'disputed',
+      sellerNote: 'הקרטון הגיע חתוך והמוצר לא היה בפנים',
+      sellerPhotoUrl: 'https://res.cloudinary.com/demo/image/upload/carton.jpg',
+    });
+    expect(said.status).toBe(200);
+
+    const after = (await getReturnRequest(req.id))!;
+    expect(after.status).toBe('disputed');
+    expect(after.sellerNote).toContain('הקרטון הגיע חתוך');
+    expect(after.sellerPhotoUrl).toContain('carton.jpg');
+    // The buyer's own account is still there beside it — a dispute is two accounts or it is not a
+    // dispute, and appending the seller's must never overwrite the sentence the case opened with.
+    expect(after.buyerNote).toContain('שלחתי את המוצר ביום חמישי');
+  });
+
+  /**
+   * A photo is a CONTRIBUTION, never a gate. An empty carton photographs as an empty carton whoever
+   * emptied it, so requiring one would bar an honest seller with no camera and would dress the
+   * evidence up as more than it is (migration 20260820_200500).
+   */
+  it('takes the claim with no picture at all', async () => {
+    const order = await deliveredOrder();
+    const req = await open(order);
+    await move(req.id, 'in_transit', BUYER);
+    await move(req.id, 'received');
+
+    const res = await sellerMoves({ id: req.id, to: 'disputed', sellerNote: 'הגיע משומש, יש שריטות' });
+    expect(res.status).toBe(200);
+    const after = (await getReturnRequest(req.id))!;
+    expect(after.status).toBe('disputed');
+    expect(after.sellerPhotoUrl).toBeNull();
   });
 });
 

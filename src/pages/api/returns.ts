@@ -360,11 +360,31 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     actor = sellerId;
   }
 
+  // ── An empty-parcel claim has to SAY something (owner, 2026-08-20) ──
+  //
+  // `received → disputed` is the seller asserting that what came back is not what he sold, about
+  // goods only he has seen. It went to a person with nothing attached: no sentence, no picture,
+  // while the buyer's side of the same case carries both. So the screen that decides it — which
+  // does demand a written reason of the admin — had one account to weigh and called it a dispute.
+  //
+  // Refused here rather than only in the UI, for the reason every rule in this file is: a state
+  // machine enforced at the button is not enforced. Same threshold the admin's own note uses.
+  if (!admin && to === 'disputed') {
+    const said = typeof data.sellerNote === 'string' ? data.sellerNote.trim() : '';
+    if (said.length < 3) {
+      return json({ error: 'צריך לכתוב מה היה בחבילה — זה מה שנכריע לפיו' }, 400);
+    }
+  }
+
   const moved = await moveReturnRequest({
     id, to, actor,
     store: { slug: store.slug, name: store.name, sellerId: store.sellerId },
     trackingNumber: typeof data.trackingNumber === 'string' ? data.trackingNumber.slice(0, 120) : undefined,
     sellerNote: typeof data.sellerNote === 'string' ? data.sellerNote.slice(0, 2000) : undefined,
+    // Through the same sanitizer the buyer's photo goes through — it validates by SHAPE and stores
+    // the URL parser's own serialization, so an attribute breakout is impossible even where a
+    // renderer forgets to escape (`lib/image-url.ts`, guarded tree-wide).
+    sellerPhotoUrl: sanitizeImageUrl(data.sellerPhotoUrl),
     adminNote: admin && typeof data.adminNote === 'string' ? data.adminNote.slice(0, 2000) : undefined,
     adminAwardAgorot,
     // Capped at what the buyer actually paid: an offer is an alternative to refunding the order, so
