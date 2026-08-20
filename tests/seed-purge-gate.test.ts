@@ -23,10 +23,12 @@ import { randomUUID } from 'node:crypto';
 import type { PGlite } from '@electric-sql/pglite';
 import {
   DEMO_EMAIL_SUFFIX,
+  RETURN_DEMO_PAYMENT_REF,
   SEED_SCOPES,
   SHOWCASE_OWNER_EMAIL,
   purge,
   purgeOrdersOfStores,
+  purgeReturnDemo,
 } from '../scripts/lib/seed-db.mjs';
 import { asDatabase, loadImage } from './helpers/test-db.js';
 
@@ -164,7 +166,10 @@ describe('layer 1 — a caller names a scope, it does not write one', () => {
     const files = fs.readdirSync(dir, { recursive: true, encoding: 'utf8' })
       .filter((f) => f.endsWith('.mjs') && !f.endsWith('seed-db.mjs'));
 
-    const offenders = files.filter((f) => /DELETE\s+FROM\s+(stores|sellers|orders|order_items|order_stores)\b/i
+    // `return_requests` and `seller_ledger_adjustments` joined the list on 2026-08-20, when
+    // `seed-returns.mjs` made both reachable from seeded data: the first blocks an order delete
+    // outright (RESTRICT), the second survives one and goes on deducting from a real payout.
+    const offenders = files.filter((f) => /DELETE\s+FROM\s+(stores|sellers|orders|order_items|order_stores|return_requests|seller_ledger_adjustments)\b/i
       .test(fs.readFileSync(path.join(dir, f), 'utf8')));
 
     expect(offenders).toEqual([]);
@@ -259,5 +264,67 @@ describe('orders — deleted only when every store on them is disposable', () =>
     await order(['keramika']);
 
     expect(await purgeOrdersOfStores(db, 'demo')).toEqual({ deleted: 0, keptShared: 0, journalRows: 0 });
+  });
+});
+
+/**
+ * The rows a purge has to take WITH the order, and the two different reasons.
+ *
+ * `return_requests` references `orders` with `ON DELETE RESTRICT`, so leaving it behind breaks the
+ * purge itself — loudly, but with a Postgres constraint name rather than anything a person can act
+ * on. `seller_ledger_adjustments` and `invoice_documents` reference it with `ON DELETE SET NULL`,
+ * so leaving them behind breaks nothing and is worse: the row survives with no order to explain it
+ * and goes on deducting from a seller's next payout, on a dashboard read as true.
+ *
+ * Both became reachable on 2026-08-20 with `seed-returns.mjs` — a staged case that the owner then
+ * REFUNDS runs the real `moveReturnRequest`, which writes exactly these rows.
+ */
+describe('a purge takes an order\u2019s money rows with it', () => {
+  async function orderWithMoneyTrail(slug: string, paymentRef: string | null): Promise<string> {
+    const sellerId = await seller(`ledger${DEMO_EMAIL_SUFFIX}`);
+    await store(sellerId, slug);
+    const orderId = randomUUID();
+    await db.query(
+      `INSERT INTO orders (id, buyer_name, buyer_email, total_agorot, payment_status, shipping_status, payment_ref)
+       VALUES ($1, 'buyer', 'b@example.com', 1000, 'paid', 'delivered', $2)`, [orderId, paymentRef]);
+    await db.query('INSERT INTO order_stores (order_id, store_slug) VALUES ($1, $2)', [orderId, slug]);
+    await db.query(
+      `INSERT INTO return_requests (id, order_id, store_slug, reason, status, within_statutory, refund_agorot)
+       VALUES ($1, $2, $3, 'damaged', 'refunded', true, 1000)`, [randomUUID(), orderId, slug]);
+    await db.query(
+      `INSERT INTO seller_ledger_adjustments (seller_id, order_id, kind, amount_agorot, detail)
+       VALUES ($1, $2, 'refund_clawback', -900, 'staged')`, [sellerId, orderId]);
+    return orderId;
+  }
+
+  const survivors = async (): Promise<{ requests: number; adjustments: number }> => {
+    const rr = await db.query<{ n: string }>('SELECT count(*)::text AS n FROM return_requests');
+    const adj = await db.query<{ n: string }>('SELECT count(*)::text AS n FROM seller_ledger_adjustments');
+    return { requests: Number(rr.rows[0]!.n), adjustments: Number(adj.rows[0]!.n) };
+  };
+
+  it('purgeOrdersOfStores clears the return AND the clawback, not just the order', async () => {
+    await orderWithMoneyTrail('demo-shop', 'MOCK-1');
+
+    const removed = await purgeOrdersOfStores(db, 'demo');
+
+    expect(removed.deleted).toBe(1);
+    expect(await survivors()).toEqual({ requests: 0, adjustments: 0 });
+  });
+
+  it('purgeReturnDemo does the same for a staged scenario, matched by its payment_ref', async () => {
+    await orderWithMoneyTrail('demo-shop', `${RETURN_DEMO_PAYMENT_REF}0`);
+
+    const removed = await purgeReturnDemo(db);
+
+    expect(removed).toEqual({ orders: 1, requests: 1 });
+    expect(await survivors()).toEqual({ requests: 0, adjustments: 0 });
+  });
+
+  it('leaves an order that carries no staged mark completely alone', async () => {
+    await orderWithMoneyTrail('demo-shop', 'MOCK-REAL');
+
+    expect(await purgeReturnDemo(db)).toEqual({ orders: 0, requests: 0 });
+    expect(await survivors()).toEqual({ requests: 1, adjustments: 1 });
   });
 });

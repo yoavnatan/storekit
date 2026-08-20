@@ -6,9 +6,10 @@ import { canTransition } from './order-status-rules.js';
 import { notifyBuyerReturnStatus, notifySellerReturnOpened } from './return-notify.js';
 import {
   autoApproved, canMove, refundForRequest, returnShippingPayer, withinStatutoryWindow,
-  isPartialReturn, type ReturnedLine, type ReturnReason, type ReturnStatus,
+  isPartialReturn, RETURN_REASON_LABELS, type ReturnedLine, type ReturnReason, type ReturnStatus,
 } from './returns.js';
 import { recordMoneyEvent } from './money-events.js';
+import { formatAgorot } from './money.js';
 import { recordAdjustment } from './payouts.js';
 import { getSellerById } from './seller-auth.js';
 import { commissionOnAgorot, commissionPercentForTier } from './pricing.js';
@@ -471,7 +472,12 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
       if (after) {
         await settleStatusChange({
           before, after, store: input.store, actor: input.actor,
-          detail: `החזרה ${moved.id.slice(0, 8)} · סיבה: ${moved.reason} · זיכוי ${moved.refundAgorot} אגורות`,
+          // Both halves of this line are what a PERSON reads, in the admin's money journal, and both
+          // were machine values: the raw enum ('changed_mind') and the raw agorot ('12500 אגורות')
+          // — a five-figure number beside Hebrew prose, in the one screen whose whole job is to be
+          // believed (owner, 2026-08-20: "המספרים שמוצגים לי לפעמים מוצגים שם באגורות"). Amounts on
+          // any surface go through `money.ts#formatAgorot`, never through the integer itself.
+          detail: `החזרה ${moved.id.slice(0, 8)} · סיבה: ${RETURN_REASON_LABELS[moved.reason]} · זיכוי ${formatAgorot(moved.refundAgorot)}`,
         });
       }
     }

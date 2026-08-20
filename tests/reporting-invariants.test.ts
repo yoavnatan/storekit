@@ -991,6 +991,25 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     }
   });
 
+  it('asked with no store list, it derives the same one and reaches the same verdict', async () => {
+    // The no-argument form exists so the admin tab BADGE can ask this question on every render
+    // without first reading the platform's whole store roster — a badge may not depend on the tab
+    // that would have loaded it being open (2026-08-20, `pages/admin/index.astro`). It answers by
+    // subquery instead, with the predicate `stores.ts#getAllStores` uses.
+    //
+    // Which makes this a JOIN between two modules, and the one thing that can go wrong is exactly
+    // the shape row 5 of the area audit keeps finding: each side right, the join off by a filter.
+    // A drift in either direction is silent and both are money — a narrower set invents orphaned
+    // revenue on every honest order, a wider one hides a slug no store answers to, which is a
+    // seller nobody will ever pay.
+    const derived = await reconcilePlatform();
+    const given = await reconcilePlatform(slugs);
+    expect(derived.checkedOrders).toBe(given.checkedOrders);
+    expect(derived.clean).toBe(given.clean);
+    const key = (d: { check: string; subject?: string; driftAgorot: number }) => `${d.check}|${d.subject ?? ''}|${d.driftAgorot}`;
+    expect(new Set(derived.discrepancies.map(key))).toEqual(new Set(given.discrepancies.map(key)));
+  });
+
   it('the live reconciliation reaches the same verdict as the one over the orders', async () => {
     const fromDb = await reconcilePlatform(slugs);
     const fromJs = reconcileOrders(stored, slugs);

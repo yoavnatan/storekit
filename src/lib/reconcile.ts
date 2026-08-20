@@ -360,8 +360,22 @@ export function reconcileOrders(orders: Order[], storeSlugs: string[]): Reconcil
  * (`getPlatformOrderTotals`) against the sum of the grouped one (`getStoreRevenueBySlug`). They
  * read the same rows through different plans, which is the property the check needs.
  */
-export async function reconcilePlatform(storeSlugs: string[]): Promise<ReconciliationReport> {
+export async function reconcilePlatform(storeSlugs?: string[]): Promise<ReconciliationReport> {
   const revenueScope = [REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES] as const;
+  // **The argument became optional so the ADMIN TAB BADGE could ask this question without reading
+  // the platform's store roster first** (owner, 2026-08-20: *"אני רוצה לוודא שאם יש אי התאמות אז זה
+  // מופיע על הבאדג׳ בלשוניות"*). The badge has to be computed on every dashboard render, including
+  // for tabs nobody is looking at — that is the whole point of a badge — and `getAllStores()` is a
+  // read of every store on the platform, gated to the six tabs that list one. Omitting the argument
+  // makes the known-store set a subquery instead: the same predicate `stores.ts#getAllStores` uses
+  // (`deleted_at IS NULL`), asked of the database rather than carried across a page.
+  //
+  // Callers still pass a list when they mean a NARROWER one — the tests do, deliberately, to scope a
+  // check to a fixture's own shops.
+  const KNOWN_SLUGS = storeSlugs
+    ? '$3::text[]'
+    : "COALESCE((SELECT array_agg(slug::text) FROM stores WHERE deleted_at IS NULL), '{}'::text[])";
+  const slugParams = storeSlugs ? [storeSlugs] : [];
   const NET = 'GREATEST(os.subtotal_agorot - os.discount_applied_agorot, 0)';
   const COUNTS = 'o.payment_status = ANY($1::text[]) AND o.shipping_status = ANY($2::text[])';
 
@@ -416,20 +430,20 @@ export async function reconcilePlatform(storeSlugs: string[]): Promise<Reconcili
 
     // Route A: sum per known store. Route B: sum per order, every slug it names.
     firstRow<{ by_store: string | number; by_order: string | number }>(
-      `SELECT COALESCE(SUM(${NET}) FILTER (WHERE os.store_slug = ANY($3::text[])), 0) AS by_store,
-              COALESCE(SUM(${NET}), 0)                                               AS by_order
+      `SELECT COALESCE(SUM(${NET}) FILTER (WHERE os.store_slug = ANY(${KNOWN_SLUGS})), 0) AS by_store,
+              COALESCE(SUM(${NET}), 0)                                                    AS by_order
          FROM order_stores os
          JOIN orders o ON o.id = os.order_id
         WHERE ${COUNTS}`,
-      [...revenueScope, storeSlugs],
+      [...revenueScope, ...slugParams],
     ),
 
     rows<{ store_slug: string }>(
       `SELECT DISTINCT os.store_slug
          FROM order_stores os
          JOIN orders o ON o.id = os.order_id
-        WHERE ${COUNTS} AND NOT (os.store_slug = ANY($3::text[]))`,
-      [...revenueScope, storeSlugs],
+        WHERE ${COUNTS} AND NOT (os.store_slug = ANY(${KNOWN_SLUGS}))`,
+      [...revenueScope, ...slugParams],
     ),
 
     getPlatformOrderTotals(),
@@ -499,7 +513,7 @@ export async function reconcilePlatform(storeSlugs: string[]): Promise<Reconcili
   const rowSum = [...byStore.values()].reduce((a, r) => a + r.totalRevenueAgorot, 0);
   if (rowSum !== totals.gmvAgorot) discrepancies.push(gmvVsRows(rowSum, totals.gmvAgorot));
 
-  if (storeSlugs.length > 0 && n(byRoute?.by_store) !== n(byRoute?.by_order)) {
+  if ((storeSlugs?.length ?? 1) > 0 && n(byRoute?.by_store) !== n(byRoute?.by_order)) {
     discrepancies.push(byStoreVsByOrder(n(byRoute?.by_order), n(byRoute?.by_store), orphans.map((o) => o.store_slug)));
   }
 
