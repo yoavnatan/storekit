@@ -126,9 +126,19 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
     // menuAutoWidth: widen the menu to fit the longest option's FULL text (each option is
     // overflow-hidden, so its span reports the untruncated width via scrollWidth), clamped
     // to the viewport — lets a small trigger open a popup that shows every option in full,
-    // no ellipsis. Default: pin to the trigger width (compact triggers where clipping is ok).
+    // no ellipsis.
+    //
+    // **A COMPACT trigger turns it on by itself, and that default is inverted from what it was**
+    // (owner, סשן ד׳: *"הדרופדאונים בהודעות כשפתוחים אותם הם חתוכים עם שלוש נקודות"*). The old
+    // default read "pin to the trigger width — compact triggers, where clipping is ok", and it had
+    // the case exactly backwards: a compact trigger is a PILL sized to the option currently chosen,
+    // so "כולם" opens a menu about forty pixels wide and then ellipsises "ממתין לטיפול" inside it.
+    // The narrower the trigger, the more certain the clipping — which makes the compact pill the
+    // one shape that must always measure. Two admin filters had been shipped that way and a third
+    // would have been; a default is the only fix that reaches the one nobody has written yet.
+    // A caller can still say `menuAutoWidth: false` and mean it.
     let menuW = w;
-    if (opts.menuAutoWidth) {
+    if (opts.menuAutoWidth ?? (opts.triggerClassName === COMPACT_TRIGGER_CLASS)) {
       // Sum every span in the option (label + optional meta/price + the gap between them),
       // plus the option's px-3 padding (~24px), the portal's p-[.3rem] (~10px) and a small
       // buffer — so the fully-measured content never clips by a few pixels into an ellipsis.

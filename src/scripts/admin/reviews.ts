@@ -50,7 +50,13 @@ function wireToolbar(): void {
   const onSelect = (id: string, param: string, blank: string) => {
     const el = document.getElementById(id) as HTMLSelectElement | null;
     if (!el) return;
-    initSelectDropdown(el, { triggerClassName: COMPACT_TRIGGER_CLASS });
+    // Same treatment the messages filters take: a compact pill sizes its own menu (that is the
+    // default now — select-dropdown.ts) and names itself, because the pill shows the chosen VALUE
+    // and a store name beside a seller name beside "הכל" says nothing about which is which.
+    initSelectDropdown(el, {
+      triggerClassName: COMPACT_TRIGGER_CLASS,
+      menuHeading: el.getAttribute('aria-label') ?? undefined,
+    });
     el.addEventListener('change', () => navigate({ [param]: el.value === blank ? undefined : el.value }));
   };
   onSelect('admin-reviews-store', 'vstore', '');
