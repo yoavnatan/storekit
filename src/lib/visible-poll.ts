@@ -26,12 +26,15 @@
 /** How long the tab must have been hidden before returning counts as "catch up now". */
 const CATCH_UP_AFTER_MS = 2_000;
 
-export interface VisiblePoll {
-  /** Runs the polled function now, off-schedule. The interval keeps its own cadence. */
-  refresh(): void;
-  /** Stops for good — for a screen that is torn down without a navigation. */
-  stop(): void;
-}
+/*
+ * DELIBERATELY returns nothing. A `stop()` and a `refresh()` were written first and removed at
+ * session close the same day, because neither had a caller and neither could get one: the seller
+ * dashboard hydrates each panel through a `Map` keyed by panel name, so every `init*Tab` runs
+ * exactly once per page load and there is no teardown to hook. An unused handle is not free — it
+ * has to keep working, it collects unit tests that prove nothing about the shipped product, and
+ * the next reader assumes something depends on it. If a screen is ever really torn down, add it
+ * back then, with its caller in the same change.
+ */
 
 /**
  * Exactly `setInterval(fn, intervalMs)`, minus the ticks that land while the tab is hidden, plus
@@ -43,7 +46,7 @@ export interface VisiblePoll {
  * `fn` must swallow its own errors: a poll nobody is waiting on must never surface a failure, and
  * an unhandled rejection here would be reported as one. Every caller already does.
  */
-export function pollWhileVisible(fn: () => void, intervalMs: number): VisiblePoll {
+export function pollWhileVisible(fn: () => void, intervalMs: number): void {
   let hiddenSince = document.hidden ? Date.now() : 0;
 
   const tick = (): void => {
@@ -63,13 +66,5 @@ export function pollWhileVisible(fn: () => void, intervalMs: number): VisiblePol
   };
 
   document.addEventListener('visibilitychange', onVisibility);
-  const timer = window.setInterval(tick, intervalMs);
-
-  return {
-    refresh: tick,
-    stop() {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    },
-  };
+  window.setInterval(tick, intervalMs);
 }

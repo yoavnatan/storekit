@@ -12,6 +12,9 @@
  *    quiet poll into a burst;
  *  • the first call belongs to the caller, not to this — orders.ts seeds its watermark before its
  *    first poll, and firing on the way in would toast orders that arrived before the page loaded.
+ *
+ * There is nothing here for a stop() or a refresh(): both were written, neither had a caller, and
+ * both went at session close. A test for an unused handle is a test that proves nothing shipped.
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -86,24 +89,5 @@ describe('pollWhileVisible', () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it('stop() ends both the timer and the visibility listener', () => {
-    const fn = vi.fn();
-    const poll = pollWhileVisible(fn, 1000);
-    poll.stop();
-    vi.advanceTimersByTime(5000);
-    setHidden(true);
-    vi.advanceTimersByTime(5000);
-    setHidden(false);
-    expect(fn).not.toHaveBeenCalled();
-  });
 
-  it('refresh() polls off-schedule, and not while hidden', () => {
-    const fn = vi.fn();
-    const poll = pollWhileVisible(fn, 60_000);
-    poll.refresh();
-    expect(fn).toHaveBeenCalledTimes(1);
-    setHidden(true);
-    poll.refresh();
-    expect(fn).toHaveBeenCalledTimes(1);
-  });
 });
