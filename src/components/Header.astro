@@ -1021,29 +1021,36 @@ const strEmpty   = t.store.noProductsFound;
   }
 
   /**
-   * Where the reader ends up after ten more rows arrive: on the FIRST of them, always.
+   * After ten more rows arrive, the FIRST OF THEM is put at the top of the panel.
    *
-   * Putting the button at the end of the list is most of the fix — you reach it by finishing the
-   * rows you have, so the new ones open where you already are. This is the rest of it. The button
-   * the reader pressed is destroyed by the re-render, so SOMETHING has to be said about focus, and
-   * the only two candidates are the new button (wrong: the browser scrolls focus into view, so the
-   * list would jump straight past the ten rows just fetched to the offer of ten more) and the first
-   * new row (right: it is what a screen reader should read out, and it is where a sighted reader is
-   * heading anyway).
+   * **That position is the whole feature, and it took two goes to get there.** Moving the button
+   * into the list fixed "I press it and the screen does not change"; it did not fix what the owner
+   * asked next — *"פתאום מופיע עוד ולא ברור מה היה האחרון"*. Ten rows appear and nothing says
+   * where the ones already read ended. Landing the first new row against the top edge answers it
+   * with a rule rather than with a decoration: **everything above the fold is what you have already
+   * seen, every time, on every click.** No second meaning for a row's background — that colour is
+   * spoken for by "unread" — and no flash to watch.
    *
-   * Unconditional, and that is a correction rather than a simplification. It was guarded on "did
-   * the button have focus", on the theory that a mouse click should move nothing at all — but a
-   * click on a `<button>` focuses it, so the guard was true on every path and the comment described
-   * behaviour the code did not have. Driven at 1280px: the click moved the scroller 43px and put
-   * the first new row on screen. That is the guarantee worth making explicit — the reader sees new
-   * content, which is the whole complaint this fixes — so it is stated here instead of arrived at.
-   * `focus()` scrolls by the smallest amount that reveals the element, which is the site's rule for
-   * a programmatic scroll (memory `feedback_subtle_scroll`).
+   * It replaces `focus()`'s own scrolling, which lands an element by the SMALLEST movement that
+   * reveals it (the site's default, memory `feedback_subtle_scroll`) — measured at 43px here, i.e.
+   * the first new row scraping into view along the bottom edge. Correct as a default and useless
+   * as an answer to this question: the row that arrives is the one hardest to see.
+   *
+   * Written against bounding rects, and against the LIST's own `scrollTop` rather than
+   * `scrollIntoView`: the dropdown is `position: fixed` on a phone, and `scrollIntoView` is free to
+   * scroll the page as well as the container to satisfy itself. `preventScroll` on the focus call
+   * for the same reason — focus still moves, for the screen reader, but it may not bring a second
+   * opinion about where the list should sit.
    */
   function revealFirstNewNotif(firstNewIndex: number): void {
     if (!notifList) return;
     const rows = notifList.querySelectorAll<HTMLElement>('.notif-item');
-    (rows[firstNewIndex] ?? rows[rows.length - 1])?.focus();
+    const row = rows[firstNewIndex] ?? rows[rows.length - 1];
+    if (!row) return;
+    row.focus({ preventScroll: true });
+    // Clamps itself at the end of the list: the last page can be shorter than the panel, and then
+    // "as high as it goes" is the honest answer.
+    notifList.scrollTop += row.getBoundingClientRect().top - notifList.getBoundingClientRect().top;
   }
 
   async function loadMoreNotifs() {
