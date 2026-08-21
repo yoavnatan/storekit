@@ -93,12 +93,14 @@
     {
       "id": 6,
       "title": "SEO surfaces: sitemap, canonical, robots, structured data",
-      "audited": null,
+      "audited": "2026-08-21",
       "paths": [
         "src/components/Seo.astro",
         "src/pages/sitemap-content.xml.ts",
         "src/pages/sitemap-content-[shard].xml.ts",
         "src/pages/robots.txt.ts",
+        "src/lib/sitemap-document.ts",
+        "src/lib/sitemap.ts",
         "src/lib/url-base.ts"
       ]
     },
