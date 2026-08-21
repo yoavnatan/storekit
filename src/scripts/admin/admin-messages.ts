@@ -240,7 +240,7 @@ function insertThreadRow(threadId: string, sellerId: string, subject: string, se
   const previewTag = message.fromRole === 'admin' ? ' <span class="msg-table__preview-you">(אתה)</span>' : '';
   const unreadMarker = unread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : '';
   const rowHtml = `<tr class="msg-table__row${unread ? ' msg-table__row--unread' : ''}" data-thread-id="${escapeHtml(threadId)}" data-seller-id="${escapeHtml(sellerId)}" data-thread-status="open" tabindex="0" role="button" aria-expanded="false">
-    <td class="msg-table__td msg-table__td--status"><button type="button" class="msg-handled-mark" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" aria-label="סמן כטופל"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button></td>
+    <td class="msg-table__td msg-table__td--status"><button type="button" class="msg-handled-mark" data-thread-id="${escapeHtml(threadId)}" data-handled="" aria-pressed="false" aria-label="טופל"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button></td>
     <td class="msg-table__td msg-table__td--from">${unreadMarker}<span class="admin-badge admin-badge--muted">${ROLE_WORD[partyRole]}</span> ${escapeHtml(label)}</td>
     <td class="msg-table__td msg-table__td--subject">${escapeHtml(subject)}</td>
     <td class="msg-table__td msg-table__td--preview">${escapeHtml(message.content)}${previewTag}</td>
@@ -501,7 +501,11 @@ function wireThreadActions(): void {
         if (!res.ok) throw new Error('request failed');
         // The server's answer is what the mark ends up reflecting, never the click.
         const body = await res.json() as { handled: boolean };
-        const label = body.handled ? 'טופל — לחצו כדי לבטל' : 'סמן כטופל';
+        // Two words per state, not a sentence (owner, סשן ג׳: *"לא צריך את הטולטיפ כזה ארוך,
+        // מספיק לרשום 'טופל' 'הסר טיפול'"*). Both name the ACTION the click performs — the STATE is
+        // already on screen in the mark's own colour, and `aria-pressed` carries it for a screen
+        // reader, so spending the tooltip on restating it was the part that made it long.
+        const label = body.handled ? 'הסר טיפול' : 'טופל';
         handledBtn.dataset.handled = body.handled ? '1' : '';
         handledBtn.setAttribute('aria-pressed', body.handled ? 'true' : 'false');
         // `aria-label` only — the site's own tooltip is built from it, and it skips any element

@@ -406,14 +406,29 @@
      green one. The two states differ in colour alone, which is why the tick is also the row's
      `aria-pressed` and its title, never colour by itself. */
   background: var(--color-bg);
-  color: var(--color-muted);
+  /* A LIGHT grey, not --color-muted (owner, סשן ג׳: *"האפור שלו מדי כהה ומזכיר את הירוק"*).
+     At full --color-muted the resting tick carried about as much weight as the handled one, so a
+     column of un-handled rows read as a column of marks. 72% keeps it above the 3:1 non-text
+     contrast floor while stepping it clearly back from the green. */
+  color: color-mix(in srgb, var(--color-muted) 72%, var(--color-surface));
   transition: background 0.12s, color 0.12s;
 }
-.msg-handled-mark:hover { background: color-mix(in srgb, var(--color-success) 12%, var(--color-bg)); color: var(--color-success); }
+/* **Hover is NEUTRAL, and that is the whole point** (owner, סשן ג׳: *"כשעומדים עליו הוא
+   נראה כאילו הוא מסומן, ואין הבדל בין הובר לבין מסומן"*). It used to preview the action in the
+   success green, which is the one colour on this control that already MEANS "handled" — so resting
+   the pointer on an open thread showed the admin the exact picture a handled one shows, and the
+   only way to read the real state was to move the mouse away. Green is spent; hover cannot have it.
+   The tick darkens to text colour and nothing else moves — the same gesture the Alerts tab's
+   resolve button already uses (admin.css), so this is the system's hover and not a new one. */
+.msg-handled-mark:hover { color: var(--color-text); }
 .msg-handled-mark[data-handled="1"] {
   background: color-mix(in srgb, var(--color-success) 16%, transparent);
   color: var(--color-success);
 }
+/* Undo, on a mark that is already green: the SAME colour, one step deeper. A neutral hover here
+   would read as "it is about to stop being handled" only after the click, and a second hue would
+   be a third meaning on a control that has two states. */
+.msg-handled-mark[data-handled="1"]:hover { background: color-mix(in srgb, var(--color-success) 26%, transparent); }
 .msg-handled-mark:disabled { cursor: default; opacity: 0.5; }
 /* The status column was 12px — enough for the unread bar it was built for, and 8px short of the
    disc. Widened for the ADMIN's inbox only: the seller's and the buyer's render the same table and
