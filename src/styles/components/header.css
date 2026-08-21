@@ -750,6 +750,10 @@ nav a:hover { color: var(--color-text); }
    and the link. `:has()` keeps every one of them intact for the store-name path,
    which is the only path that can actually overflow.
    
+   `node scripts/measure-logo-clip.mjs <url> [paths…]` against a BUILT server is
+   how this was found and how to check it again: it reports what clips the
+   wordmark on each page and how its baseline lands at DPR 1/2/3.
+
    The wordmark ALSO carries a margin inside its own viewBox now
    (generate-wordmark.mjs#BOX_MARGIN), so a future clip anywhere else — a card, a
    store header, a mail client's wrapper — finds empty box at the edge rather

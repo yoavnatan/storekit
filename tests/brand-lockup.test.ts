@@ -438,7 +438,22 @@ describe('the fonts the generator reads are in the repo', () => {
     // The owner asked for the previous logo to be kept somewhere safe
     // (2026-08-21). A branch is not somewhere he can look.
     const archive = 'assets/brand-archive/2026-08-21-chakra-petch';
-    for (const f of ['dezabin-wordmark.svg', 'favicon.svg', 'brand-lockup.ts.bak'])
+    for (const f of ['dezabin-wordmark.svg', 'favicon.svg', 'brand-lockup.ts.bak', 'README.md'])
       expect(fs.existsSync(path.join(ROOT, archive, f)), f).toBe(true);
+  });
+
+  it('keeps the faces that archive can only be rebuilt from', () => {
+    // Neither is read by anything live any more — which is exactly why they
+    // would be deleted as dead weight, and why the README's "run the old
+    // generator" would then be a promise nothing keeps.
+    for (const f of ['ChakraPetch-Bold.ttf', 'Heebo-Medium.ttf'])
+      expect(fs.existsSync(path.join(ROOT, 'assets/brand-fonts', f)), f).toBe(true);
+    expect(read('assets/brand-archive/2026-08-21-chakra-petch/README.md')).toContain('ChakraPetch-Bold.ttf');
+  });
+
+  it('says where the clip measurement lives, so the tool is not an orphan', () => {
+    // A tool nothing points at is a tool nobody runs. The header's own note is
+    // where somebody stands when the logo looks cut again.
+    expect(read('src/styles/components/header.css')).toContain('scripts/measure-logo-clip.mjs');
   });
 });
