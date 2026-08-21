@@ -66,4 +66,70 @@ describe('one specification row, and it fits the screen it is on', () => {
       expect(line).not.toContain('flex:0 0 auto');
     }
   });
+
+  /**
+   * The desktop size is stated as a flex-BASIS, and a `width` utility would not work at all.
+   *
+   * `.input` (components/forms.css) declares `width: 100%`, and that sheet is imported unlayered
+   * while Tailwind's utilities live in `@layer utilities` — unlayered beats layered whatever the
+   * specificity. So `sm:flex-none sm:w-[170px]` read, in the browser, as "hand the sizing back to
+   * width, which is 100%": each field took a whole row and the three-part row became three stacked
+   * rows above 640px only (owner, סשן ג׳). A flex-basis is the one channel `.input` cannot reach.
+   *
+   * Guarding the SHAPE and not the numbers — a later pass may retune 170/220 — because the shape
+   * is the part that silently breaks: `w-[170px]` looks correct in the diff and does nothing.
+   */
+  it('sizes the fields above sm with a flex-basis, never a width', () => {
+    const text = readFileSync(SOURCE, 'utf8');
+    const inputs = text.split('\n').filter((l) => /<input[^>]*name="specs_(label|value)"/.test(l));
+    expect(inputs).toHaveLength(2);
+    for (const line of inputs) {
+      expect(line, `${line.trim().slice(0, 60)}… must size itself above sm`).toMatch(/sm:flex-\[/);
+      // `flex-none` is `flex: none` → `flex-basis: auto` → back to `.input`'s width. The exact
+      // regression this file now exists to catch.
+      expect(line, `${line.trim().slice(0, 60)}… uses flex-none, which defers to .input's width`)
+        .not.toMatch(/sm:flex-none/);
+      expect(line, `${line.trim().slice(0, 60)}… states a width, which .input overrules`)
+        .not.toMatch(/sm:w-\[/);
+    }
+  });
+});
+
+/**
+ * The מפרט field explains itself the same way on BOTH product forms.
+ *
+ * There are two renderers for one field — `seller/dashboard.astro` draws the ADD form on the
+ * server, `scripts/dashboard/products.ts#specsEditorHtml` builds the EDIT form as a string in the
+ * browser — and the hint the owner asked for in סשן ג׳ has to reach the second one, which is the
+ * form a seller with a real catalogue actually lives in. Before this, the add form carried an
+ * InfoTip and the edit form carried nothing at all: the same class the admin-parity memory names,
+ * where the surface used more often gets the poorer copy.
+ */
+describe('the מפרט hint', () => {
+  it('is rendered by both product forms', () => {
+    const addForm = readFileSync(join(SRC, 'pages/seller/dashboard.astro'), 'utf8');
+    const editForm = readFileSync(join(SRC, 'scripts/dashboard/products.ts'), 'utf8');
+    for (const key of ['specsExamples', 'specsFilterHint']) {
+      expect(addForm, `the add-product form must render ${key}`).toContain(key);
+      expect(editForm, `specsEditorHtml must render ${key}`).toContain(key);
+    }
+  });
+
+  /**
+   * The wording states the rule `lib/product-facets.ts` actually implements, and the two halves it
+   * gets wrong when written from memory are both here: a facet needs TWO products and up
+   * (`MIN_PRODUCTS_PER_FACET`, not "over two"), and it needs their values to DIFFER
+   * (`MIN_VALUES_PER_FACET` — two products both saying "חומר: עץ" open nothing, because every
+   * product in view already matches). A copy pass that drops "בערכים שונים" turns the hint into a
+   * promise the store page will not keep.
+   */
+  it('promises what the facet thresholds actually deliver', async () => {
+    const facets = await import('../src/lib/product-facets.js');
+    expect(facets.MIN_PRODUCTS_PER_FACET).toBe(2);
+    expect(facets.MIN_VALUES_PER_FACET).toBe(2);
+    const he = readFileSync(join(SRC, 'i18n/translations.ts'), 'utf8');
+    const hint = /specsFilterHint:\s*'([^']*)'/.exec(he)?.[1] ?? '';
+    expect(hint, 'the Hebrew hint was not found').not.toBe('');
+    expect(hint, 'the hint must say the values have to differ').toContain('בערכים שונים');
+  });
 });

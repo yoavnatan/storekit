@@ -1721,7 +1721,21 @@ export const translations = {
       skuHint: 'קוד פנימי שלך למוצר. עוזר לאתר אותו במלאי ובקבצי ייבוא, ולא מוצג לקונים.',
       tagsHint: 'מילים שקונה עשוי לחפש. מגדילות את הסיכוי שהמוצר יימצא בחיפוש באתר.',
       variantsHint: 'מוצר שמגיע בכמה אפשרויות — מידה, צבע. לכל שילוב מלאי משלו.',
-      specsHint: 'מידות, חומר, משקל. מוצגים בטבלה בעמוד המוצר.',
+      /** The tooltip keeps ONLY the fact the visible hint below the label does not carry — the
+       *  examples moved out of it into `specsExamples`, and repeating them in both places is what
+       *  makes one field look like two. */
+      specsHint: 'מוצגים בטבלה בעמוד המוצר.',
+      /** Under the label, on both the add and the edit form (owner, סשן ג׳: *"אולי לכתוב לו שם
+       *  מתחת בקצרה דוגמאות, ולהבהיר ש… זה יתווסף לכלי הסינון באתר החנות"*). Two short lines: what
+       *  to type, then what it BUYS him — a seller fills a free-text list far more willingly once
+       *  it is doing something for him than as a form to complete.
+       *  **The rule the second line states is the real one in `lib/product-facets.ts`**, and the
+       *  wording had to be argued back to it: it is TWO products and up (`MIN_PRODUCTS_PER_FACET`),
+       *  not "over two", and — the part that is easy to leave out and would make the sentence
+       *  false — their values have to DIFFER (`MIN_VALUES_PER_FACET`). Two products both saying
+       *  "חומר: עץ" open no filter at all, because every product in view already matches it. */
+      specsExamples: 'לדוגמה: חומר · מידה · משקל',
+      specsFilterHint: 'פרט שחוזר בכמה מוצרים בערכים שונים הופך למסנן בעמוד החנות — הלקוח יוכל לסנן לפי חומר, משקל וכו׳.',
       skuLabel: 'מק"ט',
       skuPlaceholder: 'לדוגמה: SHIRT-BLU-M',
       brandLabel: 'מותג',
@@ -2116,6 +2130,7 @@ export const translations = {
       close: 'סגור התראות',
       unreadBadge: 'התראות חדשות',
       deleteOne: 'מחק התראה',
+      showMore: 'הצג עוד',
       empty: 'אין התראות חדשות',
       newMessage: 'הודעה חדשה',
       newOrder: 'הזמנה חדשה',
@@ -3621,7 +3636,9 @@ export const translations = {
       skuHint: 'Your own internal code for the product. Helps you find it in stock lists and import files, and is never shown to buyers.',
       tagsHint: 'Words a buyer might search for. They improve the odds the product turns up in site search.',
       variantsHint: 'A product that comes in several options — size, colour. Each combination carries its own stock.',
-      specsHint: 'Measurements, material, weight. Shown as a table on the product page.',
+      specsHint: 'Shown as a table on the product page.',
+      specsExamples: 'For example: material · size · weight',
+      specsFilterHint: 'A detail that repeats across products with different values becomes a filter on the store page — shoppers can narrow by material, weight and so on.',
       skuLabel: 'SKU',
       skuPlaceholder: 'e.g. SHIRT-BLU-M',
       brandLabel: 'Brand',
@@ -3948,6 +3965,7 @@ export const translations = {
       close: 'Close notifications',
       unreadBadge: 'New notifications',
       deleteOne: 'Delete notification',
+      showMore: 'Show more',
       empty: 'No new notifications',
       newMessage: 'New message',
       newOrder: 'New order',

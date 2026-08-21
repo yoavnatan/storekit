@@ -21,6 +21,23 @@
  * answer than the fixed one — the change here is about a phone, and it should not become a change
  * about a desktop by accident.
  *
+ * **Above `sm` it is `flex-[0_1_170px]` and NOT `flex-none` + `w-[170px]`, and that is a fix rather
+ * than a style** (owner, סשן ג׳: *"לא אהבתי שזה שורה מתחת לשורה בדסקטופ, כל שורה שם צריכה להכיל
+ * את הכותרת, תוכן ואיקס לידה"*). `.input` in `components/forms.css` declares `width: 100%`, and
+ * that sheet is imported UNLAYERED while every Tailwind utility lives in `@layer utilities` — an
+ * unlayered rule beats a layered one whatever its specificity or source order (memory
+ * `project_unlayered_css_beats_utility`). So the phone was right by accident: `flex-[1_1_…]` sets
+ * a flex-BASIS, which wins over `width` for a flex item's main size. `flex-none` handed the sizing
+ * back to `width`, and `width` was `.input`'s 100%, never the 170px written beside it — so every
+ * field took a whole row and the three-part row became three stacked rows, on wide screens only.
+ *
+ * Stating the number as a flex-basis instead of a width says the same thing in the one channel
+ * `.input` cannot overrule, so no `!important` is needed to win an argument that no longer
+ * happens. `0` grow keeps the original intent (a pair of short values must not stretch across a
+ * 1000px row); `1` shrink is what `flex-none` was silently giving up — just above the breakpoint
+ * the row's own box can be narrower than 170+220+×, and a field that cannot shrink there wraps,
+ * which is the very thing being fixed.
+ *
  * `tests/specs-row-single-source.test.ts` fails if a fourth copy is hand-rolled anywhere in `src/`.
  */
 
@@ -45,7 +62,7 @@ export function specsRowHtml(
   esc: (v: string) => string,
 ): string {
   return `
-    <input class="input flex-[1_1_7rem] min-w-0 sm:flex-none sm:w-[170px]" name="specs_label" value="${esc(label)}" placeholder="${esc(s.labelPlaceholder)}">
-    <input class="input flex-[1_1_9rem] min-w-0 sm:flex-none sm:w-[220px]" name="specs_value" value="${esc(value)}" placeholder="${esc(s.valuePlaceholder)}">
+    <input class="input flex-[1_1_7rem] min-w-0 sm:flex-[0_1_170px]" name="specs_label" value="${esc(label)}" placeholder="${esc(s.labelPlaceholder)}">
+    <input class="input flex-[1_1_9rem] min-w-0 sm:flex-[0_1_220px]" name="specs_value" value="${esc(value)}" placeholder="${esc(s.valuePlaceholder)}">
     <button type="button" class="specs-remove-row btn btn--ghost btn--sm shrink-0" aria-label="${esc(s.removeLabel)}">×</button>`;
 }

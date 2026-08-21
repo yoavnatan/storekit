@@ -578,8 +578,14 @@ function specsEditorHtml(specs: Array<{ label: string; value: string }>, i18n: R
   // `data-specs-field` is the hook the attribute-suggestion strip binds to (scripts/dashboard/
   // spec-suggest.ts). The strip sits between the rows and the add button so the seller's eye finds
   // it in the same place whether they are typing an attribute's name or its value.
+  // The same hint the ADD form renders under this label (seller/dashboard.astro) — and it was
+  // missing here entirely, on the form a seller with a catalogue actually lives in. Reproduced
+  // rather than shared because the two renderers are a server template and a browser string
+  // builder; `tests/specs-row-single-source.test.ts` is what keeps them from drifting apart.
+  const hint = `<p class="[color:var(--color-muted)] mt-[.1rem] mb-[.5rem] text-[.8rem]">${esc(i18n.specsExamples ?? '')}<br>${esc(i18n.specsFilterHint ?? '')}</p>`;
   return `<div class="field" data-specs-field>
     <span class="field-label">${esc(i18n.specsLabel ?? 'Specifications')}</span>
+    ${hint}
     <div class="specs-rows" data-label-placeholder="${lp}" data-value-placeholder="${vp}">${rowsHtml}</div>
     <div data-spec-suggestions class="spec-suggest-row" style="display:none"></div>
     <button type="button" class="specs-add-row btn btn--ghost btn--sm" style="margin-top:0.5rem">${esc(i18n.specsAddRow ?? '+ Add row')}</button>

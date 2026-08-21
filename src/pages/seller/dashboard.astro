@@ -1623,6 +1623,15 @@ const orderStatusColors: Record<string, string> = {
                   {d.specsLabel}
                   <InfoTip text={d.specsHint} />
                 </span>
+                {/* Under the label rather than under the rows: this is what tells the seller what
+                    to type, so it has to be readable before the first empty row is, and the
+                    suggestion strip already owns the space below them. Mirrored verbatim by the
+                    EDIT form (`specsEditorHtml` in scripts/dashboard/products.ts) — the two are
+                    separate renderers of one field, which is exactly how a hint ends up on the
+                    form a seller uses once and missing from the one he uses every day. */}
+                <p class="[color:var(--color-muted)] mt-[.1rem] mb-[.5rem] text-[.8rem]">
+                  {d.specsExamples}<br />{d.specsFilterHint}
+                </p>
                 <div class="specs-rows"
                      data-label-placeholder={d.specsLabelPlaceholder}
                      data-value-placeholder={d.specsValuePlaceholder}></div>
