@@ -620,6 +620,7 @@ const strEmpty   = t.store.noProductsFound;
   import { getWishlistCount } from '../lib/wishlist.js';
   import { updateBadge } from '../lib/badge-ticker.js';
   import { cdnThumb } from '../lib/cdn.js';
+  import { pollWhileVisible } from '../lib/visible-poll.js';
   // Two historic local names in this file, one implementation.
   import { escapeHtml as escH, escapeHtml as escHtml } from '../lib/html-escape.js';
   // No initStoreGlow() here any more. The header asked for it because its bottom
@@ -1275,15 +1276,13 @@ const strEmpty   = t.store.noProductsFound;
     }
   }
 
-  if (hasNotifUi) setInterval(loadNotifs, 30000);
-
-  // Background tabs get their timers throttled by the browser (battery/perf
-  // policy) — the 30s poll above still runs while hidden, just less often.
-  // This forces an immediate refresh the instant the tab regains focus, so
-  // the title badge is never stale by more than the throttled gap.
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') loadNotifs();
-  });
+  // Throttled, not stopped, is what a background tab used to get: the note that stood here said
+  // so out loud — "the 30s poll above still runs while hidden, just less often" — and treated it
+  // as a fact to work around rather than a cost. It is one request a minute per forgotten tab per
+  // person, forever, for an answer nobody can see. `pollWhileVisible` skips those ticks and keeps
+  // the half that was worth keeping: coming back to the tab refreshes immediately, so the title
+  // badge is never stale at the moment someone is actually looking at it.
+  if (hasNotifUi) pollWhileVisible(loadNotifs, 30000);
 
   window.addEventListener('notifications:update', (e: Event) => {
     const { unreadCount } = (e as CustomEvent<{ unreadCount: number; notifications: NotifItem[] }>).detail;
@@ -1332,11 +1331,10 @@ const strEmpty   = t.store.noProductsFound;
     }
 
     loadSellerAlert();
-    setInterval(loadSellerAlert, 30000);
+    // The second of the header's two polls, and it had the same shape as the first: a timer that
+    // never stopped, plus a listener that refreshed on return. `pollWhileVisible` is both.
+    pollWhileVisible(loadSellerAlert, 30000);
     window.addEventListener('notif-refreshed', loadSellerAlert);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') loadSellerAlert();
-    });
   }
 
   // ── Homepage mobile search ────────────────────────────────────

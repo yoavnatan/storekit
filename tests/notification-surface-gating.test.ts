@@ -51,7 +51,11 @@ describe('the notification poller is gated on the page, not on the cookie', () =
   });
 
   it('Header does not poll /api/notifications on a page with no bell', () => {
-    expect(HEADER).toMatch(/if \(hasNotifUi\) setInterval\(loadNotifs, \d+\);/);
+    // `pollWhileVisible`, not `setInterval`, since 2026-08-21 — a poll that keeps running in a
+    // hidden tab is the same waste this test exists to prevent, one step further out (a page with
+    // no bell must not poll at all; a tab nobody is looking at must not poll either). What is
+    // guarded here is unchanged: the call is gated on `hasNotifUi`.
+    expect(HEADER).toMatch(/if \(hasNotifUi\) pollWhileVisible\(loadNotifs, \d+\);/);
     expect(HEADER).toMatch(/async function loadNotifs\(\) \{\s*\n\s*if \(!hasNotifUi\) return;/);
   });
 });

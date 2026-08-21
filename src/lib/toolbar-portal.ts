@@ -158,7 +158,13 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     // to close it rather than to re-anchor it to something that no longer exists.
     if (!trigger.isConnected) { close(); return; }
     position(portal, trigger);
-  }, true);
+    // `passive: true` alongside the capture flag, not the bare `true` this used to pass. This
+    // handler runs on EVERY scroll event on the page, in capture, and it measures layout — the one
+    // shape that keeps the compositor waiting. It never calls preventDefault (a menu that blocked
+    // scrolling would be a different bug), so declaring that is free, and the object form is the
+    // only way to say both. The third argument being a bare boolean is what hid it: it looks like
+    // the option was considered.
+  }, { capture: true, passive: true });
 
   return { open, close, currentTrigger: () => trigger };
 }

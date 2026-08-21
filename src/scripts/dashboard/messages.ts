@@ -3,6 +3,7 @@ import { escapeHtml as escMsg } from '../../lib/html-escape.js';
 import { toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
+import { pollWhileVisible } from '../../lib/visible-poll.js';
 import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { createFetchGate, initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
@@ -907,5 +908,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     }).catch(() => {});
   }
   pollSellerUnread();
-  setInterval(pollSellerUnread, 15000);
+  // Not `setInterval` — see visible-poll.ts. A dashboard tab left open overnight has no reason to
+  // keep asking who has written in; it asks again the moment the seller comes back to it.
+  pollWhileVisible(pollSellerUnread, 15000);
 }

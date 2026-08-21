@@ -13,6 +13,7 @@ import type { Order } from '../../lib/orders.js';
 import type { DeliveryMethod } from '../../lib/shipping.js';
 import { createFetchGate, initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
 import { cdnThumb } from '../../lib/cdn.js';
+import { pollWhileVisible } from '../../lib/visible-poll.js';
 import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
@@ -1291,7 +1292,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         if (!orders) return;
         const newOrders = orders.filter(o => !knownIds.has(o.id));
         if (!newOrders.length) return;
-        newOrders.forEach(o => {
+        newOrders.forEach((o, position) => {
           knownIds.add(o.id);
           // Only insert into the visible list on page 1 — the sorted-by-
           // recency assumption an insertBefore(firstChild) relies on only
@@ -1316,6 +1317,16 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
               if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
             }
           }
+          // The CARDS are all inserted — the list must be complete. The TOASTS are capped, because
+          // one poll can now hand back a whole absence at once: the timer stops while the tab is
+          // hidden (visible-poll.ts) and the first tick back asks with the watermark, so a seller
+          // who was away for three hours gets every order of those three hours in one answer. Ten
+          // orders used to mean ten toasts spread over ten quarter-hours; unchanged, it would mean
+          // ten toasts stacked on one screen, and nothing trims that stack. Three is the number
+          // BaseLayout's notification poll already uses for the same reason — the badge and the
+          // list carry the count, a toast only says "look".
+          const TOAST_CAP = 3;
+          if (position >= TOAST_CAP) return;
           const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotalAgorot: 0, shippingAgorot: 0 };
           window.dispatchEvent(new CustomEvent('toast:show', { detail: {
             title: tt('orderNewToastTitle'),
@@ -1343,8 +1354,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // it returned would ask with an empty watermark, get the seed answer, and then have to decide
     // about rows it had no id set for yet. (The original bug before either of these seeded from
     // `.order-card` elements in the DOM, so anything past page 1 fired a toast.)
-    if (ordersSince) setInterval(pollOrders, 15000);
-    else fetchNewOrders().then(() => setInterval(pollOrders, 15000));
+    // `pollWhileVisible`, not `setInterval` — see visible-poll.ts. Both branches keep their own
+    // first-poll timing; all that changes is that a backgrounded tab stops asking.
+    if (ordersSince) pollWhileVisible(pollOrders, 15000);
+    else fetchNewOrders().then(() => pollWhileVisible(pollOrders, 15000));
   }
 
   // ── Edit Order Details Modal ─────────────────────────────────

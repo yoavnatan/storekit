@@ -389,6 +389,10 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
   // than a short recency window instead of skipping the whole first batch.
   var FIRST_CHECK_RECENCY_MS=30000;
   function poll(){
+    // The hidden-tab gate that lib/visible-poll.ts is for every other poll on the site, written
+    // out by hand because this block is is:inline and can import nothing. Keep the two in step:
+    // this is the one that runs on EVERY page, so a forgotten tab anywhere is this timer.
+    if(document.hidden)return;
     var url='/api/notifications'+(lastCheck?'?since='+encodeURIComponent(lastCheck):'');
     fetch(url).then(function(r){return r.json();}).then(function(d){
       var notifs=d.notifications||[];
@@ -421,6 +425,19 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
   }
   poll();
   setInterval(poll,15000);
+  // Coming back to the tab catches up immediately, so the badge is never stale at the one moment
+  // somebody is looking at it. hiddenSince mirrors visible-poll.ts: an alt-tab and straight back
+  // has nothing new to fetch, and re-firing on every flick turns a quiet poll into a burst.
+  // NO BACKTICKS anywhere in this block, not even in a comment: the whole script is one template
+  // literal in an Astro expression, so one backtick ends it and everything after is parsed as
+  // attributes on the script tag. Cost an otherwise-clean change a 500 on every page.
+  var hiddenSince=0;
+  if(document.hidden)hiddenSince=Date.now();
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden){hiddenSince=Date.now();return;}
+    if(hiddenSince&&Date.now()-hiddenSince>=2000)poll();
+    hiddenSince=0;
+  });
 })();
 `} />
     )}

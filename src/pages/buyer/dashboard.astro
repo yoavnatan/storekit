@@ -1537,6 +1537,7 @@ const STORES_NAMED = 2;
   import { RETURN_NOTE_MAX } from '../../lib/returns.js';
   import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
   import { markPanelFresh, isPanelStale, panelHoldsTypedText } from '../../lib/panel-freshness.js';
+  import { pollWhileVisible } from '../../lib/visible-poll.js';
 
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
@@ -3148,5 +3149,7 @@ const STORES_NAMED = 2;
         // The freshness stamp belongs only to whatever can actually make the panel current.
       }).catch(() => {});
   }
-  setInterval(pollBuyerUnread, 15000);
+  // See visible-poll.ts: a buyer tab left open is the most likely one to be forgotten, and it has
+  // even less reason than a seller's to keep asking while nobody is looking at it.
+  pollWhileVisible(pollBuyerUnread, 15000);
 </script>

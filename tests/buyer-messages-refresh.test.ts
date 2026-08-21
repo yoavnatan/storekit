@@ -137,7 +137,7 @@ describe('only a full refresh may claim the messages panel is current', () => {
     const src = read();
     const poll = src.slice(
       src.indexOf('function pollBuyerUnread()'),
-      src.indexOf('setInterval(pollBuyerUnread'),
+      src.indexOf('pollWhileVisible(pollBuyerUnread'),
     );
     expect(poll, 'pollBuyerUnread was not found where expected').not.toHaveLength(0);
     expect(poll, 'a partial update must not suppress the full refresh')
@@ -152,7 +152,9 @@ describe('only a full refresh may claim the messages panel is current', () => {
   it('the poll interval is shorter than the staleness window it must not defeat', () => {
     // If these ever cross, the bug above returns silently: a poll slower than the window is
     // harmless, a poll faster than it is only harmless because it no longer stamps.
+    // `pollWhileVisible` since 2026-08-21 (a buyer tab left open should not keep asking) — the
+    // period is what this test is about and it is unchanged.
     const src = read();
-    expect(src).toContain('setInterval(pollBuyerUnread, 15000)');
+    expect(src).toContain('pollWhileVisible(pollBuyerUnread, 15000)');
   });
 });
