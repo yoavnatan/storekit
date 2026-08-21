@@ -558,12 +558,12 @@ textarea.input { resize: none; }
    describe columns, not the single-product form. They used to be unstuck outright for that, but
    the edit row sits INSIDE a table whose other rows are still listed above and below it: scroll
    past the form and you were reading an ordinary product table with no column headings at all
-   (owner, 2026-08-04). So they stay sticky and the form's own header COVERS them instead.
-   That needs no measurement and no JS: `.edit-row-header` already pins at this exact offset with
-   a higher z-index and an opaque background, and it is the taller of the two, so while its row is
-   on screen it hides them completely — and the moment the row scrolls away it un-pins with the
-   row and reveals the headings, still pinned, right where the table needs them.
-   The `top` drops by the toolbar's height because the toolbar itself unsticks below. */
+   (owner, 2026-08-04). So they stay sticky, one line higher, and the toolbar below unsticks to
+   give them that line.
+   **They are NOT covered by the form's header** — an earlier version of this comment said they
+   were, and it was describing a `position: sticky` on `.edit-row-header` that the same commit had
+   just deleted (see the block above it for why). Above 640px the form header scrolls away and the
+   column headings are what stays pinned, which is the state this rule is actually for. */
 #products-table:has(tr.edit-row:not([hidden])) > thead th {
   top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
 }
@@ -1258,6 +1258,30 @@ textarea.input { resize: none; }
   .products-table tr.edit-row             { display: block; border-bottom: 1px solid var(--color-border); }
   .products-table tr.edit-row td          { display: block; padding: 0.75rem 0.5rem; border-bottom: none; }
   .products-table tr.edit-row .row-num    { display: none; }
+
+  /* **The form's own header pins — on the PHONE only** (owner, סשן ג׳: *"במובייל — כשגם ככה אין
+     טבלה במוצרים, אני רוצה שכשפותחים טופס עריכה של מוצר, הכותרת שלו עם השמור ובטל יהיו סטיקי כל
+     היוזר על הטופס"*).
+     This was tried site-wide on 2026-08-04 and reverted, and the reason it failed is a reason that
+     only exists above this breakpoint: the edit row is `<td class="row-num">` + `<td colspan>`, so
+     a bar living in the wide cell could never cover the table's first column, and the column
+     headings peeked out beside it whatever the padding. At 640px and below there is no first
+     column and no `thead` at all (both `display: none` above) — the row is a block, the cell is a
+     block, and the bar spans the whole thing. The objection is gone; the need is stronger, because
+     a phone shows perhaps a fifth of this form at a time and Save sat at the very bottom of it.
+     The `<td>` is the containing block, so plain `position: sticky` already means "pinned while I
+     am inside this form, gone the moment I scroll past it" with no scroll-tracking JS.
+     Same offset as the column headings use above this width — the site header plus the tab strip,
+     which are the two bars that really are fixed here — and BELOW the strip's own z-index 7, so a
+     tab is never covered by a product form. The toolbar above is already `position: static` while
+     an edit row is open (see `.products-header:has(...)`), so nothing else contends for the line. */
+  .products-table tr.edit-row .edit-row-header {
+    position: sticky;
+    top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
+    z-index: 6;
+    /* No negative margin to reach the cell's padding: the form is this cell's only child, so
+       nothing can ever scroll through the 0.5rem strip on either side of it. */
+  }
 
   /* Stock number (and the other stacked-row fields below it) has no column
      header to lean on once thead disappears at this width — a plain number
