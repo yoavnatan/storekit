@@ -164,6 +164,61 @@ function normalizeCursor(since?: string): string | null {
   return since.startsWith(millisecond.slice(0, -1)) ? since : millisecond;
 }
 
+/**
+ * One page of OLDER entries, for the bell's "הצג עוד".
+ *
+ * **Why this exists.** The dropdown drew the newest ten and the poll above returns fifty, so with
+ * 48 notifications the owner could see ten of them and there was no gesture anywhere that reached
+ * the other 38 (owner, סשן ג׳: *"למשל עכשיו יש 48 התראות, כמה יש בדרופדאון? צריך שאת השאר נציג
+ * בצורה עדינה"*). The button pages through the first fifty client-side and then asks here, so the
+ * ceiling is gone rather than raised — a person with three hundred notifications reaches all of
+ * them, ten at a time, and nobody's first poll got bigger to pay for it.
+ *
+ * **OFFSET and not a keyset cursor, deliberately.** `created_at` defaults to `now()`, which in
+ * Postgres is the TRANSACTION timestamp — so two notifications written in one transaction hold
+ * byte-identical timestamps, and a `created_at < cursor` page would silently drop the rest of a tie
+ * group. Ordering by the same `created_at DESC, id` the feed query uses and counting from the top
+ * has no tie to get wrong. The cost OFFSET normally carries does not apply at this size: one
+ * person's feed is tens of rows, behind `notifications_user_idx`.
+ *
+ * The one thing OFFSET can do is repeat a row when something new arrives between two pages and
+ * shifts everything down. The caller dedupes by `id`, which is also what it needs for the poll
+ * refreshing the first page underneath an expanded list.
+ *
+ * **`hasMore` is computed HERE, and the clamping with it, because splitting them was a bug.** The
+ * route asked for `limit + 1` rows and compared the answer against its own idea of the limit; both
+ * halves clamped, separately, and at `limit = FEED_LIMIT` the probe row was clamped away while the
+ * comparison was not — so the last page reported "nothing further" with entries still behind it.
+ * A rule that lives in two modules is the next bug (AI_INSTRUCTIONS → Architecture); this is the
+ * one module that can see both numbers.
+ */
+export async function getNotificationsPage(
+  userId: string,
+  offset: number,
+  limit: number,
+): Promise<{ notifications: Notification[]; hasMore: boolean }> {
+  // Both come off a query string. Clamped rather than rejected: a nonsense value should show the
+  // first page, never 500 and never let a caller ask for the whole table in one request. The page
+  // size stops one BELOW the feed cap so the extra "is there more" row always fits under it.
+  const safeOffset = Number.isFinite(offset) ? Math.min(Math.max(Math.trunc(offset), 0), 10_000) : 0;
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), FEED_LIMIT - 1) : FEED_LIMIT - 1;
+  const found = await rows<NotificationRow>(
+    `SELECT id, user_id, role, type, title, body, read, related_id, store_slug, store_name,
+            to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
+       FROM notifications
+      WHERE user_id = $1
+      ORDER BY created_at DESC, id
+      LIMIT $2 OFFSET $3`,
+    // One row past the page: cheaper than a COUNT, and it can never disagree with the page beside
+    // it the way a separately-run count can.
+    [userId, safeLimit + 1, safeOffset],
+  );
+  return {
+    notifications: found.slice(0, safeLimit).map(toNotification),
+    hasMore: found.length > safeLimit,
+  };
+}
+
 export async function getNotificationsForUser(userId: string, since?: string): Promise<Notification[]> {
   const cursor = normalizeCursor(since);
   const found = await rows<NotificationRow>(

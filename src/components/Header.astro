@@ -393,6 +393,14 @@ const strEmpty   = t.store.noProductsFound;
             <div id="notif-list" class="notif-list">
               <p class="notif-empty">{t.notifications.empty}</p>
             </div>
+            {/* The overflow gesture, and it is deliberately the quietest one available (owner,
+                סשן ג׳: *"צריך שאת השאר נציג בצורה עדינה, לא עכשיו לסבך ולהגזים את העניין"*). The
+                list draws ten; this appends ten more into the same scroller, so nothing navigates,
+                no second screen exists and a person who never has eleven notifications never sees
+                a control at all — it is hidden unless there is genuinely something behind it. */}
+            <div id="notif-footer" class="notif-footer" hidden>
+              <button id="notif-more-btn" class="notif-footer-btn" type="button">{t.notifications.showMore}</button>
+            </div>
           </div>
         </div>
       )}
@@ -973,12 +981,91 @@ const strEmpty   = t.store.noProductsFound;
     if (hasNotifUi) document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
   }
 
+  /**
+   * The overflow state for the bell (owner, סשן ג׳).
+   *
+   * `notifBase` is whatever the last poll returned — the newest fifty, refreshed underneath an
+   * expanded list every 30 seconds. `notifOlder` is the pages "הצג עוד" fetched past that, which
+   * are older than anything a poll can bring and so never go stale. They are concatenated and
+   * deduped by id on every render, because a new arrival shifts the server's OFFSET by one and
+   * would otherwise hand back a row the list already holds.
+   *
+   * `notifShown` survives a poll on purpose: a list the reader has opened to thirty rows must not
+   * silently collapse back to ten while they are reading it. It resets when the dropdown is
+   * OPENED, which is the moment the reader is starting over anyway.
+   */
+  const NOTIF_PAGE = 10;
+  /** `FEED_LIMIT` in lib/notifications.ts — a poll returning exactly this many hit its own cap, so
+   *  there is probably more behind it. Duplicated because this script cannot import from the
+   *  server module; being wrong here costs one wasted request, never a missing entry. */
+  const NOTIF_POLL_CAP = 50;
+  let notifBase: NotifItem[] = [];
+  let notifOlder: NotifItem[] = [];
+  let notifShown = NOTIF_PAGE;
+  /** Whether the server may still hold entries older than `notifBase` + `notifOlder`. Only the
+   *  first poll can answer it for free: a full batch means it hit its own LIMIT and there is
+   *  probably more behind it. After that the paged endpoint says so outright. */
+  let notifMoreOnServer = false;
+  let notifLoadingMore = false;
+
+  function notifFeed(): NotifItem[] {
+    const seen = new Set<string>();
+    const out: NotifItem[] = [];
+    for (const n of [...notifBase, ...notifOlder]) {
+      if (seen.has(n.id)) continue;
+      seen.add(n.id);
+      out.push(n);
+    }
+    return out;
+  }
+
+  async function loadMoreNotifs() {
+    const moreBtn = document.getElementById('notif-more-btn') as HTMLButtonElement | null;
+    const feed = notifFeed();
+    // Still rows in hand: nothing to fetch, just show ten more of what is already here.
+    if (notifShown < feed.length) {
+      notifShown += NOTIF_PAGE;
+      renderNotifs(notifBase);
+      return;
+    }
+    if (!notifMoreOnServer || notifLoadingMore) return;
+    notifLoadingMore = true;
+    if (moreBtn) moreBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/notifications?offset=${feed.length}&limit=${NOTIF_PAGE}`);
+      if (!res.ok) throw new Error('page failed');
+      const { notifications, hasMore } = await res.json() as { notifications: NotifItem[]; hasMore: boolean };
+      notifOlder = [...notifOlder, ...(notifications ?? [])];
+      notifMoreOnServer = !!hasMore;
+      notifShown += (notifications ?? []).length;
+      renderNotifs(notifBase);
+    } catch {
+      // The rows the reader already has stay exactly where they are; the button comes back and a
+      // second click retries. Nothing was removed from the screen, so there is nothing to explain.
+      showActionFailedToast();
+    } finally {
+      notifLoadingMore = false;
+      const btn = document.getElementById('notif-more-btn') as HTMLButtonElement | null;
+      if (btn) btn.disabled = false;
+    }
+  }
+
   function renderNotifs(items: NotifItem[]) {
     if (!notifList) return;
+    notifBase = items;
+    // The first full batch is the only cheap signal that the server holds more than it sent, and
+    // it must not un-set an answer the paged endpoint has since given: `||=` in effect, because a
+    // later poll returning 50 again says nothing new about what is behind them.
+    if (items.length >= NOTIF_POLL_CAP) notifMoreOnServer = true;
+    const feed = notifFeed();
     const clearAllBtn = document.getElementById('notif-clear-all-btn') as HTMLButtonElement | null;
-    if (clearAllBtn) clearAllBtn.hidden = items.length === 0;
-    if (!items.length) { notifList.innerHTML = emptyNotifHtml(); return; }
-    notifList.innerHTML = items.slice(0, 10).map((n) => `
+    if (clearAllBtn) clearAllBtn.hidden = feed.length === 0;
+    const footer = document.getElementById('notif-footer') as HTMLElement | null;
+    // An empty feed short-circuits first: "there may be more on the server" is a claim about
+    // OLDER rows, and offering to fetch them under an empty-state message would read as broken.
+    if (footer) footer.hidden = feed.length === 0 || (feed.length <= notifShown && !notifMoreOnServer);
+    if (!feed.length) { notifList.innerHTML = emptyNotifHtml(); return; }
+    notifList.innerHTML = feed.slice(0, notifShown).map((n) => `
       <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-href="${escH(n.href ?? (n.role === 'buyer' ? '/buyer/dashboard' : '/seller/dashboard'))}" role="button" tabindex="0">
         <button class="notif-item__delete" data-del-id="${escH(n.id)}" type="button" aria-label="${escH(notifI18n.deleteOne ?? 'מחק התראה')}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -995,6 +1082,11 @@ const strEmpty   = t.store.noProductsFound;
         if (!id) return;
         const card = btn.closest<HTMLElement>('.notif-item');
         card?.remove();
+        // Out of the local pages as well. `loadNotifs` below refreshes `notifBase` from the
+        // server, but `notifOlder` holds pages the poll never returns — leaving it there is how a
+        // deleted notification reappears the moment anything re-renders.
+        notifOlder = notifOlder.filter((n) => n.id !== id);
+        notifBase = notifBase.filter((n) => n.id !== id);
         if (notifList && !notifList.querySelector('.notif-item')) {
           notifList.innerHTML = emptyNotifHtml();
         }
@@ -1048,6 +1140,10 @@ const strEmpty   = t.store.noProductsFound;
 
   function openNotifDrop() {
     if (!notifDrop || !bellBtn) return;
+    // Back to one page. Opening the bell is a fresh look at it; carrying thirty rows over from a
+    // session two hours ago would make the panel's height depend on history nobody remembers.
+    notifShown = NOTIF_PAGE;
+    notifOlder = [];
     if (window.innerWidth <= 640) {
       const rect = bellBtn.getBoundingClientRect();
       Object.assign(notifDrop.style, { top: `${rect.bottom + 8}px`, left: '8px', right: '8px', width: 'auto', maxHeight: '480px' });
@@ -1063,11 +1159,20 @@ const strEmpty   = t.store.noProductsFound;
     fadeClose(notifDrop, () => { notifDrop!.hidden = true; });
   }
   document.getElementById('notif-close-btn')?.addEventListener('click', (e) => { e.stopPropagation(); closeNotifDrop(); bellBtn?.focus(); });
+  // `stopPropagation` for the same reason every control in this panel has it: the bell's own
+  // button handler and the document-level outside-click closer both sit above this in the tree.
+  document.getElementById('notif-more-btn')?.addEventListener('click', (e) => { e.stopPropagation(); void loadMoreNotifs(); });
 
   document.getElementById('notif-clear-all-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
     if (notifList) notifList.innerHTML = emptyNotifHtml();
     (document.getElementById('notif-clear-all-btn') as HTMLButtonElement | null)!.hidden = true;
+    notifBase = [];
+    notifOlder = [];
+    notifShown = NOTIF_PAGE;
+    notifMoreOnServer = false;
+    const clearedFooter = document.getElementById('notif-footer') as HTMLElement | null;
+    if (clearedFooter) clearedFooter.hidden = true;
     setBadge(0);
     fetch('/api/notifications', {
       method: 'POST',

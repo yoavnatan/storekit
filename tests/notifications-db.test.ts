@@ -6,6 +6,7 @@ import {
   deleteNotification,
   deleteNotificationsByRelatedIds,
   getNotificationsForUser,
+  getNotificationsPage,
   getUnreadCountForUser,
   getUnreadSellerReplyCount,
   markAllReadForUser,
@@ -223,5 +224,112 @@ describe('an id is not a permission', () => {
     await deleteAllNotificationsForUser(USER);
     expect(await getNotificationsForUser(USER)).toHaveLength(0);
     expect(await getNotificationsForUser(OTHER)).toHaveLength(1);
+  });
+});
+
+/**
+ * Paging older entries — `getNotificationsPage`, the bell's "הצג עוד".
+ *
+ * The bug it was built for: the dropdown drew the newest ten of the fifty the poll returns, and
+ * with 48 notifications the other 38 were reachable by nothing at all (owner, סשן ג׳).
+ *
+ * The case worth having a test for is the one that made OFFSET the right answer rather than a
+ * keyset cursor: `created_at` defaults to `now()`, which in Postgres is the TRANSACTION timestamp,
+ * so rows written together share one byte-identical instant. A `created_at < cursor` page drops the
+ * rest of a tie group silently — no error, no gap on screen, just entries that can never be
+ * reached. So the pages are asserted to reconstruct the feed EXACTLY, ties included.
+ */
+describe('paging older entries', () => {
+  async function seed(n: number): Promise<void> {
+    for (let i = 0; i < n; i += 1) {
+      await notify({ title: `n${i}`, body: String(i) });
+    }
+  }
+
+  it('walks the whole feed in pages, with no gap and no repeat', async () => {
+    await seed(25);
+    const whole = await getNotificationsForUser(USER);
+    expect(whole).toHaveLength(25);
+
+    const paged: string[] = [];
+    for (let offset = 0; offset < 25; offset += 10) {
+      const { notifications } = await getNotificationsPage(USER, offset, 10);
+      paged.push(...notifications.map((n) => n.id));
+    }
+    expect(paged).toEqual(whole.map((n) => n.id));
+  });
+
+  it('says whether there is more, and stops saying it at the end', async () => {
+    await seed(25);
+    expect((await getNotificationsPage(USER, 0, 10)).hasMore).toBe(true);
+    expect((await getNotificationsPage(USER, 10, 10)).hasMore).toBe(true);
+    // Exactly the last five: the page is full only in the sense that there is nothing behind it.
+    const last = await getNotificationsPage(USER, 20, 10);
+    expect(last.notifications).toHaveLength(5);
+    expect(last.hasMore).toBe(false);
+    // And a page that lands exactly on the boundary is not "more" either.
+    await query('DELETE FROM notifications');
+    await seed(20);
+    expect((await getNotificationsPage(USER, 10, 10)).hasMore).toBe(false);
+  });
+
+  /**
+   * The page size stops one below `FEED_LIMIT` so the extra probe row always fits.
+   *
+   * Asking for the biggest page allowed used to answer `hasMore: false` with entries still behind
+   * it: the route asked the query for `limit + 1` and the query clamped that back down to the cap,
+   * so the probe row was the one thrown away while the comparison it fed was not. The bell's button
+   * would have vanished mid-feed. Both numbers live in `getNotificationsPage` now, which is what
+   * makes this case expressible at all.
+   */
+  it('still reports more when asked for the largest page it allows', async () => {
+    await seed(60);
+    const big = await getNotificationsPage(USER, 0, 500);
+    expect(big.notifications.length).toBeLessThanOrEqual(49);
+    expect(big.hasMore, 'a full page with 60 rows behind it is not the end of the feed').toBe(true);
+  });
+
+  it('keeps every row of a tie group — rows written in ONE transaction share a timestamp', async () => {
+    // `now()` is the transaction clock, so this is not a contrived collision: it is what any
+    // multi-notification write inside one transaction produces.
+    await query('BEGIN');
+    for (let i = 0; i < 6; i += 1) await notify({ title: `tie${i}` });
+    await query('COMMIT');
+
+    const whole = await getNotificationsForUser(USER);
+    const stamps = new Set(whole.map((n) => n.createdAt));
+    expect(stamps.size, 'the premise of this test: one transaction, one timestamp').toBe(1);
+
+    const first = await getNotificationsPage(USER, 0, 3);
+    const second = await getNotificationsPage(USER, 3, 3);
+    const ids = [...first.notifications, ...second.notifications].map((n) => n.id);
+    expect(new Set(ids).size, 'a page repeated or dropped a row').toBe(6);
+    expect([...ids].sort()).toEqual(whole.map((n) => n.id).sort());
+  });
+
+  it('never returns another account\'s notifications', async () => {
+    await seed(3);
+    await notify({ userId: OTHER, title: 'not yours' });
+    const { notifications: page } = await getNotificationsPage(USER, 0, 50);
+    expect(page).toHaveLength(3);
+    expect(page.every((n) => n.userId === USER)).toBe(true);
+  });
+
+  it('clamps nonsense instead of raising or handing back the table', async () => {
+    await seed(4);
+    expect((await getNotificationsPage(USER, -5, 10)).notifications).toHaveLength(4);
+    expect((await getNotificationsPage(USER, Number.NaN, 10)).notifications).toHaveLength(4);
+    // Above the cap the limit is capped, not honoured — one request may not become an export.
+    expect((await getNotificationsPage(USER, 0, 5_000)).notifications.length).toBeLessThanOrEqual(49);
+    // A limit of zero would make the bell's button do nothing forever; it floors at one.
+    expect((await getNotificationsPage(USER, 0, 0)).notifications).toHaveLength(1);
+  });
+
+  it('runs past the poll\'s own 50-row ceiling', async () => {
+    await seed(55);
+    expect(await getNotificationsForUser(USER)).toHaveLength(50);
+    const beyond = await getNotificationsPage(USER, 50, 10);
+    expect(beyond.notifications, 'the entries the old dropdown could never reach').toHaveLength(5);
+    expect(beyond.hasMore).toBe(false);
   });
 });
