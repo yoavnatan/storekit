@@ -30,7 +30,14 @@ function sourceKey(): string {
   };
   dir('migrations', '.sql');
   dir('tests/fixtures/db-data', '.json');
-  dir('scripts/lib', '.mjs');
+  // The importer, and ONLY the importer — narrowed 2026-08-21 from the whole of `scripts/lib`.
+  // `test-db.ts` builds the image from the migrations, the fixture and `db-import.mjs`, which
+  // imports nothing else in that directory. Hashing the directory swept in six unrelated files, so
+  // editing `test-concurrency.mjs` — a helper about CPU shares that no database has ever read —
+  // threw away a 5MB Postgres image and rebuilt it. Widening again is safe only for a file the
+  // image genuinely depends on: a stale image is the one failure this key exists to prevent, so a
+  // new `db-import.mjs` import belongs here the day it is added.
+  add(path.join(ROOT, 'scripts/lib/db-import.mjs'));
   return hash.digest('hex');
 }
 
