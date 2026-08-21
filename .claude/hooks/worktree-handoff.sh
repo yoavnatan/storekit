@@ -110,9 +110,16 @@ if [ -n "$mine" ]; then
   cat <<'EOF'
   → If the work is FINISHED and the full verify is green, close it out yourself, without asking —
     standing instruction from the owner, 2026-08-05 ("אתה תחליט"), because the judgement of when it
-    is done is mine to make: `git merge main` into the branch, `verify -- --all`, fast-forward main,
-    confirm `git log main..<branch>` is empty, then `ExitWorktree remove`. Do NOT push; local is the
+    is done is mine to make: rebase onto main, `verify -- --all`, fast-forward main, confirm
+    `git log main..<branch>` is empty, then `ExitWorktree remove`. Do NOT push; local is the
     approval, publishing is not.
+  → THE FULL VERIFY RUNS ONCE, BEFORE THE PUSH — not again because main moved (owner, 2026-08-21).
+    A rebase onto a newer main changes the tree, so verify's content cache misses and the honest
+    instinct is to run the whole thing again; and again when the next session merges; and again on
+    the retry after that. That loop was the single biggest waste of session ד׳, and it buys nothing:
+    the `pre-push` hook runs `--all` itself, on the commits you are actually pushing, so a real
+    conflict between your work and somebody else's is caught there whether you pre-ran it or not.
+    One green before the push. Then push and let the gate be the gate.
   → If you are MID-TASK, leave it and say so in one line — mid-task work is supposed to be unmerged.
     Either way the session must not end with the user unaware the branch exists.
 EOF

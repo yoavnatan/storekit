@@ -99,6 +99,24 @@ const claimsDir = () => process.env.STOREKIT_TEST_CLAIMS_DIR || join(tmpdir(), '
  * `astro dev` up all day, VS Code has its own language servers, and on 2026-08-20 macOS's
  * `mediaanalysisd` was measured holding 27-89% of a core for twenty-eight hours straight. A budget
  * that claims every core reproduces exactly the starvation it exists to prevent. Four, here.
+ *
+ * **Should the two grow with the number of live runs? Asked 2026-08-21, measured, and the answer is
+ * no.** The reasoning for asking was sound: `astro check`, `lint` and the dev servers run OUTSIDE
+ * this budget, so three sessions were seen putting 13 runnable threads on six cores. But the thing
+ * that was actually costing the owner his evenings — a vitest worker dying in its 60s boot window
+ * and taking a whole 200s suite down with it — was reproduced on a QUIET machine, one session,
+ * nothing else running, on four full runs out of four. Contention is not what causes it, and the
+ * proof is on the other side too: serialising the test step away from every other check in the same
+ * run measured 471s against 407s, and stayed red. (What the failing runs do share is 7-19MB of free
+ * RAM at their peak — the constraint on this machine is memory, not cores.)
+ *
+ * Growing the reserve would only shrink the test share. On six cores it changes exactly one case —
+ * two live runs drop from two workers each to one — which roughly doubles the wall clock of the
+ * step that is already every session's critical path, in exchange for freeing one core for checks
+ * that have no deadline and are already `nice`d. That is the wrong direction on the only number the
+ * owner experiences, which is how long HIS turn takes. What was done instead is in `verify.mjs`:
+ * a starved run now re-runs the FILES that never started rather than the suite, which took a
+ * measured `--all --no-cache` from 407s red to 219s green without touching this budget at all.
  */
 const BUDGET = Math.max(2, physicalCores() - 2);
 
