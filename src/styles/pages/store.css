@@ -23,6 +23,54 @@ body:has(.store-page) { background: var(--color-surface); }
    above the site header (a z-indexed wrapper would trap them below it).
    Both covering layers are FULL-WIDTH (not container-width) so they cover the
    image edge-to-edge — a container-width cover would let it peek out the sides. */
+/* The pin's sticky travel is bounded HERE, and that is the whole job of this element.
+
+   The bug (owner, 2026-08-21): "the image behind the curtain is partially revealed while
+   scrolling" — deep in the page, on a fast scroll, at desktop widths. Without this wrapper the
+   pin's containing block is <main>, i.e. the entire document, so the banner is never *finished*:
+   it stays parked under the header, in its own compositor layer, for the whole length of the
+   page. It is invisible only because every block that scrolls over it happens to be opaque —
+   which was verified, at five x-positions every 60px down all four showcase stores, and there is
+   no hole in that cover. So the reveal is not a gap in the page; it is the compositor drawing
+   that permanently-live sticky layer a frame out of step with the content on top of it, which is
+   a thing it is allowed to do and which no amount of z-index answers.
+
+   The curtain only ever needs to cover the pin ONCE. After that the pin has no job, and the fix
+   is to let it go: bound the travel so it un-pins and scrolls away like anything else the moment
+   the covering is done. There is then no live sticky layer under the rest of the page and nothing
+   left to tear open.
+
+   **The travel must come from HEIGHT, not from padding.** Blink measures a sticky child's range
+   against its containing block's CONTENT box, so `padding-bottom` on this wrapper buys exactly
+   zero travel — the pin then has nowhere to stick and stops pinning altogether, which quietly
+   deletes the curtain scroll while every test still passes. Measured three ways against the
+   unchanged page (padding only, padding + negative margin on the wrapper, padding + the curtain
+   pulled up): all three killed the pin; height and min-height both worked. Hence the `::after`,
+   which is an in-flow block child and so real content-box height, and hence the negative margin
+   on the CURTAIN rather than on this wrapper — a negative bottom margin here would take the
+   travel back out of the constraint rect it was just added to.
+
+   `.store-banner-pinwrap + .store-banner` pays the height back to the layout, so the page is not
+   one pixel taller and the details still start exactly where they did. Written as a sibling
+   selector on purpose: a store with no banner image renders neither element, and then neither
+   half of this can fire on its own.
+
+   32rem, and it is a ceiling with a reason rather than a round number. The travel only has to
+   exceed the pin's own height — that is the scroll distance over which the curtain covers it —
+   and the pin is at most `--max-width`/3 (a fixed 3:1 image inside a 1160px cap) plus its 2.5rem
+   of padding, about 26rem. `tests/curtain-pin-release.test.ts` holds that arithmetic, so raising
+   `--max-width` cannot silently make this too small. Do NOT round it up "to be safe" either:
+   every extra rem is more of the page over which the sticky layer is still alive, and that is the
+   thing being fixed. */
+.store-banner-pinwrap::after {
+  content: "";
+  display: block;
+  height: 32rem;
+}
+.store-banner-pinwrap + .store-banner {
+  margin-top: -32rem;
+}
+
 .store-banner-pin {
   position: sticky;
   top: var(--site-header-h, 3.4rem);

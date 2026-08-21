@@ -631,6 +631,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
          The comment sits OUTSIDE the expression on purpose: Astro's compiler rejects an HTML
          comment as the first child right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
     {isDemo ? (
+      <div class="store-banner-pinwrap">
       <div class="store-banner-pin" data-sticky-glass="3.4">
         <div class="container">
           <div class="store-banner__image-wrap">
@@ -638,7 +639,9 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           </div>
         </div>
       </div>
+      </div>
     ) : shopStore.bannerImage && (
+      <div class="store-banner-pinwrap">
       <div class="store-banner-pin" data-sticky-glass="3.4">
         <div class="container">
           <div class="store-banner__image-wrap" data-skeleton>
@@ -656,6 +659,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
             />
           </div>
         </div>
+      </div>
       </div>
     )}
 
