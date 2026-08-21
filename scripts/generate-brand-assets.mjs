@@ -133,7 +133,11 @@ async function shot(html, { width, height, scale = 1, file, transparent = false,
   // that produced a wrong measurement in August. `fonts.status` alone is not
   // enough; it reads "loaded" before anything has been asked for, so ask about
   // the face by name.
-  await p.waitForFunction(`document.fonts.check("${TAGLINE.weight} 12px Heebo", "ק")`);
+  // The lockup pages render the Hebrew line as live text; the SVG pages below
+  // carry outlines and ask for no face at all, so waiting on one would hang.
+  if (html.includes("font-family:'Heebo'")) {
+    await p.waitForFunction(`document.fonts.check("${TAGLINE.weight} 12px Heebo", "ק")`);
+  }
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(
     file,
@@ -172,5 +176,50 @@ await shot(page({
 // Home-screen icon. iOS ignores SVG favicons and falls back to a screenshot
 // without this file.
 await shot(tilePage({ px: 180 }), { width: 180, height: 180, file: `${OUT}/apple-touch-icon.png` });
+
+/**
+ * TRANSPARENT PNGs OF THE LOGO ITSELF — for anywhere that is not this site.
+ *
+ * The SVGs next door are the better file and stay the answer wherever they are
+ * accepted: they are vector, so they hold at billboard size, and they carry no
+ * background at all. But an ad platform, a print shop, a slide deck or a
+ * marketplace's own creative uploader will often take PNG and nothing else
+ * (owner, 2026-08-21: *"so I have files to use if I want to put this on an ad
+ * or something"*). Handing someone a PNG they have to screenshot out of a
+ * browser is how a logo ends up on air with a white box behind it.
+ *
+ * 2400px wide is chosen rather than round: it is a full-bleed A4 at 300dpi with
+ * room to crop, and it downsamples cleanly to every web size. Both tones,
+ * because a logo on a photograph or a dark ad needs the white one and there is
+ * no way to make one from the other without an editor.
+ */
+function svgPage(file, widthPx) {
+  const svg = readFileSync(`${ROOT}/public/brand/${file}`, 'utf8');
+  const [, , vbW, vbH] = svg.match(/viewBox="([^"]+)"/)[1].split(' ').map(Number);
+  const height = Math.round((widthPx * vbH) / vbW);
+  return {
+    height,
+    html: `<!doctype html><meta charset="utf-8"><style>
+      html,body{margin:0;background:transparent}
+      img{display:block;width:${widthPx}px;height:${height}px}
+    </style><img src="data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}" alt="">`,
+  };
+}
+
+for (const [svg, out] of [
+  ['dezabin-wordmark.svg', 'dezabin-wordmark.png'],
+  ['dezabin-wordmark-white.svg', 'dezabin-wordmark-white.png'],
+  ['dezabin-lockup.svg', 'dezabin-lockup.png'],
+  ['dezabin-lockup-white.svg', 'dezabin-lockup-white.png'],
+  ['dezabin-lockup-en.svg', 'dezabin-lockup-en.png'],
+  ['dezabin-lockup-en-white.svg', 'dezabin-lockup-en-white.png'],
+  ['dezabin-mark.svg', 'dezabin-mark.png'],
+  ['dezabin-mark-white.svg', 'dezabin-mark-white.png'],
+]) {
+  // The mark is one letter — 2400px of it is a poster of a D nobody asked for.
+  const width = svg.includes('-mark') ? 1200 : 2400;
+  const { html, height } = svgPage(svg, width);
+  await shot(html, { width, height, transparent: true, file: `${OUT}/brand/${out}` });
+}
 
 await browser.close();

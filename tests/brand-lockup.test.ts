@@ -451,6 +451,24 @@ describe('the fonts the generator reads are in the repo', () => {
     expect(read('assets/brand-archive/2026-08-21-chakra-petch/README.md')).toContain('ChakraPetch-Bold.ttf');
   });
 
+  it('ships a raster of the logo for everywhere that will not take an SVG', () => {
+    /**
+     * The SVGs are the better file and stay the answer wherever they are taken.
+     * But an ad platform, a print shop or a slide deck will often accept PNG and
+     * nothing else, and a logo nobody can hand over is a logo that ends up
+     * screenshotted out of a browser with a white box behind it (owner,
+     * 2026-08-21). Both tones, because there is no making one from the other
+     * without an editor.
+     */
+    for (const f of [
+      'dezabin-wordmark.png', 'dezabin-wordmark-white.png',
+      'dezabin-lockup.png', 'dezabin-lockup-white.png',
+      'dezabin-lockup-en.png', 'dezabin-lockup-en-white.png',
+      'dezabin-mark.png', 'dezabin-mark-white.png',
+    ])
+      expect(fs.existsSync(path.join(ROOT, 'public/brand', f)), f).toBe(true);
+  });
+
   it('says where the clip measurement lives, so the tool is not an orphan', () => {
     // A tool nothing points at is a tool nobody runs. The header's own note is
     // where somebody stands when the logo looks cut again.
