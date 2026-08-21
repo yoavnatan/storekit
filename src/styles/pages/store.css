@@ -511,6 +511,26 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   position: absolute;
   inset: 0;
   z-index: -1;
+  /* 50%, and RAISING IT HAS BEEN TRIED AND REJECTED — 2026-08-21. Read this before "fixing"
+     the flicker below, because the fix looks obvious and the owner has already seen it.
+
+     Chrome rasterises a backdrop-filter on the compositor and, during a fast flick over a band
+     this wide, stops re-rastering and draws the raw backdrop instead, catching up when the
+     scroll stops. It is visible in the owner's own screen recording: consecutive frames where
+     the prices behind the chips are razor-sharp *through* the bar. It is not this page's bug and
+     it cannot be forced — promotion and `will-change` were both measured and neither held it.
+     Nor is it caused by the class that switches the band on, which was measured stable over a
+     full scroll at 1x/4x/6x CPU, at three widths, in Chromium and WebKit.
+
+     The apparent answer is to stop depending on the blur: tint the band enough that losing it
+     costs only depth. Four levels were rendered on the live page over real photos with the blur
+     forced off, the owner picked 78%, it shipped — and he rejected it on sight: it did not stop
+     the flicker being noticeable (the band still changes character frame to frame, just from
+     "frosted" to "flat" instead of to "gone") and it made the bar heavy and opaque. Reverted the
+     same day, on his instruction, and the guard test that pinned the floor went with it.
+
+     So: 50% is a decision, not a default. If the flicker is worth another attempt, it has to be
+     an attempt at the BLUR — not at the tint, and not at a number between these two. */
   background: color-mix(in srgb, var(--color-bg) 50%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
   backdrop-filter: blur(14px) saturate(1.05);
