@@ -463,15 +463,33 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: color-mix(in srgb, var(--color-bg) 50%, transparent);
+  /* 78%, not the 50% this carried until 2026-08-21 — and the number is load-bearing, so
+     don't tune it back down for looks.
+
+     **A backdrop-filter is not a guarantee.** Chrome rasterises it on the compositor, and
+     during a fast flick over a full-bleed band this wide it simply stops re-rastering and
+     draws the raw backdrop instead, coming back when the scroll stops. Caught in the
+     owner's own screen recording (2026-08-21): consecutive frames where the prices behind
+     the chips are legible and razor-sharp *through* the bar, then blurred again. It is not
+     a bug we can fix and not a bug we introduced — the promotion/`will-change` tricks were
+     measured and none of them stopped it.
+
+     So the tint has to hold the bar up alone, and the blur is a bonus that may or may not
+     be there on any given frame. At 50% it did not: with the blur gone the bar disappeared
+     and the shopper scrolled product photos straight through the category row. Four levels
+     were rendered on the live page over real photos with the blur forced off, and 78% is
+     the one the owner picked — still see-through enough that the colours underneath come
+     through, still a surface when the blur does not arrive.
+
+     NO SHADOW, deliberately (2026-08-02, and the reasoning is on the deleted --shadow-bar
+     in base/tokens.css). The border-bottom draws the edge. Glass plus a drop shadow is the
+     ~2020 Dribbble take; system glass (iOS nav bars, macOS toolbars) is hairline-only.
+     That still holds — what changed is only that the DEPTH cue can no longer be the blur
+     alone, because the blur is not always drawn. */
+  background: color-mix(in srgb, var(--color-bg) 78%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
   backdrop-filter: blur(14px) saturate(1.05);
   -webkit-backdrop-filter: blur(14px) saturate(1.05);
-  /* NO SHADOW, deliberately (2026-08-02, and the reasoning is on the deleted --shadow-bar
-     in base/tokens.css). The blur IS the depth cue here — content behind this row visibly
-     goes out of focus, which says "in front" far louder than a 10% shadow, and the
-     border-bottom above draws the edge. Glass plus a drop shadow is the ~2020 Dribbble
-     take; system glass (iOS nav bars, macOS toolbars) is hairline-only. */
   opacity: 0;
   transition: opacity 0.2s ease;
 }
