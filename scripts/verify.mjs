@@ -471,10 +471,13 @@ const run = async (check) => {
         ? `verify: red with no failing test — ${starved.length} file(s) never started. Re-running only those…`
         : 'verify: red with no failing test — a worker never started. Re-running the suite once…');
     }
-    // The narrow re-run drops `--maxWorkers`: a handful of files does not need a share of anything,
-    // and the claim above is still held, so nothing else on the machine has been given those cores.
+    // **The narrow re-run keeps the same `--maxWorkers` share.** Its file list is usually shorter
+    // than the share, so this changes nothing most of the time — but "usually" is not a bound, and
+    // a run that lost several workers at once would otherwise burst to `vitest.config.ts`'s default
+    // of four while another session's suite is holding half the budget. The claim taken above is a
+    // share, not the machine.
     const second = await spawnCheck(starved.length
-      ? { ...check, args: [...check.args, ...starved] }
+      ? { ...sized, args: [...sized.args, ...starved] }
       : sized);
     if (second.code !== 0) return second;
     // The first attempt's PASSES are the ones being reported — the re-run only covers what it
