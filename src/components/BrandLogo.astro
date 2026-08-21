@@ -95,23 +95,26 @@ const { tone = 'brand', size, tagline = false, class: className = '' } = Astro.p
 const NAME = 'Dezabin';
 
 /**
- * The tagline follows the visitor's language in both places it appears — the
- * drawn line under the mark and the `aria-label` that is the homepage `<h1>`'s
- * whole accessible name. Both read `home.startSelling`. It is the one part of
- * the lockup that stays LIVE TEXT, precisely because it changes with the
+ * The second line stays LIVE TEXT, precisely because it changes with the
  * language; it is Heebo, which the site already ships, so it costs nothing.
  *
- * The two languages are laid out differently, and the reason is arithmetic
- * rather than taste. The Hebrew is 19 glyphs and `TAGLINE.sizeEm` solves it to
- * sit flush with the wordmark on one line. "A home for independent stores" is 28
- * characters — roughly half again as wide at the same size — so no single line
- * of it fits the mark, and the flush-both-edges result the Hebrew gets is not
- * available to it at all. The owner's call (2026-08-07) was that two lines are
- * fine and that being aligned matters more than being one line.
+ * IT IS CENTRED UNDER THE NAME, NOT FLUSH WITH IT (owner, 2026-08-21). The
+ * previous lockup matched the two ink widths exactly and needed a size solve and
+ * a bearing-cancelling margin to do it. This one is a different device: a small
+ * light line centred under a heavy tight name, where the CONTRAST between them
+ * does the work rather than the alignment. There is nothing left to solve — the
+ * generator hands over a size, a gap and a tracking, and the column centres.
+ *
+ * THE TWO LANGUAGES SAY DIFFERENT THINGS, and that is deliberate. Hebrew keeps
+ * the slogan; English says MARKETPLACE, which is the one word that does in
+ * English what the Hebrew line does in Hebrew — name the thing in a breath. The
+ * `aria-label` still reads `home.startSelling` in both, because that string is
+ * also the homepage `<h1>`'s accessible name and has to stay a sentence.
  */
 const lang = getLang(Astro.cookies);
 const isHe = lang === 'he';
 const t = getT(lang);
+const track = isHe ? TAGLINE.trackEm.he : TAGLINE.trackEm.en;
 
 /**
  * A gradient is referenced by id, and two logos on one page (the header and the
@@ -156,14 +159,10 @@ const taglineTone =
     // does nothing. It was a literal in this list AND in scripts/generate-brand-assets.mjs, which
     // meant the site header and the mail header could drift apart with nothing to notice it.
     'inline-flex flex-col align-middle',
-    // The Hebrew line is narrower than the mark and hangs off the start edge by
-    // design, so the column aligns to start. The English line is WIDER than the
-    // mark, which makes it the widest child and therefore the column's width —
-    // start-aligning there would pin the mark to one edge with the whole
-    // overhang on the other. Centring the column instead splits the overhang
-    // evenly and keeps the mark on the lockup's axis. Only reachable with
-    // `tagline`, i.e. the homepage h1; the header and the auth pages draw none.
-    isHe || !tagline ? 'items-start' : 'items-center',
+    // Centred in both languages now: the second line is narrower than the name
+    // in both, and centring it under the name IS the lockup. Without a tagline
+    // there is one child and the alignment cannot show, so it does not matter.
+    'items-center',
     className,
   ]}
   style={`row-gap:${TAGLINE.gapEm}em${size ? `;font-size:${size}` : ''}`}
@@ -216,57 +215,32 @@ const taglineTone =
     </g>
   </svg>
   {tagline && (
-    /* HEEBO, AT ITS NATURAL SPACING — both halves of that are the fix
-     * (2026-08-05). It was Rubik 600 stretched with +0.0356em of tracking to
-     * reach the name's width. Two problems, one cause. Hebrew is drawn to sit
-     * close: tracking it open does not enlarge it, it loosens it, and a loosened
-     * Hebrew word under a tight Latin wordmark is what read as amateur (owner:
-     * "לא מספיק מקצועי ולא מספיק מתאים לאתר"). And a second family for one line
-     * on one page failed the first design-line test — is it already in the
-     * system — while costing a preload on EVERY page.
+    /* HEEBO, SMALL AND CENTRED — the second half of the lockup.
      *
-     * The width match is kept, because it is what makes this a lockup rather
-     * than two stacked lines, and it is solved with SIZE at the font's own
-     * spacing. `TAGLINE.sizeEm` is that ratio, computed by the generator from
-     * both faces' real ink widths.
+     * WEIGHT AND SIZE ARE THE CONTRAST, NOT THE WIDTH. This line used to be
+     * matched to the wordmark's ink width and flush at both ends; it is now a
+     * third of the cap height, centred, and light against a very heavy name.
+     * That is the device the owner asked for on 2026-08-21, and it is why the
+     * size doubled from a first pass that read as a caption.
      *
-     * FLUSH ON BOTH ENDS, INK TO INK, AND THAT IS WHAT THE MARGIN IS FOR
-     * (owner, 2026-08-05: "חשוב שהטקסט בעברית — כולל הצ׳ופצ׳יק של הי׳ — ישב בול
-     * על הרוחב"). Matching the two ink WIDTHS is only half the job. The other
-     * half is that a line box is not its ink: Heebo leaves a side bearing to the
-     * right of the מ, while the wordmark now has none at all — its viewBox is
-     * cropped to the stroked ink. Align the boxes, which is all `items-start`
-     * can do, and the Hebrew therefore starts a visible pixel INSIDE the
-     * English however exact the ratio is. `TAGLINE.marginEm` is exactly that
-     * bearing, negated, in the tagline's OWN em — which is why it is applied
-     * here and not on the column.
+     * TRACKING IS PER-LANGUAGE AND THE ASYMMETRY IS THE POINT. The Latin line is
+     * opened wide — that is what makes it read as a line of small caps under a
+     * name. Hebrew takes a tenth of it, because opening Hebrew does not enlarge
+     * the word, it loosens it, and a loosened Hebrew line under a tight Latin
+     * name is exactly what read as amateur on 2026-08-05 ("לא מספיק מקצועי").
+     * Both numbers are in `TAGLINE.trackEm`, measured rather than chosen.
      *
-     * Weight 500 under the wordmark: the gap is what keeps this a subtitle
-     * rather than a second name. */
+     * THE NEGATIVE END MARGIN IS NOT A NUDGE. `letter-spacing` is applied after
+     * the LAST character too, so the ink sits half a space inside a box that is
+     * then centred — the line lands visibly off-axis, which is the first thing
+     * the owner spotted about the English version. Taking one whole tracking
+     * unit back off the inline end makes the box the ink again. It is in the
+     * tagline's OWN em, which is what `letter-spacing` is in. */
     <span
       dir={isHe ? 'rtl' : 'ltr'}
-      class:list={[
-        'font-medium',
-        taglineTone,
-        // Hebrew: the measured lockup above — one line, flush by construction.
-        isHe && 'leading-none',
-        // English: one line, centred on the mark, and allowed to overhang it.
-        //
-        // "A home for independent stores" is 28 characters against the Hebrew's
-        // 19, so it cannot be flush inside the mark at this size — and the
-        // owner's call (2026-08-07) was that overhanging is fine and centred is
-        // what matters. Centred, not start-aligned, because an overhang that
-        // spills to one side only reads as a mistake; split evenly it reads as
-        // the lockup being wider than the mark.
-        //
-        // A first attempt boxed it to wrap instead, and gave one word per line:
-        // `em` inside this span resolves against the span's OWN font-size, so
-        // the box was a third of what was intended. Any length here has to be
-        // divided by the size first — which is why there is no length here now.
-        !isHe && 'whitespace-nowrap leading-none',
-      ]}
-      style={`font-size:${TAGLINE.sizeEm}em${isHe ? `;margin-inline-start:${TAGLINE.marginEm}em` : ''}`}
+      class:list={['whitespace-nowrap leading-none', taglineTone]}
+      style={`font-size:${TAGLINE.sizeEm}em;font-weight:${TAGLINE.weight};letter-spacing:${track}em;margin-inline-end:${-track}em`}
       aria-hidden="true"
-    >{t.home.startSelling}</span>
+    >{t.brand.tagline}</span>
   )}
 </span>

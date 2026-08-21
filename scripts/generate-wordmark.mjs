@@ -1,284 +1,167 @@
 /**
  * Builds the brand lockup — `npm run brand:wordmark`.
  *
- * WHY THE LETTERS ARE OUTLINES AND NOT TEXT (2026-08-10).
- * The wordmark is Chakra Petch 700 thickened by 0.014em, and a thickening is an
- * outline: the family stops at 700 and has no variable axis, so there is no
- * heavier cut to switch to. CSS cannot paint `-webkit-text-stroke` with a
- * gradient — the outline would have to be a flat colour and would halo against
- * the ramp — so the wordmark has to be SVG, and once it is SVG the letters may
- * as well be paths. That buys three things, and the third is the one that
- * matters most here:
- *   • Chakra Petch never ships. It is not used anywhere else on the site, so
- *     outlining it means no eleventh font preload on every page.
+ * THE WORDMARK IS THE TYPEFACE, AND NOTHING ELSE (2026-08-21). "Dezabin" set in
+ * Libre Franklin ExtraBold at the face's own spacing. There is no drawn letter,
+ * no thickening, no tracking and no levelling: every one of those was in the
+ * previous lockup for a reason, and every one of those reasons went away with
+ * the drawn octagon.
+ *
+ *   • THE DRAWN D IS GONE. It was the only part of the mark that was ours, and
+ *     it was also the whole of what read as square — a straight back and three
+ *     45° cuts. Every softer replacement was rendered and rejected over
+ *     2026-08-21: a bowl that wraps past the arm ("not clear, doesn't fit the
+ *     rest"), a chamfered wrap, a short flat foot, and the rounded families that
+ *     could carry them ("looks like it's for children"). The owner's brief
+ *     landed on "a clear, ordinary typeface, thick enough to see, stable,
+ *     classic", and a drawn letter is the opposite of ordinary.
+ *   • NO THICKENING. Chakra Petch stops at 700 with no variable axis, so 800 did
+ *     not exist and a centred stroke was the substitute. Libre Franklin has a
+ *     real ExtraBold; a stroke on top of it would only close the counters.
+ *   • NO LEVELLED GAPS, and this is the one to understand before touching the
+ *     spacing again. Levelling every ink gap to their mean was CORRECT under the
+ *     thickening — a centred stroke eats its own width out of every gap
+ *     regardless of how much was there, so the tight pairs went to nothing. With
+ *     no stroke there is nothing to correct, and levelling actively damages the
+ *     word: Libre Franklin sets `ez` at 17 units against a 65 mean, and opening
+ *     it to the mean floats the z in space so its diagonal reads as a slab. The
+ *     owner saw exactly that — "the z looks thick, in all of them" — which is
+ *     the tell that it was the code and not the face. The tight pairs are tight
+ *     ON PURPOSE: a z has less white inside its own box than a round letter.
+ *   • NO TRACKING. Same argument. The face's own spacing is the answer until
+ *     something eats it.
+ *
+ * WHY THE LETTERS ARE STILL OUTLINES. Unchanged, and it is not about the
+ * thickening — that was only what forced the issue:
+ *   • Libre Franklin never ships. Nothing else on the site uses it, so outlining
+ *     it means no eleventh font preload on every page.
  *   • The logo cannot render in the wrong face. Every face in main.css is
  *     `font-display: optional`, which means a face not already available at
- *     first paint is not used AT ALL for that page view — the trap that made
- *     two successive alignment "fixes" measure 24px wrong in August. A path has
- *     no such state.
- *   • The site's logo and the poster file become the same drawing.
+ *     first paint is not used AT ALL for that page view — the trap that made two
+ *     successive alignment "fixes" measure 24px wrong in August. A path has no
+ *     such state.
+ *   • The site's logo and the poster files are one drawing.
  *
- * WHY opentype.js IS A DEPENDENCY AT ALL. `generate-brand-assets.mjs` argues
- * against "a font rasteriser in the app's own dependencies", and that argument
- * still holds — this is a devDependency for a generator run BY HAND, whose
- * output is committed, and nothing at runtime imports it. It is the same shape
- * as Playwright next door. The alternative was pasting path data nobody could
- * regenerate.
+ * THE SECOND LINE IS A DIFFERENT DEVICE NOW. It used to be flush with the
+ * wordmark on both ends, matched by SIZE because Hebrew cannot be tracked out to
+ * a width. It is now small, centred and set under the name — the contrast
+ * between a heavy tight name and a light open line is what does the work, and
+ * `TAGLINE_TRACK_HE` is deliberately a tenth of what the Latin line takes,
+ * because Hebrew loosens rather than enlarges when it is opened. Stretching it
+ * to full width is still what was rejected on 2026-08-05, and is still the
+ * failure mode to avoid.
  *
- * WHAT IS AUTHORED AND WHAT IS DERIVED. The only authored things are the D's
- * identity (half a regular octagon, cut = H/(2+√2)), the two optical ratios,
- * the tracking and the thickening. Everything else — the mark's height, width
- * and stem, the gap to the `e`, the tagline's size and margin — is read off the
- * font. That is the rule the previous wordmark was built under and it is why a
- * weight change was never one line.
+ * WHAT IS AUTHORED AND WHAT IS DERIVED. Authored: the tagline's size, gap and
+ * two trackings, and the favicon's box. Everything else — the height, the
+ * widths, the pen positions, the ink box — is read off the font. There are far
+ * fewer authored numbers than there used to be, and that is the point: the
+ * previous lockup needed eleven because it was a drawing.
  *
- * OUTPUT. One module, `src/lib/brand-lockup.ts`, plus the static SVGs. Every
- * surface reads the module, so the old "four surfaces must stay byte-identical"
- * problem is now one file; `tests/brand-lockup.test.ts` holds the static files
- * to it.
+ * OUTPUT. One module, `src/lib/brand-lockup.ts`, plus the static SVGs and the
+ * favicon. Every surface reads the module; `tests/brand-lockup.test.ts` holds
+ * the static files to it. The lockup that shipped until 2026-08-21 is kept whole
+ * under `assets/brand-archive/`.
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import opentype from 'opentype.js';
+import { translations } from '../src/i18n/translations.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const FONTS = resolve(ROOT, 'assets/brand-fonts');
 
 /* ---------------------------------------------------------------- authored */
 
-/** The wordmark's tracking. Negative is the point: heavy weight plus negative
- *  tracking is what closes the seven letters into ONE SOLID SHAPE, and that
- *  shape is the logo (owner, 2026-08-05 and again 2026-08-10).
- *
- *  It sets the block's DENSITY and nothing else. How that density is shared out
- *  between the six junctions is `EVEN_GAPS` below, which cannot change the total
- *  by construction — so this number still means exactly what it always meant. */
-const TRACKING = -0.04;
+/** The name, and the letters the wordmark is. */
+const WORD = 'Dezabin';
 
-/**
- * EVEN THE INK GAPS OUT (owner, 2026-08-17, looking at the header: "eza —
- * הרווח שלהן צפוף יותר מאשר כל השאר?"). He was right, and it measured worse than
- * it looked. In Chakra Petch the `z` carries side bearings of 25/25 where every
- * other letter here carries 45–60, and the face kerns `ez` and `za` by a further
- * −5 each; the six ink gaps across `Dezabin` therefore ran
+/** The second line's size, as a share of the wordmark's CAP HEIGHT.
  *
- *      D-e 65   e-z 25   z-a 25   a-b 75   b-i 65   i-n 75      (font units)
- *
- * and the thickening then made the disproportion worse rather than better,
- * because a centred stroke eats STROKE units out of every gap regardless of how
- * much was there: 51 / 11 / 11 / 61 / 51 / 61. A gap of 11 units is a gap the eye
- * reads as none. `eza` was a lump inside the word.
- *
- * The fix is to give every junction the MEAN of those six gaps. The mean is the
- * one target that leaves the wordmark's total ink width untouched — the deltas
- * sum to zero by definition — which is why this can be a pure redistribution and
- * not a decision about density. The block stays exactly as tight as it was; only
- * its rhythm changes. It also means the tagline's solve below is unaffected, so
- * neither bisection needed re-measuring.
- *
- * WHY NOT AN AREA SOLVE. The strictly correct instrument measures the white
- * BETWEEN two letters over their shared height, not the shortest distance
- * between their bounding boxes, and it would give the `z` slightly less room
- * than a straight-sided pair because its diagonal leaves a void the ink edges
- * do not describe. That is a real refinement of perhaps five units. It is not
- * what was wrong here — a 5× disproportion is — and it would add an authored
- * "how much of the counter counts" constant that nobody could later re-derive.
- * If the `z` ever reads loose, THAT is the thing to reach for, and this comment
- * is where to start.
- *
- * Turning this off restores the font's own spacing exactly.
- */
-const EVEN_GAPS = true;
+ *  0.33 is the owner's own doubling (2026-08-21): the first pass sat at 0.165,
+ *  which read as a caption rather than as the other half of a lockup. At 0.33
+ *  the two lines are a pair. Anything much past this and the line stops being
+ *  subordinate, which is the whole device. */
+const TAGLINE_SIZE = 0.33;
 
-/** The thickening, in em. Chakra Petch has 300–700 and no variable axis, so
- *  "800" does not exist; this is the standard substitute — a centred outline on
- *  the letters AND on the mark, which grows every edge by this much and eats the
- *  counters by the same amount. 0.014 takes the stem from 0.137em to 0.151em,
- *  between Chakra Petch's own 700 and Heebo 800's 0.167em (owner, 2026-08-10). */
-const THICKEN = 0.014;
+/** The space between the two lines, also a share of the cap height. Small on
+ *  purpose: the gap is what keeps this a subtitle rather than a second name. */
+const TAGLINE_GAP = 0.24;
 
-/** Half a REGULAR octagon — the mark's identity, tied to its HEIGHT so the
- *  silhouette stays regular whatever font the letters are. Deepening it turns
- *  the counter into a wedge and the mark reads as a ▶; that was measured at
- *  8.2 / 9.5 / 10.7 / 12 units in August and fails from about 10 on. */
-const CUT_RATIO = 1 / (2 + Math.SQRT2);
+/** The second line's weight, in Heebo. 400 and not 300 for one reason that has
+ *  nothing to do with taste: main.css ships Heebo 400–800 and the tagline is
+ *  LIVE TEXT, so 300 would be an eleventh and twelfth font file (latin + hebrew)
+ *  on every page of the site for one line on two of them. At this size the
+ *  difference between them is small; the cost is not. */
+const TAGLINE_WEIGHT = 400;
 
-/** A horizontal looks heavier than it measures and a diagonal looks lighter.
- *  These correct for the eye, not for a weight, so they are CARRIED OVER from
- *  the original drawing rather than re-derived per font. */
-const H_RATIO = 0.799;
-const D_RATIO = 0.9037;
+/** Tracking on the second line, in the TAGLINE's own em.
+ *
+ *  Latin gets 0.22 — that is the device: a wide-tracked light line under a tight
+ *  heavy name. Hebrew gets a tenth of it, because Hebrew does not take tracking:
+ *  opening it does not enlarge the word, it loosens it, and a loosened Hebrew
+ *  line under a tight Latin name is what read as amateur on 2026-08-05
+ *  ("לא מספיק מקצועי ולא מספיק מתאים לאתר"). 0.05 is the most it took before the
+ *  word came apart, measured on 2026-08-21 across 0 / 0.05 / 0.09 / full-width. */
+const TAGLINE_TRACK_EN = 0.22;
+const TAGLINE_TRACK_HE = 0.05;
 
 /** The site's brand gradient — the one `.btn` wears, unchanged. */
 const BRAND_A = '#2a3c40';
 const BRAND_B = '#3a5260';
 
-/**
- * The tagline's margin, corrected against the BUILT site — in the tagline's own
- * em, added to the bearing derived below. Arithmetic is only the starting point
- * here and always has been: the previous lockup's shipped tagline size was
- * 0.3886 where the calculation said 0.3882.
- *
- * Two things the font metrics cannot know, and they pull in the same direction:
- *   • The stroke's MITER JOINS reach past half a stroke width at every corner
- *     sharper than 180° — up to √2 × half at a right angle — so the wordmark's
- *     ink overflows its own viewBox by a fraction of a pixel on the right.
- *   • The browser's rendered right inset on the Hebrew run measures smaller than
- *     Heebo's own right side bearing for the מ (0.56px against 1.40px at hero
- *     size), which no table predicts.
- * Together they left the Hebrew half a pixel outside the wordmark on every
- * desktop viewport. Measured with scratch measurement over 7 viewports × DPR
- * 1/2/3 on `npm start`, not on the dev server, and not by eye.
- *
- * RE-MEASURE THIS if the thickening, the tracking or the slogan changes. It is
- * the one number here that a font cannot give you.
- */
-const TAGLINE_MARGIN_BISECTION = 0.02571;
-
-/**
- * And the same for its SIZE, added to the ratio derived below. The arithmetic
- * ratio put the Hebrew one CSS pixel wide at every desktop viewport: the two
- * faces' ADVANCE widths agree with the browser exactly (8.57912em, checked), so
- * this is the ink sitting differently inside those advances once rasterised —
- * not a layout mistake, and not something either font's tables predict.
- *
- * Measured on the built site, one raster of the whole lockup split into its two
- * bands. Do NOT measure the two elements separately: each one then quantises
- * against its own fractionally-positioned box and reports a whole pixel of
- * disagreement that no visitor can see.
- */
-const TAGLINE_SIZE_BISECTION = -0.00244;
-
-/** The space between the wordmark and the Hebrew line, in the LOCKUP's em.
- *
- *  Opened from 0.05 to 0.12 on 2026-08-14 (owner, looking at the mail header): at
- *  0.05 the Hebrew read as attached to the wordmark rather than set under it.
- *  Still small on purpose — the gap is what keeps this a subtitle rather than a
- *  second name, and too much of it makes them two unrelated lines.
- *
- *  It lives HERE, with the other authored numbers, because it is the lockup's
- *  spacing and every surface has to take it from the same place. That was the
- *  intent on 2026-08-14 and it half-happened: the value reached the module and
- *  the two live surfaces, but the module is GENERATED and this script was never
- *  taught to emit it. So it survived only until the next `brand:wordmark` run —
- *  which would have deleted a value `BrandLogo.astro` and the mail header both
- *  import — and the poster lockup below went on drawing the old 0.05 the whole
- *  time, which is exactly the two-copies drift the move was made to end.
- *  `tests/brand-lockup.test.ts` now pins the module's exports against this
- *  file's template, so a hand-edit of a generated file cannot survive again. */
-const TAGLINE_GAP = 0.12;
-
-/** How much of the FAVICON's box the mark's ink fills, top to bottom. The tab
- *  icon only — the header, the menu row and the poster files all keep the box
- *  cropped to the ink (`MARK_VIEW_BOX`), because there they sit next to other
- *  things that already give them air.
- *
- *  A tab strip gives none. Cropped to the ink, the D touched all four edges of
- *  its 16px slot and read as a dark slab rather than as a letter (owner,
- *  2026-08-19: *"קצת מגושם"*). This is a SHRINK, not a lightening — the drawing,
- *  the stroke and the stem are untouched, so it does not reopen the density
- *  decision in memory `project_brand_logo`; the letter simply stops filling the
- *  square.
- *
- *  The value is a SIXTEENTH, so the ink lands on whole device pixels in the slot
- *  it is actually drawn in: 16 × 0.9375 = 15 exactly, with half a pixel of air
- *  top and bottom, and 32px and 48px divide the same way. A fractional height is
- *  the thing to avoid here — the rasteriser smears it, and a smeared 16px letter
- *  is mush.
- *
- *  0.9375 and not less: 0.875 was shipped first and read too small (owner, the
- *  same day: *"מעט קטן מדי, צריך משהו באמצע... כמו פאביקונים רגילים"*), which is
- *  the right instinct — a tab icon carries a margin, but a mark that retreats
- *  from its slot stops being the thing you pick out of twenty tabs. One
- *  sixteenth of clear space is what the ordinary ones wear. And not more: at 1.0
- *  the D touched all four edges and read as a dark slab rather than as a letter
- *  (*"קצת מגושם"*), which is what opened this.
- *
- *  Below ~0.80 was rendered and rejected — the counter closes at 16px and the
- *  letter goes back to reading as a blob, i.e. the same fault by the other
- *  route. `tests/brand-lockup.test.ts` holds the band. */
+/** How much of the FAVICON's box the D's ink fills, top to bottom — the tab icon
+ *  only. Carried over unchanged from the octagon (owner, 2026-08-19), because
+ *  the reasoning is about the SLOT and not about the letter: a tab strip gives
+ *  an icon no air of its own, and edge to edge any letter reads as a slab. The
+ *  value is a sixteenth so the ink lands on whole device pixels — 16 × 0.9375 =
+ *  15 exactly, with half a pixel of air top and bottom, and 32 and 48 divide the
+ *  same way. A fractional height gets smeared, and smeared at 16px is mush.
+ *  `tests/brand-lockup.test.ts` holds the band. */
 const FAVICON_INK = 0.9375;
 
-/** The slogan the poster lockup carries. The site's own line is live text in
- *  BrandLogo.astro, because it follows the visitor's language; this is the
- *  Hebrew one, outlined, for a file that has to stand alone. */
-const SLOGAN = 'מתחם חנויות דיגיטלי';
+/** The slogans the poster lockups carry, READ FROM THE DICTIONARY rather than
+ *  copied. The site's own line is live text in BrandLogo.astro because it
+ *  follows the visitor's language, and a second copy of the words here is the
+ *  drift this repo has been bitten by more than once: change the tagline in
+ *  `translations.ts` and every poster, the mail header and the share card keep
+ *  saying the old thing, with nothing to notice. Node imports the `.ts` directly
+ *  (type stripping, ≥22.18) — it holds only `export const`s. */
+const SLOGAN_HE = translations.he.brand.tagline;
+const SLOGAN_EN = translations.en.brand.tagline;
 
 /* -------------------------------------------------------------- the faces */
 
 const face = (file) => opentype.parse(readFileSync(resolve(FONTS, file)).buffer);
-const cp = face('ChakraPetch-Bold.ttf');
-const heebo = face('Heebo-Medium.ttf');
+
+/** Libre Franklin ExtraBold, static. NOT the variable file instanced at 800:
+ *  opentype.js applies `gvar` to the outlines but not `HVAR` to the advances, so
+ *  an instanced run comes out 0.4% wide — right shapes, wrong spacing, and
+ *  spacing is the thing this file exists to get right. The static cut measures
+ *  5.1307 ink-to-cap against the browser's own 5.1330, which is rounding. */
+const lf = face('LibreFranklin-ExtraBold.ttf');
+
+/** Heebo, variable, instanced at the tagline's weight for the outlined slogan.
+ *  The advance caveat above does not bite here: the second line is CENTRED, not
+ *  matched to a width, so nothing downstream depends on its exact advance. */
+const heebo = face('Heebo-Variable.ttf');
+const HEEBO_AT = { variation: { wght: TAGLINE_WEIGHT } };
 
 /** A glyph's ink box, in font units, y measured UP from the baseline. */
-function ink(font, ch) {
+function ink(font, ch, opts = {}) {
   const g = font.charToGlyph(ch);
-  const b = g.getPath(0, 0, font.unitsPerEm).getBoundingBox();
+  const b = g.getPath(0, 0, font.unitsPerEm, opts, font).getBoundingBox();
   // getPath renders y-down with the baseline at 0, so ink above the baseline is
   // negative. Flip it back, because every number in the brand notes is "above".
-  return { adv: g.advanceWidth, x1: b.x1, x2: b.x2, top: -b.y1 };
-}
-
-/**
- * The straight back's thickness, read off the outline rather than off a metrics
- * table: flatten the contours to segments, cut them with a horizontal line at
- * half the ink height, and take the first run of ink. A row-scan is the right
- * instrument for a stem (a metrics table has no such number), and the first run
- * is the back — the same rule the pixel-scan version used.
- */
-function stemOf(font, ch) {
-  const g = font.charToGlyph(ch);
-  const path = g.getPath(0, 0, font.unitsPerEm);
-  const box = path.getBoundingBox();
-  const y = (box.y1 + box.y2) / 2;
-
-  const segs = [];
-  let sx = 0, sy = 0, cx = 0, cy = 0;
-  const line = (x1, y1, x2, y2) => segs.push([x1, y1, x2, y2]);
-  const flatten = (x0, y0, cmd) => {
-    // 24 steps is far past what a stem measurement can notice, and it costs
-    // nothing here — this runs once, by hand.
-    const N = 24;
-    let px = x0, py = y0;
-    for (let i = 1; i <= N; i++) {
-      const t = i / N,
-        u = 1 - t;
-      let qx, qy;
-      if (cmd.type === 'Q') {
-        qx = u * u * x0 + 2 * u * t * cmd.x1 + t * t * cmd.x;
-        qy = u * u * y0 + 2 * u * t * cmd.y1 + t * t * cmd.y;
-      } else {
-        qx = u ** 3 * x0 + 3 * u * u * t * cmd.x1 + 3 * u * t * t * cmd.x2 + t ** 3 * cmd.x;
-        qy = u ** 3 * y0 + 3 * u * u * t * cmd.y1 + 3 * u * t * t * cmd.y2 + t ** 3 * cmd.y;
-      }
-      line(px, py, qx, qy);
-      px = qx;
-      py = qy;
-    }
-  };
-  for (const c of path.commands) {
-    if (c.type === 'M') { sx = cx = c.x; sy = cy = c.y; }
-    else if (c.type === 'L') { line(cx, cy, c.x, c.y); cx = c.x; cy = c.y; }
-    else if (c.type === 'Q' || c.type === 'C') { flatten(cx, cy, c); cx = c.x; cy = c.y; }
-    else if (c.type === 'Z') { line(cx, cy, sx, sy); cx = sx; cy = sy; }
-  }
-
-  const xs = [];
-  for (const [x1, y1, x2, y2] of segs) {
-    if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y)) xs.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
-  }
-  xs.sort((a, b) => a - b);
-  if (xs.length < 2) throw new Error(`stemOf(${ch}): the scanline found no ink`);
-  return xs[1] - xs[0]; // the first run — the straight back
+  return { adv: g.advanceWidth, x1: b.x1, x2: b.x2, top: -b.y1, bottom: b.y2 };
 }
 
 /**
  * Serialise a path ourselves rather than calling opentype's `toPathData`.
  *
  * NOT a preference. `toPathData(2)` emits the literal string `NaN` for some
- * coordinates — reproducibly, for the lamed's y in this slogan — and an SVG path
- * containing NaN is invalid, so the renderer draws up to the error and stops.
- * That is what left the poster lockup showing one Hebrew letter out of
+ * coordinates — reproducibly, for the lamed's y in the Hebrew slogan — and an
+ * SVG path containing NaN is invalid, so the renderer draws up to the error and
+ * stops. That is what left the poster lockup showing one Hebrew letter out of
  * nineteen, and it is silent: the Path's own getBoundingBox is correct, so
  * nothing downstream notices. `tests/brand-lockup.test.ts` fails on any NaN in a
  * generated file so this cannot come back quietly.
@@ -299,154 +182,82 @@ function toPath(path, dp = 2) {
     .join('');
 }
 
-/** Lay a string out with kerning and tracking, and return one path plus its ink
- *  box. `dir: 'rtl'` places the first logical character rightmost; Hebrew needs
- *  no contextual shaping, so reversing the run is the whole of it.
+/**
+ * Lay a string out at the face's own spacing, kerning included, and return one
+ * path plus its ink box and its final pen.
  *
- *  `deltas` is an extra advance after each glyph, in FONT UNITS, in the order the
- *  glyphs are drawn — the hook `evenGapDeltas` needs and nothing else uses. */
-function run(font, text, { size, x, y, tracking = 0, dir = 'ltr', deltas = [] }) {
-  const upem = font.unitsPerEm;
-  const scale = size / upem;
+ * `dir: 'rtl'` places the first logical character rightmost; Hebrew needs no
+ * contextual shaping, so reversing the run is the whole of it.
+ *
+ * `tracking` is in em and is added after every glyph — the LAST one included,
+ * which is what Blink does with `letter-spacing`. That matters only for the
+ * Latin slogan, which is centred against a run measured the same way.
+ */
+function run(font, text, { size, x, y, tracking = 0, dir = 'ltr', opts = {} }) {
+  const scale = size / font.unitsPerEm;
   const glyphs = font.stringToGlyphs(text);
   const order = dir === 'rtl' ? [...glyphs].reverse() : glyphs;
   const path = new opentype.Path();
   let pen = x;
   order.forEach((g, i) => {
-    path.extend(g.getPath(pen, y, size));
+    path.extend(g.getPath(pen, y, size, opts, font));
     const next = order[i + 1];
-    const kern = next ? font.getKerningValue(g, next) : 0;
-    pen += (g.advanceWidth + kern + (deltas[i] ?? 0)) * scale + tracking * size;
+    pen += (g.advanceWidth + (next ? font.getKerningValue(g, next) : 0)) * scale + tracking * size;
   });
-  return { path, box: path.getBoundingBox() };
+  return { path, box: path.getBoundingBox(), pen };
 }
-
-/**
- * The ink gap before each glyph of `text`, laid out left to right at `tracking`,
- * in font units. `after` is the ink edge the run starts from — the mark's right
- * edge — so the first entry is the mark→`e` junction and the block is measured
- * as the seven shapes it actually is.
- *
- * Bounding boxes, not the metrics table: `lsb`/`rsb` are what the FONT declares,
- * and the point of this measurement is what the eye gets.
- */
-function inkGaps(font, text, { tracking, x, after }) {
-  const upem = font.unitsPerEm;
-  const glyphs = font.stringToGlyphs(text);
-  const gaps = [];
-  let pen = x;
-  let right = after;
-  glyphs.forEach((g, i) => {
-    const b = g.getPath(0, 0, upem).getBoundingBox();
-    gaps.push(pen + b.x1 - right);
-    right = pen + b.x2;
-    const kern = glyphs[i + 1] ? font.getKerningValue(g, glyphs[i + 1]) : 0;
-    pen += g.advanceWidth + kern + tracking * upem;
-  });
-  return gaps;
-}
-
-/**
- * What to add at each junction so all of them come out at the same ink gap — see
- * `EVEN_GAPS`. Returns the shift for the run's START (the mark→`e` junction) and
- * the per-glyph deltas `run` takes; every delta is cumulative in the pen, so
- * each junction only has to make up its own shortfall.
- *
- * The target is the mean, so the deltas sum to zero and the wordmark's width
- * does not move. Nothing here is authored: it is the font's own spacing,
- * levelled.
- */
-function evenGapDeltas(gaps) {
-  const target = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-  return {
-    target,
-    start: target - gaps[0],
-    // `deltas[i]` lands after glyph i, i.e. it opens the gap BEFORE glyph i+1.
-    deltas: gaps.slice(1).map((g) => target - g),
-  };
-}
-
-/** Ink width of a string at 1em, for the ratios below. */
-const inkWidthEm = (font, text, dir) => {
-  const r = run(font, text, { size: 1000, x: 0, y: 0, dir });
-  return (r.box.x2 - r.box.x1) / 1000;
-};
 
 /* ------------------------------------------------------------- the numbers */
 
-const UPEM = cp.unitsPerEm;
-const B = ink(cp, 'b');
-const D = ink(cp, 'D');
+const UPEM = lf.unitsPerEm;
 
-/** The mark stands to the ASCENDER, not to the cap line — a deliberate logotype
- *  override, made with the rule in hand (owner, 2026-08-05). Aligning a drawn
- *  symbol to the tallest thing in the word is ordinary practice; the rule it
- *  breaks is a rule about running text. In Chakra Petch the two are only 0.013em
- *  apart (cap 0.700em, ascender 0.713em), so this costs far less than it did in
- *  Heebo — but it stays, because it is the same mark. */
-const H = B.top;                         // the mark's height, in font units
-const W = D.x2 - D.x1;                   // the font's own D width — unchanged
-const STEM = stemOf(cp, 'D');
-const D_LSB = D.x1;
-const D_RSB = D.adv - D.x2;
+/** The lockup's own coordinate space: x = 0 at the D's left INK edge, y = 0 at
+ *  the tallest ink in the word, and the baseline at y = H. The wordmark's box is
+ *  cropped to the ink, so it has no side bearings of its own — every surface
+ *  that positions it can trust its edges. */
+const D = ink(lf, 'D');
+const CAP = ink(lf, 'H').top;
 
-const CUT = H * CUT_RATIO;
-const TV = STEM;
-const TH = TV * H_RATIO;
-const TD = TV * D_RATIO;
+/* The word, drawn from a pen that puts the D's ink at x = 0. */
+const wordAll = run(lf, WORD, { size: UPEM, x: -D.x1, y: 0 });
+const TOP = -wordAll.box.y1;                       // the tallest ink: the b's ascender
+const H = TOP;                                     // baseline sits here
+const INK_W = wordAll.box.x2 - wordAll.box.x1;
 
-/** Path coordinates, in a 1000-unit em: three decimals is a thousandth of a
- *  unit, far past anything a raster can show. */
-const r = (v) => Math.round(v * 1000) / 1000;
-/** Ratios that get multiplied by a font-size before they reach a pixel, so they
- *  need the precision the old lockup was bisected at — 0.0004em is one pixel of
- *  movement at hero size. */
-const r5 = (v) => Math.round(v * 1e5) / 1e5;
+/* The two halves every consumer draws: the D on its own (the favicon, the menu
+   row, a tile) and the rest of the word. Together they are exactly `wordAll` —
+   the split exists because the D has to be drawable alone, not because the mark
+   is a separate thing any more. */
+const markPathRun = run(lf, 'D', { size: UPEM, x: -D.x1, y: H });
+const MARK_PATH = toPath(markPathRun.path);
+const MARK_W = markPathRun.box.x2 - markPathRun.box.x1;
 
-/* The mark: x from 0, y from 0 (ink top) down to H (the baseline). */
-const outer = `M0 0 L${r(W - CUT)} 0 L${r(W)} ${r(CUT)} L${r(W)} ${r(H - CUT)} L${r(W - CUT)} ${r(H)} L0 ${r(H)} Z`;
-const iL = TV, iR = W - TV, iT = TH, iB = H - TH;
-const kTop = W - CUT - TD * Math.SQRT2;         // inner top diagonal:    x - y = kTop
-const kBot = W - CUT + H - TD * Math.SQRT2;     // inner bottom diagonal: x + y = kBot
-const inner = `M${r(iL)} ${r(iT)} L${r(iT + kTop)} ${r(iT)} L${r(iR)} ${r(iR - kTop)} L${r(iR)} ${r(kBot - iR)} L${r(kBot - iB)} ${r(iB)} L${r(iL)} ${r(iB)} Z`;
-const MARK_PATH = `${outer} ${inner}`;
-
-/**
- * Where "ezabin" starts. The mark is spaced as a LETTER, not as a symbol: if it
- * were the real glyph its ink would sit D_LSB past the pen, so the pen that drew
- * it was at -D_LSB, and the next pen is that plus the D's advance plus the
- * tracking every other pair in the word gets. A mark spaced like a symbol is
- * what made early versions read as an icon glued next to a word.
- *
- * `EVEN_GAPS` then levels all six junctions, this one included — which is the
- * same rule stated once more rather than an exception to it: whatever the mark
- * gets, every letter gets.
- */
-const NATURAL_PEN = -D_LSB + D.adv + TRACKING * UPEM;
-const GAPS = inkGaps(cp, 'ezabin', { tracking: TRACKING, x: NATURAL_PEN, after: W });
-const EVEN = EVEN_GAPS ? evenGapDeltas(GAPS) : { start: 0, deltas: [], target: null };
-const PEN = NATURAL_PEN + EVEN.start;
-const letters = run(cp, 'ezabin', {
-  size: UPEM,
-  x: PEN,
-  y: H,
-  tracking: TRACKING,
-  deltas: EVEN.deltas,
-});
+/* Where "ezabin" starts: the D's own advance from the same pen, with the pair's
+   kerning. Nothing is authored here — this is the face's spacing, which is the
+   whole decision. */
+const dGlyph = lf.charToGlyph('D');
+const eGlyph = lf.charToGlyph('e');
+const PEN = -D.x1 + dGlyph.advanceWidth + lf.getKerningValue(dGlyph, eGlyph);
+const letters = run(lf, WORD.slice(1), { size: UPEM, x: PEN, y: H });
 const LETTERS_PATH = toPath(letters.path);
 
-const STROKE = THICKEN * UPEM;
-const INK_W = letters.box.x2 - 0;                 // the mark starts at x = 0
-const VB = (w, h) => `${r(-STROKE / 2)} ${r(-STROKE / 2)} ${r(w + STROKE)} ${r(h + STROKE)}`;
+/** Kept for the surfaces that draw a stroke attribute. There is no thickening
+ *  any more, so it is zero: a zero-width stroke paints nothing, which lets every
+ *  consumer keep the same markup. */
+const STROKE = 0;
 
-/* The tagline is still live text on the site (it follows the visitor's
-   language), so what the module carries is the ratio, not a path. The svg's box
-   is tight to the stroked ink, so the wordmark has no side bearing of its own
-   and the margin is simply Heebo's — cancelling the bearing is the whole job. */
-const SLOGAN_INK = inkWidthEm(heebo, SLOGAN, 'rtl');
-const MEM = ink(heebo, 'מ');
-const HEEBO_RSB = (MEM.adv - MEM.x2) / heebo.unitsPerEm;
-const TAG_SIZE = (INK_W + STROKE) / UPEM / SLOGAN_INK + TAGLINE_SIZE_BISECTION;
+/** Path coordinates, in a 1000-unit em: two decimals is a hundredth of a unit,
+ *  far past anything a raster can show. */
+const r = (v) => Math.round(v * 100) / 100;
+/** Ratios that get multiplied by a font-size before they reach a pixel. */
+const r5 = (v) => Math.round(v * 1e5) / 1e5;
+
+const VIEW_BOX = `0 0 ${r(INK_W)} ${r(H)}`;
+const MARK_VIEW_BOX = `0 ${r(H - CAP)} ${r(MARK_W)} ${r(CAP)}`;
+
+/* ---------------------------------------------------- the tagline's numbers */
+
+const TAG_SIZE_UNITS = TAGLINE_SIZE * CAP;
 
 /** The D's slice of the ramp, for a mark shown on its own in brand colour: it
  *  covers the first N% of the lockup's width and takes exactly that slice, or it
@@ -454,78 +265,87 @@ const TAG_SIZE = (INK_W + STROKE) / UPEM / SLOGAN_INK + TAGLINE_SIZE_BISECTION;
 const lerp = (a, b, t) =>
   '#' +
   [0, 2, 4]
-    .map((i) => Math.round(parseInt(a.slice(1 + i, 3 + i), 16) + (parseInt(b.slice(1 + i, 3 + i), 16) - parseInt(a.slice(1 + i, 3 + i), 16)) * t)
-      .toString(16)
-      .padStart(2, '0'))
+    .map((i) =>
+      Math.round(
+        parseInt(a.slice(1 + i, 3 + i), 16) +
+          (parseInt(b.slice(1 + i, 3 + i), 16) - parseInt(a.slice(1 + i, 3 + i), 16)) * t,
+      )
+        .toString(16)
+        .padStart(2, '0'),
+    )
     .join('');
-const D_SLICE_END = lerp(BRAND_A, BRAND_B, W / INK_W);
+const D_SLICE_END = lerp(BRAND_A, BRAND_B, MARK_W / INK_W);
 
 /* --------------------------------------------------------------- the module */
 
 const module_ = `/**
  * GENERATED by scripts/generate-wordmark.mjs — do not hand-edit.
  * Run \`npm run brand:wordmark\` after changing anything it treats as authored
- * (the tracking, the thickening, the octagon's cut, the two optical ratios).
+ * (the tagline's size, gap and two trackings, and the favicon's box).
  *
- * The wordmark is OUTLINES, not text: Chakra Petch is not shipped to the browser
- * at all, so the logo cannot render in a fallback face and costs no font preload.
- * The generator's header explains why in full.
+ * The wordmark is "${WORD}" in Libre Franklin ExtraBold at the FACE'S OWN
+ * SPACING — no drawn letter, no thickening, no tracking, no levelled gaps. The
+ * generator's header says why each of those went, and why re-adding one would
+ * bring back the fault it was blamed for.
  *
- * Coordinates: 1000 units = 1em, x starts at the mark's left ink edge, y starts
- * at the ascender and the baseline is at y = ${r(H)}.
+ * The letters are OUTLINES, not text: Libre Franklin is not shipped to the
+ * browser at all, so the logo cannot render in a fallback face and costs no font
+ * preload.
+ *
+ * Coordinates: 1000 units = 1em, x starts at the D's left ink edge, y starts at
+ * the tallest ink in the word and the baseline is at y = ${r(H)}.
  */
 
-/** The drawn D — half a regular octagon, rebuilt against Chakra Petch 700. */
+/** The D on its own — the favicon, the account-menu row, a tile. It is the
+ *  face's own letter; there is nothing drawn about it. */
 export const MARK_PATH =
   '${MARK_PATH}';
 
-/** "ezabin", outlined at ${TRACKING}em tracking${
-  EVEN_GAPS
-    ? `, with every junction in the
- *  block — the mark's included — levelled to the same ${r(EVEN.target)}-unit ink gap. The
- *  levelling is a redistribution and cannot change the width; the generator's
- *  \`EVEN_GAPS\` says why the font's own spacing needed it`
-    : ''
-}. */
+/** "${WORD.slice(1)}", outlined, starting at the D's own advance. */
 export const LETTERS_PATH =
   '${LETTERS_PATH}';
 
-/** The thickening, as a centred stroke in the coordinates above. Draw it with
- *  \`paint-order="stroke"\` and the SAME paint as the fill, on both the mark and
- *  the letters, or the two stop matching. */
-export const STROKE_WIDTH = ${r(STROKE)};
+/** No thickening any more — Libre Franklin has a real ExtraBold. Zero, rather
+ *  than removed, so every surface can keep drawing the same stroke attribute
+ *  without a special case: a zero-width stroke paints nothing. */
+export const STROKE_WIDTH = ${STROKE};
 
-/** viewBox for the whole wordmark, tight to the stroked ink. */
-export const VIEW_BOX = '${VB(INK_W, H)}';
+/** viewBox for the whole wordmark, tight to the ink. */
+export const VIEW_BOX = '${VIEW_BOX}';
 
-/** viewBox for the mark on its own — the favicon, the menu row, a tile. */
-export const MARK_VIEW_BOX = '${VB(W, H)}';
+/** viewBox for the D on its own, tight to ITS ink — cap height, not the word's
+ *  ascender, because a lone capital has no ascender above it to allow for. */
+export const MARK_VIEW_BOX = '${MARK_VIEW_BOX}';
 
 /** CSS height for the wordmark: everything else in the component is em, so this
- *  is the only size knob. It is the ascender plus the stroke. */
-export const HEIGHT_EM = ${r5((H + STROKE) / UPEM)};
+ *  is the only size knob. */
+export const HEIGHT_EM = ${r5(H / UPEM)};
 
-/** The lockup's ink width, in em of the wordmark's own font-size. */
-export const INK_WIDTH_EM = ${r5((INK_W + STROKE) / UPEM)};
+/** The wordmark's ink width, in em of its own font-size. */
+export const INK_WIDTH_EM = ${r5(INK_W / UPEM)};
 
 /** The brand ramp, as ONE gradient across the whole wordmark. It must be
  *  \`gradientUnits="userSpaceOnUse"\`: the default resolves per element, which
  *  gives every letter its own full ramp and reads as pieces stuck together. */
 export const GRADIENT = { from: '${BRAND_A}', to: '${BRAND_B}', x1: 0, y1: 0, x2: ${r(INK_W)}, y2: ${r(H)} };
 
-/** The Hebrew line under the mark, which is still live Heebo text because it
- *  follows the visitor's language. \`sizeEm\` matches its ink width to the
- *  wordmark's; \`marginEm\` (in the tagline's OWN em) cancels Heebo's side
- *  bearing to the right of the מ, because a line box is not its ink and aligning
- *  the boxes parks the Hebrew a visible pixel inside the English.
- *  Both are re-solved by the generator whenever the wordmark moves — and
- *  \`sizeEm\` then carries a bisection against the built site, see the test.
+/** The second line, which is still live Heebo text because it follows the
+ *  visitor's language.
  *
- *  \`gapEm\` is the space between the two lines, in the LOCKUP's em, so the site
- *  header and the mail header move together; a divergence there is a brand that
- *  looks assembled twice. It is authored rather than solved — see the
- *  generator. */
-export const TAGLINE = { sizeEm: ${r5(TAG_SIZE)}, marginEm: ${r5(-HEEBO_RSB + TAGLINE_MARGIN_BISECTION)}, gapEm: ${TAGLINE_GAP} };
+ *  It is CENTRED under the wordmark now, not flush with it — so there is no
+ *  margin to cancel a side bearing with any more, and no size solve either.
+ *  \`sizeEm\` and \`gapEm\` are in the LOCKUP's em so the site header, the mail
+ *  header and the poster files move together.
+ *
+ *  \`trackEm\` differs by language and that is the point: the Latin line is
+ *  opened wide, which is the device; Hebrew takes a tenth of it, because opening
+ *  Hebrew loosens the word instead of enlarging it. */
+export const TAGLINE = {
+  sizeEm: ${r5(TAG_SIZE_UNITS / UPEM)},
+  gapEm: ${r5((TAGLINE_GAP * CAP) / UPEM)},
+  weight: ${TAGLINE_WEIGHT},
+  trackEm: { he: ${TAGLINE_TRACK_HE}, en: ${TAGLINE_TRACK_EN} },
+};
 `;
 
 mkdirSync(resolve(ROOT, 'src/lib'), { recursive: true });
@@ -540,8 +360,8 @@ const grad = (id, g) =>
 function svgFile({ viewBox, defs = '', paint, paths, extra = '', comment }) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">
   <!-- ${comment} -->${defs ? `\n  <defs>${defs}</defs>` : ''}
-  <g fill="${paint}" stroke="${paint}" stroke-width="${r(STROKE)}" stroke-linejoin="miter" paint-order="stroke">
-${paths.map((p) => `    <path fill-rule="evenodd" d="${p}"/>`).join('\n')}
+  <g fill="${paint}">
+${paths.map((p) => `    <path d="${p}"/>`).join('\n')}
   </g>${extra}
 </svg>
 `;
@@ -553,57 +373,67 @@ const POSTER_NOTE =
 const OUT = resolve(ROOT, 'public/brand');
 mkdirSync(OUT, { recursive: true });
 
-const G = { ...{ from: BRAND_A, to: BRAND_B }, x1: 0, y1: 0, x2: r(INK_W), y2: r(H) };
-const MG = { from: BRAND_A, to: D_SLICE_END, x1: 0, y1: 0, x2: r(W), y2: r(H) };
+const G = { from: BRAND_A, to: BRAND_B, x1: 0, y1: 0, x2: r(INK_W), y2: r(H) };
+const MG = { from: BRAND_A, to: D_SLICE_END, x1: 0, y1: 0, x2: r(MARK_W), y2: r(H) };
 
 const files = {
-  'dezabin-wordmark.svg': svgFile({ viewBox: VB(INK_W, H), defs: grad('g', G), paint: 'url(#g)', paths: [MARK_PATH, LETTERS_PATH], comment: POSTER_NOTE }),
-  'dezabin-wordmark-dark.svg': svgFile({ viewBox: VB(INK_W, H), paint: BRAND_A, paths: [MARK_PATH, LETTERS_PATH], comment: `${POSTER_NOTE} Solid brand colour, for one-colour print.` }),
-  'dezabin-wordmark-white.svg': svgFile({ viewBox: VB(INK_W, H), paint: '#ffffff', paths: [MARK_PATH, LETTERS_PATH], comment: `${POSTER_NOTE} White, for a brand-coloured or photographic ground.` }),
-  'dezabin-mark.svg': svgFile({ viewBox: VB(W, H), defs: grad('g', MG), paint: 'url(#g)', paths: [MARK_PATH], comment: `${POSTER_NOTE} The mark alone, carrying its own slice of the wordmark's ramp.` }),
-  'dezabin-mark-white.svg': svgFile({ viewBox: VB(W, H), paint: '#ffffff', paths: [MARK_PATH], comment: `${POSTER_NOTE} The mark alone, white.` }),
+  'dezabin-wordmark.svg': svgFile({ viewBox: VIEW_BOX, defs: grad('g', G), paint: 'url(#g)', paths: [MARK_PATH, LETTERS_PATH], comment: POSTER_NOTE }),
+  'dezabin-wordmark-dark.svg': svgFile({ viewBox: VIEW_BOX, paint: BRAND_A, paths: [MARK_PATH, LETTERS_PATH], comment: `${POSTER_NOTE} Solid brand colour, for one-colour print.` }),
+  'dezabin-wordmark-white.svg': svgFile({ viewBox: VIEW_BOX, paint: '#ffffff', paths: [MARK_PATH, LETTERS_PATH], comment: `${POSTER_NOTE} White, for a brand-coloured or photographic ground.` }),
+  'dezabin-mark.svg': svgFile({ viewBox: MARK_VIEW_BOX, defs: grad('g', MG), paint: 'url(#g)', paths: [MARK_PATH], comment: `${POSTER_NOTE} The D alone, carrying its own slice of the wordmark's ramp.` }),
+  'dezabin-mark-white.svg': svgFile({ viewBox: MARK_VIEW_BOX, paint: '#ffffff', paths: [MARK_PATH], comment: `${POSTER_NOTE} The D alone, white.` }),
 };
 
-/* The lockup: wordmark plus the Hebrew line, outlined too, because a poster file
-   has to stand on its own. Its size and position are the same solve the site
-   uses — the ink widths match and the bearing is cancelled. */
-const TAG_SIZE_UNITS = TAG_SIZE * UPEM;
-const tagRun = run(heebo, SLOGAN, { size: TAG_SIZE_UNITS, x: 0, y: 0, dir: 'rtl' });
-const GAP = TAGLINE_GAP * UPEM; // the same gap the component and the mail header take
-const tagShift = INK_W + STROKE / 2 - tagRun.box.x2;      // right edges flush, ink to ink
-const tagLift = H + STROKE / 2 + GAP - tagRun.box.y1;
-const tagPath = run(heebo, SLOGAN, { size: TAG_SIZE_UNITS, x: tagShift, y: tagLift, dir: 'rtl' });
-const lockupH = tagPath.box.y2 + STROKE / 2;
-const lockupVB = `${r(-STROKE / 2)} ${r(-STROKE / 2)} ${r(INK_W + STROKE)} ${r(lockupH + STROKE / 2)}`;
-
-for (const [name, paint, defs] of [
-  ['dezabin-lockup.svg', 'url(#g)', grad('g', G)],
-  ['dezabin-lockup-white.svg', '#ffffff', ''],
-]) {
-  files[name] = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${lockupVB}">
+/**
+ * The lockups: wordmark plus a second line, outlined too, because a poster file
+ * has to stand on its own. One per language — the English file carries
+ * MARKETPLACE, the Hebrew one the Hebrew slogan (owner, 2026-08-21) — and both
+ * are CENTRED on the wordmark, which is the whole device.
+ *
+ * The centring is done on the INK, not on the advance: with tracking applied
+ * after the last glyph as well, an advance-centred line sits half a space to one
+ * side, which is exactly the "MARKETPLACE isn't centred" the owner spotted.
+ */
+function lockupFile({ text, dir, tracking, paint, defs }) {
+  const first = run(heebo, text, { size: TAG_SIZE_UNITS, x: 0, y: 0, tracking, dir, opts: HEEBO_AT });
+  const shift = (INK_W - (first.box.x2 - first.box.x1)) / 2 - first.box.x1;
+  const lift = H + TAGLINE_GAP * CAP - first.box.y1;
+  const placed = run(heebo, text, { size: TAG_SIZE_UNITS, x: shift, y: lift, tracking, dir, opts: HEEBO_AT });
+  const height = placed.box.y2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r(INK_W)} ${r(height)}">
   <!-- ${POSTER_NOTE} The full lockup: wordmark plus slogan, both outlined. -->${defs ? `\n  <defs>${defs}</defs>` : ''}
-  <g fill="${paint}" stroke="${paint}" stroke-width="${r(STROKE)}" stroke-linejoin="miter" paint-order="stroke">
-    <path fill-rule="evenodd" d="${MARK_PATH}"/>
-    <path fill-rule="evenodd" d="${LETTERS_PATH}"/>
+  <g fill="${paint}">
+    <path d="${MARK_PATH}"/>
+    <path d="${LETTERS_PATH}"/>
+    <path d="${toPath(placed.path)}"/>
   </g>
-  <path fill="${paint}" d="${toPath(tagPath.path)}"/>
 </svg>
 `;
 }
 
+files['dezabin-lockup.svg'] = lockupFile({ text: SLOGAN_HE, dir: 'rtl', tracking: TAGLINE_TRACK_HE, paint: 'url(#g)', defs: grad('g', G) });
+files['dezabin-lockup-white.svg'] = lockupFile({ text: SLOGAN_HE, dir: 'rtl', tracking: TAGLINE_TRACK_HE, paint: '#ffffff', defs: '' });
+files['dezabin-lockup-en.svg'] = lockupFile({ text: SLOGAN_EN, dir: 'ltr', tracking: TAGLINE_TRACK_EN, paint: 'url(#g)', defs: grad('g', G) });
+files['dezabin-lockup-en-white.svg'] = lockupFile({ text: SLOGAN_EN, dir: 'ltr', tracking: TAGLINE_TRACK_EN, paint: '#ffffff', defs: '' });
+
 for (const [name, body] of Object.entries(files)) writeFileSync(resolve(OUT, name), body);
 
-/* The favicon is the mark on a flat fill that follows the tab strip's theme — a
+/* The favicon is the D on a flat fill that follows the tab strip's theme — a
    dark ink on a dark tab strip is an invisible favicon, which is the one thing a
-   favicon may not be. Its own file rather than a poster variant, because it
-   carries that <style> and nothing else does. */
-/* A SQUARE box, ink-centred, with the ink filling FAVICON_INK of its height —
-   see that constant for why the tab is the one surface that gets padding. Square
-   because the slot is: a taller-than-wide box is letterboxed into it anyway, so
-   stating the square is the same drawing with the margins written down. */
-const FAV_SIDE = (H + STROKE) / FAVICON_INK;
-// The stroked ink runs -STROKE/2 → W+STROKE/2, so its centre is W/2, H/2.
-const FAV_VB = [r(W / 2 - FAV_SIDE / 2), r(H / 2 - FAV_SIDE / 2), r(FAV_SIDE), r(FAV_SIDE)].join(' ');
+   favicon may not be.
+
+   A SQUARE box, ink-centred, with the ink filling FAVICON_INK of its height —
+   see that constant for why the tab is the one surface that gets padding.
+   Square because the slot is: a taller-than-wide box is letterboxed into it
+   anyway, so stating the square is the same drawing with the margins written
+   down. */
+const FAV_SIDE = CAP / FAVICON_INK;
+const FAV_VB = [
+  r(MARK_W / 2 - FAV_SIDE / 2),
+  r(H - CAP / 2 - FAV_SIDE / 2),
+  r(FAV_SIDE),
+  r(FAV_SIDE),
+].join(' ');
 
 writeFileSync(
   resolve(ROOT, 'public/favicon.svg'),
@@ -613,30 +443,27 @@ writeFileSync(
        the header are one drawing and cannot drift apart. The box is the letter's
        own ink plus a margin: square, centred, the ink ${(FAVICON_INK * 100).toFixed(1)}% of the height.
        A tab strip gives an icon no air of its own, and edge to edge the D read
-       as a slab rather than as a letter. It is the BOX that changed and nothing
-       else — same path, same stroke, same stem as every other surface.
+       as a slab rather than as a letter. It is the BOX that carries that, and
+       nothing else — same path, same stem as every other surface.
 
        The fill follows the browser's theme rather than being fixed: SVG favicons
        honour prefers-color-scheme in Firefox and Chromium, and a browser that
        ignores it falls back to the brand colour, which is correct on every light
        tab strip. -->
   <style>
-    g { fill: ${BRAND_A}; stroke: ${BRAND_A}; }
-    @media (prefers-color-scheme: dark) { g { fill: #ffffff; stroke: #ffffff; } }
+    path { fill: ${BRAND_A}; }
+    @media (prefers-color-scheme: dark) { path { fill: #ffffff; } }
   </style>
-  <g stroke-width="${r(STROKE)}" stroke-linejoin="miter" paint-order="stroke">
-    <path fill-rule="evenodd" d="${MARK_PATH}"/>
-  </g>
+  <path d="${MARK_PATH}"/>
 </svg>
 `,
 );
 
-console.log(`brand lockup regenerated
-  ascender      ${r(H)}u = ${r(H / UPEM * 1000) / 1000}em
-  D width       ${r(W)}u = ${r(W / UPEM * 1000) / 1000}em
-  stem          ${r(TV)}u = ${r(TV / UPEM * 1000) / 1000}em  (+ ${THICKEN} stroke → ${r((TV + STROKE) / UPEM * 1000) / 1000}em)
-  octagon cut   ${r(CUT)}u = ${(100 * CUT_RATIO).toFixed(1)}% of the height
+console.log(`brand lockup regenerated — Libre Franklin ExtraBold, the face's own spacing
+  cap height    ${r(CAP)}u = ${r5(CAP / UPEM)}em
+  word height   ${r(H)}u = ${r5(H / UPEM)}em  (the b's ascender)
+  D width       ${r(MARK_W)}u = ${r5(MARK_W / UPEM)}em
   pen for "e"   ${r(PEN)}u
-  lockup ink    ${r((INK_W + STROKE) / UPEM * 1000) / 1000}em
-  tagline       ${r5(TAG_SIZE)}em (derived ${r5(TAG_SIZE - TAGLINE_SIZE_BISECTION)} + bisection ${TAGLINE_SIZE_BISECTION}), margin ${r5(-HEEBO_RSB + TAGLINE_MARGIN_BISECTION)}em  (derived ${r5(-HEEBO_RSB)} + bisection ${TAGLINE_MARGIN_BISECTION})
+  wordmark ink  ${r5(INK_W / UPEM)}em wide
+  tagline       ${r5(TAG_SIZE_UNITS / UPEM)}em, gap ${r5((TAGLINE_GAP * CAP) / UPEM)}em, Heebo ${TAGLINE_WEIGHT}, tracking he ${TAGLINE_TRACK_HE} / en ${TAGLINE_TRACK_EN}
   files         src/lib/brand-lockup.ts, public/favicon.svg, public/brand/*.svg`);

@@ -27,13 +27,15 @@ import { chromium } from 'playwright';
 import {
   MARK_PATH,
   LETTERS_PATH,
-  STROKE_WIDTH,
   VIEW_BOX,
   MARK_VIEW_BOX,
   HEIGHT_EM,
   GRADIENT,
   TAGLINE,
 } from '../src/lib/brand-lockup.ts';
+// The words come from the dictionary the site itself renders, never a copy —
+// see the same note in generate-wordmark.mjs.
+import { translations } from '../src/i18n/translations.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const OUT = resolve(ROOT, 'public');
@@ -59,17 +61,26 @@ const b64 = (p) => readFileSync(p).toString('base64');
  * no longer possible: there is one drawing, and this only decides how big and on
  * what ground. The only face still needed is Heebo, for the Hebrew line.
  */
-function page({ size, tone, tagline, background }) {
-  const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-500-normal.woff2`);
+function page({ size, tone, tagline, background, lang = 'he' }) {
+  const w = TAGLINE.weight;
+  const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-${w}-normal.woff2`);
+  const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-${w}-normal.woff2`);
   const paint = tone === 'white' ? '#fff' : 'url(#g)';
+  const isHe = lang === 'he';
+  const track = isHe ? TAGLINE.trackEm.he : TAGLINE.trackEm.en;
   return `<!doctype html><meta charset="utf-8"><style>
-    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:500;}
+    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:${w};unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;}
+    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2');font-weight:${w};}
     html,body{margin:0;height:100%}
     body{background:${background};display:flex;align-items:center;justify-content:center}
-    .logo{display:inline-flex;flex-direction:column;align-items:flex-start;row-gap:${TAGLINE.gapEm}em;font-size:${size}px}
+    .logo{display:inline-flex;flex-direction:column;align-items:center;row-gap:${TAGLINE.gapEm}em;font-size:${size}px}
     .logo svg{height:${HEIGHT_EM}em;width:auto;flex:none;display:block;max-width:none}
-    .tag{font-family:'Heebo';font-weight:500;font-size:${TAGLINE.sizeEm}em;line-height:1;direction:rtl;
-         margin-inline-start:${TAGLINE.marginEm}em;color:${tone === 'white' ? '#fff' : BRAND_A}}
+    /* The negative end margin is the trailing letter-space taken back: without
+       it the centred line sits half a tracking unit off its own axis. Same fix,
+       same reason, as in BrandLogo.astro. */
+    .tag{font-family:'Heebo';font-weight:${w};font-size:${TAGLINE.sizeEm}em;line-height:1;
+         direction:${isHe ? 'rtl' : 'ltr'};letter-spacing:${track}em;margin-inline-end:${-track}em;
+         white-space:nowrap;color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">
     <svg viewBox="${VIEW_BOX}">
@@ -77,11 +88,11 @@ function page({ size, tone, tagline, background }) {
         x1="${GRADIENT.x1}" y1="${GRADIENT.y1}" x2="${GRADIENT.x2}" y2="${GRADIENT.y2}">
         <stop offset="0" stop-color="${GRADIENT.from}"/><stop offset="1" stop-color="${GRADIENT.to}"/>
       </linearGradient></defs>
-      <g fill="${paint}" stroke="${paint}" stroke-width="${STROKE_WIDTH}" stroke-linejoin="miter" paint-order="stroke">
-        <path fill-rule="evenodd" d="${MARK_PATH}"/><path d="${LETTERS_PATH}"/>
+      <g fill="${paint}">
+        <path d="${MARK_PATH}"/><path d="${LETTERS_PATH}"/>
       </g>
     </svg>
-    ${tagline ? '<div class="tag">מתחם חנויות דיגיטלי</div>' : ''}
+    ${tagline ? `<div class="tag">${translations[lang].brand.tagline}</div>` : ''}
   </div>`;
 }
 
@@ -104,8 +115,7 @@ function tilePage({ px }) {
       <stop offset="0" stop-color="${BRAND_A}"/><stop offset="1" stop-color="${BRAND_B}"/></linearGradient></defs>
     <rect width="${TILE}" height="${TILE}" fill="url(#t)"/>
     <g transform="translate(${((TILE - w) / 2 - MARK_X * scale).toFixed(3)} ${((TILE - h) / 2 - MARK_Y * scale).toFixed(3)}) scale(${scale.toFixed(5)})">
-      <path fill="#fff" stroke="#fff" stroke-width="${STROKE_WIDTH}" stroke-linejoin="miter"
-            paint-order="stroke" fill-rule="evenodd" d="${MARK_PATH}"/>
+      <path fill="#fff" d="${MARK_PATH}"/>
     </g>
   </svg>`;
 }
@@ -123,7 +133,7 @@ async function shot(html, { width, height, scale = 1, file, transparent = false,
   // that produced a wrong measurement in August. `fonts.status` alone is not
   // enough; it reads "loaded" before anything has been asked for, so ask about
   // the face by name.
-  await p.waitForFunction('document.fonts.check("500 12px Heebo", "ק")');
+  await p.waitForFunction(`document.fonts.check("${TAGLINE.weight} 12px Heebo", "ק")`);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(
     file,

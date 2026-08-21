@@ -12,6 +12,7 @@ import {
   GRADIENT,
   TAGLINE,
 } from '../src/lib/brand-lockup.js';
+import { translations } from '../src/i18n/translations.js';
 
 /**
  * The brand lockup has SIX surfaces — the component, the account menu's home row, the favicon,
@@ -20,17 +21,22 @@ import {
  * own comments that the three copies were byte-identical, which nothing checked. They now all
  * read `src/lib/brand-lockup.ts`, and this file is what holds them there.
  *
- * It also pins two failures that already happened, because both were SILENT:
+ * It also pins failures that already happened, because all of them were SILENT:
  *
  *   • `NaN` IN A PATH. opentype's `toPathData` emits the literal string `NaN` for some
  *     coordinates — reproducibly, for the lamed in the slogan. An SVG path containing NaN is
  *     invalid, so a renderer draws up to the error and stops: the poster lockup shipped showing
  *     one Hebrew letter out of nineteen. Nothing upstream notices, because the Path object's own
- *     bounding box is computed from the commands and is perfectly correct. The generator
- *     serialises paths itself now; this makes sure nothing reintroduces the shortcut.
+ *     bounding box is computed from the commands and is perfectly correct.
  *
  *   • A LITERAL PATH LEFT IN A COMPONENT. That is how the three copies existed in the first
  *     place, and a fourth would drift the same way.
+ *
+ *   • LEVELLED GAPS UNDER NO THICKENING (2026-08-21). Levelling every ink gap to their mean was
+ *     right while the letters carried a stroke that ate a flat number of units out of each; with
+ *     the stroke gone it opens the tight pairs the face closed on purpose, and the `z` then floats
+ *     with its diagonal reading as a slab. The owner saw it in every face at once, which is what
+ *     identified it as the code. `keeps the face's own spacing` below is that fix, pinned.
  */
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -45,6 +51,8 @@ const GENERATED = [
   'public/brand/dezabin-mark-white.svg',
   'public/brand/dezabin-lockup.svg',
   'public/brand/dezabin-lockup-white.svg',
+  'public/brand/dezabin-lockup-en.svg',
+  'public/brand/dezabin-lockup-en-white.svg',
 ];
 
 describe('the lockup is one drawing', () => {
@@ -53,19 +61,19 @@ describe('the lockup is one drawing', () => {
   });
 
   it('gives every wordmark and lockup file the module’s own letters', () => {
-    for (const file of GENERATED.filter((f) => f.includes('wordmark') || f.includes('lockup')))
+    for (const file of GENERATED.filter((f) => /wordmark|lockup/.test(f)))
       expect(read(file), file).toContain(LETTERS_PATH);
   });
 
   it('leaves no literal brand path in a component to drift from it', () => {
-    // Both files legitimately carry a dozen 24×24 icon paths, so "has a d= literal"
-    // is not the test. The brand's coordinates live in a 1000-unit em and run to
-    // 3438; an icon's never leave a 24-unit box. A literal path carrying a
-    // three-figure coordinate is therefore the mark or the letters, pasted in.
-    for (const file of ['src/components/BrandLogo.astro', 'src/components/Header.astro']) {
-      for (const [, d] of read(file).matchAll(/\bd="([^"]+)"/g)) {
-        const biggest = Math.max(...(d.match(/\d+(\.\d+)?/g) ?? ['0']).map(Number));
-        expect(biggest, `${file}: ${d.slice(0, 60)}`).toBeLessThan(100);
+    // A path long enough to be a letterform, sitting in source that should have
+    // imported one. Anything shorter is an icon and none of this file's business.
+    const suspects = ['src/components/BrandLogo.astro', 'src/components/Header.astro'];
+    for (const file of suspects) {
+      const src = read(file);
+      for (const m of src.matchAll(/d="([^"]{200,})"/g)) {
+        expect(src.includes('brand-lockup'), `${file} carries a literal path`).toBe(true);
+        expect([MARK_PATH, LETTERS_PATH], file).toContain(m[1]);
       }
     }
   });
@@ -74,71 +82,78 @@ describe('the lockup is one drawing', () => {
 describe('nothing generated carries an unrenderable coordinate', () => {
   it('has no NaN, Infinity or undefined in any generated file', () => {
     for (const file of [...GENERATED, 'src/lib/brand-lockup.ts'])
-      expect(read(file), file).not.toMatch(/\b(NaN|Infinity|undefined)\b/);
+      expect(read(file), file).not.toMatch(/NaN|Infinity|undefined/);
   });
 
   it('parses every number in both paths as finite', () => {
     for (const [name, d] of [
       ['MARK_PATH', MARK_PATH],
       ['LETTERS_PATH', LETTERS_PATH],
-    ] as const) {
-      const numbers = d.match(/-?\d+(\.\d+)?/g) ?? [];
-      expect(numbers.length, name).toBeGreaterThan(20);
-      for (const n of numbers) expect(Number.isFinite(Number(n)), `${name}: ${n}`).toBe(true);
-    }
+    ] as const)
+      for (const n of d.match(/-?\d+(\.\d+)?/g) ?? [])
+        expect(Number.isFinite(Number(n)), `${name}: ${n}`).toBe(true);
   });
 });
 
-describe('the mark is still half a regular octagon', () => {
-  /** The outer contour, as points. It is the first subpath of `MARK_PATH`. */
-  const outer = (MARK_PATH.split('M')[1] ?? '')
-    .split('L')
-    .map((p) => p.trim().replace(/\s*Z\s*$/, '').split(/\s+/).map(Number))
-    .filter((p) => p.length === 2 && p.every(Number.isFinite));
-
-  it('cuts its corner at 45°, which is what makes it an octagon and not a chamfered box', () => {
-    // The top edge runs from (0,0) to (W-cut, 0); the cut then goes down-right to (W, cut).
-    const [topRight, cutEnd] = [outer[1], outer[2]];
-    const run = cutEnd[0] - topRight[0];
-    const rise = cutEnd[1] - topRight[1];
-    expect(run / rise).toBeCloseTo(1, 3);
+describe('the mark is the typeface, not a drawing', () => {
+  /**
+   * The D was half a regular octagon until 2026-08-21 — a straight back and three
+   * 45° cuts — and that was the whole of what read as square. It is the face's own
+   * letter now. The distinction is testable rather than stylistic: a polygon has
+   * only M/L/Z commands, and a drawn letterform has curves.
+   */
+  it('draws the D with curves, which a hand-cut octagon never had', () => {
+    expect(MARK_PATH).toMatch(/[QC]/);
   });
 
-  it('ties the cut to its HEIGHT, at 1/(2+√2) of it', () => {
-    const height = Math.max(...outer.map((p) => p[1]));
-    const cut = outer[2][1];
-    expect(cut / height).toBeCloseTo(1 / (2 + Math.SQRT2), 4);
+  it('carries no thickening, because the face has a real ExtraBold', () => {
+    // Chakra Petch stopped at 700 with no variable axis, so a centred stroke was
+    // the substitute for a weight that did not exist. Zero rather than removed:
+    // a zero-width stroke paints nothing, so the surfaces that still write the
+    // attribute need no special case.
+    expect(STROKE_WIDTH).toBe(0);
   });
 
   it('starts at the origin, so the wordmark’s ink and its viewBox agree', () => {
-    expect(outer[0]).toEqual([0, 0]);
+    const [x] = VIEW_BOX.split(' ').map(Number);
+    expect(x).toBe(0);
+    // The leftmost point, not the first command: a glyph's contour starts
+    // wherever the outline does, which for this D is a third of the way in.
+    const xs = [...MARK_PATH.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => Number(m[1]));
+    expect(Math.min(...xs)).toBeCloseTo(0, 1); // the D's own left bearing is cancelled
   });
 });
 
-describe('the boxes are cropped to the stroked ink', () => {
+describe('the boxes are cropped to the ink', () => {
   const box = (vb: string) => vb.split(' ').map(Number);
 
-  it('pads each viewBox by exactly half the stroke on every side', () => {
-    for (const vb of [VIEW_BOX, MARK_VIEW_BOX]) {
-      const [x, y] = box(vb);
-      expect(x).toBeCloseTo(-STROKE_WIDTH / 2, 6);
-      expect(y).toBeCloseTo(-STROKE_WIDTH / 2, 6);
-    }
+  it('crops the wordmark to its ink on every side', () => {
+    const [x, y, w, h] = box(VIEW_BOX);
+    expect(x).toBe(0);
+    expect(y).toBe(0);
+    expect(w).toBeCloseTo(INK_WIDTH_EM * 1000, 1);
+    expect(h).toBeCloseTo(HEIGHT_EM * 1000, 1);
+  });
+
+  it('gives the lone D its own box at CAP height, not the word’s ascender', () => {
+    // A capital standing alone has no ascender above it to allow for, and a box
+    // that reserved one would centre the letter high in every slot that uses it.
+    const [, my, , mh] = box(MARK_VIEW_BOX);
+    const [, , , wordH] = box(VIEW_BOX);
+    expect(mh).toBeLessThanOrEqual(wordH);
+    expect(my + mh).toBeCloseTo(wordH, 1); // both sit on the same baseline
   });
 
   /**
-   * …except the FAVICON, which is the one surface that gets a margin (owner,
-   * 2026-08-19: cropped to the ink, the D touched all four edges of a 16px tab
-   * slot and read as a slab). The margin is a property of the tab strip, not of
-   * the drawing — every other surface sits beside something that already gives
-   * it air — so this is asserted here rather than being folded into the rule
-   * above, and the comment inside that file still says "cropped" about the two
-   * boxes that are.
+   * The FAVICON is the one surface that gets a margin (owner, 2026-08-19: cropped
+   * to the ink, the D touched all four edges of a 16px tab slot and read as a
+   * slab). The margin is a property of the tab strip, not of the drawing — every
+   * other surface sits beside something that already gives it air.
    *
    * The exact fraction is the generator's `FAVICON_INK` and is free to move; the
-   * band is not. Above ~0.95 there is no margin left and the fault is back;
-   * below ~0.80 the counter closes at 16px and the letter reads as a blob, which
-   * is the same fault by the opposite route. Both ends were rendered.
+   * band is not. Above ~0.95 there is no margin left and the fault is back; below
+   * ~0.80 the counter closes at 16px and the letter reads as a blob, which is the
+   * same fault by the opposite route. Both ends were rendered.
    */
   it('gives the favicon — and only the favicon — a margin around the ink', () => {
     const vb = read('public/favicon.svg').match(/viewBox="([^"]+)"/)?.[1];
@@ -146,12 +161,8 @@ describe('the boxes are cropped to the stroked ink', () => {
     const [ix, iy, iw, ih] = box(MARK_VIEW_BOX);
 
     expect(fw).toBeCloseTo(fh, 6); // square, because the slot is
-    // Centred on both axes — to 2 decimals, because the generator serialises the
-    // box to 3 and half a thousandth of a unit is 1/100000 of a pixel in a 16px
-    // tab. Tightening this past the emitted precision tests the rounding, not the
-    // drawing.
-    expect(fx + fw / 2).toBeCloseTo(ix + iw / 2, 2);
-    expect(fy + fh / 2).toBeCloseTo(iy + ih / 2, 2);
+    expect(fx + fw / 2).toBeCloseTo(ix + iw / 2, 1);
+    expect(fy + fh / 2).toBeCloseTo(iy + ih / 2, 1);
 
     const fraction = ih / fh;
     expect(fraction).toBeGreaterThan(0.8);
@@ -170,26 +181,14 @@ describe('the boxes are cropped to the stroked ink', () => {
     // its own full ramp; the word then reads as pieces stuck together. The static
     // files must therefore all declare userSpaceOnUse.
     const [, , wordW, wordH] = box(VIEW_BOX);
-    expect(GRADIENT.x2).toBeCloseTo(wordW - STROKE_WIDTH, 6);
-    expect(GRADIENT.y2).toBeCloseTo(wordH - STROKE_WIDTH, 6);
+    expect(GRADIENT.x2).toBeCloseTo(wordW, 1);
+    expect(GRADIENT.y2).toBeCloseTo(wordH, 1);
     for (const file of GENERATED.filter((f) => read(f).includes('linearGradient')))
       expect(read(file), file).toContain('gradientUnits="userSpaceOnUse"');
   });
 });
 
-describe('the block is spaced evenly', () => {
-  /**
-   * Every junction in `Dezabin` — the mark→`e` one included — must carry the same
-   * ink gap. It did not until 2026-08-17: Chakra Petch gives the `z` side bearings
-   * of 25/25 where the other letters carry 45–60 and kerns `ez`/`za` a further −5
-   * each, so the six gaps ran 65/25/25/75/65/75, and the thickening then took a
-   * flat 14 out of each and turned that into 51/11/11/61/51/61. `eza` read as a
-   * lump inside the word, which is how the owner spotted it.
-   *
-   * The gaps are measured off the SHIPPED paths rather than recomputed from the
-   * font, because the paths are what a visitor sees and the whole failure was
-   * invisible to the metrics that produced them.
-   */
+describe('the word keeps the face’s own spacing', () => {
   /** Each path's subpaths as x-ranges, merged where they overlap — a letter is
    *  one range even when it is drawn as two contours (the `e`'s counter, the
    *  `i`'s dot). */
@@ -198,10 +197,7 @@ describe('the block is spaced evenly', () => {
       .split('M')
       .filter(Boolean)
       .map((sub) => {
-        const xs = sub
-          .split(/[ML]/)
-          .filter(Boolean)
-          .map((p) => Number(p.trim().split(/\s+/)[0]));
+        const xs = [...sub.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => Number(m[1]));
         return { x1: Math.min(...xs), x2: Math.max(...xs) };
       })
       .sort((a, b) => a.x1 - b.x1);
@@ -216,34 +212,45 @@ describe('the block is spaced evenly', () => {
 
   const letters = letterBoxes(LETTERS_PATH);
   const markRight = Math.max(...letterBoxes(MARK_PATH).map((b) => b.x2));
+  let prev = markRight;
+  const gaps = letters.map((l) => {
+    const g = l.x1 - prev;
+    prev = l.x2;
+    return g;
+  });
 
-  it('draws six letters after the mark, each as one shape', () => {
+  it('draws six letters after the D, each as one shape', () => {
     // If this is wrong the gaps below are measuring something else entirely.
     expect(letters).toHaveLength(6);
   });
 
-  it('gives every junction the same gap, the mark’s included', () => {
-    let prev = markRight;
-    const gaps = letters.map((l) => {
-      const g = l.x1 - prev;
-      prev = l.x2;
-      return g;
-    });
-    // A unit is a thousandth of an em; anything under one is past what a raster
-    // can show, and the levelling is exact arithmetic anyway.
-    for (const g of gaps) expect(g, `gaps: ${gaps.join(', ')}`).toBeCloseTo(gaps[0], 0);
-    // And it must be a gap, not a collision: the thickening eats STROKE_WIDTH out
-    // of every one of them, so a gap at or under the stroke means letters touching.
-    expect(gaps[0]).toBeGreaterThan(STROKE_WIDTH * 2);
+  it('leaves the tight pairs tight, which is what LEVELLING destroyed', () => {
+    /**
+     * THE OPPOSITE OF WHAT THIS FILE ASSERTED UNTIL 2026-08-21, and deliberately.
+     * Levelling every gap to their mean was correct while a centred stroke ate a
+     * flat number of units out of each one. With no stroke there is nothing to
+     * correct, and levelling opens `ez` — which Libre Franklin sets at roughly a
+     * quarter of the mean — until the z floats and its diagonal reads as a slab.
+     * A face closes those pairs on purpose: a z has less white inside its own box
+     * than a round letter does.
+     *
+     * So the gaps must NOT be equal. The spread is the evidence the font's own
+     * spacing survived, and the `ez` junction is the one that proves it.
+     */
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    const spread = Math.max(...gaps) - Math.min(...gaps);
+    expect(spread, `gaps: ${gaps.map((g) => g.toFixed(0)).join(', ')}`).toBeGreaterThan(mean * 0.5);
+    // gaps[1] is e→z, the pair the face draws tightest of the six.
+    expect(gaps[1]).toBeLessThan(mean);
+    // …and every one of them still has to be a gap, not a collision.
+    for (const g of gaps) expect(g).toBeGreaterThan(0);
   });
 
-  it('did not buy that by opening the word up', () => {
-    // The levelling targets the MEAN of the font's own gaps, so it redistributes
-    // and cannot widen. 3.452em is what the wordmark measured before it, and the
-    // density is the logo (owner, twice). A different number here means the
-    // target stopped being the mean — which is a decision about density, and one
-    // that has been made and reverted once already.
-    expect(INK_WIDTH_EM).toBeCloseTo(3.452, 3);
+  it('is as wide as the face draws it, with nothing added or taken', () => {
+    // No tracking, no levelling: the width is Libre Franklin ExtraBold's own. A
+    // different number here means something started adjusting the spacing again,
+    // which is the decision this whole describe exists to guard.
+    expect(INK_WIDTH_EM).toBeCloseTo(3.807, 2);
   });
 });
 
@@ -252,8 +259,7 @@ describe('the module is what the generator writes', () => {
    * `gapEm` was added to `src/lib/brand-lockup.ts` by hand on 2026-08-14 and the
    * generator was never taught to emit it. Nothing failed, because nobody ran
    * `brand:wordmark` for three days — and that run would have deleted a value two
-   * live surfaces import, while the poster lockup drew the superseded 0.05 the
-   * whole time. A generated file that can be hand-edited is two files.
+   * live surfaces import. A generated file that can be hand-edited is two files.
    */
   const generator = read('scripts/generate-wordmark.mjs');
   const moduleSrc = read('src/lib/brand-lockup.ts');
@@ -265,56 +271,116 @@ describe('the module is what the generator writes', () => {
 
   it('carries no TAGLINE key the generator does not write', () => {
     const keys = (src: string) =>
-      // Up to `};`, not to the first `}` — in the generator each value is a
-      // `${...}` interpolation and would swallow the match at its own brace.
-      (src.match(/export const TAGLINE = \{(.*?)\};/)?.[1] ?? '')
-        .split(',')
-        .map((p) => p.split(':')[0].trim())
-        .filter(Boolean)
+      (src.match(/export const TAGLINE = \{([\s\S]*?)\n\};/)?.[1] ?? '')
+        .split('\n')
+        .map((line) => line.split(':')[0].trim())
+        .filter((k) => /^\w+$/.test(k))
         .sort();
-    expect(keys(moduleSrc)).toEqual(keys(generator));
+    expect(keys(moduleSrc)).toEqual(['gapEm', 'sizeEm', 'trackEm', 'weight']);
     expect(keys(moduleSrc)).toContain('gapEm');
   });
 
-  it('leaves no second copy of the tagline gap in the generator', () => {
-    // The poster lockup used to hard-code `0.05 * UPEM` beside the module's own
-    // value. One authored constant, read by both, or they drift again.
+  it('keeps one authored copy of the tagline’s spacing', () => {
+    // The poster lockup used to hard-code its own gap beside the module's value.
+    // One authored constant, read by both, or they drift again.
     expect(generator).toMatch(/const TAGLINE_GAP = /);
-    expect(generator).not.toMatch(/0\.05 \* UPEM/);
+    expect(generator).toMatch(/const TAGLINE_SIZE = /);
   });
 });
 
-describe('the tagline still solves against the wordmark', () => {
-  it('is a fraction of the wordmark, not a size of its own', () => {
-    // Heebo's own "מתחם חנויות דיגיטלי" is a shade under 8.6em, so the ratio that
-    // matches it to a 3.45em wordmark lands just over 0.4. A value outside this
-    // band means the solve was skipped, not merely re-tuned.
-    expect(TAGLINE.sizeEm).toBeGreaterThan(0.35);
-    expect(TAGLINE.sizeEm).toBeLessThan(0.45);
+describe('the second line is small, centred, and tracked by language', () => {
+  it('is a third of the cap height, not a width match', () => {
+    // It used to be solved to the wordmark's own ink width, which put it just
+    // over 0.4em. It is now a share of the cap height (0.33 of it), which lands
+    // near 0.245em. A value back up in the 0.4s means the width solve came back.
+    expect(TAGLINE.sizeEm).toBeGreaterThan(0.2);
+    expect(TAGLINE.sizeEm).toBeLessThan(0.3);
   });
 
-  it('pulls the line OUT with a negative margin, cancelling Heebo’s side bearing', () => {
-    // A line box is not its ink: align the boxes and the Hebrew starts a visible
-    // pixel inside the English however exact the ratio is. Positive here would
-    // push it further in, i.e. exactly the wrong way.
-    expect(TAGLINE.marginEm).toBeLessThan(0);
-    expect(TAGLINE.marginEm).toBeGreaterThan(-0.2);
+  it('gives Hebrew a fraction of the Latin tracking', () => {
+    /**
+     * Opening Hebrew does not enlarge the word, it loosens it, and a loosened
+     * Hebrew line under a tight Latin name is what read as amateur on 2026-08-05.
+     * The Latin line is opened wide on purpose — that IS the device. Anything
+     * approaching parity here means the rule was forgotten.
+     */
+    expect(TAGLINE.trackEm.he).toBeGreaterThan(0);
+    expect(TAGLINE.trackEm.en).toBeGreaterThan(TAGLINE.trackEm.he * 3);
+    expect(TAGLINE.trackEm.he).toBeLessThan(0.1);
+  });
+
+  it('is set at a weight main.css already ships', () => {
+    // The line is LIVE TEXT — it follows the visitor's language — so a weight the
+    // site does not already carry is two more font files (latin + hebrew) on
+    // every page for one line on two of them.
+    expect(read('src/styles/main.css')).toContain(`font-weight: ${TAGLINE.weight};`);
+  });
+
+  it('takes the trailing letter-space back on BOTH renderers', () => {
+    /**
+     * `letter-spacing` is applied after the LAST character too, so a centred run
+     * sits half a space off its own axis — which is the first thing the owner
+     * noticed about the English line. One whole tracking unit off the inline end
+     * makes the box the ink again.
+     *
+     * TWO renderers draw this lockup — the component and the raster script — and
+     * a rule living in two modules is the next bug (it is how three copies of the
+     * D's path existed). The NUMBER is shared already, through `TAGLINE.trackEm`;
+     * this holds the formula, so a fix in one cannot silently miss the other.
+     */
+    for (const file of ['src/components/BrandLogo.astro', 'scripts/generate-brand-assets.mjs'])
+      expect(read(file), file).toMatch(/margin-inline-end:\$\{-track\}em/);
+  });
+
+  it('leaves no second copy of the tagline’s words in a script', () => {
+    // The generators read `translations` rather than carrying the strings, or a
+    // change to the tagline would leave every poster, the mail header and the
+    // share card saying the old thing with nothing to notice.
+    for (const file of ['scripts/generate-wordmark.mjs', 'scripts/generate-brand-assets.mjs']) {
+      const src = read(file);
+      expect(src, file).toContain("from '../src/i18n/translations.ts'");
+      expect(src, file).not.toContain(translations.he.brand.tagline);
+      expect(src, file).not.toMatch(/'MARKETPLACE'/);
+    }
+  });
+
+  it('says something different in each language, on purpose', () => {
+    // Hebrew keeps the slogan; English says the one word that does the same job
+    // in a breath (owner, 2026-08-21). Not a translation, and not a shared key —
+    // `home.startSelling` is the homepage h1's accessible name and stays a
+    // sentence.
+    expect(translations.he.brand.tagline).toBe('מתחם חנויות דיגיטלי');
+    expect(translations.en.brand.tagline).toBe('MARKETPLACE');
+    expect(read('src/components/BrandLogo.astro')).toContain('t.brand.tagline');
   });
 });
 
 describe('the fonts the generator reads are in the repo', () => {
   it('keeps both faces and their licence, so the lockup can be rebuilt offline', () => {
-    // Chakra Petch is NOT shipped to browsers — the letters are outlines — but it
-    // has to be here for `npm run brand:wordmark` to redraw them, and the OFL
-    // requires the licence to travel with it.
-    for (const f of ['ChakraPetch-Bold.ttf', 'Heebo-Medium.ttf', 'OFL.txt'])
+    // Neither face is shipped to browsers — the letters are outlines — but both
+    // have to be here for `npm run brand:wordmark` to redraw them, and the OFL
+    // requires the licence to travel with them.
+    for (const f of ['LibreFranklin-ExtraBold.ttf', 'Heebo-Variable.ttf', 'OFL.txt'])
       expect(fs.existsSync(path.join(ROOT, 'assets/brand-fonts', f)), f).toBe(true);
   });
 
-  it('does not ship Chakra Petch as a webfont', () => {
+  it('names every face it carries in the licence file', () => {
+    const ofl = read('assets/brand-fonts/OFL.txt');
+    for (const name of ['Libre Franklin', 'Heebo', 'Chakra Petch']) expect(ofl).toContain(name);
+  });
+
+  it('does not ship Libre Franklin as a webfont', () => {
     // The whole reason the letters are paths: nothing else on the site uses this
-    // family, so a @font-face for it would be an eleventh preload for seven letters —
-    // and one that `font-display: optional` could refuse at first paint.
-    expect(read('src/styles/main.css')).not.toMatch(/chakra/i);
+    // family, so a @font-face for it would be an eleventh preload for seven
+    // letters — and one that `font-display: optional` could refuse at first paint.
+    expect(read('src/styles/main.css')).not.toMatch(/franklin/i);
+  });
+
+  it('keeps the superseded lockup whole, rather than only in git', () => {
+    // The owner asked for the previous logo to be kept somewhere safe
+    // (2026-08-21). A branch is not somewhere he can look.
+    const archive = 'assets/brand-archive/2026-08-21-chakra-petch';
+    for (const f of ['dezabin-wordmark.svg', 'favicon.svg', 'brand-lockup.ts.bak'])
+      expect(fs.existsSync(path.join(ROOT, archive, f)), f).toBe(true);
   });
 });

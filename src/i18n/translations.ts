@@ -2,6 +2,16 @@ export type Lang = 'he' | 'en';
 
 export const translations = {
   he: {
+    /**
+     * The line drawn under the wordmark. Its own key and not `home.startSelling`
+     * for two reasons: that string is the homepage <h1>'s accessible name and
+     * has to stay a full sentence, and the two languages say different things
+     * here on purpose (owner, 2026-08-21) — Hebrew keeps the slogan, English
+     * says the one word that does the same job in a breath.
+     */
+    brand: {
+      tagline: 'מתחם חנויות דיגיטלי',
+    },
     nav: {
       home: 'בית',
       openStore: 'פתח חנות',
@@ -2387,6 +2397,11 @@ export const translations = {
     },
   },
   en: {
+    brand: {
+      // Not a translation of the Hebrew: MARKETPLACE is the English line, chosen
+      // to be set as small wide-tracked caps under the name. See the he twin.
+      tagline: 'MARKETPLACE',
+    },
     nav: {
       home: 'Home',
       openStore: 'Open a store',
