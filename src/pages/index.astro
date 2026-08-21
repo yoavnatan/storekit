@@ -341,12 +341,18 @@ const jsonLd = {
           ratio cannot be stored as a size: `TAGLINE.minLockupPx` is that
           division, done by the generator, and it moves when the ratio does.
 
-          The ceiling is taste and is the owner's (2026-08-21): the lockup at the
-          size it was shown to him on the specimen page, where he said it read
-          well — about 330px of wordmark, which is 85px of lockup. At the floor it
-          is 246px wide inside a 343px container at 375px, so width never binds. */}
+          The ceiling is taste and is the owner's, chosen from four renders of the
+          real page (2026-08-21): 70px of lockup, i.e. 272px of wordmark and a
+          17.1px slogan — the middle of the range between the floor and the 330px
+          he had first seen on the specimen page. The two ends were on the table
+          and this is where "present without taking the page over" landed.
+
+          The two numbers move TOGETHER and cannot be tuned apart: the slogan is a
+          fixed fraction of the lockup, so any size for one decides the other.
+          That is the whole reason the floor exists. At the floor the wordmark is
+          246px inside a 343px container at 375px, so width never binds. */}
       <h1 class="m-0 leading-none">
-        <BrandLogo size={`clamp(${TAGLINE.minLockupPx}px,9vw,85px)`} tagline={true} />
+        <BrandLogo size={`clamp(${TAGLINE.minLockupPx}px,9vw,70px)`} tagline={true} />
       </h1>
       {/* No separate tagline line here: the lockup above carries the slogan, and
           printing it twice under itself is the clearest possible way to say the
