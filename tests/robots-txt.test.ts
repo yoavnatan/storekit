@@ -86,10 +86,26 @@ describe("robots.txt on a seller's own domain", () => {
     expect(body).toContain('Disallow: /checkout');
   });
 
-  it('falls back to the platform answer on a host no store claims', async () => {
+  it('states the crawl rules but declares NO sitemap on a host no store claims', async () => {
+    // Changed 2026-08-21, area audit of the SEO surfaces. This used to fall through to the
+    // platform's two `Sitemap:` lines, which is the very cross-host reference the whole file exists
+    // to stop — an old domain still 301-ing, or DNS pointed here before its store connected, was
+    // being told that `dezabin.co.il`'s sitemap is this host's sitemap. An engine ignores it and
+    // Search Console reports it against whoever owns that hostname. The RULES still fall through:
+    // they describe paths, and they are never wrong to state.
     byCustomDomain.mockResolvedValue(null);
     const body = await robotsFor('someone-elses.example');
-    expect(body).toContain(`Sitemap: ${platform.url.replace(/\/+$/, '')}/sitemap-index.xml`);
+    expect(body).toContain('Disallow: /admin');
+    expect(body).not.toContain('Sitemap:');
+    expect(body).not.toContain('dezabin.co.il');
+  });
+
+  it('declares no sitemap when the database could not say whose host this is', async () => {
+    // The failure direction that matters: silence about a sitemap costs a crawl of one host until
+    // the next fetch; naming the wrong one is a claim about a domain we do not own.
+    byCustomDomain.mockRejectedValue(new Error('DATABASE_URL is not set'));
+    const body = await robotsFor('shop.acme.co.il');
+    expect(body).not.toContain('Sitemap:');
   });
 
   it('still answers 200 when the database is unreachable', async () => {

@@ -8,7 +8,7 @@ import { buildUrlSetXml } from '../lib/sitemap.js';
 import { isStoreReady } from '../lib/store-readiness.js';
 import { getCategoriesByStoreIds } from '../lib/store-categories.js';
 import { storeEntries } from '../lib/sitemap-document.js';
-import { serveCatalogArtifact, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../lib/catalog-artifacts.js';
+import { serveCatalogArtifact, notFound, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../lib/catalog-artifacts.js';
 
 // Dynamic content sitemap for the SEO pages that @astrojs/sitemap CANNOT see:
 // every store page (/[slug]) and product page (/[slug]/[product]) is
@@ -79,13 +79,34 @@ async function customHostSitemap(host: string): Promise<Response | null> {
   });
 }
 
+/**
+ * **The platform's sitemap is served on the platform's hosts, and nowhere else** (2026-08-21, area
+ * audit of the SEO surfaces).
+ *
+ * This route used to fall through to the platform's document whenever it could not produce the
+ * host's own — "the request reached us somehow, and answering it with the platform's own URLs is
+ * never wrong". It is wrong, and it was wrong in three ways that only show up when the four SEO
+ * surfaces are read as one:
+ *
+ *   · **Against the protocol.** sitemaps.org: every URL in a sitemap must be on the same host as the
+ *     sitemap. So `https://acme.co.il/sitemap-content.xml` naming `dezabin.co.il` URLs is not a
+ *     weaker sitemap, it is an invalid one, and Search Console reports it as such on the SELLER's
+ *     property.
+ *   · **Against this repo's own stated rule.** `robots.txt.ts` was rewritten precisely because "the
+ *     platform's two are not this domain's to declare" — and then this route declared them.
+ *   · **Against the shard route beside it**, which already refuses a matched custom-domain host. So
+ *     a seller whose store is PAUSED (matched host, but `customHostSitemap` returns null for a store
+ *     that is not discoverable) was served the platform's INDEX from their own domain, pointing at a
+ *     shard that 404s on that same domain. Verified against the built server, not reasoned about:
+ *     index 200 naming `dezabin.co.il/sitemap-content-1.xml`, shard 404.
+ *
+ * 404 is the honest answer: that host has no sitemap. Nothing is lost — the platform's own document
+ * is reachable at the platform's host, which is the only place a crawler will believe it anyway.
+ */
 export async function GET(ctx: APIContext): Promise<Response> {
   const host = ctx.request.headers.get('host') ?? '';
   if (host && !isPlatformHost(host)) {
-    const own = await customHostSitemap(host);
-    // A host we do not recognise falls through to the platform sitemap rather than 404-ing: the
-    // request reached us somehow, and answering it with the platform's own URLs is never wrong.
-    if (own) return own;
+    return (await customHostSitemap(host)) ?? notFound();
   }
 
   return serveCatalogArtifact(SITEMAP_ARTIFACT, 'application/xml; charset=utf-8', ctx.request);

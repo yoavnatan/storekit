@@ -46,11 +46,14 @@ export const AI_AGENTS = [
 
 function body(sitemaps: readonly string[], feedAllowed: boolean): string {
   const block = rules(feedAllowed);
-  return [
+  const groups = [
     `User-agent: *\n${block}`,
     `${AI_AGENTS.map((a) => `User-agent: ${a}`).join('\n')}\n${block}`,
-    sitemaps.map((s) => `Sitemap: ${s}`).join('\n') + '\n',
-  ].join('\n');
+  ];
+  // No sitemaps → no trailing block at all, rather than a stray blank line where the directives
+  // were. A host with no sitemap of its own is the normal case now, not an edge (see GET).
+  if (sitemaps.length) groups.push(sitemaps.map((s) => `Sitemap: ${s}`).join('\n') + '\n');
+  return groups.join('\n');
 }
 
 /**
@@ -86,12 +89,15 @@ export async function GET(ctx: APIContext): Promise<Response> {
     // outage that outlives it, on the one file that has no content worth failing over. Same reason
     // `/api/health` is exempted from this middleware: what reports the outage must survive it.
     const store = await getStoreByCustomDomain(host).catch(() => null);
-    if (store) {
-      return txt(body([`https://${store.customDomain!.hostname}/sitemap-content.xml`], false));
-    }
-    // An unrecognised host (an old domain still 301-ing, DNS pointed here before the store
-    // connected) — or the database was the thing that could not answer. Fall through to the
-    // platform rules, which are never wrong to state and never block a crawler.
+    // **No `Sitemap:` line unless this host has one of its own** (2026-08-21, area audit of the SEO
+    // surfaces). The crawl RULES still fall through for an unrecognised host — an old domain still
+    // 301-ing, DNS pointed here before the store connected, or a database that could not answer —
+    // because they describe paths and are never wrong to state. The sitemap references are the
+    // opposite: naming `https://dezabin.co.il/sitemap-…` from a host that is not dezabin.co.il is
+    // the exact cross-host reference this route was written to stop, restated by the route itself in
+    // its own fall-through. An engine ignores it, Search Console reports it against the SELLER's
+    // property, and the honest answer is that this host declares no sitemap.
+    return txt(body(store ? [`https://${store.customDomain!.hostname}/sitemap-content.xml`] : [], false));
   }
 
   const base = stripTrailingSlashes(platform.url);

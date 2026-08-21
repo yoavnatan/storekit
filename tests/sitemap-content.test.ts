@@ -119,4 +119,30 @@ describe('/sitemap-content.xml', () => {
     const res = await shardGET({ params: { shard: '1' }, request: new Request('https://x/sitemap-content-1.xml', { headers: { host: 'boots.example' } }) } as never);
     expect(res.status).toBe(404);
   });
+
+  /**
+   * **The boundary is the HOST, not whether a store answers to it** — the finding of the 2026-08-21
+   * area audit of the SEO surfaces, and the reason these two cases are pinned rather than left to
+   * the two routes to agree about.
+   *
+   * The rule sitemaps.org states is that every URL in a sitemap is on the same host as the sitemap.
+   * Three files each held part of it and they disagreed: the shard route refused only a MATCHED
+   * custom-domain host, the index route refused only when it could build that host's own document,
+   * and `robots.txt` named the platform's two sitemaps on anything it did not recognise. So a seller
+   * whose store was merely PAUSED — a real, verified, crawled hostname — was served the platform's
+   * sitemap index from their own domain, pointing at a shard that 404s on that same domain.
+   * Reproduced against the built server before this was written.
+   */
+  it('serves NO platform sitemap on a host that has no sitemap of its own', async () => {
+    // The paused/closed/not-ready case: the host IS a seller's, `customHostSitemap` returns null,
+    // and the platform's document must not stand in for the one this host does not have.
+    const res = await GET(ctxOn('someone-elses.example'));
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('dezabin.co.il');
+  });
+
+  it('serves no platform SHARD on a foreign host either, matched or not', async () => {
+    const res = await shardGET({ params: { shard: '1' }, request: new Request('https://x/sitemap-content-1.xml', { headers: { host: 'someone-elses.example' } }) } as never);
+    expect(res.status).toBe(404);
+  });
 });
