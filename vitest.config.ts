@@ -85,5 +85,15 @@ export default defineConfig({
     // them queueing (`scripts/lib/test-concurrency.mjs`). Four remains the right default here: it is
     // what one run alone should take, and it is the ceiling that share is clamped to.
     maxWorkers: 4,
+    // ── A passing test's console output is shipped to the parent and printed, and there is a lot of
+    // it ── 2026-08-21. `lib/email.ts`'s console transport alone logs a line per message, so a
+    // single returns scenario prints four; across 4786 tests that is thousands of lines, every one
+    // of them serialised over the worker's IPC channel, buffered by the parent and written to a
+    // terminal. It is invisible work that nobody reads on a green run.
+    //
+    // `'passed-only'` keeps the logs of a test that FAILED — which is the only time anyone has ever
+    // wanted them — and drops the rest. Nothing about what runs or what is asserted changes; this is
+    // the reporter's display, not the suite.
+    silent: 'passed-only',
   },
 });
