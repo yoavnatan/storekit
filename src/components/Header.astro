@@ -390,16 +390,17 @@ const strEmpty   = t.store.noProductsFound;
                 </button>
               </span>
             </div>
+            {/* The overflow gesture is INSIDE this scroller, rendered as the list's last row —
+                see `renderNotifs`. It was a pinned footer under the list for about an hour and that
+                was wrong for a reason worth writing down (owner, same day: *"ההצג עוד לא צריך
+                להיות שם בגלילה למטה? מה זה נותן שאני לוחץ הצג עוד אבל לא באמת רואה מה מוצג כי לא
+                גללתי?"*). Pinned, it is reachable without scrolling — so the click appends ten rows
+                somewhere below the part of the list you are looking at, and the screen does not
+                change. A "load more" control belongs at the END of what it loads more of: you
+                arrive at it by finishing the rows you have, and the new ones open exactly where
+                your eye already is. */}
             <div id="notif-list" class="notif-list">
               <p class="notif-empty">{t.notifications.empty}</p>
-            </div>
-            {/* The overflow gesture, and it is deliberately the quietest one available (owner,
-                סשן ג׳: *"צריך שאת השאר נציג בצורה עדינה, לא עכשיו לסבך ולהגזים את העניין"*). The
-                list draws ten; this appends ten more into the same scroller, so nothing navigates,
-                no second screen exists and a person who never has eleven notifications never sees
-                a control at all — it is hidden unless there is genuinely something behind it. */}
-            <div id="notif-footer" class="notif-footer" hidden>
-              <button id="notif-more-btn" class="notif-footer-btn" type="button">{t.notifications.showMore}</button>
             </div>
           </div>
         </div>
@@ -1019,13 +1020,41 @@ const strEmpty   = t.store.noProductsFound;
     return out;
   }
 
+  /**
+   * Where the reader ends up after ten more rows arrive: on the FIRST of them, always.
+   *
+   * Putting the button at the end of the list is most of the fix — you reach it by finishing the
+   * rows you have, so the new ones open where you already are. This is the rest of it. The button
+   * the reader pressed is destroyed by the re-render, so SOMETHING has to be said about focus, and
+   * the only two candidates are the new button (wrong: the browser scrolls focus into view, so the
+   * list would jump straight past the ten rows just fetched to the offer of ten more) and the first
+   * new row (right: it is what a screen reader should read out, and it is where a sighted reader is
+   * heading anyway).
+   *
+   * Unconditional, and that is a correction rather than a simplification. It was guarded on "did
+   * the button have focus", on the theory that a mouse click should move nothing at all — but a
+   * click on a `<button>` focuses it, so the guard was true on every path and the comment described
+   * behaviour the code did not have. Driven at 1280px: the click moved the scroller 43px and put
+   * the first new row on screen. That is the guarantee worth making explicit — the reader sees new
+   * content, which is the whole complaint this fixes — so it is stated here instead of arrived at.
+   * `focus()` scrolls by the smallest amount that reveals the element, which is the site's rule for
+   * a programmatic scroll (memory `feedback_subtle_scroll`).
+   */
+  function revealFirstNewNotif(firstNewIndex: number): void {
+    if (!notifList) return;
+    const rows = notifList.querySelectorAll<HTMLElement>('.notif-item');
+    (rows[firstNewIndex] ?? rows[rows.length - 1])?.focus();
+  }
+
   async function loadMoreNotifs() {
     const moreBtn = document.getElementById('notif-more-btn') as HTMLButtonElement | null;
+    const firstNewIndex = notifShown;
     const feed = notifFeed();
     // Still rows in hand: nothing to fetch, just show ten more of what is already here.
     if (notifShown < feed.length) {
       notifShown += NOTIF_PAGE;
       renderNotifs(notifBase);
+      revealFirstNewNotif(firstNewIndex);
       return;
     }
     if (!notifMoreOnServer || notifLoadingMore) return;
@@ -1039,6 +1068,7 @@ const strEmpty   = t.store.noProductsFound;
       notifMoreOnServer = !!hasMore;
       notifShown += (notifications ?? []).length;
       renderNotifs(notifBase);
+      revealFirstNewNotif(firstNewIndex);
     } catch {
       // The rows the reader already has stay exactly where they are; the button comes back and a
       // second click retries. Nothing was removed from the screen, so there is nothing to explain.
@@ -1060,11 +1090,14 @@ const strEmpty   = t.store.noProductsFound;
     const feed = notifFeed();
     const clearAllBtn = document.getElementById('notif-clear-all-btn') as HTMLButtonElement | null;
     if (clearAllBtn) clearAllBtn.hidden = feed.length === 0;
-    const footer = document.getElementById('notif-footer') as HTMLElement | null;
-    // An empty feed short-circuits first: "there may be more on the server" is a claim about
-    // OLDER rows, and offering to fetch them under an empty-state message would read as broken.
-    if (footer) footer.hidden = feed.length === 0 || (feed.length <= notifShown && !notifMoreOnServer);
     if (!feed.length) { notifList.innerHTML = emptyNotifHtml(); return; }
+    // The row that offers the next ten, at the END of the ones you have — never a pinned bar. An
+    // empty feed short-circuits above, because "there may be older ones" is not something to offer
+    // underneath an empty-state message.
+    const hasMore = feed.length > notifShown || notifMoreOnServer;
+    const moreRowHtml = hasMore
+      ? `<div class="notif-more-row"><button id="notif-more-btn" class="notif-more-row__btn" type="button">${escH(notifI18n.showMore ?? 'הצג עוד')}</button></div>`
+      : '';
     notifList.innerHTML = feed.slice(0, notifShown).map((n) => `
       <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-href="${escH(n.href ?? (n.role === 'buyer' ? '/buyer/dashboard' : '/seller/dashboard'))}" role="button" tabindex="0">
         <button class="notif-item__delete" data-del-id="${escH(n.id)}" type="button" aria-label="${escH(notifI18n.deleteOne ?? 'מחק התראה')}">
@@ -1074,7 +1107,13 @@ const strEmpty   = t.store.noProductsFound;
         ${n.storeName ? `<div class="notif-item__tag">${escH(n.storeName)}</div>` : ''}
         <div class="notif-item__body">${escH(n.body)}</div>
         <div class="notif-item__time">${timeAgo(n.createdAt)}</div>
-      </div>`).join('');
+      </div>`).join('') + moreRowHtml;
+    // Bound per render, like the row handlers below it — the element is recreated every time the
+    // list is written, so a listener attached once would be pointing at a button that is gone.
+    notifList.querySelector<HTMLButtonElement>('#notif-more-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void loadMoreNotifs();
+    });
     notifList.querySelectorAll<HTMLElement>('[data-del-id]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1111,7 +1150,7 @@ const strEmpty   = t.store.noProductsFound;
       });
     });
     notifList.querySelectorAll<HTMLElement>('[data-id]').forEach((el) => {
-      el.addEventListener('click', () => {
+      const open = () => {
         closeNotifDrop();
         const id = el.dataset.id ?? '';
         if (el.classList.contains('notif-item--unread') && id) {
@@ -1134,6 +1173,19 @@ const strEmpty   = t.store.noProductsFound;
         // in BaseLayout reads the same field. The markup above already fell back by role for a row
         // served by a deploy that predates the field.
         window.location.href = el.dataset.href || '/buyer/dashboard';
+      };
+      el.addEventListener('click', open);
+      /* **A row says `role="button"`, so it has to behave like one from the keyboard.** It never
+         did: `tabindex="0"` put every notification in the tab order and only a mouse could open
+         one, which is WCAG 2.1.1 — a control reachable by keyboard and not operable by it. It went
+         unnoticed because nothing ever sent focus into this list; `revealFirstNewNotif` does now,
+         so a reader pressing "הצג עוד" with the keyboard would have landed on a dead row.
+         `preventDefault` on Space because its default here is to scroll the panel, which would
+         move the list at the same moment the row navigates away from it. */
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        open();
       });
     });
   }
@@ -1159,9 +1211,6 @@ const strEmpty   = t.store.noProductsFound;
     fadeClose(notifDrop, () => { notifDrop!.hidden = true; });
   }
   document.getElementById('notif-close-btn')?.addEventListener('click', (e) => { e.stopPropagation(); closeNotifDrop(); bellBtn?.focus(); });
-  // `stopPropagation` for the same reason every control in this panel has it: the bell's own
-  // button handler and the document-level outside-click closer both sit above this in the tree.
-  document.getElementById('notif-more-btn')?.addEventListener('click', (e) => { e.stopPropagation(); void loadMoreNotifs(); });
 
   document.getElementById('notif-clear-all-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1171,8 +1220,6 @@ const strEmpty   = t.store.noProductsFound;
     notifOlder = [];
     notifShown = NOTIF_PAGE;
     notifMoreOnServer = false;
-    const clearedFooter = document.getElementById('notif-footer') as HTMLElement | null;
-    if (clearedFooter) clearedFooter.hidden = true;
     setBadge(0);
     fetch('/api/notifications', {
       method: 'POST',

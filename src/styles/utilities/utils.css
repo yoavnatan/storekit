@@ -250,16 +250,22 @@
   line-height: 1;
 }
 .notif-list { max-height: 300px; overflow-y: auto; }
-.notif-footer {
-  padding: 0.45rem 1rem;
-  border-top: 1px solid var(--color-border);
+/* "הצג עוד" — the LAST ROW of the list, scrolled to like any other, never a bar pinned under it.
+   As a pinned bar it was reachable without scrolling, so pressing it appended ten rows below the
+   part of the list being read and nothing on screen changed: the owner pressed it and asked what
+   it had done. At the end of the rows it loads more of, arriving at it means having finished the
+   ones already there, and the new ones open exactly where the eye is.
+   NO border-top, deliberately: the `.notif-item` above it is no longer `:last-child`, so it keeps
+   its own border-bottom and that line is already drawn. Adding one here put two rules 1px apart. */
+.notif-more-row {
+  padding: 0.55rem 1rem;
   text-align: center;
 }
-.notif-footer-btn {
+.notif-more-row__btn {
   font-size: 0.75rem; color: var(--color-accent);
   background: none; border: none; cursor: pointer; font-family: inherit; padding: 0;
 }
-.notif-footer-btn:hover { text-decoration: underline; }
+.notif-more-row__btn:hover { text-decoration: underline; }
 
 .notif-empty { color: var(--color-muted); font-size: 0.85rem; text-align: center; padding: 1.5rem 1rem; margin: 0; }
 .notif-item {
