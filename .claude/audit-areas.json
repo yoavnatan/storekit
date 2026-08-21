@@ -118,9 +118,13 @@
     {
       "id": 8,
       "title": "Graceful degradation — no secondary service in a critical path",
-      "audited": null,
+      "audited": "2026-08-06",
       "paths": [
         "src/lib/outbound-fetch.ts",
+        "src/lib/single-flight.ts",
+        "src/lib/tracking.ts",
+        "src/lib/cross-origin-handoff.ts",
+        "src/lib/order-notify.ts",
         "src/lib/cdn.ts",
         "src/lib/payment.ts",
         "src/pages/api/health.ts"
