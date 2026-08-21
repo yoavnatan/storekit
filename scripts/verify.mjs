@@ -7,6 +7,9 @@
 // checkpoints spends a quarter of an hour watching them. Three things fix that, none of which weaken
 // the check:
 //   • Concurrency — they are independent read-only passes, so the cost is the slowest, not the sum.
+//     Serialising the test step away from the others was TRIED and measured WORSE on 2026-08-21
+//     (471s against 407s, and still red), so contention between the checks is NOT what kills a
+//     vitest worker here. `const results` at the foot of this file has that whole hunt.
 //   • Caches — eslint 37s→4s warm, tsc 9s→4s warm. Both invalidate on content/config change on
 //     their own; neither can go stale into a false green.
 //     ⚠️ But the eslint one HAS gone stale into a false RED (2026-07-31): it kept reporting
@@ -85,6 +88,7 @@ import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { withWorkerShare, workerBudget } from './lib/test-concurrency.mjs';
+import { starvedFiles, starvedWorker, strip } from './lib/starved-workers.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = (name) => resolve(ROOT, 'node_modules/.bin', name);
@@ -403,19 +407,6 @@ const spawnCheck = (check) =>
   });
 
 /**
- * Did the suite die on a worker that never booted, rather than on a test?
- *
- * Both halves are required. `Failed to start forks worker` / `Timeout waiting for worker to respond`
- * is the infrastructure signature; the absence of any FAIL line is what proves nothing the code does
- * is implicated. `salient()` below leans on the same absence, for the same reason.
- */
-const starvedWorker = (out) => {
-  const text = strip(out);
-  return /Failed to start \S+ worker|Timeout waiting for worker to respond|vitest-pool/.test(text)
-    && !/✗|×|FAIL/.test(text);
-};
-
-/**
  * **The test step takes a share of the machine; nothing waits for anything.**
  *
  * This replaced a machine-wide lock on 2026-08-20. The lock stopped several sessions' suites from
@@ -455,17 +446,47 @@ const run = async (check) => {
     // and the red returns immediately. It cannot loop: one retry, then whatever it says stands. And
     // it is never silent, because a gate that quietly re-runs itself is how a genuinely flaky suite
     // stays invisible.
-    if (!COMPACT) console.log('verify: red with no failing test — a worker never started. Re-running the suite once…');
-    const second = await spawnCheck(sized);
-    return second.code === 0 ? { ...second, secs: second.secs + first.secs, retried: true } : second;
+    //
+    // ── And it re-runs only the FILES that never started, not the suite (2026-08-21) ──
+    //
+    // The whole-suite re-run is what actually cost the owner his evenings, and the arithmetic is
+    // brutal: a full `--all --no-cache` measured 407s on a quiet machine, of which ~200s was the
+    // second attempt at 4784 tests that had already all passed. Four full runs were measured that
+    // day and every one of them lost a worker — a different file each time — so this is not a rare
+    // path, it is the normal one. Two sessions before this one went looking for the cause (another
+    // session's type-check; then this run's own siblings) and both were wrong: serialising the test
+    // step away from every other check measured 471s and still red, and so did moving the child's
+    // output off its pipe. What the failing runs share is a machine at the edge of its memory —
+    // 7-19MB free at the peak — and that is not going to be argued away on a 16GB laptop. The full
+    // hunt, with every number, is at `const results` at the foot of this file.
+    //
+    // So the cost is what changes. The starved files are named in the error, they are the only ones
+    // that did not run, and re-running just them is seconds instead of minutes. Nothing is skipped:
+    // every file still runs, and if the names cannot be parsed the full re-run happens exactly as
+    // before. A second starvation in the narrow re-run is reported as the red it is, rather than
+    // being chased around a third time.
+    const starved = starvedFiles(first.out, existsSync);
+    if (!COMPACT) {
+      console.log(starved.length
+        ? `verify: red with no failing test — ${starved.length} file(s) never started. Re-running only those…`
+        : 'verify: red with no failing test — a worker never started. Re-running the suite once…');
+    }
+    // The narrow re-run drops `--maxWorkers`: a handful of files does not need a share of anything,
+    // and the claim above is still held, so nothing else on the machine has been given those cores.
+    const second = await spawnCheck(starved.length
+      ? { ...check, args: [...check.args, ...starved] }
+      : sized);
+    if (second.code !== 0) return second;
+    // The first attempt's PASSES are the ones being reported — the re-run only covers what it
+    // missed — so the output kept is the first one, with the re-run's time added to it. Keeping the
+    // narrow run's summary instead would report "3 test files" for a green suite of 380.
+    return { ...first, code: 0, out: first.out, secs: second.secs + first.secs, retried: true };
   } finally { release(); }
 };
 
 // Keep only the lines that say what broke — a full vitest or eslint dump buries the one useful line.
-// ESC written via fromCharCode, not a \x1b literal — a raw control character in a regex is a lint
-// error (no-control-regex), and escaping the rule here would be sillier than escaping the byte.
-const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
-const strip = (s) => s.replace(ANSI, '');
+// `strip` comes from `lib/starved-workers.mjs`, which needs the same ANSI removal to read a starved
+// run and is the module that now owns it.
 function salient(check) {
   const lines = strip(check.out).split('\n');
   if (check.name === 'astro check' || check.name === 'tsc') {
@@ -487,6 +508,29 @@ function salient(check) {
   return lines.filter((l) => /✗|×|FAIL|Tests {2}|Test Files {2}/.test(l)).slice(0, 15);
 }
 
+/**
+ * **The checks run together — and the two remedies that were TRIED and measured are recorded here so
+ * they are not tried a third time** (2026-08-21).
+ *
+ * The test step kept dying on a worker that never started, which reads exactly like contention, so
+ * two obvious cures were built and measured on a quiet machine against the same tree:
+ *
+ *     concurrent, as it has always been ......................... 407.2s, red
+ *     every other check first, then vitest with the machine ..... 471.0s, red
+ *     concurrent, child output to a FILE instead of a 64KB pipe .. 418.7s, red
+ *     the same suite run by hand, twice ......................... 136.8s and 152.9s, GREEN
+ *
+ * So it is neither the sibling checks nor back-pressure on the pipe, and the hand-run greens are two
+ * samples of something the full runs failed four times out of four — enough to say the failure is
+ * frequent and probabilistic, not enough to say the hand-run is immune. What the numbers do agree on
+ * is the machine's memory: free RAM measured 7-19MB at the peak of every failing run against
+ * 103-866MB in the green ones, on a 16GB laptop that is also carrying a browser, an editor and
+ * several sessions. That is not going to be argued away from inside this script.
+ *
+ * **So the cause was left alone and the COST was fixed instead** — see the retry in `run` above,
+ * which re-runs the files that never started rather than the 4784 tests that already passed. The
+ * same `--all --no-cache` that measured 407s red measured 143.5s green after it.
+ */
 const results = await Promise.all(toRun.map(run));
 const failed = results.filter((r) => r.code !== 0);
 
