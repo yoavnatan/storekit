@@ -31,18 +31,28 @@ export const LETTERS_PATH =
 export const STROKE_WIDTH = 0;
 
 /** viewBox for the whole wordmark, tight to the ink. */
-export const VIEW_BOX = '0 0 3807 742';
+export const VIEW_BOX = '-37.1 -37.1 3881.2 816.2';
 
 /** viewBox for the D on its own, tight to ITS ink — cap height, not the word's
  *  ascender, because a lone capital has no ascender above it to allow for. */
-export const MARK_VIEW_BOX = '0 0 663 742';
+export const MARK_VIEW_BOX = '-37.1 -37.1 737.2 816.2';
 
 /** CSS height for the wordmark: everything else in the component is em, so this
- *  is the only size knob. */
-export const HEIGHT_EM = 0.742;
+ *  is the only size knob. It is the BOX, which carries a margin around the ink —
+ *  see the generator's `BOX_MARGIN`. Sizing by it therefore keeps the INK at
+ *  exactly `INK_HEIGHT_EM` for a given font-size; the margin grows outward. */
+export const HEIGHT_EM = 0.8162;
 
-/** The wordmark's ink width, in em of its own font-size. */
+/** The wordmark's BOX width, in em of its own font-size — the margin included,
+ *  so it is what the element measures on the page. */
+export const WIDTH_EM = 3.8812;
+
+/** The INK inside that box — what a reader actually sees, and the pair to reach
+ *  for when something has to line up with the LETTERS rather than with the
+ *  element. These were the same numbers as the box until the margin existed,
+ *  which is precisely why they are named apart now. */
 export const INK_WIDTH_EM = 3.807;
+export const INK_HEIGHT_EM = 0.742;
 
 /** The brand ramp, as ONE gradient across the whole wordmark. It must be
  *  `gradientUnits="userSpaceOnUse"`: the default resolves per element, which
@@ -65,4 +75,8 @@ export const TAGLINE = {
   gapEm: 0.17808,
   weight: 400,
   trackEm: { he: 0.05, en: 0.22 },
+  /** The smallest font-size the LOCKUP may be drawn at and still leave this line
+   *  at 15.5px — derived from `sizeEm`, never typed. Any surface that
+   *  draws the tagline reads this as its floor. */
+  minLockupPx: 63.4,
 };

@@ -105,6 +105,47 @@ const TAGLINE_WEIGHT = 400;
 const TAGLINE_TRACK_EN = 0.22;
 const TAGLINE_TRACK_HE = 0.05;
 
+/**
+ * The smallest the second line may be rendered, in CSS px — and therefore, once
+ * divided by its ratio, the smallest the whole lockup may be drawn.
+ *
+ * 15.5px is the owner's own floor from 2026-08-05 ("the Hebrew gets very small
+ * on mobile"), and the homepage carried it as a TYPED lockup size — 2.5rem,
+ * correct for a tagline that was then 0.3886em of the lockup. This lockup's
+ * ratio is 0.245, so the same 2.5rem put the Hebrew at 9.8px on a phone and the
+ * owner reported it the day it shipped. **A floor derived from a ratio must not
+ * be typed as a size**, or the next change to the ratio silently breaks it —
+ * which is exactly what happened. It is exported and the homepage reads it.
+ */
+const TAGLINE_MIN_PX = 15.5;
+
+/**
+ * A margin around the ink, as a share of the wordmark's own height, on every box
+ * this file emits.
+ *
+ * NOT decoration, and not optical: **the ink must never sit on the edge of its
+ * own viewport.** The wordmark's baseline is one flat line shared by all seven
+ * letters, so when the box is cropped exactly to the ink, that line is
+ * coincident with the box's boundary — and any ancestor with `overflow: hidden`
+ * then chops the antialiased row, across the whole word at once. The owner saw
+ * it the day this shipped: *"in the header the logo is cut along its whole
+ * bottom"*. The clip was `.store-header__logo-col .logo`, a truncation boundary
+ * written for a long store NAME and inherited by a fixed-width SVG that can
+ * never be truncated.
+ *
+ * That rule is fixed too, but the rule alone is not the fix: it protects the one
+ * ancestor we know about. The margin protects against every future one — a store
+ * header, a card, an email client's own wrapper — because there is no ink at the
+ * edge left to chop.
+ *
+ * 0.05 is one twentieth of the height: 0.84px at the header's size, i.e. most of
+ * a device pixel at DPR 1 and two and a half at DPR 3. `HEIGHT_EM` is the BOX,
+ * so the ink still renders at exactly the same size for a given font-size — the
+ * box simply grows around it, into space the header row already had.
+ * `tests/brand-lockup.test.ts` holds the ink strictly inside every box.
+ */
+const BOX_MARGIN = 0.05;
+
 /** The site's brand gradient — the one `.btn` wears, unchanged. */
 const BRAND_A = '#2a3c40';
 const BRAND_B = '#3a5260';
@@ -252,8 +293,12 @@ const r = (v) => Math.round(v * 100) / 100;
 /** Ratios that get multiplied by a font-size before they reach a pixel. */
 const r5 = (v) => Math.round(v * 1e5) / 1e5;
 
-const VIEW_BOX = `0 0 ${r(INK_W)} ${r(H)}`;
-const MARK_VIEW_BOX = `0 ${r(H - CAP)} ${r(MARK_W)} ${r(CAP)}`;
+/* Every box carries `BOX_MARGIN` of the wordmark's height on all four sides, so
+   no ink is ever on a boundary. The margin is the SAME absolute number on both
+   axes — a margin that differed by axis would be a shape, not a margin. */
+const PAD = H * BOX_MARGIN;
+const VIEW_BOX = `${r(-PAD)} ${r(-PAD)} ${r(INK_W + PAD * 2)} ${r(H + PAD * 2)}`;
+const MARK_VIEW_BOX = `${r(-PAD)} ${r(H - CAP - PAD)} ${r(MARK_W + PAD * 2)} ${r(CAP + PAD * 2)}`;
 
 /* ---------------------------------------------------- the tagline's numbers */
 
@@ -318,11 +363,21 @@ export const VIEW_BOX = '${VIEW_BOX}';
 export const MARK_VIEW_BOX = '${MARK_VIEW_BOX}';
 
 /** CSS height for the wordmark: everything else in the component is em, so this
- *  is the only size knob. */
-export const HEIGHT_EM = ${r5(H / UPEM)};
+ *  is the only size knob. It is the BOX, which carries a margin around the ink —
+ *  see the generator's \`BOX_MARGIN\`. Sizing by it therefore keeps the INK at
+ *  exactly \`INK_HEIGHT_EM\` for a given font-size; the margin grows outward. */
+export const HEIGHT_EM = ${r5((H + PAD * 2) / UPEM)};
 
-/** The wordmark's ink width, in em of its own font-size. */
+/** The wordmark's BOX width, in em of its own font-size — the margin included,
+ *  so it is what the element measures on the page. */
+export const WIDTH_EM = ${r5((INK_W + PAD * 2) / UPEM)};
+
+/** The INK inside that box — what a reader actually sees, and the pair to reach
+ *  for when something has to line up with the LETTERS rather than with the
+ *  element. These were the same numbers as the box until the margin existed,
+ *  which is precisely why they are named apart now. */
 export const INK_WIDTH_EM = ${r5(INK_W / UPEM)};
+export const INK_HEIGHT_EM = ${r5(H / UPEM)};
 
 /** The brand ramp, as ONE gradient across the whole wordmark. It must be
  *  \`gradientUnits="userSpaceOnUse"\`: the default resolves per element, which
@@ -345,6 +400,10 @@ export const TAGLINE = {
   gapEm: ${r5((TAGLINE_GAP * CAP) / UPEM)},
   weight: ${TAGLINE_WEIGHT},
   trackEm: { he: ${TAGLINE_TRACK_HE}, en: ${TAGLINE_TRACK_EN} },
+  /** The smallest font-size the LOCKUP may be drawn at and still leave this line
+   *  at ${TAGLINE_MIN_PX}px — derived from \`sizeEm\`, never typed. Any surface that
+   *  draws the tagline reads this as its floor. */
+  minLockupPx: ${Math.ceil((TAGLINE_MIN_PX / (TAG_SIZE_UNITS / UPEM)) * 10) / 10},
 };
 `;
 
@@ -400,7 +459,7 @@ function lockupFile({ text, dir, tracking, paint, defs }) {
   const lift = H + TAGLINE_GAP * CAP - first.box.y1;
   const placed = run(heebo, text, { size: TAG_SIZE_UNITS, x: shift, y: lift, tracking, dir, opts: HEEBO_AT });
   const height = placed.box.y2;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r(INK_W)} ${r(height)}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r(-PAD)} ${r(-PAD)} ${r(INK_W + PAD * 2)} ${r(height + PAD * 2)}">
   <!-- ${POSTER_NOTE} The full lockup: wordmark plus slogan, both outlined. -->${defs ? `\n  <defs>${defs}</defs>` : ''}
   <g fill="${paint}">
     <path d="${MARK_PATH}"/>
@@ -464,6 +523,6 @@ console.log(`brand lockup regenerated — Libre Franklin ExtraBold, the face's o
   word height   ${r(H)}u = ${r5(H / UPEM)}em  (the b's ascender)
   D width       ${r(MARK_W)}u = ${r5(MARK_W / UPEM)}em
   pen for "e"   ${r(PEN)}u
-  wordmark ink  ${r5(INK_W / UPEM)}em wide
+  wordmark ink  ${r5(INK_W / UPEM)}em wide, box ${r5((INK_W + PAD * 2) / UPEM)}em (margin ${BOX_MARGIN} of the height)
   tagline       ${r5(TAG_SIZE_UNITS / UPEM)}em, gap ${r5((TAGLINE_GAP * CAP) / UPEM)}em, Heebo ${TAGLINE_WEIGHT}, tracking he ${TAGLINE_TRACK_HE} / en ${TAGLINE_TRACK_EN}
   files         src/lib/brand-lockup.ts, public/favicon.svg, public/brand/*.svg`);

@@ -2,6 +2,7 @@
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import BrandLogo from '../components/BrandLogo.astro';
+import { TAGLINE } from '../lib/brand-lockup.js';
 import HomeShelf from '../components/HomeShelf.astro';
 import HomeTabEmpty from '../components/HomeTabEmpty.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
@@ -331,14 +332,22 @@ const jsonLd = {
           <h1>: the component carries the accessible name, so the page's heading is
           still "Dezabin — מתחם חנויות דיגיטלי" to a crawler and a screen reader
           (BrandLogo.astro#TAGLINE — it is the source, not a copy of it). */}
-      {/* The floor is 2.5rem and not 1.9rem because the Hebrew line under the name
-          is a fixed fraction of it (0.3886em, BrandLogo.astro): at 1.9rem it would
-          land at 11.8px, which is below anything readable and is what "the Hebrew
-          gets very small on mobile" was (owner, 2026-08-05). 2.5rem puts it at
-          15.5px. There was never a width reason for the old floor — the lockup is
-          3.2925em wide, so even at 2.5rem it is 132px inside a 343px container at
-          375px. */}
-      <h1 class="m-0 leading-none"><BrandLogo size="clamp(2.5rem,6.5vw,3rem)" tagline={true} /></h1>
+      {/* THE FLOOR IS READ, NOT TYPED, and that is the whole point of it.
+          It used to be a literal 2.5rem, correct for a tagline that was 0.3886em
+          of the lockup — 15.5px, the owner's own floor from 2026-08-05 ("the
+          Hebrew gets very small on mobile"). The lockup was redrawn on 08-21 and
+          its tagline became 0.245em, so the same 2.5rem put the Hebrew at 9.8px
+          on a phone and he reported it the same day. A number derived from a
+          ratio cannot be stored as a size: `TAGLINE.minLockupPx` is that
+          division, done by the generator, and it moves when the ratio does.
+
+          The ceiling is taste and is the owner's (2026-08-21): the lockup at the
+          size it was shown to him on the specimen page, where he said it read
+          well — about 330px of wordmark, which is 85px of lockup. At the floor it
+          is 246px wide inside a 343px container at 375px, so width never binds. */}
+      <h1 class="m-0 leading-none">
+        <BrandLogo size={`clamp(${TAGLINE.minLockupPx}px,9vw,85px)`} tagline={true} />
+      </h1>
       {/* No separate tagline line here: the lockup above carries the slogan, and
           printing it twice under itself is the clearest possible way to say the
           logo is decoration. `t.home.heroTagline` went with it — it held the OLD

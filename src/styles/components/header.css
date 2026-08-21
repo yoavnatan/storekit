@@ -734,6 +734,32 @@ nav a:hover { color: var(--color-text); }
   gap: 0.5rem;
 }
 
+/* AND NEITHER DOES THE PLATFORM WORDMARK, which is the other path through this
+   column — added 2026-08-21 after the owner reported the logo *"cut along its
+   whole bottom"* in the header.
+   
+   The clip above is a truncation boundary, and it was written when the platform
+   logo on this path was TEXT (the comment on that rule still says so). It is an
+   SVG now: a fixed-width drawing that can never overflow this column and
+   therefore has nothing to truncate. All the clip could do was chop the
+   wordmark's own antialiased edges — and because the wordmark's baseline is one
+   flat line shared by seven letters, chopping it takes a grey slice off the
+   bottom of the whole word at once, which is exactly what he saw.
+   
+   Three boundaries had to go, not one: the column, its inner expansion wrapper,
+   and the link. `:has()` keeps every one of them intact for the store-name path,
+   which is the only path that can actually overflow.
+   
+   The wordmark ALSO carries a margin inside its own viewBox now
+   (generate-wordmark.mjs#BOX_MARGIN), so a future clip anywhere else — a card, a
+   store header, a mail client's wrapper — finds empty box at the edge rather
+   than ink. This rule and that margin are two halves of the same fix: the rule
+   removes the clip we know about, the margin removes the harm from the ones we
+   do not. */
+.store-header__logo-col:has(.dz-logo),
+.store-header__logo-col:has(.dz-logo) > div,
+.store-header__logo-col .logo:has(.dz-logo) { overflow: visible; }
+
 /* The store's own logo, first thing in its header (Header.astro renders a
    StoreAvatar at 32px, square). No size or radius here on purpose — both come
    from the avatar component, so the header can't drift from the same store's

@@ -36,9 +36,15 @@
 /* .auth-brand is gone (2026-08-05): both auth headers now render <BrandLogo/>,
    which owns its own weight, tracking and colour — a leftover rule with the
    same specificity would have fought it on source order alone. */
+/* Smaller than the wordmark above it, deliberately (owner, 2026-08-21: *"the
+   word כניסה is a little too big, certainly relative to the logo"*). At 1.7rem
+   the Hebrew word was 27px of light weight against a wordmark whose ink is 17px,
+   so the page read as "כניסה, by someone" — the heading leading and the brand
+   captioning it. On a sign-in card the brand leads and the heading says which
+   door this is. */
 .auth-head h1 {
-  font-size: clamp(1.4rem, 4vw, 1.7rem);
-  line-height: 1.2;
+  font-size: clamp(1.1rem, 3.2vw, 1.3rem);
+  line-height: 1.25;
   margin: 0;
 }
 

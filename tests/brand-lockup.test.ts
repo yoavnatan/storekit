@@ -8,7 +8,9 @@ import {
   VIEW_BOX,
   MARK_VIEW_BOX,
   HEIGHT_EM,
+  WIDTH_EM,
   INK_WIDTH_EM,
+  INK_HEIGHT_EM,
   GRADIENT,
   TAGLINE,
 } from '../src/lib/brand-lockup.js';
@@ -114,9 +116,9 @@ describe('the mark is the typeface, not a drawing', () => {
     expect(STROKE_WIDTH).toBe(0);
   });
 
-  it('starts at the origin, so the wordmark’s ink and its viewBox agree', () => {
+  it('starts the INK at the origin, with the box’s margin outside it', () => {
     const [x] = VIEW_BOX.split(' ').map(Number);
-    expect(x).toBe(0);
+    expect(x).toBeLessThan(0); // the margin — see "keeps a margin" below
     // The leftmost point, not the first command: a glyph's contour starts
     // wherever the outline does, which for this D is a third of the way in.
     const xs = [...MARK_PATH.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => Number(m[1]));
@@ -127,21 +129,53 @@ describe('the mark is the typeface, not a drawing', () => {
 describe('the boxes are cropped to the ink', () => {
   const box = (vb: string) => vb.split(' ').map(Number);
 
-  it('crops the wordmark to its ink on every side', () => {
+  it('keeps a margin around the ink, so no letter sits on a boundary', () => {
+    /**
+     * THE FIX FOR "the logo is cut along its whole bottom" (owner, 2026-08-21).
+     *
+     * The wordmark's baseline is one flat line shared by all seven letters. Crop
+     * the box to the ink and that line IS the box's edge — so any ancestor with
+     * `overflow: hidden` takes a slice off the bottom of the whole word at once.
+     * The one that did it was a truncation boundary written for a long store
+     * NAME, in a stylesheet that says nothing about the logo. That rule is fixed,
+     * but the rule only covers the ancestor we know about; the margin covers
+     * every future one — a store header, a card, a mail client's wrapper.
+     *
+     * So: the box must be strictly larger than the ink on every side. This is the
+     * assertion that makes a clip harmless anywhere, and it is deliberately the
+     * OPPOSITE of what this file asserted for one day.
+     */
     const [x, y, w, h] = box(VIEW_BOX);
-    expect(x).toBe(0);
-    expect(y).toBe(0);
-    expect(w).toBeCloseTo(INK_WIDTH_EM * 1000, 1);
+    expect(x).toBeLessThan(0);
+    expect(y).toBeLessThan(0);
+    expect(w).toBeCloseTo(WIDTH_EM * 1000, 1);
     expect(h).toBeCloseTo(HEIGHT_EM * 1000, 1);
+    // and the margin is real rather than a rounding artefact: at the header's
+    // ~23px the ink has to clear the edge by most of a device pixel.
+    expect(-y / (INK_HEIGHT_EM * 1000)).toBeGreaterThan(0.03);
+    expect(INK_HEIGHT_EM).toBeLessThan(HEIGHT_EM);
+  });
+
+  it('lets nothing in the header clip the wordmark', () => {
+    // The clip that caused it, and the escape that releases it. `:has()` keeps
+    // every boundary intact for the store-name path, which is the only one that
+    // can actually overflow.
+    const css = read('src/styles/components/header.css');
+    expect(css).toMatch(/\.store-header__logo-col:has\(\.dz-logo\)[\s\S]*?overflow: visible/);
+    expect(css).toMatch(/\.store-header__logo-col:has\(\.dz-logo\) > div/);
+    expect(css).toMatch(/\.store-header__logo-col \.logo:has\(\.dz-logo\)/);
   });
 
   it('gives the lone D its own box at CAP height, not the word’s ascender', () => {
     // A capital standing alone has no ascender above it to allow for, and a box
     // that reserved one would centre the letter high in every slot that uses it.
     const [, my, , mh] = box(MARK_VIEW_BOX);
-    const [, , , wordH] = box(VIEW_BOX);
+    const [, vy, , wordH] = box(VIEW_BOX);
     expect(mh).toBeLessThanOrEqual(wordH);
-    expect(my + mh).toBeCloseTo(wordH, 1); // both sit on the same baseline
+    // Both boxes end the same distance below the shared baseline — that distance
+    // being the margin. The D's box is shorter only at the TOP, where the word
+    // has an ascender and a lone capital does not.
+    expect(my + mh).toBeCloseTo(vy + wordH, 1);
   });
 
   /**
@@ -164,25 +198,30 @@ describe('the boxes are cropped to the ink', () => {
     expect(fx + fw / 2).toBeCloseTo(ix + iw / 2, 1);
     expect(fy + fh / 2).toBeCloseTo(iy + ih / 2, 1);
 
-    const fraction = ih / fh;
+    // Against the D's INK, not its padded box: the box's margin protects the
+    // letter from a clip, and the tab slot's margin is a different decision.
+    const margin = -box(VIEW_BOX)[1];
+    const fraction = (ih - margin * 2) / fh;
     expect(fraction).toBeGreaterThan(0.8);
     expect(fraction).toBeLessThan(0.95);
   });
 
   it('keeps the CSS height and the ink width in step with those boxes', () => {
     const [, , wordW, wordH] = box(VIEW_BOX);
-    // 1000 units = 1em, which is what lets the component size the svg in em alone.
+    // 1000 units = 1em, which is what lets the component size the svg in em
+    // alone. Both of these are the BOX; the ink pair is asserted separately.
     expect(HEIGHT_EM).toBeCloseTo(wordH / 1000, 5);
-    expect(INK_WIDTH_EM).toBeCloseTo(wordW / 1000, 5);
+    expect(WIDTH_EM).toBeCloseTo(wordW / 1000, 5);
   });
 
   it('runs the gradient across the whole wordmark rather than per letter', () => {
     // objectBoundingBox — the default — resolves per element, giving every letter
     // its own full ramp; the word then reads as pieces stuck together. The static
     // files must therefore all declare userSpaceOnUse.
-    const [, , wordW, wordH] = box(VIEW_BOX);
-    expect(GRADIENT.x2).toBeCloseTo(wordW, 1);
-    expect(GRADIENT.y2).toBeCloseTo(wordH, 1);
+    // The ramp spans the INK. Running it across the margin as well would end the
+    // word short of the stop the ramp was drawn for.
+    expect(GRADIENT.x2).toBeCloseTo(INK_WIDTH_EM * 1000, 1);
+    expect(GRADIENT.y2).toBeCloseTo(INK_HEIGHT_EM * 1000, 1);
     for (const file of GENERATED.filter((f) => read(f).includes('linearGradient')))
       expect(read(file), file).toContain('gradientUnits="userSpaceOnUse"');
   });
@@ -251,6 +290,7 @@ describe('the word keeps the face’s own spacing', () => {
     // different number here means something started adjusting the spacing again,
     // which is the decision this whole describe exists to guard.
     expect(INK_WIDTH_EM).toBeCloseTo(3.807, 2);
+    expect(WIDTH_EM).toBeGreaterThan(INK_WIDTH_EM); // the box is that plus its margin
   });
 });
 
@@ -276,7 +316,7 @@ describe('the module is what the generator writes', () => {
         .map((line) => line.split(':')[0].trim())
         .filter((k) => /^\w+$/.test(k))
         .sort();
-    expect(keys(moduleSrc)).toEqual(['gapEm', 'sizeEm', 'trackEm', 'weight']);
+    expect(keys(moduleSrc)).toEqual(['gapEm', 'minLockupPx', 'sizeEm', 'trackEm', 'weight']);
     expect(keys(moduleSrc)).toContain('gapEm');
   });
 
@@ -295,6 +335,24 @@ describe('the second line is small, centred, and tracked by language', () => {
     // near 0.245em. A value back up in the 0.4s means the width solve came back.
     expect(TAGLINE.sizeEm).toBeGreaterThan(0.2);
     expect(TAGLINE.sizeEm).toBeLessThan(0.3);
+  });
+
+  it('states the smallest lockup that leaves the line legible, and is read for it', () => {
+    /**
+     * The homepage carried this floor as a TYPED 2.5rem, correct for a tagline
+     * that was 0.3886em of the lockup — 15.5px, the owner's own floor from
+     * 2026-08-05. The lockup was redrawn on 08-21, the ratio became 0.245, and
+     * the same 2.5rem put the Hebrew at 9.8px on a phone. He reported it the same
+     * day. A floor derived from a ratio must not be stored as a size.
+     */
+    expect(TAGLINE.sizeEm * TAGLINE.minLockupPx).toBeGreaterThanOrEqual(15.5);
+    // …and no bigger than it needs to be, or the floor is really a design choice
+    // wearing a legibility argument.
+    expect(TAGLINE.sizeEm * TAGLINE.minLockupPx).toBeLessThan(16.5);
+    // the homepage reads it rather than repeating it
+    const home = read('src/pages/index.astro');
+    expect(home).toContain('TAGLINE.minLockupPx');
+    expect(home).not.toMatch(/size="clamp\(\d/);
   });
 
   it('gives Hebrew a fraction of the Latin tracking', () => {
