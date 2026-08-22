@@ -125,8 +125,23 @@ export default defineConfig({
       // mid-rebuild serves a half-stale script bundle. Nothing in data/ is ever
       // imported as a module — it's read at request time — so ignoring it costs
       // no HMR. Production is unaffected: the build doesn't watch anything.
+      // Same class, three more sources — none of them source code, all of them written
+      // WHILE the dev server is up, and each one costing a full page reload in whatever tab
+      // the owner is looking at (owner, 2026-08-22: *"למה כל פעם כשאני שומר פה ב-current_task
+      // פתאום זה מרענן לי את הדפדפן?"*).
+      //   `**/*.md`      — the project's prose: CURRENT_TASK.md is edited in the IDE, on and off,
+      //                    all session; AI_INSTRUCTIONS.md and GO_LIVE_CHECKLIST.md are written by
+      //                    the assistant mid-session. There is no markdown in the module graph at
+      //                    all (no content collections, no `.md` import anywhere in `src/`), so
+      //                    ignoring every one of them cannot cost a legitimate HMR update.
+      //   `**/.claude*/**` — the harness's own writes: `.claude/` (hook state, worktrees, session
+      //                    scratch) and `.claude-memory/` (the memory repo, ~200 files, rewritten
+      //                    whenever a memory is saved). Nothing under either is imported.
+      //   `**/coverage/**` — vitest's report, rewritten by every run of `npm run verify`.
+      // Everything here is checked against the same bar as `data/` above: not in the module
+      // graph, therefore ignoring it costs no HMR.
       watch: {
-        ignored: ['**/data/**'],
+        ignored: ['**/data/**', '**/*.md', '**/.claude/**', '**/.claude-memory/**', '**/coverage/**'],
       },
     },
   },
