@@ -5,7 +5,6 @@ import { POST as checkout } from '../src/pages/api/checkout.js';
 import { query } from '../src/lib/db.js';
 import { getOrderById, updateOrder, countsAsRevenue } from '../src/lib/orders.js';
 import { openReturnRequest, moveReturnRequest, hasOpenReturn, getReturnsForOrder } from '../src/lib/return-requests.js';
-import { orderHold } from '../src/lib/payout-hold.js';
 import { reconcilePlatform } from '../src/lib/reconcile.js';
 
 /**
@@ -113,21 +112,18 @@ describe('a refunded return settles the order, the stock and the debt', () => {
     expect(req.returnShippingPayer).toBe('buyer');
   });
 
-  it('freezes the payout while a request is open, and releases it when the request closes', async () => {
+  it('reports an open request while it is open, and stops once it closes', async () => {
+    // This used to assert that an open case FROZE the seller's payout, which was the point of it —
+    // the hold rule read `hasOpenReturn` and refused to release. There is no hold to freeze now, so
+    // what survives is the fact underneath: the flag every other rule reads is true exactly while a
+    // case is live.
     const order = await deliveredOrder();
     const opened = await openReturnRequest({ order, storeSlug: 'keramika', reason: 'changed_mind' });
     const req = opened as Exclude<typeof opened, { error: string }>;
 
     expect(await hasOpenReturn(order.id)).toBe(true);
-    // The hold rule reads the flag its caller passes; the SQL twin asks the same question of the
-    // same table (RELEASABLE_SQL), and tests/payout-hold.test.ts covers the arithmetic either way.
-    expect(orderHold({ ...order, hasOpenReturn: true }).state).toBe('held');
-    expect(orderHold({ ...order, hasOpenReturn: true }).basis).toBe('return_open');
-
-    // Closing it — here by the seller refusing — puts the order back on the ordinary clock.
     await moveReturnRequest({ id: req.id, to: 'rejected', actor: STORE.sellerId, store: STORE });
     expect(await hasOpenReturn(order.id)).toBe(false);
-    expect(orderHold({ ...order, hasOpenReturn: false }).basis).not.toBe('return_open');
   });
 
   it('a PARTIAL return is owed to the buyer and leaves the order delivered', async () => {

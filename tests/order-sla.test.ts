@@ -7,13 +7,7 @@
  *    released before the buyer's statutory right to cancel has run out.
  */
 import { describe, it, expect } from 'vitest';
-import { fulfilmentStatus } from '../src/lib/order-sla.js';
-import {
-  SHIP_WARNING_DAYS,
-  SHIP_AUTO_CANCEL_DAYS,
-  HOLD_DAYS_AFTER_DELIVERY,
-  FALLBACK_DAYS_AFTER_PAYMENT,
-} from '../src/lib/payout-schedule.js';
+import { fulfilmentStatus, SHIP_DEADLINE_BUSINESS_DAYS, SHIP_WARNING_DAYS, SHIP_AUTO_CANCEL_DAYS } from '../src/lib/order-sla.js';
 import { addDaysISO } from '../src/lib/date-range.js';
 
 const TODAY = '2026-08-10';
@@ -84,26 +78,16 @@ describe('orders the question does not apply to', () => {
   });
 });
 
-describe('the periods are legally and internally coherent', () => {
-  it('holds the money past the buyer\'s statutory right to cancel', () => {
-    // חוק הגנת הצרכן gives a distance-sale buyer 14 days FROM RECEIVING the goods to cancel
-    // (checked 2026-08-10). A hold of exactly 14 released the seller's money on the last day the
-    // buyer could still cancel, so a cancellation arriving on time became a debt to chase.
-    const STATUTORY_CANCELLATION_DAYS = 14;
-    expect(HOLD_DAYS_AFTER_DELIVERY).toBeGreaterThan(STATUTORY_CANCELLATION_DAYS);
-  });
-
-  it('keeps reporting delivery the faster path, by a real margin', () => {
-    // With hold H and fallback F, reporting only pays sooner while delivery lands within F − H
-    // days. At 14/21 that margin was 7 days, so any delivery slower than a week rewarded silence —
-    // the exact incentive the fallback exists to remove.
-    expect(FALLBACK_DAYS_AFTER_PAYMENT).toBeGreaterThan(HOLD_DAYS_AFTER_DELIVERY);
-    expect(FALLBACK_DAYS_AFTER_PAYMENT - HOLD_DAYS_AFTER_DELIVERY).toBeGreaterThanOrEqual(7);
-  });
-
-  it('warns before it cancels, and cancels before the money could ever release', () => {
+describe('the periods are internally coherent', () => {
+  // Two of the four cases here compared the fulfilment deadlines against the PAYOUT hold — the
+  // seller's money had to be unreleasable while an order was still on the cancellation path, and the
+  // hold had to outlast the buyer's statutory right to cancel. Neither can be asserted any more and
+  // neither needs to be: the platform releases nothing, so there is no release to race.
+  it('warns before it cancels', () => {
     expect(SHIP_WARNING_DAYS).toBeLessThan(SHIP_AUTO_CANCEL_DAYS);
-    // An order must not be able to reach a payout while it is still on the cancellation path.
-    expect(SHIP_AUTO_CANCEL_DAYS).toBeLessThan(FALLBACK_DAYS_AFTER_PAYMENT);
+  });
+
+  it('gives the seller a working-day deadline shorter than the day it cancels on', () => {
+    expect(SHIP_DEADLINE_BUSINESS_DAYS).toBeLessThan(SHIP_AUTO_CANCEL_DAYS);
   });
 });

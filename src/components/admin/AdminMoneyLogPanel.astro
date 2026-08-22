@@ -52,14 +52,10 @@ const TYPE_TONE: Record<MoneyEventType, 'good' | 'bad' | 'warn' | 'plain'> = {
   // the obligation is neutral — it is bookkeeping, and no money has moved. Sending is the good
   // outcome. A FAILED payout is red and belongs beside `charge_voided` and `refund_due`: it is a
   // seller who has not been paid, does not know why, and whose money is still sitting with us.
-  payout_created: 'plain',
-  payout_sent: 'good',
-  payout_failed: 'bad',
   // Amber, not red. A clawback is the system working — money we had already released is being
   // recovered from a sale that was undone — but it is money coming OUT of a real business's
   // balance without them initiating it, which is the single most likely row in this journal to
   // start a dispute. It should never scroll past unnoticed, and it is not an emergency.
-  seller_debited: 'warn',
 };
 
 const TONE_CLASS: Record<'good' | 'bad' | 'warn' | 'plain', string> = {

@@ -9,7 +9,6 @@ import {
   type ReturnRequest,
 } from '../src/lib/return-requests.js';
 import { runReturnsSweep } from '../src/lib/returns-run.js';
-import { orderHold } from '../src/lib/payout-hold.js';
 import {
   RETURN_TRANSITIONS, isOpen, canEscalate,
   HANDOVER_DAYS, IN_TRANSIT_PATIENCE_DAYS, OFFER_ANSWER_DAYS,
@@ -257,7 +256,6 @@ describe('the product goes back — every route it can take', () => {
     await runReturnsSweep(at(IN_TRANSIT_PATIENCE_DAYS + 2));
     const stuck = (await getReturnRequest(req.id))!;
     expect(stuck.status).toBe('disputed');
-    expect(orderHold({ ...(await getOrderById(order.id))!, hasOpenReturn: true }).basis).toBe('return_open');
 
     // The admin can end it either way, and both ways really end it.
     await move(req.id, 'refunded', 'admin');
@@ -539,7 +537,6 @@ describe('no case can be left with nobody able to move it', () => {
       await reach(req.id);
       expect((await getReturnRequest(req.id))!.status).toBe(expected);
       expect(await hasOpenReturn(order.id)).toBe(false);
-      expect(orderHold({ ...(await getOrderById(order.id))!, hasOpenReturn: false }).basis).not.toBe('return_open');
     }
   });
 });

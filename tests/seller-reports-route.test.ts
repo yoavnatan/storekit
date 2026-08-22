@@ -72,59 +72,20 @@ beforeEach(async () => {
   await seedStore(STORE_B1, SELLER_B, SLUG_B1);
 
   // One transfer each, distinguishable by amount.
-  await query(
-    `INSERT INTO seller_payouts (seller_id, period_key, amount_agorot, commission_agorot, sent_at, status)
-     VALUES ($1, '2026-07', 111100, 11100, '2026-08-03T09:00:00Z', 'paid'),
-            ($2, '2026-07', 999900, 99900, '2026-08-03T09:00:00Z', 'paid')`,
-    [SELLER_A, SELLER_B],
-  );
 });
 
 const RANGE = { from: '2026-08-01', to: '2026-08-31' };
 
-describe('the payouts report belongs to the ACCOUNT, not to the store named in the query', () => {
-  it('refuses a caller with no session', async () => {
+describe('a report the route no longer serves', () => {
+  // `payouts` listed the transfers this platform made to a seller, and it makes none — the
+  // processor pays each seller directly. The id is refused rather than quietly treated as an
+  // unknown report, so an old bookmark gets an answer instead of an empty file.
+  it('refuses a caller with no session, whatever it asked for', async () => {
     SESSION = null;
     expect((await GET(ctx({ report: 'payouts', storeSlug: SLUG_A1, ...RANGE }))).status).toBe(401);
   });
 
-  it('404s a slug the session does not own, so it cannot be used as a probe', async () => {
-    // The slug is real — it is seller B's. A 404 rather than a 403 is this route's existing stance
-    // everywhere: the caller learns nothing about whether the store exists.
-    const res = await GET(ctx({ report: 'payouts', storeSlug: SLUG_B1, ...RANGE }));
-    expect(res.status).toBe(404);
-  });
-
-  it('returns the SESSION\'s transfers, never the named store\'s owner\'s', async () => {
-    const res = await GET(ctx({ report: 'payouts', storeSlug: SLUG_A1, ...RANGE }));
-    const body = await res.json() as { rows: { amountAgorot: number }[]; totals: { amountAgorot: number } };
-    expect(body.rows.map((r) => r.amountAgorot)).toEqual([111100]);
-    expect(body.totals.amountAgorot).toBe(111100);
-  });
-
-  it('answers the same for EITHER of the seller\'s stores — the report is not per store', async () => {
-    // The invariant the label "מכל החנויות" promises. A per-store split here would be a number no
-    // bank transfer ever matches, and a seller reconciling two shops would double-count.
-    const one = await (await GET(ctx({ report: 'payouts', storeSlug: SLUG_A1, ...RANGE }))).json();
-    const two = await (await GET(ctx({ report: 'payouts', storeSlug: SLUG_A2, ...RANGE }))).json();
-    expect(two).toEqual(one);
-  });
-
-  it('honours the period, and needs one', async () => {
-    const outside = await (await GET(ctx({ report: 'payouts', storeSlug: SLUG_A1, from: '2026-09-01', to: '2026-09-30' }))).json() as { rows: unknown[] };
-    expect(outside.rows).toEqual([]);
-    // Unlike `stock`, this report is windowed — a missing range must be a refusal rather than a
-    // silent "all time", which would hand a bookkeeper a file whose name promises a month.
-    expect((await GET(ctx({ report: 'payouts', storeSlug: SLUG_A1 }))).status).toBe(400);
-  });
-
-  it('exports a CSV that carries the same rows and never caches', async () => {
-    const res = await GET(ctx({ report: 'payouts', storeSlug: SLUG_A1, format: 'csv', ...RANGE }));
-    expect(res.headers.get('Cache-Control')).toBe('no-store');
-    const body = await res.text();
-    expect(body).toContain('2026-08-03');
-    expect(body).toContain('1111.00');
-    // Seller B's transfer must not appear in a file seller A downloads.
-    expect(body).not.toContain('9999.00');
+  it('400s the retired report id', async () => {
+    expect((await GET(ctx({ report: 'payouts', storeSlug: SLUG_A1, ...RANGE }))).status).toBe(400);
   });
 });

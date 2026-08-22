@@ -26,7 +26,7 @@
  *  it must carry the same numbers as this page and the numbers here are the statute's, not ours.
  *
  *  ── The numbers are interpolated, never typed ──
- *  `STATUTORY_RETURN_DAYS` is the law's own figure and lives in `payout-schedule.ts` beside the hold
+ *  `STATUTORY_RETURN_DAYS` is the law's own figure and lives in `returns.ts` beside the rules
  *  it constrains. A digit written into a legal clause AND separately into the code is a number that
  *  will disagree with itself, and the version a buyer can hold us to is this one.
  *
@@ -43,7 +43,8 @@ import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId } from '../lib/stores.js';
 import { getLang } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
-import { STATUTORY_RETURN_DAYS, SHIP_AUTO_CANCEL_DAYS } from '../lib/payout-schedule.js';
+import { STATUTORY_RETURN_DAYS } from '../lib/returns.js';
+import { SHIP_AUTO_CANCEL_DAYS } from '../lib/order-sla.js';
 import {
   RESPONSE_BUSINESS_DAYS, HANDOVER_DAYS, OFFER_ANSWER_DAYS, ESCALATION_DAYS,
 } from '../lib/returns.js';

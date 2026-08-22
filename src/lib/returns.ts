@@ -1,6 +1,5 @@
 import { businessDayISO, businessTodayISO } from './business-day.js';
 import { addDaysISO } from './date-range.js';
-import { STATUTORY_RETURN_DAYS } from './payout-schedule.js';
 import { SHIPPING_STATUS_RULES, orderMoneyWasTaken } from './order-status-rules.js';
 import type { Order } from './orders.js';
 
@@ -193,6 +192,21 @@ export function withinStatutoryWindow(
 export function autoApproved(withinStatutory: boolean): boolean {
   return withinStatutory;
 }
+
+/**
+ * The buyer's statutory cancellation window — **not ours to choose.**
+ *
+ * Israeli consumer law gives a distance-sale buyer **14 days from RECEIVING the goods** to cancel
+ * (חוק הגנת הצרכן §14ג + תקנות ביטול עסקה תשע"א-2010; checked 2026-08-10 against kolzchut.org.il,
+ * not recalled). Everything else on this page is a policy we set; this one is the floor the policy
+ * has to clear, which is why it is a constant of its own rather than a number inside the comment
+ * below.
+ *
+ * It lived in `payout-schedule.ts` until 2026-08-21, because the payout hold was set against it.
+ * That hold is gone and this is not: it is the buyer's right, and `returns.ts` is the module that
+ * decides everything else about a return.
+ */
+export const STATUTORY_RETURN_DAYS = 14;
 
 /**
  * Who pays to send it back (decisions §5).

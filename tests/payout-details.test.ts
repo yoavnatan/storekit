@@ -20,7 +20,6 @@ const SELLER_ID = '11111111-1111-4111-8111-0000000000b1';
 const STORE_ID = '22222222-2222-4222-8222-0000000000b1';
 const PRODUCT_ID = '33333333-3333-4333-8333-0000000000b1';
 const SLUG = 'payout-shop';
-const TODAY = '2026-08-10';
 
 let SESSION: string | null = SELLER_ID;
 vi.mock('../src/lib/seller-auth.js', async () => ({
@@ -32,7 +31,6 @@ vi.mock('../src/lib/seller-auth.js', async () => ({
 
 const { POST } = await import('../src/pages/api/seller/payout-details.js');
 const { getSellerById } = await import('../src/lib/seller-auth.js');
-const { runPayouts } = await import('../src/lib/payout-run.js');
 
 function ctx(body: unknown): APIContext {
   return {
@@ -137,21 +135,6 @@ async function seed(): Promise<void> {
   );
 }
 
-/** One delivered order, long enough ago that its hold has certainly expired — so the ONLY thing
- *  standing between this seller and a payout is the bank form. */
-async function seedReleasedOrder(): Promise<void> {
-  const id = crypto.randomUUID();
-  await query(
-    `INSERT INTO orders (id, buyer_name, buyer_email, total_agorot, payment_status, shipping_status, paid_at, delivered_at, created_at)
-     VALUES ($1, 'B', 'b@example.com', 500000, 'paid', 'delivered', now() - interval '200 days', now() - interval '190 days', now() - interval '200 days')`,
-    [id],
-  );
-  await query(
-    `INSERT INTO order_stores (order_id, store_slug, store_name, subtotal_agorot, shipping_agorot)
-     VALUES ($1, $2, 'Payout Shop', 500000, 0)`,
-    [id, SLUG],
-  );
-}
 
 beforeEach(seed);
 
@@ -252,21 +235,7 @@ describe('nothing writes bank details it did not validate', () => {
 
 });
 
-describe('the form and the payout run are joined up', () => {
-  it('turns "skipped, no bank details" into a real payout', async () => {
-    await seedReleasedOrder();
-
-    const before = await runPayouts(TODAY);
-    expect(before.skippedNoBank).toBe(1);
-    expect(before.created).toBe(0);
-
-    expect((await POST(ctx(FULL))).status).toBe(200);
-
-    // A different period key, because the first run's `periodKey` is the same one and a payout is
-    // UNIQUE per (seller, period) — the run above created nothing, so this is the first.
-    const after = await runPayouts(TODAY);
-    expect(after.skippedNoBank).toBe(0);
-    expect(after.created).toBe(1);
-    expect(after.totalAgorot).toBeGreaterThan(0);
-  });
-});
+// There is no payout run for this form to unblock any more, so the case that joined the two is
+// gone. What the fields do now is open the seller's merchant account at the processor, and the test
+// for that belongs with the adapter that makes the call — it does not exist yet, and asserting
+// against a mock of it here would only pin our own guess about their API.

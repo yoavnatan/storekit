@@ -7,12 +7,11 @@ import { getOrdersByStoreSlugInRange } from '../../../lib/orders.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import { isDayISO } from '../../../lib/business-day.js';
 import { getLang } from '../../../i18n/index.js';
-import { getPayoutsForSeller } from '../../../lib/payouts.js';
 import {
-  buildSalesReport, buildProductSalesReport, buildStockReport, buildPayoutsReport, isReportId, type ReportId,
+  buildSalesReport, buildProductSalesReport, buildStockReport, isReportId, type ReportId,
 } from '../../../lib/seller-reports.js';
 import {
-  salesReportCsv, productSalesReportCsv, stockReportCsv, payoutsReportCsv, reportFileName,
+  salesReportCsv, productSalesReportCsv, stockReportCsv, reportFileName,
 } from '../../../lib/seller-reports-csv.js';
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -34,21 +33,8 @@ const MAX_DAYS = 731;
  * `stock` deliberately ignores `from`/`to`: a stocktake is a statement about now, and accepting a
  * range there would produce a file whose name promises a period its contents do not describe.
  *
- * **`payouts` is account-wide, and the slug is still authorization (2026-08-11).** A payout is one
- * bank transfer per registered business, so this report cannot be scoped to a store — the rows are
- * read for `sellerId`, which came from the SESSION. The `storeSlug` is still required and still
- * resolved through `getStoresBySellerId`, because it is what names the export file and because
- * dropping the check would leave one report on this route reachable with no store at all. It is not
- * a filter and nothing here treats it as one; `seller-report-shapes.ts#ACCOUNT_WIDE_REPORTS` is the
- * declaration of that, so the tab can label the report rather than each surface remembering.
- *
- * **The range is now a `WHERE`, not a `filter` (2026-08-11, owner: "at least stop loading all of
- * infinity every time").** This used to read the store's WHOLE order history and drop everything
- * outside `from`/`to` in JavaScript. Both range reports validate their bounds as real business days
- * before reaching here, and both builders re-apply the same membership rule, so moving the window
- * into `getOrdersByStoreSlugInRange` changed no output — only how much of the table it took to
- * produce it. The Performance tab moved in the same change, deliberately: they read the same data
- * for the same window and must not diverge.
+ * Every report on this tab is now store-scoped — the one account-wide report, `payouts`, went
+ * with the transfers it listed (`seller-report-shapes.ts`).
  */
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
@@ -62,7 +48,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const wantsCsv = url.searchParams.get('format') === 'csv';
 
   if (!isReportId(report) || !reqSlug) return json({ error: 'Missing or invalid report/storeSlug' }, 400);
-  const needsRange: ReportId[] = ['sales', 'products', 'payouts'];
+  const needsRange: ReportId[] = ['sales', 'products'];
   if (needsRange.includes(report)) {
     if (!isDayISO(from) || !isDayISO(to) || from > to) return json({ error: 'Missing or invalid from/to' }, 400);
     const spanDays = (new Date(to).getTime() - new Date(from).getTime()) / 86400000;
@@ -94,14 +80,6 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return wantsCsv ? csv(stockReportCsv(rows, lang)) : json({ ok: true, rows, totals });
   }
 
-  if (report === 'payouts') {
-    // `sellerId` from the session, never anything derived from `store` — a payout belongs to the
-    // ACCOUNT, and reading it by store id would be the "an id is not a permission" shape this repo
-    // has an audit row about, pointed the wrong way.
-    const payouts = await getPayoutsForSeller(sellerId);
-    const { rows, totals } = buildPayoutsReport(payouts, from, to);
-    return wantsCsv ? csv(payoutsReportCsv(rows, lang)) : json({ ok: true, rows, totals });
-  }
 
   if (report === 'products') {
     // Independent reads, so one round trip rather than two (AI_INSTRUCTIONS → Scalability).

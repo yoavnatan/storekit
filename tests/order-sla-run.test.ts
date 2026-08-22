@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 import { query, rows } from '../src/lib/db.js';
 import { runOrderSla, getSlaCandidates } from '../src/lib/order-sla-run.js';
-import { SHIP_WARNING_DAYS, SHIP_AUTO_CANCEL_DAYS } from '../src/lib/payout-schedule.js';
+import { SHIP_WARNING_DAYS, SHIP_AUTO_CANCEL_DAYS } from '../src/lib/order-sla.js';
 import { addDaysISO } from '../src/lib/date-range.js';
 import type { Order } from '../src/lib/orders.js';
 import type { DeliveryMethod } from '../src/lib/shipping.js';

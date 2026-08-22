@@ -10,21 +10,6 @@
  * A test that needs to control the data can still call `setDatabase()` itself; the last one
  * installed wins, and this file restores nothing until the run ends.
  */
-/**
- * **The suite exercises the CUSTODIAL settlement model, deliberately, whatever the product default
- * is** (2026-08-19, when the default became `split`).
- *
- * `lib/settlement-model.ts` reads this once at import and every payout path refuses when the model
- * is `split` — which is the point of it. But the custodial modules are kept whole and reachable on
- * one word, and code nobody tests is code nobody can go back to: the day that word is set, the
- * payout run, the hold arithmetic and the ledger adjustments have to still work. So the suite pins
- * them ON, and `settlement-model.test.ts` asserts the shipped DEFAULT by reading the source instead
- * of the runtime value.
- *
- * Set BEFORE any import that could pull the module in — it captures the value at module load, so a
- * later assignment would be read too late.
- */
-process.env.SETTLEMENT_MODEL ??= 'custodial';
 
 import { afterAll } from 'vitest';
 import { setDatabase, type Database, type Queryable } from '../../src/lib/db.js';

@@ -14,22 +14,21 @@
  */
 import type { Order } from './orders.js';
 
-export type ReportId = 'sales' | 'products' | 'stock' | 'payouts';
-export const REPORT_IDS: readonly ReportId[] = ['sales', 'products', 'stock', 'payouts'];
+export type ReportId = 'sales' | 'products' | 'stock';
+export const REPORT_IDS: readonly ReportId[] = ['sales', 'products', 'stock'];
 
 /**
- * ⚠️ `payouts` is the ONE report on this tab that is not about the store in the switcher.
+ * Reports that are about the ACCOUNT rather than about the store in the switcher.
  *
- * A payout is one bank transfer per seller ACCOUNT — one ח״פ, one bank account, however many stores
- * (`pricing.ts`, `seller-account.ts`) — so it cannot be split by shop, and a per-store column here
- * would be a number no transfer ever matches. It is labelled "מכל החנויות" in its own description
- * rather than footnoted, the same way the Payments tab labels its two account-wide tiles.
+ * Empty since 2026-08-21: the only one was `payouts`, a history of the transfers this platform made
+ * to a seller, and the platform makes none — the processor pays each seller directly, on its own
+ * schedule. The seller's own transaction history for his accountant is a real gap and it is
+ * recorded as one (GO_LIVE §3.0.1); it will come from the processor, not from our tables.
  *
- * The route still takes a `storeSlug` for it, and that is authorization and not scope: the slug
- * proves the session owns a store, and the payouts are then read for the SESSION's seller id. See
- * `/api/seller/reports`.
+ * The constant stays rather than being deleted with its one member: every route on this tab asks it
+ * whether a report is store-scoped, and an empty list is the honest answer to that question.
  */
-export const ACCOUNT_WIDE_REPORTS: readonly ReportId[] = ['payouts'];
+export const ACCOUNT_WIDE_REPORTS: readonly ReportId[] = [];
 
 export function isReportId(v: string | null | undefined): v is ReportId {
   return REPORT_IDS.includes(v as ReportId);
@@ -87,40 +86,6 @@ export interface ProductSalesRow {
   stock: number | null;
 }
 
-/**
- * One transfer the platform made to this seller — the accounting report (owner, סשן א׳ §6).
- *
- * *"שולם בעבר — נראה לי מידע מיותר בתשלומים, זה אמור להיות בדו״חות… מידע שהוא מרגיש יותר חשבונאי…
- * דו״ח יותר חשבונאי שכולל גם תשלומים מהפלטפורמה. לפי תקופה שהוא בוחר."* The Payments tab lost its
- * lifetime "שולם בעבר" tile and its history table to this: a figure with no period and no export is
- * one nobody can reconcile a month against.
- *
- * **`commissionAgorot` is the INCREMENT this transfer settled, never a lifetime total** — the
- * column's own comment in migration 0023 says why, and getting it wrong bills the same commission
- * twice. It is here because it is the other half of what the seller needs for their books: what
- * arrived, and what was taken before it did.
- */
-export interface PayoutRow {
-  /** Business-day ISO of the transfer — `sentAt` when it went out, `createdAt` while it is still
-   *  pending. Null for neither: a row always has a created date. */
-  dayISO: string;
-  /** 'YYYY-MM' on the business calendar — the month the money was earned in, which is NOT the month
-   *  it was transferred in and is the pairing a bookkeeper reconciles against. */
-  periodKey: string;
-  amountAgorot: number;
-  commissionAgorot: number;
-  status: 'pending' | 'sent' | 'paid' | 'failed';
-  /** A bounced transfer is money that came back, so it is LISTED and excluded from the totals — the
-   *  same stance the sales report takes with a cancelled order, and for the same reason: a month is
-   *  reconciled against what happened, not against what stuck. */
-  countsAsPaid: boolean;
-}
-
-export interface PayoutReportTotals {
-  rows: number;
-  amountAgorot: number;
-  commissionAgorot: number;
-}
 
 export interface StockRow {
   productId: string;

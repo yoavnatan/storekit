@@ -219,6 +219,10 @@ describe('the money vocabulary stays complete', () => {
     // second: it needs the provider's refund call and no provider is chosen (GO_LIVE §3), and its
     // absence is exactly what keeps every obligation open instead of quietly closing itself. Listed
     // here so that stays a decision rather than becoming an oversight.
+    //
+    // Four words left the vocabulary on 2026-08-21 rather than joining this list — the three payout
+    // events and the seller debit. They were not promises: the platform makes no transfers to debit
+    // or to record, so nothing was ever going to write them again.
     const PROVIDER_BLOCKED = new Set(['refund_settled']);
     // A WRITE, not a mention: `reconcile.ts` names `refund_settled` in the SQL that looks for one,
     // which is the opposite of writing it. `type: '…'` is the shape `recordMoneyEvent` takes.

@@ -11,7 +11,7 @@ import {
   PAYOUT_CLOCK_SHIPPING_STATUSES,
   PICKUP_PAYOUT_CLOCK_SHIPPING_STATUSES,
 } from './order-status-rules.js';
-import { SHIP_WARNING_DAYS, SHIP_AUTO_CANCEL_DAYS } from './payout-schedule.js';
+import { SHIP_WARNING_DAYS, SHIP_AUTO_CANCEL_DAYS } from './order-sla.js';
 import { formatBusinessDayLabel } from './format-date.js';
 import type { Order } from './orders.js';
 import type { DeliveryMethod } from './shipping.js';

@@ -4,8 +4,6 @@ import { getStoreIdsWithUnreadMessages } from './messages.js';
 import { getStoreIdsWithStockAlerts } from './store-products.js';
 import { getStoreIdsWithStalledCampaigns } from './ad-campaigns.js';
 import { LOW_STOCK_THRESHOLD } from './variant-combo.js';
-import { sellerNeedsBankDetails } from './payouts.js';
-import { getSellerById } from './seller-auth.js';
 
 /**
  * Everything about this seller that is waiting on them — the one source for every red dot.
@@ -17,14 +15,14 @@ import { getSellerById } from './seller-auth.js';
  * new "requires attention" state is added HERE and every surface reads it, rather than each surface
  * deciding for itself what counts.
  *
- * Two kinds, because they point at different places:
- *   • **per store** — a pending order, unread mail, stock that ran out, a boost the platform
- *     stopped. Belongs to one shop, so it dots that shop's row in the switcher and its own tab
- *     inside that shop's dashboard.
- *   • **account-wide** — money released with no bank account to send it to. It is not any one
- *     shop's problem (a payout covers all of them), so it dots the avatar and the dashboard link
- *     and then the payments tab, and it deliberately does NOT dot every row of the store switcher:
- *     the same flag on every row says "all of your stores" when the truth is "none of them".
+ * All of them are PER STORE — a pending order, unread mail, stock that ran out, a boost the
+ * platform stopped. Each belongs to one shop, so it dots that shop's row in the switcher and its
+ * own tab inside that shop's dashboard.
+ *
+ * There was one account-wide alert until 2026-08-21: money released with no bank account to send it
+ * to. It cannot occur any more — the processor pays each seller directly, so the platform never
+ * holds money that could be released — and it took the whole `needsBank` half of this module with
+ * it, including the reason the header had to ask an account-wide question at all.
  *
  * ── The two SEVERITIES, and why the switcher needs both (owner, 2026-08-12) ──
  * The per-store dot used to mean orders-or-mail and nothing else, so a seller switching shops was
@@ -46,10 +44,7 @@ import { getSellerById } from './seller-auth.js';
  * `sellerHasAnyAlert` runs in `Header.astro`, i.e. on every page a signed-in seller loads, and it
  * asks the DANGER half only: three multi-store statements whatever the number of stores
  * (AI_INSTRUCTIONS → Scalability), plus one primary-key read for the seller row — unchanged by the
- * two states added above, which are read by the dashboard alone. The bank question adds nothing
- * beyond that read for any seller who has filled the form in — `sellerNeedsBankDetails` tests that
- * first and short-circuits. A seller who has NOT filled it in pays for three small sums, and is
- * exactly the seller being asked about.
+ * two states added above, which are read by the dashboard alone.
  *
  * The unread rule itself lives in `messages.ts`, beside the seller's inbox, rather than here: a
  * buyer's follow-up inside an already-opened thread is new mail, and two places deciding that is
@@ -62,8 +57,6 @@ export type StoreAlertLevel = 'danger' | 'warning';
 export interface SellerAlerts {
   /** storeId → this shop has something waiting, and how loudly. Absent = nothing. */
   byStore: Record<string, StoreAlertLevel>;
-  /** Account-wide: released money and no bank account on file. */
-  needsBank: boolean;
 }
 
 /** The danger half alone — everything a PERSON is waiting on. What the header asks. */
@@ -83,25 +76,18 @@ export async function getSellerStoreAlerts(
  *  account-wide states as well as the per-store ones — but not the warnings (see the header). */
 export async function sellerHasAnyAlert(sellerId: string): Promise<boolean> {
   const alerts = await getSellerAlerts(sellerId);
-  return alerts.needsBank || Object.keys(alerts.byStore).length > 0;
+  return Object.keys(alerts.byStore).length > 0;
 }
 
 async function collect(sellerId: string, withWarnings: boolean): Promise<SellerAlerts> {
-  // Independent reads, so one round trip rather than two sequential ones
-  // (`project_sequential_await_latency`).
-  const [stores, seller] = await Promise.all([
-    getStoresBySellerId(sellerId),
-    getSellerById(sellerId),
-  ]);
-  // No store means no orders, no mail and no balance — there is nothing this seller can be behind
-  // on yet, and the account-wide question would cost three sums to answer "0".
-  if (stores.length === 0) return { byStore: {}, needsBank: false };
+  const stores = await getStoresBySellerId(sellerId);
+  // No store means no orders and no mail — there is nothing this seller can be behind on yet.
+  if (stores.length === 0) return { byStore: {} };
 
   const ids = stores.map((s) => s.id);
-  const [pendingSlugs, unreadStoreIds, needsBank, lowStockIds, stalledAdIds] = await Promise.all([
+  const [pendingSlugs, unreadStoreIds, lowStockIds, stalledAdIds] = await Promise.all([
     getStoreSlugsWithPendingOrders(stores.map((s) => s.slug)),
     getStoreIdsWithUnreadMessages(sellerId, ids),
-    sellerNeedsBankDetails(sellerId, seller),
     withWarnings ? getStoreIdsWithStockAlerts(ids, LOW_STOCK_THRESHOLD) : new Set<string>(),
     withWarnings ? getStoreIdsWithStalledCampaigns(ids) : new Set<string>(),
   ]);
@@ -112,5 +98,5 @@ async function collect(sellerId: string, withWarnings: boolean): Promise<SellerA
     if (pendingSlugs.has(s.slug) || unreadStoreIds.has(s.id)) byStore[s.id] = 'danger';
     else if (lowStockIds.has(s.id) || stalledAdIds.has(s.id)) byStore[s.id] = 'warning';
   }
-  return { byStore, needsBank };
+  return { byStore };
 }

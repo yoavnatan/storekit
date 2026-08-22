@@ -22,7 +22,7 @@ import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 // `seller-report-shapes.js`, never `seller-reports.js`: the builders there import `orders.ts`,
 // which reaches `db.ts`, which opens a connection pool at module scope — so importing them from a
 // browser file would bundle Postgres into the seller dashboard.
-import { isReportId, type ReportId, type SalesRow, type ProductSalesRow, type StockRow, type PayoutRow } from '../../lib/seller-report-shapes.js';
+import { isReportId, type ReportId, type SalesRow, type ProductSalesRow, type StockRow } from '../../lib/seller-report-shapes.js';
 import { showErrorToast } from '../../lib/toast.js';
 
 const ENDPOINT = '/api/seller/reports';
@@ -32,7 +32,7 @@ function i18n(): Record<string, string> {
   catch { return {}; }
 }
 
-export type AnyRow = SalesRow | ProductSalesRow | StockRow | PayoutRow;
+export type AnyRow = SalesRow | ProductSalesRow | StockRow;
 interface Payload { ok?: boolean; rows?: AnyRow[]; totals?: Record<string, number> }
 
 /** A column: its heading, how to draw a cell, and whether it is a number (so the whole column can
@@ -110,38 +110,8 @@ export function columnsFor(report: ReportId, t: Record<string, string>): Column<
     },
   ];
 
-  /**
-   * The accounting report (owner, סשן א׳ §6). Five columns and nothing derived — every one of them
-   * is a fact a bookkeeper reconciles against a bank statement.
-   *
-   * **Two dates, and both are needed.** `dayISO` is when the money MOVED (what the bank statement
-   * shows) and `periodKey` is the month it was EARNED in (what the seller's books call it); a
-   * transfer on the 1st of April routinely settles March. Printing only one of them makes half the
-   * reconciliations impossible, so neither is dropped for tidiness.
-   *
-   * A failed transfer is listed and marked, like a cancelled order in the sales report: it is money
-   * that came back, it is excluded from the totals, and a gap where it should be is a question the
-   * seller cannot ask.
-   */
-  const payouts: Column<PayoutRow>[] = [
-    { key: 'day', head: t.repColDate ?? '', cell: (r) => esc(displayDate(r.dayISO)), sortBy: (r) => r.dayISO },
-    { key: 'period', head: t.repColPeriod ?? '', cell: (r) => `<code dir="ltr">${esc(r.periodKey)}</code>` },
-    { key: 'amount', head: t.repColTransferred ?? '', num: true, cell: (r) => `<strong>${money(r.amountAgorot)}</strong>`, sortBy: (r) => r.amountAgorot },
-    { key: 'commission', head: t.repColCommissionTaken ?? '', num: true, cell: (r) => (r.commissionAgorot ? `−${money(r.commissionAgorot)}` : '—') },
-    {
-      key: 'state',
-      head: t.repColStatus ?? '',
-      cell: (r) => {
-        const label = r.status === 'pending' ? t.payStatusPending
-          : r.status === 'sent' ? t.payStatusSent
-          : r.status === 'paid' ? t.payStatusPaid
-          : t.payStatusFailed;
-        return `<span class="report-state report-state--${r.countsAsPaid ? 'ok' : 'off'}">${esc(label ?? '')}</span>`;
-      },
-    },
-  ];
 
-  const byReport = { sales, products, stock, payouts };
+  const byReport = { sales, products, stock };
   return byReport[report] as unknown as Column<never>[];
 }
 
@@ -224,16 +194,6 @@ function summaryText(report: ReportId, totals: Record<string, number>, t: Record
     return [
       `${t.repSumUnits ?? ''} ${n('units')}`,
       `${t.repSumNet ?? ''} ${money(n('netAgorot'))}`,
-    ].join(' · ');
-  }
-  if (report === 'payouts') {
-    // `rows` counts only the transfers that actually landed — `buildPayoutsReport` excludes failed
-    // ones from every total — so "העברות: 3" beside four visible rows is correct and the fourth row
-    // says why in its own state cell.
-    return [
-      `${t.repSumPayoutCount ?? ''} ${n('rows')}`,
-      `${t.repSumTransferred ?? ''} ${money(n('amountAgorot'))}`,
-      `${t.repSumCommission ?? ''} ${money(n('commissionAgorot'))}`,
     ].join(' · ');
   }
   return [

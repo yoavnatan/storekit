@@ -56,16 +56,11 @@
  * directly and there was nothing for this journal to witness. A journal that records every shekel
  * arriving and none leaving cannot be reconciled, which is the one thing it exists for.
  *
- *   payout_created             — a payout row was created for a seller and a period. NO money has
- *                                moved yet; this is the obligation being named, the same split
- *                                `refund_due`/`refund_settled` makes.
- *   payout_sent                — the transfer was handed to the bank, or confirmed after it.
- *   payout_failed              — the bank rejected it. The amount returns to payable (the row is
- *                                kept and excluded from `paidOut`), so this is not a dead end —
- *                                it is a seller who has not been paid and does not know why.
- *   seller_debited             — a chargeback, a post-payout refund clawback or a correction moved
- *                                against a seller's balance. The counterpart to `refund_due`: that
- *                                one says the BUYER is owed, this one says who it comes out of.
+ *
+ * Four words left this vocabulary on 2026-08-21. They recorded transfers this platform made to
+ * sellers and the debits that corrected them, and the platform makes none: the processor captures
+ * each seller's share into that seller's own account at the moment of the charge. A journal word
+ * nothing can ever write again is not a promise, it is a heading over an empty section.
  */
 export const MONEY_EVENT_TYPES = [
   'payment_attempted',
@@ -77,10 +72,6 @@ export const MONEY_EVENT_TYPES = [
   'order_discount_changed',
   'refund_due',
   'refund_settled',
-  'payout_created',
-  'payout_sent',
-  'payout_failed',
-  'seller_debited',
 ] as const;
 
 export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
@@ -104,10 +95,6 @@ export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
   order_discount_changed: 'סכום הזמנה שונה',
   refund_due: 'זיכוי מגיע לקונה',
   refund_settled: 'זיכוי בוצע',
-  payout_created: 'תשלום למוכר נוצר',
-  payout_sent: 'תשלום למוכר בוצע',
-  payout_failed: 'תשלום למוכר נכשל',
-  seller_debited: 'חיוב למוכר',
 };
 
 /** Type guard for a request-supplied value (`?mtype=`). */
@@ -153,8 +140,6 @@ const STATE_WORDS: Partial<Record<MoneyEventType, Record<string, string>>> = {
     paid: 'שולם',
     failed: 'נכשל',
   },
-  payout_sent: { sent: 'הועבר', failed: 'נכשל' },
-  payout_failed: { sent: 'הועבר', failed: 'נכשל' },
   // Written by refund-owed.ts, which passes the SHIPPING statuses it moved between.
   refund_due: {
     pending: 'התקבלה',
@@ -193,10 +178,6 @@ export const MONEY_EVENT_GROUPS: readonly { label: string; types: readonly Money
   {
     label: 'ביטולים וזיכויים',
     types: ['charge_voided', 'refund_due', 'refund_settled'],
-  },
-  {
-    label: 'תשלומים למוכרים',
-    types: ['payout_created', 'payout_sent', 'payout_failed', 'seller_debited'],
   },
 ];
 

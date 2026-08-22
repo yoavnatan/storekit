@@ -12,18 +12,17 @@
  *  publish a promise to every buyer that the product's own structured data deliberately refuses to
  *  guess. When the owner sets it, this page and `hasMerchantReturnPolicy` take the SAME number.
  *
- *  **The collection clause under "הזמנה ותשלום" is load-bearing, not boilerplate.** The platform
- *  collects the buyer's payment as the seller's agent and holds the balance for them
- *  (AI_INSTRUCTIONS → Payment architecture), and the sentence saying the buyer's payment to us
- *  DISCHARGES their debt to the seller is what makes that an agency rather than us receiving money
- *  on our own account and forwarding it later. Its counterpart in "פתיחת חנות" is the seller
- *  appointing us to collect. Neither may be reworded without the other.
+ *  **The collection clause under "הזמנה ותשלום" is load-bearing, not boilerplate — and what makes
+ *  it load-bearing INVERTED on 2026-08-21.** It used to say the platform collects the buyer's
+ *  payment as the seller's agent and holds the balance for him, because that is what the code did;
+ *  the sentence about the buyer's payment discharging their debt was what made it an agency rather
+ *  than us receiving money on our own account. Under the split model the money never reaches us —
+ *  a licensed processor captures it into the seller's own account and passes us our commission —
+ *  so the clause now says exactly that, and its counterpart under "פתיחת חנות" says it from the
+ *  seller's side. Neither may be reworded without the other, and neither may imply we hold funds.
  *
- *  The hold/payout periods are interpolated from `lib/payout-schedule.ts` — the same constants the
- *  scheduler runs on — and are ⚠️ PLACEHOLDERS pending the owner's decision. They cannot be set
- *  independently of the returns window: a hold shorter than it pays a seller for goods the buyer
- *  may still send back, which is why `HOLD_DAYS_AFTER_DELIVERY` may never fall below the statutory
- *  14 days — as of 2026-08-16 it IS that window exactly, with nothing added.
+ *  The fulfilment deadlines are interpolated from `lib/order-sla.ts` — the same constants the
+ *  sweep enforces — and are ⚠️ PLACEHOLDERS pending the owner's decision.
  *
  *  **The supply deadline is stated here because stating it is the legal duty.** Israeli law
  *  requires a distance seller to DISCLOSE the supply date and method (§14ג) and — checked
@@ -44,19 +43,15 @@ import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId } from '../lib/stores.js';
 import { getLang } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
-// Interpolated rather than restated. A hold period written as a digit in a legal clause AND
-// separately in the scheduler is a number that will eventually disagree with itself, and the copy a
-// seller can hold us to is this one. tests/payout-schedule.test.ts pins that these clauses carry no
-// bare number of their own.
-import {
-  HOLD_DAYS_AFTER_DELIVERY,
-  FALLBACK_DAYS_AFTER_PAYMENT,
-  payoutWeekdayName,
-  MIN_PAYOUT_AGOROT,
-  SHIP_DEADLINE_BUSINESS_DAYS,
-  SHIP_AUTO_CANCEL_DAYS,
-} from '../lib/payout-schedule.js';
-import { formatAgorot } from '../lib/money.js';
+// Interpolated rather than restated. A deadline written as a digit in a legal clause AND separately
+// in the code that enforces it is a number that will eventually disagree with itself, and the copy a
+// seller can hold us to is this one. `tests/fulfilment-deadlines.test.ts` pins that these clauses
+// carry no bare number of their own.
+//
+// The payout constants that used to be interpolated here — a hold, a weekly transfer day, a minimum
+// balance — are gone with the model that had them: no money of a seller's reaches this platform, so
+// there is no schedule of ours to promise him (GO_LIVE §3.1.0).
+import { SHIP_DEADLINE_BUSINESS_DAYS, SHIP_AUTO_CANCEL_DAYS } from '../lib/order-sla.js';
 
 const lang = getLang(Astro.cookies);
 const sellerId = getSellerSession(Astro.cookies);
@@ -86,7 +81,7 @@ const clauses: { h: string; p: string[] }[] = [
       // is the shape that looks like a payment service. It is stated to the BUYER because the buyer
       // is the one whose debt is being discharged; the seller's side of the same fact is in
       // "פתיחת חנות" below. Both must move together if either is ever reworded.
-      `${platform.name} גובה את התשלום מהקונה בשם המוכר וכשלוחו לעניין הגבייה בלבד. תשלום שבוצע ל-${platform.name} פורע באותו רגע את חוב הקונה כלפי המוכר בגין אותה הזמנה, גם אם ההעברה למוכר מתבצעת במועד מאוחר יותר. הקונה אינו נושא בסיכון כלשהו הנובע מהיחסים שבין ${platform.name} למוכר.`,
+      `התשלום נגבה מהקונה על ידי חברת סליקה מורשית, ומועבר על ידה לחשבונו של המוכר. ${platform.name} אינה מחזיקה את כספי הקונה בשום שלב, ועמלתה נגבית בתוך אותה עסקה. חוב הקונה למוכר בגין ההזמנה נפרע במועד החיוב. הקונה אינו נושא בסיכון כלשהו הנובע מהיחסים שבין ${platform.name} למוכר או לחברת הסליקה.`,
       'זמינות נבדקת מול המלאי בעת התשלום. אם פריט אזל בין הוספתו לסל לבין התשלום, ההזמנה לא תושלם עליו והתשלום עבורו לא ייגבה.',
       // The platform does NOT issue this document and must not promise that it does. Issuing in
       // another business's name binds the document to THAT business's tax file, and the owner's rule
@@ -114,14 +109,14 @@ const clauses: { h: string; p: string[] }[] = [
     p: [
       'פתיחת חנות פתוחה לעסק פעיל. המוכר אחראי לכך שהמוצרים שהוא מפרסם מותרים למכירה, שהתכנים והתמונות שהעלה הם שלו או שיש לו רשות להשתמש בהם, ושהפרטים שמסר נכונים.',
       'התשלום לפלטפורמה הוא לפי המסלול שהמוכר בחר — דמי מנוי חודשיים ועמלה מכל מכירה, כפי שהם מוצגים בעמוד המסלולים בעת ההצטרפות ובאזור האישי.',
-      `המוכר ממנה את ${platform.name} לגבות בשמו את התמורה מהקונים. ${platform.name} מנכה מהתמורה את עמלת המכירה ומחזיקה את היתרה עבור המוכר עד למועד התשלום. היתרה שייכת למוכר ואינה הכנסה של ${platform.name}.`,
-      `תשלום מרוכז מבוצע אחת לשבוע, בכל ${payoutWeekdayName('he')}, על כל סכום ששוחרר עד אותו מועד. סכום משוחרר ${HOLD_DAYS_AFTER_DELIVERY} ימים לאחר שההזמנה סומנה כנמסרה, או ${FALLBACK_DAYS_AFTER_PAYMENT} ימים לאחר התשלום אם לא סומנה מסירה. יתרה הנמוכה מ-${formatAgorot(MIN_PAYOUT_AGOROT)} נצברת למועד התשלום הבא ואינה נגרעת.`,
-      'זיכוי, ביטול או חיוב-חוזר בהזמנה ששולמה כבר למוכר מקוזזים מהתשלום הבא. אין בכך כדי לגרוע מאחריות המוכר לעסקה מול הקונה.',
-      'תשלום מותנה במסירת פרטי חשבון בנק ופרטי עסק תקינים באזור האישי. עד למסירתם היתרה נצברת ואינה נגרעת.',
+      `התמורה מכל מכירה נגבית לחשבון המוכר אצל חברת הסליקה. עמלת המכירה של ${platform.name} נגבית בתוך אותה עסקה ומועברת אליה על ידי חברת הסליקה. ${platform.name} אינה מחזיקה כספים של המוכר בשום שלב.`,
+      'מועדי הזיכוי לחשבון הבנק של המוכר, וכן עמלות הסליקה עצמן, נקבעים בהסכם שבין המוכר לחברת הסליקה ואינם בשליטת הפלטפורמה.',
+      'זיכוי, ביטול או חיוב-חוזר מבוצעים כנגד אותה עסקה שבה שולם, ומקוזזים מתנועות המוכר אצל חברת הסליקה. אין בכך כדי לגרוע מאחריות המוכר לעסקה מול הקונה.',
+      'מכירה מותנית בפתיחת חשבון סליקה למוכר, ולשם כך במסירת פרטי חשבון בנק ופרטי עסק תקינים באזור האישי. חברת הסליקה בוחנת כל מוכר ורשאית שלא לאשרו.',
       // The seller's half of the same fact as the "הזמנה ותשלום" section — both move together.
       `${platform.name} מוציאה למוכר חשבונית מס על עמלת המכירה, דמי המנוי והפרסום. הנפקת חשבונית מס לקונה ומסירתה לו הן באחריות המוכר בלבד, וכך גם הדיווח לרשויות המס בגין מכירותיו. ${platform.name} מעמידה לו בכל הזמנה מקום להעלות את החשבונית ולשלוח אותה לקונה, או לסמן שנמסרה עם ההזמנה.`,
       `על המוכר למסור את ההזמנה לשילוח, או להעמידה לאיסוף, בתוך ${SHIP_DEADLINE_BUSINESS_DAYS} ימי עסקים. הזמנה שלא טופלה בתוך ${SHIP_AUTO_CANCEL_DAYS} ימים תבוטל והתמורה תוחזר לקונה. עיכוב שמקורו בחברת השילוח לאחר מסירת ההזמנה אינו באחריות המוכר ואינו נספר במניין הימים.`,
-      'מוכר יכול להשהות או לסגור את חנותו בכל עת. סגירה נכנסת לתוקף לאחר טיפול בהזמנות הפתוחות, ויתרה שטרם שולמה משולמת במועד התשלום הבא שלאחר סיומן.',
+      'מוכר יכול להשהות או לסגור את חנותו בכל עת. סגירה נכנסת לתוקף לאחר טיפול בהזמנות הפתוחות.',
     ],
   },
   {

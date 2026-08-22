@@ -8,7 +8,8 @@ import {
   RETURN_TRANSITIONS, RESPONSE_BUSINESS_DAYS, HANDOVER_DAYS, RECEIPT_RESPONSE_BUSINESS_DAYS,
   type ReturnStatus,
 } from '../src/lib/returns.js';
-import { STATUTORY_RETURN_DAYS, SHIP_DEADLINE_BUSINESS_DAYS } from '../src/lib/payout-schedule.js';
+import { STATUTORY_RETURN_DAYS } from '../src/lib/returns.js';
+import { SHIP_DEADLINE_BUSINESS_DAYS } from '../src/lib/order-sla.js';
 
 /**
  * The returns mechanism's rules, asserted against the OWNER'S decisions rather than against the

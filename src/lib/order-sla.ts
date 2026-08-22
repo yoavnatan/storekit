@@ -1,8 +1,8 @@
 import { businessDayISO, businessTodayISO } from './business-day.js';
+import type { Order } from './orders.js';
+import type { DeliveryMethod } from './shipping.js';
 import { addDaysISO } from './date-range.js';
 import { orderCountsAsRevenue, orderMoneyWasTaken, orderPayoutClockRuns } from './order-status-rules.js';
-import { SHIP_WARNING_DAYS, SHIP_AUTO_CANCEL_DAYS } from './payout-schedule.js';
-import type { HoldableOrder } from './payout-hold.js';
 
 /**
  * How long the seller has to do their part — and what happens when they do not.
@@ -40,6 +40,38 @@ export type FulfilmentState =
   /** Long enough that the order should be cancelled and the buyer refunded. */
   | 'overdue';
 
+/** Business days from payment for the seller to reach their own milestone: `shipped` for a courier
+ *  order, `ready` for self-pickup. ⚠️ PLACEHOLDER — owner. */
+export const SHIP_DEADLINE_BUSINESS_DAYS = 2;
+
+/** Calendar days from payment after which an unshipped order warns the seller (and the platform).
+ *  ⚠️ PLACEHOLDER — owner. */
+export const SHIP_WARNING_DAYS = 7;
+
+/**
+ * Calendar days from payment after which an order the seller never acted on is cancelled and the
+ * buyer refunded.
+ *
+ * This exists because without it a buyer who paid for goods that never came had nothing giving the
+ * money back. Cancelling for non-supply is also the case where the law allows the business NO
+ * cancellation fee and puts collection on the seller — so there is nothing to deduct here, the
+ * buyer is made whole.
+ *
+ * ⚠️ PLACEHOLDER — owner.
+ */
+export const SHIP_AUTO_CANCEL_DAYS = 14;
+
+/**
+ * The order fields this module asks about. It was `HoldableOrder`, borrowed from the payout hold —
+ * the module that decided when a seller's money was released. That module is gone and these four
+ * fields are not: a fulfilment deadline runs off the same payment and delivery stamps.
+ */
+export type SlaOrder = Pick<Order, 'paymentStatus' | 'shippingStatus'> & {
+  paidAt?: string | null;
+  deliveredAt?: string | null;
+  deliveryMethod?: DeliveryMethod | null;
+};
+
 export interface FulfilmentStatus {
   state: FulfilmentState;
   /** Business day the seller's part was due. Null when the question does not apply. */
@@ -57,7 +89,7 @@ const NONE: FulfilmentStatus = { state: 'ok', dueDayISO: null, cancelDayISO: nul
  * report and a test must be able to ask about the same day and cannot be allowed to disagree.
  */
 export function fulfilmentStatus(
-  order: HoldableOrder,
+  order: SlaOrder,
   todayISO: string = businessTodayISO(),
 ): FulfilmentStatus {
   // Money never moved, or the order is already out of the running. Nothing is owed either way, and
