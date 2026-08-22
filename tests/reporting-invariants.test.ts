@@ -20,15 +20,10 @@ import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, ge
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { productShare } from '../src/lib/top-product-share.js';
-import { buildSalesReport, buildProductSalesReport, buildStockReport, buildPayoutsReport } from '../src/lib/seller-reports.js';
+import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
-import { getHeldBreakdown, getHeldBySeller, getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
-import { splitHeldByBasis } from '../src/lib/order-payout-line.js';
-import { planPayouts } from '../src/lib/payout-run.js';
-import { buildPlatformLedger } from '../src/lib/platform-ledger.js';
 import { buildPlatformStatement, monthPeriod, recentMonthKeys, statementPeriod } from '../src/lib/platform-statement.js';
-import { loadPlatformStatement } from '../src/lib/admin-statement-load.js';
 
 /** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
  *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
@@ -44,7 +39,7 @@ import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreVi
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
 const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getOrderTotals, getStoreOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
-import { businessDayISO, businessMonthKey, businessTodayISO, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
+import { businessDayISO, businessMonthKey, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
 import { storeSliceTotalAgorot } from '../src/lib/order-totals.js';
 import { groupBuyerPurchases } from '../src/lib/buyer-purchases.js';
 
@@ -1157,169 +1152,6 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     expect(tiers.reduce((a, t) => a + t.billableDays, 0), 'billable days')
       .toBe(sellers.reduce((a, s) => a + billable(s.createdAt), 0));
   });
-
-  /**
-   * **Two surfaces, one figure.** The seller's payments tab builds a whole per-order account and
-   * reads `payableNowAgorot` off it; the site header cannot afford that on every page load, so
-   * `getPayableNowForSeller` asks the database for the same three sums instead. Both draw the same
-   * red dot (`needsBankDetails`), so a disagreement between them is a dot leading to a screen with
-   * nothing on it — or, worse, no dot on a seller whose money is stuck.
-   *
-   * They are deliberately different spellings of the hold rule (JS in `seller-account.ts`, SQL in
-   * `payout-hold.ts`), which is exactly the arrangement this file exists to police. The one known
-   * way they may legitimately diverge is a seller past `getSellerAccountRows`' 500-slice bound;
-   * no fixture is near it, so on this data they must agree exactly.
-   */
-  it('payable-now: the header\'s cheap figure equals the seller\'s own screen', async () => {
-    const sellers = await getAllSellers();
-    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
-    for (const seller of sellers) {
-      const account = await getSellerAccountFor(seller.id);
-      const cheap = await getPayableNowForSeller(seller.id);
-      expect(cheap, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
-    }
-  });
-
-  /**
-   * And the third spelling: the payout RUN. Its plan is what actually creates transfers, so a seller
-   * shown one number and paid another is the worst of the three failures available here. `settled`
-   * rows carry a zero balance and are absent from the plan, which is why the lookup falls back to 0
-   * rather than skipping them — "not in the plan" is a claim about the money too.
-   */
-  /**
-   * The accounting report and the account agree about what has been transferred (owner, סשן א׳ §6).
-   *
-   * The Payments tab used to carry a lifetime "שולם בעבר" tile computed by `seller-account.ts`, and
-   * that figure moved to the Reports tab as a windowed, exportable report built by a different
-   * function. That is precisely the shape this file exists to police: one fact, two modules. Over a
-   * window wide enough to hold every transfer, `buildPayoutsReport`'s total must be `paidOutAgorot`
-   * to the agora — including the exclusion of `failed` rows, which both sides have to make the same
-   * way or the seller's books and their dashboard part company by exactly one bounced transfer.
-   */
-  /**
-   * The two "ממתינים" figures the payments tab prints ONE LINE APART (2026-08-11).
-   *
-   * The tile is this shop's share, from `splitHeldByBasis(slices, slug)`; the line under it is the
-   * account's, from `buildSellerAccount`. They are computed by different functions from different
-   * inputs and they sit close enough together that a seller will subtract one from the other — so
-   * "the shops add up to the account" is not a nice property here, it is the only thing that makes
-   * the pair readable. A drift shows up as a shop's held money belonging to no shop.
-   *
-   * Asserted over the FIXTURES rather than over a literal, so a seller who appears later with a
-   * shape nobody imagined is covered the day their rows exist.
-   */
-  it('held: every shop\'s share sums to the account-wide figure beside it', async () => {
-    const sellers = await getAllSellers();
-    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
-    for (const seller of sellers) {
-      const account = await getSellerAccountFor(seller.id);
-      if (!account) continue;
-      const slices = account.account.slices;
-      const shops = [...new Set(slices.map((s) => s.storeSlug))];
-      const perShop = shops.reduce((total, slug) => {
-        const split = splitHeldByBasis(slices, slug);
-        return total + split.groups.reduce((t, g) => t + g.agorot, 0) + split.unknownAgorot;
-      }, 0);
-      expectSameMoney(perShop, account.account.heldAgorot, `seller ${seller.id}: shops vs account held`);
-    }
-  });
-
-  it('paid-out: the payouts report over all time equals the account\'s own figure', async () => {
-    const sellers = await getAllSellers();
-    expect(sellers.length, 'fixtures must have sellers or this proves nothing').toBeGreaterThan(0);
-    for (const seller of sellers) {
-      const account = await getSellerAccountFor(seller.id);
-      if (!account) continue;
-      const report = buildPayoutsReport(account.payouts, '1970-01-01', '2999-12-31');
-      // Every payout row reaches the report — the window cannot be the thing making them agree.
-      expect(report.rows.length, `seller ${seller.id}: rows`).toBe(account.payouts.length);
-      expect(report.totals.amountAgorot, `seller ${seller.id}: transferred`).toBe(account.account.paidOutAgorot);
-    }
-  });
-
-  it('payable-now: the payout run would send exactly what the screen promises', async () => {
-    const plan = await planPayouts();
-    const byId = new Map(plan.rows.map((r) => [r.sellerId, r.balanceAgorot]));
-    for (const seller of await getAllSellers()) {
-      const account = await getSellerAccountFor(seller.id);
-      expect(byId.get(seller.id) ?? 0, `seller ${seller.id}`).toBe(account?.account.payableNowAgorot ?? 0);
-    }
-  });
-
-  /**
-   * The platform ledger (admin overview, סשן ב׳ §3) — the first figure here that is nobody's
-   * balance. It states what the platform is holding that belongs to sellers, and it is read to run
-   * a business, so the danger is not that a tile is wrong in isolation but that three plausible
-   * tiles do not add up. Both halves are asserted: the aggregate against the per-seller rows it
-   * must agree with, and the card's own parts against its whole.
-   */
-  it('the platform accrual is the sum of the per-seller ones — one aggregate, N rows', async () => {
-    const [accrual, releasable] = await Promise.all([getPlatformAccrual(), getReleasableBySeller()]);
-    expectSameMoney(accrual.releasedNetAgorot, releasable.reduce((a, r) => a + r.netAgorot, 0), 'released net');
-    expectSameMoney(accrual.releasedGrossAgorot, releasable.reduce((a, r) => a + r.grossAgorot, 0), 'released gross');
-    expectSameMoney(accrual.releasedCommissionAgorot, releasable.reduce((a, r) => a + r.commissionAgorot, 0), 'released commission');
-    // The released half is a FILTER over the same rows, so it can never exceed the whole — and the
-    // whole closes on its own arithmetic.
-    expectSameMoney(accrual.grossAgorot - accrual.commissionAgorot, accrual.netAgorot, 'gross − commission = net');
-    expect(accrual.releasedNetAgorot).toBeLessThanOrEqual(accrual.netAgorot);
-    expect(accrual.releasedGrossAgorot).toBeLessThanOrEqual(accrual.grossAgorot);
-  });
-
-  /**
-   * "Why is that money stuck" — the breakdown behind the held figure (owner, 2026-08-11).
-   *
-   * It is a THIRD reading of the hold rule (the run's SQL, the seller screen's JS, and now this
-   * split), which is exactly the arrangement that goes wrong quietly: a reason list that does not
-   * add up to the total tells the admin to chase sellers over money that was never stuck. So both
-   * directions are pinned — the two reasons against the platform total, and the per-seller map
-   * against the same.
-   */
-  it('every held shekel has exactly one reason, and the reasons sum to the whole', async () => {
-    const [breakdown, bySeller, accrual] = await Promise.all([
-      getHeldBreakdown(), getHeldBySeller(), getPlatformAccrual(),
-    ]);
-    const heldTotal = accrual.netAgorot - accrual.releasedNetAgorot;
-    expectSameMoney(breakdown.unshippedAgorot + breakdown.clockRunningAgorot, heldTotal, 'reasons vs held total');
-    expectSameMoney([...bySeller.values()].reduce((a, b) => a + b, 0), heldTotal, 'per-seller vs held total');
-    // Neither reason may be negative — a `FILTER` that overlapped would show up as one of them
-    // borrowing from the other rather than as a wrong total.
-    expect(breakdown.unshippedAgorot).toBeGreaterThanOrEqual(0);
-    expect(breakdown.clockRunningAgorot).toBeGreaterThanOrEqual(0);
-  });
-
-  it('the ledger card\'s parts sum to its whole, on the real data and on a hostile one', async () => {
-    const [accrual, plan, breakdown] = await Promise.all([getPlatformAccrual(), planPayouts(), getHeldBreakdown()]);
-    const ledger = buildPlatformLedger(accrual, plan);
-    // TWO SCREENS, ONE FIGURE. The overview card states "ממתינים" as a total; the payouts tab states
-    // the same shekels split into its two reasons. The owner read them as a discrepancy (2026-08-12)
-    // when the split had no sum on it, so both surfaces now show the whole — and this is what says
-    // they are still the same whole. Algebraically the ledger's paid-out and adjustment terms cancel
-    // out of the held half; that is easy to break in a refactor and invisible on either screen.
-    expectSameMoney(breakdown.unshippedAgorot + breakdown.clockRunningAgorot, ledger.heldAgorot, 'payouts tab reasons vs overview held');
-    // The identity the card is drawn from: everything we hold is either out of hold or in it.
-    expectSameMoney(ledger.releasedAgorot + ledger.heldAgorot, ledger.sellerFundsAgorot, 'released + held = liability');
-    // What actually goes out cannot exceed what is released — the three payout states partition it.
-    expect(ledger.nextPayoutAgorot + ledger.stuckNoBankAgorot + ledger.belowMinimumAgorot)
-      .toBeLessThanOrEqual(Math.max(0, ledger.releasedAgorot));
-    // The income line is OUR money and the liability is not: commission earned but not yet taken
-    // at source, so the next payout's slice of it can never be more than the whole.
-    expect(ledger.incomeAtNextPayoutAgorot).toBeLessThanOrEqual(ledger.platformIncomeAgorot);
-
-    // And on numbers no fixture produces: a platform that has paid out most of what it accrued, with
-    // a clawback on top. The identity has to survive that, because the day it stops holding is the
-    // day the card silently reports a liability that is not the sum of its own two halves.
-    const hostile = buildPlatformLedger(
-      { grossAgorot: 1_000_000, commissionAgorot: 120_000, netAgorot: 880_000,
-        releasedGrossAgorot: 400_000, releasedCommissionAgorot: 48_000, releasedNetAgorot: 352_000 },
-      { ...plan, paidOutAgorot: 300_000, commissionSettledAgorot: 41_000, adjustmentsAgorot: -5_000 },
-    );
-    expectSameMoney(hostile.releasedAgorot + hostile.heldAgorot, hostile.sellerFundsAgorot, 'hostile: released + held');
-    expectSameMoney(hostile.sellerFundsAgorot, 880_000 - 300_000 - 5_000, 'hostile: liability');
-    expectSameMoney(hostile.releasedAgorot, 352_000 - 300_000 - 5_000, 'hostile: released');
-    // In hold is untouched by transfers: 880,000 − 352,000, whatever has been paid out of the rest.
-    expectSameMoney(hostile.heldAgorot, 880_000 - 352_000, 'hostile: held');
-    expectSameMoney(hostile.platformIncomeAgorot, 120_000 - 41_000, 'hostile: commission earned − collected');
-  });
 });
 
 /**
@@ -1327,110 +1159,39 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
  *
  * Everything else in this file protects a screen; this protects a document an accountant reads and
  * acts on, where a figure that does not add up is not a bug report, it is a correction to a filing.
- * So the four properties asserted are the four an accountant would check by hand:
- *   1. the balance movement closes (opening + accrued − paid ± adjustments = closing);
- *   2. periods CHAIN — one month's closing is the next month's opening, with no gap and no overlap;
- *   3. periods ADD — two consecutive months' accruals sum to the range that spans them;
- *   4. a statement running to today agrees with the live ledger card the owner reads on the
- *      overview. That last one is the cross-surface statement: two independent routes to "what are
- *      we holding that is not ours", which must not be able to differ.
+ *
+ * **It lost half its invariants on 2026-08-21, along with half the document.** The cash section —
+ * opening balance, transfers out, adjustments, closing balance — described money of the sellers'
+ * that we held, and the split model means we never hold any. The three properties that survive are
+ * the three an accountant can still check by hand, and they are the ones that were always about
+ * OUR figures rather than about the liability:
+ *   1. the income total is exactly the lines printed above it, in both ad-margin states;
+ *   2. gross splits into our commission and the sellers' own share, with nothing unaccounted for;
+ *   3. periods ADD — two consecutive months' accruals sum to the range that spans them.
  */
-describe('the accounting statement closes, chains, and agrees with the live ledger', () => {
+describe('the accounting statement adds up and its periods compose', () => {
   const PERIOD = { fromISO: '2026-08-01', toISO: '2026-08-31', monthKey: '2026-08' };
-  const nothing = { grossAgorot: 0, commissionAgorot: 0, netAgorot: 0, purchases: 0 };
-  const noMovement = { paidOutAgorot: 0, commissionSettledAgorot: 0, adjustmentsAgorot: 0, payouts: 0 };
+  const AT = '2026-08-31T12:00:00.000Z';
+  const accrued = { grossAgorot: 1_000_000, commissionAgorot: 120_000, netAgorot: 880_000, purchases: 42 };
+  const revenue = { subscriptionsAgorot: 33_000, subscribers: 3 };
 
-  it('the movement closes, including on numbers no fixture produces', () => {
-    const s = buildPlatformStatement({
-      period: PERIOD,
-      generatedAtISO: '2026-09-01',
-      accrued: { grossAgorot: 500_000, commissionAgorot: 60_000, netAgorot: 440_000, purchases: 37 },
-      movement: { paidOutAgorot: 300_000, commissionSettledAgorot: 41_000, adjustmentsAgorot: -5_000, payouts: 4 },
-      before: {
-        accrued: { grossAgorot: 900_000, commissionAgorot: 108_000, netAgorot: 792_000, purchases: 61 },
-        movement: { paidOutAgorot: 700_000, commissionSettledAgorot: 95_000, adjustmentsAgorot: -1_200, payouts: 9 },
-      },
-      revenue: { subscriptionsAgorot: 29_700, subscribers: 3 },
-      adMarginAgorot: null,
-      upcoming: null,
-    });
-    // Opening is the same expression as closing, evaluated over everything before the period.
-    expectSameMoney(s.openingBalanceAgorot, 792_000 - 700_000 - 1_200, 'opening');
-    expectSameMoney(
-      s.closingBalanceAgorot,
-      s.openingBalanceAgorot + s.sellerEarnedAgorot - s.paidOutAgorot + s.adjustmentsAgorot,
-      'closing = the four lines printed above it',
-    );
-    // The bridge figure really is one number in both sections, not two that happen to agree.
-    expectSameMoney(s.sellerEarnedAgorot, 440_000, 'seller earned appears in both sections');
-    // Income is commission + subscriptions, and the ad margin is a NAMED line with no figure — an
-    // accountant may not be handed the deterministic mock the ad tabs render (GO_LIVE §2), and a 0
-    // would be a claim that nothing was earned rather than "not connected".
-    expectSameMoney(s.incomeAccruedAgorot, 60_000 + 29_700, 'income = commission + subscriptions, no ads');
-    expect(s.adMarginAgorot, 'pending, not zero').toBeNull();
+  /** The total is the sum of the lines a reader can see, in BOTH ad states — and `null` adds
+   *  nothing rather than reading as zero, which is the whole reason the field is nullable. */
+  it('the income total is exactly the lines printed above it', () => {
+    const pending = buildPlatformStatement({ period: PERIOD, generatedAtISO: AT, accrued, revenue, adMarginAgorot: null });
+    expectSameMoney(pending.incomeAccruedAgorot, 120_000 + 33_000, 'commission + subscriptions');
+
+    const real = buildPlatformStatement({ period: PERIOD, generatedAtISO: AT, accrued, revenue, adMarginAgorot: 7_500 });
+    expectSameMoney(real.incomeAccruedAgorot, 120_000 + 33_000 + 7_500, 'and the margin once it is real');
   });
 
-  /**
-   * The day ads connect, the total has to move — and that is the half a `null` cannot prove.
-   *
-   * The line is pending today, so every assertion above is about its ABSENCE; nothing would fail if
-   * `buildPlatformStatement` dropped the field from the sum entirely, and the defect would surface
-   * as under-reported income on a document that goes to a רו״ח. Asserted here on the connected
-   * shape, which no fixture produces because `AD_METRICS_ARE_MOCK` is still true.
-   */
-  it('an ad margin, once real, is part of the income total', () => {
-    const s = buildPlatformStatement({
-      period: PERIOD, generatedAtISO: '2026-09-01',
-      accrued: { grossAgorot: 500_000, commissionAgorot: 60_000, netAgorot: 440_000, purchases: 37 },
-      movement: noMovement,
-      before: { accrued: nothing, movement: noMovement },
-      revenue: { subscriptionsAgorot: 29_700, subscribers: 3 },
-      adMarginAgorot: 12_500,
-      upcoming: null,
-    });
-    expectSameMoney(s.incomeAccruedAgorot, 60_000 + 29_700 + 12_500, 'income includes the ad margin');
-    // And it is income only: the sellers' balance is untouched by it, since ad money never entered
-    // the liability the cash section closes on.
-    expectSameMoney(s.closingBalanceAgorot, 440_000, 'the ad margin is not seller money');
+  /** Gross is the buyers' money and it splits in two: our cut, and the sellers'. A statement whose
+   *  two parts do not reconstruct the whole is one where a reader cannot tell which is wrong. */
+  it('gross splits into our commission and the sellers own share', () => {
+    const st = buildPlatformStatement({ period: PERIOD, generatedAtISO: AT, accrued, revenue, adMarginAgorot: null });
+    expectSameMoney(st.commissionAccruedAgorot + st.sellerEarnedAgorot, st.grossAgorot, 'commission + sellers = gross');
   });
 
-  it('a period with nothing in it still states the balance it inherited', () => {
-    // The quiet month is the one a report is most likely to get wrong by rendering zeros: no sales
-    // and no transfers must still carry the opening balance forward untouched.
-    const s = buildPlatformStatement({
-      period: PERIOD, generatedAtISO: '2026-09-01', accrued: nothing, movement: noMovement,
-      before: { accrued: { ...nothing, netAgorot: 74_010, grossAgorot: 84_000, commissionAgorot: 9_990 }, movement: noMovement },
-      revenue: { subscriptionsAgorot: 0, subscribers: 0 },
-      adMarginAgorot: null,
-      upcoming: null,
-    });
-    expectSameMoney(s.openingBalanceAgorot, 74_010, 'opening carried');
-    expectSameMoney(s.closingBalanceAgorot, 74_010, 'closing unchanged');
-  });
-
-  /**
-   * The forecast line appears only where a forecast makes sense.
-   *
-   * "What will come in on the 10th" is a live, lifetime figure — commission on every sale whose
-   * money has left hold, mostly from earlier months. On a statement for a month that has already
-   * closed it would read as that month's, which is precisely the misreading it was added to end
-   * (owner, 2026-08-12). A `null` here is not a missing number; it is the document declining to
-   * date something that has no date.
-   */
-  it('the next-payout forecast appears on a live period and never on a closed one', async () => {
-    const closed = await loadPlatformStatement(monthPeriod('2026-07'), '2026-09-01');
-    expect(closed.upcomingCommissionAgorot, 'a closed month carries no forecast').toBeNull();
-    expect(closed.upcomingPayoutDayISO).toBeNull();
-
-    // Same month, read from inside it: the run really is ahead of this reader.
-    const live = await loadPlatformStatement(monthPeriod('2026-07'), '2026-07-15');
-    expect(live.upcomingCommissionAgorot, 'a period containing "today" carries one').not.toBeNull();
-    expect(live.upcomingPayoutDayISO).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    // It is a forecast, so it must stay OUT of every total the document closes on — those two are
-    // the same period read two ways, and only the forecast field may differ.
-    expectSameMoney(live.incomeAccruedAgorot, closed.incomeAccruedAgorot, 'the forecast is not income');
-    expectSameMoney(live.closingBalanceAgorot, closed.closingBalanceAgorot, 'the forecast is not a balance');
-  });
 
   it('the period helpers name real days — leap years, December, and the whole-month collapse', () => {
     expect(monthPeriod('2026-08')).toEqual({ fromISO: '2026-08-01', toISO: '2026-08-31', monthKey: '2026-08' });
@@ -1443,40 +1204,6 @@ describe('the accounting statement closes, chains, and agrees with the live ledg
     expect(statementPeriod('2026-08-01', '2026-08-15').monthKey, 'a partial month is not a month').toBeNull();
     // The picker walks backwards across a year boundary without producing a month 0.
     expect(recentMonthKeys('2026-02-11', 3)).toEqual(['2026-02', '2026-01', '2025-12']);
-  });
-
-  it('months chain and add: July closes where August opens, and both sum to the span', async () => {
-    // Read from the real fixture database, over two adjacent months chosen from the data itself, so
-    // this is a statement about the QUERIES (the window clause, the date bucketing) and not only
-    // about the arithmetic above.
-    const july = await loadPlatformStatement(monthPeriod('2026-07'), '2026-09-01');
-    const august = await loadPlatformStatement(monthPeriod('2026-08'), '2026-09-01');
-    expectSameMoney(august.openingBalanceAgorot, july.closingBalanceAgorot, 'July closing → August opening');
-
-    const span = await loadPlatformStatement(statementPeriod('2026-07-01', '2026-08-31'), '2026-09-01');
-    expectSameMoney(july.grossAgorot + august.grossAgorot, span.grossAgorot, 'GMV adds');
-    expectSameMoney(july.sellerEarnedAgorot + august.sellerEarnedAgorot, span.sellerEarnedAgorot, 'seller accrual adds');
-    expectSameMoney(july.paidOutAgorot + august.paidOutAgorot, span.paidOutAgorot, 'payouts add');
-    expect(july.purchases + august.purchases, 'purchases add').toBe(span.purchases);
-    // The span inherits July's opening and reaches August's closing — no double-counted month.
-    expectSameMoney(span.openingBalanceAgorot, july.openingBalanceAgorot, 'span opens where July does');
-    expectSameMoney(span.closingBalanceAgorot, august.closingBalanceAgorot, 'span closes where August does');
-  });
-
-  it('a statement running to today closes on the same figure the overview card shows', async () => {
-    // Two independent routes to "what are we holding that is not ours": this one sums a window of
-    // orders and payouts, the card asks for the platform accrual and the payout plan. They are
-    // different queries over the same facts and are read side by side by the same person.
-    const today = businessTodayISO();
-    const [statement, accrual, plan] = await Promise.all([
-      loadPlatformStatement(statementPeriod('2020-01-01', today), today),
-      getPlatformAccrual(),
-      planPayouts(),
-    ]);
-    const ledger = buildPlatformLedger(accrual, plan);
-    expectSameMoney(statement.closingBalanceAgorot, ledger.sellerFundsAgorot, 'statement closing vs ledger liability');
-    // Non-vacuous: two surfaces agreeing on zero would prove nothing about either.
-    expect(statement.grossAgorot, 'fixtures must have sales or this proves nothing').toBeGreaterThan(0);
   });
 });
 

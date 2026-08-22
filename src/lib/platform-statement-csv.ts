@@ -24,10 +24,10 @@ import type { PlatformStatement } from './platform-statement.js';
 
 const money = (agorot: number): string => fromAgorot(agorot).toFixed(2);
 
-// The same two sections the screen shows, under the same names — a reader comparing the file to
-// the page must not have to work out which row is which.
+// The same section name the screen shows — a reader comparing the file to the page must not have
+// to work out which row is which. There was a second section, `תנועה בפועל`, for the money we
+// transferred to sellers; it went with the custodial model (platform-statement.ts).
 const ACCRUAL = 'ההכנסה שלנו (בסיס צבירה)';
-const CASH = 'תנועה בפועל — כספי מוכרים (בסיס מזומן)';
 
 export function platformStatementCsv(s: PlatformStatement): string {
   const rows: (string | number)[][] = [
@@ -44,23 +44,9 @@ export function platformStatementCsv(s: PlatformStatement): string {
     // still here so the file and the page have the same lines in the same order.
     [ACCRUAL, 'עמלות קמפיינים שנצברו', s.adMarginAgorot === null ? '' : money(s.adMarginAgorot)],
     [ACCRUAL, 'סה"כ הכנסה שנצברה', money(s.incomeAccruedAgorot)],
-    // The one CASH figure filed under the accrual section, and the label carries its basis for that
-    // reason. It sits here because it qualifies the total above it — how much of what we earned was
-    // actually collected — which is where the screen puts it too; splitting the pair across the two
-    // sections is what made the question unanswerable on the page (owner, 2026-08-12).
-    [ACCRUAL, 'מזה נגבה בפועל — עמלה שנוכתה מהתשלומים (בסיס מזומן)', money(s.commissionSettledAgorot)],
-    // Only on a statement whose period still contains today, and its own section: a forecast filed
-    // beside closed figures is the one row an accountant would carry into a filing by mistake.
-    ...(s.upcomingCommissionAgorot === null ? [] : [
-      ['צפי', `עמלות שייגבו בתשלום הקרוב (${s.upcomingPayoutDayISO}) — מכל התקופות, לא רק זו`, money(s.upcomingCommissionAgorot)],
-    ]),
-
-    [CASH, 'יתרת פתיחה — כספי מוכרים בהחזקתנו', money(s.openingBalanceAgorot)],
-    [CASH, 'נצבר למוכרים בתקופה', money(s.sellerEarnedAgorot)],
-    [CASH, 'שולם למוכרים בתקופה', money(-s.paidOutAgorot)],
-    [CASH, 'מספר תשלומים שבוצעו', s.payouts],
-    [CASH, 'התאמות (זיכויים/חיובים חוזרים)', money(s.adjustmentsAgorot)],
-    [CASH, 'יתרת סגירה — כספי מוכרים בהחזקתנו', money(s.closingBalanceAgorot)],
+    // The sellers' own share, stated so the gross figure above can be read — never a liability of
+    // ours. It lands in each seller's account at the processor and is not money we ever hold.
+    [ACCRUAL, 'חלקם של המוכרים במכירות התקופה', money(s.sellerEarnedAgorot)],
 
     // On the face of the document, not in a footnote: it is what makes two printings of the same
     // month explainable rather than alarming, and what stops the ad-margin gap being read as zero.

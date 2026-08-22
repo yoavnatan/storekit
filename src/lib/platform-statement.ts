@@ -1,4 +1,4 @@
-import type { LedgerAccrual, LedgerMovement } from './payouts.js';
+import type { LedgerAccrual } from './platform-accrual.js';
 import type { PlatformRevenue } from './platform-revenue.js';
 
 /**
@@ -10,24 +10,21 @@ import type { PlatformRevenue } from './platform-revenue.js';
  * did we sell in the last 30 days" and cannot answer "in August: what came in, what went out, what
  * of the balance is not mine, and where my income came from".
  *
- * ── The two bases, side by side, because mixing them is the classic error (owner chose this) ──
- * **Accrual** (`accrued`) — what the period EARNED, dated by when the sale happened. An order sold
- * on the 31st is August's, even though its money is still in hold and will not be transferred until
- * October. This is the section that answers "how much did I make".
- * **Cash** (`movement`) — what actually MOVED, dated by when it moved. This is the section that
- * answers "how much left the bank account", and it is the one the balance sheet closes on.
+ * ── One basis, ACCRUAL, since 2026-08-21 — and the cash half is gone rather than empty ──
+ * The document used to have two sections. **Accrual** — what the period EARNED, dated by when the
+ * sale happened — and **cash**, what actually moved out of our bank account to sellers, closing on
+ * an opening/closing balance of money we were holding that was not ours.
  *
- * The bridge between them is a single figure, `accrued.netAgorot`, which appears in both: it is
- * what the sellers earned in the period (accrual) and it is the `+` line in the balance movement
- * (cash). Reading the gap between the two sections IS the answer to "how much of what I hold is not
- * mine" — which is the question that started this.
+ * Under the split model there is no such balance and no such movement: the processor captures each
+ * seller's share into that seller's own account at the moment of the charge, and our distribution
+ * fee arrives from it monthly (GO_LIVE §3.1.0). A cash section here would have printed zeros under
+ * headings that describe a business we are not running, which on a document handed to an accountant
+ * is worse than a shorter document.
  *
- * ── The identity, and why the opening balance is computed the same way as the closing one ──
- *     closing = opening + accruedToSellers − paidOut + adjustments
- * It holds by construction rather than by luck, because `opening` is that same expression evaluated
- * over everything before the period. So a statement whose closing figure disagrees with the
- * platform ledger card (`platform-ledger.ts`) on the day it is run is a real defect and not a
- * rounding artefact — `reporting-invariants.test.ts` asserts exactly that.
+ * What survives is the half that was always the answer to "how much did I make": sales in the
+ * period, our commission on them, the subscriptions accrued beside it, and the seller's own share
+ * stated so the gross figure can be read. `sellerEarnedAgorot` is no longer a bridge into anything
+ * — it is context for the gross, and it never passes through us.
  *
  * ── Three things this deliberately does NOT do ──
  * **No ad-margin FIGURE — but the line is on the page** (revised 2026-08-12). It is one of the
@@ -44,7 +41,7 @@ import type { PlatformRevenue } from './platform-revenue.js';
  * one yet). A statement that guessed a rate would be a document asserting a tax position nobody
  * has taken.
  *
- * **No snapshot.** Every figure is computed live from the orders and payouts as they are NOW, so
+ * **No snapshot.** Every figure is computed live from the orders as they are NOW, so
  * cancelling an old order restates the period it belonged to. That is correct — the numbers should
  * tell the truth about the world — and it means two printings of "August" can differ. The statement
  * carries its generation timestamp for that reason, and says so on its face.
@@ -125,29 +122,17 @@ export interface PlatformStatement {
    *  total is exactly the sum of the lines printed above it in both states. */
   incomeAccruedAgorot: number;
 
-  /** ── Cash: what moved ── */
-  openingBalanceAgorot: number;
-  paidOutAgorot: number;
-  payouts: number;
-  adjustmentsAgorot: number;
-  closingBalanceAgorot: number;
-  /** Commission those transfers took at source — income COLLECTED, against income EARNED above. */
-  commissionSettledAgorot: number;
-
   /**
-   * **What is about to come IN, on the next payout day** — commission the upcoming run will deduct,
-   * and the day it runs. The owner's question in his own words (2026-08-12): *"ב-10 לחודש הקרוב זו
-   * העמלה שאני אקבל, הייתי מצפה שבדוח יהיה כתוב מה ייכנס לי החודש"*.
+   * ⚠️ There is no "what will come in" figure on this document, and its absence is deliberate.
    *
-   * **`null` on any period that has already ended, and that is the whole design of this field.**
-   * The figure is live and lifetime — commission on every sale whose money has come out of hold,
-   * mostly from earlier months — so it belongs to no period at all. Printed on a July statement it
-   * would read as July's, which is the exact confusion that produced the question. It appears only
-   * when the period being read still contains today, i.e. when "the next payout" is genuinely
-   * ahead of the reader.
+   * The owner asked for one (2026-08-12): *"ב-10 לחודש הקרוב זו העמלה שאני אקבל, הייתי מצפה שבדוח
+   * יהיה כתוב מה ייכנס לי החודש"*. Under the custodial model it was answerable — our own payout run
+   * knew exactly what it was about to deduct. Now the processor transfers our distribution fee on
+   * the 20th for the previous month's TRANSACTIONS, and this document buckets by when the SALE
+   * happened; the two windows do not coincide, so a figure derived here would be close enough to be
+   * believed and wrong often enough to matter. It comes back when the adapter can read the real
+   * figure from the processor, and not before.
    */
-  upcomingCommissionAgorot: number | null;
-  upcomingPayoutDayISO: string | null;
 }
 
 export interface StatementInput {
@@ -155,10 +140,6 @@ export interface StatementInput {
   generatedAtISO: string;
   /** Sales in the period. */
   accrued: LedgerAccrual;
-  /** Transfers and adjustments in the period. */
-  movement: LedgerMovement;
-  /** Everything before the period, both halves — what the opening balance is computed from. */
-  before: { accrued: LedgerAccrual; movement: LedgerMovement };
   /** Subscription accrual for the period, from `platform-revenue.ts` so the pro-rata rule has one
    *  home. Its commission line is ignored here: that figure comes from `accrued`, the same query the
    *  balances use, so the document cannot hold two definitions of it. */
@@ -167,14 +148,10 @@ export interface StatementInput {
    *  caller that knows whether the number it could pass came from a real account
    *  (`ad-metrics.ts#AD_METRICS_ARE_MOCK`). Absent is `null`, never `0`. */
   adMarginAgorot: number | null;
-  /** The next payout run's commission and day, or `null` for a period that has already closed —
-   *  the caller knows what today is, so it is the caller that decides. See the output field. */
-  upcoming: { commissionAgorot: number; payoutDayISO: string } | null;
 }
 
 export function buildPlatformStatement(input: StatementInput): PlatformStatement {
-  const { accrued, movement, before, revenue, adMarginAgorot, upcoming } = input;
-  const openingBalanceAgorot = before.accrued.netAgorot - before.movement.paidOutAgorot + before.movement.adjustmentsAgorot;
+  const { accrued, revenue, adMarginAgorot } = input;
   return {
     period: input.period,
     generatedAtISO: input.generatedAtISO,
@@ -187,17 +164,5 @@ export function buildPlatformStatement(input: StatementInput): PlatformStatement
     subscribers: revenue.subscribers,
     adMarginAgorot,
     incomeAccruedAgorot: accrued.commissionAgorot + revenue.subscriptionsAgorot + (adMarginAgorot ?? 0),
-
-    openingBalanceAgorot,
-    paidOutAgorot: movement.paidOutAgorot,
-    payouts: movement.payouts,
-    adjustmentsAgorot: movement.adjustmentsAgorot,
-    // Written as the sum of the four lines ABOVE it, not recomputed from a fifth query. The reader
-    // must be able to add up what is printed and land on the last row; a closing balance that came
-    // from somewhere else would be right and unverifiable, which on this document is worse.
-    closingBalanceAgorot: openingBalanceAgorot + accrued.netAgorot - movement.paidOutAgorot + movement.adjustmentsAgorot,
-    commissionSettledAgorot: movement.commissionSettledAgorot,
-    upcomingCommissionAgorot: upcoming?.commissionAgorot ?? null,
-    upcomingPayoutDayISO: upcoming?.payoutDayISO ?? null,
   };
 }
