@@ -56,7 +56,6 @@ import { SHIPPING_SORT_ORDER, type AdminOrderQuery } from './admin-orders-filter
 import { URGENCY_STATUSES, URGENCY_RANKS, filterAndSortSellerOrders, type SellerOrderQuery } from './seller-orders-query.js';
 import { CHECKOUT_GROUP_KEY_SQL } from './checkout-group.js';
 import { openReturnSql } from './returns.js';
-import { PAYOUT_CLASS_SQL, RELEASABLE_PARAM_COUNT, releasableParams } from './payout-hold.js';
 
 export interface OrderItem {
   productId: string;
@@ -464,22 +463,18 @@ export async function getAdminOrdersPage(
   // Exactly the ones the predicate names. A parameter a statement does not reference is a bind
   // error, not a spare — which is why the sort order and the page bounds are appended per query
   // rather than carried in one list.
-  // ── `RELEASABLE_SQL`'s eight parameters come FIRST, and that is not cosmetic ──
-  // That predicate spells its own placeholders as literal `$1…$8` (payout-hold.ts), so anything
-  // embedding it must give it those exact positions. Renumbering it at the call site would be a
-  // second copy of the rule differing only in punctuation — the class this whole area keeps being
-  // bitten by — so the query yields the low numbers to it and starts its own at `$9`.
   const params: unknown[] = [
-    ...releasableParams(),
     query.shippingStatus?.length ? query.shippingStatus : null,
     query.paymentStatus?.length ? query.paymentStatus : null,
     query.store?.length ? query.store : null,
     q,
     query.newSince ?? null,
-    query.payout?.length ? query.payout : null,
     query.storeSlug?.length ? query.storeSlug : null,
   ];
-  const P = RELEASABLE_PARAM_COUNT;
+  // The hold predicate used to own `$1…$8` here, because the payout-status filter embedded it and
+  // that predicate spells its own placeholders literally. Both are gone with the custodial model,
+  // so this statement's own parameters start at 1 again.
+  const P = 0;
   // The haystack `orderSearchHaystack` builds, as one expression. `position(… in …) > 0` is
   // `String.includes`, and both sides are lowercased exactly as the JS is.
   const HAYSTACK = `lower(
@@ -494,19 +489,12 @@ export async function getAdminOrdersPage(
          SELECT 1 FROM order_items it WHERE it.order_id = o.id AND it.store_name = ANY($${P + 3}::text[])))
    AND ($${P + 4}::text   IS NULL OR position($${P + 4}::text in ${HAYSTACK}) > 0)
    AND ($${P + 5}::text   IS NULL OR o.created_at > $${P + 5}::timestamptz)
-   -- Where this order's money stands, per STORE SLICE — the same five states the seller's own
-   -- orders tab filters by, from the SQL twin of that rule (payout-hold.ts#PAYOUT_CLASS_SQL). An
-   -- EXISTS rather than a join, matching the store filter above it and the rule stated below: a
-   -- purchase matches if ANY of its slices does, and then the whole purchase is shown.
-   AND ($${P + 6}::text[] IS NULL OR EXISTS (
-         SELECT 1 FROM order_stores os
-          WHERE os.order_id = o.id AND (${PAYOUT_CLASS_SQL}) = ANY($${P + 6}::text[])))
    -- The "מוכר/ת" filter, already resolved to slugs by the page (admin-orders-filter.ts#
    -- resolveOrderQuery) — a seller is an account, and this statement has no business knowing which
    -- stores an account owns. Same EXISTS as the store-name filter above it and the same rule: a
    -- purchase matches if ANY of its lines does, and then the whole purchase is shown.
-   AND ($${P + 7}::text[] IS NULL OR EXISTS (
-         SELECT 1 FROM order_items it WHERE it.order_id = o.id AND it.store_slug = ANY($${P + 7}::text[])))`;
+   AND ($${P + 6}::text[] IS NULL OR EXISTS (
+         SELECT 1 FROM order_items it WHERE it.order_id = o.id AND it.store_slug = ANY($${P + 6}::text[])))`;
 
   // ── The page is a page of PURCHASES, not of order rows (owner, 2026-08-07) ──
   //

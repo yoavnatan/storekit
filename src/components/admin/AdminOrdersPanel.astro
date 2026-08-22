@@ -14,8 +14,6 @@ import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
-import { orderPayoutLine, payoutLineText, payoutWhyText, type PayoutWhyKey, type PayoutTextMainKey, type PayoutTextWhyKey } from '../../lib/order-payout-line.js';
-import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
 import type { OrderSellerOption } from '../../lib/order-reporting.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
@@ -42,8 +40,6 @@ interface Props {
   shippingStatus: string[];
   paymentStatus: string[];
   store: string[];
-  /** Where each order's money stands — the filter the seller's tab always had (opayout). */
-  payout: string[];
   /** Seller ids the admin ticked (oseller). Whose ORDERS these are, which is not answerable by the
    *  store column beside it the moment one seller runs two stores. */
   seller: string[];
@@ -59,7 +55,7 @@ interface Props {
 }
 const {
   orders,
-  returnStateByOrderId = new Map<string, string>(), totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, payout, seller,
+  returnStateByOrderId = new Map<string, string>(), totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, seller,
   storeNames, sellers, newSince, newOnly, newCount, page, totalPages, buildUrl,
 } = Astro.props;
 
@@ -94,50 +90,11 @@ const sellerOptions = sellers.map((s) => ({
 const moneyLogHref = (ref: string, createdAt: string): string =>
   buildAdminUrl('moneylog', { mq: ref, mfrom: businessDayISO(new Date(createdAt)) });
 
-/**
- * The hold reason, in the admin's language.
- *
- * Hebrew literals rather than `getT`, like every other string on this admin surface — the admin
- * dashboard is Hebrew-only by construction (`i18n-hardcoded-strings.test.ts` treats a file with no
- * `getT(` as exactly that).
- *
- * The `{n}` is NOT written out here: `payoutWhyText` fills it from the line's own `whyDays`, which
- * come from `payout-schedule.ts`. Those constants are still owner decisions, and a sentence
- * promising 21 days while the code waits 30 is a promise we break.
+/*
+ * The Hebrew here is literal rather than `getT`, like every other string on this admin surface —
+ * the admin dashboard is Hebrew-only by construction (`i18n-hardcoded-strings.test.ts` treats a
+ * file with no `getT(` as exactly that).
  */
-const PAYOUT_WHY: Record<PayoutWhyKey, string> = {
-  payWhyDelivery: 'חלון ההחזרה של הקונה — {n} ימים מהמסירה',
-  payWhyPayment: 'ההזמנה לא סומנה כנמסרה — {n} ימים מיום התשלום',
-  payWhyReturnOpen: 'בקשת החזרה פתוחה — הכסף מוקפא עד שהתיק ייסגר',
-  payWhyUnshipped: 'ההזמנה עוד לא נשלחה',
-  payWhyUnknown: 'ההזמנה בבדיקה',
-};
-
-/**
- * The same two halves the seller's own card prints (`order-payout-line.ts#payoutLineText`), in the
- * admin's Hebrew literals rather than `getT` — same reason as `PAYOUT_WHY` above.
- *
- * **The date is the day the transfer LEAVES, not the day the hold ends** (owner, 2026-08-16). The
- * old line here said "ישולם אחרי <release day>", which named a day on which nothing happens to
- * anyone's money — the run that pays it out is the following Sunday. "צפוי" and not "ישולם" because
- * two things can still move it: a balance under the minimum rolls over, and a חג on the payout
- * weekday pushes the transfer to the next banking day.
- *
- * The reasons stay LONGER here than on the seller's card, deliberately: this screen is read when
- * somebody is asking why a specific seller has not been paid, and the day counts are the answer.
- */
-const PAYOUT_MAIN: Record<PayoutTextMainKey, string> = {
-  payFilter_none: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
-  payFilter_unshipped: 'ממתין לשליחה',
-  payWhyUnknown: 'בבדיקה',
-  orderPayoutExpected: 'צפוי ב{date}',
-};
-const PAYOUT_WHY_TEXT: Record<PayoutTextWhyKey, string> = {
-  orderPayoutUnshippedHint: 'תאריך התשלום ייקבע לאחר השליחה',
-  payFilter_undelivered: PAYOUT_WHY.payWhyPayment,
-  payFilter_window: PAYOUT_WHY.payWhyDelivery,
-  payFilter_released: 'אושר לתשלום',
-};
 
 const shippingLabel: Record<string, string> = {
   pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
@@ -156,7 +113,7 @@ const sortLabels: Record<string, string> = {
   'amount:asc': 'סכום: נמוך — גבוה',
   'shippingStatus:asc': 'סטטוס משלוח: הזמנות חדשות קודם',
 };
-const activeFilterCount = [shippingStatus, paymentStatus, store, payout, seller].filter((s) => s.length > 0).length;
+const activeFilterCount = [shippingStatus, paymentStatus, store, seller].filter((s) => s.length > 0).length;
 
 // The page's rows, grouped back into the purchases they came from. `getAdminOrdersPage` already
 // paged BY purchase and returned the rows in that page order, so this only has to re-assemble them
@@ -182,7 +139,6 @@ const purchases = groupBuyerPurchases(orders);
         data-ship={shippingStatus.join(',')}
         data-pay={paymentStatus.join(',')}
         data-store={store.join(',')}
-        data-payout={payout.join(',')}
         data-seller={seller.join(',')}
         data-store-names={JSON.stringify(storeNames)}
         data-sellers={JSON.stringify(sellerOptions)}
@@ -365,38 +321,6 @@ const purchases = groupBuyerPurchases(orders);
                         </li>
                       ))}
                     </ul>
-                    {/* When this slice's money reaches its seller, and why then — the same line the
-                        seller sees on their own copy of this order, from the same derivation
-                        (`order-payout-line.ts`). Asked for here on 2026-08-11, and it belongs PER
-                        SLICE rather than per purchase: each store's share runs its own hold clock
-                        off its own shipping status, so one purchase can have a seller paid next
-                        week and another blocked on a parcel that never went out. */}
-                    {(() => {
-                      const line = orderPayoutLine({
-                        paymentStatus: slice.order.paymentStatus,
-                        shippingStatus: slice.order.shippingStatus,
-                        paidAt: slice.order.paidAt ?? null,
-                        deliveredAt: slice.order.deliveredAt ?? null,
-                        deliveryMethod: slice.order.storeSubtotals[slice.storeSlug]?.deliveryMethod ?? null,
-                      });
-                      const text = payoutLineText(line);
-                      return (
-                        <div class="mt-2 pt-2 border-t [border-color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.78rem]">
-                          {/* "התשלום למוכר", not "סטטוס תשלום": this card carries TWO payment
-                              facts — the buyer's charge and the seller's payout — and both were
-                              called תשלום, so neither could be read (owner, 2026-08-11). The
-                              seller's own card reached the same place from the other side and says
-                              "קבלת התשלום" (2026-08-16) — same rule, the side you stand on. */}
-                          <span class="[color:var(--color-muted)]">התשלום למוכר/ת:</span>
-                          <strong class="[color:var(--color-text)]">
-                            {text.dateISO ? PAYOUT_MAIN[text.mainKey].replace('{date}', formatBusinessDayLabel(text.dateISO)) : PAYOUT_MAIN[text.mainKey]}
-                          </strong>
-                          {text.whyKey && (
-                            <span class="[color:var(--color-muted)]">· {payoutWhyText(line, PAYOUT_WHY_TEXT[text.whyKey])}</span>
-                          )}
-                        </div>
-                      );
-                    })()}
                   </div>
                 ))}
                 <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">

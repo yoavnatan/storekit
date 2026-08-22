@@ -143,43 +143,6 @@ describe('getAdminOrdersPage agrees with filterAndSortOrders', () => {
     }
   }
 
-  /**
-   * The payout filter, value by value — and every one of them asserted BY NAME rather than only
-   * through `bothAgree`. Parity alone would pass if both routes were wrong in the same direction
-   * (a `NOT` dropped on both sides classifies everything as one state and the two lists still
-   * match), so each case also names the order it must find.
-   */
-  describe('filtering by payout state', () => {
-    const CASES: Array<[string, string[]]> = [
-      ['unshipped',   ['CR-2', 'CR-6']],
-      ['undelivered', ['CR-8', 'CR-9']],
-      ['released',    ['CR-7']],
-      ['none',        ['CR-3', 'CR-4']],
-    ];
-    for (const [state, refs] of CASES) {
-      it(`${state} finds exactly the orders in that state`, async () => {
-        const rows = await bothAgree({ payout: [state] }, `payout=${state}`);
-        expect(rows.map((o) => o.checkoutRef).sort()).toEqual(refs);
-      });
-    }
-
-    it('the five states partition every order — none missing, none counted twice', async () => {
-      const all = await ALL();
-      const seen = new Map<string, number>();
-      for (const state of ['unshipped', 'undelivered', 'window', 'released', 'none']) {
-        for (const o of await bothAgree({ payout: [state] }, `partition:${state}`)) {
-          seen.set(o.id, (seen.get(o.id) ?? 0) + 1);
-        }
-      }
-      expect(seen.size, 'every order lands in some state').toBe(all.length);
-      expect([...seen.values()].filter((n) => n !== 1), 'no order in two states').toEqual([]);
-    });
-
-    it('several states at once are an OR, like every other filter here', async () => {
-      const rows = await bothAgree({ payout: ['released', 'none'] }, 'payout=released,none');
-      expect(rows.map((o) => o.checkoutRef).sort()).toEqual(['CR-3', 'CR-4', 'CR-7']);
-    });
-  });
 
   it('filtering by shipping status', async () => {
     const rows = await bothAgree({ shippingStatus: ['pending', 'shipped'] }, 'shipping filter');

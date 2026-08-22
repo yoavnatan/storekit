@@ -39,20 +39,16 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   // is exactly the one a cap would have dropped.
   returns: ['rq', 'rpage'],
   data: ['datapreset'],
-  // `spayout` arrived when the payouts tab's per-seller table was folded into these cards
-  // (סשן א׳ §3): the tiles there are counts, and this is what turns one back into the names.
-  sellers: ['sq', 'ssort', 'sblocked', 'spayout', 'spage', 'snew'],
+  sellers: ['sq', 'ssort', 'sblocked', 'spage', 'snew'],
   // `stblocked` is the retired yes/no form of `ststate` — still parsed (parseStoreQuery) so an
   // older bookmark keeps filtering to blocked stores, so it still has to be owned here or it
   // would be stripped out of the URL before the parser ever saw it.
   // `stempty` is the retired "לתשומת לב" TAB (סשן ב׳ §1) — one thing that tab could say, said as a
   // filter on the list it was always about.
   stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stempty', 'stpage', 'stnew'],
-  // `opayout` is where each order's money stands — the filter the seller's own orders tab always
-  // had and this one did not (owner, 2026-08-11). Distinct from `opay`, which is the BUYER's charge.
   // `oseller` is WHOSE orders these are — seller ids, because one account can run several stores
   // and `ostore` beside it can then only ask half the question (owner, 2026-08-11).
-  orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opayout', 'oseller', 'opage', 'onew'],
+  orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'oseller', 'opage', 'onew'],
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   // `mrole`/`mstatus` arrived with the inbox merge (2026-08-19): the list is no longer
@@ -62,10 +58,6 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   // second letter of their params is how one of them ends up owned by the wrong list.
   reviews: ['vq', 'vstore', 'vseller', 'vstate', 'vfrom', 'vto', 'vpage'],
   alerts: ['alsort', 'alsource', 'alsev', 'alref', 'alq', 'alstore', 'alfrom', 'alto', 'alpage', 'alnew'],
-  // No params of its own since סשן א׳ §3 — the per-seller table it paged now lives on the seller
-  // cards. The key stays so `stripForeignTabParams` still knows this tab exists; an empty list is
-  // the honest description, not an omission.
-  payouts: [],
   // The accounting statement's period: a month key, or a free range. `ac*` rather than `st*` —
   // every store-tab param already starts `st`, and two tabs whose params are told apart by the
   // third letter is how one of them ends up owned by the wrong list.

@@ -207,10 +207,12 @@ describe('every admin tab has a heading pinned under the strip', () => {
     // The gap this closes was reported as a whole (owner, סשן ד׳: *"התת כותרת בדשבורד אדמין לא
     // סטיקי… ממש קשה שאתה מזניח את הדשבורד אדמין"*). The strip pins; whatever is under it must too,
     // or three screens into a list there is nothing on screen naming what you are looking at.
-    // Asserted over EVERY shell call site rather than a list of names, so a fifteenth tab added
-    // later cannot arrive without one.
+    // Asserted over EVERY shell call site rather than a list of names, so a fourteenth tab added
+    // later cannot arrive without one. The floor moved 14 → 13 on 2026-08-21, when the
+    // "תשלומים למוכרים" tab went with the custodial model — it is a floor against a tab arriving
+    // unheaded, not a count of the tabs there ought to be.
     const shells = [...adminPage.matchAll(/<AdminPanelShell panel="([a-z]+)"([^>]*)>/g)];
-    expect(shells.length).toBeGreaterThanOrEqual(14);
+    expect(shells.length).toBeGreaterThanOrEqual(13);
     for (const [, panel, attrs] of shells) {
       if ((attrs ?? '').includes('title=')) continue;
       // No shell title — then the panel composes its own heading, and that one has to be a

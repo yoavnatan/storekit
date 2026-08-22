@@ -75,11 +75,6 @@ const ADMIN_RETURN_CHIP: Record<ReturnStatus, string> = {
 };
 import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
-import { planPayouts } from '../../lib/payout-run.js';
-import { getPlatformAccrual, getHeldBreakdown, getHeldBySeller } from '../../lib/payouts.js';
-import { buildPlatformLedger } from '../../lib/platform-ledger.js';
-import AdminPayoutPlanCard from '../../components/admin/AdminPayoutPlanCard.astro';
-import AdminLedgerCard from '../../components/admin/AdminLedgerCard.astro';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
 
@@ -105,14 +100,10 @@ const tabs = [
   // log of failures the machine detected, and a buyer's published opinion is neither.
   { id: 'reviews', label: 'ביקורות' },
   { id: 'alerts', label: 'התראות ושגיאות' },
-  // Beside the journal and before it: this one is what is ABOUT to happen and the journal is what
-  // already did, and a number you can still act on comes before a number you can only check.
-  // Before the payouts, because an open return is what HOLDS one back.
   { id: 'returns', label: 'החזרות' },
-  { id: 'payouts', label: 'תשלומים למוכרים' },
-  // Last of the three money tabs, and the order is the timeline: what is about to happen
-  // (payouts), what already did (the journal), and — here — what a closed period ADDS UP TO. The
-  // first two are operational screens; this one is a document.
+  // The two money tabs, in timeline order: what already happened (the journal) and what a closed
+  // period ADDS UP TO. There is no third tab in front of them any more — "תשלומים למוכרים" was a
+  // screen for deciding what to send, and under the split model nothing here sends anything.
   { id: 'moneylog', label: 'יומן כספי' },
   { id: 'statement', label: 'דוח חשבונאי' },
 ] as const;
@@ -334,7 +325,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
-  productCounts, reconciliation, payoutPlan, heldBreakdown, heldBySeller, platformAccrual, ordersPage, badgeCounts,
+  productCounts, reconciliation, ordersPage, badgeCounts,
   perfViews, perfPlatformViews, perfSales, productNames, reviewsPage, reviewsTotalAll,
   imageModerationState,
 ] = await Promise.all([
@@ -359,25 +350,6 @@ const [
   // that list a store, and a badge may not depend on a tab being open. `reconcile.ts` asks the
   // database for the same set instead — its header says why.
   reconcilePlatform(),
-  // What the next payout run WOULD do — the one forward-looking number on this dashboard, and the
-  // only place the owner can see how much leaves the company's account on the 10th and which
-  // sellers are stuck with money we cannot send. Four queries whatever the platform's size
-  // (payout-run.ts#planPayouts), and it is the SAME function the run then acts on, so this figure
-  // and the transfers cannot be two answers. Money tab only, like the reconciliation beside it.
-  // Sellers too, since סשן א׳ §3: the per-seller half of this plan is rendered on the seller cards
-  // now, and the filter chips above them are counted from it. Four queries whatever the platform's
-  // size, so the Sellers tab pays a fixed cost rather than one per card.
-  // Overview too, since סשן ב׳ §3: the platform ledger card is half this plan (what leaves, and
-  // what has already left) and half the accrual below it.
-  only(['payouts', 'sellers', 'overview'], () => planPayouts(), null),
-  // Why the held money is held — the payouts tab's other half (owner, 2026-08-11). One aggregate
-  // whatever the platform's size, like the plan beside it.
-  only(['payouts'], () => getHeldBreakdown(), null),
-  // The same question per seller, for the third money tile on each card.
-  only(['sellers'], () => getHeldBySeller(), new Map<string, number>()),
-  // The other half — every seller's accrual at once, with the released/held split as a FILTER in
-  // the same pass, so the card's three tiles are three parts of one read (payouts.ts).
-  only(['overview'], () => getPlatformAccrual(), null),
   // Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
   // This used to read every order the platform has ever taken, to render fifteen rows.
   only(['orders'], () => getAdminOrdersPage(
@@ -430,9 +402,6 @@ if (ordersPage?.orders?.length) {
 
 const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
 
-// The platform's balance sheet — pure arithmetic over the two reads above (lib/platform-ledger.ts).
-const ledger = payoutPlan && platformAccrual ? buildPlatformLedger(platformAccrual, payoutPlan) : null;
-
 // Applied AFTER each tab's own filter+sort so it composes with them instead of
 // replacing them (search "דני" + חדשים בלבד = new sellers named דני).
 function keepNewOnly<T>(items: T[], on: boolean, boundary: string, createdAt: (item: T) => string): T[] {
@@ -451,26 +420,9 @@ function keepNewOnly<T>(items: T[], on: boolean, boundary: string, createdAt: (i
 const sellerQuery = parseSellerQuery(sp);
 const sellersTab = shows('sellers') ? await (async () => {
   const all = getSellerCards(sellers, stores, productCounts, revenueByStore);
-  // What the next run would do, keyed by seller — the payouts tab's deleted table, as a lookup.
-  // EVERY row, including `settled` and `already_paid`: the card's badge is unconditional now,
-  // because "there is a balance and no payout" was the question it existed to answer and dropping
-  // those two states left exactly that case blank (owner, 2026-08-11). A seller absent from the
-  // plan altogether has had nothing come out of hold yet, which the card names as its own state.
-  const payoutRows = payoutPlan?.rows ?? [];
-  const payoutBySeller = new Map(payoutRows.map((r) => [r.sellerId, r]));
-  // Counted BEFORE the filter, so the chips keep reporting what exists while one of them is
-  // selected — the same rule the Stores tab's state chips follow. Only over rows with money
-  // behind them, because the three chips are the three states worth acting on.
-  const payoutStateCounts: Record<string, number> = {};
-  for (const r of payoutRows) {
-    if (r.balanceAgorot > 0) payoutStateCounts[r.state] = (payoutStateCounts[r.state] ?? 0) + 1;
-  }
-  const stateBySeller = new Map(payoutRows.map((r) => [r.sellerId, r.state as string]));
-  const filtered = keepNewOnly(filterAndSortSellerCards(all, sellerQuery, stateBySeller), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
+  const filtered = keepNewOnly(filterAndSortSellerCards(all, sellerQuery), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
   const page = paginate(filtered, parsePage(sp, 'spage'));
   return {
-    payoutBySeller,
-    payoutStateCounts,
     cards: attachProducts(page.items, await getProductsByStoreIds(page.items.flatMap((c) => c.stores.map((s) => s.store.id)))),
     // Accrued balances (lib/seller-balance.ts) — reporting only: the processor pays each seller
     // directly, so nothing here is an instruction to do anything. Costs no query: derived from the
@@ -497,7 +449,7 @@ const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
 // Destructured for the panel below, which needs the query params back to rebuild its own URLs.
-const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore, payout: oPayout, seller: oSeller } = orderQuery;
+const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore, seller: oSeller } = orderQuery;
 
 // ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
 // Feed = the exact set the product feed exports: stores a platform surface may carry, holding at
@@ -698,13 +650,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
       <DashTabsBoot />
 
       <AdminPanelShell panel="overview" title="סקירה כללית" active={shows('overview')}>
-        {/* Where the money is, above the counting stats: the accounting question comes first for
-            someone opening this dashboard to run a business (סשן ב׳ §3). */}
-        {ledger && <AdminLedgerCard
-          ledger={ledger!}
-          noBankHref={tabUrl('sellers', { spayout: 'no_bank' })}
-          payoutsHref={tabUrl('payouts', {})}
-        />}
         <AdminOverviewPanel
           overview={overview}
           emptyStoreCount={storeEmptyCount}
@@ -728,14 +673,10 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         {sellersTab && <AdminSellersPanel
           sellerCards={sellersTab!.cards}
           balanceBySeller={sellersTab!.balanceBySeller}
-          payoutBySeller={sellersTab!.payoutBySeller}
-          heldBySeller={heldBySeller}
-          payoutStateCounts={sellersTab!.payoutStateCounts}
           q={sellerQuery.q}
           sortCol={sellerQuery.sortCol}
           sortDir={sellerQuery.sortDir}
           blockedOnly={sellerQuery.blockedOnly}
-          payoutState={sellerQuery.payoutState}
           newSince={newSince.sellers}
           newOnly={newOnly.sellers}
           newCount={badgeCounts.sellers}
@@ -747,7 +688,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
             sq: sellerQuery.q || undefined,
             ssort: (sellerQuery.sortCol !== 'joined' || sellerQuery.sortDir !== 'desc') ? `${sellerQuery.sortCol}:${sellerQuery.sortDir}` : undefined,
             sblocked: sellerQuery.blockedOnly ? '1' : undefined,
-            spayout: sellerQuery.payoutState !== 'all' ? sellerQuery.payoutState : undefined,
             snew: newOnly.sellers ? '1' : undefined,
             spage: p > 1 ? String(p) : undefined,
           })}
@@ -794,7 +734,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
           shippingStatus={oShip}
           paymentStatus={oPay}
           store={oStore}
-          payout={oPayout}
           seller={oSeller}
           storeNames={orderStoreNames}
           sellers={orderSellers}
@@ -809,7 +748,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
             oship: oShip.length ? oShip.join(',') : undefined,
             opay: oPay.length ? oPay.join(',') : undefined,
             ostore: oStore.length ? encodeList(oStore) : undefined,
-            opayout: oPayout.length ? oPayout.join(',') : undefined,
             oseller: oSeller.length ? oSeller.join(',') : undefined,
             onew: newOnly.orders ? '1' : undefined,
             opage: p > 1 ? String(p) : undefined,
@@ -903,22 +841,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
             alpage: p > 1 ? String(p) : undefined,
           })}
         />
-      </AdminPanelShell>
-
-      {/* `shows('payouts')` and not `!!payoutPlan`, and the difference became load-bearing on
-          2026-08-11: the plan is now fetched for the SELLERS tab too (its cards render the
-          per-seller half of it), so a truthiness test on the data would mark this panel `active`
-          while the admin is looking at Sellers — `AdminPanelShell` renders `hidden={!active}`, so
-          two panels would be open at once and this one would lose its `data-lazy` marker. Every
-          other shell here asks the same question; this is the one where the answer stopped being
-          the same. */}
-      <AdminPanelShell panel="payouts" title="תשלומים למוכרים" active={shows('payouts') && !!payoutPlan}>
-        {payoutPlan && <AdminPayoutPlanCard
-          plan={payoutPlan}
-          sellersHref={(state: string) => tabUrl('sellers', { spayout: state })}
-          held={heldBreakdown ?? { unshippedAgorot: 0, unshippedOrders: 0, clockRunningAgorot: 0, clockRunningOrders: 0 }}
-          ordersHref={(payoutStates: readonly string[]) => tabUrl('orders', { opayout: payoutStates.join(',') })}
-        />}
       </AdminPanelShell>
 
       <AdminPanelShell panel="statement" active={shows('statement') && !!statement}>

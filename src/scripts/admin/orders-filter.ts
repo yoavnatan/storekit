@@ -7,7 +7,6 @@
 import { buildAdminUrl, debounce, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { escapeHtml } from '../../lib/html-escape.js';
-import { PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
 
 const PANEL_ID = 'dash-panel-orders';
 
@@ -30,38 +29,8 @@ const SHIPPING_COLORS: Record<string, string> = {
 // side so the column cannot be read as the money going out to a seller.
 const PAYMENT_LABELS: Record<string, string> = { pending: 'החיוב טרם עבר', paid: 'החיוב עבר', failed: 'החיוב נכשל' };
 const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a34a', failed: '#ef4444' };
-/**
- * The five payout states — WORD FOR WORD what the seller sees (translations.ts#payFilter_*).
- *
- * Duplicated rather than imported because this dashboard is Hebrew-only by construction
- * (i18n-hardcoded-strings.test.ts) and `getT` is not reachable from it; kept identical because the
- * owner reads both screens, and a state that changes its name between them is the confusion this
- * round was about. They used to differ — the seller's said "שלך" — and dropping that second person
- * is what let them converge.
- *
- * The set is a JOURNEY, and that is the fix (owner, 2026-08-11: "הניסוחים גרועים ולא
- * אינטואיטיביים"). Every label answers one question — when does this money arrive — in the order it
- * actually happens, so reading the list top to bottom explains the model without a tooltip.
- *
- * **`released` is "אושר לתשלום" and not "ישולם בתשלום הקרוב", and the difference is future work.**
- * The owner asked for a word he could CONTINUE from — *"משהו שיהיה אפשר להמשיך איתו ולהגיד כן, זה
- * תשלום שאושר"* — because the chain does not end here: once a transfer exists for this money the
- * next states are "נשלח לבנק" and "הועבר", which `seller_payouts.status` already records. It cannot
- * be said PER ORDER yet — nothing links an order to the payout that settled it — so an order that
- * was paid out in March still reports as approved. Naming this one after a promise about timing
- * ("the next payment") would have made that stale sentence a wrong one; naming it after the state
- * it actually is leaves the two real states room to arrive above it.
- */
-const PAYOUT_LABELS: Record<string, string> = {
-  unshipped: 'ממתין לשליחה',
-  undelivered: 'בדרך ללקוח',
-  window: 'ממתין לסיום ימי החזרה',
-  released: 'אושר לתשלום',
-  none: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
-};
-
 type SortCol = 'date' | 'amount' | 'shippingStatus';
-type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store' | 'payout' | 'seller';
+type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store' | 'seller';
 type FilterColumnDef = { col: FilterCol; label: string; values: string[]; labels: Record<string, string>; colors: Record<string, string> };
 
 const SORT_OPTIONS: { col: SortCol; dir: 'asc' | 'desc'; label: string }[] = [
@@ -101,7 +70,6 @@ export function initAdminOrdersFilter(): void {
     // NOT "שחרור הכסף" (owner, 2026-08-11: "שם ממש גרוע, כאילו הכסף מוחזק איפשהו, נשמע רע"). He is
     // right about what it implied: money in hold is ordinary and temporary, and a name built on
     // "release" describes it as confinement. "מצב התשלום" states the same fact and claims nothing.
-    { col: 'payout', label: 'מצב התשלום', values: [...PAYOUT_FILTER_VALUES], labels: PAYOUT_LABELS, colors: {} },
     // Seller before store, in that order deliberately: the account owns the shops, and an admin who
     // wants "everything this person sold" was previously made to know which store names to tick —
     // the wrong question the moment one seller runs two of them (owner, 2026-08-11). The value is
@@ -122,8 +90,6 @@ export function initAdminOrdersFilter(): void {
   if (ship0.size) activeFilters.set('shippingStatus', ship0);
   if (pay0.size) activeFilters.set('paymentStatus', pay0);
   if (store0.size) activeFilters.set('store', store0);
-  const payout0 = new Set((state.payout ?? '').split(',').filter(Boolean));
-  if (payout0.size) activeFilters.set('payout', payout0);
   const seller0 = new Set((state.seller ?? '').split(',').filter(Boolean)); // ids — no commas to escape
   if (seller0.size) activeFilters.set('seller', seller0);
 
@@ -139,7 +105,6 @@ export function initAdminOrdersFilter(): void {
     const ship = activeFilters.get('shippingStatus');
     const pay = activeFilters.get('paymentStatus');
     const store = activeFilters.get('store');
-    const payout = activeFilters.get('payout');
     const seller = activeFilters.get('seller');
     return buildAdminUrl('orders', {
       oq: searchInput?.value.trim() || undefined,
@@ -147,7 +112,6 @@ export function initAdminOrdersFilter(): void {
       oship: ship?.size ? [...ship].join(',') : undefined,
       opay: pay?.size ? [...pay].join(',') : undefined,
       ostore: store?.size ? encodeList([...store]) : undefined,
-      opayout: payout?.size ? [...payout].join(',') : undefined,
       oseller: seller?.size ? [...seller].join(',') : undefined,
       onew: newOnly ? '1' : undefined,
     });

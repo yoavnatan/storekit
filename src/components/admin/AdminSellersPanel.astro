@@ -1,8 +1,6 @@
 ---
-import type { AdminSellerSortCol, AdminSortDir, SellerCardData, PayoutStateFilter } from '../../lib/admin-stats.js';
+import type { AdminSellerSortCol, AdminSortDir, SellerCardData } from '../../lib/admin-stats.js';
 import type { SellerBalance } from '../../lib/seller-balance.js';
-import type { PayoutPlanRow, PayoutState } from '../../lib/payout-run.js';
-import { MIN_PAYOUT_AGOROT } from '../../lib/payout-schedule.js';
 import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import { formatAgorot } from '../../lib/money.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
@@ -12,33 +10,14 @@ import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
 
 interface Props {
   sellerCards: SellerCardData[]; // current page only
-  /** sellerId → what they have earned (lib/seller-balance.ts). REPORTING ONLY — a lifetime figure
-   *  that is never an instruction to do anything. `payoutBySeller` beside it is the opposite: what
-   *  is about to move. */
+  /** sellerId → what they have earned (lib/seller-balance.ts). REPORTING ONLY, and now the only
+   *  kind of money figure on this card: the processor pays each seller directly, so there is
+   *  nothing here that is about to move and nothing to decide. */
   balanceBySeller: ReadonlyMap<string, SellerBalance>;
-  /**
-   * sellerId → what the next payout run would do for them (`payout-run.ts#planPayouts`).
-   *
-   * **This is where the admin's payout table went** (owner, סשן א׳ §3): *"מרגיש לי שהפרטים האלו
-   * אמורים וצריכים להיות בתוך כרטיסיות המוכרים... למה ליצור עוד רשימה של מוכרים?"*. It was a
-   * second roster of the same people, searchable and sortable by nothing, one tab away from this
-   * one. Every fact it carried belongs to a seller and now sits on that seller's card.
-   *
-   * Absent for most sellers most months, and that is the steady state — `settled` and
-   * `already_paid` rows are dropped upstream, so a missing entry means "nothing is moving", which
-   * the card says by showing no payout tile at all.
-   */
-  payoutBySeller: ReadonlyMap<string, PayoutPlanRow>;
-  /** Per seller: earned but still in hold (payouts.ts#getHeldBySeller) — the third money tile. */
-  heldBySeller: ReadonlyMap<string, number>;
   q: string;
   sortCol: AdminSellerSortCol;
   sortDir: AdminSortDir;
   blockedOnly: boolean;
-  payoutState: PayoutStateFilter;
-  /** How many sellers sit in each payout state across the WHOLE list, so the chips keep showing
-   *  what exists while one of them is selected — same rule as the Stores tab's state chips. */
-  payoutStateCounts: Record<string, number>;
   newSince: string;  // ISO — anything created after this is what the tab's "(N)" counted
   newOnly: boolean;
   newCount: number;
@@ -48,51 +27,7 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { sellerCards, balanceBySeller, payoutBySeller, heldBySeller, q, sortCol, sortDir, blockedOnly, payoutState, payoutStateCounts, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
-
-/** The three states worth acting on, in the order the payout plan's own tiles show them. `all`
- *  leads, because it is the way back. */
-const PAYOUT_CHIPS: { value: PayoutStateFilter; label: string }[] = [
-  { value: 'all', label: 'הכל' },
-  { value: 'payable', label: 'ישולם' },
-  { value: 'no_bank', label: 'תקוע — אין פרטי בנק' },
-  { value: 'below_minimum', label: 'מתחת למינימום' },
-];
-/**
- * One label per state, and each is a complete ANSWER to the question this card raises — "there is a
- * balance here, why is it not in the next payment?" (owner, 2026-08-11). Naming the state was not
- * enough: `settled` said "אין יתרה" beside a card showing ₪5,000 of lifetime earnings, which reads
- * as a contradiction rather than an explanation.
- *
- * The reconciliation the admin needs, in one line: **"רווח מצטבר" is a LIFETIME figure** — every
- * shekel this seller has ever earned net of commission — while "תשלום קרוב" is one moment. The
- * difference between them is money already transferred plus money still inside the buyers' return
- * windows, and it is these labels' job to say which.
- *
- * ── Why it is no longer called "יתרה" (owner, סשן א׳ §7, 2026-08-11) ──
- * *"לא ברור ״תשלום קרוב״ ו״יתרה למוכר״ — לא באדמין ולא בדשבורד מוכרים, היתרה כוללת את התשלום הקרוב
- * או לא?"* — and the honest answer was worse than the question: it includes the upcoming payment
- * AND everything already transferred, so it is not a balance in any sense the word carries. A
- * balance is what is LEFT; this is what has ever been. Renaming it to "רווח מצטבר" makes the
- * question answer itself, which is the only fix that does not need a tooltip to work. The tooltip
- * stays for the commission breakdown, not to rescue the label.
- */
-const PAYOUT_STATE_LABEL: Record<PayoutState, string> = {
-  payable: 'ישולם בתשלום הקרוב',
-  no_bank: 'תקוע — אין פרטי בנק',
-  below_minimum: `מתחת ל-${formatAgorot(MIN_PAYOUT_AGOROT)} · מתגלגל`,
-  already_paid: 'שולם לתקופה הזו',
-  settled: 'הכל הועבר · מה שנותר עוד ממתין',
-};
-/** Only `no_bank` is a problem someone has to fix, so only it is red. `payable` is the system
- *  working; the rest are the system waiting. */
-const PAYOUT_STATE_CLASS: Record<PayoutState, string> = {
-  payable: 'admin-badge--paid',
-  no_bank: 'admin-badge--failed',
-  below_minimum: 'admin-badge--muted',
-  already_paid: 'admin-badge--muted',
-  settled: 'admin-badge--muted',
-};
+const { sellerCards, balanceBySeller, q, sortCol, sortDir, blockedOnly, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -131,34 +66,12 @@ const sortLabels: Record<string, string> = {
       {(newCount > 0 || newOnly) && <AdminNewOnlyToggle id="admin-sellers-new-toggle" active={newOnly} count={newCount} />}
     </div>
 
-    {/* The payout filter — the one thing the deleted per-seller payout table could do that a card
-        cannot: find the stuck sellers among a thousand. A chip is rendered only when it would
-        select somebody (or when it is already selected, so the way back out is never missing),
-        because a permanent "תקוע (0)" chip trains the eye to skip the row it lives on. */}
-    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-sellers-payout-chips" data-payout-state={payoutState}>
-      <span class="text-[.78rem] [color:var(--color-muted)]">תשלום קרוב:</span>
-      {PAYOUT_CHIPS.filter((c) => c.value === 'all' || c.value === payoutState || (payoutStateCounts[c.value] ?? 0) > 0).map((c) => (
-        <button
-          type="button"
-          class="table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
-          style={c.value === payoutState ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
-          aria-pressed={c.value === payoutState}
-          data-payout-chip={c.value}
-        >
-          {c.label}
-          {c.value !== 'all' && <span class="tabular-nums [color:inherit] opacity-70">{payoutStateCounts[c.value] ?? 0}</span>}
-        </button>
-      ))}
-    </div>
-
     {totalFiltered === 0 && <p class="admin-empty">לא נמצאו מוכרים תואמים.</p>}
 
     <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <div class="admin-seller-list" id="admin-seller-list">
     {sellerCards.map(({ seller, stores, totalProducts, revenue }) => {
       const balance = balanceBySeller.get(seller.id);
-      const payout = payoutBySeller.get(seller.id);
-      const held = heldBySeller.get(seller.id) ?? 0;
       return (
       <details class="admin-seller-card">
         <summary class="admin-seller-card__summary">
@@ -169,20 +82,6 @@ const sortLabels: Record<string, string> = {
             </span>
             <span class="admin-seller-card__email">{seller.email}</span>
             <span class="admin-seller-card__joined">הצטרף/ה {fmtDate(seller.createdAt)}</span>
-            {/* Rendered whenever this seller has ANY released money — which is what answers the
-                question this card raises: "there is a balance, why is it not in the next payment?"
-                It used to appear only when a payout was pending, so precisely that case was blank.
-                Each state is a complete answer rather than a name.
-
-                What it does NOT do is announce the absence of money. A seller `planPayouts` says
-                nothing about has had nothing come out of hold yet, and a badge saying so on most of
-                the roster is a label that means "nothing here" (owner, 2026-08-11). No badge says
-                that better. */}
-            {payout && (
-              <span class="admin-seller-card__payout-state">
-                <span class:list={['admin-badge', PAYOUT_STATE_CLASS[payout.state]]}>{PAYOUT_STATE_LABEL[payout.state]}</span>
-              </span>
-            )}
           </div>
           {/* Labelled mini stat-tiles (label above value) — the bare "₪0 סה"כ"
               suffixes read as "what am I looking at?" (owner feedback). Same
@@ -209,37 +108,10 @@ const sortLabels: Record<string, string> = {
                 what the seller is left with once the platform's commission comes out. Deliberately
                 the last tile — it is a consequence of the one before it, and reading them in that
                 order is what makes the pair legible. */}
-            {/* The tooltip carries the reconciliation the two money tiles otherwise leave the admin
-                to work out: this one is a LIFETIME total and "תשלום קרוב" is one moment, so they
-                are not the same kind of number and the gap between them is not an error. */}
-            <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`סך הכל מאז שנפתחה החנות, אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)}). כולל גם כסף שכבר הועבר וגם כסף שעוד בתוך חלון ההחזרה של הקונה — ולכן הוא גדול מ״תשלום קרוב״. דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
+            <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`סך הכל מאז שנפתחה החנות, אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)}). דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
               <span class="admin-seller-card__stat-label">רווח מצטבר</span>
               <span class="admin-seller-card__stat-value">{formatAgorot(balance?.totalEarnedAgorot ?? 0)}</span>
             </span>
-            {/* The forward-looking tile, and the only one on this card that is about something
-                ABOUT to happen — the rest are history. Rendered only when there is money moving:
-                a permanent "₪0 תשלום קרוב" tile on every card would bury the handful that are not
-                zero, and the badge under the seller's name already says why a card has none. The
-                tooltip carries the platform's own cut of the transfer, which is the pairing the
-                deleted table put on one line. */}
-            {payout && payout.balanceAgorot > 0 && (
-              <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`עמלה שתיגבה בתשלום הזה: ${formatAgorot(payout.commissionAgorot)}`}>
-                <span class="admin-seller-card__stat-label">תשלום קרוב</span>
-                <span class="admin-seller-card__stat-value">{formatAgorot(payout.balanceAgorot)}</span>
-              </span>
-            )}
-            {/* The third figure, and the card was unreadable without it (owner, 2026-08-11: "איפה
-                אני רואה יתרה ממתינה של מוכרים?"). "רווח מצטבר" is everything ever earned and "תשלום
-                קרוב" is what leaves on the 10th; the difference between them is money already
-                transferred PLUS money still inside buyers' return windows — and with only two tiles
-                on screen there was no way to tell which. This is that second part, so the three
-                together finally reconcile. Rendered only when there is any, like the tile above it. */}
-            {held > 0 && (
-              <span class="admin-seller-card__stat admin-seller-card__stat--rev" title="כסף שנצבר למוכר/ת מהזמנות שעדיין בדרך — טרם נשלחו, או בתוך חלון ההחזרה של הקונה. נכנס לתשלום כשהחלון נסגר.">
-                <span class="admin-seller-card__stat-label">יתרה ממתינה</span>
-                <span class="admin-seller-card__stat-value">{formatAgorot(held)}</span>
-              </span>
-            )}
           </div>
           {/* Actions moved into a three-dot kebab menu (CURRENT_TASK admin item) —
               consistent with the Stores tab, and ready to hold more per-seller
