@@ -11,9 +11,6 @@ import {
 } from './returns.js';
 import { recordMoneyEvent } from './money-events.js';
 import { formatAgorot } from './money.js';
-import { recordAdjustment } from './payouts.js';
-import { getSellerById } from './seller-auth.js';
-import { commissionOnAgorot, commissionPercentForTier } from './pricing.js';
 import { restockProduct } from './store-products.js';
 
 /**
@@ -398,19 +395,11 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
           ? 'החזר חלקי בהכרעת הפלטפורמה. הסכום מגיע לקונה ועדיין לא הוחזר.'
           : 'החזר חלקי בהסכמה — הקונה שומר את המוצר. הסכום מגיע לו ועדיין לא הוחזר.',
       });
-      const seller = await getSellerById(input.store.sellerId);
-      const commission = commissionOnAgorot(amount, commissionPercentForTier(seller?.tier));
-      const sellerShare = amount - commission;
-      if (sellerShare > 0) {
-        await recordAdjustment({
-          sellerId: input.store.sellerId,
-          orderId: order.id,
-          kind: 'refund_clawback',
-          amountAgorot: -sellerShare,
-          detail: `${partialAward ? 'החזר חלקי בהכרעת הפלטפורמה' : 'החזר חלקי בהסכמה'} בהזמנה ${order.id.slice(0, 8)}`,
-          returnRequestId: moved.id,
-        });
-      }
+      // No clawback, and that is the split model rather than an omission: the seller's share of
+      // this sale was never ours to hold — the processor captured it into his own account at the
+      // moment of the charge — so there is no balance here to debit. The money goes back to the
+      // buyer out of that same account, which is a `refund-sale` against the original capture, and
+      // the journal row above is the standing record that it is owed until then.
     }
   } else if (input.to === 'refunded' && isPartialReturn(moved.returnedLines)) {
     // ── A partial return settles WITHOUT touching the order (decisions §4) ──
@@ -435,23 +424,10 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
         detail: `החזרה חלקית — ${moved.returnedLines!.length} שורות מתוך ${order.items.length}. הסכום מגיע בחזרה לקונה ועדיין לא הוחזר.`,
       });
 
-      // The seller's share of the returned lines only — his commission on them was never earned, so
-      // it is not clawed back separately (the same reasoning `recordSellerClawback` records).
-      const seller = await getSellerById(input.store.sellerId);
-      const commission = commissionOnAgorot(moved.refundAgorot, commissionPercentForTier(seller?.tier));
-      const sellerShare = moved.refundAgorot - commission;
-      if (sellerShare > 0) {
-        await recordAdjustment({
-          sellerId: input.store.sellerId,
-          orderId: order.id,
-          kind: 'refund_clawback',
-          amountAgorot: -sellerShare,
-          detail: `החזרה חלקית בהזמנה ${order.id.slice(0, 8)}`,
-          // Keyed on the REQUEST: one order may be partially returned more than once, and a second
-          // debit keyed on the order would be dropped as a duplicate (migration 0032).
-          returnRequestId: moved.id,
-        });
-      }
+      // Nothing is debited from the seller here — see the accepted-offer branch above. His share
+      // of the returned lines sits in his own account at the processor, and the refund is a
+      // partial `refund-sale` against the original capture rather than a deduction from a balance
+      // we hold. The `refund_due` row above is what says it is owed.
 
       // Only the lines that came back. `restockProduct` is the same call a whole-order return makes,
       // so a returned variant lands in the bucket it was sold from.

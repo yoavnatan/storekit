@@ -1,10 +1,5 @@
 import { recordMoneyEvent } from './money-events.js';
 import { orderCountsAsRevenue, orderMoneyWasTaken } from './order-status-rules.js';
-import { orderHold } from './payout-hold.js';
-import { orderNetForStore } from './admin-stats.js';
-import { commissionOnAgorot, commissionPercentForTier } from './pricing.js';
-import { getSellerById } from './seller-auth.js';
-import { recordAdjustment } from './payouts.js';
 import type { Order } from './orders.js';
 
 /**
@@ -68,11 +63,6 @@ export async function recordRefundOwed(
   after: Order,
   storeSlug: string,
   actor: string,
-  /** The store's owner. When given, a refund on money that has already left the hold also debits
-   *  them — see `recordSellerClawback`. Optional so a caller with no seller in hand (a future
-   *  admin path, a webhook) still records the buyer-side obligation, which is the more important
-   *  half and must never depend on the other. */
-  sellerId?: string,
 ): Promise<number> {
   if (!createsRefundObligation(before, after)) return 0;
   const amountAgorot = refundOwedAgorot(after);
@@ -96,7 +86,6 @@ export async function recordRefundOwed(
     // `order-status-rules.ts`, drifting the first time a `returned` status is added.
     detail: `הכסף נגבה בפועל (אסמכתה ${after.paymentRef ?? '—'}) וההזמנה יצאה מהמכירות. הסכום הזה מגיע בחזרה לקונה, ועדיין לא הוחזר.`,
   });
-  if (sellerId) await recordSellerClawback(before, after, storeSlug, sellerId);
   return amountAgorot;
 }
 
@@ -158,10 +147,6 @@ export async function recordPartialRefundOwed(
   after: Order,
   storeSlug: string,
   actor: string,
-  /** The store's owner, so money already released to them is clawed back too. Optional for the
-   *  same reason as above: the buyer-side obligation is the half that must never depend on the
-   *  other being available. */
-  sellerId?: string,
 ): Promise<number> {
   const amountAgorot = partialRefundOwedAgorot(before, after);
   if (amountAgorot <= 0) return 0;
@@ -181,108 +166,5 @@ export async function recordPartialRefundOwed(
     detail: `הכסף נגבה בפועל (אסמכתה ${after.paymentRef ?? '—'}) והזמנה זו הוזלה לאחר מכן — פריט שנמחק, משלוח שעודכן או הנחה שניתנה. ההפרש מגיע בחזרה לקונה, ועדיין לא הוחזר.`,
   });
 
-  if (sellerId) await recordPartialSellerClawback(before, after, storeSlug, sellerId);
   return amountAgorot;
-}
-
-/**
- * The seller's side of a partial refund.
- *
- * Mirrors `recordSellerClawback` and differs in exactly one way: the whole-order version claws back
- * the seller's entire net share because the sale was undone, while this one claws back only the
- * DROP in that share, because the sale still stands for the reduced amount. Both ask the hold
- * first, and both are no-ops while the money is still held — an order whose funds never left is
- * corrected for free by the balance arithmetic the moment the total changes.
- */
-export async function recordPartialSellerClawback(
-  before: Order,
-  after: Order,
-  storeSlug: string,
-  sellerId: string,
-): Promise<number> {
-  if (partialRefundOwedAgorot(before, after) <= 0) return 0;
-
-  // The state BEFORE the edit, for the same reason the whole-order version reads it there: the
-  // question is whether this money had already been released by the time it was reduced.
-  const holdBefore = orderHold(before);
-  if (holdBefore.state !== 'releasable') return 0;
-
-  const seller = await getSellerById(sellerId);
-  const percent = commissionPercentForTier(seller?.tier);
-  const netBefore = orderNetForStore(before, storeSlug);
-  const netAfter = orderNetForStore(after, storeSlug);
-  const shareBefore = netBefore - commissionOnAgorot(netBefore, percent);
-  const shareAfter = netAfter - commissionOnAgorot(netAfter, percent);
-  const drop = shareBefore - shareAfter;
-  if (drop <= 0) return 0;
-
-  // A DIFFERENT `kind` from the whole-order clawback on purpose. That one is idempotent on
-  // (order, kind) so a repeated cancellation debits once — which is right for an event that can
-  // only happen once. An edit can happen many times, and each reduction is its own debit, so
-  // sharing the kind would silently swallow every edit after the first.
-  await recordAdjustment({
-    sellerId,
-    orderId: after.id,
-    kind: 'refund_clawback_partial',
-    amountAgorot: -drop,
-    detail: `הזמנה ${after.id.slice(0, 8)} (${storeSlug}) הוזלה אחרי שהכסף כבר שוחרר למוכר. ההפרש בחלקו של המוכר מקוזז מהתשלום הבא.`,
-  });
-  return drop;
-}
-
-/**
- * The seller's side of the same event: when the platform gives money back, whose money is it?
- *
- * **This is new with the agent model and it closes a real hole.** Under the sub-merchant model the
- * processor had already paid the seller and a refund was, awkwardly, between them. Now the platform
- * holds the money, so a refund comes out of a specific pot — and if nothing debited the seller, the
- * platform would silently absorb every post-hold cancellation out of its own funds, invisibly,
- * with the seller keeping the proceeds of a sale that was undone.
- *
- * ── The rule, and why it needs no join against `seller_payouts` ──
- * Ask the hold, not the payout table. An order still `held` needs NO adjustment: the money never
- * left, and dropping out of `orderCountsAsRevenue` already removes it from the balance — the
- * account arithmetic does the work for free. An order that was `releasable` is either already
- * transferred or sitting in the pool about to be, and a debit is exactly right in both cases: it
- * claws back the first and reduces the second by the same amount. So the question is one pure
- * function call, and there is no window in which a payout running concurrently changes the answer.
- *
- * ── The amount is the SELLER'S share, not the buyer's refund ──
- * `refundOwedAgorot` is the whole slice including shipping, because that is what left the buyer's
- * card. The seller never received that: they were owed the net subtotal minus commission, and
- * shipping went to the carrier. Clawing back the buyer's figure would take money the seller was
- * never given. The commission needs no reversal either — the order has left every revenue sum, so
- * it was never earned.
- */
-export async function recordSellerClawback(
-  before: Pick<Order, 'paymentStatus' | 'shippingStatus'>,
-  after: Order,
-  storeSlug: string,
-  sellerId: string,
-): Promise<number> {
-  if (!createsRefundObligation(before, after)) return 0;
-
-  // Asked of the state BEFORE the cancellation: after it, the order no longer counts and
-  // `orderHold` correctly answers 'not_payable' for everything, which would claw back nothing at
-  // all. The question is "had this money been released by the time it was undone", and only the
-  // prior state can answer it.
-  const holdBefore = orderHold({ ...before, paidAt: after.paidAt, deliveredAt: after.deliveredAt });
-  if (holdBefore.state !== 'releasable') return 0;
-
-  const net = orderNetForStore(after, storeSlug);
-  const seller = await getSellerById(sellerId);
-  const commission = commissionOnAgorot(net, commissionPercentForTier(seller?.tier));
-  const sellerShare = net - commission;
-  if (sellerShare <= 0) return 0;
-
-  // Negative: this reduces what we owe. Idempotent on (order, kind) in the database, so a second
-  // cancellation of an already-cancelled order debits once.
-  await recordAdjustment({
-    sellerId,
-    orderId: after.id,
-    kind: 'refund_clawback',
-    amountAgorot: -sellerShare,
-    detail: `הזמנה ${after.id.slice(0, 8)} (${storeSlug}) יצאה מהמכירות אחרי שהכסף כבר שוחרר למוכר. חלקו של המוכר מקוזז מהתשלום הבא.`,
-  });
-  return sellerShare;
 }

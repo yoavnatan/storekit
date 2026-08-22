@@ -217,14 +217,6 @@ describe('the registry itself', () => {
     // be assembled inside a request, whole platform catalogue at a time, on the event loop every
     // shopper shares (GO_LIVE §7). They are the only jobs here whose output a route SERVES, so
     // their idempotency argument is about the pointer swap rather than about a delete.
-    // And `payout-run` (2026-08-10) — the only job that creates an obligation to move MONEY, so its
-    // idempotency argument is the strongest one here and it does not rest on this job's control
-    // flow at all: `seller_payouts` is UNIQUE on (seller_id, period_key), and `createPayout` inserts
-    // with ON CONFLICT DO NOTHING and reads the affected-row count as the answer. A second pass on
-    // the same day therefore creates nothing, whether it is a retry, a second app server, or a
-    // person re-triggering it. It also moves no money: it writes `pending` rows and a separate,
-    // later step performs the transfer, so a run that dies halfway has created some rows and sent
-    // nothing. Its own cases are in `tests/payouts.test.ts`.
     // And `order-sla` (2026-08-10) — the only job that CANCELS anything, and the only one that
     // gives money back to a real person. Its idempotency rests on the status table rather than on
     // its own control flow: a cancelled order fails `REVENUE_SHIPPING_STATUSES` and is not even a
@@ -246,7 +238,7 @@ describe('the registry itself', () => {
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'payout-run', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact'],
     );
   });
 });

@@ -338,7 +338,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   //
   // Before the journal note below, deliberately: if only one of the two ever lands, the one that
   // names real money owed to a real person is the one worth having.
-  const owedToBuyer = await recordPartialRefundOwed(before, updated, storeSlug, sellerId, store.sellerId);
+  const owedToBuyer = await recordPartialRefundOwed(before, updated, storeSlug, sellerId);
   // And TELL them. The obligation above is our record; this is the buyer's. Recording money owed to
   // someone who is never told is the same silence the whole fix was about, one layer along.
   if (owedToBuyer > 0) {

@@ -109,7 +109,7 @@ export async function settleStatusChange(input: {
   // performed the move (for the journal), `store.sellerId` is whose BALANCE the clawback comes out
   // of. On the SLA job the actor is 'system' and the balance is still the seller's — which is
   // precisely the case the old inline version could not express.
-  outcome.refundOwedAgorot = await recordRefundOwed(before, after, store.slug, actor, store.sellerId);
+  outcome.refundOwedAgorot = await recordRefundOwed(before, after, store.slug, actor);
 
   // Stock goes back when the order stops holding it — asked of the status table (holdsStock) rather
   // than tested against 'cancelled', so a future "returned" or "refunded" status restocks by filling

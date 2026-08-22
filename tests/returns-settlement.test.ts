@@ -130,7 +130,7 @@ describe('a refunded return settles the order, the stock and the debt', () => {
     expect(orderHold({ ...order, hasOpenReturn: false }).basis).not.toBe('return_open');
   });
 
-  it('a PARTIAL return pays by adjustment and leaves the order delivered', async () => {
+  it('a PARTIAL return is owed to the buyer and leaves the order delivered', async () => {
     const order = await deliveredOrder();
     const before = await stockOf();
     const opened = await openReturnRequest({
@@ -156,24 +156,22 @@ describe('a refunded return settles the order, the stock and the debt', () => {
     // The units came back.
     expect(await stockOf()).toBe(before + 1);
 
-    // The money moved in its own row rather than by rewriting the order.
-    const { rows: adj } = await query<{ amount_agorot: string }>(
-      `SELECT amount_agorot FROM seller_ledger_adjustments WHERE order_id = $1`, [order.id]);
-    expect(adj).toHaveLength(1);
-    expect(Number(adj[0]!.amount_agorot)).toBeLessThan(0);
-
+    // The money is recorded as owed in its own row rather than by rewriting the order. Nothing is
+    // debited from the seller: his share of this sale is in his own account at the processor, and
+    // the refund goes back out of that same capture.
     const { rows: due } = await query<{ amount_agorot: string }>(
       `SELECT amount_agorot FROM money_events WHERE order_id = $1 AND type = 'refund_due'`, [order.id]);
     expect(due).toHaveLength(1);
     expect(Number(due[0]!.amount_agorot)).toBe(req.refundAgorot);
   });
 
-  it('debits the seller for EVERY partial return, not just the first', async () => {
-    // The bug this pins, found in review before it shipped: `seller_ledger_adjustments` was unique on
-    // (order_id, kind), which is correct for a cancellation — one event, one debit, however many
-    // times a webhook fires — and wrong the moment one order can be returned twice. The second
-    // clawback hit ON CONFLICT DO NOTHING and vanished, so the buyer was refunded for both items and
-    // the seller was debited for one. The difference came out of the platform, silently.
+  it('owes the buyer for EVERY partial return, not just the first', async () => {
+    // The bug class this pins, carried over from the ledger version of the same test: one order can
+    // be returned more than once — the lamp this week, the shade next month — and the second
+    // settlement used to collide with the first on a uniqueness key meant for an event that happens
+    // once, then vanish through ON CONFLICT DO NOTHING. The seller ledger it collided on is gone
+    // with the custodial model, but the shape survives it: two returns must leave two debts, and a
+    // second one silently swallowed is money the buyer is owed and no screen will ever name.
     const order = await deliveredOrder();
 
     const first = await openReturnRequest({
@@ -193,8 +191,9 @@ describe('a refunded return settles the order, the stock and the debt', () => {
     await moveReturnRequest({ id: second.id, to: 'refunded', actor: STORE.sellerId, store: STORE });
 
     const { rows } = await query<{ n: number }>(
-      `SELECT COUNT(*)::int AS n FROM seller_ledger_adjustments WHERE order_id = $1`, [order.id]);
-    expect(rows[0]!.n, 'both partial returns must debit the seller').toBe(2);
+      `SELECT COUNT(*)::int AS n FROM money_events WHERE order_id = $1 AND type = 'refund_due'`,
+      [order.id]);
+    expect(rows[0]!.n, 'both partial returns must leave the buyer owed').toBe(2);
   });
 
   it('an accepted OFFER pays the agreed amount and leaves the goods with the buyer', async () => {
@@ -223,11 +222,6 @@ describe('a refunded return settles the order, the stock and the debt', () => {
       `SELECT amount_agorot FROM money_events WHERE order_id = $1 AND type = 'refund_due'`, [order.id]);
     expect(due).toHaveLength(1);
     expect(Number(due[0]!.amount_agorot)).toBe(4_000);
-
-    const { rows: adj } = await query<{ amount_agorot: string }>(
-      `SELECT amount_agorot FROM seller_ledger_adjustments WHERE order_id = $1`, [order.id]);
-    expect(adj).toHaveLength(1);
-    expect(Number(adj[0]!.amount_agorot)).toBeLessThan(0);
   });
 
   it('a declined offer puts the ordinary return back where it was', async () => {

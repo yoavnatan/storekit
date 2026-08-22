@@ -32,7 +32,7 @@ const hold = vi.hoisted(() => ({ state: 'releasable' as string }));
 vi.mock('../src/lib/payout-hold.js', () => ({ orderHold: () => ({ state: hold.state }) }));
 
 const {
-  partialRefundOwedAgorot, recordPartialRefundOwed, recordPartialSellerClawback,
+  partialRefundOwedAgorot, recordPartialRefundOwed,
 } = await import('../src/lib/refund-owed.js');
 
 /** A paid, in-progress order for one store. 200 goods + 30 shipping. */
@@ -114,31 +114,12 @@ describe('the obligation that gets written', () => {
   });
 });
 
-describe('the seller\'s side', () => {
-  it('debits only the DROP in their share, not their whole net', async () => {
-    // The sale still stands for the reduced amount — this is the one way it differs from a
-    // cancellation, which claws back everything.
-    const drop = await recordPartialSellerClawback(order(), order({ totalAgorot: 19000, storeSubtotals: { shop: { subtotalAgorot: 16000, shippingAgorot: 3000, storeName: 'חנות' } } } as Partial<Order>), 'shop', 'seller-1');
-    expect(drop).toBeGreaterThan(0);
-    expect(journal.adjustments).toHaveLength(1);
-    expect(journal.adjustments[0]!.amountAgorot).toBe(-drop);
-  });
-
-  it('does nothing while the money is still HELD', async () => {
-    // Nothing left, so the balance arithmetic corrects itself the moment the total changes.
-    hold.state = 'held';
-    expect(await recordPartialSellerClawback(order(), order({ totalAgorot: 19000 }), 'shop', 'seller-1')).toBe(0);
-    expect(journal.adjustments).toEqual([]);
-  });
-
-  it('uses its OWN kind, so a second edit is not swallowed by the first', async () => {
-    // `refund_clawback` is idempotent on (order, kind) because a cancellation happens once. An
-    // order can be edited many times and each reduction is its own debit.
-    await recordPartialSellerClawback(order(), order({ totalAgorot: 19000, storeSubtotals: { shop: { subtotalAgorot: 16000, shippingAgorot: 3000, storeName: 'חנות' } } } as Partial<Order>), 'shop', 'seller-1');
-    expect(journal.adjustments[0]!.kind).toBe('refund_clawback_partial');
-    expect(journal.adjustments[0]!.kind).not.toBe('refund_clawback');
-  });
-});
+// There is no seller-side clawback any more, and its three cases went with it. Under the split
+// model the seller's share of an edited order was never in our hands to debit — the processor
+// captured it into his own account at the moment of the charge — so a cheaper order is settled by
+// refunding the buyer against that same capture, not by reducing a balance we hold. What survives
+// is the half that always mattered more and is tested above: the buyer's obligation is recorded
+// the moment the edit creates it.
 
 describe('the route that edits an order calls it', () => {
   it('is wired into api/seller/orders.ts, before the seller-side note', async () => {
