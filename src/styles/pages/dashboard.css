@@ -980,10 +980,26 @@ textarea.input { resize: none; }
      spans the viewport is in-flow, so border only — see the .card--flat
      note in components/cards.css). Block borders stay: they're the only
      thing left separating the sheet from the page background. */
-  .dash-section--bleed { padding-inline: 0; }
+  .dash-section--bleed {
+    padding-inline: 0;
+    /* **…and no top gap either** (owner, 2026-08-22: *"גם עצם העובדה שבמובייל יש רווח בין ההדר
+       לסקשן של כל העמוד, מוזר. מילא בדסקטופ"*). The 0.6rem `.dash-section` sets above is right for
+       a CARD — a surface with margins on every side, which is what this is at desktop width. It is
+       wrong for a SHEET: once the card runs edge to edge, a 9.6px strip of page background between
+       the site header's line and the sheet's own line reads as a seam that failed to close, not as
+       spacing. `.dash-head` already opens with 0.85rem of its own padding, so nothing ends up
+       against the header — the difference is that the breathing room is now INSIDE the sheet,
+       where the eye reads it as the header block's own margin. */
+    padding-top: 0;
+  }
   .dash-section--bleed > .card {
     border-radius: 0;
     border-inline-width: 0;
+    /* The top border goes with the gap it was separating. With the sheet flush under the site
+       header, that header's own `border-bottom` (components/header.css) is already the line
+       between them, and two 1px rules touching read as one thick smudged one. The BOTTOM border
+       stays: below the sheet there really is page background. */
+    border-top-width: 0;
   }
   .dash-section--bleed > .card:hover { box-shadow: none; }
 
