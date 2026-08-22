@@ -143,6 +143,31 @@ function warnIcon(label: string): string {
   return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${esc(label)}" style="color:var(--color-danger,#dc2626);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 }
 
+/**
+ * **The hint that a cell can be edited where it stands** (owner, 2026-08-22: *"אני יודע שאפשר
+ * לערוך inline אבל יוזר לא בהכרח ידע את זה. אולי כן, איך אפשר בעדינות לרמוז לו על כך בלי לכער
+ * הכל?"*).
+ *
+ * The whole announcement used to be `cursor-text`, which a seller sees only if they already have
+ * the pointer on the value and happen to look at the cursor. A dotted underline appearing under
+ * that same value is the browser's own long-standing mark for "this text is not just text" — it is
+ * already in the system rather than invented for this table, it dates to nothing, it suits a tool
+ * shop and a boutique alike, and it spends no accent colour (design line, all four tests).
+ *
+ * On the CELL, not on the row: the row already has its own hover (a `--color-bg` fill), and three
+ * cells lighting up together would say "this row is editable" when what is true is "these three
+ * values are". One signal, pointed at the thing it is about.
+ *
+ * No `:not([data-inline-active])` guard is needed for the open state: while a cell is being edited
+ * its contents are an `<input>` and a `<button>`, both atomic inline boxes, which
+ * `text-decoration` does not draw on.
+ *
+ * Pointer-only by construction — `:hover` never fires on a touch screen, so the phone's card list
+ * is unchanged. There is no quiet way to say this on touch; it would take standing prose above the
+ * list, which this dashboard does not do (AI_INSTRUCTIONS → no prose above a screen).
+ */
+const INLINE_EDIT_HINT = 'hover:underline hover:decoration-dotted hover:decoration-[color:var(--color-muted)] hover:underline-offset-[3px] hover:decoration-1';
+
 function stockHtml(stock: number, outOfStockLabel: string, stockLabel: string): string {
   const label = `<span class="product-stock-label">${esc(stockLabel)}: </span>`;
   if (stock <= 0) {
@@ -1757,7 +1782,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="num row-num pe-[0.2rem]"></td>
     <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap" data-skeleton><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}</td>
     <td class="name-col">
-      <span class="product-name cursor-text">${esc(p.name)}</span>
+      <span class="product-name cursor-text ${INLINE_EDIT_HINT}">${esc(p.name)}</span>
       <span class="sale-chip ms-1.5 align-middle" data-row-sale="${esc(p.id)}" dir="ltr"${rowSaleLabel(p) ? '' : ' hidden'}>${rowSaleLabel(p)}</span>
       <span class="product-note-chip inline-flex items-center align-middle ms-1 [color:var(--color-muted)]"${p.sellerNote ? ` title="${esc(p.sellerNote)}"` : ' hidden'} aria-label="${esc(i.sellerNoteLabel ?? 'Private note')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3.5h15v10.5l-5.5 5.5h-9.5z"/><path d="M19.5 14h-5.5v5.5"/><line x1="8" y1="8.5" x2="16" y2="8.5"/><line x1="8" y1="12" x2="13" y2="12"/></svg></span>
       <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.hidden ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>${esc(i.productHiddenChip ?? 'מוסתר')}</span>
@@ -1766,8 +1791,8 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     </td>
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="cat-col"><span class="cat-col-label">${esc(i.categoryLabel ?? 'Category')}: </span>${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="num product-price price-col group cursor-text">${fmtPrice(p.price)}</td>
-    <td class="num product-stock stock-col group cursor-text"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total>${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
+    <td class="num product-price price-col group cursor-text ${INLINE_EDIT_HINT}">${fmtPrice(p.price)}</td>
+    <td class="num product-stock stock-col group cursor-text ${p.variants?.length ? '' : INLINE_EDIT_HINT}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total>${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
       ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${p.wishlistCount}</span>`
       : `<span style="color:var(--color-border)">—</span>`}</td>
