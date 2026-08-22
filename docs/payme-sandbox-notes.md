@@ -1,0 +1,129 @@
+# PayMe — what was measured, and how to measure it again
+
+**Everything here was produced by real calls against `https://sandbox.payme.io/api/` on 2026-08-21.**
+Nothing in this file is recalled, inferred from a marketing page, or carried over from an earlier
+session. Where something is *not* measured it says so.
+
+This file exists because the same wrong turn was taken twice: PayMe's guide pages
+(`payme.stoplight.io/docs/guides/…`) are a JavaScript application that returns a title and no body
+to any fetch, so a session that needs a fact reaches for the readable spec instead — and the
+readable spec is **old**. It does not know `pay-sale`, `update-seller`, `market_fee_fixed` or
+multi-capture. A session that trusts it will conclude, confidently and wrongly, that a cart cannot
+span several sellers.
+
+- `payme-api-blueprint.md` (beside this file) is that raw spec, saved verbatim. **Use it for the
+  shapes it does describe and never as evidence that something does not exist.**
+- The numbers in the partner agreement — fees, settlement dates, what is billed to whom — are in
+  `GO_LIVE_CHECKLIST.md` §3.1.0.
+- The measurements below are summarised in `GO_LIVE_CHECKLIST.md` §3.1.1. This file is the working
+  copy: how to reproduce them, and what the responses actually looked like.
+
+---
+
+## Credentials
+
+`PAYME_CLIENT_KEY` and `PAYME_SELLER_API_ID` live in `.env` (in no repo — `CLAUDE.md` §restore).
+Every call is `POST` + JSON to `<base><endpoint>` with `payme_client_key` in the body.
+Base: `https://sandbox.payme.io/api/` for staging, `https://live.payme.io/api/` for production.
+
+## ⚠️ The sandbox is shared with other partners
+
+PayMe said so in writing, and it showed: **13 sellers already existed before we touched it.** There
+is no delete. So:
+
+- Create the minimum. Two test sellers exist for us and that is enough — `Dezabin TestA`
+  (`MPL17873-13741TOF-ET7YURJJ-DOZ4LSGO`) and `Dezabin TestB` (`MPL17873-13773IVT-PXWKVCT1-QAW9P2LJ`).
+- Use **their** documented test values, never a real person's: social id `9999999999`, email
+  `random@paymeservice.com` (their own note: this address receives no automated mail), bank
+  `54 / 123 / 123456`. Phones in an unallocated range (`+9725000000xx`) so no stranger is texted.
+- Test cards are in the blueprint: `12312312` is the local Israeli card; a separate series returns
+  declined / blocked / stolen / expired / wrong-CVV on demand.
+
+## Reproducing a measurement
+
+The probe used was ~30 lines: read `.env`, POST the endpoint, redact the key out of the response
+before printing. Two shapes are worth keeping in mind rather than in a file:
+
+- **Endpoint discovery** — POST with only the client key. `"Required parameter is missing"` plus the
+  field name means the endpoint EXISTS and just told you its first required argument. An HTML body
+  means it does not exist.
+- **Field discovery** — fill in the field it named and POST again. The API walks you through its own
+  required set, one error at a time, without creating anything.
+
+## What exists
+
+`create-seller`, `update-seller`, `upload-seller-files`, `get-sellers`, `generate-sale`, `pay-sale`,
+`capture-sale`, `refund-sale`, `capture-buyer-token`, `get-sales`, `generate-subscription`,
+`cancel-subscription`, `get-subscriptions`, `withdraw-balance`, `get-withdrawals`.
+
+**Not found:** `split-sale`, `multi-capture`, `void-sale`, `cancel-sale`.
+
+## The measurements
+
+### 1. `pay-sale` is open to us — the integration is testable without a browser
+It takes `credit_card_number` and charges server-to-server. So the whole flow can be exercised in
+tests with their test cards. **Production stays on Hosted Fields / IFRAME** — this is a testing
+affordance, not the shipping integration, and using it live would put us in PCI scope.
+
+### 2. ✅ A buyer token created under one seller charges under another
+This is the mechanism behind "one cart, several stores", and it was the open question the checkout
+design had been waiting on since 2026-08-06.
+
+    capture-buyer-token  { seller_payme_id: A, credit_card_number: 12312312, … }  → buyer_key
+    generate-sale        { seller_payme_id: B, buyer_key, sale_price: 500, … }    → completed
+
+### 3. ⚠️ A token is single-use unless you ask for a permanent one
+The second charge on the same key returned `Buyer inactive`. Passing
+`buyer_is_permanent: true` to `capture-buyer-token` fixes it, and returns the same `buyer_key`
+upgraded rather than a new one. **A multi-store cart is broken without this flag** — store one
+succeeds and store two fails.
+
+### 4. ⚠️ Multiple captures are not enabled on our key
+Authorize ₪100 (`sale_type: "authorize"`), capture ₪40 → the sale jumps straight to `completed` and
+a second capture is refused `305 · Cannot perform action due to an incorrect status`. Capturing
+above the authorization is refused too: ₪11 against a ₪10 authorization →
+`352 · Invalid price, out of min-max bounds`. **The cart does not need this** (the token route
+above), but **charging advertising by actual spend does** — that is one authorization drawn down
+over a month.
+
+### 5. ✅ `market_fee_fixed` exists — a fixed amount beside the percentage
+This is what carries the delivery charge to us so we can pay the courier.
+**⚠️ Unit trap: `sale_price` is in AGOROT and `market_fee_fixed` is in SHEKELS.**
+Measured on one sale: `sale_price: 5000` (₪50) with `market_fee: 12` and `market_fee_fixed: 15`
+returned `sale_market_fee_total: 2100` — ₪6 percentage + ₪15 fixed. Sending `3000` meaning ₪30 is
+read as ₪3,000.
+
+### 6. ⚠️ Our total cut is capped at 60% of the sale
+₪50 with a ₪30 delivery charge is 72% and was refused:
+`Market fee exceed allowed maximum of 60%`. A cheap item with a real delivery charge is exactly the
+case that breaches it. **This is why shipping is charged as its own sale on our own merchant
+account instead** — that route touches no ceiling at all, and was measured working: a ₪30 sale under
+a second account with `market_fee: 0`, paid with the same token, completed.
+
+*(PayMe offered to raise the ceiling — "to 110% for example". That the 60% cap is the same setting
+they meant is a READING of their sentence, not something measured. The design above does not depend
+on it either way.)*
+
+### 7. `create-seller` returns more than an id
+`seller_payme_id`, `seller_payme_secret` (the per-seller callback signing key),
+`seller_public_key` (for Hosted Fields), and **`seller_dashboard_signup_link`** — a link the seller
+completes his own details on. So we do not have to collect every KYC field ourselves; we can create
+with the minimum and hand him the link. **Our own `seller_id` correlation field is refused on this
+plan** (`790`), so the join is the `seller_payme_id` we store. A new seller is
+`seller_approved: false` / `Restricted` until they approve him.
+
+### 8. Defaults visible on the account
+Processing `2.50%` + `₪0.70`; foreign `3.15%` + `₪0.10`; `market_fee` default `0.00`.
+Minimum sale and minimum partial refund: **500 agorot**.
+
+---
+
+## Still unmeasured — do not guess these
+
+- The exact per-transaction fee actually deducted from a seller's balance (the tariff was READ, not
+  measured against a balance).
+- Multi-capture behaviour once PayMe enable it.
+- Whether the platform can switch on a seller's invoicing module through the API, or whether the
+  seller must do it in their own panel. This decides how the invoicing add-on is sold
+  (memory `project_business_model_pricing`).
+- The callback: nothing has been received end to end, because that needs a public URL.
