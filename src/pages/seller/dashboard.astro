@@ -77,10 +77,8 @@ import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusC
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
 import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
-import { orderPayoutLine, payoutLineText, payoutFilterValue } from '../../lib/order-payout-line.js';
 import { orderInvoiceRowHtml, orderInvoiceChipHtml } from '../../lib/order-invoice-row.js';
 import { getBuyerInvoiceStates } from '../../lib/invoicing/buyer-invoice.js';
-import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
@@ -863,7 +861,7 @@ const storeOrdersTotal = Object.values(orderStatusCounts).reduce((sum, n) => sum
 // while the client's own count said 2 the moment anything was clicked (owner). The comment
 // promised this would be a one-line change and then nobody made it; it is made now, and the
 // two counts are the same question asked on two sides of one request.
-const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus, sellerOrderQuery.payoutStatus]
+const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus]
   .filter((v) => v.length > 0).length;
 
 // Alerts per store for store-switcher dots — EVERYTHING that shop is waiting on, at the severity
@@ -2064,7 +2062,7 @@ const orderStatusColors: Record<string, string> = {
               a comment as that expression's first child and fails with no file and no line —
               scripts/verify.mjs's header carries the case.) */}
           {storeOrdersTotal > 0 && (
-            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')} data-payout={sellerOrderQuery.payoutStatus.join(',')} data-return={sellerOrderQuery.returnState.join(',')}>
+            <div class="dash-toolbar w-full" id="orders-toolbar" data-status={sellerOrderQuery.shippingStatus.join(',')} data-return={sellerOrderQuery.returnState.join(',')}>
               <div class="relative flex-1 min-w-[110px] max-w-[280px]">
                 <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="search" id="orders-search-input" value={sellerOrderQuery.q} placeholder={d.ordersSearchPlaceholder ?? 'חיפוש הזמנות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
@@ -2125,23 +2123,8 @@ const orderStatusColors: Record<string, string> = {
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
-              /* When this order's money reaches the seller, and why then. The Payments tab used to
-                 carry this as a row in a table of its own; the owner asked for it here, where the
-                 order is managed (סשן א׳ §4). `order-payout-line.ts` is the shared derivation —
-                 `buildOrderCard` in scripts/dashboard/orders.ts renders the same three fields from
-                 the same function, which is what keeps the SSR card and the AJAX one one card. */
-              const payLine    = orderPayoutLine({
-                paymentStatus: order.paymentStatus,
-                shippingStatus: order.shippingStatus,
-                paidAt: order.paidAt ?? null,
-                deliveredAt: order.deliveredAt ?? null,
-                deliveryMethod: storeSub?.deliveryMethod ?? null,
-              });
-              /* Which two strings the line prints — decided once, in the shared module, so this card
-                 and the one `buildOrderCard` rebuilds after a page turn cannot answer differently. */
-              const payText    = payoutLineText(payLine);
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-delivery-method={storeSub?.deliveryMethod ?? ''} data-payout={payoutFilterValue(payLine)} data-return-state={returnChipByOrderId.get(order.id)?.state ?? ''} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-delivery-method={storeSub?.deliveryMethod ?? ''} data-return-state={returnChipByOrderId.get(order.id)?.state ?? ''} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the
@@ -2273,32 +2256,6 @@ const orderStatusColors: Record<string, string> = {
                           <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatAgorot(storeSliceTotalAgorot(storeSub))}</strong>
                         </div>
                       )}
-                      {/* When the money from THIS order reaches the seller, and why then.
-                          Deliberately no amount: the figure a seller acts on is the total on the
-                          Payments tab, and a per-order net would be a new seller-visible number
-                          (and therefore a new invariant) to say something the timing already says.
-                          Rendered for every order, including cancelled ones — "לא ייכלל בתשלום" is
-                          the answer a seller looking at a cancelled order came for. */}
-                      <div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]">
-                        <span class="[color:var(--color-muted)]">{d.orderPayoutLabel}</span>
-                        <strong class="text-[color:var(--color-text)]">
-                          {payText.dateISO ? d[payText.mainKey].replace('{date}', formatBusinessDayLabel(payText.dateISO)) : d[payText.mainKey]}
-                        </strong>
-                        {payText.whyKey && (
-                          <span class="[color:var(--color-muted)]">· {d[payText.whyKey]}</span>
-                        )}
-                        {/* The rules behind every date on this line — hold, weekly run, minimum,
-                            holidays — are one section at the bottom of the Payments tab, and this
-                            is the only pointer to them from where the question is actually asked.
-                            A real link (no-JS lands on the same place); `data-goto-panel` +
-                            `data-goto-anchor` turn it into a tab switch and a scroll when JS is on. */}
-                        <a
-                          class="ms-auto text-[0.72rem] underline underline-offset-2 [color:var(--color-muted)] hover:[color:var(--color-accent)]"
-                          href={`/seller/dashboard?store=${store!.id}&panel=payouts#pay-how`}
-                          data-goto-panel="payouts"
-                          data-goto-anchor="pay-how"
-                        >{d.orderPayoutHow}</a>
-                      </div>
                     </div>
                     <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
                       {/* Multi-note UI: a list of private notes (each an inline line with

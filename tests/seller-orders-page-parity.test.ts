@@ -23,7 +23,6 @@ import {
   filterAndSortSellerOrders, parseSellerOrderQuery, URGENCY_GROUPS, URGENCY_STATUSES, URGENCY_RANKS,
   type SellerOrderQuery,
 } from '../src/lib/seller-orders-query.js';
-import { PAYOUT_FILTER_VALUES } from '../src/lib/order-payout-line.js';
 import { SHIPPING_STATUS_RULES } from '../src/lib/order-status-rules.js';
 
 const SLUG = 'keramika';
@@ -65,7 +64,7 @@ const SEEDS: Seed[] = [
 
 /** Everything the store has, unfiltered — the array the JS reference used to be handed. */
 const ALL = async (): Promise<Order[]> =>
-  (await getSellerOrdersPage(SLUG, { q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], returnState: [], includeOpenReturns: false }, 1, 10_000)).orders;
+  (await getSellerOrdersPage(SLUG, { q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], returnState: [], includeOpenReturns: false }, 1, 10_000)).orders;
 
 beforeAll(async () => {
   // A clean table for this file: the fixture's own orders would make "the two agree" true while
@@ -115,7 +114,7 @@ const q = (over: Partial<SellerOrderQuery> = {}): SellerOrderQuery =>
   // the flag widens the DEFAULT status set with a fact from another table, so a parity case that
   // left it on would be comparing two routes over a set neither test row can produce. The widening
   // has its own cases in `seller-orders-query.test.ts`.
-  ({ q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], payoutStatus: [], returnState: [], includeOpenReturns: false, ...over });
+  ({ q: '', sortCol: 'date', sortDir: 'desc', shippingStatus: [], returnState: [], includeOpenReturns: false, ...over });
 
 /** Run both routes over the same rows and require the same list of order ids, in order. */
 async function bothAgree(query: SellerOrderQuery, label: string): Promise<Order[]> {
@@ -133,36 +132,6 @@ describe('getSellerOrdersPage agrees with filterAndSortSellerOrders', () => {
     expect(rows).toHaveLength(SEEDS.length);
   });
 
-  /**
-   * The payout-status column (owner, 2026-08-11 — *"עוד רובריקה בסינון לפי סטטוס תשלום"*).
-   *
-   * It is the one filter `getSellerOrdersPage` does NOT answer in SQL: the hold rule already has
-   * two spellings and a third inside this statement is how a seller gets shown one set of orders
-   * and paid for another. The page routes it through `filterAndSortSellerOrders` instead, so
-   * `bothAgree` is not a formality here — it is the whole safety argument, and it would fail the
-   * moment someone "optimised" this into a CASE expression that disagreed.
-   *
-   * The seeds are all `paid` with no `paid_at`, so every one of them is undateable and lands in the
-   * same bucket. That is fine and deliberate: what is under test is that the column filters and
-   * that the two routes agree about it, not the hold arithmetic — `order-payout-line.test.ts` owns
-   * that, from literals.
-   */
-  it('filters by payout status, and both routes agree about which rows that is', async () => {
-    const everyBucket = await bothAgree(q({ payoutStatus: [...PAYOUT_FILTER_VALUES] }), 'every payout bucket');
-    expect(everyBucket, 'selecting every bucket keeps every order').toHaveLength(SEEDS.length);
-
-    // A bucket nothing is in must return nothing — not "no filter".
-    const none = await bothAgree(q({ payoutStatus: ['released'] }), 'released only');
-    const unshipped = await bothAgree(q({ payoutStatus: ['unshipped'] }), 'unshipped only');
-    expect(none.length + unshipped.length, 'the two buckets cannot both hold everything')
-      .toBeLessThanOrEqual(SEEDS.length);
-  });
-
-  it('rejects a hand-edited payout value instead of matching nothing', () => {
-    const parsed = parseSellerOrderQuery(new URLSearchParams('opay=released,not-a-bucket'));
-    // A value that survived would filter the list to zero rows and read as "you have no orders".
-    expect(parsed.payoutStatus).toEqual(['released']);
-  });
 
   for (const sortCol of ['date', 'amount', 'urgency'] as const) {
     for (const sortDir of ['asc', 'desc'] as const) {

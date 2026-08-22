@@ -2,7 +2,6 @@ import type { Order } from './orders.js';
 import { OPEN_RETURN_STATUSES } from './returns.js';
 import { SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
 import { decodeList } from './admin-nav.js';
-import { orderPayoutLine, payoutFilterValue, PAYOUT_FILTER_VALUES } from './order-payout-line.js';
 import { storeSliceTotalAgorot } from './order-totals.js';
 
 // Server-side counterpart of the seller dashboard's Orders tab toolbar
@@ -116,20 +115,6 @@ export interface SellerOrderQuery {
   sortCol: SellerOrderSortCol;
   sortDir: SellerOrderSortDir;
   shippingStatus: string[];
-  /**
-   * Payout status — a second, INDEPENDENT filter column, empty meaning "no opinion".
-   *
-   * It exists because the payments tab needed to send the seller to "the orders holding my money
-   * up", and the first attempt did that by naming shipping statuses in the link. The owner asked
-   * for the obvious thing instead — *"עוד רובריקה בסינון לפי סטטוס תשלום"* (2026-08-11) — and it is
-   * also the more correct one: a shipping list is a RESTATEMENT of the hold rule, so it would have
-   * gone on filtering the old way the day a status's payout behaviour changed. This filters on the
-   * rule's own answer (`order-payout-line.ts#payoutFilterValue`).
-   *
-   * Deliberately NOT folded into `shippingStatus`: they answer different questions and a seller can
-   * reasonably want both at once ("shipped orders whose money is still in the return window").
-   */
-  payoutStatus: string[];
 }
 
 const VALID_SORT_COLS = new Set<string>(['date', 'amount', 'urgency']);
@@ -159,24 +144,7 @@ export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
     // Whitelisted rather than echoed — an unrecognised state would match nothing and read to the
     // seller as "you have no returns", which is the one answer this filter must never invent.
     returnState: decodeList(sp.get('oret') ?? '').filter((v) => (OPEN_RETURN_STATUSES as readonly string[]).includes(v)),
-    // No default: absent means "every payout status", which is what a seller who has never touched
-    // this column expects. Whitelisted rather than echoed — an unrecognised value would otherwise
-    // match nothing and read as "you have no orders".
-    payoutStatus: decodeList(sp.get('opay') ?? '')
-      .filter((v) => (PAYOUT_FILTER_VALUES as readonly string[]).includes(v)),
   };
-}
-
-/** This order's payout status, as the filter sees it. One place, so the SSR list and the client
- *  toolbar cannot disagree about which bucket a row is in. */
-export function orderPayoutFilterValue(o: Order, storeSlug: string): string {
-  return payoutFilterValue(orderPayoutLine({
-    paymentStatus: o.paymentStatus,
-    shippingStatus: o.shippingStatus,
-    paidAt: o.paidAt ?? null,
-    deliveredAt: o.deliveredAt ?? null,
-    deliveryMethod: o.storeSubtotals[storeSlug]?.deliveryMethod ?? null,
-  }));
 }
 
 function orderAmount(o: Order, storeSlug: string): number {
@@ -204,7 +172,6 @@ export function filterAndSortSellerOrders(
   openReturnByOrder: ReadonlyMap<string, string> = new Map(),
 ): Order[] {
   const statusSet = query.shippingStatus.length ? new Set(query.shippingStatus) : null;
-  const paySet = query.payoutStatus.length ? new Set(query.payoutStatus) : null;
   const q = query.q.toLowerCase();
 
   const filtered = orders.filter((o) => {
@@ -217,7 +184,6 @@ export function filterAndSortSellerOrders(
     // Computed per row rather than pre-indexed: it is a pure function of four fields already on the
     // order, this list is one page of one store, and a second copy of the hold rule keyed by id is
     // the thing this column exists to avoid.
-    if (paySet && !paySet.has(orderPayoutFilterValue(o, storeSlug))) return false;
     if (q && !orderSearchHaystack(o).includes(q)) return false;
     return true;
   });

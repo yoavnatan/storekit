@@ -53,7 +53,7 @@ import { SHIPPING_SORT_ORDER, type AdminOrderQuery } from './admin-orders-filter
 // `filterAndSortSellerOrders` is a VALUE import and the only one across this seam — that module's
 // own import of `Order` is type-only, so there is no runtime cycle. It is here for the payout-status
 // page below, which routes through the shared rule rather than restating it in SQL.
-import { URGENCY_STATUSES, URGENCY_RANKS, filterAndSortSellerOrders, type SellerOrderQuery } from './seller-orders-query.js';
+import { URGENCY_STATUSES, URGENCY_RANKS, type SellerOrderQuery } from './seller-orders-query.js';
 import { CHECKOUT_GROUP_KEY_SQL } from './checkout-group.js';
 import { openReturnSql } from './returns.js';
 
@@ -687,52 +687,6 @@ export async function getSellerOrdersPage(
   pageSize: number,
 ): Promise<SellerOrdersPage> {
   if (!storeSlug) return { orders: [], total: 0, page: 1, totalPages: 1 };
-
-  /**
-   * ── The payout-status column takes the JS route, deliberately ──
-   *
-   * Every other filter here is a column comparison and belongs in SQL. This one is the HOLD RULE,
-   * and the hold rule already has exactly two spellings — `payout-hold.ts`'s `orderHold` and its
-   * `RELEASABLE_SQL` twin — which the file documents at length as the maximum it is willing to
-   * carry. A third, written into this statement to save a read, is how a seller comes to be shown
-   * one set of orders and paid for another.
-   *
-   * So when (and only when) this column is in play, the page is built by the SAME pure function the
-   * card, the payments tab and the toolbar all use. The cost is one store's orders in memory
-   * instead of one page of them — bounded by a single shop, paid only by a seller who actively
-   * chose this filter, and never by an ordinary load. If it ever stops being cheap the fix is a
-   * `payout_bucket` COLUMN maintained beside `paid_at`/`delivered_at`, not a CASE expression
-   * restating the rule here.
-   */
-  if (query.payoutStatus.length) {
-    const all = await getOrdersByStoreSlug(storeSlug);
-    // The JS route has to answer the same widened question the SQL one does, and it cannot see
-    // `return_requests` — so the ids come with it, in one query for the whole store's list.
-    //
-    // Asked here rather than through `return-requests.ts#ordersWithOpenReturns`, which is the same
-    // read: that module imports THIS one (it moves orders when a case settles), and importing it
-    // back would close a runtime cycle in the module that carries the money. The RULE is not
-    // duplicated — `openReturnSql` generates the predicate from `returns.ts`'s own list, so both
-    // spellings of the query ask the identical question.
-    const needsReturns = query.includeOpenReturns || query.returnState.length > 0;
-    const openReturns = needsReturns
-      ? new Map((await rows<{ order_id: string; status: string }>(
-        `SELECT DISTINCT ON (order_id) order_id, status FROM return_requests
-          WHERE order_id = ANY($1::uuid[]) AND store_slug = $2 AND ${openReturnSql('status')}
-          ORDER BY order_id, created_at DESC`,
-        [all.map((o) => o.id), storeSlug],
-      )).map((r) => [r.order_id, r.status] as const))
-      : new Map<string, string>();
-    const filtered = filterAndSortSellerOrders(all, storeSlug, query, openReturns);
-    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-    const safePage = Math.min(Math.max(1, page), totalPages);
-    return {
-      orders: filtered.slice((safePage - 1) * pageSize, safePage * pageSize),
-      total: filtered.length,
-      page: safePage,
-      totalPages,
-    };
-  }
 
   // Same five fields the JS haystack joins, in the same order, lower-cased on both sides.
   const HAYSTACK = `lower(

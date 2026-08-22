@@ -7,8 +7,6 @@ import { onPanelIntent } from './panel-intent.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
-import { orderPayoutLine, payoutLineText, payoutFilterValue, PAYOUT_FILTER_VALUES } from '../../lib/order-payout-line.js';
-import { formatBusinessDayLabel } from '../../lib/format-date.js';
 import type { Order } from '../../lib/orders.js';
 import type { DeliveryMethod } from '../../lib/shipping.js';
 import { createFetchGate, initListPager, renderListPagers, markListBusy, type PagerLabels } from './list-pager.js';
@@ -87,9 +85,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // from bindOrderCard() which runs before that const is declared.
   const orderStatusPortal = createFloatingPortal('order-status-portal');
   const storeSlugForOrders = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeSlug ?? '';
-  /** For the payout line's link into the Payments tab — its no-JS `href` has to carry the shop the
-   *  dashboard is standing in, or a seller with two shops lands on the other one. */
-  const storeIdForOrders = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeId ?? '';
 
   function updateOrderTabBadge(): void {
     const remaining = document.querySelectorAll('.order-new-dot').length;
@@ -651,15 +646,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // cancellable — that's business logic, not the UI.)
   const ACTIVE_STATUSES = new Set(ORDER_ACTIVE_STATUSES);
   const ORDER_STATUSES = ORDER_FILTER_STATUSES;
-  // Two independent columns. 'payout' answers "where is the money on this order", which is a
-  // different question from "where is the parcel" and one a seller now reaches from the payments
-  // tab (owner, 2026-08-11 — it used to be faked by naming shipping statuses in the link).
-  // Three independent columns. 'payout' answers "where is the money on this order", which is a
-  // different question from "where is the parcel" and one a seller now reaches from the payments
-  // tab (owner, 2026-08-11 — it used to be faked by naming shipping statuses in the link).
-  // 'return' is the third, and it exists because neither of the others can express it: a return in
-  // progress leaves the order at 'delivered' and it stays there (owner, 2026-08-20).
-  const ORDER_FILTER_COLUMNS = ['status', 'payout', 'return'];
+  // Two independent columns. 'return' is the second, and it exists because the status cannot
+  // express it: a return in progress leaves the order at 'delivered' and it stays there (owner,
+  // 2026-08-20). A third, 'payout', answered "where is the money on this order" and went with the
+  // custodial model — the processor pays each seller on its own schedule, so there is no per-order
+  // answer to give.
+  const ORDER_FILTER_COLUMNS = ['status', 'return'];
   /**
    * Seeded from what the SERVER rendered, not from this module's own default.
    *
@@ -678,24 +670,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       ? [...ACTIVE_STATUSES]
       : serverStatuses.split(',').filter(Boolean);
     if (initial.length) ordersFilters.set('status', new Set(initial));
-    // Same seeding for the payout column, so a link that arrives with `?opay=` shows as a checked
-    // box in the menu rather than as a narrowed list nobody can account for.
-    const initialPayout = (ordersToolbarEl?.dataset.payout ?? '').split(',').filter(Boolean);
-    if (initialPayout.length) ordersFilters.set('payout', new Set(initialPayout));
     const initialReturn = (ordersToolbarEl?.dataset.return ?? '').split(',').filter(Boolean);
     if (initialReturn.length) ordersFilters.set('return', new Set(initialReturn));
   }
 
-  /**
-   * The seller-facing name of a payout filter value.
-   *
-   * Read off the shared `#i18n-data` island like every other string here — the values themselves
-   * come from `order-payout-line.ts`, and the names for them live with the rest of the copy so a
-   * wording pass reaches them (`project_client_renderer_i18n_drift`).
-   */
-  function payoutFilterLabel(value: string): string {
-    return tt(`payFilter_${value}`) || value;
-  }
   let ordersSortCol: 'date' | 'amount' | 'urgency' = 'date';
   let ordersSortDir: 'asc' | 'desc' = 'desc';
   let ordersCurrentPage = 1;
@@ -718,44 +696,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
    *  `fmtPrice` on one of them would print a figure a hundred times too large. */
   function fmtAgorot(agorot: number): string { return fmtPrice(agorot / 100); }
 
-  /**
-   * The payout line's three fields, from the SAME derivation the SSR card uses
-   * (`lib/order-payout-line.ts`). Rendering it here rather than leaving it to the server is not
-   * optional: this function draws the cards for AJAX pagination and for a polled new order, so a
-   * block that existed only in the `.astro` copy would vanish the moment a seller turned a page —
-   * the three-renderer drift this file's header already warns about.
-   */
-  /** This order's payout bucket, for the filter column. Same derivation the line below renders and
-   *  the same one the server filters by (`seller-orders-query.ts#orderPayoutFilterValue`), so a row
-   *  the toolbar hides is exactly a row the next page fetch would not have returned. */
-  function orderPayoutFilterValueOf(o: Parameters<typeof buildOrderCard>[0]): string {
-    return payoutFilterValue(orderPayoutLine({
-      paymentStatus: o.paymentStatus,
-      shippingStatus: o.shippingStatus as never,
-      paidAt: o.paidAt ?? null,
-      deliveredAt: o.deliveredAt ?? null,
-      deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
-    }));
-  }
-
-  function payoutLineHtml(o: Parameters<typeof buildOrderCard>[0]): string {
-    const line = orderPayoutLine({
-      paymentStatus: o.paymentStatus,
-      shippingStatus: o.shippingStatus as never,
-      paidAt: o.paidAt ?? null,
-      deliveredAt: o.deliveredAt ?? null,
-      deliveryMethod: o.storeSubtotals[storeSlugForOrders]?.deliveryMethod ?? null,
-    });
-    const text = payoutLineText(line);
-    const state = text.dateISO
-      ? tt(text.mainKey).replace('{date}', formatBusinessDayLabel(text.dateISO))
-      : tt(text.mainKey);
-    const why = text.whyKey ? `<span class="[color:var(--color-muted)]">· ${esc(tt(text.whyKey))}</span>` : '';
-    // Same link, same markers as the SSR card (seller/dashboard.astro) — a card rebuilt by a page
-    // turn must not quietly lose the only route to the rules behind its own dates.
-    const how = `<a class="ms-auto text-[0.72rem] underline underline-offset-2 [color:var(--color-muted)] hover:[color:var(--color-accent)]" href="/seller/dashboard?store=${esc(storeIdForOrders)}&panel=payouts#pay-how" data-goto-panel="payouts" data-goto-anchor="pay-how">${esc(tt('orderPayoutHow'))}</a>`;
-    return `<div class="order-card__payout mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.8rem]"><span class="[color:var(--color-muted)]">${esc(tt('orderPayoutLabel'))}</span><strong class="text-[color:var(--color-text)]">${esc(state)}</strong>${why}${how}</div>`;
-  }
 
   function buildOrderCard(o: {
     id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
@@ -763,8 +703,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
     storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; deliveryMethod?: DeliveryMethod; discount?: { type: string; value: number; appliedAgorot: number } }>;
     notes?: string[];
-    // The payout line's inputs. `/api/seller/orders` already returns the whole order
-    // (`scopeOrder`), so these arrive with no endpoint change — they were simply never named here.
+    // `/api/seller/orders` returns the whole order (`scopeOrder`), so these arrive with no
+    // endpoint change — they were simply never named here.
     paymentStatus: Order['paymentStatus'];
     paidAt?: string;
     deliveredAt?: string;
@@ -808,7 +748,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     // Header layout mirrors the SSR card in seller/dashboard.astro exactly — a
     // 3-column grid below 640px OF THE CARD (container query) and the desktop
     // row above it. Keep the two in sync; the comment there explains why.
-    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-delivery-method="${esc(storeSub.deliveryMethod ?? '')}" data-payout="${esc(orderPayoutFilterValueOf(o))}" data-return-state="${esc(o.returnChip?.state ?? '')}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-delivery-method="${esc(storeSub.deliveryMethod ?? '')}" data-return-state="${esc(o.returnChip?.state ?? '')}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
         <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? `<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="${esc(tt('orderNewLabel'))}"></span>` : ''}</span>
@@ -863,7 +803,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             ${storeSub.discount?.appliedAgorot ? `<span class="text-[color:var(--color-success)]">${esc(tt('orderEditDiscount'))}: −${fmtAgorot(storeSub.discount.appliedAgorot)}</span>` : ''}
             <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtAgorot(total)}</strong>
           </div>
-          ${payoutLineHtml(o)}
         </div>
         <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
           <div class="order-note mb-3">
@@ -898,9 +837,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   function getOrderFilterValue(card: HTMLElement, col: string): string {
     if (col === 'status') return card.dataset.shippingStatus ?? '';
-    // Written onto the card by BOTH renderers from `order-payout-line.ts`, never recomputed here —
-    // a client-side copy of the hold rule is the drift this module's header already warns about.
-    if (col === 'payout') return card.dataset.payout ?? '';
     // '' when no case is running, which is what makes an unticked column mean "no opinion" and a
     // ticked one exclude every order that is not coming back.
     if (col === 'return') return card.dataset.returnState ?? '';
@@ -909,7 +845,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   function orderFilterColumnLabel(col: string): string {
     if (col === 'status') return tt('filterColStatus');
-    if (col === 'payout') return tt('filterColPayout');
     if (col === 'return') return tt('filterColReturn');
     return col;
   }
@@ -921,7 +856,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     if (col === 'status') return ORDER_STATUSES;
     // The full vocabulary, not what happens to be on THIS page — a value that vanishes from the
     // menu because the current page has none of it is a filter that cannot be reached.
-    if (col === 'payout') return [...PAYOUT_FILTER_VALUES];
     // The machine's own open states, in the order a case travels — same reasoning as 'status'.
     if (col === 'return') return [...OPEN_RETURN_STATUSES];
     const values = new Set<string>();
@@ -931,7 +865,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   function orderFilterValueHtml(col: string, value: string): string {
     if (col === 'status') return `<span class="order-status-dot" style="background:${colorMap[value] ?? '#888'}"></span>${labelMap[value] ?? value}`;
-    if (col === 'payout') return esc(payoutFilterLabel(value));
     // The chip's own words, so the menu and the chip on the row can never say different things
     // about one case (`lib/return-chip.ts`).
     if (col === 'return') return esc(tt(RETURN_CHIP_KEY[value as ReturnStatus] || '') || value);
@@ -977,7 +910,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
    */
   document.getElementById('dash-panel-orders')?.addEventListener('dashtab:hide', () => {
     if (!document.getElementById('orders-from-banner')) return;
-    ordersFilters.delete('payout');
     ordersFilters.set('status', new Set(ACTIVE_STATUSES));
     ordersSearchQuery = '';
     const searchEl = document.getElementById('orders-search-input') as HTMLInputElement | null;
@@ -1161,8 +1093,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     params.set('ostatus', encodeList(statusValues ? [...statusValues] : []));
     // Absent when nothing is selected, unlike `ostatus` — an empty `ostatus` means "cleared" and an
     // absent one means "use the default", while this column simply has no default to distinguish.
-    const payoutValues = ordersFilters.get('payout');
-    if (payoutValues?.size) params.set('opay', encodeList([...payoutValues]));
     const returnValues = ordersFilters.get('return');
     if (returnValues?.size) params.set('oret', encodeList([...returnValues]));
 
