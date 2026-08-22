@@ -6,7 +6,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { machineUrl } from '../../lib/url-base.js';
 // The SERVER half of the products row. Its client twin (scripts/dashboard/products.ts#buildRows)
 // reads the same module — see that file's header for why there are two renderers at all.
-import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, stockEditHint } from '../../lib/product-cell-classes.js';
+import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, STOCK_CELL_GROUP, stockEditHint } from '../../lib/product-cell-classes.js';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
 import TopProductsList from '../../components/dashboard/TopProductsList.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
@@ -1122,9 +1122,14 @@ const orderStatusColors: Record<string, string> = {
             directly beneath it — measured 4px apart, two buttons of different kinds reading as one
             stack. 12px on the phone, the original 4px from `sm:` up where nothing was wrong.
             (Inline `style` converted to utilities on contact — Hard rules → Tailwind v4 only.) */}
-        <p class="muted flex items-center gap-1.5 flex-wrap m-0 mt-3 sm:mt-1 text-[0.82rem]">
-          <span>{d.storeSubtitle} ·</span>
-          <code id="dash-store-address" dir="ltr" data-has-custom-domain={store.customDomain?.status === 'active' ? '1' : ''} style="font-size:0.78rem">{store.customDomain?.status === 'active' ? store.customDomain.hostname : `${platformHost}/${store.slug}`}</code>
+        {/* `flex-nowrap` and no "החנות שלך" label (owner, 2026-08-23: *"למה צריך לרשום 'החנות שלך',
+            ברור שהיא שלו אלא של מי"*, and the address block was breaking one part per line in the
+            rail). The label was three words spent restating what the page is; the address is the
+            only fact on this line, and the copy button belongs beside it, not under it. `min-w-0`
+            + `truncate` on the address so a long custom domain shortens instead of pushing the
+            button onto its own row. */}
+        <p class="muted flex items-center flex-nowrap gap-1.5 m-0 mt-3 sm:mt-1 text-[0.82rem]">
+          <code class="min-w-0 truncate" id="dash-store-address" dir="ltr" data-has-custom-domain={store.customDomain?.status === 'active' ? '1' : ''} style="font-size:0.78rem">{store.customDomain?.status === 'active' ? store.customDomain.hostname : `${platformHost}/${store.slug}`}</code>
           {/* No size override. It carried `!py-0 !px-1` to sit lightly on a 0.82rem line, and what
               that actually did was pull the ghost border in against the 13px icon — the button read
               as a box drawn around the glyph. `.btn--sm`'s own padding is what the three copy
@@ -2027,9 +2032,9 @@ const orderStatusColors: Record<string, string> = {
                     <td class="sku-col"><span class="sku-col-label">{d.skuLabel}: </span>{p.sku || <span style="color:var(--color-border)">—</span>}</td>
                     <td class="cat-col"><span class="cat-col-label">{d.categoryLabel}: </span>{productCategoryPaths.get(p.id) ? <span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">{productCategoryPaths.get(p.id)}</span> : <span style="color:var(--color-border)">—</span>}</td>
                     <td class={`num product-price price-col group cursor-text ${INLINE_EDIT_HINT}`}>{formatPrice(p.price)}</td>
-                    <td class={`num product-stock stock-col group cursor-text ${stockEditHint(!!p.variants?.length)}`}>
+                    <td class={`num product-stock stock-col group cursor-text ${STOCK_CELL_GROUP}`}>
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">
-                        <span data-stock-total style="display:inline-flex;align-items:center;gap:0.3rem">
+                        <span data-stock-total class={stockEditHint(!!p.variants?.length)} style="display:inline-flex;align-items:center;gap:0.3rem">
                           <span class="product-stock-label">{d.colStock}: </span>
                           <span style={p.stock <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{p.stock}</span>
                           {p.stock <= 0 && (

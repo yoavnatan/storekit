@@ -45,8 +45,32 @@ export const INLINE_EDIT_HINT =
  * click handler refuses that case (`initInlineEdit`, on `data-has-variants`), so the mark has to
  * refuse it too or it would be promising something the cell will not do.
  */
+/**
+ * **The stock cell needs a GROUP, because a plain hover-underline cannot reach its number.**
+ *
+ * Measured, after the owner reported the mark missing there twice: hovering the `<td>` really does
+ * compute `text-decoration: underline dotted` on the `<td>`. It stops there. The cell's contents
+ * sit in a `display:inline-flex` wrapper (the number, the low-stock icon and the breakdown chevron
+ * have to sit on one line), and an inline-flex box is an atomic inline-level box — decoration does
+ * not propagate into one. The same rule that keeps the underline off the `<input>` while the cell
+ * is being edited was silently keeping it off the number the rest of the time.
+ *
+ * So the `<td>` becomes the group and the mark lands on the element that actually holds the text.
+ * `stockCellGroup` goes on the cell; `stockEditHint` goes on `[data-stock-total]`.
+ */
+export const STOCK_CELL_GROUP = 'group/stk';
+
+/**
+ * The mark for a stock total, on `[data-stock-total]` — empty for a product with variants, whose
+ * total is a computed sum that the click handler refuses (`initInlineEdit`, on `data-has-variants`).
+ * That product is edited per combo instead; see `COMBO_STOCK_VALUE`.
+ */
 export function stockEditHint(hasVariants: boolean): string {
-  return hasVariants ? '' : INLINE_EDIT_HINT;
+  return hasVariants
+    ? ''
+    : 'group-hover/stk:underline group-hover/stk:decoration-dotted'
+      + ' group-hover/stk:decoration-[color:var(--color-muted)] group-hover/stk:underline-offset-[3px]'
+      + ' group-hover/stk:decoration-1';
 }
 
 /**

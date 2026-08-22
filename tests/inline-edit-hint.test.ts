@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, stockEditHint } from '../src/lib/product-cell-classes.js';
+import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, STOCK_CELL_GROUP, stockEditHint } from '../src/lib/product-cell-classes.js';
 
 const PAGE = readFileSync(join(process.cwd(), 'src/pages/seller/dashboard.astro'), 'utf8');
 const SCRIPT = readFileSync(join(process.cwd(), 'src/scripts/dashboard/products.ts'), 'utf8');
@@ -44,10 +44,14 @@ describe('both product-row renderers announce the inline edit', () => {
       expect(cellLine(source, 'product-price price-col')).toContain('INLINE_EDIT_HINT');
     });
 
-    it(`${name} — the stock, through the helper that refuses a product with variants`, () => {
-      // Not `INLINE_EDIT_HINT` directly: that cell is click-to-edit only while the product has no
+    it(`${name} — the stock, on the element that actually holds the number`, () => {
+      // The cell is the GROUP and the mark lands inside it, because the cell's contents sit in an
+      // `inline-flex` wrapper and `text-decoration` does not cross an atomic inline box — measured,
+      // after the mark was reported missing here twice.
+      expect(cellLine(source, 'product-stock stock-col')).toContain('STOCK_CELL_GROUP');
+      // And through the helper, not the raw classes: click-to-edit only while the product has no
       // variants, and a mark on a cell that will not open is a promise the click handler breaks.
-      expect(cellLine(source, 'product-stock stock-col')).toContain('stockEditHint(');
+      expect(cellLine(source, 'data-stock-total')).toContain('stockEditHint(');
     });
 
     it(`${name} — one combo's stock inside the breakdown dropdown`, () => {
@@ -76,9 +80,13 @@ describe('the shared classes themselves', () => {
     expect(INLINE_EDIT_HINT).toContain('var(--color-muted)');
   });
 
-  it('says nothing on a stock cell whose product has variants', () => {
+  it('says nothing on a stock total whose product has variants', () => {
     expect(stockEditHint(true)).toBe('');
-    expect(stockEditHint(false)).toBe(INLINE_EDIT_HINT);
+    // Its own group-hover set, driven by STOCK_CELL_GROUP on the cell — not the plain hover hint,
+    // which cannot reach this element through the inline-flex wrapper above it.
+    expect(stockEditHint(false)).toContain('group-hover/stk:underline');
+    expect(stockEditHint(false)).toContain('group-hover/stk:decoration-dotted');
+    expect(STOCK_CELL_GROUP).toBe('group/stk');
   });
 
   it('marks the combo number from the whole clickable area, not from the digits alone', () => {

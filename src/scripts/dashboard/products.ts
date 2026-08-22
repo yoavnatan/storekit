@@ -1,5 +1,5 @@
 import { esc } from '../../lib/gallery-widget.js';
-import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, stockEditHint } from '../../lib/product-cell-classes.js';
+import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, STOCK_CELL_GROUP, stockEditHint } from '../../lib/product-cell-classes.js';
 import { SPECS_ROW_CLASS, specsRowHtml } from './specs-row.js';
 import { showActionFailedToast } from '../../lib/toast.js';
 import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery, finalizeGallery, closeGalleryPanel } from './gallery.js';
@@ -1769,7 +1769,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="cat-col"><span class="cat-col-label">${esc(i.categoryLabel ?? 'Category')}: </span>${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price price-col group cursor-text ${INLINE_EDIT_HINT}">${fmtPrice(p.price)}</td>
-    <td class="num product-stock stock-col group cursor-text ${stockEditHint(!!p.variants?.length)}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total>${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
+    <td class="num product-stock stock-col group cursor-text ${STOCK_CELL_GROUP}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total class="${stockEditHint(!!p.variants?.length)}">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
       ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${p.wishlistCount}</span>`
       : `<span style="color:var(--color-border)">—</span>`}</td>

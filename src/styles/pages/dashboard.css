@@ -235,8 +235,11 @@ textarea.input { resize: none; }
   /* The select-all must never be clipped — same exception, same reason, as the tablet block. */
   .products-table .check-col     { width: 2.4rem; overflow: visible; }
   /* Sized for a 4-digit row number: the counter runs across pages (page × size + index),
-     so a large catalogue reaches four digits long before it runs out of products. */
-  .products-table .row-num       { width: 3rem; }
+     so a large catalogue reaches four digits long before it runs out of products.
+     2.3rem, down from 3 (owner, 2026-08-23: *"המספר סידורי וכן הלייקים לוקחים הרבה יותר ממה שהם
+     צריכים"* — and he was right about both). Four digits at this size measure ~30px; 3rem was
+     48px, i.e. 18px of a heading's worth spent on the column that carries the least. */
+  .products-table .row-num       { width: 2.3rem; }
   /* 42px thumbnail + this block's 0.75rem cell padding on both sides. */
   .products-table .thumb-col     { width: 4.2rem; }
   /* The shares are set so no column ends up NARROWER than the width `table-layout: auto` was
@@ -252,9 +255,12 @@ textarea.input { resize: none; }
      realistic string ("1,234.50 ₪"), not the demo catalogue's two-digit prices. */
   .products-table .price-col     { width: 9.5%; }
   .products-table .stock-col     { width: 9.5%; }
-  .products-table .wishlist-col  { width: 4.5%; }
+  /* Its heading is a heart and a sort chevron, ~28px, and its cell is a heart and at most three
+     digits — the narrowest real content in the table, and it was holding 52px. The 0.9% it gives
+     back goes to `date`, whose "נוסף בתאריך" is the longest heading here and the first to clip. */
+  .products-table .wishlist-col  { width: 3.6%; }
   .products-table .purchased-col { width: 7%; }
-  .products-table .date-col      { width: 10.5%; }
+  .products-table .date-col      { width: 11.4%; }
   .products-table .seo-col       { width: 2.5rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 3.4rem; }
   /* One line + "…", not a wrap: rows stay a uniform height, and the full name is one click
