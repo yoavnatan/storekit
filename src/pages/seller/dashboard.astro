@@ -4,6 +4,9 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 // Every interpolated redirect goes through it — here the interpolated value is a form-supplied
 // store id, so this is also what stops a crafted POST putting an arbitrary string in a header.
 import { machineUrl } from '../../lib/url-base.js';
+// The SERVER half of the products row. Its client twin (scripts/dashboard/products.ts#buildRows)
+// reads the same module — see that file's header for why there are two renderers at all.
+import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, stockEditHint } from '../../lib/product-cell-classes.js';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
 import TopProductsList from '../../components/dashboard/TopProductsList.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
@@ -1990,7 +1993,7 @@ const orderStatusColors: Record<string, string> = {
                       {p.images?.[0] && <span class="thumb-wrap" data-skeleton><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" /></span>}
                     </td>
                     <td class="name-col">
-                      <span class="product-name cursor-text">{p.name}</span>
+                      <span class={`product-name cursor-text ${INLINE_EDIT_HINT}`}>{p.name}</span>
                       {/* Sits beside the name, never inside the price cell: that cell is
                           click-to-edit and parses its own textContent as the price. */}
                       <span class="sale-chip ms-1.5 align-middle" data-row-sale={p.id} dir="ltr" hidden={!rowSaleLabel(p)}>{rowSaleLabel(p)}</span>
@@ -2023,8 +2026,8 @@ const orderStatusColors: Record<string, string> = {
                     </td>
                     <td class="sku-col"><span class="sku-col-label">{d.skuLabel}: </span>{p.sku || <span style="color:var(--color-border)">—</span>}</td>
                     <td class="cat-col"><span class="cat-col-label">{d.categoryLabel}: </span>{productCategoryPaths.get(p.id) ? <span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">{productCategoryPaths.get(p.id)}</span> : <span style="color:var(--color-border)">—</span>}</td>
-                    <td class="num product-price price-col group cursor-text">{formatPrice(p.price)}</td>
-                    <td class="num product-stock stock-col group cursor-text">
+                    <td class={`num product-price price-col group cursor-text ${INLINE_EDIT_HINT}`}>{formatPrice(p.price)}</td>
+                    <td class={`num product-stock stock-col group cursor-text ${stockEditHint(!!p.variants?.length)}`}>
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">
                         <span data-stock-total style="display:inline-flex;align-items:center;gap:0.3rem">
                           <span class="product-stock-label">{d.colStock}: </span>
@@ -2055,9 +2058,9 @@ const orderStatusColors: Record<string, string> = {
                                   {/* `effective`, not the bucket: a combo with none of its own can
                                       still sell — from the pool — and showing 0 there marked a
                                       live product as sold out. `shared` is what says which it is. */}
-                                  <span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label={d.variantStockEditLabel} style="display:inline-flex;align-items:center;gap:0.3rem">
+                                  <span class={COMBO_STOCK_HIT} data-combo-stock-hit role="button" tabindex="0" aria-label={d.variantStockEditLabel} style="display:inline-flex;align-items:center;gap:0.3rem">
                                     {c.shared && <span title={d.comboSharedTitle} style="font-size:0.72rem;color:var(--color-muted);flex-shrink:0">{d.comboSharedShort}</span>}
-                                    <span data-combo-stock-value class="py-[0.15rem] min-w-[1.9rem] text-end" style={c.effective <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{c.effective}</span>
+                                    <span data-combo-stock-value class={COMBO_STOCK_VALUE} style={c.effective <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{c.effective}</span>
                                     <span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">
                                       {c.effective <= 0 && (
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>

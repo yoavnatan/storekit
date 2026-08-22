@@ -1,4 +1,5 @@
 import { esc } from '../../lib/gallery-widget.js';
+import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, stockEditHint } from '../../lib/product-cell-classes.js';
 import { SPECS_ROW_CLASS, specsRowHtml } from './specs-row.js';
 import { showActionFailedToast } from '../../lib/toast.js';
 import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery, finalizeGallery, closeGalleryPanel } from './gallery.js';
@@ -143,30 +144,6 @@ function warnIcon(label: string): string {
   return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${esc(label)}" style="color:var(--color-danger,#dc2626);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 }
 
-/**
- * **The hint that a cell can be edited where it stands** (owner, 2026-08-22: *"אני יודע שאפשר
- * לערוך inline אבל יוזר לא בהכרח ידע את זה. אולי כן, איך אפשר בעדינות לרמוז לו על כך בלי לכער
- * הכל?"*).
- *
- * The whole announcement used to be `cursor-text`, which a seller sees only if they already have
- * the pointer on the value and happen to look at the cursor. A dotted underline appearing under
- * that same value is the browser's own long-standing mark for "this text is not just text" — it is
- * already in the system rather than invented for this table, it dates to nothing, it suits a tool
- * shop and a boutique alike, and it spends no accent colour (design line, all four tests).
- *
- * On the CELL, not on the row: the row already has its own hover (a `--color-bg` fill), and three
- * cells lighting up together would say "this row is editable" when what is true is "these three
- * values are". One signal, pointed at the thing it is about.
- *
- * No `:not([data-inline-active])` guard is needed for the open state: while a cell is being edited
- * its contents are an `<input>` and a `<button>`, both atomic inline boxes, which
- * `text-decoration` does not draw on.
- *
- * Pointer-only by construction — `:hover` never fires on a touch screen, so the phone's card list
- * is unchanged. There is no quiet way to say this on touch; it would take standing prose above the
- * list, which this dashboard does not do (AI_INSTRUCTIONS → no prose above a screen).
- */
-const INLINE_EDIT_HINT = 'hover:underline hover:decoration-dotted hover:decoration-[color:var(--color-muted)] hover:underline-offset-[3px] hover:decoration-1';
 
 function stockHtml(stock: number, outOfStockLabel: string, stockLabel: string): string {
   const label = `<span class="product-stock-label">${esc(stockLabel)}: </span>`;
@@ -211,7 +188,7 @@ function warnIconHtml(value: number, i18n: Record<string, string>): string {
 // from the number as in the main products table. No hover color: the number
 // mirrors the main table's stock display (red when low/out, plain otherwise).
 // Cursor is inherited from the hit area (cursor-text, like the main stock cell).
-const COMBO_STOCK_VALUE_CLS = 'py-[0.15rem] min-w-[1.9rem] text-end';
+
 
 // Compact inline input for the breakdown dropdown — deliberately NOT
 // INLINE_INPUT_NUM, whose base carries min-w-10 (2.5rem) and a 3px ring that
@@ -238,7 +215,7 @@ function stockBreakdownHtml(variants: VariantDimension[] | undefined, variantSto
     const sharedMark = shared
       ? `<span data-combo-shared-mark title="${esc(i18n.comboSharedTitle ?? 'Sells from the shared pool')}" style="font-size:0.72rem;color:var(--color-muted);flex-shrink:0">${esc(i18n.comboSharedShort ?? 'pool')}</span>`
       : '';
-    return `<div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded-[var(--radius-sm)] [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key="${esc(key)}"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label="${esc(editLabel)}" style="display:inline-flex;align-items:center;gap:0.3rem">${sharedMark}<span data-combo-stock-value class="${COMBO_STOCK_VALUE_CLS}"${lowStyle}>${value}</span><span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">${warnIconHtml(value, i18n)}</span></span></div>`;
+    return `<div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded-[var(--radius-sm)] [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key="${esc(key)}"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span class="${COMBO_STOCK_HIT}" data-combo-stock-hit role="button" tabindex="0" aria-label="${esc(editLabel)}" style="display:inline-flex;align-items:center;gap:0.3rem">${sharedMark}<span data-combo-stock-value class="${COMBO_STOCK_VALUE}"${lowStyle}>${value}</span><span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">${warnIconHtml(value, i18n)}</span></span></div>`;
   }).join('');
   return `<span class="relative inline-flex" data-stock-breakdown>
     <button type="button" class="${STOCK_BREAKDOWN_BTN}" data-stock-breakdown-btn aria-expanded="false" aria-haspopup="true" aria-label="${esc(i18n.stockBreakdownLabel ?? 'Show stock breakdown by variant')}">
@@ -1792,7 +1769,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="cat-col"><span class="cat-col-label">${esc(i.categoryLabel ?? 'Category')}: </span>${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price price-col group cursor-text ${INLINE_EDIT_HINT}">${fmtPrice(p.price)}</td>
-    <td class="num product-stock stock-col group cursor-text ${p.variants?.length ? '' : INLINE_EDIT_HINT}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total>${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
+    <td class="num product-stock stock-col group cursor-text ${stockEditHint(!!p.variants?.length)}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total>${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
       ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${p.wishlistCount}</span>`
       : `<span style="color:var(--color-border)">—</span>`}</td>
