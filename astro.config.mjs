@@ -137,11 +137,31 @@ export default defineConfig({
       //   `**/.claude*/**` — the harness's own writes: `.claude/` (hook state, worktrees, session
       //                    scratch) and `.claude-memory/` (the memory repo, ~200 files, rewritten
       //                    whenever a memory is saved). Nothing under either is imported.
-      //   `**/coverage/**` — vitest's report, rewritten by every run of `npm run verify`.
+      //   `coverage/` — vitest's report, rewritten by every run of `npm run verify`.
       // Everything here is checked against the same bar as `data/` above: not in the module
       // graph, therefore ignoring it costs no HMR.
+      //
+      // **The directory patterns are ANCHORED to this tree's own root, and that is a bug fix, not
+      // tidiness** (2026-08-22, found by the owner: *"אני גם לא רואה את השינויים בשרת של
+      // הפרוטוטייפ"*). They were written as `**/.claude/**`, which matches a path SEGMENT anywhere
+      // — and a worktree of this repo lives at `<root>/.claude/worktrees/<name>/`. A dev server
+      // started inside one therefore matched its own `src/` against that pattern and stopped
+      // watching its entire source tree: no HMR, no invalidation, and a page that keeps serving
+      // whatever Vite happened to have in its module graph. The stylesheet still looked current,
+      // because Vite re-reads a CSS file on request; the page module did not, so the symptom was
+      // "some of my changes are there and some are not", which reads as a broken edit rather than a
+      // broken watcher. `process.cwd()` is the root of whichever checkout is running, so in a
+      // worktree this means "that worktree's own `.claude/`" — which is what was always meant.
+      // `**/*.md` stays a bare glob on purpose: markdown is out of the module graph everywhere,
+      // including inside a worktree, so there is nothing for it to break.
       watch: {
-        ignored: ['**/data/**', '**/*.md', '**/.claude/**', '**/.claude-memory/**', '**/coverage/**'],
+        ignored: [
+          `${process.cwd()}/data/**`,
+          `${process.cwd()}/.claude/**`,
+          `${process.cwd()}/.claude-memory/**`,
+          `${process.cwd()}/coverage/**`,
+          '**/*.md',
+        ],
       },
     },
   },
