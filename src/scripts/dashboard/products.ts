@@ -3633,6 +3633,21 @@ function activateInlineEdit(
     const val = input.value;
     if (field === 'name' && !val.trim()) { cancel(); return; }
 
+    // **Nothing was typed — so nothing is saved, and nothing is SHOWN either** (owner, 2026-08-22:
+    // *"אם אני עורך inline משהו אבל בעצם לא עשיתי שינוי — למה זה עדיין עושה לי שם שלוש נקודות של
+    // loader, לא חבל?"*). Opening a cell and clicking away is the commonest thing that happens to
+    // this control — it commits on `blur`, so every accidental click into a name commits — and it
+    // was costing a round trip, a spinner, and a `rev` bump that makes the seller's own next save
+    // from the open form look like somebody else's conflict.
+    // `cancel()` and not a silent return: the cell is currently an input, and only cancel puts the
+    // rendered value back and clears `inlineActive`.
+    // Compared as a NUMBER for price/stock, so `10.00` typed over `10` is correctly nothing; as
+    // trimmed text for the name, where whitespace is all the difference there can be. An emptied
+    // number field is the same case — there is no such thing as a blank price or stock, so it is a
+    // seller who cleared the box and gave up, not an edit.
+    if (field === 'name' ? val.trim() === rawValue.trim()
+                         : val.trim() === '' || Number(val) === Number(rawValue)) { cancel(); return; }
+
     input.disabled = true;
     xBtn.disabled = true;
     xBtn.innerHTML = SPINNER_SVG;
@@ -3808,6 +3823,10 @@ function activateComboStockEdit(valueEl: HTMLElement, i: Record<string, string>)
     if (done) return;
     done = true;
     const value = Math.max(0, Math.floor(Number(input.value)) || 0);
+    // Same no-op rule as the cell editor above, and for the same reason: this control commits on
+    // blur too, so opening a combo's number and clicking elsewhere is an edit that changed nothing.
+    // Compared after the clamp, so `007` over `7` is correctly nothing.
+    if (value === Math.max(0, Math.floor(Number(prevStock)) || 0)) { cancel(); return; }
 
     input.disabled = true;
     xBtn.disabled = true;
