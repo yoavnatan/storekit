@@ -151,7 +151,6 @@ describe('a badge reports a tab you are NOT looking at, so it is never gated', (
     ['getSellerOrderStatusCounts', 'the Orders tab\'s "(N) new" badge'],
     ['getUnreadThreadIdsForSeller', 'the Messages tab\'s unread dot'],
     ['getUnreadAdminThreadIdsForSeller', 'the same dot, for system threads'],
-    ['getSellerAccountFor', 'the Payments tab\'s "no bank account" dot'],
     ['getProductCountsByStore', 'the first-steps checklist, which decides the per-tab hints'],
   ])('%s stays ungated — %s', (fn) => {
     expect(page, `${fn}() is called somewhere on this page`).toContain(`${fn}(`);

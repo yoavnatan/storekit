@@ -990,7 +990,7 @@ export const translations = {
       // hold rule, the return window and the minimum are details a seller wants ONCE, in one place
       // they can be sent to, rather than three sentences standing between them and their money.
       payDayName: 'יום ראשון',
-      paySubtitle: 'הכסף עובר אליכם בהעברה שבועית, כל {day}.',
+      paySubtitle: 'הכסף מכל מכירה נכנס ישירות לחשבון שלכם אצל חברת הסליקה.',
       // Sits UNDER "פרטי בנק ופרטי עסק" and only for a seller with more than one shop (owner,
       // 2026-08-11). It replaced `payAllStores`, which said the same thing in the panel's SUBTITLE
       // — where it described the whole screen instead of the one card it is true of, and made a
@@ -1060,13 +1060,18 @@ export const translations = {
       // break.
       payHowTitle: 'איך זה עובד',
       payHowWhenQ: 'מתי הכסף מועבר?',
-      // The חג clause is the answer to the owner's question of 2026-08-16 — what happens when the
-      // payout day is not a working day. Sunday can never fall on a weekend, so a holiday is the only
-      // collision there is, and today NOTHING in the code knows when the holidays are: the run would
-      // create its rows and the bank would move the money when it next opens. Stating it is honest;
-      // making it true needs a banking calendar and belongs with the bank integration (GO_LIVE §3).
-      // The dates a seller reads say "צפוי" for the same reason.
-      payHowWhenA: 'פעם בשבוע, כל {day}, בהעברה אחת לחשבון הבנק שלכם — על כל מה שמוכן לתשלום עד אז. אם היום הזה חל בחג, ההעברה יוצאת ביום העסקים שלאחריו.',
+      // The date is the PROCESSOR's, not ours, and saying so is the point of the sentence: there
+      // is no platform transfer to be late, to round, or to hold. The tenth is their published
+      // default for a seller on the monthly settlement track (GO_LIVE §3.1.0 §37).
+      payHowWhenA: 'חברת הסליקה מזכה את חשבון הבנק שלכם בעשירי לכל חודש, על התנועות של החודש שלפניו.',
+      payHowFeeQ: 'איפה יורדת העמלה?',
+      // Answering the question a seller asks next, which is not "how much" but "when do I pay it".
+      // Nothing is ever invoiced to him for a sale: the cut comes out inside the transaction, so
+      // what lands is already net. The RATE lives in the tier table and is deliberately not
+      // repeated here — a number in two places is a number that will disagree with itself.
+      payHowFeeA: 'בתוך העסקה עצמה. מה שנכנס אליכם הוא כבר אחרי עמלת הפלטפורמה, ואין על זה חיוב נפרד.',
+      payHowRefundQ: 'ומה קורה בהחזר?',
+      payHowRefundA: 'ההחזר חוזר לקונה מאותה עסקה שבה שילם, ומקוזז מהתנועות של אותו חודש.',
       // ⚠️ The owner read the first version and asked *"לא הבנתי… למה 21 מרגע המסירה ולא 15 למשל?"*
       // — which is the right question, and the answer is that the number is DERIVED and the sentence
       // was hiding that. Israeli consumer law gives a distance-sale buyer 14 days FROM RECEIVING the
@@ -3077,7 +3082,7 @@ export const translations = {
       tabPayouts: 'Payments',
       payTitle: 'My payments',
       payDayName: 'Sunday',
-      paySubtitle: 'Your money reaches you in a weekly transfer, every {day}.',
+      paySubtitle: 'The money from every sale lands directly in your own account at the processor.',
       payBankAllStores: 'These details apply to every store you own.',
       payAccountTotal: 'Next payment across all of your stores: {amount}.',
       payAccountHeld: 'Waiting across all of your stores: {amount}.',
@@ -3113,7 +3118,11 @@ export const translations = {
       payBusinessMissing: 'Not set',
       payHowTitle: 'How this works',
       payHowWhenQ: 'When is the money transferred?',
-      payHowWhenA: 'Once a week, every {day}, in one transfer to your bank account — everything released by then. If that day is a public holiday, the transfer goes out on the next business day.',
+      payHowWhenA: 'The processor credits your bank account on the 10th of each month, for the previous month\'s activity.',
+      payHowFeeQ: 'Where is the commission taken?',
+      payHowFeeA: 'Inside the transaction itself. What reaches you is already net of the platform commission, and there is no separate charge for it.',
+      payHowRefundQ: 'What happens on a refund?',
+      payHowRefundA: 'It goes back to the buyer from the same transaction they paid on, and is offset against that month\'s activity.',
       payHowHeldQ: 'When is it held?',
       payHowHeldA: 'From payment until the order is delivered, plus {delivery} days from the delivery date. Never marked it delivered? {payment} days from the payment date.',
       payHowWhyQ: 'Why {delivery} days?',

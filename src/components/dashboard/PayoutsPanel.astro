@@ -1,157 +1,43 @@
 ---
 /**
- * The seller's money: what is payable now, what is still on hold and why, and where it goes.
+ * The seller's money, under the split model: where it comes from, when, and the account it lands in.
  *
- * ── Rewritten for SIMPLICITY, 2026-08-11 (owner, סשן א׳) ──
- * *"מאז שהתחלנו עם התשלומים הכל התבלגן לי ומרגיש לי שהלכנו לאיבוד. לכן מרגיש לי שגם המוכר ילך
- * לאיבוד. זה החלק הכי רגיש בפלטפורמה והוא צריך להיות מאוד פשוט למשתמש."* Four things changed and
- * each is a deletion rather than an addition, which is the point:
- *   1. **Every rule is stated once**, at the bottom, in `#pay-how` — four questions with four short
- *      answers. The subtitle, the tile hints and the per-row reasons used to each carry a copy of
- *      the hold rule, so it was restated five times on one screen and read nowhere.
- *   2. **A filled-in bank account is a closed summary with an "ערוך" button**, not six open inputs.
- *      An open form reads as unfinished work every time the tab is opened.
- *   3. **"שולם בעבר" and the payout history are gone from here** — they moved to the Reports tab as
- *      the `payouts` report, with a period picker and a CSV export (§6: *"זה מידע שהוא מרגיש יותר
- *      חשבונאי"*). This tab answers "when do I get paid"; what was transferred last March is a
- *      bookkeeping question, and it was the only thing on this screen that looked backwards.
- *   4. The footnote pointing at the Orders tab is deleted (§5) — the link in the action column of
- *      the table above it already goes there.
+ * ── What this screen stopped being, 2026-08-21 ──
+ * It used to be the seller's half of a payout WE made: what was payable now, what was still on hold
+ * and why, a table splitting the waiting money by reason, and four rules explaining a fifteen-day
+ * clock. Every one of those existed because the buyer's money passed through the platform and we
+ * decided when to send it on. Under the split model it never arrives here — the processor captures
+ * each store's share into that seller's own account at the moment of the charge, deducts our
+ * distribution fee inside the same transaction, and credits the seller on its own schedule
+ * (GO_LIVE §3.1.0). There is no hold to explain, no release date to promise and no transfer to
+ * forecast, so the screen that explained them is three things instead of nine.
  *
- * **Two scopes on one screen, and each says which it is.** A payout is one bank transfer per seller
- * ACCOUNT — one subscription, one commission rate, one ח״פ, one bank account, however many stores
- * (`pricing.ts`, `seller-account.ts`). So "תשלום קרוב" and "שולם בעבר" cannot be split by shop and
- * are labelled "מכל החנויות". Everything else here — what is on hold, why, and the links to the
- * orders behind it — is the store in the switcher and nothing else (owner, 2026-08-11: *"אני לא
- * רואה סיבה להציג בחנות אחת נתונים של חנות אחרת"*).
+ * **The bank and business form stays, and its job changed rather than ended.** It is no longer
+ * where we learn how to pay a seller; it is what we hand the processor to open his merchant
+ * account, so the same six fields now gate his ability to SELL rather than his ability to be paid.
+ * That is a stronger gate, and it is why the owner chose (2026-08-21) to ask for them on the
+ * store-opening card, skippable — `payout-details.ts`'s header carries the rule, and both surfaces
+ * still write through `parsePayoutDetails` so neither can half-save an account.
  *
- * One account = one registered business is a DECISION, not an assumption nobody has examined: the
- * separate-business-entity model was designed, written down and then rejected on 2026-08-11 — a
- * seller with a second ח״פ opens a second seller account. `DB_MIGRATION_PLAN.md` §10 records why,
- * and it is closed rather than pending. Do not re-propose it.
+ * ⚠️ The gate itself is NOT built: nothing yet refuses to publish a store whose seller has no
+ * merchant account, because there is no adapter to open one with. It arrives with the adapter, and
+ * this panel is where the seller will read the account's status.
  *
- * **Server-rendered, unlike Reports and Performance.** Those defer because a report is the heaviest
- * thing the dashboard can build. This is three small queries assembled by one call
- * (`payouts.ts#getSellerAccountFor`) and its numbers are the reason a seller opens the tab at all —
- * a screen about money that arrives a beat later reads as a screen that is not sure.
- *
- * **Every number here comes from `buildSellerAccount` and none is computed in this file.** That is
- * the rule `reporting-invariants.test.ts` exists for: the payout run and this screen must answer
- * from the same function, or a seller reads one figure and is paid another.
- *
- * The bank form lives HERE and not in Settings: splitting one form across two tabs — the money on
- * this screen, the account it goes to on another — costs the seller the one context in which the
- * fields make sense. It is ALSO offered, optionally and collapsed, on the store-opening card since
- * 2026-08-11; `payout-details.ts`'s header carries that amendment and what stayed fixed under it.
- * Both write through `parsePayoutDetails`, so neither can half-save a bank account.
+ * **One account, one registered business** — one subscription, one commission rate, one ח״פ, one
+ * bank account, however many stores (`pricing.ts`). A seller with a second ח״פ opens a second
+ * account; `DB_MIGRATION_PLAN.md` §10 records why, and it is closed rather than pending.
  */
-import { formatAgorot } from '../../lib/money.js';
-import { MIN_PAYOUT_AGOROT, HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT, STATUTORY_RETURN_DAYS } from '../../lib/payout-schedule.js';
-import { BUSINESS_TYPES, needsBankDetails, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
-import { splitHeldByBasis, payableHeadlineAgorot } from '../../lib/order-payout-line.js';
-import type { SellerAccount } from '../../lib/seller-account.js';
+import { BUSINESS_TYPES, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
-  account: SellerAccount;
   seller: PayoutDetails;
-  /** More than one store, so the "all your stores" line is worth saying. */
+  /** More than one store, so the "these details cover all of them" line is worth saying. */
   multiStore: boolean;
-  /** Deep link into ONE store's Orders tab, filtered to the statuses one hold reason describes.
-   *  Built by the page, because the store id and the tab are its business and not this component's.
-   *  A null slug means the seller's only store — the page resolves it to the one in the switcher. */
-  ordersHref: (basis: 'payment' | 'unshipped', storeSlug: string | null) => string;
-  /** The shop in the switcher. Everything about ORDERS on this screen is scoped to it; the two
-   *  account-wide figures are labelled as account-wide rather than silently pooled. */
-  storeSlug: string | null;
-  /** This shop's name, for the "waiting" heading when the seller has more than one. */
-  storeName: string | null;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { account, seller, multiStore, ordersHref, storeSlug, storeName, d } = Astro.props;
+const { seller, multiStore, d } = Astro.props;
 
-/**
- * ── What used to be here, and why it is not ──
- *
- * A paged table of every held order: id, store, amount, release date, reason, action. It was
- * accurate and the owner rejected it (סשן א׳ §4): *"אני כביכול רואה שיש עוד רשימה של הזמנות,
- * בנוסף ללשונית הזמנות… אין סיבה ליצור עוד לשונית של ניהול הזמנות"*. Two tables of orders one tab
- * apart do not read as two views; they read as two places an order might be, and the seller has to
- * work out which one is authoritative.
- *
- * So the per-ORDER sentence moved to the order's own card in the Orders tab (`order-payout-line.ts`,
- * which both surfaces now derive from) and what is left here is the only thing this screen was ever
- * better placed to say: **how the waiting money splits by reason, and which part of it is waiting
- * on the seller.** That is a money question, it is three lines instead of a hundred rows, and it
- * links to the Orders tab for the rows rather than reprinting them.
- *
- * A consequence worth naming: nothing on this panel pages any more. `?paypage=` went with the
- * held-orders table and `?payhist=` went with the payout history (now the Reports tab's `payouts`
- * report). An old bookmark carrying either still opens the tab — an unknown query parameter is
- * ignored, not an error — it simply lands on the panel, which is where it was going.
- */
-/** The split, and every figure in it, comes from `order-payout-line.ts#splitHeldByBasis` — nothing
- *  on this screen is computed in this file, which is the rule the panel's header already states and
- *  the reason `tests/reporting-invariants.test.ts` can prove these rows add up to the tile above
- *  them. */
-/**
- * ── The waiting money is THIS STORE's, and only this store's (owner, 2026-08-11) ──
- *
- * *"אני לא רואה סיבה להציג בחנות אחת נתונים של חנות אחרת, לא תשלום, לא את הסיבות, אולי רק למעלה
- * ״תשלום קרוב מכל החנויות״"*. The previous version listed every shop's reasons on every shop's
- * screen, sectioned by name — accurate, and the wrong screen for it: the dashboard is a store's
- * dashboard, and the seller came here from the switcher having chosen one.
- *
- * So the split is scoped to the store in the switcher, and the two figures that CANNOT be scoped —
- * the next transfer and the lifetime of transfers, which are one bank account's facts and not one
- * shop's — are the account-wide strip above it, labelled as such. Nothing on this screen is now
- * both unlabelled and about somewhere else.
- */
-const held = splitHeldByBasis(account.slices, storeSlug ?? undefined);
-/** This shop's share of what is on hold. The account-wide `heldAgorot` is the sum over every shop,
- *  and printing it above a table that lists one shop's reasons is the mismatch this whole change is
- *  about — so the tile is computed from the same split the table renders. */
-const heldHereAgorot = held.groups.reduce((t, g) => t + g.agorot, 0) + held.unknownAgorot;
-/** THIS shop's "תשלום קרוב", by the rule in `order-payout-line.ts#payableHeadlineAgorot` — which the
- *  seller's OVERVIEW tab now asks as well, so the rule lives there rather than here. Its header
- *  carries why a multi-store seller and a single-store one are shown different quantities, and why
- *  the account-wide transfer has to appear somewhere on this screen too. */
-const headlineAgorot = payableHeadlineAgorot(account.slices, storeSlug, multiStore, account.payableNowAgorot);
-
-/**
- * The reason and the pending action, in the seller's language.
- *
- * The mapping from a hold basis to these two keys lives in `order-payout-line.ts` and is shared
- * with the order card, so what a seller reads beside an order and what they read beside its group
- * here cannot disagree. Only the lookup is local.
- *
- * **Both columns are LABELS now, not sentences (owner, סשן א׳ §1).** The reason used to spell the
- * whole hold rule out per row — "הכסף משתחרר 14 ימים אחרי המסירה, זה חלון ההחזרה של הקונה" — which
- * is the rule restated once per row and read nowhere. It says "טרם נמסר" and the rule is stated once,
- * in `#pay-how` at the bottom of this panel. The action was already a noun for the same reason.
- *
- * No `{n}` reaches these strings any more, which is why the day constants are no longer interpolated
- * here. They are still imported — `#pay-how` interpolates them, from `payout-schedule.ts`, because
- * those are owner decisions and a sentence promising 21 days while the code waits 30 is a promise we
- * break.
- */
-const WHY: Record<string, string> = {
-  delivery: d.payWhyDelivery,
-  payment: d.payWhyPayment,
-  unshipped: d.payWhyUnshipped,
-  return_open: d.payWhyReturnOpen,
-};
-const ACTION: Record<string, string> = {
-  delivery: d.payActionNone,
-  payment: d.payActionMarkDelivered,
-  unshipped: d.payActionShip,
-  // Nothing for the seller to do — the case is with the buyer, the carrier or the admin.
-  return_open: d.payActionNone,
-};
-/** The one basis where the seller is BLOCKING their own money: no clock runs until they ship. It is
- *  the only action here that changes an outcome rather than a date, so it is the only one that
- *  takes a colour — three highlighted rows would highlight nothing. */
-const BLOCKING = 'unshipped';
 const TYPE_LABEL: Record<string, string> = {
   exempt: d.payBusinessExempt,
   licensed: d.payBusinessLicensed,
@@ -163,134 +49,17 @@ const bankLine = maskedBankLine(seller);
  *  which `scripts/dashboard/payouts.ts` also calls after a save — one composition rule, two
  *  renderers, no drift. */
 const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMissing);
-/**
- * The same predicate the tab's red dot is drawn from (`payout-details.ts#needsBankDetails`), asked
- * again here so the dot on the strip has a dot UNDER it, on the form it is actually about (owner,
- * סשן א׳ §5). A dot on a tab tells a seller that something in a screenful of tiles, two tables and
- * a six-field form needs them; it does not tell them which. The chain has to end on the thing to
- * do, or the top of it is just an alarm.
- *
- * Computed rather than passed: the panel already holds both inputs, and a `needsBank` prop would be
- * a second place for the condition to be decided from.
- */
-const needsBank = needsBankDetails(seller, account.payableNowAgorot);
-const TILE = 'border [border-color:var(--color-border)] rounded-[var(--radius)] p-3';
-const CELL = 'py-2 px-2.5 text-[0.85rem]';
-/** The one dot recipe on this panel — same 7px danger circle the tab strip and the order rows use,
- *  so a seller learns the mark once. Inline-block here rather than absolutely positioned: it sits
- *  in the flow of a heading instead of over the corner of a button. */
-const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-danger)] align-middle ms-2';
 ---
 
 <div id="payouts-root">
   <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
     <h2 class="m-0 text-base font-semibold">{d.payTitle}</h2>
-    {/* ONE line, and it says only when the money moves. Every rule it used to carry — the hold, the
-        return window, the minimum — is in `#pay-how` at the bottom, once (owner, סשן א׳ §1). */}
-    {/* No "כולל את כל החנויות שלך" here any more (owner, 2026-08-11). Standing at the top of a
-        STORE's dashboard, that sentence made the whole screen read as somebody else's — and it was
-        only ever true of two things on it. It moved to the one place it is actually about, the bank
-        card, and the two figures that really are account-wide say so on themselves. */}
-    <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle.replace('{day}', d.payDayName)}</p>
+    <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle}</p>
   </div>
-
-  {/* Two tiles, not four. "שולם בעבר" left for the Reports tab (§6) — it was the only backward-
-      looking figure on a screen about what happens next, and it is the one a bookkeeper wants with
-      a period and an export rather than as a lifetime total nobody can reconcile against. */}
-  <dl class="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-    <div class={TILE}>
-      {/* Named after the SHOP when there is more than one, because that is whose money it is. The
-          real transfer covers every shop and is stated on its own line below the tiles. */}
-      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow}{multiStore && storeName ? ` · ${storeName}` : ''}</dt>
-      {/* The one figure a seller acts on, so it is the one that takes the accent. The others are
-          context and stay in the ordinary text colour — three coloured numbers say nothing. */}
-      {/* ── `data-skel`, and why a SERVER-rendered panel has one (owner, 2026-08-11) ──
-          Nothing here waits on first paint — the figures arrive with the page, which is exactly why
-          this tab has no loading screen and Performance does. There is one moment it DOES wait: a
-          status change on the Orders tab moves money between held and payable, and `payouts.ts`
-          re-reads the server's rendering of this panel. Until it lands, these tiles show the number
-          from before the change — a stale figure on a money screen, presented with the confidence of
-          a fresh one. So the shimmer stands in for the value while the refresh is in flight, on the
-          same rule Performance's KPIs follow (`SkelBar.astro`: a seller cannot tell a real zero from
-          "not here yet"). The attribute carries the SIZE so the swap causes no layout jump. */}
-      <dd class={`m-0 text-[1.1rem] font-bold ${headlineAgorot > 0 ? '[color:var(--color-accent)]' : ''}`} id="pay-kpi-now" data-skel="w-24 h-[1.1rem]">{formatAgorot(headlineAgorot)}</dd>
-      <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payPayableNowHint}</p>
-    </div>
-    {/* THIS shop's share, like the tile beside it — both tiles are now the store in the switcher,
-        and the one account-wide figure on the screen is the transfer sentence below them (owner,
-        2026-08-11: *"זה לא רלוונטי מכל החנויות, רק החנות שהוא עליה"*). Printing the account-wide
-        held figure above a table that lists one shop's reasons was the original mismatch. Computed
-        from the same split the table renders, so the tile and the rows under it are one number. */}
-    <div class={TILE}>
-      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld}</dt>
-      <dd class="m-0 text-[1.1rem] font-bold" data-skel="w-24 h-[1.1rem]">{formatAgorot(heldHereAgorot)}</dd>
-      <p class="muted m-0 mt-1 text-[0.72rem] leading-snug">{d.payHeldHint}</p>
-      {/* The tile's own way out, instead of a second explanatory sentence on it (owner, §3). A real
-          `<a href="#pay-how">` so it works with no JS; `payouts.ts` intercepts it because an anchor
-          jump on this site lands the target under the fixed header. */}
-      <a class="inline-block mt-1 text-[0.72rem] underline underline-offset-2 [color:var(--color-muted)] hover:[color:var(--color-accent)]" href="#pay-how" id="pay-how-link">{d.payHeldMore}</a>
-    </div>
-    {/* Rendered only when it exists. A permanent "0 ₪ debt" tile teaches a seller to expect a debt
-        column, which is the wrong thing for a screen most of them will never see one on. */}
-    {account.carriedAgorot > 0 && (
-      <div class={TILE}>
-        <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payCarried}</dt>
-        <dd class="m-0 text-[1.1rem] font-bold [color:var(--color-danger)]" data-skel="w-24 h-[1.1rem]">{formatAgorot(account.carriedAgorot)}</dd>
-        <p class="muted m-0 mt-1 text-[0.72rem]">{d.payCarriedHint}</p>
-      </div>
-    )}
-  </dl>
-
-  {/* The REAL transfer, once, and only for a seller who has more than one shop. The tiles above are
-      this shop's; one bank transfer covers all of them, and a seller who read only the per-store
-      figure would expect the wrong amount to arrive. Stated as a sentence rather than a fourth
-      tile — it is context for the number above, not a number to act on separately.
-
-      `payMinNote` went with it: it was a second standing sentence in this spot, and the minimum is
-      one of the four things `#pay-how` now answers (owner, סשן א׳ §1). */}
-  {multiStore && (
-    <div class="m-0 mb-4 text-[0.82rem] flex flex-col gap-0.5">
-      <p class="m-0">{d.payAccountTotal.replace('{amount}', formatAgorot(account.payableNowAgorot))}</p>
-      {/* Its pair, added 2026-08-11 at the owner's request, and DIRECTLY under it on purpose: the
-          two tiles above are this shop's "תשלום קרוב" and "ממתינים", and these are the same two
-          questions asked of the whole account, in the same order. A seller can then read the column
-          down or the pair across, and neither reading is a scope they have to work out.
-
-          `account.heldAgorot` — the account-wide figure from `buildSellerAccount`, NOT the
-          per-store `heldHereAgorot` the tile shows. They are the same number for a seller with one
-          shop, which is exactly why this block is `multiStore`-only: two identical figures a line
-          apart teach a seller that the scope labels mean nothing. */}
-      <p class="m-0">{d.payAccountHeld.replace('{amount}', formatAgorot(account.heldAgorot))}</p>
-    </div>
-  )}
-
-  {/* The banner. It appears on ONE condition — money is genuinely released and there is nowhere to
-      send it — because a standing "complete your profile" prompt is the entry barrier this project
-      refuses to build (`feedback_seller_form_burden`). Nothing here is required until it is. */}
-  {needsBank && (
-    <div class="card card--flat p-4 mb-4 [border-color:var(--color-warning)]" role="status" id="pay-no-bank-banner">
-      <h3 class="text-[0.98rem] font-bold m-0">{d.payNoBankTitle}</h3>
-      <p class="muted m-0 mt-1 text-[0.85rem]">{d.payNoBankBody}</p>
-      {/* `self-start`, and it is not cosmetic: `.card` is `display:flex; flex-direction:column`
-          (cards.css), so a direct child stretches to the card's whole width — which is how a
-          `.btn`, an inline-flex element everywhere else on the site, came out as a full-width bar
-          here and nowhere else. Every direct child of a `.card` that is not meant to fill it needs
-          this.
-          A button rather than an anchor: `href="#..."` scrolls the form's TOP to the viewport's
-          top, where the fixed header covers it, so it landed in the middle of the fields
-          (owner, 2026-08-10). The script takes them to the first EMPTY field instead, which is the
-          thing they actually came to fill in. */}
-      <button type="button" class="btn btn--sm mt-3 self-start" id="pay-goto-details">{d.payNoBankCta}</button>
-    </div>
-  )}
 
   <form class="card card--flat p-4 md:p-5" id="pay-details-form" data-unsaved-guard>
     <h3 class="text-[1.05rem] font-bold m-0">
       {d.payBankTitle}
-      {/* `id`, because scripts/dashboard/payouts.ts clears it the moment the form saves — the tab's
-          own dot is server-rendered and would otherwise sit there until the next full load, which
-          is the "I did the thing and it still says I didn't" state. */}
-      {needsBank && <span id="pay-bank-dot" class={DOT} role="img" aria-label={d.payNoBankTitle}></span>}
     </h3>
     {/* The one thing on this screen that genuinely is account-wide and could be MISTAKEN for the
         store's, so it is said here and only here (owner, 2026-08-11: *"לא צריך להיות בכותרת, אלא
@@ -386,94 +155,26 @@ const DOT = 'inline-block w-[7px] h-[7px] rounded-full [background:var(--color-d
     </div>
   </form>
 
-  {/* Three lines, for THIS shop. What the seller cannot get from the Orders tab is the SPLIT — how
-      much of the waiting money is simply the buyer's return window running down, and how much is
-      sitting still because nobody has posted the parcel.
+  {/* ── The rules, once, at the end ──────────────────────────────────────────────────────────
+      Three questions in the order a seller asks them, each with one short answer. There is no
+      fourth about a hold, a release date or a minimum transfer: under the split model none of
+      those is a thing that happens to his money.
 
-      Scoped to the store in the switcher (owner, 2026-08-11). It used to list every shop's reasons
-      under its own name on every shop's screen; the heading names this shop only when the seller
-      has more than one, and the account-wide figures live in the strip at the top. */}
-  <h3 class="text-[1.05rem] font-bold m-0 mt-6 mb-2">
-    {d.payHeldTitle}{multiStore && storeName ? ` \u00b7 ${storeName}` : ''}
-  </h3>
-  {held.groups.length === 0 && held.unknownOrders === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHeldEmpty}</p> : (
-    <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-start">
-        <thead>
-          <tr class="[color:var(--color-muted)] text-[0.76rem]">
-            <th class={`${CELL} text-start font-medium`}>{d.payColWhy}</th>
-            <th class={`${CELL} text-start font-medium`}>{d.payColOrders}</th>
-            <th class={`${CELL} text-start font-medium`}>{d.payColAmount}</th>
-            <th class={`${CELL} text-start font-medium`}>{d.payColAction}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {held.groups.map((g) => (
-            <tr class="border-t [border-color:var(--color-border)]">
-              <td class={CELL}>{WHY[g.basis]}</td>
-              <td class={`${CELL} tabular-nums`}>{g.orders}</td>
-              <td class={`${CELL} tabular-nums`}>{formatAgorot(g.agorot)}</td>
-              {/* The action cell is a LINK for the two bases that have one, and plain text for the
-                  one that does not — a seller told to ship an order needs the order, and sending
-                  them to hunt for it in a filter menu is the half of the old table worth keeping.
-                  `ordersHref` narrows the Orders tab to this shop AND to this reason's payout
-                  status; the tab then says so, with a way back to the full list. */}
-              <td class={`${CELL} ${g.basis === BLOCKING ? 'font-semibold [color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>
-                {g.basis === 'delivery' || g.basis === 'return_open' ? ACTION[g.basis] : (
-                  <a class="underline underline-offset-2 [color:inherit] hover:[color:var(--color-accent)]" href={ordersHref(g.basis, storeSlug)}>{ACTION[g.basis]}</a>
-                )}
-              </td>
-            </tr>
-          ))}
-          {held.unknownOrders > 0 && (
-            <tr class="border-t [border-color:var(--color-border)]">
-              <td class={CELL}>{d.payWhyUnknown}</td>
-              <td class={`${CELL} tabular-nums`}>{held.unknownOrders}</td>
-              <td class={`${CELL} tabular-nums`}>{formatAgorot(held.unknownAgorot)}</td>
-              <td class={`${CELL} [color:var(--color-muted)]`}>{d.payActionNone}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-      {/* The footnote that pointed at the Orders tab is deleted (owner, סשן א׳ §5: *"משפט מיותר"*).
-          The action column above it is already a link into exactly the orders it describes, so the
-          sentence was telling a seller where to find something they were being handed. */}
-    </div>
-  )}
-
-  {/* ── The rules, once, at the end (owner, סשן א׳ §1) ────────────────────────────────────────
-      Four questions in the order a seller asks them, each with one short answer. This is the ONLY
-      place on the screen where the hold rule is spelled out; the subtitle, the tile hints and the
-      table's reason column all used to carry a copy of it, which is what made a payments page feel
-      like a document rather than a statement.
-
-      A `<dl>` and not prose: a seller scanning for one of the four finds it by its question, which
-      is not true of a paragraph that contains the same words.
-
-      Every number is interpolated from `payout-schedule.ts`. Those are still owner decisions and
-      `terms.astro` interpolates the same four constants — a page here promising 21 days while the
-      terms promise 30 is the contradiction that matters most on this particular screen. */}
+      A `<dl>` and not prose: a seller scanning for one of the three finds it by its question,
+      which is not true of a paragraph containing the same words. */}
   <h3 class="text-[1.05rem] font-bold m-0 mt-8 mb-2" id="pay-how">{d.payHowTitle}</h3>
   <dl class="card card--flat p-4 md:p-5 gap-3 text-[0.85rem]">
     <div>
       <dt class="font-semibold m-0">{d.payHowWhenQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowWhenA.replace('{day}', d.payDayName)}</dd>
+      <dd class="muted m-0 mt-0.5">{d.payHowWhenA}</dd>
     </div>
     <div>
-      <dt class="font-semibold m-0">{d.payHowHeldQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowHeldA.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY)).replace('{payment}', String(FALLBACK_DAYS_AFTER_PAYMENT))}</dd>
-    </div>
-    {/* Both the QUESTION and the answer carry the hold length, because the question the owner
-        actually asked was *"למה 21 ולא 15?"* — a heading that says only "למה?" is answering a
-        different one. Since 2026-08-16 the hold IS the statutory window, so the two numbers are the
-        same one; the answer still names the law, because "14 because 14" explains nothing. */}
-    <div>
-      <dt class="font-semibold m-0">{d.payHowWhyQ.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY))}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowWhyA.replace('{delivery}', String(HOLD_DAYS_AFTER_DELIVERY)).replace('{statutory}', String(STATUTORY_RETURN_DAYS))}</dd>
+      <dt class="font-semibold m-0">{d.payHowFeeQ}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowFeeA}</dd>
     </div>
     <div>
-      <dt class="font-semibold m-0">{d.payHowMinQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowMinA.replace('{min}', formatAgorot(MIN_PAYOUT_AGOROT))}</dd>
+      <dt class="font-semibold m-0">{d.payHowRefundQ}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowRefundA}</dd>
     </div>
   </dl>
 </div>

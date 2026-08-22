@@ -44,7 +44,7 @@ import { productSeoPanelHtml, productSeoLabels, productSeoRowGaugeHtml } from '.
 import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
-import { getSellerSession } from '../../lib/seller-auth.js';
+import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
@@ -77,7 +77,7 @@ import { getOrdersByStoreSlugInRange, getSellerOrdersPage, getSellerOrderStatusC
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
 import { parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
-import { orderPayoutLine, payoutLineText, payoutFilterValue, splitHeldByBasis, payableHeadlineAgorot } from '../../lib/order-payout-line.js';
+import { orderPayoutLine, payoutLineText, payoutFilterValue } from '../../lib/order-payout-line.js';
 import { orderInvoiceRowHtml, orderInvoiceChipHtml } from '../../lib/order-invoice-row.js';
 import { getBuyerInvoiceStates } from '../../lib/invoicing/buyer-invoice.js';
 import { formatBusinessDayLabel } from '../../lib/format-date.js';
@@ -117,8 +117,6 @@ import { storeSettingsRev } from '../../lib/record-rev.js';
 import { toSellerProductRow } from '../../lib/seller-product-row.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
-import { getSellerAccountFor } from '../../lib/payouts.js';
-import { needsBankDetails } from '../../lib/payout-details.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -371,54 +369,11 @@ if (Astro.request.method === 'POST') {
 
 const allStores = await getStoresBySellerId(sellerId);
 const hasNoStore = allStores.length === 0;
-// **The one read on this page that is not about the store in the switcher.** A payout is per
-// registered business, so this covers every store the seller owns — three small indexed reads
-// assembled by one call (`payouts.ts#getSellerAccountFor`), issued on every load rather than only
-// when the tab is open, because what it decides is the tab's BADGE: money released with no bank
-// account to send it to is the one state a seller has to be told about from wherever they are
-// standing. It also carries the seller row, which the performance tab reads for the tier.
-const payoutAccount = await getSellerAccountFor(sellerId);
-const seller = payoutAccount?.seller ?? null;
-// The badge condition, and it is the banner's condition too — one predicate, so the strip and the
-// panel cannot disagree about whether there is anything to do (PayoutsPanel.astro).
-// Both tables on the Payments tab page through the URL, so each link has to carry the OTHER
-// table's page too — otherwise stepping through the history silently resets the held list under
-// the seller's cursor. Built here rather than in the component so the store id and the open tab
-// stay this page's business.
-/**
- * From a hold reason on the Payments tab to the orders behind it, in the tab that manages orders.
- *
- * The half of the deleted held-orders table that was worth keeping (owner, סשן א׳ §4): a seller
- * told "3 orders are waiting on you to ship" needs the three orders, and a link that lands them on
- * an unfiltered list has sent them to look for something rather than at it. The statuses are
- * derived from what each reason MEANS — `unshipped` is every status the payout clock does NOT run
- * from — so a new shipping status is filtered correctly by `order-status-rules.ts` rather than by a
- * list here going stale.
- *
- * It reads the courier column and not `pickupPayoutClockRuns`, which is a simplification and a safe
- * one: the only status where the two differ is `ready`, which the seller's filter menu cannot
- * express at all (`ORDER_FILTER_STATUSES`). This decides which rows a link shows, never which money
- * moves — `payout-hold.ts` is the only thing that does that, and it reads the right column.
- */
-function ordersForHoldBasisHref(basis: 'payment' | 'unshipped', storeSlug: string | null): string {
-  const params = new URLSearchParams({ panel: 'orders' });
-  // The row's OWN shop, not the one in the switcher. The payments tab is account-wide and the
-  // Orders tab shows one store, so a link that always used the current store sent a two-shop seller
-  // to the wrong list and showed them a subset as if it were the answer (owner, 2026-08-11).
-  const target = storeSlug ? allStores.find((s) => s.slug === storeSlug) : store;
-  if (target) params.set('store', target.id);
-  // `opay` — the Orders tab's own payout-status column, NOT a list of shipping statuses. The first
-  // version spelled the hold rule out as `?ostatus=pending,processing`, which is a restatement of
-  // `order-status-rules.ts` inside a link: it would have gone on filtering the old way the day a
-  // status's payout behaviour changed. The owner asked for the filter column instead, and it is
-  // also the version that cannot drift.
-  params.set('opay', basis === 'unshipped' ? 'unshipped' : 'undelivered');
-  // Says why the list is narrowed once it gets there, and offers the way out. Without it the seller
-  // lands on a filtered Orders tab with no idea what filtered it or how to leave (owner, same).
-  params.set('ofrom', basis);
-  return `/seller/dashboard?${params.toString()}`;
-}
-
+// **The one read on this page that is not about the store in the switcher.** The seller row is per
+// registered business, not per shop: the performance tab reads its tier and the payments tab reads
+// its bank and business details. It used to arrive with a whole payout account beside it — what
+// was payable, what was held and why — and none of that exists any more (PayoutsPanel.astro).
+const seller = await getSellerById(sellerId);
 /** The reason the Orders tab is narrowed, when the seller arrived from the payments tab. Whitelisted
  *  rather than echoed: it is printed on the page, and an unknown value simply means no banner. */
 const ordersFromBasis = ['payment', 'unshipped'].includes(Astro.url.searchParams.get('ofrom') ?? '')
@@ -437,11 +392,6 @@ function ordersClearHref(): string {
   return `/seller/dashboard?${params.toString()}`;
 }
 
-// The rule is `payout-details.ts#needsBankDetails` and it is shared with the site header, which
-// asks the same question without an account to hand (`payouts.ts#sellerNeedsBankDetails`). This
-// page passes the figure it is already showing in the tile, so the dot, the banner and the number
-// beside them can never be three different answers.
-const payoutNeedsBank = !!payoutAccount && needsBankDetails(payoutAccount.seller, payoutAccount.account.payableNowAgorot);
 // `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
 // for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
 // seller's stores bill through their one registered business, so extra stores are extra brands,
@@ -904,40 +854,6 @@ const unshippedOrdersCount = orderStatusCounts.processing ?? 0;
  *  empty state asks ("no orders at all" is a different screen from "none match this filter"). */
 const storeOrdersTotal = Object.values(orderStatusCounts).reduce((sum, n) => sum + n, 0);
 
-/**
- * The overview's money row (owner, סשן א׳ §4), scoped to THIS SHOP and nothing else.
- *
- * The first version carried a third tile with the account-wide held total beside the per-store one.
- * The owner cut it, and gave the rule rather than the correction (2026-08-11): *"כמה שפחות לערבב
- * בין חנויות יחד, זה אמור להיות מידע משני ולא מרכזי. הוא נמצא על חנות א׳ אז הוא צריך לקבל מידע על
- * חנות א׳."* An overview is the most central surface in the dashboard, so it is the last place a
- * cross-store figure belongs; the one number that genuinely cannot be split by shop — the transfer
- * — is said once, on the Payments tab, under the tile it qualifies.
- *
- * So both tiles here are the store in the switcher, and neither needs a scope suffix: the whole
- * panel is about that shop, which is what makes the plain labels honest.
- *
- * **Costing nothing extra, and agreeing by construction.** `payoutAccount` is already read on every
- * dashboard load for the tab's badge, and both figures come from the same two functions the Payments
- * tab calls (`payableHeadlineAgorot`, `splitHeldByBasis`) — so they are a reduce over rows already
- * in memory, and the two screens cannot print different numbers for one shop.
- */
-function heldTotalFor(slug: string): number {
-  if (!payoutAccount) return 0;
-  const split = splitHeldByBasis(payoutAccount.account.slices, slug);
-  return split.groups.reduce((t, g) => t + g.agorot, 0) + split.unknownAgorot;
-}
-// ⚠️ `splitHeldByBasis` with no slug is the WHOLE ACCOUNT, which is why `heldTotalFor` takes a
-// REQUIRED one and the no-store case is handled here instead. Passing `store?.slug` straight through
-// would have printed the account-wide figure under a label naming one shop — zero in practice (no
-// store, no orders), which is exactly what makes it the kind of mislabelling that ships.
-const ovHeldThisStore = store ? heldTotalFor(store.slug) : 0;
-// The SAME rule the Payments tab's headline tile uses, from the same function: this shop's released
-// money for a multi-store seller, the account figure for a seller who has only one shop for it to
-// come from. `order-payout-line.ts#payableHeadlineAgorot` carries why those differ.
-const ovPayableNow = payoutAccount
-  ? payableHeadlineAgorot(payoutAccount.account.slices, store?.slug ?? null, allStores.length > 1, payoutAccount.account.payableNowAgorot)
-  : 0;
 // The toolbar's filter badge is SSR-computed (same as AdminOrdersPanel.astro) because
 // the first paint ALREADY shows a filtered list — the default "active" preset. Leaving
 // it hidden until the client's refreshOrdersFilterBadge() first runs (only on a filter/
@@ -1267,13 +1183,10 @@ const orderStatusColors: Record<string, string> = {
           style="position:relative"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>{d.tabPayouts}
-          {/* "danger", like the orders badge and unlike the stock one: this is not a wrong state
-              that can wait, it is the seller's own money sitting still because of a form nobody
-              has asked them to fill in. `data-tab-alert` is what lets the strip's edge flag it
-              while this tab is scrolled off screen (scripts/dashboard/tab-alert-edges.ts). */}
-          {payoutNeedsBank && (
-            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={d.payNoBankTitle}></span>
-          )}
+          {/* No dot here any more (2026-08-21). It fired when released money had no bank account
+              to go to — a state that cannot occur once the processor pays each seller directly.
+              The details still matter, but they gate OPENING a merchant account rather than
+              receiving a transfer, and that gate is not built yet (PayoutsPanel.astro). */}
         </button>
         <button
           class={`dash-tab${initialPanel === 'settings' ? ' dash-tab--active' : ''}`}
@@ -1376,35 +1289,10 @@ const orderStatusColors: Record<string, string> = {
           </div>
         </dl>
 
-        {/* ── The money row (owner, סשן א׳ §4) ────────────────────────────────────────────────
-            Its own `<dl>` under the counts rather than three more cells in that grid: these are
-            shekels and the ones above are quantities, and a row of five numbers where two are money
-            reads as one list of comparable things. A rule and a heading are cheaper than teaching
-            the seller to re-read the labels.
-
-            Both tiles jump to the Payments tab, where the same figures are broken down — the
-            overview's job is to say "there is something here", not to answer it.
-
-            **Neither label carries a scope, and that is the point** (owner, 2026-08-11: *"כמה שפחות
-            לערבב בין חנויות יחד… הוא נמצא על חנות א׳ אז הוא צריך לקבל מידע על חנות א׳"*). Both are
-            the store in the switcher, like every other number on this panel, so a suffix would be
-            answering a question the seller has not been given a reason to ask. The account-wide
-            held tile that stood here first is gone for the same reason. */}
-        {payoutAccount && (
-          <>
-            <h3 class="text-[0.95rem] font-semibold m-0 mt-6 mb-2">{d.tabPayouts}</h3>
-            <dl class="grid grid-cols-2 gap-3">
-              <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="payouts">
-                <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow}</dt>
-                <dd class={`m-0 text-[1.15rem] font-bold ${ovPayableNow > 0 ? '[color:var(--color-accent)]' : '[color:var(--color-muted)]'}`}>{formatAgorot(ovPayableNow)}</dd>
-              </button>
-              <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="payouts">
-                <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld}</dt>
-                <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{formatAgorot(ovHeldThisStore)}</dd>
-              </button>
-            </dl>
-          </>
-        )}
+        {/* No money row here any more (2026-08-21). It was two tiles — what is payable now and
+            what is still held — and both were facts about a transfer the platform made. The
+            processor now credits each seller directly, so the overview has nothing to forecast and
+            the Payments tab says the one thing left to say: where the money lands and when. */}
       </SellerPanelShell>
 
       <!-- ── Panel: Products ── -->
@@ -2946,14 +2834,10 @@ const orderStatusColors: Record<string, string> = {
       </SellerPanelShell>
 
       <SellerPanelShell panel="payouts" active={shows('payouts')}>
-        {payoutAccount && (
+        {seller && (
           <PayoutsPanel
-            account={payoutAccount.account}
-            seller={payoutAccount.seller}
+            seller={seller}
             multiStore={allStores.length > 1}
-            ordersHref={ordersForHoldBasisHref}
-            storeSlug={store?.slug ?? null}
-            storeName={store?.name ?? null}
             d={d}
           />
         )}

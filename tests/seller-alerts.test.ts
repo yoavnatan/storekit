@@ -105,9 +105,12 @@ describe('the tab strip and the switcher agree on which tabs are per-store', () 
       }),
     );
 
-    // The one deliberate exclusion, and it must stay deliberate.
-    const accountWide = ['tab-payouts'];
-    expect([...owners].sort()).toEqual([...perStore, ...accountWide].sort());
+    // There is no account-wide marker any more: the Payments tab carried the only one, and it
+    // reported released money with no bank account to send it to — a state the split model cannot
+    // reach, because the platform never holds the money to release. So every marker on the strip
+    // now belongs to a per-store tab, and this asserts exactly that rather than carrying an
+    // exclusion list that is empty.
+    expect([...owners].sort()).toEqual([...perStore].sort());
   });
 });
 
