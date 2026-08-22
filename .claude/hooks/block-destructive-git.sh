@@ -128,12 +128,44 @@ fi
 # Gated behind the command pattern so the git call below runs on a commit, not on every Bash tool
 # use in the session.
 #
-# **The flag patterns are anchored to whitespace, and that is a fix rather than tidiness.** Written
-# as a bare `-[a-zA-Z]*a` they also matched the middle of a PATH: `git commit -F
-# /tmp/x/-Users-yoavnatan-…/msg.txt` contains `-yoa`, so a perfectly ordinary commit with a message
-# file was refused with a warning about a stale checkout. An over-block on a safety hook is not
-# harmless — it is what teaches the next session to route around the hook.
-if printf '%s' "$cmd" | grep -Eq '\bgit\b[^;&|]*(\bcommit\b[^;&|]*(^|[[:space:]])-[a-zA-Z]*a[a-zA-Z]*([[:space:]]|$)|\bcommit\b[^;&|]*(^|[[:space:]])--all([[:space:]]|$)|\badd\b[^;&|]*(^|[[:space:]])(-A|--all|-u|--update|\.)([[:space:]]|$))'; then
+# **Matched on TOKENS, not on the text of the line, and that is a fix rather than tidiness.** A
+# regex over the raw command cannot tell a flag from the same characters inside a quoted string, so
+# `git commit -m "a message that mentions git add -A in prose"` was refused as a sweeping add, and
+# so was `grep "git add -A" tests/…` — a search for the rule's own name. An earlier round had the
+# same class the other way round, matching `-yoa` inside the PATH of `git commit -F /tmp/…/msg.txt`.
+# Splitting the line with shlex first makes a quoted argument ONE token, which ends the whole class:
+# a flag only counts when it is a word of its own, inside a `git` invocation, before a separator.
+# An over-block on a safety hook is not harmless — it is what teaches the next session to route
+# around the hook.
+sweeping_stage() {
+  printf '%s' "$cmd" | python3 -c '
+import shlex, sys
+SWEEP_ADD = {"-A", "--all", "-u", "--update", "."}
+SEP = (";", "&&", "||", "|", "&")
+for line in sys.stdin.read().splitlines():
+    try: toks = shlex.split(line, comments=False)
+    except ValueError: toks = line.split()
+    i = 0
+    while i < len(toks):
+        if toks[i] != "git":
+            i += 1
+            continue
+        j, inv = i + 1, []
+        while j < len(toks) and toks[j] not in SEP:
+            inv.append(toks[j]); j += 1
+        sub = next((t for t in inv if not t.startswith("-")), "")
+        if sub == "commit":
+            for f in inv:
+                if f == "--all" or (f.startswith("-") and not f.startswith("--") and "a" in f[1:]):
+                    sys.exit(0)
+        elif sub == "add":
+            if any(a in SWEEP_ADD for a in inv[inv.index("add") + 1:]):
+                sys.exit(0)
+        i = j
+sys.exit(1)' 2>/dev/null
+}
+
+if sweeping_stage; then
   # `-C` is not enough: git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE into every hook it runs,
   # and those BEAT the directory you hand a child (tests/helpers/git-env.ts — it cost an evening in
   # this repo on 2026-08-17). A guard that reads the wrong repository would block the innocent case
