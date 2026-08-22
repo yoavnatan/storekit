@@ -79,6 +79,12 @@ export function pinnedTopChrome(el: HTMLElement): number {
   const barH = (sel: string, root: ParentNode): number => {
     const bar = root.querySelector<HTMLElement>(sel);
     if (!bar) return 0;
+    // A bar does not cover ITSELF, nor anything it contains. Without this, `scrollEditRowIntoView`
+    // — which scrolls to `.edit-row-header`, a bar counted below — would land the form's own header
+    // exactly its own height too low the moment that header is pinned. Every existing caller either
+    // targets something none of these bars contain (unchanged) or targets a bar itself (which is
+    // what today's behaviour already is, because the bar was not in the stack at all).
+    if (bar === el || bar.contains(el)) return 0;
     const pos = getComputedStyle(bar).position;
     return pos === 'sticky' || pos === 'fixed' ? bar.getBoundingClientRect().height : 0;
   };
@@ -89,6 +95,11 @@ export function pinnedTopChrome(el: HTMLElement): number {
     const panel = el.closest<HTMLElement>('.dash-panel');
     if (panel) stack += barH('.dash-panel-head', panel) + barH('.products-header', panel);
   }
+  // The open product form's own header (Save / Cancel), which is `position:sticky` at 640px and
+  // below — the phone-only rule in dashboard.css. It is the LAST bar above anything inside that
+  // form, and the guard above keeps it from counting for the header itself.
+  const editRow = el.closest<HTMLElement>('tr.edit-row');
+  if (editRow) stack += barH('.edit-row-header', editRow);
   // The products table's column headings are sticky too, and they are the LAST bar in the stack —
   // but only for a target inside that table. Counted unconditionally they would over-scroll every
   // target that sits ABOVE it (the CSV and feed-sync panels both do), leaving a gap instead of
@@ -145,4 +156,53 @@ export function scrollProductsPanelIntoView(el: HTMLElement): void {
   // list), leave the scroll position alone rather than yanking the page down.
   if (rectTop >= pinnedTopChrome(el) && rectTop < window.innerHeight) return;
   animateScrollTo(Math.max(0, rectTop + window.scrollY - pinnedTopChrome(el) - 8));
+}
+
+
+/**
+ * Teach the BROWSER'S OWN scrolling about the bars this site pins over the top of the viewport.
+ *
+ * Everything above this line is for scrolls WE start. This is for the one nobody starts: type into
+ * a field that is off the top of the screen — because you tabbed to it, or scrolled while it kept
+ * focus — and the browser scrolls the caret back into view by itself, with no event to intercept
+ * and no way to talk it out of the position it picks. On the seller dashboard it picks the top of
+ * the viewport, which is under the site header, the tab strip, and (on the products tab) the
+ * table's column headings or the open form's own Save bar. Owner, 2026-08-22: *"אני מקליד בתוך
+ * האינפוטים בתוך טופס העריכה הפתוח של המוצר… זה כן גולל לאינפוט כשמקלידים אבל בגלל שיש את כל
+ * הסטיקי הדרס אז האינפוט עצמו מכוסה על ידם"*.
+ *
+ * `scroll-padding-top` is the property that exists for exactly this: it declares that the top N
+ * pixels of the scrollport are not really viewable, and every scroll-into-view the browser performs
+ * — caret, focus, `:target`, `scrollIntoView` — honours it. Measured on a probe page (fixed 120px
+ * bar, caret scrolled from above the fold): the field landed at y −11px without it and at y +109px
+ * with it, i.e. the full bar height, out from underneath.
+ *
+ * **Written on focus and removed on blur, rather than set once in CSS.** The stack is not a
+ * constant — it differs between the two dashboards, between the breakpoints, and between an open
+ * and a closed edit row — and `pinnedTopChrome` is the one place that already knows all of that.
+ * Leaving it applied would also quietly re-aim every `scrollIntoView({block:'nearest'})` on the
+ * page, which is a change nobody asked for; scoped to "a text field has focus", the only scroll it
+ * can affect is the caret's own.
+ */
+export function initCaretScrollPadding(): void {
+  const root = document.documentElement;
+  const FIELD = 'input, textarea, select, [contenteditable="true"]';
+
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLElement) || !el.matches(FIELD)) return;
+    // **The field's own top padding is part of the sum, and leaving it out lands the field back
+    // under the bar by a hair.** What the browser scrolls into view is the CARET, not the box
+    // around it — so the box's top edge comes to rest that much higher than the line the padding
+    // draws. Measured on the harness for this fix: a `.input` (10.4px padding + 1px border) landed
+    // its border-box top 13.7px above the scroll-padding line, i.e. 0.4px *under* the table's
+    // column headings, which is the whole complaint again in miniature. Read off the element
+    // rather than hard-coded, because a `select` and a textarea are not the same field.
+    // The remaining +12 is the breathing room `scrollBelowPinnedChrome` gives its own targets.
+    const cs = getComputedStyle(el);
+    const inset = parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth);
+    root.style.scrollPaddingTop = `${Math.ceil(pinnedTopChrome(el) + inset) + 12}px`;
+  });
+
+  document.addEventListener('focusout', () => { root.style.removeProperty('scroll-padding-top'); });
 }

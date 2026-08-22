@@ -3681,6 +3681,7 @@ const orderStatusColors: Record<string, string> = {
   import { initCopyValueButtons } from '../../scripts/dashboard/copy-value.js';
   import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
   import { initStickyOffsets } from '../../scripts/dashboard/sticky-offsets.js';
+  import { initCaretScrollPadding } from '../../scripts/dashboard/scroll-utils.js';
   import { initDiscountFields, refreshDiscountFieldsIn } from '../../scripts/dashboard/discount-field.js';
   // The panel filler. Stage 1 on purpose: a panel that has never been opened has no chunk of its
   // own yet, so the thing that FETCHES one cannot live inside it.
@@ -3717,6 +3718,9 @@ const orderStatusColors: Record<string, string> = {
   // pinned 1.59px under the header and the panel title 1.2px under the strip. 1.2px of daylight is
   // not a misaligned edge: the page scrolls through it, so it reads as a moving line.
   initStickyOffsets();
+  // The other half of the same measurement, for the scrolls the BROWSER starts rather than us —
+  // typing into a field that is off the top of the screen. See initCaretScrollPadding.
+  initCaretScrollPadding();
   // The document-level halves, which have nothing to do with which panel is on screen and must be
   // registered exactly once.
   initDiscountFields();
