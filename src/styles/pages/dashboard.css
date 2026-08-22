@@ -1100,7 +1100,28 @@ textarea.input { resize: none; }
      now 375. */
   .products-table tbody tr[data-product-display] {
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, auto) auto auto;
+    /* **The stats column is a FRACTION, not `auto`, and that is what makes every card the same
+       card** (owner, 2026-08-22: *"אם יש מלאי שהוא עם דרופדאון, כל הקטע הזה של הפרטים לוקח קצת
+       ימינה… זה נראה כאילו לא כל כרטיסייה היא אותו הגריד בפנים, מכוער"*).
+       Each row is its own grid — there is no subgrid here — so an `auto` track is sized from THAT
+       row's content, and the rows do not have the same content: a product with variants carries the
+       breakdown chevron in its stock cell, and "מלאי: 12" is wider than "מלאי: 7". Measured at
+       390px before this line: the details column's edge sat at 157.1px, 165.5px, 159.0px and
+       167.4px on four consecutive cards, so the boundary between the name and the numbers wandered
+       by up to 10px down a scrolling list — which is exactly the ragged inner edge being reported.
+       A fraction is the same on every row by construction, whatever is in it.
+       **Equal halves, and the value was solved rather than picked.** 0.62fr — the ratio the content
+       had settled at — put the stats track at 57px on a 375px screen, which is under what
+       "נמכרו: 12" needs, so every card wrapped instead of some cards shifting: the same ragged list
+       in a new costume. 1fr gives 74.6px, which fits the whole stats column including a variant
+       row's "מלאי: 25 ⌄" once the chevron is tightened for this width (rule below). It costs the
+       name column 11px against the widest card it used to get, and the name is ellipsised at every
+       one of these widths anyway — a straight edge for about one character.
+       An `auto` track was not merely uneven, it could collapse: a 17-character SKU took the whole
+       track and left the name 9.3px, breaking "₪129.00" one character per line. A fraction cannot
+       do that — long content now wraps inside its own column, which is where it belongs.
+       Measured on a build at 375/390/430px, five cards including that one. */
+    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 1fr) auto auto;
     grid-template-rows: auto auto auto auto;
     /* `seo` is its own full-height column between the details and the actions button, not a cell
        inside a row of them: the gauge then sits at the same point in every card no matter how tall
@@ -1183,6 +1204,17 @@ textarea.input { resize: none; }
     font-weight: 600;
     color: var(--color-text);
     padding-top: 0;
+  }
+  /* The breakdown chevron, tightened for the card. Its 0.3rem gap and 1.1rem box are desktop
+     values, where the stock column is sized to its own content and 22.4px costs nothing. Here the
+     track is a fixed fraction (see the grid above), so those same 22.4px are the difference
+     between "מלאי: 25 ⌄" fitting on one line and breaking across two — which brings back the
+     ragged card this section exists to remove, in a different form. 16px still leaves a 15px tap
+     target inside a 44px-tall row, and the button's own hover disc is unchanged. */
+  .products-table tr[data-product-display] .product-stock > span { gap: 0.15rem; }
+  .products-table tr[data-product-display] [data-stock-breakdown-btn] {
+    width: 0.95rem;
+    height: 0.95rem;
   }
 
   /* The other half of the minmax() above: a track allowed to shrink is only
