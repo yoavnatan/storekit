@@ -409,9 +409,9 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
     // level down — and it would take the whole order out of every revenue sum to give back a third of
     // it, rewriting financial history to record a correction.
     //
-    // So the money moves in its own row, which is what `seller_ledger_adjustments` is for and what
-    // already settles a chargeback: the buyer's debt is journalled, the seller's share of exactly
-    // those lines is deducted from his next payout, and the order keeps saying what happened.
+    // So the money moves in its own journal row and the order keeps saying what happened. Nothing is
+    // deducted from the seller: his share of those lines is in his own account at the processor,
+    // and the refund goes back out of the same capture.
     const order = await getOrderById(moved.orderId);
     if (order) {
       await recordMoneyEvent({

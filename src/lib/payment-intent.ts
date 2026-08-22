@@ -28,7 +28,7 @@ import { getDatabase } from './db.js';
 /** How long a buyer has to finish paying before the intent is abandoned and its stock released.
  *  Long enough for 3-D Secure and a hunt for a card; short enough that an abandoned cart does not
  *  hold someone else's last unit for an afternoon. ⚠️ Placeholder — it belongs with the other
- *  windows the owner has yet to rule on (`payout-schedule.ts` carries the same warning). */
+ *  windows the owner has yet to rule on (`order-sla.ts` carries the same warning). */
 export const INTENT_TTL_MS = 30 * 60 * 1000;
 
 export type PaymentIntentStatus = 'pending' | 'authorized' | 'settled' | 'failed' | 'expired';

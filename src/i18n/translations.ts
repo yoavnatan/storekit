@@ -930,10 +930,6 @@ export const translations = {
       repAllStoresChip: 'כל החנויות',
       repPayoutsTitle: 'העברות לבנק',
       repPayoutsDesc: 'כל העברה שיצאה לחשבון שלכם, וכמה עמלת פלטפורמה נוכתה ממנה. העברה אחת מאחדת את כל החנויות שלכם.',
-      repColCommissionTaken: 'עמלת פלטפורמה',
-      repColTransferred: 'הועבר אליך',
-      repSumTransferred: 'הועבר:',
-      repSumPayoutCount: 'העברות:',
 
       repColDate: 'תאריך',
       repColCustomer: 'לקוח',
@@ -984,47 +980,12 @@ export const translations = {
       // All three appear only for a seller who owns more than one shop.
       // Every "nothing is lost" line is a promise `terms.astro` also makes, in the same words.
       payTitle: 'התשלומים שלי',
-      // ONE short line, and every rule that used to be crammed into it moved to the "איך זה עובד"
-      // block at the bottom of the tab (owner, סשן א׳ §1: *"יש פה ריבוי מידע שאני בעצמי לא מצליח
-      // להכיל, בספק אם המוכר"*). A subtitle is read on the way to the numbers, not studied — the
-      // hold rule, the return window and the minimum are details a seller wants ONCE, in one place
-      // they can be sent to, rather than three sentences standing between them and their money.
-      payDayName: 'יום ראשון',
       paySubtitle: 'הכסף מכל מכירה נכנס ישירות לחשבון שלכם אצל חברת הסליקה.',
       // Sits UNDER "פרטי בנק ופרטי עסק" and only for a seller with more than one shop (owner,
       // 2026-08-11). It replaced `payAllStores`, which said the same thing in the panel's SUBTITLE
       // — where it described the whole screen instead of the one card it is true of, and made a
       // store's dashboard read as somebody else's.
       payBankAllStores: 'פרטים אלו מתייחסים לכל החנויות בבעלותך.',
-      // The one line that reconciles the per-store tiles with the transfer that actually leaves.
-      // Only rendered for a multi-store seller — for everyone else the two are the same number.
-      // The owner's own wording (2026-08-11). It replaced "התשלום שיצא בפועל מאחד את כל החנויות
-      // שלך", which described a MECHANISM — what the transfer does to the shops — where the seller
-      // wanted the same LABEL as the tile above it with its scope on the end. The tile and this
-      // line are one question asked at two scopes, so they read best as one phrase apart.
-      payAccountTotal: 'תשלום קרוב מכל החנויות שלך: {amount}.',
-      // The pair to the line above (owner, 2026-08-11). The two tiles are this shop's; these two
-      // lines are the same two questions asked of the whole account, in the same order, so a
-      // multi-store seller can read the pair down and the pair across. Held is account-wide from
-      // `buildSellerAccount` — the same figure `splitHeldByBasis` with no slug totals to, which is
-      // what `reporting-invariants.test.ts` asserts.
-      payAccountHeld: 'ממתינים מכל החנויות שלך: {amount}.',
-      // "תשלום קרוב" / "שולם בעבר" — the tile names an EVENT on a calendar, not a state of the
-      // money (owner, סשן א׳ §1–2). "מוכן להעברה אליך" described a readiness the seller cannot act
-      // on and made the tile sound like a button; the date is the thing they came to read.
-      payPayableNow: 'תשלום קרוב',
-      payPayableNowHint: 'הסכום שיעבור לחשבון שלך בהעברה הבאה.',
-      // "ממתינים", not "ממתין לאישור סופי" (owner, סשן א׳ §3). "אישור סופי" named an internal
-      // process the seller has no part in and cannot picture — it sounds like somebody at the
-      // platform reviewing their order. One word says the only thing the tile has to say, and the
-      // details it used to carry live one link away in `payHowTitle`.
-      payHeld: 'ממתינים',
-      payHeldHint: 'תשלומים הממתינים לפעולות מצדכם או לאישור סופי.',
-      // The tile's own "read more" (owner, §3: *"ולמטה שיהיה כתוב ״פרטים נוספים״ לחיץ שמוביל למקום
-      // עם הפרטים הנוספים במורד הדף"*). The rule this replaces was a second sentence on the tile.
-      payHeldMore: 'פרטים נוספים',
-      payCarried: 'חוב שגולגל',
-      payCarriedHint: 'סכום שקוזז ולא היה ממה לנכות אותו. יופחת מהתשלום הבא.',
       payBankTitle: 'פרטי בנק ופרטי עסק',
       payBankHint: 'ללא פרטים אלו הכסף לא יוכל להישלח אליכם.',
       payBankCode: 'קוד בנק',
@@ -1042,7 +1003,6 @@ export const translations = {
       payDetailsSave: 'שמירת פרטים',
       payDetailsSaved: 'הפרטים נשמרו',
       payDetailsFailed: 'לא הצלחנו לשמור. בדקו את החיבור ונסו שוב.',
-      payCurrentBank: 'החשבון שרשום כרגע:',
       // ── The filled-in state is a CLOSED summary, not six open boxes (owner, סשן א׳ §2) ──
       // *"אם יש חשבון בנק לא צריך לשים שם את האינפוטים ככה פתוחים, הפרטים צריכים להופיע בתוך מסגרת
       // קטנה סגורה, עם כפתור ״ערוך״"*. An open form says "this is unfinished" every time the tab is
@@ -1053,11 +1013,10 @@ export const translations = {
       payBusinessOnFile: 'עסק:',
       payBusinessMissing: 'לא הוזן',
       // ── The rules, in ONE place, at the bottom of the tab (owner, §1) ──
-      // *"החוקים שם לגבי חלוקת הכסף צריכים להופיע בהסבר פשוט, מתי מועבר כסף, מתי מוחזק כסף, ולמה"*.
-      // Four short answers to four questions, in the order a seller asks them. Every number is
-      // interpolated from `payout-schedule.ts` rather than written in — those constants are still
-      // owner decisions, and a sentence promising 21 days while the code waits 30 is a promise we
-      // break.
+      // *"החוקים שם לגבי חלוקת הכסף צריכים להופיע בהסבר פשוט, מתי מועבר כסף… ולמה"*. Three short
+      // answers to three questions, in the order a seller asks them. It was four, and the fourth
+      // was "when is it held" — nothing is held any more, so the question stopped being a question
+      // rather than getting a shorter answer.
       payHowTitle: 'איך זה עובד',
       payHowWhenQ: 'מתי הכסף מועבר?',
       // The date is the PROCESSOR's, not ours, and saying so is the point of the sentence: there
@@ -1072,44 +1031,6 @@ export const translations = {
       payHowFeeA: 'בתוך העסקה עצמה. מה שנכנס אליכם הוא כבר אחרי עמלת הפלטפורמה, ואין על זה חיוב נפרד.',
       payHowRefundQ: 'ומה קורה בהחזר?',
       payHowRefundA: 'ההחזר חוזר לקונה מאותה עסקה שבה שילם, ומקוזז מהתנועות של אותו חודש.',
-      // ⚠️ The owner read the first version and asked *"לא הבנתי… למה 21 מרגע המסירה ולא 15 למשל?"*
-      // — which is the right question, and the answer is that the number is DERIVED and the sentence
-      // was hiding that. Israeli consumer law gives a distance-sale buyer 14 days FROM RECEIVING the
-      // goods to cancel; a hold of exactly 14 releases the money on the last day they can still do
-      // it. So the "why" now carries the 14 and the words "על פי חוק", and the day count is stated
-      // as "אותם 14 ימים ועוד כמה" rather than as a bare number nobody can check.
-      // The two constants stay interpolated from `payout-schedule.ts` — its header holds the full
-      // derivation and the ⚠️ that the final value is still the owner's.
-      payHowHeldQ: 'מתי הוא מוחזק?',
-      payHowHeldA: 'מרגע התשלום ועד שההזמנה נמסרת, ועוד {delivery} ימים ממועד המסירה. לא סימנתם מסירה? {payment} ימים מיום התשלום.',
-      payHowWhyQ: 'ולמה {delivery} ימים?',
-      // ⚠️ "לבטל **ולהחזיר**" — the owner caught the first version leaving the second half out
-      // (2026-08-11): *"אם הוא מבטל זה בתנאי שהוא החזיר את המוצר!!!!"*. He is right, and it changes
-      // what the extra week is FOR rather than being a wording nicety. The risk is not that a
-      // cancellation leaves the seller with nothing — the goods come back. It is that the notice can
-      // land on day 14 and the parcel is still in transit, so money paid out on day 14 has to be
-      // clawed back from a seller who has already had it. The margin covers the RETURN, not the
-      // notice.
-      // "יאושר לתשלום", never "ישוחרר" (owner, 2026-08-16: *"מה הכוונה שהכסף לא ישוחרר?"*). Release
-      // is OUR word for it — the internal state `payout-hold.ts` computes — and the seller has
-      // already been taught a different one for the same event: the order card says "אושר לתשלום".
-      // Same class as "הספירה" two answers up: a sentence built on a model only we hold.
-      payHowWhyA: 'לקונה יש {statutory} ימים מקבלת המוצר לבטל את העסקה ולהחזיר אותו — זו זכות שבחוק. אנחנו ממתינים יום אחד יותר, כדי שהכסף לא יאושר לתשלום ביום שבו עוד אפשר לבטל. למחרת הוא מאושר אוטומטית ונכנס לתשלום הקרוב.',
-      payHowMinQ: 'ומה אם הסכום קטן?',
-      // "לתשלום הבא", not "לחודש הבא" — left behind by the move from a monthly run to a weekly one
-      // (2026-08-16). A seller below the minimum was being told to wait up to a month for money that
-      // now waits at most a week.
-      payHowMinA: 'מתחת ל-{min} הכסף מחכה לתשלום הבא. שום דבר לא נגרע.',
-      // The held-orders TABLE became a three-line split by reason (owner, סשן א׳ §4 — a second
-      // list of orders one tab away from the Orders tab read as a second place to manage them).
-      // So the heading asks the question the split answers, instead of naming a list.
-      // "תשלומים ממתינים" — the owner asked for "תשלומים ממתינים לטיפולך" (2026-08-11) and the
-      // heading stops one word short of it deliberately: two of the three rows under it need
-      // NOTHING from the seller, and a heading promising otherwise is contradicted by its own
-      // "אין פעולה נדרשת" column. The rows that ARE waiting on them say so, in the action column
-      // and in the one colour on this table.
-      payHeldTitle: 'תשלומים ממתינים',
-      payHeldEmpty: 'אין כרגע כסף שממתין.',
       // The banner a deep link from here raises on the Orders tab. It names the filter and offers
       // the way out — a seller who followed a link and cannot tell what narrowed the list, or how
       // to widen it again, has been dropped somewhere rather than taken there (owner, 2026-08-11).
@@ -1125,43 +1046,6 @@ export const translations = {
       // his words as sounding like the money is being held somewhere — hold is ordinary and
       // temporary, and naming it after a release describes it as confinement.
       filterColPayout: 'מצב התשלום',
-      payFilter_unshipped: 'ממתין לשליחה',
-      payFilter_undelivered: 'בדרך ללקוח',
-      payFilter_window: 'ממתין לסיום ימי החזרה',
-      payFilter_released: 'אושר לתשלום',
-      payFilter_none: 'לא ישולם — ההזמנה בוטלה או שהחיוב לא עבר',
-      payColOrders: 'הזמנות',
-      payColAmount: 'סכום',
-      payColWhy: 'סיבה',
-      payColAction: 'פעולה ממתינה',
-      // ── A reason is a LABEL, not a sentence (owner, סשן א׳ §1) ──
-      // *"ההסבר לגבי כל אחת מההזמנות אמור להיות מאוד קצר — מדוע? ״טרם נמסר״ בלי כל הסיפור עם ה-30
-      // יום וכו׳ וכו׳. צריך לחשוב על מוכר שזה יותר מדי מידע בשבילו"*. These render in a table cell
-      // and beside every order card, i.e. dozens of times on one screen — and each carried the WHOLE
-      // hold rule, so the rule was restated once per row and read by nobody. The rule now lives once,
-      // in `payHowTitle` at the bottom of the payments tab, and these say only which of the three
-      // situations this row is in.
-      // ⚠️ They no longer carry `{n}`, and that is deliberate rather than an omission — `whyDays` is
-      // still returned by `order-payout-line.ts` and still interpolated by the ADMIN copy of these
-      // strings (AdminOrdersPanel.astro), which is a support screen and wants the number.
-      payWhyDelivery: 'בחלון ההחזרה של הקונה',
-      payActionNone: 'אין פעולה נדרשת',
-      payWhyPayment: 'טרם נמסר',
-      payActionMarkDelivered: 'סימון ״נמסר״ כשהחבילה מגיעה לקונה',
-      payWhyUnshipped: 'טרם נשלח',
-      payWhyReturnOpen: 'בקשת החזרה פתוחה',
-      payActionShip: 'שליחת הזמנה',
-      payWhyUnknown: 'בבדיקה',
-      payColPeriod: 'תקופה',
-      payColStatus: 'מצב',
-      payColSent: 'נשלח',
-      payStatusPending: 'ממתין',
-      payStatusSent: 'נשלח לבנק',
-      payStatusPaid: 'הועבר',
-      payStatusFailed: 'נכשל',
-      payNoBankTitle: 'יש לך כסף שמחכה',
-      payNoBankBody: 'הזינו פרטי בנק כדי שנוכל להעביר אותו. עד אז הוא נשמר ולא הולך לשום מקום.',
-      payNoBankCta: 'למילוי הפרטים',
       tabSettings: 'הגדרות',
       tabPromotions: 'מבצעים',
       storeSaleTitle: 'מבצע רוחבי',
@@ -1561,36 +1445,6 @@ export const translations = {
       orderBuyer: 'לקוח',
       orderItems: 'פריטים',
       orderTotal: 'סה"כ',
-      // The order card's payout line (owner, סשן א׳ §4 — the per-order answer moved here from the
-      // Payments tab's table). Assembled by `order-payout-line.ts#payoutLineText`, which picks these
-      // keys and the `payFilter_*` ones beside them, so the card and the toolbar filter say the same
-      // words about the same order.
-      //
-      // ── "קבלת התשלום" (owner, 2026-08-16), after "התשלום עליה" and "סטטוס תשלום" both failed ──
-      // The card carries TWO payment facts — the buyer's charge and the seller's payout — so a
-      // heading that only says "תשלום" names neither (the admin copy reached the same conclusion on
-      // 2026-08-11 and says "התשלום למוכר/ת"). "התשלום עליה" avoided that and read as a sentence
-      // someone had started and abandoned: *"אני לא הייתי מבין מה רוצים ממני"*. This one names the
-      // event from the side the seller stands on — money arriving to them.
-      orderPayoutLabel: 'קבלת התשלום:',
-      // The DAY THE TRANSFER GOES OUT, never the day the hold ends — see `payoutDayISO`. The old
-      // string said "ישולם אחרי {date}" against the release day, and "אחרי" was doing the work of
-      // the gap between the two (owner: *"למה ישולם אחרי? זה לא ברור"*).
-      //
-      // "צפוי" and not "ישולם", because two things can still move it and both are real: a balance
-      // under the minimum rolls to the next run, and a חג on the payout weekday pushes the transfer
-      // to the next banking day. Both are answered in `#pay-how`, which is what the link at the end
-      // of the line leads to.
-      orderPayoutExpected: 'צפוי ב{date}',
-      // The one state with no date to give, so it says what produces one. Never "הספירה מתחילה
-      // כש…" (owner, 2026-08-16): a seller does not have a mental model called "the count", and a
-      // sentence built on one is our vocabulary handed to them to decode.
-      // "לאחר", never "אחרי" (owner, 2026-08-16) — same word, and the formal register is the one a
-      // seller expects from a screen that is telling them when they get paid.
-      orderPayoutUnshippedHint: 'תאריך התשלום ייקבע לאחר השליחה',
-      // The link at the end of the line, into the Payments tab's `#pay-how`. Every rule behind the
-      // dates — the hold, the weekly run, the minimum — is answered there, once.
-      orderPayoutHow: 'איך זה עובד',
       orderShipping: 'משלוח',
       orderPaymentStatus: 'תשלום',
       orderShippingStatus: 'סטטוס הזמנה',
@@ -3044,10 +2898,6 @@ export const translations = {
       repAllStoresChip: 'All stores',
       repPayoutsTitle: 'Bank transfers',
       repPayoutsDesc: 'Every transfer that reached your account, and how much platform commission was deducted from it. One transfer covers all of your stores.',
-      repColCommissionTaken: 'Platform commission',
-      repColTransferred: 'Transferred to you',
-      repSumTransferred: 'Transferred:',
-      repSumPayoutCount: 'Transfers:',
 
       repColDate: 'Date',
       repColCustomer: 'Customer',
@@ -3081,18 +2931,8 @@ export const translations = {
       tabAdvertising: 'Advertising',
       tabPayouts: 'Payments',
       payTitle: 'My payments',
-      payDayName: 'Sunday',
       paySubtitle: 'The money from every sale lands directly in your own account at the processor.',
       payBankAllStores: 'These details apply to every store you own.',
-      payAccountTotal: 'Next payment across all of your stores: {amount}.',
-      payAccountHeld: 'Waiting across all of your stores: {amount}.',
-      payPayableNow: 'Next payment',
-      payPayableNowHint: 'What moves to your account in the next transfer.',
-      payHeld: 'Waiting',
-      payHeldHint: 'Payments waiting on something from you, or on final approval.',
-      payHeldMore: 'More details',
-      payCarried: 'Carried debt',
-      payCarriedHint: 'An offset larger than the balance it came out of. It comes off your next payment.',
       payBankTitle: 'Bank and business details',
       payBankHint: 'Without these details the money cannot be sent to you.',
       payBankCode: 'Bank code',
@@ -3110,7 +2950,6 @@ export const translations = {
       payDetailsSave: 'Save details',
       payDetailsSaved: 'Details saved',
       payDetailsFailed: 'Could not save. Check your connection and try again.',
-      payCurrentBank: 'Account on file:',
       payBankOnFile: 'Payout account',
       payBankEdit: 'Edit',
       payBankCancel: 'Cancel',
@@ -3123,45 +2962,10 @@ export const translations = {
       payHowFeeA: 'Inside the transaction itself. What reaches you is already net of the platform commission, and there is no separate charge for it.',
       payHowRefundQ: 'What happens on a refund?',
       payHowRefundA: 'It goes back to the buyer from the same transaction they paid on, and is offset against that month\'s activity.',
-      payHowHeldQ: 'When is it held?',
-      payHowHeldA: 'From payment until the order is delivered, plus {delivery} days from the delivery date. Never marked it delivered? {payment} days from the payment date.',
-      payHowWhyQ: 'Why {delivery} days?',
-      payHowWhyA: 'The buyer has {statutory} days from receiving the goods to cancel and return them — that is a right in law. We wait one day longer, so your money is never approved for payment on a day the sale can still be cancelled. The next day it is approved automatically and joins the next transfer.',
-      payHowMinQ: 'What if the amount is small?',
-      payHowMinA: 'Below {min} it waits for the next payout. Nothing is deducted.',
-      payHeldTitle: 'Payments waiting',
       ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
       ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
       ordersShowAll: 'Show all orders',
       filterColPayout: 'Payment status',
-      payFilter_unshipped: 'Waiting to be shipped',
-      payFilter_undelivered: 'On its way to the buyer',
-      payFilter_window: 'Waiting out the return days',
-      payFilter_released: 'Approved for payment',
-      payFilter_none: 'Not paid — order cancelled, or the money never arrived',
-      payHeldEmpty: 'Nothing is waiting right now.',
-      payColOrders: 'Orders',
-      payColAmount: 'Amount',
-      payColWhy: 'Reason',
-      payColAction: 'Action needed',
-      payWhyDelivery: 'Inside the buyer\'s return window',
-      payActionNone: 'No action needed',
-      payWhyPayment: 'Not yet delivered',
-      payActionMarkDelivered: 'Mark as delivered when the parcel reaches the buyer',
-      payWhyUnshipped: 'Not yet shipped',
-      payWhyReturnOpen: 'Return request open',
-      payActionShip: 'Ship the order',
-      payWhyUnknown: 'Under review',
-      payColPeriod: 'Period',
-      payColStatus: 'Status',
-      payColSent: 'Sent',
-      payStatusPending: 'Pending',
-      payStatusSent: 'Sent to the bank',
-      payStatusPaid: 'Transferred',
-      payStatusFailed: 'Failed',
-      payNoBankTitle: 'You have money waiting',
-      payNoBankBody: 'Add your bank details so we can send it. Until then it is held for you and goes nowhere.',
-      payNoBankCta: 'Fill in the details',
       tabSettings: 'Settings',
       tabPromotions: 'Promotions',
       storeSaleTitle: 'Store-wide sale',
@@ -3526,10 +3330,6 @@ export const translations = {
       orderBuyer: 'Customer',
       orderItems: 'Items',
       orderTotal: 'Total',
-      orderPayoutLabel: 'Getting paid:',
-      orderPayoutExpected: 'Expected {date}',
-      orderPayoutUnshippedHint: 'The date is set once you ship',
-      orderPayoutHow: 'How this works',
       orderShipping: 'Shipping',
       orderPaymentStatus: 'Payment',
       orderShippingStatus: 'Order status',
