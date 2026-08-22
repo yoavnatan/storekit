@@ -249,14 +249,9 @@ export const translations = {
       terms: 'תנאי שימוש',
       returns: 'ביטולים והחזרות',
       contact: 'צור קשר',
-      // ── A disclosure the law requires, worded the way the regulations word it ──
-      // `תקנות הסדרת העיסוק בשירותי תשלום וייזום תשלום (פטור מחובת רישוי), תשפ״ד-2024` oblige an
-      // exempt body to state, on its site and in its marketing, that it is exempt from licensing
-      // and therefore NOT supervised. It names the law rather than saying "פטור מרישיון" alone
-      // (owner, 2026-08-16): a bare "exempt from a licence" tells a reader nothing about WHICH
-      // licence, which is the only part of the sentence that carries information.
-      // `{name}` is the platform, interpolated so a rename cannot leave this clause naming nobody.
-      licenceExemption: '{name} פועלת בפטור מרישיון למתן שירותי תשלום לפי חוק הסדרת העיסוק בשירותי תשלום וייזום תשלום, ואינה מפוקחת על ידי רשות ניירות ערך.',
+      // The licensing-exemption disclosure that sat here from 2026-08-16 is gone — see the comment
+      // at the foot of `Footer.astro` for why the split model removes the obligation rather than
+      // just the sentence.
     },
     // The two pages a visitor lands on when the request could not be served. Same shape as the
     // store states above — one line and a way out — and for the same reason: a visitor here can
@@ -1398,7 +1393,7 @@ export const translations = {
       perfStoresNoMatch: 'לא נמצאה חנות שתואמת לחיפוש.',
       perfStoresEmpty: 'אין עדיין חנויות עם פעילות בטווח שנבחר.',
       perfPlatformSplitTitle: 'מחזור ותשלומים',
-      perfPlatformSplitHint: 'המחזור הכולל (GMV) הוא כל הכסף שקונים שילמו בטווח. הפלטפורמה שומרת ממנו רק את עמלת המכירה — היתרה מוחזקת בנאמנות עבור המוכרים ומשולמת להם בתשלום המרוכז.',
+      perfPlatformSplitHint: 'המחזור הכולל (GMV) הוא כל הכסף שקונים שילמו בטווח. הפלטפורמה מקבלת ממנו רק את עמלת המכירה — היתרה נכנסת ישירות לחשבון של כל מוכר אצל חברת הסליקה ואינה עוברת דרכנו.',
       perfPlatformGmv: 'מחזור כולל (GMV)',
       perfPlatformCommissionIncome: 'עמלות (הכנסת הפלטפורמה)',
       perfPlatformSellerPayout: 'תשלום למוכרים',
@@ -2512,7 +2507,6 @@ export const translations = {
       terms: 'Terms',
       returns: 'Returns',
       contact: 'Contact',
-      licenceExemption: '{name} operates under an exemption from the payment-services licence under the Payment Services and Payment Initiation Regulation Law, and is not supervised by the Israel Securities Authority.',
     },
     errorPage: {
       notFoundTitle: 'Page not found',
@@ -3375,7 +3369,7 @@ export const translations = {
       perfStoresNoMatch: 'No store matches that search.',
       perfStoresEmpty: 'No stores with activity in this range yet.',
       perfPlatformSplitTitle: 'GMV & payouts',
-      perfPlatformSplitHint: 'GMV is everything buyers paid in this range. The platform keeps only the sales commission from it — the remainder is held on the sellers\' behalf and paid out to them on the payout schedule.',
+      perfPlatformSplitHint: 'GMV is everything buyers paid in this range. The platform receives only the sales commission from it — the remainder lands directly in each seller\'s own account at the processor and never passes through us.',
       perfPlatformGmv: 'Total GMV',
       perfPlatformCommissionIncome: 'Commission (platform revenue)',
       perfPlatformSellerPayout: 'Seller payouts',

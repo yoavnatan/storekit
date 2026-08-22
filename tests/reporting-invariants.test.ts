@@ -24,11 +24,9 @@ import { buildSalesReport, buildProductSalesReport, buildStockReport, buildPayou
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
 import { getHeldBreakdown, getHeldBySeller, getPayableNowForSeller, getPlatformAccrual, getReleasableBySeller, getSellerAccountFor } from '../src/lib/payouts.js';
-import { getLedgerAccrual, getLedgerMovement } from '../src/lib/payouts.js';
 import { splitHeldByBasis } from '../src/lib/order-payout-line.js';
 import { planPayouts } from '../src/lib/payout-run.js';
 import { buildPlatformLedger } from '../src/lib/platform-ledger.js';
-import { getLicenceCeiling } from '../src/lib/licence-ceiling.js';
 import { buildPlatformStatement, monthPeriod, recentMonthKeys, statementPeriod } from '../src/lib/platform-statement.js';
 import { loadPlatformStatement } from '../src/lib/admin-statement-load.js';
 
@@ -1551,51 +1549,3 @@ describe('§8 — the scheduled jobs move statuses, never amounts', () => {
   });
 });
 
-/**
- * ── §9. The licensing ceiling, against the figures it must never contradict ──
- *
- * `licence-ceiling.ts` answers a question no other surface asks — how much of the platform's
- * exemption from a payment-services licence is used up — and it answers it from the SAME orders
- * every other money figure comes from. That makes it checkable, and it has to be: this is the one
- * number on the platform whose two error directions are not equally bad. Reading high is a false
- * alarm; reading low is operating an unlicensed payment service in the belief that there is room.
- *
- * So the invariant is a containment rather than an equality. "Funds received" is deliberately a
- * SUPERSET of revenue — it counts the shipping the buyer was charged, and it counts orders that
- * were charged and later cancelled — so the day it comes out below the platform's own revenue for
- * the same span, something has narrowed it: a shipping column dropped, or the revenue shipping
- * statuses pasted in beside the payment ones out of habit.
- */
-describe('\u00a79. the licensing ceiling contains the revenue it is measured from', () => {
-  const WIDE = { from: '2000-01-01', to: '2999-12-31' };
-
-  it('funds received are never less than platform revenue over the same span', async () => {
-    const [ceiling, accrual] = await Promise.all([
-      getLicenceCeiling('2999-12-31', 12_000),
-      getLedgerAccrual(WIDE),
-    ]);
-    expect(
-      ceiling.received.totalAgorot,
-      'received counts shipping and cancelled-but-charged orders, so it cannot sit below revenue',
-    ).toBeGreaterThanOrEqual(accrual.grossAgorot);
-  });
-
-  /** The headline may never be gentler than either leg — an average of the two would let a quiet
-   *  leg mask the one about to breach, and the exemption fails on whichever goes first. */
-  it('the headline percentage is the worse of the two legs', async () => {
-    const ceiling = await getLicenceCeiling('2999-12-31', 12_000);
-    expect(ceiling.percent).toBe(Math.max(ceiling.received.percent, ceiling.transferred.percent));
-    expect(ceiling.months).toBeGreaterThan(0);
-  });
-
-  /** Everything ever transferred, as the ledger reports it, is what the transferred leg sums. Two
-   *  reads of one fact that can disagree by whatever lands between them is the shape this file
-   *  exists to refuse. */
-  it("the transferred leg is the ledger's own paid-out figure", async () => {
-    const [ceiling, movement] = await Promise.all([
-      getLicenceCeiling('2999-12-31', 12_000),
-      getLedgerMovement(WIDE),
-    ]);
-    expect(ceiling.transferred.totalAgorot).toBe(movement.paidOutAgorot);
-  });
-});
