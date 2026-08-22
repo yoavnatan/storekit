@@ -1151,7 +1151,7 @@ const orderStatusColors: Record<string, string> = {
               back or uploads a photo, which is why it is a dot at all. The self-healing pause
               (sold out) is excluded at the source, `ad-campaigns.ts#getStoreIdsWithStalledCampaigns`. */}
           {adNeedsAttention && (
-            <span data-tab-alert="warning" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-warning);border-radius:50%" aria-label={d.adTabAttention}></span>
+            <span class="dash-tab-dot" data-tab-alert="warning" aria-label={d.adTabAttention}></span>
           )}
         </button>
         <button
@@ -1165,7 +1165,7 @@ const orderStatusColors: Record<string, string> = {
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
           {unreadMsgRows > 0 && (
-            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
+            <span class="dash-tab-dot" data-tab-alert="danger" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
           )}
         </button>
         {/* Between Messages and Settings, and the position is the argument: this is the seller's
@@ -1802,6 +1802,17 @@ const orderStatusColors: Record<string, string> = {
             <nav class="dash-toolbar__pager order-1 empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] mx-auto" data-list-pager="products" data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
           </div>
 
+          {/* prod-cq: the table's column shares are chosen by THIS element's width, not the
+              viewport's (dashboard.css). The two share sets — one for a narrow table, one for a
+              wide one — were always about how much room the TABLE has; keying them to the viewport
+              was a proxy that held only while the panel was the width of the page. It is not: a
+              13-inch laptop, a tablet, or anything placed beside the table hands it far less than
+              the media query believes, and the headings ellipsize to a letter. Same fix, same
+              shape, as `.msg-cq` on the messages panel — whose own comment already named this case.
+              Wrapping ONLY the table, not the toolbar above it: `container-type` brings layout
+              containment, and the narrower the containing element the less that can surprise
+              anything. Both of this panel's escaping menus are appended to `document.body`. */}
+          <div class="prod-cq">
           <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
               <tr>
@@ -2027,6 +2038,7 @@ const orderStatusColors: Record<string, string> = {
               )}
             </tbody>
           </table>
+          </div>
 
           <nav id="products-pagination" class="empty:hidden flex items-center justify-center flex-wrap gap-[.4rem] pt-4 pb-1" data-list-pager="products" data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
 

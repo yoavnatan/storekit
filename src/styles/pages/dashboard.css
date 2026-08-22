@@ -126,6 +126,11 @@ textarea.input { resize: none; }
    also tried and dropped here previously: `overflow-x:auto` also forces
    `overflow-y:auto` (CSS Overflow spec), making it a new sticky containing
    block that detaches the table's own sticky header. */
+/* The products table's query container — the wrapper added in seller/dashboard.astro. Its own
+   comment carries the reasoning; this is the declaration the two share-sets below query. Named,
+   like `msgpanel`, so a future nested container cannot capture them by accident. */
+.prod-cq { container-type: inline-size; container-name: prodtable; }
+
 @media (max-width: 999px) {
   /* Toolbar stays ONE line across the whole table range (tablet + small desktop),
      the zone where the buttons' text would otherwise wrap to a 2nd line: it scrolls
@@ -150,7 +155,12 @@ textarea.input { resize: none; }
   .products-header--selecting #toggle-add-form .add-product-btn__label,
   .products-header--selecting #toggle-csv-panel .bulk-btn__label,
   .products-header--selecting #toggle-feed-panel .bulk-btn__label { display: none; }
+}
 
+/* The same rules, asked of the TABLE's width instead of the page's — see `.prod-cq` above.
+   The toolbar keeps the viewport query it was split out of: what compacts there is button
+   LABELS, and that row is already a horizontal scroller, so it has no width to run out of. */
+@container prodtable (max-width: 999px) {
   .products-table { table-layout: fixed; }
   .products-table td { padding-inline: 0.4rem; padding-block: 0.6rem; }
   .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.4rem; }
@@ -229,7 +239,7 @@ textarea.input { resize: none; }
    the largest share instead. Fixed-px columns (checkbox, thumbnail, kebab) repeat that
    block's reasoning too: those cells hold a fixed-size WIDGET, and a percentage that
    drops below it lets the widget spill into its neighbour. */
-@media (min-width: 1000px) {
+@container prodtable (min-width: 1000px) {
   .products-table { table-layout: fixed; }
   .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* The select-all must never be clipped — same exception, same reason, as the tablet block. */
@@ -247,7 +257,10 @@ textarea.input { resize: none; }
      slack that buys `name` its extra room comes from `stock` and `cat`, whose content is a short
      number and a chip that wraps; `date` and `purchased` keep the width their headings already
      needed ("נוסף בתאריך" ellipsizes below ~113px). */
-  .products-table .name-col      { width: 22%; }
+  /* 20.8%, down from 22 — the 1.2% goes to `purchased` below, whose "נרכשו" plus its sort chevron
+     did not fit 7% at any width and was rendering as "נרכ…" on a 1440px screen. The name is
+     ellipsised by design and is the only column here that can give without losing a word. */
+  .products-table .name-col      { width: 20.8%; }
   .products-table .sku-col       { width: 6.5%; }
   .products-table .cat-col       { width: 10.5%; }
   /* Price and stock are `.num` (nowrap) and start-aligned, so in RTL an overlong value
@@ -259,7 +272,7 @@ textarea.input { resize: none; }
      digits — the narrowest real content in the table, and it was holding 52px. The 0.9% it gives
      back goes to `date`, whose "נוסף בתאריך" is the longest heading here and the first to clip. */
   .products-table .wishlist-col  { width: 3.6%; }
-  .products-table .purchased-col { width: 7%; }
+  .products-table .purchased-col { width: 8.2%; }
   .products-table .date-col      { width: 11.4%; }
   .products-table .seo-col       { width: 2.5rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 3.4rem; }
@@ -1795,6 +1808,21 @@ textarea.input { resize: none; }
 .dash-tabs[data-alert-end="danger"] .dash-tab-fade--end::after { background: var(--color-danger); }
 .dash-tabs[data-alert-start="warning"] .dash-tab-fade--start::after,
 .dash-tabs[data-alert-end="warning"] .dash-tab-fade--end::after { background: var(--color-warning); }
+
+/* ── The alert dots the tab strip carries, as a class ──
+   They were four copies of the same seven inline declarations (orders, advertising, messages,
+   payouts). One rule in four places is the next thing to drift, and an inline style is the one
+   thing a stylesheet cannot adjust later. */
+.dash-tab-dot {
+  position: absolute;
+  top: 0.45rem;
+  inset-inline-end: 0.6rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-danger);
+}
+.dash-tab-dot[data-tab-alert="warning"] { background: var(--color-warning); }
 
 /* Sticky title bar — used on panels that carry a control (Orders/Messages:
    search+sort+filter; Settings: save button; Performance: the date-range picker;
