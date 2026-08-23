@@ -100,9 +100,37 @@ case that breaches it. **This is why shipping is charged as its own sale on our 
 account instead** — that route touches no ceiling at all, and was measured working: a ₪30 sale under
 a second account with `market_fee: 0`, paid with the same token, completed.
 
-**✅ RESOLVED 2026-08-23 by the owner producing the actual exchange with PayMe. Two sessions had
-guessed at this and the second guess — mine — was wrong; the record is below so nobody guesses a
-third time.**
+**⚠️ READ THE TABLE BELOW BEFORE ANY SENTENCE IN THIS SECTION.** Three sessions have now confused
+these two numbers, this file has stated it both ways round on the same day, and the only thing that
+settled it was measuring each one and writing down its error code.
+
+| | limits | value | error | measured 2026-08-23 |
+|---|---|---|---|---|
+| **capture ceiling** | how much of an **authorization** may be drawn in total | **100%** | `352` | authorize ₪100 → capture ₪30 ✅ then ₪70 ✅ then ₪1 ❌ |
+| **market-fee ceiling** | how much of a **sale** may be **our cut** (`market_fee` % + `market_fee_fixed`) | **60%** | `308` | capture ₪50 with a ₪36 cut (72%) ❌ |
+
+**They are not the same question.** The first is about the BUYER's money — how much of what he
+approved can actually be taken. The second is about SPLITTING one sale — how much of it is ours
+rather than the seller's.
+
+**And a third measurement decides which one the delivery problem is:** a full ₪100 capture of a ₪100
+authorization **carrying a ₪15 fixed fee** completed. If the fee were drawn on top of the capture,
+that would have needed ₪115 of a ₪100 authorization and been refused `352`. It was not — so
+**`market_fee_fixed` comes out of the seller's proceeds and consumes no authorization headroom**,
+exactly as the agreement's §10.4 describes it.
+
+Therefore: **delivery-by-fixed-fee is constrained by the 60%, never by the 100%.** ₪10 of goods with
+₪30 of delivery is an 87% cut and is refused `308`.
+
+**Which leaves what PayMe offered.** Their words are *"כשעושה **לכידה** בשווי 500 ש״ח שהם **100%**…
+להעלות ל-110%"* — capture language and the capture number, i.e. the FIRST row. ⚠️ That reading is an
+inference from their wording and not a measurement, and it matters: **if it is right, the 110% they
+offered does not unblock delivery, and the ceiling that has to move is the 60%.** Ask them which one
+they meant rather than accepting the offer as given.
+
+---
+
+**The exchange itself, 2026-08-23, produced by the owner:**
 
 The owner asked them, verbatim:
 
@@ -114,25 +142,25 @@ PayMe answered:
 > *"כן. זה אומר שכשאתה עושה לכידה בשווי 500 ש״ח שהם 100%, אני צריך להעלות לך את האפשרות בהגדרות
 > אצלי ל‑110% לדוגמה."*
 
-**So the "110%" IS about our cut, not about capture-versus-authorization.** The question was
-explicitly about a FIXED amount for delivery — `market_fee_fixed` — and the answer is yes, plus:
-the cap on the total distribution fee is **a per-account setting on their side that they can raise
-on request.** The 60% we measured is simply its current value on our account.
+**What is CERTAIN from the exchange**, and it is worth separating from what is not:
+* A fixed cut exists and is supported. (Their API name for it is `market_fee_fixed` — §11.)
+* **A ceiling has to be raised for the delivery case, and it is a per-account setting they control.**
+  That is the operative fact and it does not depend on which ceiling they meant.
 
-What this corrects, in both directions:
-* An earlier session guessed the 110% applied to the market fee. **That guess was right**, and it
-  was marked "a READING, not a measurement" — correctly, because it was one.
-* On 2026-08-23 I argued the opposite: that he must have meant the capture ceiling, since 110% of a
-  sale as commission is arithmetically absurd. **That reasoning was wrong** — he is talking about
-  the ceiling SETTING's value, not about taking 110% of a sale — and it was written into this file
-  and into `GO_LIVE` with more confidence than an inference deserves.
+**What is NOT certain: which of the two ceilings.** Their sentence says *לכידה* and *100%*, which is
+the capture ceiling's vocabulary and its number. But the measurement above shows a fixed fee consumes
+no authorization headroom, so raising the capture ceiling would not unblock delivery — the 60% would.
+Either they meant the 60% and described it loosely, or they meant the 100% and the offer does not
+address the problem.
 
-**The consequence is a real design option, not a footnote.** Folding delivery into the seller's sale
-as `market_fee_fixed` is now known to be available, and it would remove one line from the buyer's
-card statement on every single-store order. It is not automatically the right choice — see
-`GO_LIVE` §3.1.2 for the three costs (refund entanglement, a blended fee figure that has to be
-decomposed per order, and their settlement date) — but it is a live choice, and it was previously
-recorded as closed.
+**Do not resolve this by argument. Two sessions tried and produced opposite answers on the same day,
+both stated confidently, both written into this file.** Ask them plainly: *"the ceiling that blocks
+us is the 60% cap on `market_fee` + `market_fee_fixed` — error 308 — is that the one you are
+raising?"*
+
+**And it may not need asking at all.** §15: the delivery fee only has to ride on the seller's sale
+because we have no merchant account of our own to charge. Opening one with `create-seller` removes
+the ceiling from the picture entirely.
 
 ### 7. `create-seller` returns more than an id
 `seller_payme_id`, `seller_payme_secret` (the per-seller callback signing key),
