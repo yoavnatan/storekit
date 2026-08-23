@@ -1,4 +1,15 @@
 ---
+/**
+ * no-viewcontent: this quick-view is opened from exactly two places, and neither is a shopper
+ * discovering a product. From the CART DRAWER it is someone re-checking an item they have already
+ * added — `AddToCart` fired for it, which is a strictly stronger signal than the `ViewContent` this
+ * would add — and from the SELLER'S DASHBOARD products table it is the owner, whom
+ * `/api/store-product` already excludes from counting at all (`viewCounted`). It also has no
+ * add-to-cart of its own: it is a read-only preview. That is why `PQVProduct` carries no catalog id
+ * — this component has never been an advertising surface, and the absence is a decision rather than
+ * the gap `StoreProductModal` turned out to have. `tests/funnel-halves-agree.test.ts` is what
+ * requires this sentence to exist instead of the silence that hid the other one.
+ */
 import { getLang, getT } from '../i18n/index.js';
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);

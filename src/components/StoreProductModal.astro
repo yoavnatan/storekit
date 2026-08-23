@@ -94,7 +94,7 @@ const i18n = {
   import { arrowStep } from '../lib/arrow-step.js';
   import { escapeHtml as escHtml } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
-  import { trackAddToCart } from '../lib/tracking.js';
+  import { trackAddToCart, trackViewContent } from '../lib/tracking.js';
   import { adItemId } from '../lib/ad-item-id.js';
   import { comboKey } from '../lib/variant-combo.js';
   import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
@@ -118,6 +118,12 @@ const i18n = {
     /** The store is a showcase store (see /api/store-product). Additive — an older payload
      *  without it simply shows no badge, and /api/checkout refuses the purchase either way. */
     storeDemo?: boolean;
+    /** The server counted this open as a real product view — not a bot, not the store's own owner
+     *  (/api/store-product). It is the SERVER's answer because the browser cannot know either
+     *  thing, and it gates the `ViewContent` reported to Google/Meta so both halves of the funnel
+     *  turn on one decision. Absent on an older payload, which reports nothing — the state this
+     *  code was in until 2026-08-23. */
+    viewCounted?: boolean;
     variants: Array<{ name: string; options: string[] }>;
     variantStock: Record<string, number>;
     variantImages: Record<string, string>;
@@ -286,6 +292,28 @@ const i18n = {
         if (!res.ok) throw new Error('not found');
         product = await res.json() as SPMProduct;
         cache.set(key, product);
+        // ── ViewContent, the half that was missing (2026-08-23) ──
+        // This modal IS how a product is opened from a store's grid and from the related-products
+        // row, and it pushState's the product's own URL — so by every measure a shopper is viewing
+        // a product. The server has counted that as `view_item` since it was built; neither network
+        // was ever told, so the "viewed and did not buy" audience — the largest retargeting
+        // audience there is — was being built only out of shoppers who happened to land on a full
+        // product page.
+        //
+        // Inside the fetch branch on purpose: a re-open of the same product is served from `cache`
+        // and does not reach the server either, so one event per product per page session matches
+        // exactly what was counted. Gated on the SERVER's `viewCounted` — see the type above.
+        //
+        // No combo: a card opens the product with nothing chosen, so this is the bare catalog id.
+        if (product.viewCounted) {
+          trackViewContent({
+            id: adItemId(product.id),
+            productId: product.id,
+            name: product.name,
+            price: product.price,
+            category: product.category,
+          });
+        }
       } catch {
         // Was a bare `return` until 2026-08-10: the shopper tapped a product card and NOTHING
         // happened — no modal, no message, no way to tell a failed request from a dead button.

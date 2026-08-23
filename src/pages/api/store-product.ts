@@ -39,7 +39,24 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
   // (from their storefront, or the dashboard's kebab "preview") would otherwise
   // still inflate the view count they judge that product by.
   const isOwner = getSellerSession(cookies) === store.sellerId;
-  if (!isBotRequest(request) && !isOwner) {
+  // ── ONE decision, both halves of the funnel (2026-08-23) ──
+  // This flag is returned to the caller as `viewCounted`, and the modal fires `ViewContent` to
+  // Google/Meta if and only if it is true.
+  //
+  // Why it is answered here and not re-derived in the browser: the funnel has two halves that are
+  // reported independently (`lib/tracking.ts`), and until now the quick-view did the first half and
+  // silently skipped the second. So a shopper browsing a store's GRID — the main way products are
+  // opened on this site — advanced our own `view_item` and was never mentioned to either network.
+  // That is not a small omission for retargeting specifically: "viewed and did not buy" is the
+  // largest audience there is, and it was being built only from shoppers who happened to land on a
+  // full product page.
+  //
+  // The bot and owner exclusions are the reason this is a returned FLAG rather than a second `if`
+  // in the modal. The browser cannot tell whether the person holding it is the store's owner, so a
+  // client-side copy of this rule would tell Meta that a seller previewing their own product is a
+  // shopper who wants it — poisoning that seller's own retargeting audience with themselves.
+  const viewCounted = !isBotRequest(request) && !isOwner;
+  if (viewCounted) {
     // The product counter AND the funnel view_item, in one statement — a quick-view open advances
     // the buyer funnel exactly as a full page load does, and it is the same single round trip
     // middleware makes (`page-view-tap.ts`). No `page_view` here: this is an API call inside a page
@@ -87,6 +104,11 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
     // different and untrue reason. An older client that ignores it still can't complete a
     // purchase — /api/checkout is the gate that actually refuses.
     storeHalted: !canStoreSell(store),
+    // Whether this open was counted as a real product view — see the flag's own note above. The
+    // modal fires `ViewContent` to Google/Meta only when it is true, so the bot and owner
+    // exclusions apply to BOTH halves of the funnel from one decision instead of two. Additive:
+    // an older client ignoring it behaves exactly as it did, which is to say it reports nothing.
+    viewCounted,
     // Additive, same contract as `storeHalted`: the product belongs to a showcase store
     // (lib/demo-stores.ts), so both modals show the "מוצר לדוגמה" line their surrounding cards and
     // the full product page already show. Without it a quick-view was the one product surface that
