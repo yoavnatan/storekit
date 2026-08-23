@@ -1765,6 +1765,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       <span class="product-note-chip inline-flex items-center align-middle ms-1 [color:var(--color-muted)]"${p.sellerNote ? ` title="${esc(p.sellerNote)}"` : ' hidden'} aria-label="${esc(i.sellerNoteLabel ?? 'Private note')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 3.5h15v10.5l-5.5 5.5h-9.5z"/><path d="M19.5 14h-5.5v5.5"/><line x1="8" y1="8.5" x2="16" y2="8.5"/><line x1="8" y1="12" x2="13" y2="12"/></svg></span>
       <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.hidden ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>${esc(i.productHiddenChip ?? 'מוסתר')}</span>
       <span class="product-featured-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-accent)] [background:color-mix(in_srgb,var(--color-accent)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.featured ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>${esc(i.productFeaturedChip ?? 'בכרטיסייה')}</span>
+      ${p.sku ? `<span class="product-sku-inline">${esc(i.skuLabel ?? 'SKU')}: ${esc(p.sku)}</span>` : ''}
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
@@ -2203,6 +2204,30 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
       const sku = String(fd.get('sku') ?? '').trim();
       const skuCell = displayRow.querySelector<HTMLElement>('.sku-col');
       if (skuCell) skuCell.innerHTML = `<span class="sku-col-label">${esc(i18n.skuLabel ?? 'SKU')}: </span>` + (sku ? esc(sku) : `<span style="color:var(--color-border)">—</span>`);
+
+      /**
+       * The SAME value under the name — see `.product-sku-inline` in dashboard.css. There are two
+       * copies of the SKU in a row because only one of them is ever on screen, and this save patches
+       * cells rather than rebuilding the row, so a copy left un-patched is a row showing the old SKU
+       * at every width below 960px and the new one above it. That is the drift class this codebase
+       * already pays for elsewhere; it costs four lines to close here.
+       *
+       * Placed BEFORE `.product-desc` when there is one, so the patched order matches the order the
+       * server renders — identify first, describe second.
+       */
+      const skuLine = displayRow.querySelector<HTMLElement>('.product-sku-inline');
+      if (sku) {
+        const text = `${i18n.skuLabel ?? 'SKU'}: ${sku}`;
+        if (skuLine) skuLine.textContent = text;
+        else {
+          const el = document.createElement('span');
+          el.className = 'product-sku-inline';
+          el.textContent = text;
+          const desc = displayRow.querySelector('.product-desc');
+          if (desc) desc.before(el);
+          else displayRow.querySelector('.name-col')?.append(el);
+        }
+      } else skuLine?.remove();
 
       displayRow.dataset.sortName = name.toLowerCase();
       displayRow.dataset.sortPrice = String(price);

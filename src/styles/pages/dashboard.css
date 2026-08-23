@@ -390,6 +390,9 @@ textarea.input { resize: none; }
      actually flips, rather than a round number. */
   @container prodtable (max-width: 960px) {
     .products-table .sku-col { display: none; }
+    /* The same query, so the two can never disagree: the value appears in the name cell in the
+       exact condition that takes its column away. See `.product-sku-inline` for why. */
+    .products-table .product-sku-inline { display: block; }
     /* **And the name takes the width the SKU let go of** (owner, 2026-08-23: *"ה-SEO רחוק מדי
        מהשלוש נקודות וזה בא על חשבון הקריאות של כותרות חשובות"*). Under `table-layout: fixed` any
        width the declared columns do not claim is handed back to ALL of them in proportion — so
@@ -767,6 +770,34 @@ textarea.input { resize: none; }
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 28ch;
+}
+
+/* ── THE SKU FOLLOWS THE NAME WHEN ITS COLUMN GOES ──
+   Owner, 2026-08-23: *"המקט לא יכול פשוט להעלם מעל פני האדמה"*, and he is right about the thing
+   that matters — a מק״ט is the IDENTIFIER a seller looks a product up by, not a metric.
+
+   The COLUMN still goes at 960, and that measurement is not being overturned: the block above it
+   records what keeping it cost (a ~800px table put "נרכשו" to 31 visible pixels of 36 and
+   "נוסף בתאריך" to 60 of 74). What was wrong was not which column was dropped, it was that the
+   VALUE went with it. Measured before this line existed, the SKU was unreachable across two whole
+   bands — a 1200-1290 window and a 700-1040 one — and flipped in and out four times on the way
+   down. Now the column goes and the value moves under the name, so the answer to "what is this
+   product's SKU" is on screen at every width the dashboard has.
+
+   Not `.product-desc`'s twin: it sits ABOVE the description, because it identifies and the
+   description only describes, and it is a shade smaller so the name still leads the cell. Rendered
+   only when there IS a SKU — the column prints "—" for an empty one because a table cell cannot be
+   absent, but a line under a name can. */
+.product-sku-inline {
+  display: none;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  margin-top: 0.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28ch;
+  font-variant-numeric: tabular-nums;
 }
 
 .num { white-space: nowrap; }
@@ -1591,6 +1622,11 @@ textarea.input { resize: none; }
   .sku-col-label,
   .purchased-col-label,
   .date-col-label { display: inline; color: var(--color-muted); }
+  /* The card gives the SKU its own row back, so the copy under the name would be the second one.
+     This block is LATER in the file than the container query that reveals it and matches on the
+     same specificity, so this is the rule that wins — it is not belt-and-braces, it is the only
+     thing standing between the card and a duplicated SKU. */
+  .products-table .product-sku-inline { display: none; }
   /* Every field above spells its own label out because a bare number or date reads as ambiguous
      with no column header. The category is the one that does NOT need it: it is a coloured chip,
      which says "category" by looking like one. And the label was not free — "קטגוריה: " is wider

@@ -1983,6 +1983,11 @@ const orderStatusColors: Record<string, string> = {
                           room for it. If per-row discovery is wanted later, a TOOLBAR FILTER is the
                           shape that fits this table — `needsSeoAttention` in product-seo-hints.ts is
                           the predicate, already tested. */}
+                      {/* The SKU's landing place when its column is dropped — CSS decides, in the
+                          same container query that drops it, so the two cannot disagree. Rendered
+                          unconditionally-when-present rather than gated here: a width is not
+                          knowable on the server, and the alternative is shipping every row twice. */}
+                      {p.sku && <span class="product-sku-inline">{d.skuLabel}: {p.sku}</span>}
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
                     <td class="sku-col"><span class="sku-col-label">{d.skuLabel}: </span>{p.sku || <span style="color:var(--color-border)">—</span>}</td>

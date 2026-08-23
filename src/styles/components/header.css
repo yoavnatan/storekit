@@ -907,7 +907,7 @@ nav a:hover { color: var(--color-text); }
    built for — effectively exact. It also lands almost precisely where the Heebo value did
    (Hebrew ~0.0, Latin 0.66px high), so the lockup did not change character in the move. */
 .site-header .store-name-text,
-.hdr-preview .store-name-text { transform: translateY(-0.061em); }
+.hdr-preview .store-name-text { transform: translateY(0.035em); }
 
 /* `text-box-trim: trim-both; text-box-edge: cap alphabetic` was tried here and REJECTED, measured,
    so it is not tried again. It looks like the principled fix — let the browser trim the box to the
