@@ -36,6 +36,7 @@ import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment
 import { planSplit, authorizeCart, captureSlices, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
 import { commissionPercentForTier } from '../../lib/pricing.js';
 import { store as platform } from '../../config/store.config.js';
+import { serverEnv } from '../../lib/runtime-env.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -200,13 +201,15 @@ async function chargeSplitAsCapture(
       await recordMoneyEvent({
         type: 'payment_attempted',
         checkoutRef,
-        storeSlug: leg.storeSlug,
+        ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
         amountAgorot: leg.amountAgorot,
         actor: 'buyer',
-        detail: `\u05e0\u05d2\u05d1\u05d4 \u00b7 \u05d7\u05e0\u05d5\u05ea ${leg.storeSlug}${leg.marketFeeFixedAgorot ? ` \u00b7 \u05db\u05d5\u05dc\u05dc \u05de\u05e9\u05dc\u05d5\u05d7 ${formatAgorot(leg.marketFeeFixedAgorot)}` : ''} \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${leg.paymeSaleId}`,
+        detail: `\u05e0\u05d2\u05d1\u05d4 \u00b7 ${leg.kind === 'delivery' ? '\u05de\u05e9\u05dc\u05d5\u05d7 (\u05d4\u05d7\u05e9\u05d1\u05d5\u05df \u05e9\u05dc\u05e0\u05d5)' : `\u05d7\u05e0\u05d5\u05ea ${leg.storeSlug}`} \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${leg.paymeSaleId}`,
       }).catch(() => { /* the order rows below are still written; a lost journal row is not a lost sale */ });
     }
-    return { ok: true, refsByStore: new Map(result.captures.map((c) => [c.storeSlug, c.paymeSaleId])) };
+    const refsByStore = new Map<string, string>();
+    for (const c of result.captures) if (c.storeSlug) refsByStore.set(c.storeSlug, c.paymeSaleId);
+    return { ok: true, refsByStore };
   }
 
   await recordMoneyEvent({
@@ -222,7 +225,7 @@ async function chargeSplitAsCapture(
     await recordMoneyEvent({
       type: 'charge_voided',
       checkoutRef,
-      storeSlug: leg.storeSlug,
+      ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
       amountAgorot: leg.amountAgorot,
       actor: 'buyer',
       detail: `\u05d4\u05d5\u05d7\u05d6\u05e8 \u05d1\u05de\u05dc\u05d5\u05d0\u05d5 \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${leg.paymeSaleId}`,
@@ -235,7 +238,7 @@ async function chargeSplitAsCapture(
     await recordMoneyEvent({
       type: 'charge_voided',
       checkoutRef,
-      storeSlug: failed.leg.storeSlug,
+      ...(failed.leg.storeSlug ? { storeSlug: failed.leg.storeSlug } : {}),
       amountAgorot: failed.leg.amountAgorot,
       actor: 'buyer',
       detail: `\u203c\ufe0f \u05d4\u05d4\u05d7\u05d6\u05e8 \u05e0\u05db\u05e9\u05dc \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${failed.leg.paymeSaleId} \u00b7 ${failed.error.slice(0, 160)}`,
@@ -715,14 +718,16 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           // shipping. The shipping part of that total is charged to us, on the separate leg below,
           // and folding it in here is precisely what breaches the 60% ceiling.
           goodsAgorot: sub.subtotalAgorot - (sub.discount?.appliedAgorot ?? 0),
-          // This store's delivery, captured inside its own slice and returned to us as a fixed
-          // fee. It used to be one separate charge on "our marketplace account" — there is no such
-          // account, and charging the partner id is refused 174 (payment-split.ts's header).
+          // This store's delivery. Summed with the others into ONE capture to our own merchant
+          // account, which is what keeps it out of the seller's 60% ceiling.
           shippingAgorot: sub.shippingAgorot,
           marketFeePercent: tiers.get(sellerId) ?? 0,
           productName: `${sub.storeName} · ${checkoutRef}`,
         };
       }),
+      // Our OWN merchant account — an ordinary one opened with `create-seller`, NOT the partner
+      // id, which cannot receive money (174). `payment-split.ts` says why the distinction matters.
+      deliveryMerchantId: serverEnv('PAYME_DELIVERY_MERCHANT_ID'),
       checkoutRef,
       buyerEmail: buyerData.buyerEmail,
       buyerName: buyerData.buyerName,

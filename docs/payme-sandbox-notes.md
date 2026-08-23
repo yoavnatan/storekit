@@ -377,6 +377,47 @@ the adapter with no confirmation from either a measurement or a current page.
 multi-seller.** It is one payment page offering several payment METHODS (card, bit, Apple Pay,
 Google Pay). Multi-capture is the multi-seller mechanism.
 
+### 18. ✅ DELIVERY HAS A HOME: a merchant account of OUR OWN, and the 60% ceiling stops mattering
+Measured 2026-08-23, and it closes the argument that ran through this whole file.
+
+The partner identity cannot receive money (§15, `174`). That is what forced delivery to ride inside
+each seller's capture as `market_fee_fixed`, and THAT is what made the 60% cap bite on cheap items —
+₪10 of goods with ₪30 of delivery is an 87% cut. Which in turn made us dependent on PayMe raising a
+ceiling, which the owner cannot request: their sandbox was sent for evaluation, and changes need a
+signed agreement.
+
+**None of that is necessary.** The partner cannot receive money; a MERCHANT can — and we can open one
+for ourselves with `create-seller`, using nothing but the API we already have:
+
+    create-seller  "Dezabin Delivery"        → MPL17874-990088XH-20DMI0AE-UPSUETVB
+    authorize ₪90 on the SELLER              → authorized
+    multi-capture ₪60 → the seller           → completed
+    multi-capture ₪30 → OUR OWN merchant     → completed
+
+So a cart is one authorization and N+1 captures: one per store, plus delivery to us. Our cut on a
+seller's capture is then just the tier commission — 10–12%, nowhere near 60% — and the ceiling is
+out of the picture on every order at every price.
+
+**⚠️ It costs ₪65/month** (appendix ב׳, per merchant account) and a ₪99 setup. That is the price of
+not needing anybody's permission, and it is trivial against the alternative.
+
+### 19. ⚠️ For an עוסק מורשה, the business number must EQUAL the owner's ת.ז
+Refused on the first attempt at §18, in their own words:
+
+    114 · עבור סוג עוסק "עוסק מורשה" מספר העסק חייב להיות זהה למספר תעודת הזהות של בעל העסק
+
+**This will reject a real seller of ours**, because `payout-details.ts` collects `businessId` and
+`merchant-kyc.ts` collects `ownerSocialId` as two independent fields, and nothing compares them. An
+עוסק מורשה who types his ת.ז in one and his ע.מ number in the other — which is what the labels invite
+— is refused at `create-seller` with a message he never sees, and his store silently cannot sell.
+`seller_inc` 2 is the commonest kind of seller this platform will have.
+
+### 20. `seller_public_key` really is an object, and `seller_approved` is ABSENT on create
+Both confirmed by the real `create-seller` response in §18: the key came back as
+`{ uuid, description, is_active }`, and `seller_approved` was **undefined** rather than `false`.
+`createSeller` already reads the object shape and already treats an absent flag as not-approved —
+both were written from their documentation before this call proved them.
+
 ---
 
 ## Still unmeasured — do not guess these

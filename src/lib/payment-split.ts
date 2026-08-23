@@ -40,6 +40,7 @@
  */
 import {
   generateSale, refundSale, refuseSale, saleIsPaid, PaymeError,
+  PAYME_MIN_SALE_AGOROT,
   type PaymeCredentials,
 } from './payment-payme.js';
 
@@ -51,9 +52,8 @@ export interface StoreCharge {
   sellerPaymeId: string | undefined;
   /** Goods minus the seller's order discount, in AGOROT. */
   goodsAgorot: number;
-  /** This store's delivery fee, in AGOROT. Captured as part of the same slice and returned to us as
-   *  `market_fee_fixed`, so the buyer pays it, the seller nets his goods, and we hold the money we
-   *  owe the courier. Zero for self-pickup. */
+  /** This store's delivery fee, in AGOROT. Captured SEPARATELY, to our own merchant account — see
+   *  `SplitInput.deliveryMerchantId`. Zero for self-pickup. */
   shippingAgorot: number;
   /** This seller's tier commission (`lib/pricing.ts`), passed per capture rather than relying on the
    *  merchant's stored default — so a tier change takes effect on the next sale. */
@@ -65,6 +65,18 @@ export interface SplitInput {
   /** The buyer's token from Hosted Fields. Used ONCE, on the authorization. */
   buyerKey: string;
   stores: StoreCharge[];
+  /**
+   * OUR OWN merchant account, which the delivery captures land in.
+   *
+   * **Not the partner id** — that cannot receive money at all (`174`, measured), and mistaking the
+   * two is what sent an earlier version of this file down the fixed-fee route. This is an ordinary
+   * merchant account opened with `create-seller` like any seller's, and a capture to it was measured
+   * working from an authorization created on a DIFFERENT seller.
+   *
+   * Absent means delivery cannot be charged and `planSplit` refuses the cart rather than quietly
+   * giving the delivery away.
+   */
+  deliveryMerchantId: string | undefined;
   /** Our reference for the purchase; every PayMe `transaction_id` below derives from it. */
   checkoutRef: string;
   buyerEmail?: string;
@@ -78,16 +90,22 @@ export type SplitRefusal =
   /** Our cut would breach the 60% cap. Reachable in ordinary trading now that delivery rides on the
    *  capture — a cheap item with real delivery is 87% — which is why PayMe were asked to raise it. */
   | { reason: 'store-fee-ceiling'; storeSlug: string }
+  /** Delivery to charge and no merchant account of ours to charge it to. */
+  | { reason: 'no-delivery-merchant' }
+  /** A non-zero delivery total under PayMe's minimum sale. Unreachable at the platform's own
+   *  rates; pinned by a test so a future rate cannot introduce it quietly. */
+  | { reason: 'delivery-below-minimum'; amountAgorot: number }
   | { reason: 'nothing-to-charge' };
 
 export interface SplitLeg {
-  storeSlug: string;
+  /** `'store'` captures goods to that seller; `'delivery'` captures the cart's delivery to us. */
+  kind: 'store' | 'delivery';
+  /** Absent on the delivery leg, which belongs to the cart rather than to one shop. */
+  storeSlug?: string;
   sellerPaymeId: string;
   /** Goods + delivery. What this capture draws from the authorization. */
   amountAgorot: number;
   marketFeePercent: number;
-  /** The delivery part, returned to us as a fixed fee on this capture. */
-  marketFeeFixedAgorot: number;
   productName: string;
   /** Deterministic from the checkout reference. A correlation id, **not** an idempotency key —
    *  PayMe document nothing about refusing a repeat and that behaviour is unmeasured. */
@@ -121,14 +139,14 @@ export function planSplit(input: SplitInput): SplitPlan {
       refusals.push({ reason: 'store-cannot-sell', storeSlug: store.storeSlug });
       continue;
     }
-    const amountAgorot = store.goodsAgorot + store.shippingAgorot;
+    // GOODS ONLY. Delivery is captured separately, to our own merchant account, so it is not part
+    // of the seller's sale and takes no part in his 60% ceiling.
     const refusal = refuseSale({
-      salePriceAgorot: amountAgorot,
+      salePriceAgorot: store.goodsAgorot,
       marketFeePercent: store.marketFeePercent,
-      marketFeeFixedAgorot: store.shippingAgorot,
     });
     if (refusal === 'below-minimum') {
-      refusals.push({ reason: 'store-below-minimum', storeSlug: store.storeSlug, amountAgorot });
+      refusals.push({ reason: 'store-below-minimum', storeSlug: store.storeSlug, amountAgorot: store.goodsAgorot });
       continue;
     }
     if (refusal === 'market-fee-ceiling') {
@@ -136,14 +154,38 @@ export function planSplit(input: SplitInput): SplitPlan {
       continue;
     }
     legs.push({
+      kind: 'store',
       storeSlug: store.storeSlug,
       sellerPaymeId: store.sellerPaymeId,
-      amountAgorot,
+      amountAgorot: store.goodsAgorot,
       marketFeePercent: store.marketFeePercent,
-      marketFeeFixedAgorot: store.shippingAgorot,
       productName: store.productName,
       transactionId: `${input.checkoutRef}-${store.storeSlug}`,
     });
+  }
+
+  // ONE delivery capture for the whole cart, last. Each PayMe transaction costs a flat fee
+  // (agreement, appendix bet), and this money is ours either way — so there is nothing to gain from
+  // one capture per shop. `market_fee: 0`, because a commission on our own capture would be us
+  // taking a cut from ourselves and the ledger would stop closing.
+  const deliveryAgorot = input.stores.reduce((sum, st) => sum + st.shippingAgorot, 0);
+  if (deliveryAgorot > 0) {
+    if (!input.deliveryMerchantId) {
+      refusals.push({ reason: 'no-delivery-merchant' });
+    } else if (deliveryAgorot < PAYME_MIN_SALE_AGOROT) {
+      // Unreachable at the platform's own rates and pinned by a test, so a future rate cannot make
+      // it reachable in silence.
+      refusals.push({ reason: 'delivery-below-minimum', amountAgorot: deliveryAgorot });
+    } else {
+      legs.push({
+        kind: 'delivery',
+        sellerPaymeId: input.deliveryMerchantId,
+        amountAgorot: deliveryAgorot,
+        marketFeePercent: 0,
+        productName: 'משלוח',
+        transactionId: `${input.checkoutRef}-delivery`,
+      });
+    }
   }
 
   if (!legs.length && !refusals.length) refusals.push({ reason: 'nothing-to-charge' });
@@ -152,7 +194,7 @@ export function planSplit(input: SplitInput): SplitPlan {
     refusals,
     legs,
     authorizeAgorot: legs.reduce((sum, l) => sum + l.amountAgorot, 0),
-    authorizeOn: legs[0]?.sellerPaymeId ?? '',
+    authorizeOn: legs.find((l) => l.kind === 'store')?.sellerPaymeId ?? legs[0]?.sellerPaymeId ?? '',
   };
 }
 
@@ -242,11 +284,10 @@ export async function captureSlices(
         transactionId: leg.transactionId,
         saleType: 'multi-capture',
         originSaleId: authorizationId,
+        // `0` on the delivery leg, and it must survive as 0 rather than being dropped as falsy:
+        // omitting the field falls back to the merchant's stored default, which would take a fee
+        // nobody agreed to — out of our own capture.
         marketFeePercent: leg.marketFeePercent,
-        // The delivery fee, returned to us on this capture. `0` for self-pickup and it must survive
-        // as 0 rather than being dropped as falsy — omitting the field falls back to the merchant's
-        // stored default, which would take a fee nobody agreed to.
-        marketFeeFixedAgorot: leg.marketFeeFixedAgorot,
         ...(input.callbackUrl ? { callbackUrl: input.callbackUrl } : {}),
       }, creds);
       captured.push({ ...leg, paymeSaleId: sale.paymeSaleId });
@@ -267,7 +308,7 @@ export async function captureSlices(
       return {
         ok: false,
         error: 'payment-failed',
-        detail: `store ${leg.storeSlug}: ${failure}`,
+        detail: `${leg.kind === 'delivery' ? 'delivery' : `store ${leg.storeSlug}`}: ${failure}`,
         failedAt: leg,
         voided,
         refunded: unwound.refunded,

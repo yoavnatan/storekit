@@ -5,10 +5,10 @@
  * authorization and N captures, which is where a multi-store cart actually goes wrong. Every rule
  * below comes from a measurement recorded in `docs/payme-sandbox-notes.md` §14–15:
  *
- *  · ONE authorization holds the whole cart; each store's capture draws a slice of it.
+ *  · ONE authorization holds the whole cart; each capture draws a slice of it.
  *  · A capture may name a DIFFERENT seller from the one the authorization was created on.
- *  · Delivery rides inside its store's capture as `market_fee_fixed` — there is no account of ours
- *    to charge it to separately, and charging the partner id is refused 174.
+ *  · Delivery is its OWN capture, to a merchant account of ours — NOT the partner id, which cannot
+ *    receive money at all (174). That is what keeps it out of the seller's 60% ceiling.
  *  · Captures may not exceed the authorization, so the legs must sum to exactly what was held.
  *  · A failure before the first capture RELEASES the hold; after it, refunds what completed.
  *  · A refund that itself fails is reported, never swallowed: that is a real person's money.
@@ -47,6 +47,7 @@ function twoStoreCart(overrides: Partial<Parameters<typeof planSplit>[0]> = {}) 
       { storeSlug: 'alef', sellerPaymeId: 'MPL-A', goodsAgorot: 6000, shippingAgorot: 3000, marketFeePercent: 12, productName: 'חנות אלף' },
       { storeSlug: 'bet', sellerPaymeId: 'MPL-B', goodsAgorot: 6000, shippingAgorot: 3000, marketFeePercent: 10, productName: 'חנות בית' },
     ],
+    deliveryMerchantId: 'MPL-US',
     checkoutRef: 'ABCD1234',
     ...overrides,
   };
@@ -63,26 +64,33 @@ beforeEach(() => { net.replies = []; net.calls = []; });
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('the plan', () => {
-  it('holds the WHOLE cart and splits it into one capture per store', () => {
+  it('holds the WHOLE cart: goods per store, then ONE delivery capture', () => {
     const plan = planSplit(twoStoreCart());
     expect(plan.refusals).toEqual([]);
-    expect(plan.legs.map((l) => l.storeSlug)).toEqual(['alef', 'bet']);
-    // ₪60 goods + ₪30 delivery, twice.
-    expect(plan.legs.map((l) => l.amountAgorot)).toEqual([9000, 9000]);
+    expect(plan.legs.map((l) => l.kind)).toEqual(['store', 'store', 'delivery']);
+    // ₪60 of goods each, then ₪30 + ₪30 of delivery as a single capture of ours.
+    expect(plan.legs.map((l) => l.amountAgorot)).toEqual([6000, 6000, 6000]);
     expect(plan.authorizeAgorot).toBe(18000);
   });
 
-  it('creates the authorization on the FIRST store\'s merchant, deterministically', () => {
+  it('creates the authorization on the first STORE\'s merchant, never on ours', () => {
     // Any of the cart's sellers would do — an authorization on seller A was measured being captured
     // by seller B — so the choice is made once and reproducibly rather than left to iteration order.
     expect(planSplit(twoStoreCart()).authorizeOn).toBe('MPL-A');
   });
 
-  it('carries each store\'s delivery as the FIXED fee on its own capture', () => {
-    // There is no merchant account of ours to charge delivery to: the partner id is refused 174.
-    // So it rides inside the store's capture and comes back to us as market_fee_fixed.
-    const plan = planSplit(twoStoreCart());
-    expect(plan.legs.map((l) => l.marketFeeFixedAgorot)).toEqual([3000, 3000]);
+  it('captures delivery to OUR merchant, as one leg, with no market fee', () => {
+    // Measured: a capture to a merchant account of our own, from an authorization created on a
+    // different seller, completes. `market_fee: 0` because a commission on our own capture would be
+    // us taking a cut from ourselves.
+    const delivery = planSplit(twoStoreCart()).legs.find((l) => l.kind === 'delivery')!;
+    expect(delivery).toMatchObject({ sellerPaymeId: 'MPL-US', amountAgorot: 6000, marketFeePercent: 0 });
+    expect(delivery.storeSlug).toBeUndefined();
+  });
+
+  it('refuses when there is delivery to charge and no merchant account of ours', () => {
+    expect(planSplit(twoStoreCart({ deliveryMerchantId: undefined })).refusals)
+      .toContainEqual({ reason: 'no-delivery-merchant' });
   });
 
   it('gives each store its own merchant and its own tier commission', () => {
@@ -91,13 +99,12 @@ describe('the plan', () => {
     expect(plan.legs[1]).toMatchObject({ sellerPaymeId: 'MPL-B', marketFeePercent: 10 });
   });
 
-  it('carries a zero delivery fee for self-pickup rather than dropping it', () => {
-    // `0` must reach PayMe as `0`. Omitting the field falls back to the merchant's stored default,
-    // which would take a fee nobody agreed to.
+  it('skips the delivery leg entirely for a self-pickup-only cart', () => {
     const cart = twoStoreCart();
-    cart.stores[0]!.shippingAgorot = 0;
+    cart.stores.forEach((st) => { st.shippingAgorot = 0; });
     const plan = planSplit(cart);
-    expect(plan.legs[0]).toMatchObject({ amountAgorot: 6000, marketFeeFixedAgorot: 0 });
+    expect(plan.refusals).toEqual([]);
+    expect(plan.legs.map((l) => l.kind)).toEqual(['store', 'store']);
   });
 
   it('refuses a store whose seller has no clearing account', () => {
@@ -109,29 +116,31 @@ describe('the plan', () => {
   it('refuses a slice below PayMe\'s 500-agorot minimum, and NAMES the store', () => {
     const cart = twoStoreCart();
     cart.stores[1]!.goodsAgorot = 100;
-    cart.stores[1]!.shippingAgorot = 0;
     expect(planSplit(cart).refusals).toContainEqual({ reason: 'store-below-minimum', storeSlug: 'bet', amountAgorot: 100 });
   });
 
-  it('refuses a cheap item with real delivery — the 60% case PayMe were asked to raise', () => {
-    // ₪10 of goods with ₪30 of delivery: our cut is 12% of ₪40 plus the ₪30, i.e. 87%. This is now
-    // reachable in ordinary trading, because delivery rides on the capture rather than sitting on a
-    // charge of its own — which is exactly why the ceiling has to move.
+  it('a cheap item with expensive delivery is FINE — the 60% ceiling never sees the delivery', () => {
+    // This is the whole reason delivery has a capture of its own. Ride it on the seller's sale as a
+    // fixed fee and ₪10 of goods with ₪30 of delivery is an 87% cut, refused 308 — and unblocking
+    // that would need PayMe to raise a ceiling, which needs a signed agreement. Captured separately,
+    // the seller's sale is ₪10 with a 12% cut and nothing is near the cap.
     const cart = twoStoreCart();
     cart.stores[0]!.goodsAgorot = 1000;
-    expect(planSplit(cart).refusals).toContainEqual({ reason: 'store-fee-ceiling', storeSlug: 'alef' });
+    const plan = planSplit(cart);
+    expect(plan.refusals).toEqual([]);
+    expect(plan.legs.find((l) => l.storeSlug === 'alef')).toMatchObject({ amountAgorot: 1000 });
   });
 
   it('collects EVERY refusal, not just the first', () => {
     const cart = twoStoreCart();
     cart.stores[0]!.goodsAgorot = 100;
-    cart.stores[0]!.shippingAgorot = 0;
     cart.stores[1]!.sellerPaymeId = undefined as unknown as string;
     expect(planSplit(cart).refusals).toHaveLength(2);
   });
 
   it('derives every PayMe reference from the checkout reference', () => {
-    expect(planSplit(twoStoreCart()).legs.map((l) => l.transactionId)).toEqual(['ABCD1234-alef', 'ABCD1234-bet']);
+    expect(planSplit(twoStoreCart()).legs.map((l) => l.transactionId))
+      .toEqual(['ABCD1234-alef', 'ABCD1234-bet', 'ABCD1234-delivery']);
   });
 });
 
@@ -147,6 +156,7 @@ describe('the buyer is charged exactly what the order says — the invariant', (
     const plan = planSplit({
       buyerKey: 'BK1',
       checkoutRef: 'REF',
+      deliveryMerchantId: 'MPL-US',
       stores: slices.map((s, i) => ({
         storeSlug: `s${i}`,
         sellerPaymeId: `MPL-${i}`,
@@ -165,10 +175,9 @@ describe('the buyer is charged exactly what the order says — the invariant', (
 
 describe('the platform\'s delivery rates have to be chargeable', () => {
   it('every rate is at or above PayMe\'s minimum sale', () => {
-    // A store's capture is goods + delivery, so a rate alone is never the whole sale — but a
-    // pickup-only order of a cheap item is, and these are PLACEHOLDERS awaiting the carrier's real
-    // tariff (`lib/shipping.ts`). Pinned so a future rate cannot make `store-below-minimum`
-    // reachable without the test saying so.
+    // The delivery capture is its own sale now, so a single-store order's delivery total IS a rate.
+    // These are PLACEHOLDERS awaiting the carrier's real tariff (`lib/shipping.ts`), pinned so a
+    // future rate cannot make `delivery-below-minimum` reachable without the test saying so.
     for (const [method, ils] of Object.entries(SHIPPING_RATES)) {
       expect(Math.round(ils * 100), `${method} is below PayMe's minimum sale`).toBeGreaterThanOrEqual(PAYME_MIN_SALE_AGOROT);
     }
@@ -199,7 +208,7 @@ describe('authorizing', () => {
 
 describe('capturing', () => {
   it('draws each slice out of the SAME authorization, naming each store\'s own merchant', async () => {
-    net.replies.push(captured('CAP-A'), captured('CAP-B'));
+    net.replies.push(captured('CAP-A'), captured('CAP-B'), captured('CAP-SHIP'));
     const input = twoStoreCart();
     const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
     expect(res.ok).toBe(true);
@@ -209,19 +218,22 @@ describe('capturing', () => {
       expect(call.body.origin_sale_id).toBe('AUTH1');
       // The token is spent on the authorization, not on the captures.
       expect(call.body).not.toHaveProperty('buyer_key');
+      // Delivery is its own capture now, so no capture carries a fixed fee at all.
+      expect(call.body).not.toHaveProperty('market_fee_fixed');
     }
-    expect(net.calls.map((c) => c.body.seller_payme_id)).toEqual(['MPL-A', 'MPL-B']);
-    expect(net.calls.map((c) => c.body.market_fee_fixed)).toEqual([30, 30]);   // SHEKELS
-    expect(net.calls.map((c) => c.body.sale_price)).toEqual([9000, 9000]);     // agorot
+    expect(net.calls.map((c) => c.body.seller_payme_id)).toEqual(['MPL-A', 'MPL-B', 'MPL-US']);
+    expect(net.calls.map((c) => c.body.sale_price)).toEqual([6000, 6000, 6000]);
+    expect(net.calls.map((c) => c.body.market_fee)).toEqual([12, 10, 0]);
   });
 
   it('returns each store\'s own capture id, so a later refund names one transaction', async () => {
-    net.replies.push(captured('CAP-A'), captured('CAP-B'));
+    net.replies.push(captured('CAP-A'), captured('CAP-B'), captured('CAP-SHIP'));
     const input = twoStoreCart();
     const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.captures.map((c) => [c.storeSlug, c.paymeSaleId])).toEqual([['alef', 'CAP-A'], ['bet', 'CAP-B']]);
+    expect(res.captures.map((c) => [c.kind, c.storeSlug, c.paymeSaleId]))
+      .toEqual([['store', 'alef', 'CAP-A'], ['store', 'bet', 'CAP-B'], ['delivery', undefined, 'CAP-SHIP']]);
   });
 });
 
@@ -283,7 +295,8 @@ describe('when a capture fails', () => {
 
   it('unwinds newest-first, so the charge the buyer just saw disappears first', async () => {
     net.replies.push(captured('CAP-A'), captured('CAP-B'), declined, refunded('CAP-B'), refunded('CAP-A'));
-    const cart = twoStoreCart();
+    const cart = twoStoreCart({ deliveryMerchantId: undefined });
+    cart.stores.forEach((st) => { st.shippingAgorot = 0; });
     cart.stores.push({ storeSlug: 'gimel', sellerPaymeId: 'MPL-C', goodsAgorot: 6000, shippingAgorot: 0, marketFeePercent: 12, productName: 'ג' });
     const res = await captureSlices('AUTH1', cart, planSplit(cart), CREDS);
     expect(res.ok).toBe(false);

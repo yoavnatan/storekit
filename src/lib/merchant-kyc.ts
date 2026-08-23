@@ -182,6 +182,33 @@ export function isCompleteMerchantKyc(kyc: Partial<MerchantKyc> | null | undefin
 }
 
 /**
+ * For an osek murshe, PayMe require the business number to EQUAL the owner's social id.
+ *
+ * Their refusal, verbatim (measured 2026-08-23 on a real `create-seller`):
+ *
+ *     114 - for business type "osek murshe" the business number must equal the owner's ID number
+ *
+ * **This would reject a real seller, and quietly.** The two values are collected by two different
+ * forms - `businessId` by `payout-details.ts`, `ownerSocialId` here - with labels that invite an
+ * osek murshe to type his business number in one and his ID in the other. Nothing compared them, so
+ * the refusal would happen at PayMe, on a screen he never sees, and his store would simply never be
+ * able to sell. `seller_inc` 2 is the commonest kind of seller this platform will have.
+ *
+ * Reported as a MISSING FIELD rather than silently corrected: which of the two numbers is wrong is
+ * his to say, and overwriting one with the other would file a business under an identifier nobody
+ * chose.
+ */
+export function businessIdMismatch(
+  businessType: string | undefined,
+  businessId: string | undefined,
+  ownerSocialId: string | undefined,
+): boolean {
+  if (businessType !== 'licensed') return false;
+  if (!businessId || !ownerSocialId) return false;
+  return businessId !== ownerSocialId;
+}
+
+/**
  * PayMe's `seller_inc` enum, from the business type we already hold.
  *
  * **CORRECTED 2026-08-23 against their real list, and two of the three were wrong.** The values had

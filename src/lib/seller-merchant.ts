@@ -34,7 +34,8 @@
 import { firstRow, isUuid, query, rows } from './db.js';
 import { getSellerById, type Seller } from './seller-auth.js';
 import {
-  isCompleteMerchantKyc, missingMerchantKyc, normalizeMerchantKyc, paymeDate, paymeIncorporation,
+  businessIdMismatch, isCompleteMerchantKyc, missingMerchantKyc, normalizeMerchantKyc, paymeDate,
+  paymeIncorporation,
   type MerchantKyc, type MerchantKycField,
 } from './merchant-kyc.js';
 import { commissionPercentForTier } from './pricing.js';
@@ -204,10 +205,14 @@ export async function ensureMerchantAccount(
   // (`merchant-kyc.ts#paymeIncorporation`). Declaring a business as something it is not is not a
   // fallback; it is a KYC misstatement, so it becomes a missing field like any other.
   const incorporation = paymeIncorporation(seller.businessType);
-  if (missingBank.length || incorporation === null || !isCompleteMerchantKyc(kyc)) {
+  // PayMe refuse an osek murshe whose business number is not his own ID number (114, measured).
+  // Caught here rather than at their end, where the seller never sees the message and his store
+  // simply never becomes able to sell.
+  const idMismatch = businessIdMismatch(seller.businessType, seller.businessId, kyc.ownerSocialId);
+  if (missingBank.length || incorporation === null || idMismatch || !isCompleteMerchantKyc(kyc)) {
     return {
       status: 'needs-details',
-      missing: [...missing, ...missingBank, ...(incorporation === null ? ['businessType'] : [])] as MerchantKycField[],
+      missing: [...missing, ...missingBank, ...(incorporation === null ? ['businessType'] : []), ...(idMismatch ? ['businessId'] : [])] as MerchantKycField[],
     };
   }
 
