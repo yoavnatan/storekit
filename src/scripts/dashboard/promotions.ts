@@ -448,9 +448,29 @@ async function refreshPromotionsPanel(): Promise<void> {
   }
 }
 
+/**
+ * The "מבצע" button and its dialog live in the PRODUCTS panel, not in this one — so they have to be
+ * bound when Products loads, and until 2026-08-23 they were not: the only caller was
+ * `initPromotionsTab`, which runs when the Promotions tab is opened. Tick rows, press מבצע, and
+ * nothing happened at all — unless the seller had happened to visit Promotions earlier in the same
+ * page life, which is why it looked like it worked (owner: *"וכלום לא קורה כשלוחצים על מבצע
+ * בסרגל הצף"*).
+ *
+ * Exported and idempotent, because both tabs now reach it and either can be opened first. The code
+ * stays in this module rather than moving to `products.ts`: it patches the promotions roll-up
+ * (`markPromotionsStale`) and every row's chip (`syncProductRow`), so it belongs with them — the
+ * products chunk imports it on demand instead, which costs nothing until the button is pressed.
+ */
+let bulkDiscountBound = false;
+export function ensureBulkDiscount(): void {
+  if (bulkDiscountBound) return;
+  bulkDiscountBound = true;
+  initBulkDiscount(getI18n());
+}
+
 export function initPromotionsTab(): void {
   initSaleForm();
-  initBulkDiscount(getI18n());
+  ensureBulkDiscount();
   // The sale's category-scope picker. Bound from THIS chunk, not by the sweep that used to run in
   // the products chunk: this panel arrives on the click that opens it, long after that sweep — so
   // the trigger did nothing at all unless the seller happened to open the Products tab afterwards

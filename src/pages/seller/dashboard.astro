@@ -1063,8 +1063,13 @@ const orderStatusColors: Record<string, string> = {
               initStorePreviewLink's window.open hand back a handle it can close, which is how the
               store page's "back to dashboard" bar ([storeSlug]/index.astro) gets the seller back
               here. Safe because the destination is our own store page, never third-party. */}
-          <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="_blank">
-            {d.viewLive}
+          {/* The glyph is not decoration: at 3.75rem the rail hides the words, and hiding the whole
+              control with them left a collapsed dashboard with no way to open the shop at all
+              (owner, 2026-08-23: *"אי אפשר… לפתוח את החנות עצמה"*). Both are always in the markup;
+              dashboard.css swaps which one is shown, so nothing has to be rebuilt on a toggle. */}
+          <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="_blank" aria-label={d.viewLive}>
+            <svg class="dash-view-store__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            <span class="dash-view-store__label">{d.viewLive}</span>
           </a>
         </div>
         {/* The store's public address — the seller's own domain once verified, else the platform host.

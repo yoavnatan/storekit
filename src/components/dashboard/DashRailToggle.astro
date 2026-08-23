@@ -16,9 +16,10 @@
  *    parsed means the first layout is already the right one. `<html>` rather than the card because
  *    the card's width is set by `--dash-rail-w`, which is declared on the root.
  *
- * 2. **The button is rendered here but sits at the FOOT** (`order`/`margin-top:auto` in
- *    dashboard.css). Those are the two things this component has to be: early in the DOM, and low
- *    on the screen. Flex `order` is what lets it be both without a second component.
+ * 2. **It is icon-only, in the rail's top corner** — a chevron with no words. The label it used to
+ *    carry was a word the site's own hover tooltip already supplies from `aria-label`
+ *    (`scripts/icon-tooltips.ts`), on a control whose whole meaning is which way the edge beside
+ *    it will move — and it cost a row at the foot of the column to say it.
  *
  * 3. **The hover label is a real element positioned by script, not a `::after` on the tab.** The
  *    rail is `overflow-y: auto`, and an element with `overflow-y` other than `visible` clips its
@@ -52,16 +53,16 @@ const d = t.dashboard;
   class="dash-rail-toggle"
   aria-controls="dash-nav-list"
   aria-expanded="true"
+  aria-label={d.navCollapse}
   data-label-collapse={d.navCollapse}
   data-label-expand={d.navExpand}
 >
-  {/* One glyph, rotated by CSS for the other direction — two icons would be two things to keep
-      pointing the right way, and in RTL "collapse" and "expand" are already mirrored once by the
-      writing direction. */}
+  {/* One glyph, mirrored by CSS for the other three cases — two icons would be two things to keep
+      pointing the right way. All four (LTR/RTL × open/collapsed) are written out in dashboard.css,
+      because the version that tried to derive them from each other silently never turned at all. */}
   <svg class="dash-rail-toggle__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <polyline points="15 18 9 12 15 6"/>
   </svg>
-  <span class="dash-rail-toggle__label">{d.navCollapse}</span>
 </button>
 
 <script is:inline>
@@ -79,9 +80,12 @@ const d = t.dashboard;
     function sync() {
       var mini = root.classList.contains(MINI);
       btn.setAttribute('aria-expanded', mini ? 'false' : 'true');
+      // `aria-label` only, and NO `title`: the site labels every icon-only control from its
+      // aria-label on hover (`scripts/icon-tooltips.ts`), and it skips anything carrying a `title`
+      // — so adding one here would have opted this button out of the site's own tooltip in favour
+      // of the browser's. It also reads the label at hover time, which is what lets this one word
+      // follow the state instead of freezing at whatever it was on the first paint.
       btn.setAttribute('aria-label', label());
-      var text = btn.querySelector('.dash-rail-toggle__label');
-      if (text) text.textContent = label();
       if (mini) hide();
     }
     sync();

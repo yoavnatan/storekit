@@ -4150,6 +4150,36 @@ export function initBulkSelect(cloud: string, preset: string): void {
     refreshBulkEditLabel();
   }
 
+  /**
+   * **The discount button's handler lives in another chunk, and nothing was loading it here.**
+   * Its markup — the button and the whole `<dialog>` — is rendered by the products panel, but
+   * `initBulkDiscount` was only ever called by `initPromotionsTab`. So on the tab where the button
+   * actually is, pressing it did nothing whatsoever, unless the seller had opened Promotions
+   * earlier in the same page life; that is what made it look like it worked (owner, 2026-08-23:
+   * *"וכלום לא קורה כשלוחצים על מבצע בסרגל הצף"*).
+   *
+   * Bound on the FIRST PRESS rather than at boot, so the products tab does not pay for a chunk
+   * most sessions never use. `ensureBulkDiscount` is idempotent, so opening Promotions afterwards
+   * cannot double-bind it; and it attaches its own click handler to this same button, which is
+   * why the press that loaded it is replayed once the module is in.
+   */
+  let discountLoading = false;
+  bulkDiscountBtn?.addEventListener('click', async () => {
+    if (discountLoading || bulkDiscountBtn.dataset.discountReady) return;
+    discountLoading = true;
+    bulkDiscountBtn.classList.add('btn--busy');
+    try {
+      const promo = await import('./promotions.js');
+      promo.ensureBulkDiscount();
+      bulkDiscountBtn.dataset.discountReady = '1';
+      // The handler that module just attached did not see the click that brought it here.
+      bulkDiscountBtn.click();
+    } finally {
+      discountLoading = false;
+      bulkDiscountBtn.classList.remove('btn--busy');
+    }
+  });
+
   // The bar's own way out. It matters more here than it did in the toolbar: the selection can now
   // be several screens above whatever the seller is looking at, so "untick them all" has to be
   // reachable from the bar rather than only from the checkbox at the top of the table.

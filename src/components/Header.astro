@@ -133,7 +133,16 @@ const strEmpty   = t.store.noProductsFound;
   <div class={storeMode ? 'container' : 'container between flex'}>
 
     <!-- Logo / store home -->
-    <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
+    {/* **The dashboard's menu button sits HERE, beside the wordmark** (owner, 2026-08-23: *"האייקון
+        של התפריט נמצא לדעתי במקום הלא נכון, אולי צריך אותו בכלל ליד הלוגו?"*). It was the first of
+        the account icons at the other end of the bar, which put a control that opens THIS PAGE's
+        navigation into the cluster that belongs to the account — notifications, avatar, cart. A
+        menu belongs at the start of the bar next to the brand, which is where every application
+        with a drawer puts it, and the first thing a thumb reaches on a phone. */}
+    <div
+      class={`${storeMode ? 'store-header__logo-col' : ''}${dashNav ? ' dash-brand-col' : ''}`.trim() || undefined}
+      style={storeMode ? undefined : 'flex-shrink:0'}
+    >
       {storeMode && storeName && storeSlug && storeHeaderLogo
         ? <a href={`/${storeSlug}`} class="logo store-name-link store-name-link--logo" aria-label={storeName} data-astro-prefetch>
             {/* The seller's own logo INSTEAD of the avatar-and-name lockup (migration 0021).
@@ -175,6 +184,26 @@ const strEmpty   = t.store.noProductsFound;
             <BrandLogo />
           </a>
       }
+      {dashNav && (
+        <button
+          id="dash-nav-trigger"
+          class="cart-btn dash-nav-trigger"
+          type="button"
+          aria-label={t.dashboard.navMenu}
+          aria-expanded="false"
+          aria-controls="dash-nav-list"
+          style="position:relative"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          {/* A marker inside a closed drawer cannot be seen, which is the same problem the strip's
+              off-screen beacon solves — so the trigger carries the loudest severity out. Same
+              two-value vocabulary as `data-tab-alert`: red = a person is waiting, amber = a wrong
+              state that can wait. Hidden by markup and raised by `DashNavDrawer`, never the other
+              way round: a dot painted by markup and cleared by script flashes on every load of a
+              store with nothing wrong. */}
+          <span class="dash-nav-trigger__dot" id="dash-nav-trigger-dot" hidden></span>
+        </button>
+      )}
     </div>
     <!-- Back-to-store pill (persistent, subtle) — shown whenever we're not already inside a store's own header, so a buyer detoured away by a notification/toast/checkout always has a way back into the store they were shopping in -->
     {!(storeName && storeSlug) && !isHome && (
@@ -346,30 +375,6 @@ const strEmpty   = t.store.noProductsFound;
 
     <!-- Actions -->
     <div class="header-actions" style={storeMode ? 'flex-shrink:0' : undefined}>
-      {/* The seller dashboard's menu, below the rail's breakpoint. First in the cluster, so in RTL
-          it is the control nearest the wordmark and furthest from the account icons it is not one
-          of. Icon only: the panel it opens onto already carries its own title one line down, and a
-          second copy of that word was the whole reason the bar this replaces had to go. */}
-      {dashNav && (
-        <button
-          id="dash-nav-trigger"
-          class="cart-btn dash-nav-trigger"
-          type="button"
-          aria-label={t.dashboard.navMenu}
-          aria-expanded="false"
-          aria-controls="dash-nav-list"
-          style="position:relative"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          {/* A marker inside a closed drawer cannot be seen, which is the same problem the strip's
-              off-screen beacon solves — so the trigger carries the loudest severity out. Same
-              two-value vocabulary as `data-tab-alert`: red = a person is waiting, amber = a wrong
-              state that can wait. Hidden by markup and raised by `DashNavDrawer`, never the other
-              way round: a dot painted by markup and cleared by script flashes on every load of a
-              store with nothing wrong. */}
-          <span class="dash-nav-trigger__dot" id="dash-nav-trigger-dot" hidden></span>
-        </button>
-      )}
       {/* Mobile search icon — store pages only, hidden on desktop via CSS */}
       {storeMode && storeSlug && !sellerMode && (
         <button id="mobile-search-btn" class="cart-btn mobile-search-btn" aria-label={lang === 'he' ? 'חיפוש' : 'Search'} aria-expanded="false" aria-controls="mobile-search-panel">

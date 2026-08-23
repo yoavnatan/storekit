@@ -2123,6 +2123,13 @@ textarea.input { resize: none; }
     display: grid;
     grid-template-columns: var(--dash-rail-w, 15.5rem) minmax(0, 1fr);
     align-items: start;
+    /* **The collapse is animated on the GRID, not on the rail** (owner, 2026-08-23: *"הייתי רוצה
+       שהתפריט צד ייפתח וייסגר באנימציה קלה"*). `--dash-rail-w` is an unregistered custom property,
+       so it cannot be transitioned at all — it jumps, and everything reading it jumps with it.
+       `grid-template-columns` can be, and it is the one declaration BOTH columns are sized from,
+       so the rail narrowing and the panel widening are the same animation rather than two that
+       have to be kept in step. A browser without it lands on today's behaviour: an instant swap. */
+    transition: grid-template-columns 0.24s cubic-bezier(0.4, 0, 0.2, 1);
     /* Not a card any more: no border, no radius, no elevation, and the page's own background
        rather than a surface. The white in this layout belongs to the two things that are actually
        surfaces — the rail and the panel. */
@@ -2160,8 +2167,15 @@ textarea.input { resize: none; }
     top: var(--site-header-h, 3.4rem);
     align-self: start;
     height: calc(100vh - var(--site-header-h, 3.4rem));
-    overflow-y: auto;
-    scrollbar-width: none;
+    /* **Visible, and the LIST inside it is the scroller** (owner, 2026-08-23: *"אם התפריט צד
+       מכווץ- אי אפשר לפתוח את הדרופדאון של התנועה בין החנויות"*). `overflow-y: auto` on this
+       element clips the other axis too, so the store switcher's menu — anchored in the rail's head
+       — was cut off at the rail's edge; at 3.75rem there was nothing left of it to see. Nothing
+       here needs to scroll anyway: the head and the foot are fixed-size and the list is the only
+       part that can grow, so giving the scroll to the list leaves this box exactly as tall as the
+       viewport and clipping nothing at all. The hover label still lives on `document.body`
+       (DashRailToggle.astro) — it is drawn inside a TAB, and the tabs are now the scroller. */
+    overflow: visible;
     z-index: 7;
     background: var(--color-surface);
     /* The seam between the sidebar and the page. On the rail and not on the panel because the rail
@@ -2169,7 +2183,6 @@ textarea.input { resize: none; }
        content stops, which is what left the line hanging in mid-air on a short tab. */
     border-inline-end: 1px solid var(--color-border);
   }
-  #dash-main-card.dash-nav-side > .dash-rail::-webkit-scrollbar { display: none; }
 
   /* **The panel is the card now.** It carries the surface, the border and the radius the shell
      gave up, and it is centred at the site's reading width inside whatever the rail leaves —
@@ -2183,13 +2196,55 @@ textarea.input { resize: none; }
     grid-column: 2;
     grid-row: 1;
     width: 100%;
-    max-width: var(--max-width);
-    margin: 1rem auto 1.5rem;
+    /* **`min(...)`, because `auto` margins give nothing once the column is narrower than the card**
+       (owner, 2026-08-23: *"הקונטיינר הפנימי ללא מרג׳ין צדדי, מוזר"*). From 1180px to about 1400
+       the rail leaves less than `--max-width`, so the card took the whole column and `margin:auto`
+       resolved to 0 on both sides — it touched the rail on one edge and the window on the other,
+       measured at left: 0 across that whole range. Capping the width at the column minus the gutter
+       makes the margin a floor rather than whatever is left over, and `auto` still centres it once
+       there is room. */
+    max-width: min(var(--max-width), calc(100% - 2rem));
+    /* Tighter than the 1rem it opened with (owner: *"הכותרות מקבלות פדינג גדול מדי מתחילת
+       הקונטיינר"*) — with the panel's own padding trimmed below, a title now sits 25px under the
+       header instead of 37. */
+    margin: 0.75rem auto 1.25rem;
+    padding-top: 0.75rem;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
   }
   #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-column: 2; grid-row: 1; }
+
+  /* ── The seam at the top of the scroll, same device as the buyer's own area ──
+     Owner, 2026-08-23: *"למה בחרת שלא לעשות את הגלילה של הקונטיינר גם עם פייד למעלה בדשבורד
+     מוכרים?"* — and the honest answer is that I only looked at the panels that HAVE a pinned
+     title. Products, Orders, Returns, Messages, Promotions, Performance and Advertising each pin
+     an opaque bar at the header, so nothing is ever seen sliding into it there. Overview, Reports,
+     Payouts and Settings pin nothing at all, and on those four the panel card's rounded top corner
+     and whatever row is under it pass under the header's line and are cut in half by it — the same
+     defect he had already described on the buyer's page, on the tabs I happened not to open.
+     So: the same band, in the page's own background colour, the height of the gap above the card.
+
+     **`z-index: 5` is the whole trick.** The pinned titles are 6 and the rail is 7, so this paints
+     UNDER both — it is invisible on every panel that already solves this its own way, and it is
+     the answer on the four that do not. One rule, no list of panels to keep in step. `--color-bg`
+     rather than a tint keeps it a mask and not a pane: over the grey either side of the card it
+     cannot be seen at all, and over the card it reads as the card passing behind the page.
+     Not a shadow: the header is a BAR, and bars in this design are border-only (elevation rule,
+     base/tokens.css). This adds no depth, it removes a hard edge. */
+  .dash-section:has(> #dash-main-card.dash-nav-side)::before {
+    content: "";
+    position: fixed;
+    inset-inline: 0;
+    /* The header's height is pinned inline on the element itself and may never change
+       (Header.astro), so this is exact rather than a guess; the extra pixel is overlap, so a
+       fractional rounding can never leave a hairline of un-masked content. */
+    top: calc(var(--site-header-h, 3.4rem) - 1px);
+    height: 1.6rem;
+    background: linear-gradient(to bottom, var(--color-bg) 0 0.6rem, transparent);
+    pointer-events: none;
+    z-index: 5;
+  }
 
 
   /* ══ COLLAPSED: the same rail, 186px narrower ══
@@ -2210,28 +2265,50 @@ textarea.input { resize: none; }
   /* The label stays in the DOM — it is the accessible name of the button, and it is what the hover
      tooltip reads. `display:none` would take both away. */
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab__label,
-  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-toggle__label,
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-foot { display: none; }
+  /* Centred rather than tucked into a corner: at 3.75rem the rail has no corner to speak of, and
+     an end-aligned chevron would sit off the axis every icon below it stands on. */
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-toggle {
-    justify-content: center;
-    padding-inline: 0;
-    margin-inline: 0.5rem;
+    align-self: center;
+    margin-inline: 0;
   }
-  /* A count that had a row's worth of space to sit at the end of now has none, so it goes back to
-     the corner of the icon — the same placement the header's drawer trigger uses, and for the same
-     reason: a marker has to reach the outside of whatever is hiding its row. */
+  /* ── A collapsed row shows THAT something is waiting, not how many ──
+     **The number has to go** (owner, 2026-08-23: *"האייקונים ממש מוסתרים על ידי הבאדג׳ים עם המספר
+     עליהם, קשה להבין מה האייקון"*). Shrinking it was the first answer and it was the wrong one:
+     measured, a 13px pill sat across 1403→1412 of a 16px glyph — nine pixels of the only thing on
+     that row that says what the row IS. There is no size at which two digits and an icon share
+     3.75rem, because the digits are not the point at this width; the point is that this tab has
+     something on it, and the seller opens the rail to find out what.
+     So it becomes the dot the rail already uses for the same message, off the icon's inline-end
+     corner with a few pixels of overlap — the way a badge sits on an app icon, and the same 8px,
+     1px `--color-border` ring the header's own markers use. The COUNT is not lost: it is the
+     span's `aria-label`, which is where a screen reader was reading it from all along, and it is
+     back in full the moment the rail opens. */
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-badge,
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-dot {
     position: absolute;
     margin: 0;
     top: 0.3rem;
-    inset-inline-end: 0.5rem;
-  }
-  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-badge {
+    /* 0.45rem, solved rather than guessed: the row's own inline padding puts its end edge at
+       1391px and the glyph starts at 1403, so this lands the dot at 1398→1406 — three pixels of
+       overlap onto the icon's corner, which is what makes it read as a badge ON the icon rather
+       than a dot floating beside it. */
+    inset-inline-end: 0.45rem;
+    width: 8px;
+    height: 8px;
     min-width: 0;
-    padding: 0 0.22rem;
-    font-size: 0.6rem;
-    line-height: 1.5;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    box-sizing: border-box;
+  }
+  /* The digits, hidden without being removed — the element still has to be a coloured box, and its
+     `aria-label` still has to be read. */
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-badge {
+    overflow: hidden;
+    font-size: 0;
+    line-height: 0;
+    color: transparent;
   }
   /* The store block keeps its identity and loses its prose: the avatar is the one part of it that
      still reads at this width, and it is also the switcher's own button — so "open another store"
@@ -2242,17 +2319,35 @@ textarea.input { resize: none; }
   html.dash-nav-mini #dash-main-card.dash-nav-side #store-switcher-btn { justify-content: center; }
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-store-name,
   html.dash-nav-mini #dash-main-card.dash-nav-side .store-switcher__chevron,
-  html.dash-nav-mini #dash-main-card.dash-nav-side #dash-view-store,
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-view-store__label,
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-head .muted { display: none; }
+  /* The one control that stays, as its icon: a collapsed dashboard with no way to open the shop is
+     a collapse that took something away rather than one that saved room. */
+  html.dash-nav-mini #dash-main-card.dash-nav-side #dash-view-store {
+    width: 2.1rem;
+    height: 2.1rem;
+    min-width: 0;
+    padding: 0;
+    margin-inline: auto;
+    align-items: center;
+    justify-content: center;
+  }
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-nav-sep { margin-inline: 0.75rem; }
 
   #dash-main-card.dash-nav-side .dash-tabs {
     --dash-tab-pad: 0.65rem;
-    padding-block: 0 1.5rem;
+    padding-block: 0 1rem;
     position: static;
+    /* The only part of the rail that can outgrow the viewport, so it is the only part that scrolls
+       — see the rail's own note. `min-height: 0` because a flex item's default floor is its
+       content, which would push the foot off the bottom instead of scrolling. */
+    flex: 1 1 auto;
+    min-height: 0;
     max-height: none;
-    overflow: visible;
+    overflow-y: auto;
+    scrollbar-width: none;
   }
+  #dash-main-card.dash-nav-side .dash-tabs::-webkit-scrollbar { display: none; }
 }
 
 /* ── Phone and tablet: the same list, as a drawer ──
@@ -2330,43 +2425,71 @@ textarea.input { resize: none; }
 @media (max-width: 1179.98px) {
   .dash-nav-trigger { display: inline-flex; }
 }
-/* Just off the icon's corner, the way a badge sits on an app icon — close enough to belong to it,
-   clear of the three lines so neither reads as part of the other. Same vocabulary as the strip's
-   own off-screen beacon: a marker that is now inside a closed drawer has to reach the outside
-   somehow, and this button is the only element outside it. */
+/* ── The marker a closed drawer has to show from the outside ──
+   **Off the corner, not on the glyph** (owner, 2026-08-23: *"הנקודה האדומה לדעתי לא יושבת טוב כרגע
+   על האייקון המבורגר, היא יושבת סתם באמצע"* — and he was right about the cause too). `.cart-btn`
+   carries no padding, so the button IS the 20px icon: an inset of 0.45rem put the dot 7px in from
+   a 20px corner, which on a glyph whose three lines span its full width is the middle of the top
+   line. There is no position inside this icon that is not on top of it.
+   So it hangs off the corner, which is what this header already does with a marker — same 8px,
+   same 1px `--color-border` ring, same top-end corner as the avatar's own alert dot
+   (`#seller-alert-avatar-dot`, Header.astro), and the negative offsets are `.cart-count`'s. Two
+   markers on one bar reading the same way is the point; nothing here is new. */
 .dash-nav-trigger__dot {
   position: absolute;
-  top: 0.45rem;
-  inset-inline-end: 0.45rem;
-  width: 7px;
-  height: 7px;
+  top: -3px;
+  inset-inline-end: -4px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--color-danger);
-  /* A ring in the header's own fill, so the dot stays legible where it overlaps the glyph. */
-  box-shadow: 0 0 0 2px var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-sizing: border-box;
 }
 .dash-nav-trigger__dot[data-level="warning"] { background: var(--color-warning); }
 
+/* The wordmark and the menu button share the header's start column (Header.astro). A row, so the
+   two sit on one baseline; the gap is the header's own icon spacing. */
+/* Two halves of one link, one shown at a time — the rail decides which (see the collapsed block).
+   Both are always in the markup so a toggle never has to rebuild anything. */
+.dash-view-store__icon { display: none; flex-shrink: 0; }
+html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
+
+.dash-brand-col {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
 /* ── The rail's width control (DashRailToggle.astro) ──
-   `order` and `margin-top: auto` are what let one component be both early in the DOM (its boot
-   script must run before the rail's width is painted) and low on the screen. Everything else in
-   the rail keeps the default `order: 0`, so those two declarations place this and the foot after
-   all of it without any of it having to know.
+   **At the TOP, on the far edge** (owner, 2026-08-23: *"אולי כדאי את הכיווץ ואת ההרחבה את הכפתור
+   של זה לשים למעלה?"*). It sat at the foot for one round, next to the site links, and that put a
+   control that changes the SHAPE of the rail at the bottom of everything the rail contains —
+   below the eleven rows it resizes, and below a footer it has nothing to do with. At the top it is
+   the first thing in the column and the affordance is where the edge it moves is.
+   Icon only, and end-aligned so it sits in the corner nearest the content it gives room back to.
+   A chevron in a corner is the one control on a rail that needs no label — every dashboard of this
+   shape puts it there — and its `title`/`aria-label` still say which way it will go.
    It reads as a control and not as a destination: no icon-plus-label row like a tab, no active
    mark, and the muted colour the foot's links use. */
 .dash-rail-toggle {
-  order: 1;
-  margin-top: auto;
-  display: flex;
+  /* Before everything else in the column. It is rendered FIRST in the DOM anyway (its boot script
+     has to run before the rail's width is painted), so this is `order: -1` only to keep it ahead
+     of anything a later session adds above the store block. */
+  order: -1;
+  align-self: flex-end;
+  display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.65rem;
-  margin-inline: 0.65rem;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0.5rem 0.55rem -0.25rem;
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
   font: inherit;
-  font-size: 0.78rem;
   color: var(--color-muted);
   cursor: pointer;
   transition: color 0.15s, background 0.12s;
@@ -2379,13 +2502,24 @@ textarea.input { resize: none; }
 @media (max-width: 1179.98px) {
   .dash-rail-toggle { display: none; }
 }
-.dash-rail-toggle__icon { flex-shrink: 0; transition: transform 0.2s ease; }
-/* The chevron points the way the rail will move. In RTL the rail is on the right, so "closing" it
-   is a move to the right — the mirror of the glyph as drawn. */
+/* ── The chevron points the way the rail is about to move ──
+   **The first version never turned at all** (owner, 2026-08-23: *"החץ לא משנה שם את הכיוון שלו
+   כשזה סגור/פתוח"*), and the reason is worth keeping: it tried to cancel the RTL mirror with
+   `[dir="rtl"] html.dash-nav-mini …` and `html.dash-nav-mini [dir="rtl"] …`. Both are descendant
+   combinators, and `dir` is on `<html>` — the same element the state class is on. `html` can never
+   be another element's descendant, and nothing below it carries `dir`, so neither selector could
+   ever match: the two rules that were supposed to cancel each other both applied `scaleX(-1)` and
+   the glyph looked identical in both states.
+   Two conditions on ONE element are written as one compound selector. There are exactly four
+   cases and this is all four, which is also why they are written out rather than derived. */
+.dash-rail-toggle__icon {
+  flex-shrink: 0;
+  transform: scaleX(1);
+  transition: transform 0.2s ease;
+}
 [dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(-1); }
 html.dash-nav-mini .dash-rail-toggle__icon { transform: scaleX(-1); }
-[dir="rtl"] html.dash-nav-mini .dash-rail-toggle__icon,
-html.dash-nav-mini [dir="rtl"] .dash-rail-toggle__icon { transform: none; }
+html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
 
 /* ── The hover label of a collapsed rail ──
    On `document.body` rather than inside the tab, because the rail scrolls vertically and an
