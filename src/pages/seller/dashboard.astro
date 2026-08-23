@@ -3,7 +3,7 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 // Every interpolated redirect goes through it — here the interpolated value is a form-supplied
 // store id, so this is also what stops a crafted POST putting an arbitrary string in a header.
-import { machineUrl } from '../../lib/url-base.js';
+import { machineUrl, urlSegment } from '../../lib/url-base.js';
 // The SERVER half of the products row. Its client twin (scripts/dashboard/products.ts#buildRows)
 // reads the same module — see that file's header for why there are two renderers at all.
 import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, STOCK_CELL_GROUP, stockEditHint } from '../../lib/product-cell-classes.js';
@@ -52,6 +52,7 @@ import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
+import { ensureMerchantAccount } from '../../lib/seller-merchant.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
 import { openOrderCount } from '../../lib/store-lifecycle.js';
@@ -322,10 +323,27 @@ if (Astro.request.method === 'POST') {
       // Server-side gate — the entry point is hidden at the cap, but a hidden link is not a guard.
       error = d.storeLimitReached;
     } else {
-      const { id: newStoreId } = await createStore(sellerId, { name, slug, tagline, description });
+      const { id: newStoreId, slug: newStoreSlug } = await createStore(sellerId, { name, slug, tagline, description });
       // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
       const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
       if (initialCategories.length) await updateStore(newStoreId, { categories: initialCategories });
+      // The seller's own clearing account, opened here because this is the first moment there is a
+      // business to open it for (a store name, a URL, a description — all of which PayMe require).
+      //
+      // **Awaited but never allowed to fail the store.** `ensureMerchantAccount` does not throw:
+      // its four answers are "he already had one", "we do not hold enough to ask yet", "no gateway
+      // configured", and "PayMe refused" — and only the last is a problem, which it logs itself. A
+      // shop that fails to open because a gateway was slow is worse than a shop that opens and
+      // cannot sell yet: the second is something the seller can finish, the first is an error page
+      // in front of someone trying to become a customer.
+      //
+      // A seller's SECOND store costs nothing here — the first branch is "he already has one",
+      // which is what keeps us off PayMe's ₪65-per-merchant charge for every extra shop.
+      await ensureMerchantAccount(sellerId, {
+        storeName: name,
+        storeUrl: `${platformConfig.url}/${urlSegment(newStoreSlug)}`,
+        storeDescription: description || tagline,
+      });
       return Astro.redirect(machineUrl(`/seller/dashboard?store=${newStoreId}`));
     }
   } else if (action === 'add-product') {

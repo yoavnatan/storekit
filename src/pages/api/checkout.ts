@@ -11,6 +11,7 @@ import { normalizeDeliveryMethod, shippingPrice, offersSelfPickup } from '../../
 import { sendOrderConfirmationEmails } from '../../lib/email/order-confirmation.js';
 import { createNotification } from '../../lib/notifications.js';
 import { getSellerByEmail, getSellerSession } from '../../lib/seller-auth.js';
+import { merchantBlockFor } from '../../lib/seller-merchant.js';
 import { removeCartLines, type CartLineRef } from '../../lib/user-carts.js';
 import { isValidEmail } from '../../lib/email-address.js';
 import { makeCartKey } from '../../lib/cart.js';
@@ -221,8 +222,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const buyerAccount = await getSellerByEmail(buyerEmail);
   if (buyerAccount) buyerSellerIds.add(buyerAccount.id);
 
-  // Pre-pass guards, both refusing the whole checkout before the loop below reserves any
-  // stock — each is a static property of the store, so neither needs a rollback path.
+  // Pre-pass guards, each refusing the whole checkout before the loop below reserves any
+  // stock — all are static properties of the store, so none needs a rollback path.
+  const merchantChecked = new Set<string>();
   for (const raw of items) {
     const rawSlug = (raw as CartItemInput).storeSlug;
     const slug = typeof rawSlug === 'string' ? rawSlug.trim() : '';
@@ -243,6 +245,26 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     //
     // Buying from ANOTHER seller's store is untouched by this — the rule is about his own.
     if (buyerSellerIds.has(preStore.sellerId)) return json({ error: 'own-store' }, 403);
+    // **No clearing account, no sale.** Under the split model the buyer's money goes straight into
+    // the SELLER's own merchant account (`lib/seller-merchant.ts`), so a seller who has not opened
+    // one has nowhere for it to land. Taking the order anyway would mean either holding his money —
+    // which is the whole thing this model exists to avoid, and carries the licensing exposure that
+    // came with it — or handing over goods for nothing.
+    //
+    // Refused here in the pre-pass, before a single unit of stock is reserved, for the same reason
+    // the two guards above are: it is a static property of the store, so there is nothing to roll
+    // back. `payment-split.ts#planSplit` refuses the same case again at charge time; this one is
+    // what stops the buyer getting as far as a payment page.
+    //
+    // Returns null when no gateway is configured, so dev and the pre-gateway window GO_LIVE §7
+    // plans are untouched — what guards THAT window is `site-mode.ts`, which is stricter still.
+    //
+    // Once per SELLER and not once per item: a ten-line cart from one shop asks one question.
+    if (!merchantChecked.has(preStore.sellerId)) {
+      merchantChecked.add(preStore.sellerId);
+      const merchantBlock = await merchantBlockFor(preStore.sellerId);
+      if (merchantBlock) return json({ error: 'store-cannot-sell', reason: merchantBlock }, 409);
+    }
   }
 
   // Binds the key to this buyer, so a completed record can only ever be replayed back to them.

@@ -47,10 +47,26 @@
 
 import { serverEnv } from './runtime-env.js';
 import { paymentProvider, MockPaymentProvider } from './payment.js';
+import { paymeCredentials } from './payment-payme.js';
 
-/** True when the configured provider cannot actually take money. Asked of the object rather than
- *  of a name or a flag, so it stays true the moment the provider is swapped and never drifts. */
+/**
+ * True when nothing configured here can actually take money. Asked of the objects and of the
+ * credentials rather than of a name or a flag, so it stays true the moment a provider is wired and
+ * never drifts.
+ *
+ * **Two providers, and that is not a transitional state.** `paymentProvider` is the
+ * authorize→capture seam `lib/payment.ts` models, and it still ships the mock. The split model does
+ * not fit that seam at all — it is N charges against N merchant accounts off one buyer token
+ * (`lib/payment-split.ts`) — so it is wired through its own credentials instead. Either one being
+ * real means this deployment can take money, and the shop must open.
+ *
+ * Missing this second half was the live version of the bug this whole file exists to prevent: PayMe
+ * fully configured, real cards charged, and `checkoutClosedReason()` still answering
+ * `'mock-payments'` on every production request — a shop that refuses to sell because it is looking
+ * at the wrong provider.
+ */
 export function paymentsAreMock(): boolean {
+  if (paymeCredentials()) return false;
   return paymentProvider instanceof MockPaymentProvider;
 }
 
