@@ -263,16 +263,27 @@ const REASON_EXTRA: Partial<Record<ReturnReason, string>> = {
  * itself is one click away now.
  */
 /**
- * How many of the order's lines this request is about — `2 מתוך 3`.
+ * How much of the order this request is about — `2 מתוך 3`, or `כל ההזמנה`.
  *
- * Asked for by the owner (2026-08-21) and it answers a question the names alone cannot: a card
- * listing two products does not say whether that IS the order or part of it, and the difference
- * decides what the seller expects to receive back. Empty when the request covers the whole order,
- * because "3 מתוך 3" beside every ordinary return is noise on the common case.
+ * Asked for by the owner (2026-08-21) because the names alone cannot answer it: a card listing two
+ * products does not say whether that IS the order or part of it, and the difference decides what
+ * the seller expects to receive back.
+ *
+ * ── Why it now speaks on the whole-order case too (owner, 2026-08-23) ──
+ * It used to be empty there, on the reasoning that "3 מתוך 3" beside every ordinary return is noise.
+ * That was right about "3 מתוך 3" and wrong about staying silent: **silence is not an answer to a
+ * question the seller is asking.** With nothing in the slot he cannot tell "everything is coming
+ * back" from "we did not say" — which is the whole point of the row. `כל ההזמנה` is two words, it
+ * is a positive statement rather than a repeated arithmetic identity, and it reads correctly on a
+ * one-line order where "1 מתוך 1" would be absurd.
+ *
+ * Still empty with no order behind the request: an invented "כל ההזמנה" over lines nobody could
+ * read would be a claim, not a fact.
  */
 function itemsCount(r: ReturnRequest): string {
   const items = orderFacts?.get(r.orderId)?.items ?? [];
-  if (!items.length || !isPartialReturn(r.returnedLines)) return '';
+  if (!items.length) return '';
+  if (!isPartialReturn(r.returnedLines)) return 'כל ההזמנה';
   return `${r.returnedLines!.length} מתוך ${items.length}`;
 }
 
@@ -305,7 +316,9 @@ function hasNextHalf(r: ReturnRequest): boolean {
   return Boolean(
     deadlineLine(r)
     || movesFor(r.status).length > 0
-    || r.status === 'disputed'
+    // A dispute whose cause we cannot name has nothing for this half to say — the chip and the
+    // title already carry the state — so it takes the full-width record like a closed case.
+    || disputeNote(r) !== ''
     || r.status === 'approved'
     || r.status === 'in_transit'
     || (r.status === 'offered' && r.partialOfferAgorot !== null),
@@ -389,11 +402,26 @@ const DISPUTE_CAUSE: Record<DisputeCause, string> = {
   // for you to do, we will write if we need more — and *"זהו"* was the answer: a seller reading
   // "ממתין להכרעת המערכת" already knows all three, and spelling them out is the reassurance that
   // makes a person wonder what he is being reassured about.
-  seller_claim: 'סימנת שהחבילה הגיעה ריקה או שהמוצר משומש, והקונה טען אחרת. ממתין להכרעת המערכת.',
-  parcel_unconfirmed: 'לפי הקונה המוצר נשלח בחזרה, וחלפו שבועיים בלי שסומן שהגיע. ממתין להכרעת המערכת.',
-  refusal_appeal: 'סירבת לבקשה, והקונה ביקש שנבדוק את הסירוב. ממתין להכרעת המערכת.',
-  unknown: 'ממתין להכרעת המערכת.',
+  //
+  // ── The trailing "ממתין להכרעת המערכת." went with the CHIP arriving (2026-08-23) ──
+  // The chip on this card now says those exact five words, in the owner's own wording, two lines
+  // above — so a disputed card was stating one fact three times over: the chip, the title and the
+  // tail of this sentence. What each of these is FOR is the cause, which is the one thing the other
+  // two cannot say; the state is the chip's job now. `unknown` had nothing BUT the tail, so it is
+  // empty and the paragraph is simply not rendered.
+  seller_claim: 'סימנת שהחבילה הגיעה ריקה או שהמוצר משומש, והקונה טען אחרת.',
+  parcel_unconfirmed: 'לפי הקונה המוצר נשלח בחזרה, וחלפו שבועיים בלי שסומן שהגיע.',
+  refusal_appeal: 'סירבת לבקשה, והקונה ביקש שנבדוק את הסירוב.',
+  unknown: '',
 };
+
+/** Why this case is with us, or '' when its cause cannot be named. One accessor, because two places
+ *  ask — the markup, and `hasNextHalf`, which has to know whether that half will have anything in
+ *  it at all. Two spellings of `DISPUTE_CAUSE[...] !== ''` is the shape that drifts into a card
+ *  rendering an empty column. */
+function disputeNote(r: ReturnRequest): string {
+  return r.status === 'disputed' ? DISPUTE_CAUSE[disputeCause(r)] : '';
+}
 
 const open = requests.filter((r) => isOpen(r.status));
 /** Open, split by whose move it is — the two halves the header counts separately. */
@@ -413,10 +441,20 @@ const closed = requests.filter((r) => !isOpen(r.status));
  * not a signalling one — and the whole point of the chip is that the two cases needing him stand
  * out from the eleven that do not.
  */
+/**
+ * ⚠️ **"אצלנו" is never the word here** (owner, 2026-08-23: *"זה לא אצלנו, זה ממתין להכרעת המערכת...
+ * כי המוכר הוא לא המערכת"*). This is a SELLER's screen, so the first person on it is HIS — a chip
+ * reading "אצלנו להכרעה" tells him the case is sitting on his own desk, which is the exact opposite
+ * of what the state means. The buyer's dashboard says "הבקשה בבדיקה אצלנו" and is right to: there
+ * the platform is the one speaking to a customer.
+ *
+ * The words are the card's own status sentence, verbatim, so the chip, the sentence under it and the
+ * filter menu are one vocabulary rather than three.
+ */
 const LANE_LABEL: Record<ReturnLane, string> = {
   mine: 'ממתין לך',
   buyer: 'ממתין לקונה',
-  ours: 'אצלנו להכרעה',
+  ours: 'ממתין להכרעת המערכת',
   closed: 'נסגרה',
 };
 const LANE_CHIP: Record<ReturnLane, string> = {
@@ -468,11 +506,22 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
         שהקונה ישלח את המוצר"*). Naming the reader as the person holding up eleven cases he cannot
         touch is how a seller learns to stop reading his own badge — and then the two that ARE his
         go unanswered too. `sellerOwesAction` is the same rule the tab badge counts by, so the
-        number outside the panel and the number inside it cannot disagree. */}
+        number outside the panel and the number inside it cannot disagree.
+
+        **"שלא ממתינות לך" is gone and the middot with it** (owner, 2026-08-23: *"לא צריך את ה'שלא
+        ממתינות לך', פשוט 'ועוד 6 בקשות נוספות בתהליך'"*). The clause was the first fix said twice:
+        "בקשות נוספות בתהליך" already says these are not his, and spelling out the negative on top
+        of it is the shape he keeps cutting. `ועוד` also does what the middot could not — it joins
+        the two counts into one sentence rather than two facts stacked beside each other.
+
+        "נוספות" drops when there is nothing for them to be additional TO: with no case of his own,
+        every open request is simply in progress, and the word would be pointing at an absence. */}
     <p class="m-0 mt-1 text-[0.82rem] [color:var(--color-muted)]">
       {mine.length > 0 && <span class="font-semibold [color:var(--color-text)]">{heCount(mine.length, 'בקשה מחכה לך', 'בקשות מחכות לך')}</span>}
-      {mine.length > 0 && waiting.length > 0 && ' · '}
-      {waiting.length > 0 && `${heCount(waiting.length, 'בקשה נוספת בתהליך', 'בקשות נוספות בתהליך')}, שלא ממתינות לך`}
+      {mine.length > 0 && waiting.length > 0 && ' ועוד '}
+      {waiting.length > 0 && (mine.length > 0
+        ? heCount(waiting.length, 'בקשה נוספת בתהליך', 'בקשות נוספות בתהליך')
+        : heCount(waiting.length, 'בקשה בתהליך', 'בקשות בתהליך'))}
       {mine.length === 0 && waiting.length === 0 && 'אין בקשות פתוחות'}
     </p>
   </div>
@@ -687,9 +736,14 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
           {formatAgorot(r.refundAgorot)}
           {/* A partial's amount is smaller than the order and that is not a mistake — said HERE,
               beside the number that prompts the question, rather than as a separate line further
-              down where it answered a question the reader had already stopped asking. */}
+              down where it answered a question the reader had already stopped asking.
+
+              Two words, since the row above says the count (owner, 2026-08-23). It used to add
+              "N פריטים מתוך ההזמנה", which put the same fraction on the card twice — the shape he
+              cut from the dates for the same reason. What this clause is FOR is the amount, so it
+              says only the thing the amount needs: that it is a slice. */}
           {isPartialReturn(r.returnedLines) && (
-            <span class="font-normal [color:var(--color-muted)]"> · החזרה חלקית, {heCount(r.returnedLines!.length, 'פריט', 'פריטים')} מתוך ההזמנה</span>
+            <span class="font-normal [color:var(--color-muted)]"> · החזרה חלקית</span>
           )}
         </dd>
 
@@ -918,8 +972,8 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
         </p>
       )}
 
-      {r.status === 'disputed' && (
-        <p class="m-0 text-[0.8rem] [color:var(--color-muted)]">{DISPUTE_CAUSE[disputeCause(r)]}</p>
+      {disputeNote(r) && (
+        <p class="m-0 text-[0.8rem] [color:var(--color-muted)]">{disputeNote(r)}</p>
       )}
       </div>
       )}

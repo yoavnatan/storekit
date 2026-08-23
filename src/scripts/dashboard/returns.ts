@@ -165,7 +165,9 @@ const RETURN_SORTS: { key: ReturnSortKey; label: string; cmp: (a: HTMLElement, b
 const LANE_FILTER: { value: string; label: string }[] = [
   { value: 'mine', label: 'ממתין לך' },
   { value: 'buyer', label: 'ממתין לקונה' },
-  { value: 'ours', label: 'אצלנו להכרעה' },
+  // ⚠️ Never "אצלנו" — on a seller's screen the first person is HIS. `ReturnsPanel.astro#LANE_LABEL`
+  // carries the owner's ruling and the reason the buyer's dashboard is allowed the opposite word.
+  { value: 'ours', label: 'ממתין להכרעת המערכת' },
 ];
 
 export function initReturnsTab(): void {
