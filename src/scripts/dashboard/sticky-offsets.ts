@@ -39,6 +39,13 @@ const observed = new WeakSet<HTMLElement>();
 
 function watch(root: HTMLElement, prop: string, el: HTMLElement | null): void {
   if (!el) return;
+  // **A RAIL is not a bar** (side-navigation prototype, 2026-08-22). Every consumer of these
+  // custom properties is a `top:` offset — "how much of the viewport's TOP edge is already
+  // spoken for" — and a vertical navigation column spends none of it while being, by a long way,
+  // the tallest element on the page. Measured as a bar it would pin `.dash-panel-head` and
+  // `.products-header` most of a screen down. `data-rail` is the element saying which it is; the
+  // same marker is read in scroll-utils.ts#pinnedTopChrome, and nowhere else.
+  if (el.hasAttribute('data-rail')) { root.style.removeProperty(prop); return; }
   writeBar(root, prop, el);
   if (observed.has(el)) return;
   observed.add(el);
@@ -54,4 +61,10 @@ export function initStickyOffsets(): void {
   watch(root, '--site-header-h', document.querySelector<HTMLElement>('.site-header'));
   watch(root, '--dash-tabs-h', document.querySelector<HTMLElement>('.dash-tabs'));
   watch(root, '--products-toolbar-h', document.querySelector<HTMLElement>('.products-header'));
+  // The store block, which in the side-navigation layout is the rail's own head and the bar the
+  // tab list pins under (dashboard.css). In the top-strip layout it is not pinned at all and
+  // nothing reads this — a property written for a bar that is `position:static` costs nothing,
+  // and writing it unconditionally keeps this file free of a layout it does not otherwise know
+  // about.
+  watch(root, '--dash-head-h', document.querySelector<HTMLElement>('.dash-head'));
 }

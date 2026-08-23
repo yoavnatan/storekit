@@ -1,0 +1,229 @@
+---
+/**
+ * The phone half of the side-navigation prototype: the tab list as a drawer.
+ *
+ * **Inline, for the same reason `DashTabsBoot` is inline.** In the top-strip layout the tabs are
+ * on screen and a tap works during parse. Behind a drawer they are not, so if opening it waited on
+ * the dashboard's ~61 KB bundle, the whole navigation of this page would be dead for as long as
+ * that download takes — which is the exact failure that script was written for (owner,
+ * 2026-07-31: *"הכל תקוע"*). Zero network, runs during parse, works from the first paint.
+ *
+ * It owns everything the drawer needs and nothing else: open/close, `aria-expanded`, Escape, the
+ * scrim, the focus trap while open, closing on a tab choice, and the trigger's label — which is
+ * the open tab's name, because with the list hidden nothing else on screen says where you are.
+ *
+ * Rendered only by the side layout (`?nav=top` omits it), and the trigger only paints below the
+ * rail's breakpoint — above it the rail is simply there and `.dash-nav-trigger` is `display:none`.
+ *
+ * **That breakpoint is 1180px, not 1024, and the number came from the products table.** A rail is
+ * 15.5rem the content column does not get, and at 1024 that left the table 693px — where "נוסף
+ * בתאריך" and the product name itself no longer fit their own headings (measured on a build,
+ * 2026-08-22). A tablet gets the drawer instead, which is what every dashboard of this shape does
+ * and which hands those 248px straight back to the table.
+ */
+interface Props {
+  /** The tab open on this request — the trigger's starting label. */
+  label: string;
+  /** Accessible name for the trigger, whose visible text is a tab name rather than an action. */
+  menuLabel: string;
+}
+const { label, menuLabel } = Astro.props;
+---
+
+<button
+  type="button"
+  id="dash-nav-trigger"
+  class="dash-nav-trigger"
+  aria-label={menuLabel}
+  aria-expanded="false"
+  aria-controls="dash-nav-list"
+>
+  {/* A marker inside a closed drawer cannot be seen, which is the same problem the strip's
+      off-screen beacon solves — so the trigger carries the loudest severity out. Same two-value
+      vocabulary as `data-tab-alert`: red = a person is waiting, amber = a wrong state that can
+      wait. Hidden by default, because a dot painted by markup and cleared by script would flash
+      on every load of a store with nothing wrong.
+      **On the hamburger, not after the label** (owner, 2026-08-23: *"הנקודה האדומה לא במקום הנכון,
+      היא צריכה להיות על ההמבורגר"*). The label names the tab you are ON; a dot beside it reads as
+      a claim about that tab. The icon is the thing that opens the list where the marker actually
+      lives, so that is what it belongs to. */}
+  <span class="dash-nav-trigger__icon">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    <span class="dash-nav-trigger__dot" id="dash-nav-trigger-dot" hidden></span>
+  </span>
+  <span id="dash-nav-trigger-label">{label}</span>
+</button>
+
+<div class="dash-nav-overlay" id="dash-nav-overlay" aria-hidden="true"></div>
+
+<script is:inline>
+  (function () {
+    var card = document.getElementById('dash-main-card');
+    var trigger = document.getElementById('dash-nav-trigger');
+    var scrim = document.getElementById('dash-nav-overlay');
+    var labelEl = document.getElementById('dash-nav-trigger-label');
+    var dot = document.getElementById('dash-nav-trigger-dot');
+    if (!card || !trigger || !scrim) return;
+
+    /**
+     * **The tab list is looked up on demand, not once at the top, and that is not a style choice.**
+     * This component renders inside `.dash-head`, so that its trigger sits on the store header's
+     * own padding — and `.dash-head` is parsed BEFORE `.dash-tabs`. An inline script runs the
+     * instant the parser reaches it, so a `getElementById('dash-nav-list')` here returns null, and
+     * the guard above then returned before binding anything: the drawer opened for nobody, with no
+     * error (owner, 2026-08-22: *"במובייל התפריט צד לא נפתח שום דבר לא קורה"*).
+     * Resolving it per call costs nothing a person can measure and cannot go stale — which also
+     * covers the panel loader, since a swapped panel never replaces the strip but a future one
+     * might. `DashTabsBoot` avoids the same trap by being rendered AFTER its strip; this one cannot
+     * be, because its button has a place in the layout.
+     */
+    function navList() { return document.getElementById('dash-nav-list'); }
+    /** The element that IS the drawer — the rail, which holds the store block and the list. */
+    function rail() { return document.querySelector('.dash-rail'); }
+
+    function isDrawer() {
+      // The drawer exists only below the rail's breakpoint. Asked of the DOM rather than of a
+      // remembered number, so one media query in dashboard.css stays the single definition.
+      var el = rail();
+      return !!el && getComputedStyle(el).position === 'fixed';
+    }
+
+    function setOpen(open) {
+      card.toggleAttribute('data-nav-open', open);
+      scrim.classList.toggle('is-open', open);
+      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var list = navList();
+      if (open) {
+        var active = list && (list.querySelector('.dash-tab--active') || list.querySelector('[role="tab"]'));
+        if (active) active.focus();
+      } else {
+        // **Back to the trigger, always — not to whatever had focus when the drawer opened.**
+        // That was the first shape, and it only worked by accident: it read `document.activeElement`
+        // on open and relied on the browser having focused the button as part of the click. Chrome
+        // does; **Safari does not focus a `<button>` on click**, and jsdom does not either, which
+        // is how the test found it. There the remembered element was `<body>`, `body.focus()` is a
+        // no-op, and focus stayed on a tab inside a drawer that is now `visibility:hidden` — a
+        // keyboard or screen-reader user left on an element that is not on the screen.
+        // The trigger is the honest answer in every case anyway: it is the only way this opens.
+        // Unless it is not on screen: crossing the breakpoint closes the drawer too, and at that
+        // width the trigger is `display:none`, where a focus() call would silently drop focus to
+        // the document instead of leaving it where the seller put it.
+        // `display`, not `offsetParent`: the latter is the usual idiom and it is always null
+        // without a layout engine, so it would have quietly skipped this in every test too.
+        if (getComputedStyle(trigger).display !== 'none') trigger.focus();
+      }
+    }
+    var closingTimer = null;
+    /**
+     * A close a PERSON asked for — the only kind that animates. `data-nav-closing` holds the panel
+     * paintable for the length of the slide; the CSS has no delayed hide of its own, so nothing
+     * else on the page can ever produce one (see dashboard.css).
+     */
+    function close() {
+      if (!card.hasAttribute('data-nav-open')) return;
+      card.setAttribute('data-nav-closing', '');
+      setOpen(false);
+      clearTimeout(closingTimer);
+      closingTimer = setTimeout(function () { card.removeAttribute('data-nav-closing'); }, 300);
+    }
+    /** A close nothing asked for — crossing the breakpoint. Instant, and therefore invisible. */
+    function closeInstantly() {
+      clearTimeout(closingTimer);
+      card.removeAttribute('data-nav-closing');
+      if (card.hasAttribute('data-nav-open')) setOpen(false);
+    }
+
+    trigger.addEventListener('click', function () {
+      if (card.hasAttribute('data-nav-open')) { close(); return; }
+      clearTimeout(closingTimer);
+      card.removeAttribute('data-nav-closing');
+      setOpen(true);
+    });
+    scrim.addEventListener('click', close);
+
+    document.addEventListener('keydown', function (e) {
+      if (!card.hasAttribute('data-nav-open')) return;
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      // Focus trap. The drawer covers the page, so Tab must not walk out of it into controls the
+      // scrim is blocking — a keyboard user would be typing into a form they cannot see.
+      if (e.key !== 'Tab') return;
+      var list = navList();
+      var items = list ? list.querySelectorAll('[role="tab"]') : [];
+      if (!items.length) return;
+      var first = items[0], last = items[items.length - 1];
+      // The tabs use a roving tabindex (exactly one is tabbable), so Tab does not walk the list by
+      // itself — the arrow keys do. Both ends therefore wrap to the trigger, which is the one
+      // control that stays outside and must remain reachable.
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); trigger.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || document.activeElement === trigger)) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+
+    // A tab choice closes the drawer and renames the trigger. Delegated on the list so it covers
+    // the synthetic clicks too — the overview cards' `[data-goto-panel]` jumps go through
+    // `.click()`, and one of them landing with the drawer still open would leave the seller
+    // looking at a panel through a scrim.
+    document.addEventListener('click', function (e) {
+      var target = e.target instanceof Element ? e.target : null;
+      var tab = target && target.closest('[role="tab"][data-panel]');
+      if (!tab) return;
+      // **The tab's own text, WITHOUT its markers** (owner, 2026-08-23: *"יש עליו עדיין מספרים
+      // בלי שום עיצוב (ו-0)"*). `tab.textContent` walks every descendant, so a tab carrying a count
+      // handed back "מוצרים15" — and an orders tab whose badge is a zero handed back "הזמנות0".
+      // The digits then landed in a plain `<span>` with none of the badge's styling, because the
+      // badge itself was never copied, only its text. Direct text nodes only: the label is the
+      // tab's own words, the icon and the badge are elements.
+      if (labelEl) {
+        var words = '';
+        for (var n = tab.firstChild; n; n = n.nextSibling) {
+          if (n.nodeType === 3) words += n.nodeValue;
+        }
+        labelEl.textContent = words.trim() || (tab.getAttribute('data-panel') || '');
+      }
+      if (isDrawer()) close();
+    });
+
+    /** Carry the loudest marker still inside the drawer out onto the trigger. */
+    function syncDot() {
+      var list = navList();
+      if (!dot || !list) return;
+      var markers = list.querySelectorAll('[data-tab-alert]');
+      var level = '';
+      for (var i = 0; i < markers.length; i++) {
+        // `hidden` is how a count of zero is expressed on these markers, and an empty badge must
+        // not raise a dot.
+        if (markers[i].hidden || markers[i].closest('[hidden]')) continue;
+        if (markers[i].getAttribute('data-tab-alert') === 'danger') { level = 'danger'; break; }
+        level = level || 'warning';
+      }
+      dot.hidden = !level;
+      dot.setAttribute('data-level', level || 'danger');
+    }
+    // Deferred to DOM-ready for the same reason `navList()` exists: the list this reads is not
+    // parsed yet. Everything above binds a LISTENER, which can be attached before its target
+    // exists; this one has to read the DOM now, so it is the one thing that has to wait.
+    function startDotSync() {
+      syncDot();
+      // The counts move while the page is open (an order arrives, stock is edited), and every one
+      // of those writes lands inside this list.
+      var list = navList();
+      if (list && typeof MutationObserver !== 'undefined') {
+        new MutationObserver(syncDot).observe(list, { subtree: true, childList: true, attributes: true });
+      }
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startDotSync);
+    else startDotSync();
+
+
+    // Crossing the breakpoint with the drawer open would leave the rail pinned open and the scrim
+    // over the page, with no visible control to dismiss it.
+    if (window.matchMedia) {
+      var mq = window.matchMedia('(min-width: 1180px)');
+      // Crossing the breakpoint is not a gesture: nothing may animate, and an open drawer must
+      // not be left pinned open with the scrim over a page that now has no control to dismiss it.
+      mq.addEventListener('change', closeInstantly);
+    }
+  })();
+</script>

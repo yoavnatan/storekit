@@ -1815,10 +1815,350 @@ textarea.input { resize: none; }
 .dash-tabs[data-alert-start="warning"] .dash-tab-fade--start::after,
 .dash-tabs[data-alert-end="warning"] .dash-tab-fade--end::after { background: var(--color-warning); }
 
-/* ── The alert dots the tab strip carries, as a class ──
+/* ══════════════════════════════════════════════════════════════════════════════
+   SIDE NAVIGATION — a prototype, not a decision (2026-08-22)
+
+   The seller dashboard has eleven destinations and the admin has fourteen, all on one horizontal
+   line. That line does not fit a screen, and three separate mechanisms exist only to hide it: the
+   edge fades above, the wheel→horizontal translation in `ui.ts`, and the off-screen alert beacon
+   in `tab-alert-edges.ts`. A vertical list needs none of them, because a list simply continues
+   downward. Owner, 2026-08-22: *"לא עדיף לשים את התפריט בצד… אני מרגיש שיש שם משהו קצת שהמצאתי
+   ושלא באמת עושים ככה"*.
+
+   **Nothing here changes the DOM, and that is the point.** Every tab keeps its id, its
+   `role="tab"`, its `data-panel` and its `.dash-tab` class, so `DashTabsBoot`, `panel-swap`,
+   `tab-sync`, `unsaved-guard`, the `?panel=` restore and the arrow-key walk all keep working
+   untouched. `#dash-main-card` becomes a grid and the strip becomes a column; that is the whole
+   layout change. Which is what makes the comparison a fair one — the two layouts are the same
+   dashboard — and what makes reverting a matter of deleting a class.
+
+   `?nav=top` on the dashboard URL turns it off for a side-by-side look; the class is what the
+   page reads. This lives in a stylesheet rather than in utilities because the rules it has to
+   beat — `.dash-tabs`, `.dash-tab`, `.seller-dash .dash-tabs` — are all unlayered CSS in this
+   same file, which wins against `@layer utilities` regardless of source order.
+
+   The scroll offsets are the one thing that is NOT just layout: `.dash-panel-head` and
+   `.products-header` pin at `header + --dash-tabs-h`, and a rail's height is the whole column.
+   `sticky-offsets.ts` and `scroll-utils.ts#pinnedTopChrome` both skip a bar carrying `data-rail`,
+   which is why the strip declares it.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── The rail's head: the store block, identical in the column and in the drawer ──
+   Outside any media query on purpose. The rail is the same element at both widths — a column on a
+   desktop, a drawer on a phone — and the owner asked for it to read the same in both
+   (2026-08-23: *"התכוונתי שגם במובייל יהיה שהפרטים בתוך התפריט צד"*). A ~16rem box has no room
+   for a row: the name and the "view store" button sat side by side with a `space-between` pushing
+   them apart, which squeezed a long store name to nothing and broke the button onto two lines.
+   They stack, and the button goes full width under the address — the placement the owner picked
+   out of the two he was shown. */
+#dash-main-card.dash-nav-side .dash-head {
+  margin-bottom: 0;
+  padding: 1.15rem 0.9rem 0.85rem;
+}
+#dash-main-card.dash-nav-side .dash-head__top {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+#dash-main-card.dash-nav-side #dash-view-store { width: 100%; justify-content: center; }
+/* Air between the address line and the button above it. The address inherits `mt-3 sm:mt-1` from
+   the full-width layout, where the button sits BESIDE it rather than on top of it; stacked in the
+   rail those 4px read as the two being one control (owner, 2026-08-23). */
+#dash-main-card.dash-nav-side .dash-head .muted { margin-top: 0.55rem; }
+
+/* ── The rail's own item, shared by both breakpoints ──
+   The horizontal tab marks itself with a 2.5px underline; the rail marks itself with the same
+   2.5px on its leading edge plus the `--color-bg` fill the products table already uses for a
+   hovered row. Same value, same idea, the other axis — nothing new invented for this. */
+/* The offset chain loses its middle link: with no horizontal strip there is nothing between the
+   site header and a panel's own sticky title. `sticky-offsets.ts` REMOVES `--dash-tabs-h` for a
+   rail rather than writing a number (a column's height is not a top band), which hands the
+   question back to the `var(--dash-tabs-h, 2.9rem)` fallback in four `top:` rules — and that
+   fallback is the strip's own height, i.e. the wrong answer stated confidently. Declaring 0 here
+   is what makes the fallback right rather than merely absent. Custom properties inherit, so this
+   one declaration reaches every consumer; all four of them are inside this card. */
+#dash-main-card.dash-nav-side { --dash-tabs-h: 0px; }
+
+#dash-main-card.dash-nav-side .dash-tabs {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.1rem;
+  overflow-x: visible;
+  border-bottom: 0;
+}
+#dash-main-card.dash-nav-side .dash-tab {
+  position: relative;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: start;
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 0;
+  border-bottom: 0;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.12s;
+}
+#dash-main-card.dash-nav-side .dash-tab:hover { background: var(--color-bg); }
+#dash-main-card.dash-nav-side .dash-tab--active {
+  background: var(--color-bg);
+  border-bottom-color: transparent;
+}
+/* The strip's 2.5px underline, stood on its end. Drawn as a pseudo-element and not as
+   `border-inline-start`, which was tried first: a one-sided border on a box with
+   `border-radius` is rendered as a CURVE, so the mark came out as a small bracket hooking around
+   the row's corner rather than as a line. Inset from top and bottom so it reads as a marker
+   against the row rather than as the row's own edge. */
+#dash-main-card.dash-nav-side .dash-tab--active::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 2.5px;
+  border-radius: 2px;
+  background: var(--color-primary);
+}
+/* A count or a dot belongs at the END of a full-width row, not tucked against the label. The dots
+   are `position:absolute` in the horizontal strip because a tab there is only as wide as its
+   label; here the row has somewhere to put them. */
+#dash-main-card.dash-nav-side .dash-tab-badge { margin-inline-start: auto; }
+#dash-main-card.dash-nav-side .dash-tab-dot {
+  position: static;
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+/* No edge fades on a column: nothing scrolls sideways, so the two overlays `ui.ts` injects would
+   be blank strips lying across the first and last item. `syncEdges()` already leaves them at
+   opacity 0 (a column's scrollWidth never exceeds its clientWidth), but they still occupy their
+   negative-margin box, and the beacon `::after` would still have nothing to be hidden behind. */
+#dash-main-card.dash-nav-side .dash-tab-fade { display: none; }
+
+/* Group separators. Eleven items in one undivided run is a list you read from the top every time;
+   four short runs is a list you aim at. They exist only in the rail — a vertical rule dropped into
+   the horizontal strip would be a second, unrelated idea — and they are `aria-hidden` decorations
+   between the tabs, never inside one, so nothing that walks `[role="tab"]` sees them. */
+.dash-nav-sep { display: none; }
+#dash-main-card.dash-nav-side .dash-nav-sep {
+  display: block;
+  height: 1px;
+  margin: 0.45rem 0.65rem;
+  background: var(--color-border);
+}
+
+/* ── Desktop: a real column beside the panel ── */
+@media (min-width: 1180px) {
+  /* **The rail is added BESIDE the content, not carved out of it** (owner, 2026-08-22: the
+     products table's headings came out as one letter and an ellipsis, and then *"אולי כדאי
+     להרחיב את כל הלייאוט של כל האתר?!"*).
+     The answer to the wider question is no, and this is why it does not need to be yes. The site's
+     1160px (`--max-width`, tokens.css) is a READING width, chosen for a shopping surface: the
+     product grid is `repeat(auto-fill, minmax(220px, 1fr))` and the homepage's rows are sized to a
+     whole-number fit at that width, so moving it moves those too, for pages that were not the
+     complaint. What actually happened here is narrower than that: a 15.5rem rail appeared inside a
+     box whose width had not changed, so an 11-column table lost 248px it never agreed to give.
+     Adding the rail's width to the section restores the content column to exactly what it is in
+     the top-strip layout — the same table, the same headings, plus a rail. `.container` keeps
+     `width: 100%`, so this is a cap and never a horizontal scrollbar.
+     `--dash-rail-w` is declared HERE, on the section, and not on the card: the card cannot hand a
+     value up to the ancestor that sizes it, and two numbers that must agree are one number. */
+  /* **Declared on the root so the site HEADER can read it too** (owner, 2026-08-23: *"גם ההדר
+     צריך להיות מותאם לרוחב של הקונטיינרים החדשים"* — and he was right: the dashboard was 248px
+     wider than the header above it, so the store name and the header's own icons stopped lining
+     up with anything). One number, two consumers, no way for them to drift. */
+  html:has(#dash-main-card.dash-nav-side) { --dash-rail-w: 15.5rem; }
+  .dash-section:has(> #dash-main-card.dash-nav-side),
+  html:has(#dash-main-card.dash-nav-side) .site-header > .container {
+    max-width: calc(var(--max-width) + var(--dash-rail-w));
+  }
+
+  #dash-main-card.dash-nav-side {
+    display: grid;
+    grid-template-columns: var(--dash-rail-w, 15.5rem) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    align-items: start;
+  }
+  /* Everything not placed explicitly goes in the CONTENT column — a flash message, and whatever a
+     later session adds between the head and the panels. A new child landing in the rail by
+     auto-placement would be the silent failure here. */
+  #dash-main-card.dash-nav-side > * { grid-column: 2; }
+
+  /* **The rail is one grid item, and the content column starts at the TOP of the card.**
+     It was two items in two rows, which is where the enormous empty band above the products
+     toolbar came from (owner, 2026-08-23: *"שמת לי איזה רווח מאוד גדול בין הסקשן לבין התוכן"*):
+     the store block made row 1 as tall as itself, and the panel — sitting in row 2 — began below
+     it, across the whole width. One item cannot do that. */
+  #dash-main-card.dash-nav-side > .dash-rail {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    /* Sticky as a whole. The store block scrolls away WITH the list only if the list is short
+       enough to need it; on any real viewport the rail fits, so what the seller sees is a
+       navigation that simply does not move — which is what was asked for, without pinning
+       anything separately. */
+    position: sticky;
+    top: calc(var(--site-header-h, 3.4rem) + 0.5rem);
+    align-self: start;
+    max-height: calc(100vh - var(--site-header-h, 3.4rem) - 1.5rem);
+    overflow-y: auto;
+    scrollbar-width: none;
+    z-index: 7;
+    background: var(--color-surface);
+  }
+  #dash-main-card.dash-nav-side > .dash-rail::-webkit-scrollbar { display: none; }
+
+
+  #dash-main-card.dash-nav-side .dash-tabs {
+    --dash-tab-pad: 0.65rem;
+    padding-block: 0 1.5rem;
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  #dash-main-card.dash-nav-side > .dash-panel,
+  #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-column: 2; }
+  #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-row: 1; }
+  #dash-main-card.dash-nav-side > .dash-panel { grid-row: 1 / -1; }
+
+  /* The trigger is a phone control; at this width the rail is simply there. */
+  #dash-main-card.dash-nav-side .dash-nav-trigger { display: none; }
+}
+
+/* ── Phone and tablet: the same list, as a drawer ──
+   Written in the site's existing drawer language rather than a second one — the timing curve, the
+   `visibility` handoff that keeps a closed drawer out of the Tab order, the 0.4 black scrim and
+   the z-index pair are `components/cart-drawer.css`'s, value for value. It opens from the START
+   side (the right, in Hebrew), which is where its own trigger is. */
+@media (max-width: 1179.98px) {
+  #dash-main-card.dash-nav-side > .dash-rail {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    inset-inline-start: 0;
+    width: min(17rem, 82vw);
+    z-index: 100;
+    padding: 1rem 0.75rem;
+    background: var(--color-surface);
+    border-inline-end: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sheet);
+    overflow-y: auto;
+    transform: translateX(-100%);
+    visibility: hidden;
+    /* **A closed drawer has no transition at all, and that is the only thing that cannot flash**
+       (owner, 2026-08-22, and again on 08-23 after the first attempt did not hold: *"עדיין רואה
+       את התפריט מופיע לרגע ונעלם כאשר אני מכווץ את המסך"*).
+       The first attempt kept the usual drawer recipe — `visibility 0s 0.28s`, which DELAYS the
+       hide so the panel stays paintable while it slides out — and tried to disarm it from script
+       across a breakpoint change. That is a race, and it was lost: by the time a `matchMedia`
+       handler runs, the browser has already applied the new rules and started the transition.
+       So the delayed hide is gone. A close is instant unless something explicitly asks for the
+       slide, and only a person closing the drawer does: `DashNavDrawer` sets `data-nav-closing`
+       for the length of the animation. A resize, a first paint, a tree whose JS never ran — none
+       of them set it, so none of them can show anything. No timing to get right. */
+    transition: none;
+    will-change: transform;
+  }
+  [dir="rtl"] #dash-main-card.dash-nav-side > .dash-rail { transform: translateX(100%); }
+  /* Open: slide in. `visibility` flips with no delay, which is what opening wants. */
+  #dash-main-card.dash-nav-side[data-nav-open] > .dash-rail,
+  [dir="rtl"] #dash-main-card.dash-nav-side[data-nav-open] > .dash-rail {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  /* Closing, by a person: hold it paintable for the length of the slide. Set and cleared by the
+     component, never by a media query. */
+  #dash-main-card.dash-nav-side[data-nav-closing] > .dash-rail {
+    visibility: visible;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  #dash-main-card.dash-nav-side .dash-tab { padding: 0.6rem 0.7rem; }
+}
+
+.dash-nav-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 90;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.dash-nav-overlay.is-open { opacity: 1; pointer-events: auto; }
+
+/* The trigger, and it is not decoration: with the list behind a drawer, this line is the only
+   thing on screen that says which tab is open. So it names it. */
+/* **It sticks, and what made that possible was moving it in the DOM** (owner, 2026-08-23:
+   *"ואיכשהו איכשהו שהכפתור עם ההמבורגר יישאר סטיקי"*). A sticky box travels only inside its own
+   containing block. While this button lived inside `.dash-head` it had a box a few hundred pixels
+   tall, so `position:sticky` did nothing at all once the head had scrolled past — measured at
+   -723px off the top of an 800px viewport. It is a direct child of the card now, whose box is the
+   whole dashboard, so the same one line works. Pinning the head instead was tried and rejected:
+   it put the store's whole identity on screen on every tab, which is not what was asked for.
+   `width:max-content` so a stuck full-width element does not drag a surface-coloured bar across
+   the page behind it, and the inline margin matches `.dash-head`'s own padding at this width so it
+   still lines up with the store name above it. */
+/* **A BAR, not a button floating over the page** (owner, 2026-08-23: *"הסטיקי כפתור עם ההמבורגר
+   נשאר תקוע על גבי התוכן"*). It was a `max-content` chip with a rounded border, pinned — so the
+   rows scrolled through the transparent strip either side of it and it read as something stuck to
+   the glass rather than as part of the page. A pinned element has to be opaque across the full
+   width it occupies, or it is a smudge.
+   So: full width, the surface colour, one rule underneath it, and the control itself is the only
+   thing in it. Square, because it spans edge to edge — the same argument as the sheet it sits on.
+   Its own height feeds nothing; the page below simply starts after it. */
+.dash-nav-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  margin: 0;
+  position: sticky;
+  top: var(--site-header-h, 3.4rem);
+  z-index: 9;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.dash-nav-trigger:hover { background: var(--color-bg); }
+.dash-nav-trigger__icon {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+/* Just off the icon's corner, the way a badge sits on an app icon — close enough to belong to it,
+   clear of the three lines so neither reads as part of the other. */
+.dash-nav-trigger__dot {
+  position: absolute;
+  top: -2px;
+  inset-inline-end: -3px;
+}
+/* Same vocabulary as the strip's own off-screen beacon: a marker that is now inside a closed
+   drawer has to reach the outside somehow, and this is the only element outside it. */
+.dash-nav-trigger__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  /* A ring in the button's own fill, so the dot stays legible where it overlaps the glyph. */
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+.dash-nav-trigger__dot[data-level="warning"] { background: var(--color-warning); }
+
+/* ── The alert dots the tab strip already had, as a class ──
    They were four copies of the same seven inline declarations (orders, advertising, messages,
-   payouts). One rule in four places is the next thing to drift, and an inline style is the one
-   thing a stylesheet cannot adjust later. */
+   payouts). A class is what lets the rail place them at the end of a row instead of pinned to a
+   corner — an inline style cannot be overridden — and four copies of one rule were the next thing
+   to drift anyway. */
 .dash-tab-dot {
   position: absolute;
   top: 0.45rem;

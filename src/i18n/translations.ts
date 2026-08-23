@@ -871,6 +871,10 @@ export const translations = {
       uploadImage: 'בחר תמונה',
       uploadError: 'שגיאה בהעלאה',
       tabOverview: 'סקירה כללית',
+      /** The drawer trigger's accessible name, side-nav layout only — the button's visible text is
+       *  the open tab's own label, so it needs a name that says what pressing it does. */
+      navMenu: 'תפריט הדשבורד',
+      navMenuClose: 'סגירת התפריט',
       tabProducts: 'מוצרים',
       tabOrders: 'הזמנות',
       tabReturns: 'החזרות',
@@ -2863,6 +2867,8 @@ export const translations = {
       uploadImage: 'Choose image',
       uploadError: 'Upload failed',
       tabOverview: 'Overview',
+      navMenu: 'Dashboard menu',
+      navMenuClose: 'Close menu',
       tabProducts: 'Products',
       tabOrders: 'Orders',
       tabReturns: 'Returns',

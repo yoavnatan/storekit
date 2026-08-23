@@ -23,6 +23,8 @@ import CampaignHistory from '../../components/dashboard/CampaignHistory.astro';
 import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
 import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
+import DashNavDrawer from '../../components/dashboard/DashNavDrawer.astro';
+import StoreAvatar from '../../components/StoreAvatar.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
 import { offersSelfPickup } from '../../lib/shipping.js';
@@ -202,6 +204,27 @@ let error = '';
 const PANEL_NAMES = ['overview', 'products', 'orders', 'returns', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
 const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
 const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
+
+/**
+ * **Side rail or top strip — the layout under evaluation (prototype, 2026-08-22).**
+ *
+ * `?nav=top` restores the eleven-tab horizontal strip, so the two can be compared on the same
+ * data in the same browser rather than described to each other. Everything else about the page is
+ * identical: the rail is `.dash-nav-side` in `dashboard.css` and nothing else, and the tabs keep
+ * every id, role and class they had.
+ *
+ * `DashTabsBoot` writes `?panel=` with `searchParams.set`, which preserves the rest of the query,
+ * so the choice survives every tab switch without this file doing anything about it.
+ */
+const navSide = Astro.url.searchParams.get('nav') !== 'top';
+/** The open tab's own label — the drawer trigger's text, because with the list behind a drawer
+ *  nothing else on screen says which tab you are on. */
+const PANEL_LABELS: Record<string, string> = {
+  overview: d.tabOverview, products: d.tabProducts, promotions: d.tabPromotions,
+  orders: d.tabOrders, returns: d.tabReturns, performance: d.tabPerformance,
+  reports: d.tabReports, advertising: d.tabAdvertising, messages: t.dashboard.tabMessages,
+  payouts: d.tabPayouts, settings: d.tabSettings,
+};
 
 // ── ONE PANEL PER REQUEST (2026-08-11, SELLER_LAZY_PANELS_PLAN.md) ──
 //
@@ -941,8 +964,17 @@ const orderStatusColors: Record<string, string> = {
   <script type="application/json" id="category-tree-data" set:html={jsonForScript(categoryTree)} />
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-invoice-preset={cloudinaryInvoicePreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-host={platformHost} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section dash-section--bleed">
-    <div id="dash-main-card" class="card seller-dash" style="margin-bottom:1.5rem">
+    <div id="dash-main-card" class={`card seller-dash${navSide ? ' dash-nav-side' : ''}`} style="margin-bottom:1.5rem">
 
+      {/* **The rail is ONE element: the store block and the tab list inside it.**
+          It has to be one element because on a phone the whole thing is the drawer — the owner
+          asked for the store details to live in the menu there too, not only on desktop
+          (2026-08-23: *"התכוונתי שגם במובייל יהיה שהפרטים בתוך התפריט צד"*). Two siblings could
+          not both slide in, and CSS cannot move one into the other.
+          It also removes the desktop gap that came from treating them as two grid rows: the
+          content column now starts at the top of the card, beside the rail, instead of below
+          whichever row the store block had made tall. */}
+      <div class="dash-rail">
       <!-- ── Store header ── -->
       <div class="dash-head">
         <div class="dash-head__top">
@@ -957,7 +989,17 @@ const orderStatusColors: Record<string, string> = {
                 aria-expanded="false"
                 aria-label={lang === 'he' ? 'החלף חנות' : 'Switch store'}
               >
-                <span class="dash-store-name text-[1.3rem] font-bold m-0 leading-[1.2]">{store.name}</span>
+                {/* The store's own picture beside its name (owner, 2026-08-22: *"לשם של החנות
+                    הייתי מוסיף גם את התמונת פרופיל שלה, זה פשוט צריך לתפוס מקום יותר הגיוני
+                    ומצומצם"*). `StoreAvatar` is the site's one answer to "who is this store" and
+                    it draws a generated mark when there is no upload, so this slot is never empty
+                    and never a broken picture. 28px: the size that reads as identity beside a
+                    1.05rem name without becoming a second heading. */}
+                <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={28} class="shrink-0" />
+                {/* 1.05rem, not 1.3rem: this line lives inside a 15.5rem rail on desktop, where the
+                    old size wrapped a normal store name onto two lines and made the block the
+                    tallest thing on the screen. It is still the biggest text in the rail. */}
+                <span class="dash-store-name text-[1.05rem] font-bold m-0 leading-[1.25] min-w-0 truncate">{store.name}</span>
                 <svg class="store-switcher__chevron text-[color:var(--color-muted)] shrink-0 mt-px [transition:transform_.2s_ease,color_.15s] group-hover:text-[color:var(--color-accent)] group-aria-expanded:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
@@ -1054,10 +1096,11 @@ const orderStatusColors: Record<string, string> = {
         {settingsSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
         {productSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.productAdded}</p>}
         {error && <p class="dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#fecaca] text-sm" style="margin-top:1rem;margin-bottom:0">{error}</p>}
+
       </div>
 
       <!-- ── Section tabs ── -->
-      <div class="dash-tabs" role="tablist">
+      <div class="dash-tabs" role="tablist" id="dash-nav-list" data-rail={navSide ? '' : undefined}>
         <button
           class={`dash-tab${initialPanel === 'overview' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -1066,29 +1109,6 @@ const orderStatusColors: Record<string, string> = {
           aria-selected={initialPanel === 'overview'}
           tabindex={initialPanel === 'overview' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>{d.tabOverview}</button>
-        <button
-          class={`dash-tab${initialPanel === 'products' ? ' dash-tab--active' : ''}`}
-          role="tab"
-          id="tab-products"
-          data-panel="products"
-          aria-selected={initialPanel === 'products'}
-          tabindex={initialPanel === 'products' ? 0 : -1}
-          style="position:relative"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>{d.tabProducts}
-          {/* The severity this marker declares to scripts/dashboard/tab-alert-edges.ts, so the tab
-              strip's edge can flag it while this tab is scrolled off screen. "warning" — a wrong
-              state that can wait; the red ones below are someone waiting on the seller. */}
-          <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tab-alert="warning" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
-        </button>
-        <button
-          class={`dash-tab${initialPanel === 'promotions' ? ' dash-tab--active' : ''}`}
-          role="tab"
-          id="tab-promotions"
-          data-panel="promotions"
-          aria-selected={initialPanel === 'promotions'}
-          tabindex={initialPanel === 'promotions' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>{d.tabPromotions}</button>
         <button
           class={`dash-tab${initialPanel === 'orders' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -1118,24 +1138,44 @@ const orderStatusColors: Record<string, string> = {
           )}
         </button>
         <button
-          class={`dash-tab${initialPanel === 'performance' ? ' dash-tab--active' : ''}`}
+          class={`dash-tab${initialPanel === 'messages' ? ' dash-tab--active' : ''}`}
           role="tab"
-          id="tab-performance"
-          data-panel="performance"
-          aria-selected={initialPanel === 'performance'}
-          tabindex={initialPanel === 'performance' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>{d.tabPerformance}</button>
-        {/* Next to Performance and not next to Orders, deliberately: the two answer the same
-            question — "how did this period go" — and a seller who wants the rows behind a figure
-            looks beside the figure. */}
+          id="tab-messages"
+          data-panel="messages"
+          aria-selected={initialPanel === 'messages'}
+          tabindex={initialPanel === 'messages' ? 0 : -1}
+          style="position:relative"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
+          {unreadMsgRows > 0 && (
+            <span class="dash-tab-dot" data-tab-alert="danger" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
+          )}
+        </button>
+        <div class="dash-nav-sep" aria-hidden="true"></div>
         <button
-          class={`dash-tab${initialPanel === 'reports' ? ' dash-tab--active' : ''}`}
+          class={`dash-tab${initialPanel === 'products' ? ' dash-tab--active' : ''}`}
           role="tab"
-          id="tab-reports"
-          data-panel="reports"
-          aria-selected={initialPanel === 'reports'}
-          tabindex={initialPanel === 'reports' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>{d.tabReports}</button>
+          id="tab-products"
+          data-panel="products"
+          aria-selected={initialPanel === 'products'}
+          tabindex={initialPanel === 'products' ? 0 : -1}
+          style="position:relative"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>{d.tabProducts}
+          {/* The severity this marker declares to scripts/dashboard/tab-alert-edges.ts, so the tab
+              strip's edge can flag it while this tab is scrolled off screen. "warning" — a wrong
+              state that can wait; the red ones below are someone waiting on the seller. */}
+          <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tab-alert="warning" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
+        </button>
+        <button
+          class={`dash-tab${initialPanel === 'promotions' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-promotions"
+          data-panel="promotions"
+          aria-selected={initialPanel === 'promotions'}
+          tabindex={initialPanel === 'promotions' ? 0 : -1}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>{d.tabPromotions}</button>
+        <div class="dash-nav-sep" aria-hidden="true"></div>
         <button
           class={`dash-tab${initialPanel === 'advertising' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -1155,19 +1195,25 @@ const orderStatusColors: Record<string, string> = {
           )}
         </button>
         <button
-          class={`dash-tab${initialPanel === 'messages' ? ' dash-tab--active' : ''}`}
+          class={`dash-tab${initialPanel === 'performance' ? ' dash-tab--active' : ''}`}
           role="tab"
-          id="tab-messages"
-          data-panel="messages"
-          aria-selected={initialPanel === 'messages'}
-          tabindex={initialPanel === 'messages' ? 0 : -1}
-          style="position:relative"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
-          {unreadMsgRows > 0 && (
-            <span class="dash-tab-dot" data-tab-alert="danger" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
-          )}
-        </button>
+          id="tab-performance"
+          data-panel="performance"
+          aria-selected={initialPanel === 'performance'}
+          tabindex={initialPanel === 'performance' ? 0 : -1}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>{d.tabPerformance}</button>
+        {/* Next to Performance and not next to Orders, deliberately: the two answer the same
+            question — "how did this period go" — and a seller who wants the rows behind a figure
+            looks beside the figure. */}
+        <button
+          class={`dash-tab${initialPanel === 'reports' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-reports"
+          data-panel="reports"
+          aria-selected={initialPanel === 'reports'}
+          tabindex={initialPanel === 'reports' ? 0 : -1}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>{d.tabReports}</button>
+        <div class="dash-nav-sep" aria-hidden="true"></div>
         {/* Between Messages and Settings, and the position is the argument: this is the seller's
             own money rather than the store's operation, so it sits at the end of the working tabs
             and beside the other account-shaped one. */}
@@ -1195,6 +1241,15 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'settings' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>{d.tabSettings}</button>
       </div>
+      </div>
+      {/* **Outside the rail, and a direct child of the card.** Two reasons, both learned the hard
+          way. Inside the rail it IS the drawer, so the button that opens it was hidden along with
+          it — the menu simply had no way in on a phone. And `position: sticky` travels only inside
+          its own containing block, so from anywhere shallower than the card it scrolls away after
+          a screenful. Here it is a sibling of the rail and of every panel, pinned under the site
+          header, and above 1180px it is `display:none` because the rail is simply there. */}
+      {navSide && <DashNavDrawer label={PANEL_LABELS[initialPanel] ?? d.navMenu} menuLabel={d.navMenu} />}
+
       <DashTabsBoot />
 
       {/* Hydration bar. Server-rendered VISIBLE and removed by the panel loader
@@ -1807,7 +1862,9 @@ const orderStatusColors: Record<string, string> = {
               wide one — were always about how much room the TABLE has; keying them to the viewport
               was a proxy that held only while the panel was the width of the page. It is not: a
               13-inch laptop, a tablet, or anything placed beside the table hands it far less than
-              the media query believes, and the headings ellipsize to a letter. Same fix, same
+              the media query believes, and the headings ellipsize to a letter — the navigation
+              rail is exactly that case, taking 15.5rem out of a 1280px viewport so the table gets
+              ~1000px while the query still hands it the shares tuned for 1400. Same fix, same
               shape, as `.msg-cq` on the messages panel — whose own comment already named this case.
               Wrapping ONLY the table, not the toolbar above it: `container-type` brings layout
               containment, and the narrower the containing element the less that can surprise

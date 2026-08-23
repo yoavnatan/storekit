@@ -85,6 +85,9 @@ export function pinnedTopChrome(el: HTMLElement): number {
     // targets something none of these bars contain (unchanged) or targets a bar itself (which is
     // what today's behaviour already is, because the bar was not in the stack at all).
     if (bar === el || bar.contains(el)) return 0;
+    // A vertical navigation rail is pinned, and tall, and covers none of the top edge — see
+    // `data-rail` in sticky-offsets.ts, which is the only other reader of this marker.
+    if (bar.hasAttribute('data-rail')) return 0;
     const pos = getComputedStyle(bar).position;
     return pos === 'sticky' || pos === 'fixed' ? bar.getBoundingClientRect().height : 0;
   };
