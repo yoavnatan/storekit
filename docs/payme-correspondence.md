@@ -86,50 +86,53 @@ and was a switch plus a wrong endpoint. Do not design around any of these before
 1. **Can the PARTNER account accept card payments?** `174 · אפשרות זו אינה נתמכת במשתמשים מסוג זה`
    describes a *type*, which is a setting. If yes, the delivery fee has somewhere to land and both
    workarounds in `payme-sandbox-notes.md` §15 disappear.
-2. **Which ceiling is the 110% offer about?** Their sentence uses capture vocabulary, but the one
-   that blocks delivery is the 60% market-fee cap, error `308`. Ask in those words — "the ceiling
-   that blocks us is the 60% on `market_fee` + `market_fee_fixed`, error 308; is that the one you
-   are raising?" — because accepting the offer as phrased may buy nothing (§6).
+2. ~~**Which ceiling is the 110% offer about?**~~ **ANSWERED — it is the capture ceiling, and the
+   arithmetic is the proof: ₪300 of goods plus ₪30 of delivery is 110% of ₪300.** See "What this
+   settles" §3. Our design authorizes goods and delivery together and captures 100%, so it needs no
+   raise; and it stays clear of the separate 60% cap on our commission by capturing delivery to our
+   own merchant. Nothing to ask.
 3. **Enable multi-capture on the sandbox key**, if it is not already: it worked when called
    correctly, but whether that was because it is on for us or because the sandbox is permissive is
    not established.
 
 ---
 
-## What this settles, and what it opens
+## What this settles
 
-### 1. ⚠️ Their answer to "several sellers in one purchase" is **multi-capture** — which is NOT what we built
-The question was explicit and so is the answer: the documentation they pointed at is
-*multi-capture for credit cards*. That is **one authorization drawn down by several captures**.
+### 1. Their answer to "several sellers in one purchase" is MULTI-CAPTURE — and the checkout is built on it
+The question was explicit and so is the answer: the guide they linked is *multi-capture for credit
+cards*, whose own prerequisite reads *"at least 2 users from the same marketplace"*. One
+authorization on the buyer's card, drawn down by one capture per seller.
 
-What this repository implements instead is **one PERMANENT buyer token charged as N separate sales**
-(`lib/payment-split.ts`). That route was measured working end to end (`payme-sandbox-notes.md` §2–3)
-and needs nothing switched on, so it is not wrong — but it is not the route the vendor considers the
-answer, and the difference is not cosmetic:
+`lib/payment-split.ts` was rebuilt on it on 2026-08-23, after it was measured working across two
+sellers. It had been one permanent token charged as N separate sales — which also worked, and was
+not what the vendor considers the answer.
 
-* Multi-capture is **one authorization on the buyer's card**, which is very likely one line on their
-  statement instead of one per store — the exact thing the owner objected to. **Not verified.**
-* `§3.1.1` item 4 measured multi-capture **disabled on our key**: capture ₪40 of a ₪100
-  authorization and the sale jumps to `completed`, a second capture refused `305`. That matches Yakir
-  saying he must *"להעלות לך את האפשרות בהגדרות אצלי"* — it is off until he turns it on.
-* An earlier session read that measurement as "the cart does not need this" and moved on. Given
-  answer 1, that reading needs revisiting rather than inheriting.
-
-**Nothing should be rebuilt on this until the guide is read and multi-capture is enabled and
-measured.** Both are blocked on somebody who can open a browser and on Yakir respectively.
+⚠️ An earlier session recorded multi-capture as "not enabled on our key". It had called
+`capture-sale`, the single-capture endpoint. `payme-sandbox-notes.md` §14 has the measurements.
 
 ### 2. The fixed fee is real — but their NAME for it is not the API's
 "direct market fee" is what they call it in conversation. The API field is `market_fee_fixed`;
 `direct_market_fee` is **silently ignored** (measured, `payme-sandbox-notes.md` §11). PayMe accept
 unknown parameters without complaint, so this distinction is worth money.
 
-### 3. The 110% is about OUR cut, not about capture-versus-authorization
-Answer 3 responds to a question that is explicitly about a fixed delivery amount. So the ceiling is a
-**per-account setting they raise on request**, and the 60% we measured is its current value on our
-account. `payme-sandbox-notes.md` §6 carries the full correction, including the fact that I argued
-the opposite earlier the same day and was wrong.
+### 3. ✅ The 110% is simple arithmetic, and the owner is the one who saw it
+Three sessions argued about which ceiling PayMe meant. The owner read it plainly (2026-08-23):
 
----
+> *"כי אז 30 שקל משלוח זה פשוט 110 שח מ-300 לדוגמא"*
+
+**₪300 of goods plus ₪30 of delivery is ₪330 — 110% of ₪300.** That is all the number is. Their
+model authorizes the GOODS and then captures past it to pull the delivery through, so the capture
+ceiling has to go above 100%.
+
+Ours authorizes goods AND delivery together and captures exactly 100% of that. Same money, same
+single purchase, no ceiling to raise. **Both are the capture ceiling; neither is about the 60% cap
+on our commission**, which is a separate limit that our design also stays clear of because delivery
+is captured to our own merchant rather than folded into the seller's sale
+(`payme-sandbox-notes.md` §18).
+
+The reason to still raise it on the integration call is question 0 above — not that ours is unsound,
+but that a vendor describing a different shape usually knows something the API does not state.
 
 ## Why the linked documentation is not quoted here
 
