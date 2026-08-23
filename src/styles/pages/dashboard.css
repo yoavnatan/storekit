@@ -142,9 +142,13 @@ textarea.input { resize: none; }
 }
 .bulk-bar__clear:hover { background: var(--color-bg); color: var(--color-text); }
 
-/* A phone has no room for four labelled buttons in one row. The icons stay, and every one of them
-   already carries its own `aria-label` — which is why the label spans are `aria-hidden` and this
-   costs nothing but the words. */
+/* **A phone keeps the words** (owner, 2026-08-23: *"במובייל כן יהיה הכיתוב על גבי הכפתורים, רק אם
+   זה נכנס"*). They were dropped on the assumption that four labelled buttons cannot share a phone's
+   width — which is true of one ROW and not of this bar, which wraps. Measured at 375px: the count
+   and the four actions take two lines, and two lines of readable buttons beat one line of four
+   glyphs on the surface where a mis-tap deletes products.
+   The one word that does not survive is the upload button's, and it is the only one that would
+   force a third line — so it says what it does in one word instead of three (`bulkUploadShort`). */
 @media (max-width: 640px) {
   .bulk-bar {
     inset-inline: 0.5rem;
@@ -153,8 +157,32 @@ textarea.input { resize: none; }
     flex-wrap: wrap;
     gap: 0.3rem;
   }
-  .bulk-bar .bulk-btn__label { display: none; }
-  .bulk-bar .bulk-btn svg { width: 16px; height: 16px; }
+  .bulk-bar .bulk-btn { padding-inline: 0.5rem; }
+  .bulk-bar .bulk-btn svg { width: 15px; height: 15px; }
+  .bulk-bar .bulk-btn__label--long { display: none; }
+
+}
+/* **Below ~430px the divider becomes the line break**, which is the flexbox idiom for it:
+   zero-width, full basis. Left to wrap on its own the bar put five items on one line and "מחק"
+   alone on a second, which reads as an accident — and the one it stranded was the destructive one.
+   Two deliberate lines instead: what is selected, then what can be done with it. The threshold is
+   measured, not chosen: at 431px the whole row is 378px against 415 of usable width, so anything
+   wider than a phone keeps its single line and its divider. */
+@media (max-width: 430px) {
+  .bulk-bar__sep {
+    flex-basis: 100%;
+    width: auto;
+    height: 0;
+    margin: 0;
+    background: none;
+  }
+  .bulk-bar__count { padding-inline-end: 0; }
+}
+
+/* The short spelling is the phone's only — above 640px the button has room to say the whole thing. */
+.bulk-btn__label--short { display: none; }
+@media (max-width: 640px) {
+  .bulk-bar .bulk-btn__label--short { display: inline; }
 }
 
 /* A `prefers-reduced-motion` reader asked for no travel, not for no bar. */
@@ -2004,7 +2032,104 @@ textarea.input { resize: none; }
    fallback is the strip's own height, i.e. the wrong answer stated confidently. Declaring 0 here
    is what makes the fallback right rather than merely absent. Custom properties inherit, so this
    one declaration reaches every consumer; all four of them are inside this card. */
-#dash-main-card.dash-nav-side { --dash-tabs-h: 0px; }
+/* ── ONE number for the only space above a panel's title ──
+   Owner, 2026-08-23: *"יש רווח מאוד גדול ומיותר בין הכותרת לבין ההדר, שגם אין צורך שייגלל, שיהיה
+   סטיקי מההתחלה במקום שלו"* — two requests that are one number. The title rested at 37px under the
+   header and pinned at 0, so it had 37px of travel AND 37px of gap; both are this value, and it is
+   12.
+
+   **`--dash-tabs-h` is how it reaches the four `top:` rules, and that is deliberate.** Every sticky
+   offset in this file is written `calc(var(--site-header-h) + var(--dash-tabs-h) + …)` — it was the
+   height of the horizontal strip, which the rail layout does not have. Declaring the gutter there
+   instead of 0 makes every one of those rules pin at exactly where its bar already sits, with
+   nothing else in the file changing and no second expression to keep in step. Resting position and
+   pinned position become the same calc, which is the same trick that made the rail immovable.
+   `sticky-offsets.ts` removes the property from the root for a rail; this declaration is on the
+   card, so it governs the subtree either way. */
+html:has(#dash-main-card.dash-nav-side) {
+  --dash-gutter: 0.75rem;
+  /* The panel's own inline padding, as a number rather than as three rules in three blocks — a
+     pinned title has to cancel it exactly (see the full-bleed rule below), and two values that must
+     agree are one value. */
+  --dash-panel-pad: 1.5rem;
+  /* The sheet's own top border sits between the gutter and the title, so it is part of the
+     distance and not a rounding error — measured at exactly 1.00px of leftover travel without it.
+     Separate from the gutter because it is a different fact: the phone layout has no top border
+     (`.dash-section--bleed > .card`), and there it is 0. */
+  --dash-sheet-edge: 1px;
+}
+#dash-main-card.dash-nav-side {
+  --dash-tabs-h: calc(var(--dash-gutter, 0px) + var(--dash-sheet-edge, 0px));
+}
+/* Nothing above the sheet on a phone, so nothing above the title either — `.dash-section--bleed`
+   already takes the gutter and the top border away, and these two make the sticky offsets agree
+   with it. It has to sit AFTER the declaration above rather than in the mobile block further up
+   the file: same specificity, so source order is what decides, and up there it was silently
+   losing (measured — the phone kept a 12px gutter and 1px of travel). */
+@media (max-width: 640px) {
+  html:has(#dash-main-card.dash-nav-side) {
+    --dash-gutter: 0px;
+    --dash-sheet-edge: 0px;
+    /* Matches `.dash-section--bleed #dash-main-card .dash-panel` further up: at this width the
+       sheet's single gutter is 0.8rem. */
+    --dash-panel-pad: 0.8rem;
+  }
+}
+
+/* **The gutter, wherever it has to come from.** Below 1180px the card IS the sheet, so the space
+   above the title is the section's padding; at desktop the sheet has no padding and the panel card
+   carries it as a margin (see the desktop block, which overrides the first of these).
+   The owner's point was that the two disagreed by 20px (*"המרג׳ין העליון במצב דסקטופ הוא קטן יותר
+   משאר המצבים"*) — a gutter should not depend on which element happens to be providing it. */
+.dash-section:has(> #dash-main-card.dash-nav-side) { padding-top: var(--dash-gutter); }
+/* A panel whose first thing is a pinned title gets no top padding, because that padding IS the
+   travel the title would have. Written as `:has()` rather than a list of panel names: the next
+   panel to grow a sticky title joins the set the day it does. `.products-header` is not a direct
+   child — the products panel wraps its toolbar and table in a div — hence two selectors. */
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-panel-head:first-child),
+#dash-main-card.dash-nav-side > .dash-panel:has(.products-header) { padding-top: 0; }
+/* ── A pinned title is the full width of the sheet it is pinned to ──
+   Owner, 2026-08-23: *"יש להן שוליים לבנות שלא יושבות טוב עם הפייד. צריך איכשהו שזה יהיה מקשה
+   אחת"*. The title sat inside the panel's inline padding, so a pinned bar was 48px narrower than
+   the card and the masking band above it was the card's full width: a grey strip resting on two
+   white shoulders. Two elements that are meant to read as one edge have to have the same edge.
+   Cancelling the padding with a negative margin and putting the same value back as the title's own
+   padding keeps every word exactly where it was — only the background and the rule under it grow.
+   The top corners follow the sheet's, because at rest this IS the sheet's top edge. */
+#dash-main-card.dash-nav-side > .dash-panel { padding-inline: var(--dash-panel-pad); }
+#dash-main-card.dash-nav-side .dash-panel-head,
+#dash-main-card.dash-nav-side .products-header {
+  margin-inline: calc(-1 * var(--dash-panel-pad));
+  padding-inline: var(--dash-panel-pad);
+  border-start-start-radius: var(--radius);
+  border-start-end-radius: var(--radius);
+}
+
+/* ── There is NO mask at the top of this scroll, and that is the decision ──
+   It had one for a few hours, and the owner took it apart faster than I did (2026-08-23): *"אולי
+   אין פה הגיון שיש פייד בכלל בדשבורד מוכרים — כי הרי הכותרת תמיד נשארת סטיקי!… כן להשאיר את הרווח
+   האפור אבל בלי הפייד, פשוט בורדר רדיוס נורמלי וזהו."*
+
+   He is right, and the reason is worth writing down because the mask looked so plausible. The thing
+   a mask covers is a strip of page that content can be SEEN passing through. This layout has no
+   such strip: the sheet's own top edge scrolls away with everything else, so the moment anything
+   moves, the only fixed things above the content are the site header (opaque) and the panel's
+   pinned title (opaque, full width of the sheet since the rule above). Content disappears behind
+   one or the other. The grey gutter is only ever visible at scroll 0, when nothing is passing
+   through it at all.
+   So: the gutter stays, the sheet keeps its ordinary radius, and nothing is painted over either.
+   A mask for a seam that does not exist is a band that has to be kept the right width, the right
+   height and the right opacity forever — which is exactly what the three rounds before this one
+   were spent on. The buyer's dashboard keeps its own (`.my-page::before`), and the difference is
+   the whole point: nothing is pinned there. */
+
+/* **The hydration bar stops taking a row.** It is a 2px `.progress-track` saying the panel's JS has
+   not landed yet, and it sits above the panel in the DOM — so below 1180px it pushed every pinned
+   title down by exactly 2px, which is 2px of travel a title that should not move (measured: rest
+   69.39 against a pinned 67.39). The desktop grid already solved this by giving it the panel's own
+   cell; this is the same answer in a flex column. `margin-bottom: -2px` and not `position:
+   absolute`: it has no positioned ancestor to hang from, and it still has to paint. */
+#dash-main-card.dash-nav-side > #dash-hydrating-bar { margin-bottom: -2px; }
 
 #dash-main-card.dash-nav-side .dash-tabs {
   flex-direction: column;
@@ -2204,47 +2329,16 @@ textarea.input { resize: none; }
        makes the margin a floor rather than whatever is left over, and `auto` still centres it once
        there is room. */
     max-width: min(var(--max-width), calc(100% - 2rem));
-    /* Tighter than the 1rem it opened with (owner: *"הכותרות מקבלות פדינג גדול מדי מתחילת
-       הקונטיינר"*) — with the panel's own padding trimmed below, a title now sits 25px under the
-       header instead of 37. */
-    margin: 0.75rem auto 1.25rem;
-    padding-top: 0.75rem;
+    /* The gutter, and nothing else, above the card. A panel that pins a title takes no top padding
+       at all — the title IS the top of it, and its own `py` is the air above the words. */
+    margin: var(--dash-gutter) auto 1.25rem;
+    padding-top: 1rem;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
   }
   #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-column: 2; grid-row: 1; }
 
-  /* ── The seam at the top of the scroll, same device as the buyer's own area ──
-     Owner, 2026-08-23: *"למה בחרת שלא לעשות את הגלילה של הקונטיינר גם עם פייד למעלה בדשבורד
-     מוכרים?"* — and the honest answer is that I only looked at the panels that HAVE a pinned
-     title. Products, Orders, Returns, Messages, Promotions, Performance and Advertising each pin
-     an opaque bar at the header, so nothing is ever seen sliding into it there. Overview, Reports,
-     Payouts and Settings pin nothing at all, and on those four the panel card's rounded top corner
-     and whatever row is under it pass under the header's line and are cut in half by it — the same
-     defect he had already described on the buyer's page, on the tabs I happened not to open.
-     So: the same band, in the page's own background colour, the height of the gap above the card.
-
-     **`z-index: 5` is the whole trick.** The pinned titles are 6 and the rail is 7, so this paints
-     UNDER both — it is invisible on every panel that already solves this its own way, and it is
-     the answer on the four that do not. One rule, no list of panels to keep in step. `--color-bg`
-     rather than a tint keeps it a mask and not a pane: over the grey either side of the card it
-     cannot be seen at all, and over the card it reads as the card passing behind the page.
-     Not a shadow: the header is a BAR, and bars in this design are border-only (elevation rule,
-     base/tokens.css). This adds no depth, it removes a hard edge. */
-  .dash-section:has(> #dash-main-card.dash-nav-side)::before {
-    content: "";
-    position: fixed;
-    inset-inline: 0;
-    /* The header's height is pinned inline on the element itself and may never change
-       (Header.astro), so this is exact rather than a guess; the extra pixel is overlap, so a
-       fractional rounding can never leave a hairline of un-masked content. */
-    top: calc(var(--site-header-h, 3.4rem) - 1px);
-    height: 1.6rem;
-    background: linear-gradient(to bottom, var(--color-bg) 0 0.6rem, transparent);
-    pointer-events: none;
-    z-index: 5;
-  }
 
 
   /* ══ COLLAPSED: the same rail, 186px narrower ══
@@ -2437,8 +2531,11 @@ textarea.input { resize: none; }
    markers on one bar reading the same way is the point; nothing here is new. */
 .dash-nav-trigger__dot {
   position: absolute;
-  top: -3px;
-  inset-inline-end: -4px;
+  /* Flush with the glyph's corner rather than hanging off it (owner, 2026-08-23: *"יותר למטה
+     ופנימה"*) — which is also exactly where the header's avatar puts its own alert dot
+     (`#seller-alert-avatar-dot`, `top-0 end-0`). */
+  top: 0;
+  inset-inline-end: 0;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -2454,6 +2551,22 @@ textarea.input { resize: none; }
    Both are always in the markup so a toggle never has to rebuild anything. */
 .dash-view-store__icon { display: none; flex-shrink: 0; }
 html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
+
+/* **The back-to-store pill keeps its name here** (owner, 2026-08-23: *"החץ חזרה לחנות במצב מובייל,
+   לא מספיק ברור, לאן הוא מוביל?"*). `header.css` drops it under 640px, and the reason it gives is
+   real — on a store page that row also carries a search field, and the pill was crowding it. This
+   header has no search field: a wordmark, a menu button and two account icons. So the one width
+   where the label was sacrificed is the one width where there is room for it, and an arrow whose
+   destination is unnamed is a control nobody presses.
+   The ID in `html:has(...)` is what beats `header.css`'s own rule; the narrower cap keeps a long
+   store name from pushing the account icons. */
+@media (max-width: 640px) {
+  html:has(#dash-main-card.dash-nav-side) .back-to-store-pill__name {
+    display: inline;
+    max-width: 6rem;
+  }
+  html:has(#dash-main-card.dash-nav-side) .back-to-store-pill { padding: 0.3rem 0.55rem; }
+}
 
 .dash-brand-col {
   display: flex;

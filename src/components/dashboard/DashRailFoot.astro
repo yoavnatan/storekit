@@ -10,9 +10,10 @@
  * a seller reaches only after eight hundred product rows. Owner, 2026-08-23: *"הפעם הפוטר יורד
  * לתחתית הרצועה — תנאי שימוש, צור קשר, דיווח על תקלה ומתג שפה. בלי זה אל תבנה את זה בכלל."*
  *
- * Four links and no more, because those are the four he named. What the page footer carries and
- * this one does not is "open a store" (the reader already has one) and the © line (chrome for a
- * shopper's page, not for a working surface).
+ * Five links: the four he named, plus the returns policy he asked after — that one belongs here
+ * more than it does on a shopper's page, because this page belongs to the business the policy
+ * binds. What the page footer carries and this one does not is "open a store" (the reader already
+ * has one) and the © line (chrome for a shopper's page, not for a working surface).
  *
  * "Report a fault" is `/contact?report=fault`, which is the link `ReportForm.astro` was built to
  * receive — it preselects the kind and captures the page it came from, so the seller types the
@@ -28,8 +29,19 @@ const nextLang = lang === 'he' ? 'en' : 'he';
 
 <div class="dash-rail-foot">
   <a href="/terms">{t.footer.terms}</a>
+  {/* Added on his question (2026-08-23: *"ביטולים והחזרות לא צריכים להיות גם בפוטר של הדשבורד
+      מוכרים?"*) — and the answer is yes, more so here than on a shopper's page: this page belongs
+      to the person the policy binds. It was left out only because the first pass took the four
+      links he had listed and no more. */}
+  <a href="/returns-policy">{t.footer.returns}</a>
   <a href="/contact">{t.footer.contact}</a>
-  <a href="/contact?report=fault">{t.dashboard.navReportFault}</a>
+  {/* `#report`, and it is the difference between two links and one (owner, 2026-08-23: *"בפוטר
+      יצירת קשר ודיווח על תקלה זה אותו הקישור?!"* — he was right that they landed identically).
+      `?report=fault` does real work: `ReportForm` opens with the fault kind chosen and the page
+      it came from captured. But the query string is invisible, so both rows arrived at the top of
+      the same page and the second looked like a mistake. The anchor is on the report section's own
+      heading (contact.astro), so this one lands ON the form and the other lands on the page. */}
+  <a href="/contact?report=fault#report">{t.dashboard.navReportFault}</a>
   {/* data-native-submit for the same reason the page footer's copy carries it: `/api/lang` answers
       303 and only a full navigation re-renders the page in the other language, so the dashboard's
       FormFallbackGuard must not intercept this one as an unsaved AJAX form. */}

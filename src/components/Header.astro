@@ -517,8 +517,22 @@ const strEmpty   = t.store.noProductsFound;
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
             {/* Absolute against .user-btn's own padding box (position:relative
                in header.css) — 0/0 lands it flush in the corner, inset by
-               that button's own 1px border. */}
-            <span id="seller-alert-avatar-dot" class="absolute top-0 end-0 w-2 h-2 bg-[#ef4444] border border-[color:var(--color-border)] rounded-full" hidden={!initialSellerAlert} aria-hidden="true"></span>
+               that button's own 1px border.
+
+               **Not on the seller dashboard itself** (owner, 2026-08-23: *"יש לי כבר נקודה אדומה
+               על גבי ההמבורגר… גם עליו יש נקודה אדומה… יש פה ריבוי"*). This dot means "something in
+               your dashboard needs you", and it exists to be seen from the rest of the site — from
+               a store page, from the homepage, from anywhere the dashboard is not. On the dashboard
+               it is pointing at the page it is already on, while the rail beside it says the same
+               thing about a NAMED tab, which is strictly more useful. Two markers for one fact
+               teach a reader that a red dot is decoration.
+               `dashNav` is exactly the right condition rather than a convenient one: it is true
+               only where the rail is rendered, so `?nav=top` — which has no rail and no hamburger —
+               keeps this dot, and so does every other page a seller can be on. Not rendered at all,
+               so the 30s poll below finds nothing to write to. */}
+            {!dashNav && (
+              <span id="seller-alert-avatar-dot" class="absolute top-0 end-0 w-2 h-2 bg-[#ef4444] border border-[color:var(--color-border)] rounded-full" hidden={!initialSellerAlert} aria-hidden="true"></span>
+            )}
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
             {/* The D rather than a house: this row goes to the platform's own home,
@@ -605,7 +619,11 @@ const strEmpty   = t.store.noProductsFound;
               <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem" id="seller-dashboard-link">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                 {t.nav.sellersDashboard}
-                <span id="seller-alert-dropdown-dot" class="inline-alert-dot" hidden={!initialSellerAlert} aria-hidden="true"></span>
+                {/* Same rule as the avatar's dot above, and the same reason: on the dashboard this
+                    row is a link to the page you are reading. */}
+                {!dashNav && (
+                  <span id="seller-alert-dropdown-dot" class="inline-alert-dot" hidden={!initialSellerAlert} aria-hidden="true"></span>
+                )}
               </a>
             )}
             {/* data-native-submit: a real browser POST, on purpose — logout answers with a

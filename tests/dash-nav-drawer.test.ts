@@ -57,7 +57,12 @@ function render(): void {
     </header>
     <div id="dash-main-card" class="card seller-dash dash-nav-side">
       <div class="dash-rail">
-        <div class="dash-head"><h1>חנות</h1></div>
+        <div class="dash-head">
+          <h1>חנות</h1>
+          <!-- The store switcher's own marker. It lives in the rail's HEAD, not in the tab list,
+               and it says something no tab can: another of this seller's shops needs them. -->
+          <span class="store-switcher__alert-dot" data-level="warning"></span>
+        </div>
         <div class="dash-nav-overlay" id="dash-nav-overlay"></div>
         <div class="dash-tabs" role="tablist" id="dash-nav-list" data-rail>
           ${tab('overview', 'סקירה כללית')}
@@ -144,15 +149,33 @@ describe('the trigger carries a marker out of a closed drawer', () => {
   it('stays hidden when nothing needs the seller', () => {
     document.body.innerHTML = '';
     render();
-    document.querySelectorAll('[data-tab-alert]').forEach((el) => el.remove());
+    document.querySelectorAll('[data-tab-alert], .store-switcher__alert-dot').forEach((el) => el.remove());
     new Function(inlineScript())();
     expect(document.getElementById('dash-nav-trigger-dot')!.hidden).toBe(true);
+  });
+
+  /**
+   * The header's avatar stopped carrying its own alert dot on this page (Header.astro) because
+   * this one says the same thing about a named tab. That trade only holds if this one covers
+   * everything the drawer hides — including the marker in the rail's HEAD, which is the seller's
+   * OTHER shops and which no tab can speak for. It spells its severity `data-level`, so a scan
+   * written for `data-tab-alert` alone would have dropped it silently.
+   */
+  it('carries the store switcher\'s marker too, not only the tabs\'', () => {
+    document.body.innerHTML = '';
+    render();
+    document.querySelectorAll('[data-tab-alert]').forEach((el) => el.remove());
+    new Function(inlineScript())();
+    const dot = document.getElementById('dash-nav-trigger-dot')!;
+    expect(dot.hidden).toBe(false);
+    expect(dot.getAttribute('data-level')).toBe('warning');
   });
 
   it('does not count a marker whose count is zero — those are `hidden`, not absent', () => {
     document.body.innerHTML = '';
     render();
-    document.querySelectorAll('[data-tab-alert]').forEach((el) => { (el as HTMLElement).hidden = true; });
+    document.querySelectorAll('[data-tab-alert], .store-switcher__alert-dot')
+      .forEach((el) => { (el as HTMLElement).hidden = true; });
     new Function(inlineScript())();
     expect(document.getElementById('dash-nav-trigger-dot')!.hidden).toBe(true);
   });

@@ -147,17 +147,30 @@
       if (isDrawer()) close();
     });
 
-    /** Carry the loudest marker still inside the drawer out onto the trigger. */
+    /**
+     * Carry the loudest marker still inside the drawer out onto the trigger.
+     *
+     * **The whole RAIL, not just the tab list** — and that widening is what pays for the header's
+     * avatar losing its own dot on this page (Header.astro, owner 2026-08-23: *"יש פה ריבוי"*).
+     * The rail's head holds one marker the list does not: the store switcher's, which means
+     * "another one of your shops needs you". Scanning only the tabs left that fact with no way out
+     * of a closed drawer, so removing the avatar's dot would have removed the only place a phone
+     * could see it. Two markers said one thing here and none said the other.
+     *
+     * The switcher's dot spells its severity `data-level` rather than `data-tab-alert`, because it
+     * is not a tab — so both are read, and neither is renamed to suit this function.
+     */
     function syncDot() {
-      var list = navList();
-      if (!dot || !list) return;
-      var markers = list.querySelectorAll('[data-tab-alert]');
+      var scope = rail();
+      if (!dot || !scope) return;
+      var markers = scope.querySelectorAll('[data-tab-alert], .store-switcher__alert-dot');
       var level = '';
       for (var i = 0; i < markers.length; i++) {
         // `hidden` is how a count of zero is expressed on these markers, and an empty badge must
         // not raise a dot.
         if (markers[i].hidden || markers[i].closest('[hidden]')) continue;
-        if (markers[i].getAttribute('data-tab-alert') === 'danger') { level = 'danger'; break; }
+        var own = markers[i].getAttribute('data-tab-alert') || markers[i].getAttribute('data-level');
+        if (own === 'danger') { level = 'danger'; break; }
         level = level || 'warning';
       }
       dot.hidden = !level;
@@ -169,10 +182,11 @@
     function startDotSync() {
       syncDot();
       // The counts move while the page is open (an order arrives, stock is edited), and every one
-      // of those writes lands inside this list.
-      var list = navList();
-      if (list && typeof MutationObserver !== 'undefined') {
-        new MutationObserver(syncDot).observe(list, { subtree: true, childList: true, attributes: true });
+      // of those writes lands inside the rail — the list for a tab's badge, the head for the
+      // switcher's.
+      var scope = rail();
+      if (scope && typeof MutationObserver !== 'undefined') {
+        new MutationObserver(syncDot).observe(scope, { subtree: true, childList: true, attributes: true });
       }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startDotSync);

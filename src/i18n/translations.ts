@@ -666,6 +666,9 @@ export const translations = {
        *  otherwise meets five controls with no idea what they act on. */
       bulkBarLabel: 'פעולות על המוצרים שנבחרו',
       bulkClear: 'בטל בחירה',
+      /** The upload button's phone spelling. Same action, one word — three words is what pushes the
+       *  floating bar onto a third line at 375px, and it is the only label that does. */
+      bulkUploadShort: 'תמונות',
       bulkSelectAll: 'בחר הכל',
       bulkDelete: 'מחק',
       bulkEdit: 'ערוך',
@@ -2696,6 +2699,7 @@ export const translations = {
       bulkSelected: 'selected',
       bulkBarLabel: 'Actions on the selected products',
       bulkClear: 'Clear selection',
+      bulkUploadShort: 'Images',
       bulkSelectAll: 'Select all',
       bulkDelete: 'Delete',
       bulkEdit: 'Edit',
