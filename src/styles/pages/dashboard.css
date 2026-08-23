@@ -2122,7 +2122,16 @@ textarea.input { resize: none; }
 #dash-main-card.dash-nav-side .dash-head__top {
   flex-direction: column;
   align-items: stretch;
-  gap: 0.55rem;
+  /* **0.35rem, and the two gaps in this block are NOT the same number on purpose** (owner,
+     2026-08-23: *"הריווח בין הכפתור של החלפת החנויות לבין צפה בחנות יהיה כמו הריווח שבין צפה
+     בחנות לבין הכתובת"*). Measured, they already were — 8.80px on both sides of the button. What
+     is not equal is what the eye measures from: the row above is a 28px avatar with a ~17px name
+     centred in it, so there are about five pixels of circle below the last letter before the box
+     even ends, and the space under it reads as half again as large as the space under the button,
+     whose text fills its own box. Taking those pixels out of the declared gap is what makes the
+     two read the same. Optical, so it is written as a number with its reason rather than derived
+     from anything. */
+  gap: 0.35rem;
 }
 /* The one action in the rail's head, whichever dashboard it is: "צפה בחנות" for a seller,
    "התנתקות" for the admin. Keyed to the slot rather than to either id, because a 15.5rem column has

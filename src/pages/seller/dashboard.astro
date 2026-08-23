@@ -1309,12 +1309,22 @@ const orderStatusColors: Record<string, string> = {
       <UnsavedChangesBar />
 
       <!-- ── Panel: Overview ── -->
-      <SellerPanelShell panel="overview" active={shows('overview')} hydrating={false}>
+      <SellerPanelShell panel="overview" active={shows('overview')} hydrating={false} title={d.tabOverview}>
+        {/* **The title is back, and it is FIRST** (owner, 2026-08-23: *"אני רוצה שגם לסקירה הכללית
+            יהיה כותרת"*). It had been switched off behind a `{false &&}` — the one panel of eleven
+            with nothing at its top, which is why it was also the one whose sheet edge behaved
+            differently from the rest: this bar is what carries that edge and pins it
+            (dashboard.css). Above the onboarding card rather than below it, because a panel's
+            title is the first thing in it and because the selector that gives it the top edge asks
+            for exactly that.
+            `.dash-panel-head` and `tabOverview` rather than a bespoke box and `storeOverview`: the
+            same shape and the same word as the other ten, and the tab that was clicked to get
+            here. */}
+        <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
+          <h2>{d.tabOverview}</h2>
+        </div>
         <OnboardingChecklist steps={onboardingSteps} />
         {showTabHints && <TabHint text={d.tabHintOverview} />}
-        {false && (<div class="mb-4 pb-[0.6rem] border-b [border-color:var(--color-border)]">
-          <h2 class="m-0 text-base font-semibold">{d.storeOverview}</h2>
-        </div>)}
         {/* Each card jumps to its tab (data-goto-panel, initGotoPanelLinks() in ui.ts) — same pattern as AdminOverviewPanel.astro. favoritedBy has no dedicated tab of its own, so it stays a plain (non-button) stat. Box style matches the performance tab's KPI cards (perf-kpis below) for visual consistency between the two stat grids. */}
         <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Orders group first (total → new → not-yet-shipped): the total, then its
