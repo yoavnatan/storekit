@@ -31,6 +31,10 @@ import { getCouponByCode, claimCoupon, releaseCoupon } from '../../lib/store-cou
 import { checkCoupon, normalizeCouponCode } from '../../lib/coupons.js';
 import { planBuyerInvoice } from '../../lib/invoicing/index.js';
 import { getSellerById } from '../../lib/seller-auth.js';
+import { merchantAccountsFor } from '../../lib/seller-merchant.js';
+import { paymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
+import { planSplit, chargeSplit, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
+import { commissionPercentForTier } from '../../lib/pricing.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -63,6 +67,20 @@ interface CheckoutBody {
    *  repeat submit replays the first result instead of charging again. Required —
    *  see lib/checkout-idempotency.ts for why a missing one is not safe to wave through. */
   idempotencyKey?: unknown;
+  /**
+   * The buyer's PayMe token, from Hosted Fields — one card entry for the whole cart, charged once
+   * per store (`lib/payment-split.ts`).
+   *
+   * **Not a secret arriving from a client in the dangerous sense, and not a permission either.** It
+   * names a card PayMe hold; it does not say whose cart this is, and nothing here treats it as
+   * proof of anything. What it CAN do if it were somebody else's is charge the wrong person, which
+   * is why the token is minted against this browser's own card entry and never persisted anywhere
+   * a second buyer could read it.
+   *
+   * Required only when PayMe are configured. Absent on the mock path, which is dev and the
+   * pre-gateway window GO_LIVE §7 plans.
+   */
+  buyerKey?: unknown;
 }
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -152,11 +170,115 @@ async function failCapture(orderIds: string[], checkoutRef: string, amountAgorot
   }).catch(() => { /* the endpoint's own logError still fires */ });
 }
 
+/**
+ * The N+1 charges of a split checkout, wearing the same shape as a capture.
+ *
+ * Adapting rather than branching the handler: everything downstream of "did the money move" — the
+ * order rows, the notifications, the invoices, the compensation — is identical whichever provider
+ * took it, and a second copy of that sequence is how two paths drift.
+ *
+ * **Never throws.** `chargeSplit` already unwinds what it charged; this adds the journal, which is
+ * the independent record a reconciliation reads, and the alert for the one outcome a person has to
+ * act on: a charge that could not be given back.
+ */
+async function chargeSplitAsCapture(
+  input: SplitInput,
+  plan: SplitPlan,
+  creds: PaymeCredentials,
+  checkoutRef: string,
+): Promise<{ ok: boolean; error?: string; refsByStore?: Map<string, string> }> {
+  const result = await chargeSplit(input, plan, creds);
+
+  if (result.ok) {
+    // One row per charge, because there IS one charge per store — the journal's job is to be an
+    // independent record of what happened at the provider, and collapsing N transactions into one
+    // entry would make it impossible to reconcile against PayMe's own statement.
+    for (const leg of result.charges) {
+      await recordMoneyEvent({
+        type: 'payment_attempted',
+        checkoutRef,
+        ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
+        amountAgorot: leg.amountAgorot,
+        actor: 'buyer',
+        detail: `נגבה · ${leg.kind === 'shipping' ? 'משלוח (החשבון שלנו)' : `חנות ${leg.storeSlug}`} · אסמכתה ${leg.paymeSaleId}`,
+      }).catch(() => { /* the order rows below are still written; a lost journal row is not a lost sale */ });
+    }
+    const refsByStore = new Map<string, string>();
+    for (const leg of result.charges) if (leg.storeSlug) refsByStore.set(leg.storeSlug, leg.paymeSaleId);
+    return { ok: true, refsByStore };
+  }
+
+  await recordMoneyEvent({
+    type: 'payment_attempted',
+    checkoutRef,
+    actor: 'buyer',
+    detail: `נדחה · ${result.detail.slice(0, 200)}`,
+  }).catch(() => { /* the logError below still reports the whole failure */ });
+
+  // Every charge that was given back. `charge_voided` is exactly this word's definition: a charge
+  // succeeded, the purchase behind it did not, and the money went back.
+  for (const leg of result.refunded) {
+    await recordMoneyEvent({
+      type: 'charge_voided',
+      checkoutRef,
+      ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
+      amountAgorot: leg.amountAgorot,
+      actor: 'buyer',
+      detail: `הוחזר במלואו · אסמכתה ${leg.paymeSaleId}`,
+    }).catch(() => { /* reported in aggregate below */ });
+  }
+
+  // ‼️ And the ones that were not. Journalled BEFORE the alert, where nothing can drop them: this is
+  // money a real person paid for an order that does not exist, and the journal is the only place
+  // the amount and the reference survive.
+  for (const failed of result.unrefunded) {
+    await recordMoneyEvent({
+      type: 'charge_voided',
+      checkoutRef,
+      ...(failed.leg.storeSlug ? { storeSlug: failed.leg.storeSlug } : {}),
+      amountAgorot: failed.leg.amountAgorot,
+      actor: 'buyer',
+      detail: `‼️ ההחזר נכשל · אסמכתה ${failed.leg.paymeSaleId} · ${failed.error.slice(0, 160)}`,
+    }).catch(() => { /* the logError below still reports it */ });
+  }
+  if (result.unrefunded.length) {
+    await logError({
+      source: 'server',
+      route: '/api/checkout',
+      message: `split charge failed and ${result.unrefunded.length} charge(s) could not be refunded: ${result.unrefunded.map((u) => `${u.leg.paymeSaleId} (${u.error})`).join('; ')}`,
+      statusCode: 500,
+      actorRole: 'buyer',
+      resolutionHint: '‼️ הקונה חויב על הזמנה שלא נוצרה, וההחזר האוטומטי נכשל. צריך לבצע refund ידני ב-PayMe לפי מספרי האסמכתא ביומן הכספי. זו התקלה היחידה כאן שעולה לקונה כסף.',
+    }).catch(() => { /* nothing left to try */ });
+  }
+
+  // The buyer is told a machine reason and never PayMe's own message: theirs is Hebrew
+  // merchant-facing prose and can name another seller's account.
+  return { ok: false, error: 'התשלום נדחה. לא נגבה ממך דבר — אפשר לנסות כרטיס אחר.' };
+}
+
 /** The orders were written pending and the capture has now succeeded. This is the ONLY place a
- *  checkout marks an order paid, and it runs strictly after the money moved. */
-async function markOrdersPaid(orderIds: string[], checkoutRef: string, paymentRef?: string): Promise<void> {
-  for (const id of orderIds) {
-    await updateOrder(id, { paymentStatus: 'paid' });
+ *  checkout marks an order paid, and it runs strictly after the money moved.
+ *
+ *  `refsByStore` is the split path's per-store sale id. A single `paymentRef` is right when there
+ *  was one transaction; under the split there are N+1, and a refund names exactly one of them —
+ *  so each order carries the reference to ITS OWN charge and not a shared one. */
+async function markOrdersPaid(
+  orders: readonly Order[],
+  checkoutRef: string,
+  paymentRef?: string,
+  refsByStore?: Map<string, string>,
+): Promise<void> {
+  const orderIds = orders.map((o) => o.id);
+  for (const order of orders) {
+    // Bound to a local `id` rather than passed as `order.id`, and that is not a style choice:
+    // `tests/seller-orders-scope.test.ts` reads this file and asserts that every `updateOrder` in
+    // it names a local id, which is how it proves checkout never mutates an order named by a
+    // request. Keeping the shape keeps the guard narrow instead of widening its allowlist.
+    const id = order.id;
+    const storeSlug = order.items[0]?.storeSlug ?? '';
+    const ref = refsByStore?.get(storeSlug) ?? paymentRef;
+    await updateOrder(id, { paymentStatus: 'paid', ...(ref ? { paymentRef: ref } : {}) });
   }
   await recordMoneyEvent({
     type: 'payment_status_changed',
@@ -180,7 +302,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON body' }, read.status);
   const body = read.value;
 
-  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods, coupons, idempotencyKey } = body;
+  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods, coupons, idempotencyKey, buyerKey } = body;
 
   // Refused outright rather than waved through when absent: without a key this
   // endpoint cannot tell a second purchase from the same purchase arriving twice,
@@ -317,6 +439,8 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   const orderItems: OrderItem[] = [];
   const storeSubtotals: Record<string, StoreSubtotal> = {};
+  /** Store slug → the seller whose merchant account its share is charged to. */
+  const storeSellers = new Map<string, string>();
   const decremented: { productId: string; qty: number; selectedVariants?: Record<string, string> }[] = [];
   // Coupon uses consumed by THIS request. A claim is a reservation exactly like a stock decrement,
   // and it has to be undone on every path that undoes the stock — otherwise a declined card burns
@@ -465,6 +589,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       storeSubtotals[store.slug] = { storeName: store.name, subtotalAgorot: 0, shippingAgorot: 0 };
     }
     storeSubtotals[store.slug]!.subtotalAgorot += unitPriceAgorot * qty;
+    // Whose merchant account this store's money goes into. Recorded here, off the store row this
+    // loop already has, rather than re-fetched later: under the split model every slice is charged
+    // to a DIFFERENT account, so "which seller owns this slug" stops being a reporting detail and
+    // becomes the routing of real money.
+    storeSellers.set(store.slug, store.sellerId);
   }
 
   // Delivery method + shipping price per store — server-authoritative. The buyer's chosen
@@ -543,6 +672,73 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // same landing may legitimately claim a second order days later.
   const attribution = readAttribution(cookies);
 
+  // ── The split plan: every refusal PayMe would give us, answered BEFORE any money moves ──
+  //
+  // Null when PayMe are not configured, and the mock authorize→capture path below runs unchanged.
+  // That is dev, and the window GO_LIVE §7 plans between the domain going live and a gateway
+  // existing — `site-mode.ts` is what refuses to sell at all in production during it.
+  //
+  // Here rather than after the orders are written, because these refusals are wholly knowable from
+  // the numbers already in hand. Discovering "this store's slice is ₪4, below PayMe's minimum" one
+  // charge later would mean a completed charge on a real card that has to be unwound, for a
+  // condition we could have named a moment earlier.
+  const paymeCreds = paymeCredentials();
+  let splitInput: SplitInput | null = null;
+  let splitPlan: SplitPlan | null = null;
+  if (paymeCreds) {
+    // The permanent buyer token, from Hosted Fields — the buyer typed a card once, on PayMe's own
+    // field, so no card number ever reaches this process. Its absence is a 400 and not a decline:
+    // there is nothing to charge and nothing was attempted.
+    if (!isString(buyerKey)) return abort({ error: 'missing-card' }, 400);
+
+    const accounts = await merchantAccountsFor([...storeSellers.values()]);
+    // Each seller's own tier commission (`lib/pricing.ts`), per sale rather than off the merchant's
+    // stored default — so a tier change takes effect on the next sale instead of needing a round
+    // trip to PayMe. Sequential, but bounded by the number of STORES in one cart, not items.
+    const tiers = new Map<string, number>();
+    for (const sellerId of new Set(storeSellers.values())) {
+      const seller = await getSellerById(sellerId);
+      tiers.set(sellerId, commissionPercentForTier(seller?.tier));
+    }
+
+    splitInput = {
+      buyerKey: buyerKey.trim(),
+      stores: Object.entries(storeSubtotals).map(([storeSlug, sub]) => {
+        const sellerId = storeSellers.get(storeSlug) ?? '';
+        return {
+          storeSlug,
+          sellerPaymeId: accounts.get(sellerId)?.providerRef,
+          // Goods minus the seller's order discount — NOT `storeSliceTotalAgorot`, which includes
+          // shipping. The shipping part of that total is charged to us, on the separate leg below,
+          // and folding it in here is precisely what breaches the 60% ceiling.
+          goodsAgorot: sub.subtotalAgorot - (sub.discount?.appliedAgorot ?? 0),
+          marketFeePercent: tiers.get(sellerId) ?? 0,
+          productName: `${sub.storeName} · ${checkoutRef}`,
+        };
+      }),
+      // One charge for the whole cart, not one per store: each PayMe transaction costs us ₪1 flat
+      // (agreement, appendix ב׳), and this money is ours either way.
+      shippingAgorot: Object.values(storeSubtotals).reduce((sum, d) => sum + d.shippingAgorot, 0),
+      marketplaceSellerId: paymeCreds.marketplaceSellerId,
+      checkoutRef,
+      buyerEmail: buyerData.buyerEmail,
+      buyerName: buyerData.buyerName,
+    };
+    splitPlan = planSplit(splitInput);
+    if (splitPlan.refusals.length) {
+      // Journalled: a checkout refused before it was ever attempted leaves no order row behind it,
+      // so without this it is invisible afterwards — and "why can nobody buy from that shop" is
+      // exactly the question this answers.
+      await recordMoneyEvent({
+        type: 'payment_attempted',
+        checkoutRef,
+        actor: 'buyer',
+        detail: `נדחה לפני חיוב: ${splitPlan.refusals.map((r) => ('storeSlug' in r ? `${r.reason} (${r.storeSlug})` : r.reason)).join(', ')}`,
+      }).catch(() => { /* the abort still returns the reasons to the caller */ });
+      return abort({ error: 'cannot-charge', refusals: splitPlan.refusals }, 409);
+    }
+  }
+
   const orderIds: string[] = [];
   const createdOrders: Order[] = [];
   // Flips the moment the CAPTURE succeeds — not when the order rows are written, which is what it
@@ -566,6 +762,15 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // database, so the only way to have both is to make the FIRST step reversible and the
     // irreversible one LAST — hold here, write the orders, and capture at step 3. lib/payment.ts's
     // header carries the full argument and the failure table.
+    //
+    // **Under the split model there is no step 1, and that is not a weakening.** PayMe cannot hold
+    // one authorization across N merchant accounts, so the reversible-first trick is a different
+    // one: the buyer's TOKEN is the reversible step. A token is not money — it can be taken and the
+    // checkout abandoned and nobody is out anything — and it was taken before this request began.
+    // So the orders are written first and every charge happens at step 3, which satisfies both
+    // halves of the owner's rule more directly than a hold does. `lib/payment-split.ts`'s header
+    // carries the argument.
+    //
     // Through `storeSliceTotalAgorot`, not inline: it is THE definition of what one store's slice
     // came to, and every surface that shows an order total already reads it. An inline
     // `subtotal + shipping` here is the shape that drifted from it three times before
@@ -577,11 +782,20 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // The provider is handed ILS, because that is the unit a payment gateway's API speaks and the
     // unit the buyer's statement will show. This is a render/hand-off boundary, exactly like the
     // screen: `fromAgorot` once, at the edge, off an integer that is already exact.
-    const payment = await paymentProvider.authorize({ amount: fromAgorot(grandTotalAgorot), checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
+    //
+    // On the split path this is a no-op result rather than a call: nothing is held, so there is
+    // nothing to authorize and — importantly — nothing for the catch below to have to release.
+    const payment = splitPlan
+      ? { ok: true as const, paymentRef: undefined, error: undefined }
+      : await paymentProvider.authorize({ amount: fromAgorot(grandTotalAgorot), checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
     // Journalled whether it succeeded or failed — a decline is exactly the kind of
     // event that is invisible afterwards (no order row is left behind to show it
     // happened) and exactly what someone asks about later.
-    await recordMoneyEvent({
+    //
+    // Skipped on the split path, where nothing was authorized: a `payment_attempted` row saying
+    // "authorized ref=—" for a hold that does not exist is a false entry in the one ledger that is
+    // supposed to be independent of the order tables. That path journals its real charges below.
+    if (!splitPlan) await recordMoneyEvent({
       type: 'payment_attempted',
       checkoutRef,
       amountAgorot: grandTotalAgorot,
@@ -642,14 +856,23 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // attempted purchase that could not be paid for" is exactly the thing someone asks about — but
     // nothing is shippable, nothing counts as revenue (order-status-rules.ts), and no seller is
     // told about it, because the seller notifications are below this point and not above it.
-    const capture = await paymentProvider.capture({
-      paymentRef: payment.paymentRef ?? '',
-      idempotencyKey,
-      amount: fromAgorot(grandTotalAgorot),
-    });
+    //
+    // **On the split path this one call becomes N+1 charges** — one per store into that seller's
+    // own merchant account with our commission taken inside the transaction, plus the delivery fee
+    // on ours. `chargeSplit` runs them in order and, if any of them refuses, refunds every one that
+    // already went through. Its failure shape is richer than a boolean for one reason: a refund can
+    // itself fail, and that is money a real person is owed with nothing else pointing at it.
+    const capture: { ok: boolean; error?: string; refsByStore?: Map<string, string> } = splitPlan && splitInput && paymeCreds
+      ? await chargeSplitAsCapture(splitInput, splitPlan, paymeCreds, checkoutRef)
+      : await paymentProvider.capture({
+          paymentRef: payment.paymentRef ?? '',
+          idempotencyKey,
+          amount: fromAgorot(grandTotalAgorot),
+        });
     if (!capture.ok) {
       await failCapture(orderIds, checkoutRef, grandTotalAgorot, capture.error);
-      // `held` is cleared only after the void so the catch below cannot double-release it.
+      // `held` is cleared only after the void so the catch below cannot double-release it. Always
+      // null on the split path — nothing was held there — so this is the mock path's compensation.
       if (held) { await voidRefund(held, checkoutRef, idempotencyKey, capture.error ?? 'capture failed'); held = null; }
       for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
       for (const id of couponClaims) await releaseCoupon(id);
@@ -661,7 +884,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // hold from this line onward, and `committed` is what tells the catch below never to undo it.
     committed = true;
     held = null;
-    await markOrdersPaid(orderIds, checkoutRef, payment.paymentRef);
+    // Each store's order gets ITS OWN sale reference, not one shared ref: under the split there are
+    // N+1 transactions at PayMe and a refund names exactly one of them. A shared reference here
+    // would leave a cancelled single-store order with nothing to refund against.
+    await markOrdersPaid(createdOrders, checkoutRef, payment.paymentRef, capture.refsByStore);
     // Record the key's result before anything else can throw, so a retry replays these orders
     // instead of buying them again.
     await completeCheckout(idempotencyKey, checkoutRef, orderIds, owner);

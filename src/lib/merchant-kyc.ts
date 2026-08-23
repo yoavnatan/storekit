@@ -129,9 +129,13 @@ export function normalizeMerchantKyc(input: unknown): Partial<MerchantKyc> {
   const issued = isoDate(raw.ownerSocialIdIssued);
   if (issued) out.ownerSocialIdIssued = issued;
 
-  // `=== 0` and `=== 1` explicitly. A `Number()` would turn '' into 0, i.e. would silently record
-  // every seller who skipped the question as male.
-  const gender = typeof raw.ownerGender === 'string' ? Number(raw.ownerGender) : raw.ownerGender;
+  // The empty string is excluded from the conversion, not just from the comparison — `Number('')`
+  // is `0`, and `0` is PayMe's value for MALE. Without the length check an unanswered gender field
+  // is recorded as a definite answer, on a KYC form, for every seller who skipped it. Caught by
+  // `tests/merchant-kyc.test.ts` after this was written the obvious way round.
+  const gender = typeof raw.ownerGender === 'string'
+    ? (raw.ownerGender.trim() === '' ? undefined : Number(raw.ownerGender))
+    : raw.ownerGender;
   if (gender === 0 || gender === 1) out.ownerGender = gender;
 
   // Israeli mobile: 10 digits starting 05, or 12 with the country code. Normalised to the local

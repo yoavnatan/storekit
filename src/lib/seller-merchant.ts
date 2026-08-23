@@ -19,7 +19,7 @@
  * is one `JSON.stringify` away from a page. `merchantCallbackSecret()` is the only way to it, and
  * it exists so that the one place that needs it is grep-able.
  */
-import { firstRow, isUuid, query } from './db.js';
+import { firstRow, isUuid, query, rows } from './db.js';
 import { getSellerById, type Seller } from './seller-auth.js';
 import {
   isCompleteMerchantKyc, missingMerchantKyc, normalizeMerchantKyc, paymeDate, paymeIncorporation,
@@ -94,6 +94,25 @@ export async function merchantCallbackSecret(sellerId: string): Promise<string |
     [sellerId],
   );
   return row?.callback_secret || null;
+}
+
+/**
+ * Every account in one query, keyed by seller id.
+ *
+ * For the checkout, which needs one per store in the cart and must not turn a five-store cart into
+ * five round trips — `project_sequential_await_latency`: each await is a real round trip now, and a
+ * loop of them is the shape that quietly costs a buyer a second at the worst possible moment.
+ * Sellers with no account are simply absent from the map, which is exactly what the caller has to
+ * branch on anyway.
+ */
+export async function merchantAccountsFor(sellerIds: readonly string[]): Promise<Map<string, MerchantAccount>> {
+  const ids = [...new Set(sellerIds.filter(isUuid))];
+  if (!ids.length) return new Map();
+  const found = await rows<AccountRow>(
+    `SELECT ${ACCOUNT_COLUMNS} FROM seller_merchant_accounts WHERE seller_id = ANY($1::uuid[])`,
+    [ids],
+  );
+  return new Map(found.map((row) => [row.seller_id, toAccount(row)]));
 }
 
 /** Look an account up by PayMe's id — how a callback, which knows only their identifiers, finds
