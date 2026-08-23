@@ -203,6 +203,14 @@ async function chargeSplitAsCapture(
         checkoutRef,
         ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
         amountAgorot: leg.amountAgorot,
+        // **The delivery capture's reference has nowhere else to live** (GO_LIVE §3.1.2). Each
+        // store's capture id lands on its own order row; the delivery leg belongs to the CART and
+        // not to any one store, so no order can hold it — and without it a refund of a delivery fee
+        // has nothing to call PayMe with. These two columns are free text and the panel renders
+        // them beside the sentence, so the id is machine-readable here instead of being parsed back
+        // out of Hebrew prose (`lib/refund-execute.ts#deliveryCaptureRef`).
+        from: leg.kind,
+        to: leg.paymeSaleId,
         actor: 'buyer',
         detail: `\u05e0\u05d2\u05d1\u05d4 \u00b7 ${leg.kind === 'delivery' ? '\u05de\u05e9\u05dc\u05d5\u05d7 (\u05d4\u05d7\u05e9\u05d1\u05d5\u05df \u05e9\u05dc\u05e0\u05d5)' : `\u05d7\u05e0\u05d5\u05ea ${leg.storeSlug}`} \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${leg.paymeSaleId}`,
       }).catch(() => { /* the order rows below are still written; a lost journal row is not a lost sale */ });

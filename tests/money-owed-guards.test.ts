@@ -215,15 +215,18 @@ describe('the money vocabulary stays complete', () => {
   });
 
   it('is written by somebody, or explicitly waiting on the payment provider', () => {
-    // A vocabulary word nothing ever writes is either dead or a promise. `refund_settled` is the
-    // second: it needs the provider's refund call and no provider is chosen (GO_LIVE §3), and its
-    // absence is exactly what keeps every obligation open instead of quietly closing itself. Listed
-    // here so that stays a decision rather than becoming an oversight.
+    // A vocabulary word nothing ever writes is either dead or a promise. **The list is EMPTY as of
+    // 2026-08-23, and that is the point of keeping it.** `refund_settled` sat here from the day the
+    // journal was written, because settling needed a provider's refund call and none was chosen; a
+    // seller could cancel a paid order and the buyer's money simply stayed where it was. PayMe are
+    // wired now and `refund-execute.ts` performs the refund, so the promise came due and the word
+    // came off the list — which is exactly the move this set exists to force somebody to make
+    // deliberately.
     //
     // Four words left the vocabulary on 2026-08-21 rather than joining this list — the three payout
     // events and the seller debit. They were not promises: the platform makes no transfers to debit
     // or to record, so nothing was ever going to write them again.
-    const PROVIDER_BLOCKED = new Set(['refund_settled']);
+    const PROVIDER_BLOCKED = new Set<string>([]);
     // A WRITE, not a mention: `reconcile.ts` names `refund_settled` in the SQL that looks for one,
     // which is the opposite of writing it. `type: '…'` is the shape `recordMoneyEvent` takes.
     const writers = [...SRC.values()].join('\n');

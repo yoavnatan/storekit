@@ -11,6 +11,7 @@ import type { Order } from '../../../lib/orders.js';
 import { orderNetForStore } from '../../../lib/admin-stats.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
 import { recordPartialRefundOwed } from '../../../lib/refund-owed.js';
+import { settleRefund } from '../../../lib/refund-execute.js';
 import { notifyOrderCheapened } from '../../../lib/order-notify.js';
 import { settleStatusChange } from '../../../lib/order-status-change.js';
 import { storeSliceTotalAgorot } from '../../../lib/order-totals.js';
@@ -342,6 +343,25 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // And TELL them. The obligation above is our record; this is the buyer's. Recording money owed to
   // someone who is never told is the same silence the whole fix was about, one layer along.
   if (owedToBuyer > 0) {
+    // Give it back before telling him, so the message he reads is about money that has moved.
+    //
+    // **The split is derived from what actually got cheaper**, not assumed: overriding the shipping
+    // down owes a refund on OUR delivery capture, and deleting an item owes one on the SELLER's.
+    // Sending the whole difference to one leg would refund a merchant for money that never reached
+    // it. `Math.min` on the goods share is the floor that keeps the two adding up when both moved.
+    const shippingBack = Math.max(0, before.shippingAgorot - updated.shippingAgorot);
+    const goodsBack = Math.max(0, owedToBuyer - shippingBack);
+    // ⚠️ Below PayMe's ₪5 partial floor this settles nothing and says so — a small goodwill discount
+    // on a paid order is exactly the shape that hits it. The obligation stays open in the journal
+    // and `reconcile.ts` keeps reporting it; `refund-execute.ts` explains why rounding up is not an
+    // option and logs the number it was refused over.
+    await settleRefund({
+      order: updated,
+      storeSlug,
+      parts: { goodsAgorot: goodsBack, shippingAgorot: Math.min(shippingBack, owedToBuyer) },
+      source: 'partial-item',
+      actor: sellerId,
+    });
     await notifyOrderCheapened(updated, owedToBuyer, { storeName: store.name, storeSlug });
   }
 

@@ -10,6 +10,7 @@ import {
   type ReturnedLine, type ReturnReason, type ReturnStatus,
 } from './returns.js';
 import { recordMoneyEvent } from './money-events.js';
+import { settleRefund } from './refund-execute.js';
 import { formatAgorot } from './money.js';
 import { restockProduct } from './store-products.js';
 
@@ -29,11 +30,17 @@ import { restockProduct } from './store-products.js';
  * says `countsAsRevenue: false` and `holdsStock: false`, so the restock and the refund follow with
  * nothing here mentioning either.
  *
- * ── ⚠️ The refund is an OBLIGATION, not a transfer ──
- * `refund_due` is written the moment the debt exists and `refund_settled` by nothing at all, because
- * settling needs a payment provider's refund call and none is chosen (GO_LIVE §3). Every case that
- * reaches `refunded` therefore shows on the admin's reconciliation card as money still to return by
- * hand. That is deliberate: the record must not close itself before the money has actually moved.
+ * ── The obligation is written first, and then settled (2026-08-23) ──
+ * `refund_due` is still written the moment the debt exists, and it is still a separate event from
+ * the money moving — but the money now moves. `refund-execute.ts` performs the PayMe refund and
+ * writes `refund_settled` against the same order, which is what `reconcile.ts` pairs the obligation
+ * off with. A leg that could not settle stays open and is reported, exactly as before: the record
+ * must not close itself before the money has actually gone back.
+ *
+ * ⚠️ **A refund below ₪5 is refused by PayMe as a partial** and is not rounded up here or anywhere.
+ * Both partial branches below can produce one — a small offer, a small awarded share — and when they
+ * do the obligation stays open with the number in the log. `refund-execute.ts#refundableAsPartial`
+ * carries the rule and the one way round it, which is giving the whole capture back.
  */
 
 export interface ReturnRequest {
@@ -398,8 +405,18 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
       // No clawback, and that is the split model rather than an omission: the seller's share of
       // this sale was never ours to hold — the processor captured it into his own account at the
       // moment of the charge — so there is no balance here to debit. The money goes back to the
-      // buyer out of that same account, which is a `refund-sale` against the original capture, and
-      // the journal row above is the standing record that it is owed until then.
+      // buyer out of that same account, which is the `refund-sale` performed below.
+      //
+      // Goods only, and no delivery: the buyer KEEPS the item in both of these branches, so the
+      // parcel was delivered, the courier was paid and the delivery fee bought exactly what it was
+      // charged for.
+      await settleRefund({
+        order,
+        storeSlug: input.store.slug,
+        parts: { goodsAgorot: amount, shippingAgorot: 0 },
+        source: 'return-approved',
+        actor: input.actor,
+      });
     }
   } else if (input.to === 'refunded' && isPartialReturn(moved.returnedLines)) {
     // ── A partial return settles WITHOUT touching the order (decisions §4) ──
@@ -425,9 +442,18 @@ export async function moveReturnRequest(input: MoveInput): Promise<{ request: Re
       });
 
       // Nothing is debited from the seller here — see the accepted-offer branch above. His share
-      // of the returned lines sits in his own account at the processor, and the refund is a
-      // partial `refund-sale` against the original capture rather than a deduction from a balance
-      // we hold. The `refund_due` row above is what says it is owed.
+      // of the returned lines sits in his own account at the processor, so the refund is a partial
+      // `refund-sale` against the original capture rather than a deduction from a balance we hold.
+      //
+      // Goods only: the rest of the order stayed delivered, so the parcel was carried and the
+      // delivery fee is not part of what came back.
+      await settleRefund({
+        order,
+        storeSlug: input.store.slug,
+        parts: { goodsAgorot: moved.refundAgorot, shippingAgorot: 0 },
+        source: 'return-approved',
+        actor: input.actor,
+      });
 
       // Only the lines that came back. `restockProduct` is the same call a whole-order return makes,
       // so a returned variant lands in the bucket it was sold from.

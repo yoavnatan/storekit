@@ -2,6 +2,7 @@ import { updateOrder, type Order } from './orders.js';
 import { canTransition, orderHoldsStock, type ShippingStatus } from './order-status-rules.js';
 import { recordMoneyEvent } from './money-events.js';
 import { recordRefundOwed } from './refund-owed.js';
+import { settleRefund } from './refund-execute.js';
 import { restockProduct } from './store-products.js';
 import { notifyOrderStatusChanged } from './order-notify.js';
 import { settleStoreClosure } from './store-lifecycle.js';
@@ -53,6 +54,10 @@ export interface StatusChangeOutcome {
   restocked: number;
   /** What the buyer is now owed, as `refund-owed.ts` recorded it. 0 when nothing was captured. */
   refundOwedAgorot: number;
+  /** What really went back to the card in this call. **Can be less than `refundOwedAgorot`** — a
+   *  refused leg, a missing reference, a gateway that was down — and when it is, the obligation is
+   *  still open in the journal and `reconcile.ts` still reports it. 0 when nothing was owed. */
+  refundSettledAgorot: number;
   /** The store this move finished closing, if it was the last open order. Null otherwise. */
   closedStoreSlug: string | null;
 }
@@ -76,7 +81,7 @@ export async function settleStatusChange(input: {
   detail?: string;
 }): Promise<StatusChangeOutcome> {
   const { before, after, store, actor } = input;
-  const outcome: StatusChangeOutcome = { restocked: 0, refundOwedAgorot: 0, closedStoreSlug: null };
+  const outcome: StatusChangeOutcome = { restocked: 0, refundOwedAgorot: 0, refundSettledAgorot: 0, closedStoreSlug: null };
   if (after.shippingStatus === before.shippingStatus) return outcome;
 
   // Journal every money-relevant mutation before acting on it (lib/money-events.ts). A status move
@@ -110,6 +115,29 @@ export async function settleStatusChange(input: {
   // of. On the SLA job the actor is 'system' and the balance is still the seller's — which is
   // precisely the case the old inline version could not express.
   outcome.refundOwedAgorot = await recordRefundOwed(before, after, store.slug, actor);
+
+  // …and then actually give it back. Until 2026-08-23 this line did not exist and `refund-owed.ts`
+  // said why: no provider could refund. There is one now, so an obligation that stays open is a
+  // failure rather than the design — and the buyer of a cancelled order gets the WHOLE slice back,
+  // delivery included, because the parcel is not coming and nobody is paying a courier for it.
+  //
+  // Awaited but never allowed to throw (`settleRefund` does not): the status is already persisted
+  // and the stock is about to go back, so a gateway error here must not undo a cancellation that
+  // really happened. What it must not do either is pass silently — an unsettled leg is logged
+  // loudly by that module and left open in the journal for `reconcile.ts`.
+  if (outcome.refundOwedAgorot > 0) {
+    const refund = await settleRefund({
+      order: after,
+      storeSlug: store.slug,
+      parts: {
+        goodsAgorot: Math.max(0, after.totalAgorot - after.shippingAgorot),
+        shippingAgorot: after.shippingAgorot,
+      },
+      source: 'seller-cancel',
+      actor,
+    });
+    outcome.refundSettledAgorot = refund.settledAgorot;
+  }
 
   // Stock goes back when the order stops holding it — asked of the status table (holdsStock) rather
   // than tested against 'cancelled', so a future "returned" or "refunded" status restocks by filling
