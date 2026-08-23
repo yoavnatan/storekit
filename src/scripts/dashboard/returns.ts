@@ -2,6 +2,9 @@ import { showToast, showActionFailedToast } from '../../lib/toast.js';
 import { showFieldError, clearFieldError } from '../../lib/field-validity.js';
 import { onPanelIntent } from './panel-intent.js';
 import { toAgorot } from '../../lib/money.js';
+import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
+import { escapeHtml } from '../../lib/html-escape.js';
+import { RETURN_REASON_LABELS, type ReturnReason } from '../../lib/returns.js';
 
 /**
  * The returns tab's buttons — the seller's four verbs, wired to the one route.
@@ -102,6 +105,69 @@ const CONFIRMED_MOVES: Record<string, ((amount: string, items: number) => Confir
   }),
 };
 
+/**
+ * ── Sorting and filtering the case list (owner, 2026-08-23) ──
+ *
+ * *"בעייתית, קודם כל אין אפשרות למיין ואולי גם לפלטר לפי ממתין לטיפולי או לפי תאריך."*
+ *
+ * Everything below reads DATA ATTRIBUTES the server wrote on each card and never the words inside
+ * it: the lane, the reason, the request date, the day this case's clock lands on, and the amount in
+ * agorot. That is the rule the orders tab learned the hard way — a filter keyed on a rendered
+ * Hebrew word breaks silently the first time a copy pass renames it, and it breaks as "the filter
+ * finds nothing", which reads like missing data rather than like a bug.
+ *
+ * The DEFAULT order is written by the server, not applied here on load: `ReturnsPanel.astro` sorts
+ * by the same three keys before rendering, so the first paint is already in urgency order and
+ * nothing jumps when this file wakes up. The comparators must therefore agree, and
+ * `tests/returns-sort.test.ts` is what keeps them agreeing.
+ */
+const LANE_RANK: Record<string, number> = { mine: 0, ours: 1, buyer: 2, closed: 3 };
+
+/** Sorting keys, read off the card. `￿` for a missing clock — the last code point, so a case with
+ *  no deadline sorts after every case that has one instead of jumping to the front of the queue. */
+const laneRank = (el: HTMLElement): number => LANE_RANK[el.dataset.returnLane ?? 'closed'] ?? 3;
+const dueKey = (el: HTMLElement): string => el.dataset.returnDue || '￿';
+const createdKey = (el: HTMLElement): string => el.dataset.returnCreated ?? '';
+const agorotKey = (el: HTMLElement): number => Number(el.dataset.returnAgorot ?? 0);
+/** Code-point order, not `localeCompare` — the same helper the panel uses, for the reason its own
+ *  comment gives: a collator may give the no-clock sentinel no weight, and the two renderers would
+ *  then order one list two ways. */
+const cmpKey = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+type ReturnSortKey = 'urgency' | 'newest' | 'oldest' | 'highest' | 'lowest';
+
+const RETURN_SORTS: { key: ReturnSortKey; label: string; cmp: (a: HTMLElement, b: HTMLElement) => number }[] = [
+  {
+    // Whose move it is first, then the nearest clock. A seller opening this tab is asking one
+    // question — "what needs me, and what needs me soonest" — and this is that question as an
+    // ordering. It is also why it is the default: the list should already be the answer.
+    key: 'urgency',
+    label: 'הדחוף ביותר',
+    cmp: (a, b) => laneRank(a) - laneRank(b)
+      || cmpKey(dueKey(a), dueKey(b))
+      || cmpKey(createdKey(b), createdKey(a)),
+  },
+  { key: 'newest', label: 'הבקשה החדשה ביותר', cmp: (a, b) => cmpKey(createdKey(b), createdKey(a)) },
+  { key: 'oldest', label: 'הבקשה הוותיקה ביותר', cmp: (a, b) => cmpKey(createdKey(a), createdKey(b)) },
+  { key: 'highest', label: 'הסכום הגבוה ביותר', cmp: (a, b) => agorotKey(b) - agorotKey(a) },
+  { key: 'lowest', label: 'הסכום הנמוך ביותר', cmp: (a, b) => agorotKey(a) - agorotKey(b) },
+];
+
+/**
+ * The lanes the FILTER offers — and "נסגרה" is deliberately not among them.
+ *
+ * Closed cases are what the "הצג גם בקשות שנסגרו" checkbox governs, and it is the owner's own
+ * control (2026-08-20). A filter value meaning the same thing two centimetres away would be a
+ * second definition of one piece of state, which is the shape that ends with the two disagreeing
+ * about what the seller is looking at. The words are `ReturnsPanel.astro`'s chip words, because a
+ * chip that says one thing and a menu that offers another is two vocabularies for one fact.
+ */
+const LANE_FILTER: { value: string; label: string }[] = [
+  { value: 'mine', label: 'ממתין לך' },
+  { value: 'buyer', label: 'ממתין לקונה' },
+  { value: 'ours', label: 'אצלנו להכרעה' },
+];
+
 export function initReturnsTab(): void {
   const list = document.querySelector<HTMLElement>('[data-returns-list]');
   if (!list || list.dataset.wired) return;
@@ -132,10 +198,18 @@ export function initReturnsTab(): void {
   const pageSize = Number(list.dataset.returnsPageSize) || 20;
   let page = 1;
 
+  /** Which values are ticked, per dimension. Empty set = that dimension narrows nothing — the same
+   *  semantics the orders and messages filters use, so a seller who has learned one has learned
+   *  all three. */
+  const filters = new Map<'lane' | 'reason', Set<string>>();
+  let sortKey: ReturnSortKey = 'urgency';
+
   function applyFilters(resetPage = true): void {
     if (resetPage) page = 1;
     const q = (search?.value ?? '').trim().toLowerCase();
     const showClosed = closedBox?.checked === true;
+    const lanes = filters.get('lane');
+    const reasons = filters.get('reason');
 
     // Pass 1: which cards MATCH, regardless of page.
     const matching: HTMLElement[] = [];
@@ -145,11 +219,24 @@ export function initReturnsTab(): void {
     let closedMatches = 0;
     list!.querySelectorAll<HTMLElement>('[data-return-id]').forEach((card) => {
       const isClosed = card.hasAttribute('data-return-closed');
-      const matches = !q || (card.dataset.returnOrder ?? '').toLowerCase().includes(q);
+      const matches = (!q || (card.dataset.returnOrder ?? '').toLowerCase().includes(q))
+        // A lane filter narrows the OPEN cases and is not asked of a closed one: "ממתין לך" and
+        // "נסגרה" are answers to different questions, and making a closed case fail the lane test
+        // would let a filter silently overrule the checkbox the seller just ticked.
+        && (!lanes?.size || isClosed || lanes.has(card.dataset.returnLane ?? ''))
+        && (!reasons?.size || reasons.has(card.dataset.returnReason ?? ''));
       if (matches && isClosed) closedMatches++;
       if (matches && (showClosed || !isClosed)) matching.push(card);
       else card.hidden = true;
     });
+
+    // Order before paging, or page 2 holds cases that belong on page 1. Re-appending is what
+    // actually moves them, and it is done ONLY when the order really changed: this function runs on
+    // every keystroke in the search box, and moving twenty cards each time is twenty relayouts to
+    // arrive at the arrangement already on screen.
+    const before = matching.slice();
+    matching.sort(RETURN_SORTS.find((s) => s.key === sortKey)?.cmp ?? RETURN_SORTS[0]!.cmp);
+    if (matching.some((card, i) => card !== before[i])) matching.forEach((card) => list!.appendChild(card));
     // Never disabled while it is ON: that would strand the seller inside a view he cannot leave.
     if (closedBox) closedBox.disabled = closedMatches === 0 && !closedBox.checked;
 
@@ -178,6 +265,122 @@ export function initReturnsTab(): void {
   search?.addEventListener('input', () => applyFilters());
   closedBox?.addEventListener('change', () => applyFilters());
 
+  // ── The two toolbar menus ──
+  //
+  // One portal for both triggers, exactly as the orders toolbar does it: the module already knows
+  // that moving from one pill to the other never passes through close(), and hands back the first
+  // trigger's `aria-expanded` itself. Two portals would light both pills at once.
+  const portal = createFloatingPortal('returns-toolbar-portal');
+  const sortTrigger = document.getElementById('returns-sort-trigger');
+  const filterTrigger = document.getElementById('returns-filter-trigger');
+  const sortLabel = document.getElementById('returns-sort-label');
+  const filterCount = document.getElementById('returns-filter-count');
+
+  /** How many values are ticked, over both dimensions — the badge on the filter pill. It counts
+   *  VALUES rather than dimensions so that a seller who narrowed to two lanes can see, from the
+   *  closed menu, that he did. */
+  function paintFilterCount(): void {
+    if (!filterCount) return;
+    let n = 0;
+    filters.forEach((set) => { n += set.size; });
+    filterCount.hidden = n === 0;
+    filterCount.textContent = String(n);
+  }
+
+  /** The values of one dimension that actually occur in this shop's list. Offering a reason no case
+   *  carries is offering a filter whose only possible result is the empty list. */
+  function presentValues(attr: 'returnLane' | 'returnReason'): Set<string> {
+    const seen = new Set<string>();
+    list!.querySelectorAll<HTMLElement>('[data-return-id]').forEach((card) => {
+      const v = card.dataset[attr];
+      if (v) seen.add(v);
+    });
+    return seen;
+  }
+
+  function checkboxRow(dim: 'lane' | 'reason', value: string, label: string): string {
+    const on = filters.get(dim)?.has(value) === true;
+    return `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]">`
+      + `<input type="checkbox" class="cursor-pointer shrink-0" data-ret-filter-dim="${dim}" data-ret-filter-value="${escapeHtml(value)}" ${on ? 'checked' : ''}>`
+      + `${escapeHtml(label)}</label>`;
+  }
+
+  /**
+   * Both dimensions in ONE menu, rather than the orders tab's drill-down.
+   *
+   * That tab has six columns and dozens of values, which is what a two-level menu is for. This one
+   * has three lanes and four reasons: putting them behind a column list would be two presses to
+   * reach a list of three, and a seller would meet "מצב" as a word before ever seeing that his own
+   * queue is one of the choices.
+   */
+  function filterMenuHtml(): string {
+    const reasonsPresent = presentValues('returnReason');
+    const lanesPresent = presentValues('returnLane');
+    const reasonRows = (Object.keys(RETURN_REASON_LABELS) as ReturnReason[])
+      .filter((v) => reasonsPresent.has(v))
+      .map((v) => checkboxRow('reason', v, RETURN_REASON_LABELS[v]));
+    return [
+      toolbarMenuTitle('מצב הטיפול'),
+      ...LANE_FILTER.filter((l) => lanesPresent.has(l.value)).map((l) => checkboxRow('lane', l.value, l.label)),
+      reasonRows.length ? toolbarMenuTitle('סיבת החזרה') : '',
+      ...reasonRows,
+      '<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>',
+      filterClearButtonHtml('data-ret-filter-clear', 'נקה סינון', [...filters.values()].some((s) => s.size > 0)),
+    ].join('');
+  }
+
+  function openFilterMenu(trigger: HTMLElement): void {
+    portal.open(trigger, '12rem', filterMenuHtml, (menu) => {
+      menu.querySelectorAll<HTMLInputElement>('[data-ret-filter-value]').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          const dim = cb.dataset.retFilterDim as 'lane' | 'reason';
+          const set = filters.get(dim) ?? new Set<string>();
+          if (cb.checked) set.add(cb.dataset.retFilterValue ?? '');
+          else set.delete(cb.dataset.retFilterValue ?? '');
+          if (set.size) filters.set(dim, set); else filters.delete(dim);
+          applyFilters();
+          paintFilterCount();
+          // Re-rendered rather than left as it was: the "נקה סינון" row at the bottom goes live or
+          // grey with this tick, and a disabled row under a menu the seller is still using is the
+          // one thing that would be stale.
+          openFilterMenu(trigger);
+        });
+      });
+      menu.querySelector('[data-ret-filter-clear]')?.addEventListener('click', () => {
+        if (![...filters.values()].some((s) => s.size > 0)) return;
+        filters.clear();
+        applyFilters();
+        paintFilterCount();
+        openFilterMenu(trigger);
+      });
+    });
+  }
+
+  function openSortMenu(trigger: HTMLElement): void {
+    portal.open(trigger, '13rem', () => toolbarMenuTitle('מיין לפי') + RETURN_SORTS.map((o) => {
+      const on = o.key === sortKey;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-ret-sort="${o.key}" style="${on ? 'font-weight:700;color:var(--color-primary)' : ''}">${escapeHtml(o.label)}</button>`;
+    }).join(''), (menu) => {
+      menu.querySelectorAll<HTMLButtonElement>('[data-ret-sort]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortKey = (btn.dataset.retSort as ReturnSortKey) ?? 'urgency';
+          if (sortLabel) sortLabel.textContent = RETURN_SORTS.find((s) => s.key === sortKey)?.label ?? '';
+          applyFilters();
+          portal.close();
+        });
+      });
+    });
+  }
+
+  sortTrigger?.addEventListener('click', () => {
+    if (portal.currentTrigger() === sortTrigger) portal.close();
+    else openSortMenu(sortTrigger);
+  });
+  filterTrigger?.addEventListener('click', () => {
+    if (portal.currentTrigger() === filterTrigger) portal.close();
+    else openFilterMenu(filterTrigger);
+  });
+
   // ── Arrived from an order card's return chip? ──
   //
   // The chip records the intent and clicks the tab; this collects it, exactly once
@@ -195,6 +398,11 @@ export function initReturnsTab(): void {
     // refused or refunded would land on a filtered list hiding the very row it named — a link that
     // goes somewhere and shows nothing, which reads as the feature being broken.
     if (closedBox) { closedBox.disabled = false; closedBox.checked = true; }
+    // And the lane/reason filters OFF, for exactly the same reason. A seller who narrowed to
+    // "ממתין לך", went to the orders tab and followed a return chip back would arrive at a list
+    // that hides the one case the chip named — the shape of link that reads as broken.
+    filters.clear();
+    paintFilterCount();
     applyFilters();
   });
 

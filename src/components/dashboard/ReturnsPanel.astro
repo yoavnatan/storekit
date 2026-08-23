@@ -4,10 +4,9 @@ import { heCount } from '../../lib/he-count.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
-  isOpen, handoverDeadlineISO, autoRefundDueISO, responseDeadlineISO,
-  inTransitReviewDueISO, offerAnswerDueISO, isPartialReturn, disputeCause, sellerOwesAction,
+  isOpen, returnClockDueISO, returnLane, isPartialReturn, disputeCause, sellerOwesAction,
   OFFER_ANSWER_DAYS, RETURN_REASON_LABELS as REASON,
-  type ReturnStatus, type ReturnReason, type DisputeCause,
+  type ReturnStatus, type ReturnReason, type DisputeCause, type ReturnLane,
 } from '../../lib/returns.js';
 import type { ReturnRequest, ReturnOrderFacts } from '../../lib/return-requests.js';
 
@@ -26,7 +25,33 @@ import type { ReturnRequest, ReturnOrderFacts } from '../../lib/return-requests.
  * ── The deadline line is the whole point of the card ──
  * Every open state has a clock, and the seller's real question is never "what status is this" but
  * "how long have I got". So each card shows the date its clock lands on, in words, from the same
- * pure functions the job uses — never a second calculation.
+ * pure function the job and the tab's urgency sort use (`returns.ts#returnClockDueISO`) — never a
+ * second calculation.
+ *
+ * ── The card is TWO HALVES, and that is what fixed its height (owner, 2026-08-23) ──
+ * *"הכרטיסייה עדיין יותר מדי ארוכה מבחינת גובה... בדסקטופ הייתי מחלק אותה ממש לשני חצאים מבחינת
+ * גריד, מסודר לגמרי שורה מול שורה."* Every fact and every sentence used to be stacked in ONE column
+ * on a card 1078px wide, so the labelled grid filled a quarter of the width and paid for it in
+ * height — nine rows and three paragraphs, 415px, on a list where the seller is scanning for the one
+ * case that needs him. Split, the card's height is the TALLER half rather than the sum of both:
+ * **what happened** on the reading side, **what to do about it** on the other, one rule between them.
+ *
+ * The split is a CONTAINER query (`@[560px]/retcard`), not a viewport one, and that is what makes
+ * it right on a tablet as well: the card knows how wide IT is, and the seller dashboard's own
+ * side rail changes that without the viewport moving at all.
+ *
+ * ── Mobile: the same card, with its second layer folded away ──
+ * *"שלא יהיה כמו עכשיו שכל כרטיסיה היא בגובה של כל המסך"* — and it was, 600px at 375. Below the
+ * split width the two halves stack, which puts the sum back, so everything that is not needed to
+ * DECIDE is marked `.ret-more` and folded behind one "פרטים נוספים" line: the postage payer, the
+ * tracking number, the notes, the photographs and the two explanatory paragraphs. What stays is
+ * what a person answers with — whose move it is, the reason, the amount, the clock and the buttons.
+ *
+ * It is a checkbox and a label, so it costs no JavaScript and cannot be left in a broken state by a
+ * script that failed to load; above the split width the same rows are shown unconditionally and the
+ * toggle is not rendered at all. `group-has-[...]/retcard` is what lets a row deep in the grid read
+ * a checkbox that has to live at the card's edge — no wrapper element, which matters because a
+ * wrapper inside a `<dl>` grid would break the one alignment the owner asked for.
  *
  * Hebrew literals rather than the dictionary: this is a seller surface, which is Hebrew-only by
  * construction — `i18n-hardcoded-strings.test.ts` decides that by whether a file calls the
@@ -151,8 +176,16 @@ function movesFor(status: ReturnStatus): { to: ReturnStatus; label: string; kind
   return base;
 }
 
-/** The one line that says how long is left, per state. Null when no clock runs. */
+/** The one line that says how long is left, per state. Null when no clock runs.
+ *
+ *  WHICH clock runs, and when it lands, is `returns.ts#returnClockDueISO` and is not decided again
+ *  here — the tab's urgency sort orders the list by that same date, and a list ordered by a day the
+ *  card does not print is the drift this repo keeps finding. Only the WORDS branch below, because
+ *  the four clocks do not close the same way and each has to say so. */
 function deadlineLine(r: ReturnRequest): string | null {
+  const due = returnClockDueISO(r);
+  if (!due) return null;
+  const day = formatBusinessDateShort(due);
   if (r.status === 'requested') {
     // Inside the statutory window there is nothing to answer — it was approved on arrival — so this
     // branch only ever describes a request the seller may really refuse.
@@ -164,12 +197,10 @@ function deadlineLine(r: ReturnRequest): string | null {
     // argues why), an unposted parcel expires in his favour, an unanswered offer expires but leaves
     // the buyer free to start again, and a parcel he received and ignored refunds the buyer. Naming
     // the direction is also the honest warning on the two where it costs him.
-    if (r.withinStatutory) return null;
-    return `יש לך זמן להשיב עד ${formatBusinessDateShort(responseDeadlineISO(r.createdAt))}. אם לא תשיב, הבקשה תיסגר כסירוב והכסף יישאר אצלך.`;
+    return `יש לך זמן להשיב עד ${day}. אם לא תשיב, הבקשה תיסגר כסירוב והכסף יישאר אצלך.`;
   }
   if (r.status === 'approved') {
-    const d = handoverDeadlineISO(r.approvedAt);
-    return d ? `הקונה אמור לשלוח את המוצר עד ${formatBusinessDateShort(d)}. אם לא ישלח, הבקשה תיסגר והכסף יישאר אצלך.` : null;
+    return `הקונה אמור לשלוח את המוצר עד ${day}. אם לא ישלח, הבקשה תיסגר והכסף יישאר אצלך.`;
   }
   // A separate clock now, and a separate SENTENCE, because the two used to share both: an approved
   // request that the buyer never posted closes in the seller's favour on day 7, but once the buyer has
@@ -177,16 +208,13 @@ function deadlineLine(r: ReturnRequest): string | null {
   // that plainly is also the honest warning: if the parcel really did arrive, marking it received is
   // how he keeps the case out of our hands.
   if (r.status === 'in_transit') {
-    const d = inTransitReviewDueISO(r.sentAt);
-    return d ? `כשהמוצר יגיע, סמן שקיבלת אותו. אם לא תסמן עד ${formatBusinessDateShort(d)}, נבדוק את המקרה ונכריע בעצמנו.` : null;
+    return `כשהמוצר יגיע, סמן שקיבלת אותו. אם לא תסמן עד ${day}, נבדוק את המקרה ונכריע בעצמנו.`;
   }
   if (r.status === 'offered') {
-    const d = offerAnswerDueISO(r.offeredAt);
-    return d ? `הקונה אמור להשיב להצעה עד ${formatBusinessDateShort(d)}. אם לא ישיב, הבקשה תיסגר והכסף יישאר אצלך.` : null;
+    return `הקונה אמור להשיב להצעה עד ${day}. אם לא ישיב, הבקשה תיסגר והכסף יישאר אצלך.`;
   }
   if (r.status === 'received') {
-    const d = autoRefundDueISO(r.deliveredBackAt);
-    return d ? `יש לך זמן לבדוק את המוצר עד ${formatBusinessDateShort(d)}. אם לא תשיב עד אז, הכסף יחזור לקונה אוטומטית.` : null;
+    return `יש לך זמן לבדוק את המוצר עד ${day}. אם לא תשיב עד אז, הכסף יחזור לקונה אוטומטית.`;
   }
   return null;
 }
@@ -260,6 +288,28 @@ function itemsCount(r: ReturnRequest): string {
  */
 function offerCeilingShekels(agorot: number): number {
   return Math.floor(agorot / 100);
+}
+
+/**
+ * Does this case have a SECOND half — anything to say about what happens next?
+ *
+ * A closed case has no clock, no buttons and nothing to explain, and splitting its card in two
+ * would leave the facts squeezed into half the width with a rule down the middle of nothing. So the
+ * split is asked for per card rather than assumed: no next half, no grid, and the record simply
+ * takes the whole width it already has.
+ *
+ * Every member is a thing that half actually renders. It is deliberately not `isOpen`: an `offered`
+ * case with no stored amount and no clock left would pass that and still have an empty column.
+ */
+function hasNextHalf(r: ReturnRequest): boolean {
+  return Boolean(
+    deadlineLine(r)
+    || movesFor(r.status).length > 0
+    || r.status === 'disputed'
+    || r.status === 'approved'
+    || r.status === 'in_transit'
+    || (r.status === 'offered' && r.partialOfferAgorot !== null),
+  );
 }
 
 /** How many lines are coming back — what the approve dialog needs to say מוצר or מוצרים. */
@@ -350,7 +400,64 @@ const open = requests.filter((r) => isOpen(r.status));
 const mine = open.filter((r) => sellerOwesAction(r.status));
 const waiting = open.filter((r) => !sellerOwesAction(r.status));
 const closed = requests.filter((r) => !isOpen(r.status));
-const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg)] [background:var(--color-surface)] p-4';
+
+/**
+ * Whose move it is, as a chip — the one thing a seller scanning nine cards is actually looking for.
+ *
+ * It is the SAME question the header counts and the tab badge shows, and now also the one the
+ * filter menu offers, so it is read from `returns.ts#returnLane` and never re-derived from a status
+ * here. The words are the filter's words too: a chip that says one thing and a filter that offers
+ * another is two vocabularies for one fact.
+ *
+ * `mine` is the only one that takes a colour. Four coloured chips down a list is a decorated list,
+ * not a signalling one — and the whole point of the chip is that the two cases needing him stand
+ * out from the eleven that do not.
+ */
+const LANE_LABEL: Record<ReturnLane, string> = {
+  mine: 'ממתין לך',
+  buyer: 'ממתין לקונה',
+  ours: 'אצלנו להכרעה',
+  closed: 'נסגרה',
+};
+const LANE_CHIP: Record<ReturnLane, string> = {
+  mine: '[background:color-mix(in_srgb,var(--color-danger)_12%,transparent)] [color:var(--color-danger)]',
+  buyer: '[background:var(--color-bg)] [color:var(--color-muted)]',
+  ours: '[background:color-mix(in_srgb,var(--color-warning)_14%,transparent)] [color:var(--color-warning)]',
+  closed: '[background:var(--color-bg)] [color:var(--color-muted)]',
+};
+
+/**
+ * The order the list ARRIVES in — the same "urgency" the sort menu offers, and its default.
+ *
+ * Done on the server rather than left to the script that sorts on demand, because the first paint
+ * is the one a seller sees before any JavaScript has run: a list that arrives in insertion order and
+ * then jumps into urgency order a moment later is the reflow this dashboard has been paying down.
+ * `scripts/dashboard/returns.ts#compare` sorts by the same three keys in the same three directions;
+ * the data attributes below are what lets it, and `tests/returns-sort.test.ts` pins that the two
+ * agree.
+ *
+ * Lane first, then the nearest clock, then the newest request. A case with no clock (a closed one,
+ * or a dispute we hold) sorts after every case that has one, never before it.
+ */
+const LANE_ORDER: Record<ReturnLane, number> = { mine: 0, ours: 1, buyer: 2, closed: 3 };
+const dueOf = (r: ReturnRequest): string => returnClockDueISO(r) ?? '￿';
+/** Code-point order, not `localeCompare`. These keys are ISO timestamps and the no-clock sentinel,
+ *  where a collator is both slower and a risk: it is allowed to give U+FFFF no weight at all, and a
+ *  sentinel that sorts differently in one runtime is a list ordered differently by the server than
+ *  by the browser — the exact drift the whole arrangement is built to avoid. */
+const cmpKey = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+const byUrgency = [...requests].sort((a, b) =>
+  LANE_ORDER[returnLane(a.status)] - LANE_ORDER[returnLane(b.status)]
+  || cmpKey(dueOf(a), dueOf(b))
+  || cmpKey(b.createdAt, a.createdAt));
+
+const CARD = '@container/retcard group/retcard border [border-color:var(--color-border)] rounded-[var(--radius-lg)] [background:var(--color-surface)] p-4';
+
+/** A row that folds away on a narrow card. What it means, and why it is a class rather than a
+ *  wrapper, is in this file's header — the short of it: a wrapper inside the facts grid would break
+ *  the alignment the split exists for. `block` is the right revealed display for a `<dt>`/`<dd>`
+ *  and for a `<p>`; the two inline uses below carry their own. */
+const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retcard:block';
 ---
 
 <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)] flex flex-col items-start gap-[0.6rem]">
@@ -371,7 +478,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
   </div>
 
   {requests.length > 0 && (
-    <div class="dash-toolbar w-full">
+    <div class="dash-toolbar dash-toolbar--wrap w-full">
       <div class="relative flex-1 min-w-[110px] max-w-[280px]">
         <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input
@@ -380,6 +487,30 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           class="returns-search w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]"
         />
       </div>
+
+      {/* ── Sort and filter (owner, 2026-08-23: *"אין אפשרות למיין ואולי גם לפלטר לפי ממתין
+          לטיפולי או לפי תאריך"*) ──
+
+          The same two pills, in the same order, wearing the same classes as the orders and messages
+          tabs — this dashboard already has one answer to "narrow a long list" and a returns tab
+          that invented a second one would be the surface-parity drift this project keeps finding on
+          its less-visited screens. `lib/toolbar-portal.ts` draws both menus.
+
+          The FILTER offers the open lanes and the reasons, and deliberately not "נסגרה": closed
+          cases are what the checkbox beside it governs, and a value that means the same thing as a
+          checkbox two centimetres away is a second definition of one piece of state. */}
+      <button type="button" id="returns-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+        <span id="returns-sort-label" class="toolbar-btn-label">הדחוף ביותר</span>
+        <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <button type="button" id="returns-filter-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        <span class="toolbar-btn-label">סינון</span>
+        <span id="returns-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden>0</span>
+        <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+
       {/* A CHECKBOX, not a pressed button (owner, 2026-08-20: *"וכשבוחרים נהיה שם רק קו בורדר ולא
           נראה שכל הכפתור לחוץ בכלל. לדעתי זה בכלל צריך להיות צ׳קבוקס"*). He is right about both
           halves: this is a standing "also include these", which is what a checkbox means, and the
@@ -391,7 +522,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           seller presses twice and then distrusts — and `returns.ts` drives the state, because only
           the client knows what the current search matched. */}
       <label
-        class="inline-flex items-center gap-[.45rem] text-[.82rem] cursor-pointer select-none has-[:disabled]:opacity-50 has-[:disabled]:cursor-default"
+        class="inline-flex items-center gap-[.45rem] whitespace-nowrap text-[.82rem] cursor-pointer select-none has-[:disabled]:opacity-50 has-[:disabled]:cursor-default"
         data-returns-closed-wrap
       >
         <input
@@ -426,14 +557,36 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 )}
 
 <div class="flex flex-col gap-3" data-returns-list data-returns-page-size={String(RETURNS_PAGE_SIZE)}>
-  {[...open, ...closed].map((r) => (
+  {byUrgency.map((r) => (
     <article
       class={`${CARD}${isOpen(r.status) ? '' : ' opacity-70'}`}
       data-return-id={r.id}
       data-return-closed={isOpen(r.status) ? undefined : ''}
       data-return-order={r.orderId.slice(0, 8)}
+      data-return-lane={returnLane(r.status)}
+      data-return-reason={r.reason}
+      data-return-created={r.createdAt}
+      data-return-due={returnClockDueISO(r) ?? ''}
+      data-return-agorot={String(r.refundAgorot)}
       hidden={!isOpen(r.status)}
     >
+      {/* ── The top line: whose move it is, then what happened ──
+
+          Nine cards down a list each opened with a different sentence, so "which of these is mine"
+          could only be answered by reading all nine — and six of them are cases the seller can do
+          nothing about at all (`sellerOwesAction`). One word now says it, before the sentence and
+          in the filter menu's own vocabulary, so the two controls and the card cannot come to
+          describe the same case differently.
+
+          Beside the title rather than on a line of its own: a chip alone on a row costs the card
+          28px to say eight characters, and the sentence it belongs to is right there. */}
+      <div class="flex items-start gap-2">
+        <span class={`inline-flex items-center shrink-0 mt-[0.1rem] text-[0.72rem] font-semibold rounded-[var(--radius-sm)] px-1.5 py-0.5 ${LANE_CHIP[returnLane(r.status)]}`}>
+          {LANE_LABEL[returnLane(r.status)]}
+        </span>
+        <strong class="min-w-0 text-[0.95rem] leading-snug">{statusLine(r)}</strong>
+      </div>
+
       {/* The order number is a LINK, and it goes to the ORDER (owner, 2026-08-20: *"איך המוכר מבין
           איזו הזמנה, אלו פריטים? זה לא אינטואיטיבי בכלל"*). It was eight characters of plain text —
           true, useless, and the only thing on the card identifying what the case is about. The
@@ -441,32 +594,41 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           him and wrong here: an admin is auditing where money went, a seller is asking what he
           packed. Same mechanism as the chip going the other way (`scripts/dashboard/panel-intent.ts`),
           so the two tabs now reach each other from both sides.
-          The id in `<bdi>` because it is a Latin run inside a Hebrew line. */}
-      <div>
-        <strong class="block text-[0.95rem]">{statusLine(r)}</strong>
-        {/* UNDER the title, not opposite it (owner, 2026-08-20: *"צריך שההזמנה הלחיצה תהיה מתחת
-            לכותרת, כי כרגע זה בצד וזה קל לפספס יש שם בלאגן"*). It was the far end of a
-            `justify-between` row, which is the one position on a card that competes with the
-            heading instead of belonging to it: on a narrow card the row wrapped and the two
-            swapped places, and on a wide one the eye reads the status and stops. Below the title it
-            is the first thing after it, in reading order.
+          The id in `<bdi>` because it is a Latin run inside a Hebrew line.
 
-            It also LOOKS like a link at rest now. A coloured word with the underline held back for
-            hover is only discoverable by pointing at it — no help on a touch screen, and his
-            "easy to miss" exactly. Dotted at rest, solid on hover: one signal, changing state,
-            which is the site's hover rule rather than a second effect stacked on. */}
-        {/* The dates were beside the order number for a day and are not any more (owner,
-            2026-08-21): with the grid's own "תאריכים" row below, the same three dates were on the
-            card twice. The summary was the copy worth cutting — the row underneath is the complete
-            record and the one a person reads when the dates are the question. */}
+          UNDER the title, not opposite it (owner, 2026-08-20: *"צריך שההזמנה הלחיצה תהיה מתחת
+          לכותרת, כי כרגע זה בצד וזה קל לפספס יש שם בלאגן"*) — the far end of a `justify-between` row
+          is the one position on a card that competes with the heading instead of belonging to it.
+
+          It also LOOKS like a link at rest. A coloured word with the underline held back for hover
+          is only discoverable by pointing at it — no help on a touch screen, and his "easy to miss"
+          exactly. Dotted at rest, solid on hover: one signal changing state, which is the site's
+          hover rule rather than a second effect stacked on.
+
+          The DATES share this row, at the far end (owner, 2026-08-23: *"התאריכים צריכים להופיע
+          למעלה"*). They were the last row of the facts grid. Beside the order number is where they
+          sat for a day in August and were cut — but that was because the grid ALSO carried them and
+          the card said the same three dates twice; with the grid's row gone there is one copy, in
+          the place the question gets asked. Not on the title's row: a heading that has to share
+          its line with 46 characters of dates is a heading that wraps on every card. */}
+      <div class="mt-[0.35rem] flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <button
           type="button"
-          class="mt-[0.35rem] text-[0.78rem] [color:var(--color-primary)] tabular-nums bg-transparent border-0 p-0 cursor-pointer underline decoration-dotted underline-offset-[3px] hover:decoration-solid"
+          class="text-[0.78rem] [color:var(--color-primary)] tabular-nums bg-transparent border-0 p-0 cursor-pointer underline decoration-dotted underline-offset-[3px] hover:decoration-solid"
           data-goto-panel="orders"
           data-goto-intent={`search:${r.orderId.slice(0, 8)}`}
           data-tooltip="פתח את ההזמנה בלשונית הזמנות"
         >הזמנה <bdi>{r.orderId.slice(0, 8)}</bdi></button>
+        {dateLine(r) && (
+          <span class="ms-auto text-[0.76rem] tabular-nums [color:var(--color-muted)]">{dateLine(r)}</span>
+        )}
       </div>
+
+      {/* ── The two halves ──
+          Facts on the reading side, what-to-do-about-it on the other, one rule between them. The
+          gap and the rule are the whole separation: a second surface (a tinted box, a card inside a
+          card) would be a shadow's worth of hierarchy on something that does not float. */}
+      <div class={`mt-3 pt-3 border-t [border-color:var(--color-border)] grid gap-x-6 gap-y-3 @[560px]/retcard:items-start${hasNextHalf(r) ? ' @[560px]/retcard:grid-cols-2' : ''}`}>
 
       {/* ── The facts, as a LABELLED GRID rather than a sentence (owner, 2026-08-20) ──
           *"עשית כרטיסיות שהן יותר כמו סיפור מאשר דרך לקבל מידע בשעת עומס"*, and *"לפני כל דבר
@@ -484,11 +646,30 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
           Rows are dropped when they have nothing to say, never rendered empty. `<Fragment>` around
           each pair because a `<dl>` cannot hold a wrapper element between it and its own children
-          without breaking the grid, and the whole point is one grid per card, not one per row. */}
-      <dl class="m-0 mt-3 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-[0.45rem] text-[0.85rem] items-baseline">
+          without breaking the grid, and the whole point is one grid per card, not one per row.
+
+          The DATES row is gone from here (owner, 2026-08-23) — it is the card's top line now, which
+          is where the question "how long ago did this reach him" is actually asked. Nothing else
+          moved: this half is still the complete record of what happened.
+
+          `MORE` on a row folds it away on a narrow card; the header of this file says which rows
+          earn it and why. `content-start` so the half does not stretch its rows to match the taller
+          one beside it — a grid column that distributes its own spare height reads as a different
+          line-height per card. */}
+      {/* With no second half the record takes the whole card, and then it pairs up rather than
+          running one column down a 1078px page — the same waste, on the cards nobody is scanning.
+          Four columns, so auto-placement puts two label→value pairs on each line and every label
+          still shares an edge with the one under it. */}
+      <dl class={`m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-[0.45rem] text-[0.85rem] items-baseline content-start${hasNextHalf(r) ? '' : ' @[560px]/retcard:grid-cols-[max-content_minmax(0,1fr)_max-content_minmax(0,1fr)] @[560px]/retcard:gap-x-6'}`}>
         <dt class="[color:var(--color-muted)]">סיבת החזרה:</dt>
         <dd class="m-0">
-          {REASON[r.reason]}{REASON_EXTRA[r.reason] && <span class="[color:var(--color-muted)]"> — {REASON_EXTRA[r.reason]}</span>}
+          {REASON[r.reason]}
+          {/* The clause folds with the rest on a narrow card and the two words do not: "לא הגיע
+              כלל" is four lines with it at 375px, and the reason is one of the two facts a person
+              decides with. `inline` rather than `block`, or the em-dash starts a paragraph. */}
+          {REASON_EXTRA[r.reason] && (
+            <span class="[color:var(--color-muted)] hidden group-has-[.ret-toggle:checked]/retcard:inline @[560px]/retcard:inline"> — {REASON_EXTRA[r.reason]}</span>
+          )}
         </dd>
 
         {itemsLine(r) && (
@@ -512,8 +693,8 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           )}
         </dd>
 
-        <dt class="[color:var(--color-muted)]">משלוח חזרה:</dt>
-        <dd class="m-0">
+        <dt class={`[color:var(--color-muted)] ${MORE}`}>משלוח חזרה:</dt>
+        <dd class={`m-0 ${MORE}`}>
           {r.returnShippingPayer === 'buyer' ? 'על חשבון הקונה' : 'על חשבון החנות'}
           {isPartialReturn(r.returnedLines) && (
             <span class="[color:var(--color-muted)]"> · דמי המשלוח המקוריים אינם מוחזרים</span>
@@ -522,26 +703,15 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
         {r.trackingNumber && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">מספר מעקב:</dt>
-            <dd class="m-0 tabular-nums">{r.trackingNumber}</dd>
-          </Fragment>
-        )}
-
-        {/* The COMPLETE record, including the two the header shows. Repeating them costs a line and
-            buys the thing the header cannot have: every date this case has, in one place, in order.
-            The header is a summary you read at a glance; this is what you read when the dates are
-            the question. */}
-        {dateLine(r) && (
-          <Fragment>
-            <dt class="[color:var(--color-muted)]">תאריכים:</dt>
-            <dd class="m-0 tabular-nums [color:var(--color-muted)] text-[0.8rem]">{dateLine(r)}</dd>
+            <dt class={`[color:var(--color-muted)] ${MORE}`}>מספר מעקב:</dt>
+            <dd class={`m-0 tabular-nums ${MORE}`}>{r.trackingNumber}</dd>
           </Fragment>
         )}
 
         {r.buyerNote && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">הערת הקונה:</dt>
-            <dd class="m-0 italic">"{r.buyerNote}"</dd>
+            <dt class={`[color:var(--color-muted)] ${MORE}`}>הערת הקונה:</dt>
+            <dd class={`m-0 italic ${MORE}`}>"{r.buyerNote}"</dd>
           </Fragment>
         )}
 
@@ -550,8 +720,8 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
             the row simply is not there. */}
         {r.buyerPhotoUrl && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">תמונה מהקונה:</dt>
-            <dd class="m-0">
+            <dt class={`[color:var(--color-muted)] ${MORE}`}>תמונה מהקונה:</dt>
+            <dd class={`m-0 ${MORE}`}>
               <a href={r.buyerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block">
                 <img
                   src={cdnThumb(r.buyerPhotoUrl, 160, 160)}
@@ -566,15 +736,15 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
 
         {r.sellerNote && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">מה שכתבת:</dt>
-            <dd class="m-0 italic">"{r.sellerNote}"</dd>
+            <dt class={`[color:var(--color-muted)] ${MORE}`}>מה שכתבת:</dt>
+            <dd class={`m-0 italic ${MORE}`}>"{r.sellerNote}"</dd>
           </Fragment>
         )}
 
         {r.sellerPhotoUrl && (
           <Fragment>
-            <dt class="[color:var(--color-muted)]">התמונה שצירפת:</dt>
-            <dd class="m-0">
+            <dt class={`[color:var(--color-muted)] ${MORE}`}>התמונה שצירפת:</dt>
+            <dd class={`m-0 ${MORE}`}>
               <a href={r.sellerPhotoUrl} target="_blank" rel="noopener noreferrer" class="inline-block">
                 <img
                   src={cdnThumb(r.sellerPhotoUrl, 160, 160)}
@@ -588,23 +758,38 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
         )}
       </dl>
 
-      {/* What happens WHEN it arrives — the question an approved card left him holding (owner,
-          2026-08-20: *"צריך במקרה כזה לרשום הסבר למוכר, מה השלב הבא, כלומר, מה יקרה כשהמוצר יגיע
-          אליו?"*). The deadline line below says when the case closes if the parcel never comes; it
-          never said what to DO if it does, and that is the whole of the seller's part in an
-          auto-approved return. Only on the two states where the parcel is still travelling — once
-          it is in his hands the buttons themselves say it. */}
-      {(r.status === 'approved' || r.status === 'in_transit') && (
-        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">
-          כשהחבילה תגיע אליך, סמן "המוצר הגיע אליי". מאותו רגע יש לך יומיים לבדוק אותה: אם הכול
-          תקין, החזר לקונה את הכסף. ואם החבילה הגיעה ריקה או שהמוצר משומש, אפשר להעביר את המקרה
-          להכרעה שלנו.
+      {/* ── The other half: the clock, then what to do about it ──
+          It is a plain column with a rule beside it, not a panel: this half is in normal flow like
+          everything else on the card, and the elevation rule gives a surface a shadow only when it
+          floats. Below the split width the rule becomes a top border, because two columns' worth of
+          separation read as nothing at all once they are stacked. */}
+      {hasNextHalf(r) && (
+      <div class="flex flex-col gap-2 border-t pt-3 [border-color:var(--color-border)] @[560px]/retcard:border-t-0 @[560px]/retcard:pt-0 @[560px]/retcard:border-s @[560px]/retcard:ps-6">
+      {/* The DEADLINE leads this half, and the clock is drawn rather than described: the sentence
+          is the longest thing on the card and its first two words used to be the only clue that it
+          was the urgent one. `items-start` because the icon belongs beside the FIRST line of a
+          sentence that wraps to three. */}
+      {deadlineLine(r) && (
+        <p class={`m-0 flex items-start gap-[0.4rem] text-[0.82rem] font-semibold [color:var(--color-${TONE[r.status] === 'danger' ? 'danger' : 'warning'})]`}>
+          <svg class="shrink-0 mt-[0.15rem]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          <span>{deadlineLine(r)}</span>
         </p>
       )}
 
-      {deadlineLine(r) && (
-        <p class={`m-0 mt-2 text-[0.82rem] font-semibold [color:var(--color-${TONE[r.status] === 'danger' ? 'danger' : 'warning'})]`}>
-          {deadlineLine(r)}
+      {/* What happens WHEN it arrives — the question an approved card left him holding (owner,
+          2026-08-20: *"צריך במקרה כזה לרשום הסבר למוכר, מה השלב הבא, כלומר, מה יקרה כשהמוצר יגיע
+          אליו?"*). The deadline line above says when the case closes if the parcel never comes; it
+          never said what to DO if it does, and that is the whole of the seller's part in an
+          auto-approved return. Only on the two states where the parcel is still travelling — once
+          it is in his hands the buttons themselves say it.
+
+          It folds away on a narrow card. It is the same four sentences on every approved case in
+          the list, so on a phone it is the longest thing on screen and the least specific. */}
+      {(r.status === 'approved' || r.status === 'in_transit') && (
+        <p class={`m-0 text-[0.8rem] [color:var(--color-muted)] ${MORE}`}>
+          כשהחבילה תגיע אליך, סמן "המוצר הגיע אליי". מאותו רגע יש לך יומיים לבדוק אותה: אם הכול
+          תקין, החזר לקונה את הכסף. ואם החבילה הגיעה ריקה או שהמוצר משומש, אפשר להעביר את המקרה
+          להכרעה שלנו.
         </p>
       )}
 
@@ -622,14 +807,14 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           `OFFER_ANSWER_DAYS` is that answer, and it is named here rather than left to the deadline
           line — the seller reads this BEFORE making the offer, when there is no deadline yet. */}
       {movesFor(r.status).some((m) => m.to === 'offered') && (
-        <p class="m-0 mt-3 text-[0.8rem] [color:var(--color-muted)]">
+        <p class={`m-0 text-[0.8rem] [color:var(--color-muted)] ${MORE}`}>
           אפשר להציע לקונה החזר כספי חלקי במקום שיחזיר את המוצר, אם יסכים לכך. אם לא ישיב תוך
           {OFFER_ANSWER_DAYS} ימים, הבקשה תיסגר והכסף יישאר אצלך.
         </p>
       )}
 
       {movesFor(r.status).length > 0 && (
-        <div class="flex gap-2 mt-3 flex-wrap">
+        <div class="flex gap-2 mt-1 flex-wrap">
           {movesFor(r.status).map((m) => (
             <button
               type="button"
@@ -659,7 +844,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           than a second flag two files would have to agree about. `!hidden` because the wrapper is
           `flex` (memory `project_tailwind_hidden_vs_flex`). */}
       {movesFor(r.status).some((m) => m.to === 'disputed') && (
-        <div class="flex flex-col gap-2 mt-2 has-[textarea[hidden]]:!hidden" data-dispute-wrap>
+        <div class="flex flex-col gap-2 has-[textarea[hidden]]:!hidden" data-dispute-wrap>
           <label class="flex flex-col gap-1 text-[0.85rem]">
             <span class="[color:var(--color-muted)]">ספר לנו מה היה בחבילה — זה מה שנכריע לפיו</span>
             <textarea
@@ -693,7 +878,7 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           it to tell a first press from a second. `!hidden`, because this label is `flex` and an
           unimportant `hidden` utility loses to it (memory `project_tailwind_hidden_vs_flex`). */}
       {movesFor(r.status).some((m) => m.to === 'offered') && (
-        <div class="flex flex-wrap items-center gap-2 mt-2 text-[0.85rem] has-[input[hidden]]:!hidden" data-offer-wrap>
+        <div class="flex flex-wrap items-center gap-2 text-[0.85rem] has-[input[hidden]]:!hidden" data-offer-wrap>
           <label class="flex items-center gap-2">
             <span class="[color:var(--color-muted)]">סכום ההחזר המוצע, בשקלים</span>
             {/* A CEILING the field itself enforces (owner, 2026-08-21). The server has always
@@ -728,14 +913,39 @@ const CARD = 'border [border-color:var(--color-border)] rounded-[var(--radius-lg
           sibling with no fragment around it, which is the silent `.astro` compile failure that
           answers every route with a 404 and names no file. See scripts/verify.mjs's header.) */}
       {r.status === 'offered' && r.partialOfferAgorot !== null && (
-        <p class="m-0 mt-2 text-[0.82rem]">
+        <p class="m-0 text-[0.82rem]">
           הסכום שהצעת: <strong class="tabular-nums">{formatAgorot(r.partialOfferAgorot)}</strong>
         </p>
       )}
 
       {r.status === 'disputed' && (
-        <p class="m-0 mt-2 text-[0.8rem] [color:var(--color-muted)]">{DISPUTE_CAUSE[disputeCause(r)]}</p>
+        <p class="m-0 text-[0.8rem] [color:var(--color-muted)]">{DISPUTE_CAUSE[disputeCause(r)]}</p>
       )}
+      </div>
+      )}
+      </div>
+
+      {/* ── The rest of the card, on a phone ──
+          One line, and only where it can do anything: above the split width every `.ret-more` row
+          is shown regardless, so a toggle there would be a control that changes nothing — the thing
+          the owner has twice said teaches a seller to distrust the toolbar (2026-08-20).
+
+          A checkbox and a label, so nothing about it depends on a script having loaded. It sits
+          LAST because the card is now ordered by what a decision needs: whose move, the facts, the
+          clock, the buttons — and then, for whoever wants it, everything else.
+
+          The focus ring is drawn on the LABEL, and it has to be: `reset.css` gives every
+          `:focus-visible` element an outline, but the input is `sr-only`, i.e. clipped to a single
+          pixel — so a keyboard user tabbing onto the only control on the card would have seen an
+          outline around nothing. `has-[:focus-visible]` moves it onto the thing that is visible. */}
+      <label
+        class="@[560px]/retcard:!hidden mt-3 pt-3 border-t [border-color:var(--color-border)] flex items-center justify-center gap-[0.35rem] text-[0.78rem] [color:var(--color-muted)] cursor-pointer select-none rounded-[var(--radius-sm)] has-[:focus-visible]:[outline:2px_solid_var(--color-primary)] has-[:focus-visible]:[outline-offset:2px]"
+      >
+        <input type="checkbox" class="ret-toggle sr-only" />
+        <span class="group-has-[.ret-toggle:checked]/retcard:hidden">פרטים נוספים</span>
+        <span class="hidden group-has-[.ret-toggle:checked]/retcard:inline">הסתר פרטים</span>
+        <svg class="shrink-0 transition-transform duration-150 ease-out group-has-[.ret-toggle:checked]/retcard:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </label>
     </article>
   ))}
 </div>

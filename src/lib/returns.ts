@@ -645,3 +645,54 @@ export function responseOverdue(
 export function freezesPayout(status: ReturnStatus): boolean {
   return isOpen(status);
 }
+
+/**
+ * WHOSE move a case is waiting on — one word, from the two lists above and nothing else.
+ *
+ * The seller's tab now sorts and filters by this (owner, 2026-08-23: *"אין אפשרות למיין ואולי גם
+ * לפלטר לפי ממתין לטיפולי או לפי תאריך"*), and the card wears it as a chip. That is three surfaces
+ * asking one question, which is exactly how a fourth spelling of it gets written — so it is DERIVED
+ * from `isOpen` and `sellerOwesAction` rather than listed again. A state added to the machine lands
+ * in the right lane the moment those two know about it.
+ *
+ * `ours` is `disputed` alone, and it earns its own lane rather than being folded into "not mine":
+ * a seller told to wait for the BUYER on a case sitting on our desk has been told the wrong thing
+ * about who to chase.
+ */
+export type ReturnLane = 'mine' | 'buyer' | 'ours' | 'closed';
+
+export function returnLane(status: ReturnStatus): ReturnLane {
+  if (!isOpen(status)) return 'closed';
+  if (sellerOwesAction(status)) return 'mine';
+  return status === 'disputed' ? 'ours' : 'buyer';
+}
+
+/**
+ * The day THIS case's clock lands on, whichever clock is running — or null when none is.
+ *
+ * Every open state has a deadline and each is computed by its own function above; the card needed
+ * the date for its sentence, and the tab now needs it again to sort by urgency. Asking each caller
+ * to re-walk the same `switch` is how two surfaces come to disagree about which clock a state is
+ * on — which shows up as a list ordered by a date the card does not print.
+ *
+ * `requested` inside the statutory window has no clock and must not be given one: the request was
+ * approved on arrival, so there is nothing for the seller to answer (`autoApproved`).
+ */
+export function returnClockDueISO(r: {
+  status: ReturnStatus;
+  withinStatutory: boolean;
+  createdAt: string;
+  approvedAt: string | null;
+  sentAt: string | null;
+  offeredAt: string | null;
+  deliveredBackAt: string | null;
+}): string | null {
+  switch (r.status) {
+    case 'requested': return r.withinStatutory ? null : responseDeadlineISO(r.createdAt);
+    case 'approved': return handoverDeadlineISO(r.approvedAt);
+    case 'in_transit': return inTransitReviewDueISO(r.sentAt);
+    case 'offered': return offerAnswerDueISO(r.offeredAt);
+    case 'received': return autoRefundDueISO(r.deliveredBackAt);
+    default: return null;
+  }
+}

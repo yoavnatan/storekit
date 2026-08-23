@@ -398,6 +398,12 @@ textarea.input { resize: none; }
   /* Its own line, centred, and the top margin is what keeps it off the controls above it — the
      row's `gap` covers the horizontal case only. */
   .dash-toolbar--paged .dash-toolbar__pager { width: 100%; margin-top: 0.15rem; }
+  /* A toolbar carrying a control whose LABEL is the whole control (`--wrap`, returns only so far:
+     "הצג גם בקשות שנסגרו" is a checkbox and cannot collapse to a glyph the way a pill can). Held on
+     the nowrap line beside a search field and two pills it squeezed to two wrapped words with its
+     count badge adrift beside them, so it gets its own line: the search and the pills keep the
+     first, exactly as everywhere else, and nothing has to be read at half width. */
+  .dash-toolbar--wrap { flex-wrap: wrap; }
   /* Icon-only: drop the text label + chevron on every pill; keep the leading
      glyph and the filter-count badge. "בעמוד:" (page-size label) is a
      .toolbar-btn-label too, so it collapses to just the number pill. */
