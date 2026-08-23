@@ -1363,7 +1363,7 @@ const orderStatusColors: Record<string, string> = {
       </SellerPanelShell>
 
       <!-- ── Panel: Products ── -->
-      <SellerPanelShell panel="products" active={shows('products')}>
+      <SellerPanelShell panel="products" active={shows('products')} title={d.productsTitle}>
         {showTabHints && <TabHint text={d.tabHintProducts} />}
 
         {/* The unattended pull has stopped working. A bell notification is read once and dismissed
@@ -2125,7 +2125,7 @@ const orderStatusColors: Record<string, string> = {
       </SellerPanelShell>
 
       <!-- ── Panel: Orders ── -->
-      <SellerPanelShell panel="orders" active={shows('orders')}>
+      <SellerPanelShell panel="orders" active={shows('orders')} title={d.tabOrders}>
         {showTabHints && <TabHint text={d.tabHintOrders} />}
         <div class="dash-panel-head flex flex-col items-start mb-4 gap-[0.6rem] py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0">{d.ordersTitle}</h2>
@@ -2426,7 +2426,7 @@ const orderStatusColors: Record<string, string> = {
       </SellerPanelShell>
 
       <!-- ── Panel: Performance ── -->
-      <SellerPanelShell panel="performance" active={shows('performance')}>
+      <SellerPanelShell panel="performance" active={shows('performance')} title={d.tabPerformance}>
         {showTabHints && <TabHint text={d.tabHintPerformance} />}
         <div class="dash-panel-head mb-5 py-[0.6rem] border-b [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -2566,12 +2566,12 @@ const orderStatusColors: Record<string, string> = {
       </SellerPanelShell>
 
       <!-- ── Panel: Reports ── -->
-      <SellerPanelShell panel="reports" active={shows('reports')}>
+      <SellerPanelShell panel="reports" active={shows('reports')} title={d.tabReports}>
         <ReportsPanel storeSlug={store.slug} d={d as unknown as Record<string, string>} />
       </SellerPanelShell>
 
       <!-- ── Panel: Advertising ── -->
-      <SellerPanelShell panel="advertising" active={shows('advertising')}>
+      <SellerPanelShell panel="advertising" active={shows('advertising')} title={d.tabAdvertising}>
         {showTabHints && <TabHint text={d.tabHintAdvertising} />}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
@@ -2724,7 +2724,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Messages ── -->
       <!-- msg-cq: the table below collapses to cards by THIS element's width, not the viewport's (see utils.css) -->
-      <SellerPanelShell panel="messages" active={shows('messages')} class="msg-cq">
+      <SellerPanelShell panel="messages" active={shows('messages')} title={t.dashboard.tabMessages} class="msg-cq">
         {showTabHints && <TabHint text={d.tabHintMessages} />}
         {/* Sticky header carrying the search + sort/filter, matching Orders
             (CURRENT_TASK 2 — Messages previously had neither a sticky head nor
@@ -2855,7 +2855,7 @@ const orderStatusColors: Record<string, string> = {
       <script is:inline type="application/json" id="dash-store-sale" set:html={jsonForScript(store?.sale ?? null)} />
 
       <!-- ── Panel: Promotions ── -->
-      <SellerPanelShell panel="promotions" active={shows('promotions')}>
+      <SellerPanelShell panel="promotions" active={shows('promotions')} title={d.tabPromotions}>
         <PromotionsPanel store={store} products={products} categories={storeCategoryList} selectedScopeLabel={t.store.saleOnSelected} storeScopeLabel={t.store.saleOnWholeStore} andMoreLabel={t.store.saleAndMore} d={d} />
       </SellerPanelShell>
 
@@ -2866,14 +2866,14 @@ const orderStatusColors: Record<string, string> = {
       {/* ── Panel: Returns ──
           Read only when this is the tab that was asked for: a store with no returns pays
           nothing for the tab existing, and the badge above came from a single COUNT. */}
-      <SellerPanelShell panel="returns" active={shows('returns')}>
+      <SellerPanelShell panel="returns" active={shows('returns')} title={d.tabReturns}>
         {/* A shop that offers collection in person must also take returns in person (owner,
             2026-08-17) — so the flag is DERIVED from the pickup setting, never a switch of its own. */}
         <ReturnsPanel requests={returnRequests} storeSlug={store?.slug ?? ''} orderFacts={returnOrderFacts}
           acceptsInStoreReturns={offersSelfPickup(store)} />
       </SellerPanelShell>
 
-      <SellerPanelShell panel="payouts" active={shows('payouts')}>
+      <SellerPanelShell panel="payouts" active={shows('payouts')} title={d.tabPayouts}>
         {seller && (
           <PayoutsPanel
             seller={seller}
@@ -2884,7 +2884,7 @@ const orderStatusColors: Record<string, string> = {
       </SellerPanelShell>
 
       <!-- ── Panel: Settings ── -->
-      <SellerPanelShell panel="settings" active={shows('settings')}>
+      <SellerPanelShell panel="settings" active={shows('settings')} title={d.tabSettings}>
         {showTabHints && <TabHint text={d.tabHintSettings} />}
         {/* Head stays INSIDE the form on purpose: its sticky scope is the form, so the
             "save changes" bar rides only over the fields it actually saves and releases
