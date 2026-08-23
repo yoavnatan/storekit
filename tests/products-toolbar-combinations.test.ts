@@ -53,13 +53,17 @@ function renderTab(): void {
     <div id="upload-config" data-store-id="s1" data-cloud="c" data-preset="p" data-store-slug="s" data-store-name="S"></div>
     <div class="products-header">
       <input type="checkbox" class="bulk-select-all">
-      <span id="bulk-count-badge" hidden><span id="bulk-count">0</span></span>
-      <span id="bulk-sep" hidden></span>
-      <button id="bulk-delete-btn" hidden type="button"></button>
-      <button id="bulk-edit-btn" hidden type="button"><span id="bulk-edit-label">ערוך</span></button>
-      <button id="bulk-discount-btn" hidden type="button"></button>
-      <button id="bulk-upload-btn" hidden type="button"><span id="bulk-upload-label">העלה תמונות</span></button>
-      <span id="bulk-count-paren"></span>
+    </div>
+    <!-- The four selection buttons live in the floating bar now (BulkActionBar.astro), and the
+         bar is the element that appears and disappears with the selection; the buttons inside it
+         are only ever hidden by the image-panel lock. The fixture follows the page. -->
+    <div id="bulk-bar" class="bulk-bar">
+      <button id="bulk-clear" type="button"></button>
+      <span id="bulk-count">0</span>
+      <button id="bulk-edit-btn" type="button"><span id="bulk-edit-label">ערוך</span></button>
+      <button id="bulk-upload-btn" type="button"><span id="bulk-upload-label">העלה תמונות</span></button>
+      <button id="bulk-discount-btn" type="button"></button>
+      <button id="bulk-delete-btn" type="button"></button>
     </div>
     <div id="bulk-upload-panel" hidden></div>
     <table id="products-table"><tbody id="products-tbody">
@@ -84,6 +88,10 @@ const label = (): string => document.getElementById('bulk-edit-label')!.textCont
 const uploadBtn = (): HTMLButtonElement => document.getElementById('bulk-upload-btn') as HTMLButtonElement;
 const panel = (): HTMLElement => document.getElementById('bulk-upload-panel')!;
 const selectAll = (): HTMLInputElement => document.querySelector<HTMLInputElement>('.bulk-select-all')!;
+/** The floating action bar. One class carries both its position and its `visibility`, so the
+ *  question "is it on screen" is the question "does it have `is-on`" — see dashboard.css. */
+const bar = (): HTMLElement => document.getElementById('bulk-bar')!;
+const barShown = (): boolean => bar().classList.contains('is-on');
 
 function tick(id: string, on = true): void {
   const box = chk(id);
@@ -106,7 +114,7 @@ const openFromRowMenu = (id: string): void => {
  * the code by accident and disagrees with the seller is the failure being guarded.
  */
 function labelMatchesEffect(): void {
-  if (editBtn().hidden) return;
+  if (!barShown() || editBtn().hidden) return;
   const before = openIds();
   const said = label();
   press(editBtn());
@@ -200,7 +208,7 @@ describe('partial selections, and taking them back', () => {
     tick('p1'); tick('p2');
     press(editBtn());
     tick('p1', false); tick('p2', false);
-    expect(editBtn().hidden).toBe(true);
+    expect(barShown()).toBe(false);
     // Nothing closed them, and nothing should have: the toolbar acts on a selection that no longer
     // exists. Both rows keep their own "ביטול".
     expect(openIds()).toEqual(['p1', 'p2']);
@@ -210,7 +218,7 @@ describe('partial selections, and taking them back', () => {
     tick('p1');
     press(editBtn());
     tick('p1', false);
-    expect(editBtn().hidden).toBe(true);
+    expect(barShown()).toBe(false);
     tick('p1');
     // Re-derived from live row state, never from what the label was when it was last hidden.
     expect(label()).toBe('סגור עריכה');
@@ -248,7 +256,7 @@ describe('mixed states — some of the selection open, some not', () => {
     press(editBtn());
     expect(openIds()).toEqual(IDS);
     tickAll(false);
-    expect(editBtn().hidden).toBe(true);
+    expect(barShown()).toBe(false);
     // Unticking is not a statement about editing — the rows stay open, each with its own "ביטול".
     expect(openIds()).toEqual(IDS);
   });
@@ -300,8 +308,8 @@ describe('a rebuild in the middle of all that', () => {
     pageItems = [];
     await applyPagination();
     expect(openIds()).toEqual([]);
-    // And the toolbar does not sit there claiming a selection over a table with no rows in it.
-    expect(editBtn().hidden).toBe(true);
+    // And the bar does not sit there claiming a selection over a table with no rows in it.
+    expect(barShown()).toBe(false);
   });
 });
 
@@ -310,6 +318,9 @@ describe('the image panel, which takes products out of the toolbar\'s hands', ()
     tick('p1'); tick('p2');
     press(uploadBtn());
     expect(panel().hidden).toBe(false);
+    // The bar stays up — it is describing the frozen panel selection — and the three actions that
+    // would act on a list the seller can no longer correct are the ones taken away.
+    expect(barShown()).toBe(true);
     expect([editBtn().hidden, document.getElementById('bulk-delete-btn')!.hidden]).toEqual([true, true]);
     expect([chk('p1').disabled, chk('p3').disabled]).toEqual([true, true]);
   });

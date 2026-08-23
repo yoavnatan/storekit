@@ -21,6 +21,7 @@ import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree } from './category-tree-cache.js';
 import { NO_CATEGORY_TOKEN } from '../../lib/seller-products-query.js';
 import { armSelectAll, clearBulkSelection, disarmSelectAll, isSelectAllArmed, onBulkSelectionChange, selectedRowIds, setBulkSelected, syncBulkSelectionToRows } from './bulk-selection.js';
+import { compactCount, isCompacted } from '../../lib/format-count.js';
 import { initCategoryPicker } from './category-picker.js';
 import { initInfoTooltips } from '../tooltip.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
@@ -1771,9 +1772,9 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="num product-price price-col group cursor-text ${INLINE_EDIT_HINT}">${fmtPrice(p.price)}</td>
     <td class="num product-stock stock-col group cursor-text ${STOCK_CELL_GROUP}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total class="${stockEditHint(!!p.variants?.length)}">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
-      ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${p.wishlistCount}</span>`
+      ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"${isCompacted(p.wishlistCount ?? 0) ? ` title="${p.wishlistCount}"` : ''}><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${compactCount(p.wishlistCount ?? 0)}</span>`
       : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem"><span class="purchased-col-label">${esc(i.colPurchased ?? 'Purchased')}: </span>${(p.purchasedCount ?? 0) > 0 ? String(p.purchasedCount) : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem"><span class="purchased-col-label">${esc(i.colPurchased ?? 'Purchased')}: </span>${(p.purchasedCount ?? 0) > 0 ? `<span${isCompacted(p.purchasedCount ?? 0) ? ` title="${p.purchasedCount}"` : ''}>${compactCount(p.purchasedCount ?? 0)}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="date-col"><span class="date-col-label">${esc(i.colDateAddedShort ?? 'Added')}: </span>${esc(fmtDateAdded(p.createdAt))}</td>
     <td class="seo-col">${productSeoRowGaugeHtml(productSeoInputFrom(p), productSeoLabels(i))}</td>
     <td class="actions actions-col">
@@ -3954,7 +3955,6 @@ export function initStockBreakdowns(): void {
 
 export function initBulkSelect(cloud: string, preset: string): void {
   const uploadPanel    = document.getElementById('bulk-upload-panel') as HTMLElement | null;
-  const header         = document.querySelector<HTMLElement>('.products-header');
   // Two physical checkboxes share the same job: the table-header one (desktop,
   // where the column header row is visible) and a toolbar one that only shows
   // once the mobile breakpoint collapses the table to cards and hides that
@@ -3962,8 +3962,11 @@ export function initBulkSelect(cloud: string, preset: string): void {
   // mobile. Kept in sync as a pair everywhere below instead of a single el.
   const selectAllChks  = Array.from(document.querySelectorAll<HTMLInputElement>('.bulk-select-all'));
   const bulkCountEl    = document.getElementById('bulk-count') as HTMLElement | null;
-  const bulkCountBadge = document.getElementById('bulk-count-badge') as HTMLElement | null;
-  const bulkCountParen = document.getElementById('bulk-count-paren') as HTMLElement | null;
+  // The floating action bar (BulkActionBar.astro). It holds the count and all four selection
+  // buttons, so ONE element decides whether the whole set is on screen — the per-button
+  // `hidden = empty` lines this replaced were four copies of one question.
+  const bulkBar        = document.getElementById('bulk-bar') as HTMLElement | null;
+  const bulkClearBtn   = document.getElementById('bulk-clear') as HTMLButtonElement | null;
   const bulkDeleteBtn  = document.getElementById('bulk-delete-btn') as HTMLButtonElement | null;
   const bulkUploadBtn  = document.getElementById('bulk-upload-btn') as HTMLButtonElement | null;
   const bulkUploadLabel = document.getElementById('bulk-upload-label') as HTMLElement | null;
@@ -3979,8 +3982,6 @@ export function initBulkSelect(cloud: string, preset: string): void {
   function getCheckboxes(): HTMLInputElement[] {
     return Array.from(document.querySelectorAll<HTMLInputElement>('[data-bulk-check]'));
   }
-
-  const bulkSep = document.getElementById('bulk-sep') as HTMLElement | null;
 
   /**
    * **The image panel is a snapshot, so while it is open the selection it was built from is
@@ -4086,19 +4087,22 @@ export function initBulkSelect(cloud: string, preset: string): void {
     const count = locked ? panelProductIds().length : selectedRowIds().length;
     const empty = count === 0;
     if (bulkCountEl) bulkCountEl.textContent = String(count);
-    if (bulkCountBadge) bulkCountBadge.hidden = empty;
-    if (bulkCountParen) bulkCountParen.textContent = empty ? '' : `(${count})`;
     selectAllChks.forEach((chk) => {
       chk.setAttribute('aria-label', empty
         ? (i.bulkSelectAll ?? 'בחר הכל')
         : `${i.bulkSelectAll ?? 'בחר הכל'} — ${count} ${i.bulkSelected ?? 'נבחרו'}`);
     });
-    if (bulkDeleteBtn) bulkDeleteBtn.hidden = empty;
-    if (bulkUploadBtn) bulkUploadBtn.hidden = empty;
-    if (bulkEditBtn) bulkEditBtn.hidden = empty;
-    if (bulkDiscountBtn) bulkDiscountBtn.hidden = empty;
-    if (bulkSep) bulkSep.hidden = empty;
-    header?.classList.toggle('products-header--selecting', !empty);
+    // One class, and the stylesheet does the rest — the slide, and the `visibility` that takes the
+    // bar out of the Tab order once it has finished sliding (dashboard.css says why that is not
+    // the `hidden` attribute).
+    bulkBar?.classList.toggle('is-on', !empty);
+    // Back on, unconditionally, and `applyImagePanelLock` below takes them off again if the image
+    // panel is holding a frozen selection. They used to be reset by the same `hidden = empty` line
+    // that showed them; with the bar owning that question, this is the line that says "the lock is
+    // the only thing that hides these", and without it a panel close left three dead buttons.
+    if (bulkDeleteBtn) bulkDeleteBtn.hidden = false;
+    if (bulkEditBtn) bulkEditBtn.hidden = false;
+    if (bulkDiscountBtn) bulkDiscountBtn.hidden = false;
     // `!locked` is redundant while `count` reads the panel (an open panel is never empty), and it
     // stays as the statement that this branch is about a selection the seller cleared — never
     // about a panel that is open and holding work.
@@ -4141,6 +4145,16 @@ export function initBulkSelect(cloud: string, preset: string): void {
      */
     refreshBulkEditLabel();
   }
+
+  // The bar's own way out. It matters more here than it did in the toolbar: the selection can now
+  // be several screens above whatever the seller is looking at, so "untick them all" has to be
+  // reachable from the bar rather than only from the checkbox at the top of the table.
+  bulkClearBtn?.addEventListener('click', () => {
+    clearBulkSelection();
+    disarmSelectAll();
+    syncBulkSelectionToRows();
+    updateBar();
+  });
 
   // A re-render of the table (filter/sort/search/page) re-ticks the rows from
   // the shared selection — the count and action buttons here have to follow.

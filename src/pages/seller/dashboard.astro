@@ -26,6 +26,8 @@ import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import DashNavDrawer from '../../components/dashboard/DashNavDrawer.astro';
 import DashRailFoot from '../../components/dashboard/DashRailFoot.astro';
 import DashRailToggle from '../../components/dashboard/DashRailToggle.astro';
+import BulkActionBar from '../../components/dashboard/BulkActionBar.astro';
+import { compactCount, isCompacted } from '../../lib/format-count.js';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
@@ -1379,32 +1381,15 @@ const orderStatusColors: Record<string, string> = {
 
         <div>
           <div class="products-header">
+            {/* The count and the four selection buttons that used to live in this row are in the
+                floating bar at the foot of the screen now (BulkActionBar.astro). What is left is
+                what is always here — a title and three permanent actions — so this row keeps one
+                shape whatever is ticked. */}
             <div class="products-header__title">
               <input type="checkbox" id="bulk-select-all-mobile" class="bulk-select-all bulk-select-all--mobile cursor-pointer disabled:cursor-not-allowed disabled:opacity-40" aria-label={d.bulkSelectAll} style="width:15px;height:15px;flex-shrink:0">
-              <span class="bulk-count-paren" id="bulk-count-paren" aria-hidden="true"></span>
               <h2>{d.productsTitle}</h2>
-              <span class="bulk-count-badge" id="bulk-count-badge" hidden>
-                <strong id="bulk-count">0</strong> {d.bulkSelected}
-              </span>
             </div>
             <div class="products-header__actions">
-              <button id="bulk-edit-btn" type="button" class="btn btn--sm bulk-btn" hidden aria-label={d.bulkEdit}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                <span id="bulk-edit-label" class="bulk-btn__label" aria-hidden="true">{d.bulkEdit}</span>
-              </button>
-              <button id="bulk-upload-btn" type="button" class="btn btn--sm bulk-btn" hidden aria-label={d.bulkUploadImages}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                <span id="bulk-upload-label" class="bulk-btn__label" aria-hidden="true">{d.bulkUploadImages}</span>
-              </button>
-              <button id="bulk-discount-btn" type="button" class="btn btn--sm bulk-btn" hidden aria-label={d.bulkDiscountTitle}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-                <span class="bulk-btn__label" aria-hidden="true">{d.bulkDiscount}</span>
-              </button>
-              <button id="bulk-delete-btn" type="button" class="btn btn--sm btn--danger bulk-btn !bg-[color:var(--color-danger)] hover:opacity-90" hidden aria-label={d.bulkDelete}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                <span class="bulk-btn__label" aria-hidden="true">{d.bulkDelete}</span>
-              </button>
-              <span class="products-header__sep" id="bulk-sep" aria-hidden="true" hidden></span>
               {/* Primary action first; the two panel-toggles follow it and go icon-only on mobile
                   (see dashboard.css mobile block) so the strip stays compact when nothing's selected. */}
               <button class="btn btn--sm add-product-btn" id="toggle-add-form" aria-label={d.addProduct}>
@@ -1763,6 +1748,11 @@ const orderStatusColors: Record<string, string> = {
           {/* Bulk image upload panel */}
           <div id="bulk-upload-panel" class="bulk-upload-panel border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden></div>
 
+          {/* `position: fixed`, so where it is rendered decides nothing about where it appears —
+              only that it is inside the products panel, which is what the panel loader replaces and
+              `initBulkSelect` re-binds. */}
+          <BulkActionBar />
+
           {/* A MODAL, not an inline strip: setting a discount for a batch is its own decision, and
               inline it sat next to the row-edit form and the selection checkboxes — three things
               editing the same products at once, with no signal about which one you were in.
@@ -2040,18 +2030,25 @@ const orderStatusColors: Record<string, string> = {
                         )}
                       </span>
                     </td>
+                    {/* Shortened to at most five characters so the column can be a width that is
+                        provably enough — `compactCount`'s header says why that is the point, and
+                        why stock is deliberately not in this list. The exact figure is the
+                        element's `title`, never lost. Both renderers of this row call the same
+                        function (memory `project_client_renderer_i18n_drift`). */}
                     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">
                       {(wishlistCounts[p.slug] ?? 0) > 0
-                        ? <span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)">
+                        ? <span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)" title={isCompacted(wishlistCounts[p.slug] ?? 0) ? String(wishlistCounts[p.slug]) : undefined}>
                             <svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                            {wishlistCounts[p.slug]}
+                            {compactCount(wishlistCounts[p.slug] ?? 0)}
                           </span>
                         : <span style="color:var(--color-border)">—</span>
                       }
                     </td>
                     <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem">
                       <span class="purchased-col-label">{d.colPurchased}: </span>
-                      {(purchasedCounts[p.id] ?? 0) > 0 ? purchasedCounts[p.id] : <span style="color:var(--color-border)">—</span>}
+                      {(purchasedCounts[p.id] ?? 0) > 0
+                        ? <span title={isCompacted(purchasedCounts[p.id] ?? 0) ? String(purchasedCounts[p.id]) : undefined}>{compactCount(purchasedCounts[p.id] ?? 0)}</span>
+                        : <span style="color:var(--color-border)">—</span>}
                     </td>
                     <td class="date-col"><span class="date-col-label">{d.colDateAddedShort}: </span>{fmtDateAdded(p.createdAt)}</td>
                     {/* Same coordinates in every row, desktop and card alike — see productSeoRowGaugeHtml. */}

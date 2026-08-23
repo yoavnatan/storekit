@@ -53,31 +53,116 @@ textarea.input { resize: none; }
 
 .add-product-btn__icon { display: inline-flex; flex-shrink: 0; }
 
-.products-header__sep {
+/* ══ The floating action bar (BulkActionBar.astro) ══
+   It rises from the foot of the screen when rows are ticked and carries the count and the four
+   things that can be done with them. Owner, 2026-08-23:
+   *"סרגל פעולות צף… במקום שהכפתורים בראש הדף יתחלפו."*
+
+   **Centred over the CONTENT, not over the viewport.** The rail occupies `--dash-rail-w` of the
+   start side above 1180px, and a bar centred on the window would sit visibly off-centre under the
+   table it belongs to. Insetting the fixed box by the rail's own width and then `margin-inline:
+   auto` inside it means one number decides both, and below the breakpoint the `0px` fallback makes
+   the same rule the whole viewport with nothing to special-case.
+
+   It is the clearest case in this design of something that genuinely floats — nothing is behind it,
+   the page passes under it — so it takes a shadow, where the header and the filter row do not
+   (elevation rule, base/tokens.css). */
+.bulk-bar {
+  position: fixed;
+  z-index: 45;
+  bottom: 1.1rem;
+  inset-inline-start: var(--dash-rail-w, 0px);
+  inset-inline-end: 0;
+  width: max-content;
+  max-width: calc(100vw - 1.5rem);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sheet);
+  /* The rest state is DOWN, and `is-on` is what lifts it — so the bar rises rather than appears.
+     The spring is the site's own (base/tokens.css micro-interaction rules); `translateY` only, no
+     fade, because a bar that fades in over a table reads as a rendering glitch on the first frame.
+
+     **`visibility`, not the `hidden` attribute, and it is the cart drawer's recipe verbatim**
+     (components/cart-drawer.css). A bar that is merely off-screen is still in the Tab order and
+     still read aloud, so something has to take it out of both — and `hidden` cannot, because
+     removing it and adding the class in the same frame leaves the transition no start state to
+     animate from, while restoring it on the way out has to wait for the slide and therefore needs
+     a timer that the selection can change under. `visibility` does the whole job in CSS: it flips
+     with no delay on the way in, and is delayed by exactly the slide on the way out. The JS is
+     then one class toggle with nothing to get wrong. */
+  visibility: hidden;
+  transform: translateY(calc(100% + 1.5rem));
+  transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1), visibility 0s 0.26s;
+}
+.bulk-bar.is-on {
+  visibility: visible;
+  transform: translateY(0);
+  transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1), visibility 0s;
+}
+
+.bulk-bar__count {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  padding-inline-end: 0.15rem;
+}
+.bulk-bar__count strong { font-weight: 700; }
+
+.bulk-bar__sep {
   width: 1px;
-  height: 1.15rem;
-  align-self: center; /* keep the fixed-height divider centred in the stretched row */
+  align-self: stretch;
+  margin-block: 0.15rem;
   background: var(--color-border);
   flex-shrink: 0;
-  margin-inline: 0.1rem;
 }
 
-.bulk-count-badge {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  padding: 0.15rem 0.5rem;
-  border-radius: 2rem;
-  white-space: nowrap;
+/* Dismissal sits FIRST, before the count it dismisses — the one control here that undoes rather
+   than does, kept away from the four that act. */
+.bulk-bar__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.15s;
+}
+.bulk-bar__clear:hover { background: var(--color-bg); color: var(--color-text); }
+
+/* A phone has no room for four labelled buttons in one row. The icons stay, and every one of them
+   already carries its own `aria-label` — which is why the label spans are `aria-hidden` and this
+   costs nothing but the words. */
+@media (max-width: 640px) {
+  .bulk-bar {
+    inset-inline: 0.5rem;
+    width: auto;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  .bulk-bar .bulk-btn__label { display: none; }
+  .bulk-bar .bulk-btn svg { width: 16px; height: 16px; }
 }
 
-.bulk-count-paren {
-  display: none;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--color-primary);
-  margin-inline-start: -0.35rem;
+/* A `prefers-reduced-motion` reader asked for no travel, not for no bar. */
+@media (prefers-reduced-motion: reduce) {
+  /* No travel, but the visibility handoff stays — without it the bar would still be in the Tab
+     order while off screen, which is the half of this that is not decoration. */
+  .bulk-bar { transition: visibility 0s 0.26s; }
+  .bulk-bar.is-on { transition: visibility 0s; }
 }
 
 /* ── Category chip in product row (.product-cat-chip) converted to Tailwind
@@ -148,13 +233,6 @@ textarea.input { resize: none; }
   }
   .products-header__actions::-webkit-scrollbar { display: none; }
   .products-header__actions > * { flex-shrink: 0; }
-  /* Intermediate/tablet — step 1 of the compaction: while selecting, only the three
-     ALWAYS-present buttons (add, CSV, sync) drop their labels. That reclaims enough room
-     for the bulk-action buttons (edit/upload/delete) to keep their text here, where clarity
-     on a destructive action matters most. Those compact only at the mobile step below. */
-  .products-header--selecting #toggle-add-form .add-product-btn__label,
-  .products-header--selecting #toggle-csv-panel .bulk-btn__label,
-  .products-header--selecting #toggle-feed-panel .bulk-btn__label { display: none; }
 }
 
 /* The same rules, asked of the TABLE's width instead of the page's — see `.prod-cq` above.
@@ -162,8 +240,18 @@ textarea.input { resize: none; }
    LABELS, and that row is already a horizontal scroller, so it has no width to run out of. */
 @container prodtable (max-width: 999px) {
   .products-table { table-layout: fixed; }
-  .products-table td { padding-inline: 0.4rem; padding-block: 0.6rem; }
-  .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.4rem; }
+  /* **`.prod-cq` is here to WIN, not to scope** (found 2026-08-23, while measuring the columns).
+     The base rule is `.products-table td { padding: 0.75rem }` and it sits several hundred lines
+     BELOW this block. Same specificity, later in the source — so this `padding-inline` has been
+     losing to it since the day it was written, and every width in this block was reasoning about
+     0.4rem of cell padding while the browser applied 0.75rem. That is ~120px across thirteen
+     columns, on the range that has the least width to spare; a container query adds no specificity
+     of its own, so nothing about the `@container` wrapper ever made this rule stronger.
+     The extra class does. It scopes nothing new — the container IS `.prod-cq`, so anything this
+     block can match is already inside it — it just outranks the base rule the way this block
+     always assumed it did. */
+  .prod-cq .products-table td { padding-inline: 0.4rem; padding-block: 0.6rem; }
+  .prod-cq .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.4rem; }
   /* The sort chevron (.sort-icon) has flex-shrink:0 (see base rule) so it
      never gets squeezed — meaning when the button itself doesn't fit, 100%
      of the deficit lands on .sort-btn__label, crushing even short labels
@@ -184,12 +272,24 @@ textarea.input { resize: none; }
      (name 16.5 / cat 10) and reverted the same day: the chip went to "ד…", and a category that
      cannot be read is not a narrower column, it is a missing one. The room comes from .seo-col
      below instead, which is sized to its gauge rather than to its heading. */
-  .products-table .name-col      { width: 13%; }
+  /* 21%, up from 13 — and the 8 points are not taken from anywhere, they were never being used.
+     With the cell padding actually applying (see `.prod-cq` above, which had been silently losing
+     to the base rule), every other column in this block ended up carrying 8–24px more than its
+     content asks for: 103px of slack in total, on the range where the product NAME was down to
+     nine characters and an ellipsis. Each column below is now set to what it measured as needing
+     and the name takes the remainder, which is the same discipline the wide block uses. */
+  .products-table .name-col      { width: 20.3%; }
   /* +1% over the long-standing 13.5, taken from date-col below (12% still clears "01/08/26" and
      the heading was already ellipsizing). The gauge column costs this range ~54px, and at 13.5 the
      category chip had gone from just-fitting to clipped — which is a category you cannot read. */
-  .products-table .cat-col       { width: 14.5%; }
-  .products-table .sku-col       { width: 9%; }
+  .products-table .cat-col       { width: 12.5%; }
+  /* Fixed here too, and for the reason the wide block gives: a SKU's longest form is known, and a
+     percentage re-decides at every width whether it fits. At 9% of a 982px table it was 88px
+     against 128 needed, so a 14-character code came back as nine and a dash — the failure he
+     described as invisible today only because the demo's codes are short. The 27px comes from
+     `price` and `date`, both of which were carrying more than their content asked for at this
+     width (measured: 38px and 15px of slack). */
+  .products-table .sku-col       { width: 7.3rem; }
   /* Price and stock are both `.num` (nowrap) and start-aligned, so in RTL a price
      too wide for its column bleeds LEFT, over the stock number sitting flush
      against its edge — 10% couldn't hold "1,234.50 ₪". Price takes 3% more: 1.5%
@@ -197,11 +297,11 @@ textarea.input { resize: none; }
      number moves toward the heart without the heart moving or shrinking) and 1.5%
      from cat-col, the one neighbour whose chip wraps instead of overflowing.
      Budget stays at 89% so every untouched column keeps its share. */
-  .products-table .price-col     { width: 13%; }
-  .products-table .stock-col     { width: 9.5%; }
-  .products-table .wishlist-col  { width: 6%; }
-  .products-table .purchased-col { width: 8%; }
-  .products-table .date-col      { width: 12%; }
+  .products-table .price-col     { width: 9.2%; }
+  .products-table .stock-col     { width: 8.2%; }
+  .products-table .wishlist-col  { width: 5.7%; }
+  .products-table .purchased-col { width: 5.3%; }
+  .products-table .date-col      { width: 9.3%; }
   /* Fixed width, not a %, for the third time in this block and the same reason as .check-col and
      .thumb-col above: the kebab button is a fixed 1.75rem, and its hover state paints a FULL
      circle of that size. Under `table-layout: fixed` a 4% column drops to ~15rem*0.04 at the
@@ -209,7 +309,7 @@ textarea.input { resize: none; }
      over the neighbouring column and the table's own edge, visible only on hover, which is when
      the background appears. Sized to the button plus this block's 0.4rem cell padding on both
      sides (1.75 + 0.8 = 2.55). The 4% it gives back is absorbed by the percentage columns. */
-  .products-table .seo-col       { width: 2.3rem; padding-inline: 0.15rem; }
+  .products-table .seo-col       { width: 2.45rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 2.6rem; }
   .products-table .name-col .product-name {
     white-space: nowrap;
@@ -242,39 +342,72 @@ textarea.input { resize: none; }
 @container prodtable (min-width: 1000px) {
   .products-table { table-layout: fixed; }
   .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* ══ Every column is sized for its own worst reasonable content, measured ══
+     Owner, 2026-08-23, with the numbers: five columns could not hold theirs, and the table only
+     looked intact because `.num` cells are `nowrap` and simply bleed into the neighbour's padding
+     — *"זה לא נראה שבור היום רק כי תאי .num הם nowrap והמספר גולש לריפוד של השכן, וכי המק"טים
+     בדמו קצרים."*
+
+     The method, so it can be repeated rather than re-argued: clone the header row and one body row
+     into a `table-layout: auto` table off-screen, write the worst reasonable value into each cell,
+     and read back the width the browser gives the column — which is `max(heading, cell)` with every
+     real chip, chevron and icon in it. Measured at a 1110px table (1440px viewport, rail open):
+
+       column      was    needs
+       row-num    36.8     57.5   ← a 4-digit ordinal
+       sku        70.9    127.6   ← a 14-character SKU
+       cat       114.6    130.8   ← a two-level path
+       wishlist   39.3     57.8   ← five characters and a heart
+       stock     103.7     91.9   ← five digits and the variants chevron (fits; his 103 counted
+                                     the sort chevron, which this block hides)
+
+     Two levers, both of which he named, and a third that fell out of doing it properly.
+
+     **1. Padding, in the narrow columns only.** A cell pays 0.75rem on each side, and thirteen
+     columns of that is 312px — 28% of the table — spent on air. Where the content is a number or a
+     short token, most of that air is doing nothing: `.seo-col` already ran at 0.15rem and nobody
+     ever called it cramped. Cutting it where it is not read gives 68px back to where it is.
+
+     **2. A count over 999 is shortened** (`lib/format-count.ts`) — but only where the number is
+     read and never typed. Stock is edited in place from its own text, so it keeps its digits; its
+     column is paid for out of padding instead. That file's header has the whole rule.
+
+     **3. Bounded content gets a FIXED width, not a percentage.** A SKU, a date, a purchase count
+     and an ordinal have a longest form that is known; a percentage of a table whose width is not
+     known re-opens the question at every viewport, which is how `sku` came to be 6.5% and 57px
+     short. Only the four columns that genuinely stretch — name, category, price, stock — are
+     shares, and they are the four that can ellipsize without losing a word. */
   /* The select-all must never be clipped — same exception, same reason, as the tablet block. */
-  .products-table .check-col     { width: 2.4rem; overflow: visible; }
-  /* Sized for a 4-digit row number: the counter runs across pages (page × size + index),
-     so a large catalogue reaches four digits long before it runs out of products.
-     2.3rem, down from 3 (owner, 2026-08-23: *"המספר סידורי וכן הלייקים לוקחים הרבה יותר ממה שהם
-     צריכים"* — and he was right about both). Four digits at this size measure ~30px; 3rem was
-     48px, i.e. 18px of a heading's worth spent on the column that carries the least. */
-  .products-table .row-num       { width: 2.3rem; }
+  .products-table .check-col     { width: 2.5rem; overflow: visible; }
+  /* A 4-digit ordinal at 14.9px measures 33.5px, and this column is nothing but that number: at
+     0.75rem of padding a side it was carrying 12.8px of room for it. Same 0.15rem as `.seo-col`,
+     for the same reason — there is no text here for a gutter to separate. */
+  .products-table .row-num       { width: 2.4rem; padding-inline: 0.15rem; }
   /* 42px thumbnail + this block's 0.75rem cell padding on both sides. */
   .products-table .thumb-col     { width: 4.2rem; }
-  /* The shares are set so no column ends up NARROWER than the width `table-layout: auto` was
-     giving it on the demo catalogue — the point is to bound the table, not to squeeze it. The
-     slack that buys `name` its extra room comes from `stock` and `cat`, whose content is a short
-     number and a chip that wraps; `date` and `purchased` keep the width their headings already
-     needed ("נוסף בתאריך" ellipsizes below ~113px). */
-  /* 20.8%, down from 22 — the 1.2% goes to `purchased` below, whose "נרכשו" plus its sort chevron
-     did not fit 7% at any width and was rendering as "נרכ…" on a 1440px screen. The name is
-     ellipsised by design and is the only column here that can give without losing a word. */
-  .products-table .name-col      { width: 20.8%; }
-  .products-table .sku-col       { width: 6.5%; }
-  .products-table .cat-col       { width: 10.5%; }
+  /* The one column that is allowed to lose words, so it takes whatever the others do not need.
+     The name is ellipsised by design and the full string is one click away — the cell opens an
+     input carrying all of it. */
+  .products-table .name-col      { width: 21.2%; }
+  /* Fixed, and sized for 14 characters: a SKU is the seller's own code and does not grow with the
+     catalogue. At 6.5% it was 70.9px against 127.6 needed — the largest deficit in the table, and
+     invisible on a demo whose SKUs are four characters. */
+  .products-table .sku-col       { width: 7.4rem; padding-inline: 0.4rem; }
+  .products-table .cat-col       { width: 11.1%; padding-inline: 0.5rem; }
   /* Price and stock are `.num` (nowrap) and start-aligned, so in RTL an overlong value
      bleeds LEFT over its neighbour instead of wrapping. Both are sized for the widest
-     realistic string ("1,234.50 ₪"), not the demo catalogue's two-digit prices. */
-  .products-table .price-col     { width: 9.5%; }
-  .products-table .stock-col     { width: 9.5%; }
-  /* Its heading is a heart and a sort chevron, ~28px, and its cell is a heart and at most three
-     digits — the narrowest real content in the table, and it was holding 52px. The 0.9% it gives
-     back goes to `date`, whose "נוסף בתאריך" is the longest heading here and the first to clip. */
-  .products-table .wishlist-col  { width: 3.6%; }
-  .products-table .purchased-col { width: 8.2%; }
-  .products-table .date-col      { width: 11.4%; }
-  .products-table .seo-col       { width: 2.5rem; padding-inline: 0.15rem; }
+     realistic string ("1,234.50 ₪" / five digits and the variants chevron), not the demo
+     catalogue's two-digit numbers. */
+  .products-table .price-col     { width: 8.2%; padding-inline: 0.5rem; }
+  .products-table .stock-col     { width: 8.3%; padding-inline: 0.5rem; }
+  /* Five characters and an 11px heart. `compactCount` is what makes "five" a ceiling rather than a
+     guess — without it this column is sized for however many people happen to like a product. */
+  .products-table .wishlist-col  { width: 2.8rem; padding-inline: 0.15rem; }
+  .products-table .purchased-col { width: 4.3rem; padding-inline: 0.4rem; }
+  /* "נוסף בתאריך" is the longest heading in this table and the first thing to clip; the cell under
+     it is a fixed-format date. Both are bounded, so this is a number and not a share. */
+  .products-table .date-col      { width: 6.6rem; padding-inline: 0.4rem; }
+  .products-table .seo-col       { width: 2rem; padding-inline: 0.15rem; }
   .products-table .actions-col   { width: 3.4rem; }
   /* One line + "…", not a wrap: rows stay a uniform height, and the full name is one click
      away — the cell is click-to-edit and opens an input carrying the whole string. */
@@ -1030,8 +1163,6 @@ textarea.input { resize: none; }
 
   /* Selected-count: full "X נבחרו" badge is too wide for mobile — show a
      compact "(N)" right next to the select-all checkbox instead. */
-  .bulk-count-badge { display: none; }
-  .bulk-count-paren { display: inline; }
   .bulk-select-all--mobile { display: inline-block; }
   .dash-head { padding-inline: 0.65rem; padding-top: 0.85rem; }
   /* #dash-main-card prefix bumps specificity: .dash-tabs/.dash-panel have
@@ -1082,10 +1213,6 @@ textarea.input { resize: none; }
   /* Mobile — step 2 of the compaction: while selecting, the bulk-action buttons
      (edit/upload/delete) now join add/CSV/sync as icon-only, with bigger tap targets, so
      the whole six-button strip fits one line at phone widths. */
-  .products-header--selecting .add-product-btn__label,
-  .products-header--selecting .bulk-btn__label { display: none; }
-  .products-header--selecting .bulk-btn svg,
-  .products-header--selecting .add-product-btn svg { width: 17px; height: 17px; }
 
   /* Table → block list */
   .products-table          { display: block; }

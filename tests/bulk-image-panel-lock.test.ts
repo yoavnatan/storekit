@@ -62,13 +62,17 @@ function renderTab(productIds: string[]): void {
     <div id="upload-config" data-store-id="s1"></div>
     <div class="products-header">
       <input type="checkbox" class="bulk-select-all">
-      <span id="bulk-count-badge" hidden><span id="bulk-count">0</span></span>
-      <span id="bulk-sep" hidden></span>
-      <button id="bulk-delete-btn" hidden type="button"></button>
-      <button id="bulk-edit-btn" hidden type="button"><span id="bulk-edit-label"></span></button>
-      <button id="bulk-discount-btn" hidden type="button"></button>
-      <button id="bulk-upload-btn" hidden type="button"><span id="bulk-upload-label"></span></button>
-      <span id="bulk-count-paren"></span>
+    </div>
+    <!-- The four selection buttons are in the floating bar (BulkActionBar.astro), and none of them
+         carries a hidden attribute in the markup: the BAR is what appears with a selection, so
+         hidden on a BUTTON now means one thing only, which is what this file is about - the image
+         panel has taken that action away. -->
+    <div id="bulk-bar" class="bulk-bar">
+      <span id="bulk-count">0</span>
+      <button id="bulk-delete-btn" type="button"></button>
+      <button id="bulk-edit-btn" type="button"><span id="bulk-edit-label"></span></button>
+      <button id="bulk-discount-btn" type="button"></button>
+      <button id="bulk-upload-btn" type="button"><span id="bulk-upload-label"></span></button>
     </div>
     <div id="bulk-upload-panel" hidden></div>
     <table><tbody id="products-tbody">

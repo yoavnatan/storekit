@@ -662,6 +662,10 @@ export const translations = {
       deleteProductMsg: 'יימחק לצמיתות.',
       outOfStock: 'אזל מהמלאי',
       bulkSelected: 'נבחרו',
+      /** The floating action bar (BulkActionBar.astro) — a group name for a screen reader, which
+       *  otherwise meets five controls with no idea what they act on. */
+      bulkBarLabel: 'פעולות על המוצרים שנבחרו',
+      bulkClear: 'בטל בחירה',
       bulkSelectAll: 'בחר הכל',
       bulkDelete: 'מחק',
       bulkEdit: 'ערוך',
@@ -2690,6 +2694,8 @@ export const translations = {
       deleteProductMsg: 'will be permanently deleted.',
       outOfStock: 'Out of stock',
       bulkSelected: 'selected',
+      bulkBarLabel: 'Actions on the selected products',
+      bulkClear: 'Clear selection',
       bulkSelectAll: 'Select all',
       bulkDelete: 'Delete',
       bulkEdit: 'Edit',
