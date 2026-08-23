@@ -14,6 +14,7 @@ import { buyerReturnCta, inStoreReturnAddress } from '../../lib/return-buyer-cta
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
+import CsrfField from '../../components/CsrfField.astro';
 import { cdnThumb } from '../../lib/cdn.js';
 import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
 import { groupBuyerPurchases, countBuyerPurchases } from '../../lib/buyer-purchases.js';
@@ -226,6 +227,10 @@ const STORES_NAMED = 2;
     }
     .my-content-wrap { padding-bottom: 4rem; }
 
+    /* Desktop keeps the ordinary page footer, so this is the phone's only — see the markup note.
+       Hidden rather than not rendered: one element, two widths, and no second code path. */
+    .my-side-foot { display: none; }
+
     /* ── The seam at the top of the scroll ──
        This page rests 2rem under the site header and then, on the first pixel of scroll, hands
        that 2rem back: a card's rounded top corner and its heading pass under the header's line and
@@ -340,6 +345,39 @@ const STORES_NAMED = 2;
          has to come from somewhere, and taking it from the same element keeps one number instead
          of two that must agree. */
       .my-content-wrap { padding-bottom: 3rem; }
+
+      .my-side-foot {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.15rem 0.7rem;
+        margin-top: 1rem;
+        padding: 0.75rem 0.15rem 0.25rem;
+        border-top: 1px solid var(--color-border);
+        font-size: 0.75rem;
+        line-height: 1.9;
+      }
+      .my-side-foot a,
+      .my-side-foot .lang-toggle-btn {
+        color: var(--color-muted);
+        text-decoration: none;
+        font-size: inherit;
+        transition: color 0.15s;
+      }
+      .my-side-foot a:hover,
+      .my-side-foot .lang-toggle-btn:hover { color: var(--color-text); }
+      .my-side-foot .lang-toggle-form { display: inline-flex; }
+      .my-side-foot .lang-toggle-btn {
+        padding: 0;
+        border: 0;
+        background: none;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      /* The page's own footer goes with it — one footer per page, wherever it is. `:has` on the
+         root so this stays inside THIS page's stylesheet rather than reaching into the global one
+         for a rule that is true of one route. */
+      html:has(.my-page) .site-footer { display: none; }
       /* No separation to mask at this width: the topbar dock is opaque, spans the full width and
          is pinned to the header, so nothing is ever seen sliding into it. Two answers to one
          problem is how the second one drifts. */
@@ -954,6 +992,32 @@ const STORES_NAMED = 2;
           <span class="my-nav-label">{t.buyerDashboard.tabProfile}</span>
         </button>
       </nav>
+
+      {/* ── The site links, at the foot of the drawer ──
+          Owner, 2026-08-23: *"תסיר את הפוטר לתפריט צד במובייל."* On a phone this page is one long
+          list and the page's own footer is at the end of it — reachable only after every order.
+          The drawer is one tap from anywhere, so on a phone the links live here and the page
+          footer goes (the CSS below drops it at the same breakpoint, so there is never two).
+          Above 768px nothing changes: the sidebar is a short column beside the content, the page
+          ends where the eye already is, and the ordinary footer is the right answer.
+          The same four the seller's rail carries, plus the returns policy — the one a buyer is
+          most likely to want, and the reason he asked after it on the other dashboard. */}
+      <div class="my-side-foot">
+        <a href="/terms">{t.footer.terms}</a>
+        <a href="/returns-policy">{t.footer.returns}</a>
+        <a href="/contact">{t.footer.contact}</a>
+        {/* `#report` so this lands ON the form rather than at the top of the same page the line
+            above it goes to — two links that arrive identically are one link and a mistake. */}
+        <a href="/contact?report=fault#report">{t.dashboard.navReportFault}</a>
+        {/* data-native-submit: `/api/lang` answers 303 and only a full navigation re-renders the
+            page in the other language, so nothing may intercept this as an AJAX form. */}
+        <form method="POST" action={`/api/lang?l=${lang === 'he' ? 'en' : 'he'}`} class="lang-toggle-form" data-native-submit>
+          <CsrfField />
+          <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
+            {t.nav.switchLang}
+          </button>
+        </form>
+      </div>
     </aside>
     </div>
 

@@ -2175,7 +2175,15 @@ html:has(#dash-main-card.dash-nav-side) {
    travel the title would have. Written as `:has()` rather than a list of panel names: the next
    panel to grow a sticky title joins the set the day it does. `.products-header` is not a direct
    child — the products panel wraps its toolbar and table in a div — hence two selectors. */
+/* Three shapes, because three panels put their title one level down and it is still the first
+   thing in them (owner, 2026-08-23: *"בחלק מהלשוניות הכותרת לא צמודה לחלק העליון של הקונטיינר"* —
+   measured, Reports and Payouts, which wrap everything in a `#*-root`, and Products, which wraps
+   its toolbar and table together). The middle selector is the general form of that: the panel's
+   first child's first child.
+   What must NOT match is a title that has something before it — Settings has a form above its
+   section header, and Overview has no title at all; both keep the padding their content needs. */
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-panel-head:first-child),
+#dash-main-card.dash-nav-side > .dash-panel:has(> :first-child > .dash-panel-head:first-child),
 #dash-main-card.dash-nav-side > .dash-panel:has(.products-header) { padding-top: 0; }
 /* ══ THE PINNED TITLE *IS* THE TOP OF THE SHEET ══
    Owner, 2026-08-23, after the fade came out and left the sheet's own top edge scrolling away with
@@ -2322,13 +2330,24 @@ html:has(#dash-main-card.dash-nav-side) {
    were spent on. The buyer's dashboard keeps its own (`.my-page::before`), and the difference is
    the whole point: nothing is pinned there. */
 
-/* **The hydration bar stops taking a row.** It is a 2px `.progress-track` saying the panel's JS has
-   not landed yet, and it sits above the panel in the DOM — so below 1180px it pushed every pinned
-   title down by exactly 2px, which is 2px of travel a title that should not move (measured: rest
-   69.39 against a pinned 67.39). The desktop grid already solved this by giving it the panel's own
-   cell; this is the same answer in a flex column. `margin-bottom: -2px` and not `position:
-   absolute`: it has no positioned ancestor to hang from, and it still has to paint. */
-#dash-main-card.dash-nav-side > #dash-hydrating-bar { margin-bottom: -2px; }
+/* ── The hydration bar goes under the site header, where a loading line belongs ──
+   It is a 2px `.progress-track` saying the panel's JS has not landed yet, and it sits above the
+   panel in the DOM. Two things came of that. It pushed every pinned title down by exactly 2px —
+   2px of travel a title that must not move — and pulling it back with `margin-bottom: -2px` fixed
+   the travel by painting the bar ON the title's own top border instead: for the second or two a
+   tab takes to wire up, the sheet's top edge was being wiped by a moving stripe (owner,
+   2026-08-23: *"הבורדר למעלה מחוק, זה כאילו עולה על גבי הבורדר הקיים"*).
+   `position: fixed` answers both at once and is also where every browser, and most of the web, puts a
+   progress line: a hairline directly under the top bar, spanning it, owned by nothing below.
+   `z-index: 8` clears the grey strip (5), the pinned title (6) and the rail (7) — it is the one
+   thing that should be visible over all of them — and staying out of flow means the element can go
+   on living in the DOM after loading, which is what stops every panel shifting 2px when it does. */
+#dash-main-card.dash-nav-side > #dash-hydrating-bar {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--site-header-h, 3.4rem);
+  z-index: 8;
+}
 
 #dash-main-card.dash-nav-side .dash-tabs {
   flex-direction: column;
@@ -2536,7 +2555,6 @@ html:has(#dash-main-card.dash-nav-side) {
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
   }
-  #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-column: 2; grid-row: 1; }
 
 
 
