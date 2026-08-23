@@ -709,7 +709,14 @@ export const translations = {
       // Names the NUMBER, because "חלק נכשלו" leaves the seller counting rows by hand. The ones
       // that failed stay selected, so pressing delete again retries exactly them.
       bulkDeleteFailed: '{n} מוצרים לא נמחקו. הם עדיין מסומנים — נסו שוב.',
-      csvImportExport: 'ייבוא/ייצוא CSV',
+      // NAMED FOR WHAT THE SELLER IS DOING, NOT FOR THE FILE FORMAT (owner, 2026-08-23). It read
+      // "ייבוא/ייצוא CSV", which names a format and a pair of verbs a developer uses; the owner
+      // saw "העלאה מרוכזת" on a rendering and called it the smart part, believing it was a
+      // feature we did not have. It was — this button, the whole time. That is the cost of a
+      // format name on an entry point: the seller who needs it does not recognise it as the
+      // thing he needs. "וייצוא" stays on the end because the panel is also the ONLY way to
+      // download the catalogue, and a name that hid that would trade one lost feature for another.
+      csvImportExport: 'העלאה מרוכזת וייצוא',
       csvExport: 'ייצוא קטלוג (CSV)',
       csvTemplate: 'הורד תבנית לדוגמה',
       csvImportLead: 'עדכון או הוספת מספר מוצרים בבת אחת, דרך קובץ Excel/Sheets:',
@@ -2729,7 +2736,7 @@ export const translations = {
       bulkDeleteMsg: 'Selected products will be permanently deleted.',
       bulkDeleted: 'Products deleted.',
       bulkDeleteFailed: '{n} products were not deleted. They are still selected — try again.',
-      csvImportExport: 'CSV Import/Export',
+      csvImportExport: 'Bulk upload & export',
       csvExport: 'Export catalog (CSV)',
       csvTemplate: 'Download sample template',
       csvImportLead: 'Update or add several products at once, via an Excel/Sheets file:',
