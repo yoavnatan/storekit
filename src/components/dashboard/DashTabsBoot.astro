@@ -155,7 +155,7 @@
     window.__dashTabRestore();
     document.addEventListener('DOMContentLoaded', restoreSoon);
     window.addEventListener('load', restoreSoon);
-    // A tab's width changes when Heebo swaps in (main.css), which moves every tab
+    // A tab's width changes when the interface face swaps in (main.css), which moves every tab
     // after it — a strip placed against fallback metrics is placed against the
     // wrong ones.
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(restoreSoon);

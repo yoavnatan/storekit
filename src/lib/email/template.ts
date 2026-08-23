@@ -57,7 +57,7 @@ export function renderEmailShell({ previewText, heading, bodyHtml }: EmailShellI
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(previewText)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${COLORS.bg};padding:24px 12px;">
 <tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:${COLORS.surface};border:1px solid ${COLORS.border};border-radius:14px;overflow:hidden;font-family:'Heebo',Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:${COLORS.surface};border:1px solid ${COLORS.border};border-radius:14px;overflow:hidden;font-family:'Noto Sans Hebrew',Arial,sans-serif;">
 <tr><td style="background:${COLORS.brand};padding:16px 28px;text-align:right;">
 <a href="${esc(store.url)}" style="text-decoration:none;"><img src="${esc(new URL('/logo-email.png', store.url).href)}" alt="${esc(store.name)}" width="260" height="74" style="display:block;border:0;outline:none;text-decoration:none;color:${COLORS.surface};font-size:22px;font-weight:800;"></a>
 </td></tr>

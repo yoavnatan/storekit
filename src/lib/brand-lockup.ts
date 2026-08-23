@@ -59,7 +59,7 @@ export const INK_HEIGHT_EM = 0.742;
  *  gives every letter its own full ramp and reads as pieces stuck together. */
 export const GRADIENT = { from: '#2a3c40', to: '#3a5260', x1: 0, y1: 0, x2: 3807, y2: 742 };
 
-/** The second line, which is still live Heebo text because it follows the
+/** The second line, which is still live text in the interface face because it follows the
  *  visitor's language.
  *
  *  It is CENTRED under the wordmark now, not flush with it — so there is no

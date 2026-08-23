@@ -186,7 +186,12 @@
   --color-invite-olive: #5c6b2f;
   --color-invite-rose: #b8195c;
 
-  --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
+  /* The interface face, and `main.css` carries why it is this one. It is VARIABLE, so its
+     @font-face declares a RANGE (100–900) rather than a set of cuts — and a weight outside
+     a variable range is clamped SILENTLY rather than refused, which is why nothing here may
+     ask for one. tests/font-preload.test.ts reads that range off main.css and holds every
+     file under src/ to it. */
+  --font-base: 'Noto Sans Hebrew', system-ui, -apple-system, sans-serif;
 
   /* The display face. It IS the base face, and that is the decision rather than a
      placeholder: a serif was tried here for store names on 2026-08-09 and reverted

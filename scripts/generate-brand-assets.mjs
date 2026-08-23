@@ -39,7 +39,11 @@ import { translations } from '../src/i18n/translations.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const OUT = resolve(ROOT, 'public');
-const FONTS = resolve(ROOT, 'node_modules/@fontsource');
+const FONTS = resolve(ROOT, 'node_modules/@fontsource-variable');
+/** The interface face, as `main.css` declares it. It has to be the same NAME and the same
+ *  FILES the site ships, or the mail header's Hebrew line drifts from the site's — which is
+ *  the one thing this generator exists to prevent. */
+const FACE = 'Noto Sans Hebrew';
 
 /** The site's brand gradient — the one `.btn` wears. Kept in one place here too. */
 const BRAND_A = '#2a3c40';
@@ -59,18 +63,20 @@ const b64 = (p) => readFileSync(p).toString('base64');
  * the one thing it could not check for you. It now draws the same paths from
  * `src/lib/brand-lockup.ts` that the component draws, so a stale mail header is
  * no longer possible: there is one drawing, and this only decides how big and on
- * what ground. The only face still needed is Heebo, for the Hebrew line.
+ * what ground. The only face still needed is the site's own, for the Hebrew line.
  */
 function page({ size, tone, tagline, background, lang = 'he' }) {
   const w = TAGLINE.weight;
-  const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-${w}-normal.woff2`);
-  const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-${w}-normal.woff2`);
+  // One VARIABLE file per script, carrying the whole 100–900 range, so this no longer has
+  // to name a weight in a filename — `w` is applied by `.tag` below and the face follows it.
+  const faceHebrew = b64(`${FONTS}/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-wght-normal.woff2`);
+  const faceLatin = b64(`${FONTS}/noto-sans-hebrew/files/noto-sans-hebrew-latin-wght-normal.woff2`);
   const paint = tone === 'white' ? '#fff' : 'url(#g)';
   const isHe = lang === 'he';
   const track = isHe ? TAGLINE.trackEm.he : TAGLINE.trackEm.en;
   return `<!doctype html><meta charset="utf-8"><style>
-    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:${w};unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;}
-    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2');font-weight:${w};}
+    @font-face{font-family:'${FACE}';src:url(data:font/woff2;base64,${faceHebrew}) format('woff2-variations');font-weight:100 900;unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;}
+    @font-face{font-family:'${FACE}';src:url(data:font/woff2;base64,${faceLatin}) format('woff2-variations');font-weight:100 900;}
     html,body{margin:0;height:100%}
     body{background:${background};display:flex;align-items:center;justify-content:center}
     .logo{display:inline-flex;flex-direction:column;align-items:center;row-gap:${TAGLINE.gapEm}em;font-size:${size}px}
@@ -78,7 +84,7 @@ function page({ size, tone, tagline, background, lang = 'he' }) {
     /* The negative end margin is the trailing letter-space taken back: without
        it the centred line sits half a tracking unit off its own axis. Same fix,
        same reason, as in BrandLogo.astro. */
-    .tag{font-family:'Heebo';font-weight:${w};font-size:${TAGLINE.sizeEm}em;line-height:1;
+    .tag{font-family:'${FACE}';font-weight:${w};font-size:${TAGLINE.sizeEm}em;line-height:1;
          direction:${isHe ? 'rtl' : 'ltr'};letter-spacing:${track}em;margin-inline-end:${-track}em;
          white-space:nowrap;color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
@@ -135,8 +141,8 @@ async function shot(html, { width, height, scale = 1, file, transparent = false,
   // the face by name.
   // The lockup pages render the Hebrew line as live text; the SVG pages below
   // carry outlines and ask for no face at all, so waiting on one would hang.
-  if (html.includes("font-family:'Heebo'")) {
-    await p.waitForFunction(`document.fonts.check("${TAGLINE.weight} 12px Heebo", "ק")`);
+  if (html.includes(`font-family:'${FACE}'`)) {
+    await p.waitForFunction(`document.fonts.check("${TAGLINE.weight} 12px '${FACE}'", "ק")`);
   }
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(

@@ -75,3 +75,72 @@ describe('font-face / preload parity', () => {
     expect(faces.filter((f) => f.display !== 'optional')).toEqual([]);
   });
 });
+
+/**
+ * NOTHING MAY ASK FOR A WEIGHT THE FACE DOES NOT HAVE.
+ *
+ * The site ran on Heebo until 2026-08-23, which shipped 100–900 as ten separate static
+ * cuts: a weight was either declared or it was not, and a missing one was visible. The
+ * face is VARIABLE now, which declares a RANGE — and a variable range does not fail an
+ * out-of-range request, CSS font matching CLAMPS it. Ask a 400–700 family for 800 and it
+ * paints exactly 700 while the stylesheet still says 800, and nothing anywhere reports
+ * it: not the browser, not the build, not a screenshot diff, because 700 is a perfectly
+ * reasonable-looking weight. Same shape as the `font-display: optional` trap above — a
+ * rule that plainly did not do what it said, on a page that looked fine.
+ *
+ * This is not hypothetical. Google Sans was the pick for about an hour that same day and
+ * stops at 700; the twenty rules that sit at 800 here (prices, stat numbers, the header's
+ * store name) were all rewritten to 700 for it, and all restored when the pick moved to
+ * Noto Sans Hebrew, which covers 100–900. The next family will not necessarily.
+ *
+ * The bounds are read from main.css rather than typed, so a swap moves this test with it
+ * instead of leaving a stale pair of numbers behind.
+ */
+describe('font-weight range', () => {
+  const css = read('src/styles/main.css');
+
+  /** `font-weight: 100 900` in a variable @font-face — the range the site actually ships. */
+  const range = /@font-face[^}]*font-weight:\s*(\d{3})\s+(\d{3})/.exec(css);
+  const [min, max] = range ? [Number(range[1]), Number(range[2])] : [400, 700];
+
+  /** Tailwind's named weights, which are as much a declaration as a CSS number is. */
+  const NAMED: Record<string, number> = {
+    thin: 100, extralight: 200, light: 300, normal: 400,
+    medium: 500, semibold: 600, bold: 700, extrabold: 800, black: 900,
+  };
+
+  const files: string[] = [];
+  (function walk(dir: string): void {
+    for (const e of fs.readdirSync(path.join(process.cwd(), dir), { withFileTypes: true })) {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(rel);
+      else if (/\.(css|astro|ts|tsx|js|mjs|html)$/.test(e.name)) files.push(rel);
+    }
+  })('src');
+
+  const offenders: string[] = [];
+  for (const rel of files) {
+    const text = read(rel);
+    for (const m of text.matchAll(/font-weight\s*[:=]\s*["']?(\d{3})\b/g)) {
+      const w = Number(m[1]);
+      if (w < min || w > max) offenders.push(`${rel}: font-weight ${w}`);
+    }
+    for (const m of text.matchAll(/\bfont-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)\b/g)) {
+      const w = NAMED[m[1]];
+      if (w < min || w > max) offenders.push(`${rel}: font-${m[1]} (${w})`);
+    }
+    for (const m of text.matchAll(/\bfont-\[(\d{3})\]/g)) {
+      const w = Number(m[1]);
+      if (w < min || w > max) offenders.push(`${rel}: font-[${w}]`);
+    }
+  }
+
+  it('reads the shipped range off the @font-face rules (guards against this test going blind)', () => {
+    expect(range, 'no variable font-weight range found in main.css').not.toBeNull();
+    expect(files.length).toBeGreaterThan(50);
+  });
+
+  it("asks for nothing outside the face's own range", () => {
+    expect(offenders).toEqual([]);
+  });
+});

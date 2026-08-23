@@ -368,10 +368,21 @@ describe('the second line is small, centred, and tracked by language', () => {
   });
 
   it('is set at a weight main.css already ships', () => {
-    // The line is LIVE TEXT — it follows the visitor's language — so a weight the
-    // site does not already carry is two more font files (latin + hebrew) on
-    // every page for one line on two of them.
-    expect(read('src/styles/main.css')).toContain(`font-weight: ${TAGLINE.weight};`);
+    // The line is LIVE TEXT — it follows the visitor's language — so a weight the site
+    // does not already carry costs two more font files (latin + hebrew) on every page
+    // for one line that renders on two of them.
+    //
+    // Since 2026-08-23 the face is VARIABLE, so main.css declares a RANGE rather than a
+    // list of cuts, and the check has to move with it: "is it one of the weights shipped"
+    // became "is it inside the range shipped". That is not a weaker test — it is a
+    // stricter one, because a variable range CLAMPS an out-of-range request instead of
+    // failing it, so a weight outside it would render silently wrong rather than
+    // obviously wrong. tests/font-preload.test.ts holds the whole site to the same range.
+    const css = read('src/styles/main.css');
+    const range = /@font-face[^}]*font-weight:\s*(\d{3})\s+(\d{3})/.exec(css);
+    expect(range, 'main.css declares no variable font-weight range').not.toBeNull();
+    expect(TAGLINE.weight).toBeGreaterThanOrEqual(Number(range![1]));
+    expect(TAGLINE.weight).toBeLessThanOrEqual(Number(range![2]));
   });
 
   it('takes the trailing letter-space back on BOTH renderers', () => {
@@ -414,17 +425,43 @@ describe('the second line is small, centred, and tracked by language', () => {
 });
 
 describe('the fonts the generator reads are in the repo', () => {
-  it('keeps both faces and their licence, so the lockup can be rebuilt offline', () => {
-    // Neither face is shipped to browsers — the letters are outlines — but both
-    // have to be here for `npm run brand:wordmark` to redraw them, and the OFL
-    // requires the licence to travel with them.
-    for (const f of ['LibreFranklin-ExtraBold.ttf', 'Heebo-Variable.ttf', 'OFL.txt'])
+  it('keeps every face the generator reads, and their licence, so the lockup can be rebuilt offline', () => {
+    // The wordmark's face is never shipped to browsers — the letters are outlines. The
+    // tagline's is, and it is here as well for a second reason: `npm run brand:wordmark`
+    // OUTLINES the slogan into the poster lockups, and opentype.js cannot read woff2, so
+    // it needs a .ttf of the same face. The OFL requires the licence to travel with all
+    // of them.
+    for (const f of [
+      'LibreFranklin-ExtraBold.ttf',
+      'NotoSansHebrew-Variable-Hebrew.ttf',
+      'NotoSansHebrew-Variable-Latin.ttf',
+      'OFL.txt',
+    ])
       expect(fs.existsSync(path.join(ROOT, 'assets/brand-fonts', f)), f).toBe(true);
+  });
+
+  it('outlines the slogan from the SAME binary the browser paints it in', () => {
+    /**
+     * The whole class of lockup bug this file exists to stop: a poster measured against
+     * one face while the page renders another. It shipped twice in August, both times
+     * because the two sides were allowed to disagree.
+     *
+     * The two .ttf files above are `node_modules/@fontsource-variable/noto-sans-hebrew`'s own
+     * woff2 files, decompressed — same glyphs, same advances, no re-drawing. This pins
+     * the two ends of that: the generator reads those files, and main.css declares the
+     * matching family. If the dependency is bumped, re-decompress; if the family is
+     * swapped again, both ends move together or this fails.
+     */
+    const gen = read('scripts/generate-wordmark.mjs');
+    expect(gen).toContain('NotoSansHebrew-Variable-Hebrew.ttf');
+    expect(gen).toContain('NotoSansHebrew-Variable-Latin.ttf');
+    expect(read('src/styles/main.css')).toContain("font-family: 'Noto Sans Hebrew'");
   });
 
   it('names every face it carries in the licence file', () => {
     const ofl = read('assets/brand-fonts/OFL.txt');
-    for (const name of ['Libre Franklin', 'Heebo', 'Chakra Petch']) expect(ofl).toContain(name);
+    for (const name of ['Libre Franklin', 'Noto Sans Hebrew', 'Heebo', 'Chakra Petch'])
+      expect(ofl).toContain(name);
   });
 
   it('does not ship Libre Franklin as a webfont', () => {
