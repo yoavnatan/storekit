@@ -303,4 +303,43 @@ describe('there is one pager, not one per tab', () => {
     expect(files).toContain('src/scripts/dashboard/orders.ts');
     expect(files).toContain('src/scripts/dashboard/messages.ts');
   });
+
+  /**
+   * A tab's fetch gate must exist before the tab can be asked to apply an intent.
+   *
+   * `onPanelIntent(panel, apply)` DRAINS a waiting intent synchronously (`panel-intent.ts`), so the
+   * applier can run on the very line that registers it — while the rest of the init function is
+   * still executing. The orders tab declared `const ordersFetchGate = createFetchGate()` twenty-odd
+   * lines BELOW that registration, and the applier re-fetches the list, so following a return chip
+   * into an orders panel that had not been opened yet threw
+   * `Cannot access 'ordersFetchGate' before initialization` **inside the applier**: the search box
+   * was filled in, the list was never re-fetched, and the seller read a query over the wrong rows
+   * with nothing on screen saying so. It only ever happened on the FIRST visit to the tab, which is
+   * why it lived through every later press working perfectly.
+   *
+   * Position in the file is the whole rule, so position is what this checks.
+   */
+  it('declares every fetch gate before the intent that can use it', () => {
+    const offenders: string[] = [];
+    let examined = 0;
+    for (const f of files) {
+      const src = readFileSync(join(process.cwd(), f), 'utf8');
+      // Anchored to the start of a line, so the prose above each of these — which names both — is
+      // not mistaken for a call. Comments explaining a rule must not be able to break it.
+      const intent = /^\s*onPanelIntent\(/m.exec(src)?.index;
+      if (intent === undefined) continue;
+      examined++;
+      for (const m of src.matchAll(/^\s*(?:const|let)\s+\w+\s*=\s*createFetchGate\(\)/gm)) {
+        if (m.index! > intent) offenders.push(`${f}: a fetch gate is declared after onPanelIntent()`);
+      }
+    }
+    // Guards the guard: if the call ever stops matching, the loop above skips every file and this
+    // passes while checking nothing — the same way the bug survived every later press working.
+    expect(examined, 'no file matched onPanelIntent() — the scan checked nothing').toBeGreaterThan(2);
+    expect(
+      offenders,
+      'onPanelIntent drains a waiting intent synchronously, so anything the applier touches must\n'
+      + 'already be initialised. Move the gate to module scope, as products.ts and orders.ts do.',
+    ).toEqual([]);
+  });
 });

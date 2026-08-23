@@ -42,6 +42,19 @@ function orderItemThumbHtml(image: string): string {
   return `<span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" data-skeleton><img src="${esc(cdnThumb(image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover"></span>`;
 }
 
+/**
+ * This tab's in-flight request — see `list-pager.ts#createFetchGate` for the fast-paging bug it
+ * closes. Module scope, like `products.ts`'s, and that is a FIX rather than a tidy-up: it used to be
+ * a `const` in the middle of `initOrdersTab`, below the `onPanelIntent('orders', …)` registration —
+ * and that call DRAINS a waiting intent synchronously (`panel-intent.ts`), i.e. before the `const`
+ * has been initialised. So following a return chip from the returns tab into an orders panel that
+ * had not been opened yet threw `Cannot access 'ordersFetchGate' before initialization` inside the
+ * applier: the search box was filled in and the list was never re-fetched, so the seller was shown
+ * a query over the wrong rows with nothing on screen saying so. Only reachable on the FIRST visit to
+ * the tab, which is why it survived — every later press works.
+ */
+const ordersFetchGate = createFetchGate();
+
 export function initOrdersTab(onAlertsChanged: () => void): void {
   // i18n for the whole tab — FIRST, above every function that reads it. The
   // file already learned this once: a declaration further down put bindOrderCard
@@ -1074,7 +1087,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     openOrdersFilterColumns(ordersFilterTrigger);
   });
 
-  const ordersFetchGate = createFetchGate();
   // ── Orders: server-fetched page/search/sort/filter (AJAX) ───────────
   // Same reasoning as Products' applyPagination() — search/sort/filter now
   // run server-side (seller-orders-query.ts), so a change re-fetches the
