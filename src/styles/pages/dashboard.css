@@ -381,29 +381,51 @@ textarea.input { resize: none; }
    nearly twice what they can ever show, while the two columns a seller actually READS had no
    spare at all and had begun to ellipsise.
 
-   Rebalanced against that table rather than by eye. The number columns keep a real margin — a
-   price can reach ₪50,000 and a stock count five digits plus its variants chevron, and the demo
-   catalogue shows neither, so these are sized for the worst case and not for what is on screen
-   today. SEO and the kebab give back the padding that made them sit apart, which is the gap he
-   saw; both still clear their contents (21px gauge, 28px button) at the narrowest table this
-   layout reaches. */
-/* A PRICE AND A DATE GET A FLOOR, NOT A SHARE — their worst case does not scale with the
-   table. "₪ 149,900.00" is 95px whatever the window is doing, and a truncated price is not a
-   layout compromise, it is a number a seller cannot read. Same for a four-digit year. Measured
-   against real worst-case values rather than the demo catalogue, which has no SKUs, three-digit
-   stock and four-digit prices and so hid every one of these shortfalls (CURRENT_TASK asked for
-   exactly this check: "with a long SKU and big numbers, not with the demo").
-   The percentage columns take what is left, which is what a share is for: they hold text that
-   ellipsises by design and has a tooltip behind it. */
-.products-table .price-col     { width: 6.6rem; }
-.products-table .date-col      { width: 6.8rem; }
-.products-table .stock-col     { width: 4.6rem; }
-.products-table .purchased-col { width: 4.2rem; }
-.products-table .wishlist-col  { width: 4rem; }
+   SEO and the kebab gave back the padding that made them sit apart, which is the gap he saw; both
+   still clear their contents (21px gauge, 28px button) at the narrowest table this layout reaches.
+   The number columns were rebalanced here too, and that first attempt is the one the block below
+   replaces — widening them by hand against this table is what later left the name and the category
+   with nothing. Keep the measurement, not the numbers. */
+/* A NUMBER COLUMN IS A FLOOR THAT GROWS INTO A WIDE SCREEN; A TEXT COLUMN IS A SHARE.
+   Both halves of that were tried alone first, and each failed in its own direction.
 
-.products-table .name-col      { width: 46%; }
+   Fixed rem alone was here until 2026-08-23. A fixed width does not shrink, so as the table
+   narrowed the five number columns kept every pixel and the three percentage columns absorbed the
+   entire squeeze — at a narrow enough window the name and the category were down to nothing
+   (owner: *"ברוחב מסויים פשוט לא רואים את השם ואת הקטגוריה בכלל"*). It was worse than it had to be
+   because the widths were roughly twice their content: the date held 109px to show 57px of date
+   (*"התאריך לא יכול להיות יותר ארוך ממה שהוא, לא צריך את כל המקום הזה"*).
+
+   Percentages alone, tried next, fix the collapse and break the other end: shares scale together so
+   nothing reaches zero, but a share cannot promise a number FITS, and `formatPrice` can emit
+   "149,900.50 ₪" — 108px whatever the window is doing. An ellipsis in a product name still reads;
+   an ellipsis in a price is a number the seller cannot recover.
+
+   So: `clamp(floor, <n>vw, ceiling)`. The floor is what the typical value needs, the ceiling is
+   what the widest string the renderer can produce needs, and the vw term walks between them — a
+   wide screen shows the whole price, a narrow one keeps the column at its floor and the name and
+   category divide what is left. **vw, not a percentage of the table**: the side rail hands its
+   column back when it collapses, so the table gets WIDER as the window narrows and anything keyed
+   to the table's own width swaps back and forth (that is the 52-jump history above); the viewport
+   only ever moves one way.
+
+   Ceilings are measured against what the RENDERERS emit, never against invented values — the demo
+   catalogue has no SKUs, three-digit stock and four-digit prices, and hid every one of these
+   shortfalls. The date is deliberately NOT a clamp: `toLocaleDateString('he-IL', 2-digit×3)` emits
+   "31.12.26" and nothing else, so its worst case is its typical one and a wide screen has nothing
+   to give it. Likes and purchases go through `compactCount`, capped at five characters ("999.9K").
+
+   Nothing draws over a neighbour in any of this — the cell rule above clips and ellipsises, so a
+   value that outgrows its column shows "…" inside it. `tests/products-table-containment.test.ts`
+   holds the whole shape. */
+.products-table .name-col      { width: 52%; }
 .products-table .sku-col       { width: 20%; }
-.products-table .cat-col       { width: 34%; }
+.products-table .cat-col       { width: 28%; }
+.products-table .price-col     { width: clamp(3.6rem, 6.8vw, 6.8rem); }
+.products-table .stock-col     { width: clamp(3.9rem, 6vw, 5.2rem); }
+.products-table .wishlist-col  { width: clamp(2.2rem, 3.7vw, 3.7rem); }
+.products-table .purchased-col { width: clamp(2.9rem, 4.9vw, 4.3rem); }
+.products-table .date-col      { width: 4.2rem; }
 
 .products-table .name-col .product-name {
   white-space: nowrap;

@@ -41,19 +41,52 @@ describe('products table cells contain their own content', () => {
     expect(css).toMatch(/\.check-col\s*\{[^}]*overflow:\s*visible/);
   });
 
-  it('gives the columns whose worst case does not scale a fixed floor', () => {
+  it('gives every number column a floor in rem, and lets it grow into a wide screen', () => {
     /**
-     * A price and a date have a hard worst case — "₪ 149,900.00" is 95px whatever the window does —
-     * so a percentage cannot promise they fit, and a truncated price is a number a seller cannot
-     * read. Measured against what the RENDERER emits, not against invented values: likes and
-     * purchases go through `compactCount`, which caps at five characters ("999.9K"), so those two
-     * are correctly narrow and sizing them for "54,321" would have been sizing for a string the
-     * code cannot produce.
+     * A price and a date have a hard worst case that does not scale with the window — `formatPrice`
+     * can emit "149,900.50 ₪" and that is 108px whatever the viewport does — so a bare percentage
+     * cannot promise they fit. But a bare rem cannot either, in the other direction: the previous
+     * widths were roughly twice their content (the date held 109px to show 57px of date) and, being
+     * fixed, they kept every pixel as the table narrowed until the name and the category had none
+     * left — owner: *"ברוחב מסויים פשוט לא רואים את השם ואת הקטגוריה בכלל"*.
+     *
+     * So each is `clamp(floor, <n>vw, ceiling)`: the floor is what the typical value needs, the
+     * ceiling is what the worst case needs, and the vw term walks between them. **vw and not a
+     * percentage of the table** — the table gets WIDER as the window narrows past the rail's
+     * collapse, so anything keyed to the table's own width oscillates (see
+     * `products-table-states`); the viewport only ever moves one way.
+     *
+     * The date is the exception and stays a plain rem: `toLocaleDateString('he-IL', 2-digit×3)`
+     * emits "31.12.26" and nothing else, so its worst case IS its typical one and there is nothing
+     * for a wide screen to give it. Likes and purchases go through `compactCount`, capped at five
+     * characters ("999.9K") — sizing them for "54,321" would be sizing for a string the code cannot
+     * produce.
      */
-    for (const col of ['price-col', 'date-col', 'stock-col']) {
-      const m = new RegExp(`\\.products-table \\.${col}\\s*\\{\\s*width:\\s*([\\d.]+)(rem|%)`).exec(css);
+    for (const col of ['price-col', 'date-col', 'stock-col', 'wishlist-col', 'purchased-col']) {
+      const m = new RegExp(`\\.products-table \\.${col}\\s*\\{\\s*width:\\s*([^;]+);`).exec(css);
       expect(m, `${col} has no width`).not.toBeNull();
-      expect(m![2], `${col} must have a floor in rem, not a share that shrinks under its content`).toBe('rem');
+      const width = m![1].trim();
+      const floor = /^clamp\(\s*([\d.]+)rem\s*,\s*([\d.]+)vw\s*,\s*([\d.]+)rem\s*\)$/.exec(width);
+      if (floor) {
+        expect(Number(floor[1]), `${col}'s ceiling must be above its floor`).toBeLessThan(Number(floor[3]));
+      } else {
+        expect(width, `${col} must be a rem floor or a clamp(rem, vw, rem), never a bare share`).toMatch(/^[\d.]+rem$/);
+      }
     }
+  });
+
+  it('leaves the arbitrary-length columns as shares, so they take whatever is left', () => {
+    /**
+     * A product name, a SKU and a category path have no worst case to size for — they are as long
+     * as the seller made them. They are the columns that SHOULD absorb the squeeze, because an
+     * ellipsis in a name still reads and a clipped price does not. Percentages summing to 100%
+     * across the three of them is what makes the leftover divide instead of one of them collapsing.
+     */
+    const shares = ['name-col', 'sku-col', 'cat-col'].map((col) => {
+      const m = new RegExp(`\\.products-table \\.${col}\\s*\\{\\s*width:\\s*([\\d.]+)%`).exec(css);
+      expect(m, `${col} must be a share`).not.toBeNull();
+      return Number(m![1]);
+    });
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(100);
   });
 });
