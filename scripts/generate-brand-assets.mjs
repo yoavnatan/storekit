@@ -39,7 +39,7 @@ import { translations } from '../src/i18n/translations.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const OUT = resolve(ROOT, 'public');
-const FONTS = resolve(ROOT, 'node_modules/@fontsource');
+const FONTS = resolve(ROOT, 'node_modules/@fontsource-variable');
 
 /** The site's brand gradient — the one `.btn` wears. Kept in one place here too. */
 const BRAND_A = '#2a3c40';
@@ -63,14 +63,14 @@ const b64 = (p) => readFileSync(p).toString('base64');
  */
 function page({ size, tone, tagline, background, lang = 'he' }) {
   const w = TAGLINE.weight;
-  const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-${w}-normal.woff2`);
-  const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-${w}-normal.woff2`);
+  const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-wght-normal.woff2`);
+  const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-wght-normal.woff2`);
   const paint = tone === 'white' ? '#fff' : 'url(#g)';
   const isHe = lang === 'he';
   const track = isHe ? TAGLINE.trackEm.he : TAGLINE.trackEm.en;
   return `<!doctype html><meta charset="utf-8"><style>
-    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:${w};unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;}
-    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2');font-weight:${w};}
+    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2-variations');font-weight:100 900;unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;}
+    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2-variations');font-weight:100 900;}
     html,body{margin:0;height:100%}
     body{background:${background};display:flex;align-items:center;justify-content:center}
     .logo{display:inline-flex;flex-direction:column;align-items:center;row-gap:${TAGLINE.gapEm}em;font-size:${size}px}

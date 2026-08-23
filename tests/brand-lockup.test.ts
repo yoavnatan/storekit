@@ -368,10 +368,23 @@ describe('the second line is small, centred, and tracked by language', () => {
   });
 
   it('is set at a weight main.css already ships', () => {
-    // The line is LIVE TEXT — it follows the visitor's language — so a weight the
-    // site does not already carry is two more font files (latin + hebrew) on
-    // every page for one line on two of them.
-    expect(read('src/styles/main.css')).toContain(`font-weight: ${TAGLINE.weight};`);
+    /**
+     * The line is LIVE TEXT — it follows the visitor's language — so a weight the site
+     * does not carry is a font file it would have to fetch for one line on two pages.
+     *
+     * The face went VARIABLE on 2026-08-23 (one file per script for the whole 100–900
+     * range instead of ten static cuts), so main.css declares a RANGE and "is this one of
+     * the weights shipped" became "is this inside the range shipped". Weaker-looking and
+     * actually stricter: a variable range CLAMPS an out-of-range request instead of
+     * refusing it, so a weight outside it would render silently wrong rather than
+     * obviously missing. Read off the rules rather than typed, so the next change to the
+     * range moves this with it.
+     */
+    const css = read('src/styles/main.css');
+    const range = /@font-face[^}]*font-weight:\s*(\d{3})\s+(\d{3})/.exec(css);
+    expect(range, 'main.css declares no variable font-weight range').not.toBeNull();
+    expect(TAGLINE.weight).toBeGreaterThanOrEqual(Number(range![1]));
+    expect(TAGLINE.weight).toBeLessThanOrEqual(Number(range![2]));
   });
 
   it('takes the trailing letter-space back on BOTH renderers', () => {

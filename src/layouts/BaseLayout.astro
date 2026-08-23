@@ -19,18 +19,13 @@ import { getSellerSession } from '../lib/seller-auth.js';
 import { CSRF_META, issueCsrfToken } from '../lib/csrf.js';
 import { getUnreadCountForUser } from '../lib/notifications.js';
 import { storeIconUrl } from '../lib/store-image.js';
-import heebo400HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-400-normal.woff2?url';
-import heebo500HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-500-normal.woff2?url';
-import heebo600HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-600-normal.woff2?url';
-import heebo700HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-700-normal.woff2?url';
-import heebo800HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-800-normal.woff2?url';
-import heebo400LatinUrl from '@fontsource/heebo/files/heebo-latin-400-normal.woff2?url';
-import heebo500LatinUrl from '@fontsource/heebo/files/heebo-latin-500-normal.woff2?url';
-import heebo600LatinUrl from '@fontsource/heebo/files/heebo-latin-600-normal.woff2?url';
-import heebo700LatinUrl from '@fontsource/heebo/files/heebo-latin-700-normal.woff2?url';
-import heebo800LatinUrl from '@fontsource/heebo/files/heebo-latin-800-normal.woff2?url';
-// The logo's Hebrew line is Heebo too (BrandLogo.astro), already covered by the
-// five Hebrew weights above — it needs nothing of its own.
+import heeboHebrewUrl from '@fontsource-variable/heebo/files/heebo-hebrew-wght-normal.woff2?url';
+import heeboLatinUrl from '@fontsource-variable/heebo/files/heebo-latin-wght-normal.woff2?url';
+// Two files, not ten: these are the VARIABLE cuts, one per script, each carrying the whole
+// 100–900 range. Same face as the ten static cuts they replace — measured identical on
+// ascent, descent and letter height, ink within 0.03% — so this is a payload change and
+// nothing else. The logo's Hebrew line is Heebo too (BrandLogo.astro) and is covered here;
+// the wordmark itself is paths and needs no font at all.
 
 import '../styles/main.css';
 
@@ -254,29 +249,26 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
         fetchpriority="high"
       />
     )}
-    {/* All 10 weight/script combos preloaded — measured via Playwright's
-       layout-shift observer (2026-07-16) that `font-display:optional` alone
-       still let real text paint in the fallback font and visibly re-flow
-       ~150-300ms later once Heebo finished loading, on *every* load
-       including warm-cache reloads (not just a cold-first-visit edge case).
-       Blocking all font requests in that same test produced zero
-       layout-shift entries, confirming the font swap — not a JS/animation
-       timing coincidence — as the cause. Preloading only 800/latin +
-       400/500/600 hebrew (the weights directly measured on the homepage)
-       first cut the shift ~15x but didn't fully zero it — other pages use
-       the remaining weight/script combos too (e.g. a price string mixes
-       Latin digits with a Hebrew ₪ sign, each resolved from a different
-       @font-face independently, so both scripts need every weight actually
-       used or one half of the string can still swap on its own). Preloading
-       the full matrix removes the race everywhere instead of chasing it
-       page-by-page; each file is ~5-12KB.
+    {/* BOTH SCRIPTS PRELOADED, AND BOTH ARE MANDATORY — measured via Playwright's
+       layout-shift observer (2026-07-16) that `font-display:optional` alone still
+       let real text paint in the fallback font and visibly re-flow ~150-300ms later
+       once Heebo finished loading, on *every* load including warm-cache reloads (not
+       just a cold-first-visit edge case). Blocking all font requests in that same
+       test produced zero layout-shift entries, confirming the font — not a
+       JS/animation timing coincidence — as the cause.
 
-       The last two are the display face (store names). They are variable cuts —
-       18KB + 29KB for the whole 100-900 range — which is why a second family is
-       two entries here and not eight. Every @font-face in main.css must appear in
-       this list; tests/font-preload.test.ts enforces it. */}
-    {[heebo400HebrewUrl, heebo500HebrewUrl, heebo600HebrewUrl, heebo700HebrewUrl, heebo800HebrewUrl,
-      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
+       WHY BOTH AND NOT ONE. Hebrew and Latin are separate @font-face rules split by
+       unicode-range and resolved independently: a price string mixes Latin digits
+       with a Hebrew ₪, so preloading one script still lets the other half of that
+       string swap on its own. That was measured too — preloading a subset of the old
+       ten-file matrix cut the shift ~15x and never zeroed it.
+
+       IT IS TWO LINKS RATHER THAN TEN as of 2026-08-23: the face is the variable
+       build now, one file per script for the whole 100–900 range (12KB + 30KB
+       against the ten static cuts' 86.5KB). Same face, measured identical — see
+       main.css. Every @font-face there must appear in this list;
+       tests/font-preload.test.ts enforces it. */}
+    {[heeboHebrewUrl, heeboLatinUrl].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} storeOwned={storeOwnsThisPage} siteName={storeName} />
