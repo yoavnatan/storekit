@@ -323,6 +323,20 @@ export interface CreatedSeller {
   approved: boolean;
 }
 
+/** The Hosted Fields public key, out of either shape PayMe have used for it: the object their
+ *  current reference documents (`{ uuid, … }`) or the bare string their older spec showed. An
+ *  inactive key is refused rather than stored — `is_active: false` is a key that will not
+ *  initialise, and a blank is a state the rest of the code already handles honestly. */
+function readPublicKey(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const key = value as { uuid?: unknown; is_active?: unknown };
+    if (key.is_active === false) return '';
+    return typeof key.uuid === 'string' ? key.uuid : '';
+  }
+  return '';
+}
+
 export async function createSeller(input: CreateSellerInput, creds: PaymeCredentials): Promise<CreatedSeller> {
   const res = await callPayme('create-seller', {
     seller_first_name: input.firstName,
@@ -362,7 +376,13 @@ export async function createSeller(input: CreateSellerInput, creds: PaymeCredent
   return {
     sellerPaymeId,
     sellerPaymeSecret: String(res.seller_payme_secret ?? ''),
-    sellerPublicKey: String(res.seller_public_key ?? ''),
+    // **`seller_public_key` is an OBJECT, not a string** — `{ uuid, description, is_active }`, per
+    // their own API reference (read 2026-08-23). `String(...)` of it yields `"[object Object]"`,
+    // which stores cleanly, passes every type check, and then fails at the one moment that matters:
+    // the buyer's card form refuses to initialise, on a value we can never fetch again because
+    // `create-seller` returns it once. The string form is tolerated too — their older spec shows
+    // one, and a provider changing a field's SHAPE is exactly what this should survive.
+    sellerPublicKey: readPublicKey(res.seller_public_key),
     signupLink: String(res.seller_dashboard_signup_link ?? ''),
     approved: res.seller_approved === true || res.seller_approved === 'true',
   };

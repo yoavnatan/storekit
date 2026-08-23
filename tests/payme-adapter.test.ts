@@ -330,6 +330,33 @@ describe('create-seller', () => {
     // read as NOT approved: the alternative is a store that looks able to sell and cannot.
   });
 
+  it('reads the public key out of the OBJECT PayMe actually return', async () => {
+    // Their API reference shows `seller_public_key` as `{ uuid, description, is_active }`. A
+    // `String()` of that is `"[object Object]"` — it stores cleanly, passes every type check, and
+    // fails only when a buyer's card form will not initialise, against a value that can never be
+    // fetched again because `create-seller` returns it once.
+    net.replies.push({
+      status_code: 0, seller_payme_id: 'MPL-NEW',
+      seller_public_key: { uuid: '86e0b-real-key', description: 'PayMe-Public-Key', is_active: true },
+    });
+    expect((await createSeller(SELLER_INPUT, CREDS)).sellerPublicKey).toBe('86e0b-real-key');
+  });
+
+  it('still accepts the bare string their older spec showed', async () => {
+    net.replies.push({ status_code: 0, seller_payme_id: 'MPL-NEW', seller_public_key: 'plain-key' });
+    expect((await createSeller(SELLER_INPUT, CREDS)).sellerPublicKey).toBe('plain-key');
+  });
+
+  it('treats an INACTIVE key as no key', async () => {
+    // It would not initialise anything, and a blank is a state the rest of the code reports
+    // honestly — the card form simply does not appear.
+    net.replies.push({
+      status_code: 0, seller_payme_id: 'MPL-NEW',
+      seller_public_key: { uuid: 'dead-key', is_active: false },
+    });
+    expect((await createSeller(SELLER_INPUT, CREDS)).sellerPublicKey).toBe('');
+  });
+
   it('refuses a create that answers success without an id', async () => {
     net.replies.push({ status_code: 0, seller_payme_secret: 'sec' });
     await expect(createSeller(SELLER_INPUT, CREDS)).rejects.toThrow(/without a seller_payme_id/);
