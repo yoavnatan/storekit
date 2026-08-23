@@ -318,6 +318,31 @@ a ₪99 setup, per appendix ב׳.
 2. Ask PayMe to raise the **60%** market-fee ceiling (see §6 — NOT the 100% they offered) and fold
    delivery into the seller's capture as `market_fee_fixed`.
 
+### 16. Subscriptions — PayMe's own recurring billing, and it fills a hole GO_LIVE calls homeless
+From their guide's state chart (owner, 2026-08-23). Not part of the checkout; this is how the
+SELLER's monthly fee gets collected.
+
+    generate-subscription → sub-create
+      first payment ok      → sub-active → (wait for iteration date) → charge
+      first payment fails   → sub-failure
+      iteration ok          → sub-iteration-success + sale-complete → last one? → sub-complete
+      iteration fails       → retry THE FOLLOWING DAY … 7th failure → sub-canceled
+      manual cancellation   → sub-canceled
+
+**Why it matters beyond convenience:** `GO_LIVE` §3.0.1 records that what a seller owes US —
+subscription, ads, return shipping — has *no collection path*, because under the split model there
+is no balance of his we can deduct from. For the subscription part, this IS the collection path: a
+card on file, charged monthly, with dunning (7 daily retries) and cancellation handled at their end
+rather than by a job of ours. Appendix ב׳ prices it at **ללא עלות**.
+
+It also fits the billing rule `lib/pricing.ts` already states — the fee starts at the seller's FIRST
+SALE, capped at 2 months from signup — because the subscription is created when we choose, not at
+registration.
+
+⚠️ Unbuilt, and deliberately: `generate-subscription`, `cancel-subscription` and `get-subscriptions`
+exist on the account (endpoint discovery, §"What exists") but none has been called. Nothing here is
+measured.
+
 ---
 
 ## Still unmeasured — do not guess these

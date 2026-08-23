@@ -499,8 +499,23 @@ export interface GenerateSaleInput {
   productName: string;
   /** Our reference for this charge, so their record and ours can be matched later. */
   transactionId: string;
-  /** Charging an existing token — the multi-store path. Cannot coexist with `captureBuyer`. */
+  /** Charging an existing token. Cannot coexist with `captureBuyer`. */
   buyerKey?: string;
+  /**
+   * `authorize` holds the cart total without taking it; `multi-capture` draws a slice of an
+   * existing authorization, named by `originSaleId`. Absent is an ordinary immediate sale.
+   *
+   * **This is the pair PayMe's own guide gives for paying several sellers from one purchase**, and
+   * their prerequisite says so outright: *"at least 2 users from the same marketplace"*. Measured
+   * 2026-08-23 — authorize ₪100, capture ₪40 to seller A and ₪60 to seller B, both `completed`.
+   *
+   * ⚠️ An earlier session concluded multi-capture was disabled on our key. It had called
+   * `capture-sale`, which is the SINGLE-capture endpoint; this is a different call entirely.
+   */
+  saleType?: 'authorize' | 'multi-capture';
+  /** The authorization this capture draws on — `payme_sale_id` from the `authorize` call. Required
+   *  by `saleType: 'multi-capture'` and meaningless without it. */
+  originSaleId?: string;
   /** Ask for a token back alongside this charge. Cannot coexist with `buyerKey`. */
   captureBuyer?: boolean;
   /** Our percentage cut, overriding the merchant's default. `0` is meaningful and must survive:
@@ -585,6 +600,8 @@ export async function generateSale(input: GenerateSaleInput, creds: PaymeCredent
     ...(input.marketFeeFixedAgorot !== undefined ? { market_fee_fixed: marketFeeFixedShekels(input.marketFeeFixedAgorot) } : {}),
     ...(input.buyerKey ? { buyer_key: input.buyerKey } : {}),
     ...(input.captureBuyer ? { capture_buyer: 1 } : {}),
+    ...(input.saleType ? { sale_type: input.saleType } : {}),
+    ...(input.originSaleId ? { origin_sale_id: input.originSaleId } : {}),
     ...(input.callbackUrl ? { sale_callback_url: input.callbackUrl } : {}),
     ...(input.returnUrl ? { sale_return_url: input.returnUrl } : {}),
     ...(input.buyerEmail ? { sale_email: input.buyerEmail } : {}),

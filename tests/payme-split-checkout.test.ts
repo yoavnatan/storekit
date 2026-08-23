@@ -1,15 +1,16 @@
 /**
- * One card entry, N charges — the split checkout's own rules.
+ * One card, one authorization, one capture per store — the multi-seller checkout's own rules.
  *
- * `payme-adapter.test.ts` pins what PayMe will and will not accept. This pins what we do with N of
- * those charges in a row, which is where a multi-store cart actually goes wrong:
+ * `payme-adapter.test.ts` pins what PayMe will and will not accept. This pins what we do with an
+ * authorization and N captures, which is where a multi-store cart actually goes wrong. Every rule
+ * below comes from a measurement recorded in `docs/payme-sandbox-notes.md` §14–15:
  *
- *  · The seller's sale is GOODS ONLY. Fold the delivery fee into it and the 60% ceiling refuses it.
- *  · Shipping is ONE charge, on OUR account, with `market_fee: 0`.
- *  · Sellers are charged first and shipping last, so the likelier failure unwinds fewer charges.
- *  · A store that cannot be charged is found BEFORE any charge, never after the first one.
- *  · When store two fails, store one is REFUNDED IN FULL — the exact failure a non-permanent token
- *    produces, and the one the whole design has to survive.
+ *  · ONE authorization holds the whole cart; each store's capture draws a slice of it.
+ *  · A capture may name a DIFFERENT seller from the one the authorization was created on.
+ *  · Delivery rides inside its store's capture as `market_fee_fixed` — there is no account of ours
+ *    to charge it to separately, and charging the partner id is refused 174.
+ *  · Captures may not exceed the authorization, so the legs must sum to exactly what was held.
+ *  · A failure before the first capture RELEASES the hold; after it, refunds what completed.
  *  · A refund that itself fails is reported, never swallowed: that is a real person's money.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -30,334 +31,310 @@ vi.mock('../src/lib/outbound-fetch.js', () => ({
   },
 }));
 
-const { planSplit, chargeSplit, refundStoreCharge } = await import('../src/lib/payment-split.js');
+const { planSplit, authorizeCart, captureSlices, releaseAuthorization, refundStoreCapture } =
+  await import('../src/lib/payment-split.js');
 const { SHIPPING_RATES } = await import('../src/lib/shipping.js');
 const { PAYME_MIN_SALE_AGOROT } = await import('../src/lib/payment-payme.js');
 const { storeSliceTotalAgorot } = await import('../src/lib/order-totals.js');
 
 const CREDS = { clientKey: 'ck', marketplaceSellerId: 'MPL-US', baseUrl: 'https://sandbox.payme.io/api/' };
 
-/** A two-store cart with courier delivery on both — ₪60 of goods each, ₪30 + ₪30 of shipping. */
+/** Two stores, ₪60 of goods each, ₪30 of courier delivery each. */
 function twoStoreCart(overrides: Partial<Parameters<typeof planSplit>[0]> = {}) {
   return {
     buyerKey: 'BK1',
     stores: [
-      { storeSlug: 'alef', sellerPaymeId: 'MPL-A', goodsAgorot: 6000, marketFeePercent: 12, productName: 'חנות אלף' },
-      { storeSlug: 'bet', sellerPaymeId: 'MPL-B', goodsAgorot: 6000, marketFeePercent: 10, productName: 'חנות בית' },
+      { storeSlug: 'alef', sellerPaymeId: 'MPL-A', goodsAgorot: 6000, shippingAgorot: 3000, marketFeePercent: 12, productName: 'חנות אלף' },
+      { storeSlug: 'bet', sellerPaymeId: 'MPL-B', goodsAgorot: 6000, shippingAgorot: 3000, marketFeePercent: 10, productName: 'חנות בית' },
     ],
-    shippingAgorot: 6000,
-    marketplaceSellerId: 'MPL-US',
     checkoutRef: 'ABCD1234',
     ...overrides,
   };
 }
 
-const sale = (id: string) => ({ status_code: 0, payme_sale_id: id, sale_status: 'completed' });
+const authorized = (id: string) => ({ status_code: 0, payme_sale_id: id, sale_status: 'authorized' });
+const captured = (id: string) => ({ status_code: 0, payme_sale_id: id, sale_status: 'completed' });
 const refunded = (id: string) => ({ status_code: 0, payme_sale_id: id, sale_status: 'refunded' });
-const declined = { status_code: 1, status_error_code: 511, status_error_details: 'Buyer inactive' };
+const voided = (id: string) => ({ status_code: 0, payme_sale_id: id, sale_status: 'voided' });
+const declined = { status_code: 1, status_error_code: 352, status_error_details: 'סכום העסקה חורג מהמגבלות' };
 
 beforeEach(() => { net.replies = []; net.calls = []; });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('the plan', () => {
-  it('charges sellers first and shipping last', () => {
-    // Deliberate: a seller's leg can fail for reasons outside our sight (PayMe may restrict any
-    // business at their sole discretion, agreement §11) while the shipping leg runs on an account
-    // we control. Charging the risky legs first means the common failure unwinds fewer charges.
-    const { legs, refusals } = planSplit(twoStoreCart());
-    expect(refusals).toEqual([]);
-    expect(legs.map((l) => l.kind)).toEqual(['store', 'store', 'shipping']);
+  it('holds the WHOLE cart and splits it into one capture per store', () => {
+    const plan = planSplit(twoStoreCart());
+    expect(plan.refusals).toEqual([]);
+    expect(plan.legs.map((l) => l.storeSlug)).toEqual(['alef', 'bet']);
+    // ₪60 goods + ₪30 delivery, twice.
+    expect(plan.legs.map((l) => l.amountAgorot)).toEqual([9000, 9000]);
+    expect(plan.authorizeAgorot).toBe(18000);
   });
 
-  it('gives each store its own merchant account and its own tier commission', () => {
-    const { legs } = planSplit(twoStoreCart());
-    expect(legs[0]).toMatchObject({ sellerPaymeId: 'MPL-A', amountAgorot: 6000, marketFeePercent: 12 });
-    expect(legs[1]).toMatchObject({ sellerPaymeId: 'MPL-B', amountAgorot: 6000, marketFeePercent: 10 });
+  it('creates the authorization on the FIRST store\'s merchant, deterministically', () => {
+    // Any of the cart's sellers would do — an authorization on seller A was measured being captured
+    // by seller B — so the choice is made once and reproducibly rather than left to iteration order.
+    expect(planSplit(twoStoreCart()).authorizeOn).toBe('MPL-A');
   });
 
-  it('puts shipping on OUR account, as one charge, with no market fee', () => {
-    // One charge for the cart and not one per store: each PayMe transaction costs ₪1 flat, and this
-    // money is ours either way. `market_fee: 0` because a commission on our own charge would be us
-    // taking a cut from ourselves.
-    const shipping = planSplit(twoStoreCart()).legs.find((l) => l.kind === 'shipping')!;
-    expect(shipping).toMatchObject({ sellerPaymeId: 'MPL-US', amountAgorot: 6000, marketFeePercent: 0 });
-    expect(shipping.storeSlug).toBeUndefined();
+  it('carries each store\'s delivery as the FIXED fee on its own capture', () => {
+    // There is no merchant account of ours to charge delivery to: the partner id is refused 174.
+    // So it rides inside the store's capture and comes back to us as market_fee_fixed.
+    const plan = planSplit(twoStoreCart());
+    expect(plan.legs.map((l) => l.marketFeeFixedAgorot)).toEqual([3000, 3000]);
   });
 
-  it('skips the shipping leg entirely for a self-pickup-only cart', () => {
-    // Zero is not a sale PayMe would take — it is below their minimum — and there is nothing to
-    // charge anyway.
-    const { legs, refusals } = planSplit(twoStoreCart({ shippingAgorot: 0 }));
-    expect(refusals).toEqual([]);
-    expect(legs.map((l) => l.kind)).toEqual(['store', 'store']);
+  it('gives each store its own merchant and its own tier commission', () => {
+    const plan = planSplit(twoStoreCart());
+    expect(plan.legs[0]).toMatchObject({ sellerPaymeId: 'MPL-A', marketFeePercent: 12 });
+    expect(plan.legs[1]).toMatchObject({ sellerPaymeId: 'MPL-B', marketFeePercent: 10 });
   });
 
-  it('refuses a store whose seller has no clearing account, before anything is charged', () => {
+  it('carries a zero delivery fee for self-pickup rather than dropping it', () => {
+    // `0` must reach PayMe as `0`. Omitting the field falls back to the merchant's stored default,
+    // which would take a fee nobody agreed to.
+    const cart = twoStoreCart();
+    cart.stores[0]!.shippingAgorot = 0;
+    const plan = planSplit(cart);
+    expect(plan.legs[0]).toMatchObject({ amountAgorot: 6000, marketFeeFixedAgorot: 0 });
+  });
+
+  it('refuses a store whose seller has no clearing account', () => {
     const cart = twoStoreCart();
     cart.stores[1]!.sellerPaymeId = undefined as unknown as string;
     expect(planSplit(cart).refusals).toContainEqual({ reason: 'store-cannot-sell', storeSlug: 'bet' });
   });
 
   it('refuses a slice below PayMe\'s 500-agorot minimum, and NAMES the store', () => {
-    // The buyer's page can only fix the line it is told about. This is also the case that must be
-    // caught here rather than at charge time: store one would already be paid.
     const cart = twoStoreCart();
-    cart.stores[1]!.goodsAgorot = 499;
-    expect(planSplit(cart).refusals).toContainEqual({ reason: 'store-below-minimum', storeSlug: 'bet', amountAgorot: 499 });
+    cart.stores[1]!.goodsAgorot = 100;
+    cart.stores[1]!.shippingAgorot = 0;
+    expect(planSplit(cart).refusals).toContainEqual({ reason: 'store-below-minimum', storeSlug: 'bet', amountAgorot: 100 });
+  });
+
+  it('refuses a cheap item with real delivery — the 60% case PayMe were asked to raise', () => {
+    // ₪10 of goods with ₪30 of delivery: our cut is 12% of ₪40 plus the ₪30, i.e. 87%. This is now
+    // reachable in ordinary trading, because delivery rides on the capture rather than sitting on a
+    // charge of its own — which is exactly why the ceiling has to move.
+    const cart = twoStoreCart();
+    cart.stores[0]!.goodsAgorot = 1000;
+    expect(planSplit(cart).refusals).toContainEqual({ reason: 'store-fee-ceiling', storeSlug: 'alef' });
   });
 
   it('collects EVERY refusal, not just the first', () => {
-    // A buyer told about one bad line at a time fixes it, resubmits, and is told about the next.
     const cart = twoStoreCart();
     cart.stores[0]!.goodsAgorot = 100;
+    cart.stores[0]!.shippingAgorot = 0;
     cart.stores[1]!.sellerPaymeId = undefined as unknown as string;
     expect(planSplit(cart).refusals).toHaveLength(2);
   });
 
-  it('refuses a non-zero delivery fee under the minimum rather than folding it into a sale', () => {
-    // There is nowhere to fold it: putting it on a seller's sale is exactly the 60% ceiling problem
-    // the separate shipping charge exists to avoid. Unreachable at today's ₪20/₪30 platform rates —
-    // pinned so a future rate cannot introduce it silently.
-    expect(planSplit(twoStoreCart({ shippingAgorot: 300 })).refusals)
-      .toContainEqual({ reason: 'shipping-below-minimum', amountAgorot: 300 });
-  });
-
-  it('refuses when there is delivery to charge and no marketplace account configured', () => {
-    expect(planSplit(twoStoreCart({ marketplaceSellerId: undefined })).refusals)
-      .toContainEqual({ reason: 'no-marketplace-account' });
-  });
-
   it('derives every PayMe reference from the checkout reference', () => {
-    // So their statement and ours can be matched without a lookup table. NOT an idempotency key —
-    // PayMe document nothing about refusing a repeat, and that behaviour is unmeasured.
-    const { legs } = planSplit(twoStoreCart());
-    expect(legs.map((l) => l.transactionId)).toEqual(['ABCD1234-alef', 'ABCD1234-bet', 'ABCD1234-shipping']);
-  });
-});
-
-describe('charging', () => {
-  it('charges goods only — the delivery fee never rides on a seller\'s sale', async () => {
-    net.replies.push(sale('S-A'), sale('S-B'), sale('S-SHIP'));
-    const input = twoStoreCart();
-    await chargeSplit(input, planSplit(input), CREDS);
-
-    // ₪60 of goods, not ₪90. Folding ₪30 of delivery into a ₪60 sale at 12% would put our cut at
-    // ₪37.20 of ₪90 — 41%, which passes — but the same fold on a ₪10 item is 87% and is refused.
-    // The rule has to hold for every cart, so it holds for this one.
-    expect(net.calls[0]!.body.sale_price).toBe(6000);
-    expect(net.calls[1]!.body.sale_price).toBe(6000);
-    expect(net.calls[2]!.body.sale_price).toBe(6000);
-    expect(net.calls[2]!.body.seller_payme_id).toBe('MPL-US');
-    expect(net.calls[2]!.body.market_fee).toBe(0);
-  });
-
-  it('charges every leg with the SAME buyer token', async () => {
-    net.replies.push(sale('S-A'), sale('S-B'), sale('S-SHIP'));
-    const input = twoStoreCart();
-    await chargeSplit(input, planSplit(input), CREDS);
-    expect(net.calls.map((c) => c.body.buyer_key)).toEqual(['BK1', 'BK1', 'BK1']);
-  });
-
-  it('returns each store\'s own sale id, so a later refund names one transaction', async () => {
-    net.replies.push(sale('S-A'), sale('S-B'), sale('S-SHIP'));
-    const input = twoStoreCart();
-    const result = await chargeSplit(input, planSplit(input), CREDS);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.charges.map((c) => c.paymeSaleId)).toEqual(['S-A', 'S-B', 'S-SHIP']);
-  });
-});
-
-describe('when store two fails — the single-use-token failure, survived', () => {
-  it('refunds store one IN FULL and reports nothing outstanding', async () => {
-    // This is the exact shape a non-permanent token produces: store one completes, store two
-    // answers `Buyer inactive`. The adapter always asks for a permanent token, so this should never
-    // happen — and if it ever does, the buyer must not be left having paid one of two shops.
-    net.replies.push(sale('S-A'), declined, refunded('S-A'));
-    const input = twoStoreCart();
-    const result = await chargeSplit(input, planSplit(input), CREDS);
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.detail).toContain('Buyer inactive');
-    expect(result.failedAt?.storeSlug).toBe('bet');
-    expect(result.refunded.map((r) => r.paymeSaleId)).toEqual(['S-A']);
-    expect(result.unrefunded).toEqual([]);
-
-    // A FULL refund: no `sale_refund_amount`. That is what makes it safe at any size — the
-    // 500-agorot floor applies only to PARTIAL refunds, so refunding by amount would be refused on
-    // exactly the small orders that most need giving back.
-    const refund = net.calls[2]!;
-    expect(refund.endpoint).toBe('refund-sale');
-    expect(refund.body).not.toHaveProperty('sale_refund_amount');
-    expect(refund.body.payme_sale_id).toBe('S-A');
-    expect(refund.body.seller_payme_id).toBe('MPL-A');
-  });
-
-  it('never charges the third leg once the second refused', async () => {
-    net.replies.push(sale('S-A'), declined, refunded('S-A'));
-    const input = twoStoreCart();
-    await chargeSplit(input, planSplit(input), CREDS);
-    // Two sales attempted, one refund. Sequential charging is what guarantees the set to unwind is
-    // exactly the set already completed — concurrent legs would mean refunding transactions that
-    // do not exist yet.
-    expect(net.calls.map((c) => c.endpoint)).toEqual(['generate-sale', 'generate-sale', 'refund-sale']);
-  });
-
-  it('unwinds newest-first, so the charge the buyer just saw disappears first', async () => {
-    net.replies.push(sale('S-A'), sale('S-B'), declined, refunded('S-B'), refunded('S-A'));
-    const input = twoStoreCart();
-    const result = await chargeSplit(input, planSplit(input), CREDS);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.refunded.map((r) => r.paymeSaleId)).toEqual(['S-B', 'S-A']);
-  });
-
-  it('when the SHIPPING leg fails, both sellers are refunded', async () => {
-    net.replies.push(sale('S-A'), sale('S-B'), declined, refunded('S-B'), refunded('S-A'));
-    const input = twoStoreCart();
-    const result = await chargeSplit(input, planSplit(input), CREDS);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.failedAt?.kind).toBe('shipping');
-    expect(result.refunded).toHaveLength(2);
-    expect(result.unrefunded).toEqual([]);
-  });
-
-  it('treats a sale that is not `completed` as a failure and unwinds it', async () => {
-    // `authorized` is a hold, not money, and this platform's rule is that an order exists only when
-    // money really moved. Guessing that an unknown status means "paid" is how an unpaid order
-    // becomes shippable.
-    net.replies.push(sale('S-A'), { status_code: 0, payme_sale_id: 'S-B', sale_status: 'authorized' }, refunded('S-B'), refunded('S-A'));
-    const input = twoStoreCart();
-    const result = await chargeSplit(input, planSplit(input), CREDS);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.detail).toContain("came back 'authorized'");
-  });
-});
-
-describe('when the refund itself fails', () => {
-  it('reports the charge as unrefunded instead of swallowing it', async () => {
-    // The one outcome that costs a real person real money with nothing else pointing at it. It must
-    // reach the caller, which journals it and raises an alert; a compensation that quietly gives up
-    // is worse than none, because it looks like it worked.
-    net.replies.push(sale('S-A'), declined, { status_code: 1, status_error_code: 305, status_error_details: 'Cannot perform action due to an incorrect status' });
-    const input = twoStoreCart();
-    const result = await chargeSplit(input, planSplit(input), CREDS);
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.refunded).toEqual([]);
-    expect(result.unrefunded).toHaveLength(1);
-    expect(result.unrefunded[0]!.leg.paymeSaleId).toBe('S-A');
-    expect(result.unrefunded[0]!.error).toContain('incorrect status');
-  });
-
-  it('still refunds the others when one refund fails', async () => {
-    net.replies.push(
-      sale('S-A'), sale('S-B'), declined,
-      { status_code: 1, status_error_code: 305, status_error_details: 'nope' },   // S-B refund fails
-      refunded('S-A'),                                                            // S-A refund works
-    );
-    const input = twoStoreCart();
-    const result = await chargeSplit(input, planSplit(input), CREDS);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.refunded.map((r) => r.paymeSaleId)).toEqual(['S-A']);
-    expect(result.unrefunded.map((u) => u.leg.paymeSaleId)).toEqual(['S-B']);
-  });
-
-  it('never throws, whatever PayMe answer', async () => {
-    // It runs inside a failure path that still has to restock, release the idempotency claim and
-    // log. A compensation that can itself throw turns one bad outcome into four.
-    net.replies.push(sale('S-A'), declined, '<html>gateway timeout</html>');
-    const input = twoStoreCart();
-    await expect(chargeSplit(input, planSplit(input), CREDS)).resolves.toMatchObject({ ok: false });
+    expect(planSplit(twoStoreCart()).legs.map((l) => l.transactionId)).toEqual(['ABCD1234-alef', 'ABCD1234-bet']);
   });
 });
 
 describe('the buyer is charged exactly what the order says — the invariant', () => {
-  /** `storeSliceTotalAgorot`'s definition, restated from the other side: goods + shipping − the
-   *  seller's discount. The split cuts that total in a different place (goods to the seller,
-   *  shipping to us), so the only thing that must hold is that the pieces add back up. */
-  function orderTotals(slices: { subtotalAgorot: number; shippingAgorot: number; discount?: { appliedAgorot: number } }[]): number {
-    return slices.reduce((sum, s) => sum + storeSliceTotalAgorot(s), 0);
-  }
-
-  it('the legs sum to the sum of the order totals, with and without discounts', () => {
-    // The failure this catches is the one that would be invisible: charge the seller's goods
-    // WITHOUT subtracting his coupon, and every order card says ₪80 while the buyer's card says
-    // ₪100. Nothing else in this repo compares those two numbers, because until now there was one
-    // charge and it was the total by construction.
+  it('the legs sum to the authorization, and to the sum of the order totals', () => {
+    // The failure this catches would be invisible: capture goods WITHOUT the coupon and every order
+    // card says one number while the buyer's card says another. And because captures may not exceed
+    // the authorization (measured, 352), a leg that drifted upward would be refused mid-checkout.
     const slices = [
       { subtotalAgorot: 6000, shippingAgorot: 3000 },
       { subtotalAgorot: 9000, shippingAgorot: 3000, discount: { appliedAgorot: 1500 } },
     ];
-    const { legs, refusals } = planSplit({
+    const plan = planSplit({
       buyerKey: 'BK1',
+      checkoutRef: 'REF',
       stores: slices.map((s, i) => ({
         storeSlug: `s${i}`,
         sellerPaymeId: `MPL-${i}`,
         goodsAgorot: s.subtotalAgorot - (s.discount?.appliedAgorot ?? 0),
+        shippingAgorot: s.shippingAgorot,
         marketFeePercent: 12,
         productName: `s${i}`,
       })),
-      shippingAgorot: slices.reduce((sum, s) => sum + s.shippingAgorot, 0),
-      marketplaceSellerId: 'MPL-US',
-      checkoutRef: 'REF',
     });
-    expect(refusals).toEqual([]);
-    expect(legs.reduce((sum, l) => sum + l.amountAgorot, 0)).toBe(orderTotals(slices));
-  });
-
-  it('a self-pickup cart still sums, with no shipping leg at all', () => {
-    const slices = [{ subtotalAgorot: 6000, shippingAgorot: 0 }];
-    const { legs } = planSplit({
-      buyerKey: 'BK1',
-      stores: [{ storeSlug: 's0', sellerPaymeId: 'MPL-0', goodsAgorot: 6000, marketFeePercent: 12, productName: 's0' }],
-      shippingAgorot: 0,
-      marketplaceSellerId: 'MPL-US',
-      checkoutRef: 'REF',
-    });
-    expect(legs.reduce((sum, l) => sum + l.amountAgorot, 0)).toBe(orderTotals(slices));
+    expect(plan.refusals).toEqual([]);
+    const legs = plan.legs.reduce((sum, l) => sum + l.amountAgorot, 0);
+    expect(legs).toBe(plan.authorizeAgorot);
+    expect(legs).toBe(slices.reduce((sum, s) => sum + storeSliceTotalAgorot(s), 0));
   });
 });
 
-describe('the platform\'s shipping rates have to be chargeable', () => {
+describe('the platform\'s delivery rates have to be chargeable', () => {
   it('every rate is at or above PayMe\'s minimum sale', () => {
-    // The shipping leg is a sale like any other, so a rate below ₪5 is a rate no cart can pay.
-    // `SHIPPING_RATES` are explicitly PLACEHOLDERS awaiting the carrier's real tariff
-    // (`lib/shipping.ts` header), which is precisely why this is pinned: the day those numbers are
-    // replaced, a cheap pickup-point rate would make `shipping-below-minimum` reachable on real
-    // carts, and it would surface as a refused checkout rather than as a failing test.
+    // A store's capture is goods + delivery, so a rate alone is never the whole sale — but a
+    // pickup-only order of a cheap item is, and these are PLACEHOLDERS awaiting the carrier's real
+    // tariff (`lib/shipping.ts`). Pinned so a future rate cannot make `store-below-minimum`
+    // reachable without the test saying so.
     for (const [method, ils] of Object.entries(SHIPPING_RATES)) {
       expect(Math.round(ils * 100), `${method} is below PayMe's minimum sale`).toBeGreaterThanOrEqual(PAYME_MIN_SALE_AGOROT);
     }
   });
 });
 
-describe('refunding one slice later — a cancelled order', () => {
-  it('sends the amount for a partial refund', async () => {
-    net.replies.push({ status_code: 0, payme_sale_id: 'S-A', sale_status: 'partial-refund' });
-    await refundStoreCharge({ sellerPaymeId: 'MPL-A', paymeSaleId: 'S-A', amountAgorot: 2000 }, CREDS);
+describe('authorizing', () => {
+  it('holds the cart total on ONE merchant, with the buyer token and no market fee', async () => {
+    net.replies.push(authorized('AUTH1'));
+    const input = twoStoreCart();
+    const res = await authorizeCart(input, planSplit(input), CREDS);
+    expect(res).toMatchObject({ ok: true, authorizationId: 'AUTH1' });
+    const body = net.calls[0]!.body;
+    expect(body).toMatchObject({
+      seller_payme_id: 'MPL-A', sale_price: 18000, sale_type: 'authorize', buyer_key: 'BK1',
+    });
+    // No commission on the hold — our cut belongs to a particular seller's capture, and charging it
+    // here would attribute the whole cart's commission to whichever store happened to be first.
+    expect(body.market_fee).toBe(0);
+  });
+
+  it('reports a refusal instead of throwing', async () => {
+    net.replies.push({ status_code: 1, status_error_code: 511, status_error_details: 'Buyer inactive' });
+    const input = twoStoreCart();
+    await expect(authorizeCart(input, planSplit(input), CREDS)).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe('capturing', () => {
+  it('draws each slice out of the SAME authorization, naming each store\'s own merchant', async () => {
+    net.replies.push(captured('CAP-A'), captured('CAP-B'));
+    const input = twoStoreCart();
+    const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
+    expect(res.ok).toBe(true);
+
+    for (const call of net.calls) {
+      expect(call.body.sale_type).toBe('multi-capture');
+      expect(call.body.origin_sale_id).toBe('AUTH1');
+      // The token is spent on the authorization, not on the captures.
+      expect(call.body).not.toHaveProperty('buyer_key');
+    }
+    expect(net.calls.map((c) => c.body.seller_payme_id)).toEqual(['MPL-A', 'MPL-B']);
+    expect(net.calls.map((c) => c.body.market_fee_fixed)).toEqual([30, 30]);   // SHEKELS
+    expect(net.calls.map((c) => c.body.sale_price)).toEqual([9000, 9000]);     // agorot
+  });
+
+  it('returns each store\'s own capture id, so a later refund names one transaction', async () => {
+    net.replies.push(captured('CAP-A'), captured('CAP-B'));
+    const input = twoStoreCart();
+    const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.captures.map((c) => [c.storeSlug, c.paymeSaleId])).toEqual([['alef', 'CAP-A'], ['bet', 'CAP-B']]);
+  });
+});
+
+describe('when a capture fails', () => {
+  it('RELEASES the hold when nothing had been captured yet', async () => {
+    // The buyer's card was held for a moment and nothing was taken. Measured: `refund-sale` against
+    // an uncaptured authorization answers `voided`.
+    net.replies.push(declined, voided('AUTH1'));
+    const input = twoStoreCart();
+    const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.voided).toBe(true);
+    expect(res.refunded).toEqual([]);
+    expect(net.calls[1]!.endpoint).toBe('refund-sale');
+    expect(net.calls[1]!.body.payme_sale_id).toBe('AUTH1');
+  });
+
+  it('refunds store one IN FULL when store two fails', async () => {
+    net.replies.push(captured('CAP-A'), declined, refunded('CAP-A'));
+    const input = twoStoreCart();
+    const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.failedAt?.storeSlug).toBe('bet');
+    expect(res.refunded.map((r) => r.paymeSaleId)).toEqual(['CAP-A']);
+    expect(res.unrefunded).toEqual([]);
+    // A FULL refund carries no amount — the 500-agorot floor applies to partial refunds only, so
+    // refunding by amount would be refused on exactly the small orders that most need giving back.
+    const refund = net.calls[2]!;
+    expect(refund.endpoint).toBe('refund-sale');
+    expect(refund.body).not.toHaveProperty('sale_refund_amount');
+    expect(refund.body.payme_sale_id).toBe('CAP-A');
+  });
+
+  it('does not also void the authorization once something was captured', async () => {
+    // The hold is spent; refunding the capture is what gives the money back. Voiding on top would
+    // be a second reversal of the same money.
+    net.replies.push(captured('CAP-A'), declined, refunded('CAP-A'));
+    const input = twoStoreCart();
+    const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.voided).toBe(false);
+  });
+
+  it('treats a capture that is not `completed` as a failure and unwinds it', async () => {
+    // `authorized` is a hold, not money. Guessing that an unknown status means paid is how an
+    // unpaid order becomes shippable.
+    net.replies.push(captured('CAP-A'), { status_code: 0, payme_sale_id: 'CAP-B', sale_status: 'authorized' }, refunded('CAP-B'), refunded('CAP-A'));
+    const input = twoStoreCart();
+    const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.detail).toContain("came back 'authorized'");
+    // Both are unwound — the unpaid one exists as a sale and is refunded too.
+    expect(res.refunded.map((r) => r.paymeSaleId)).toEqual(['CAP-B', 'CAP-A']);
+  });
+
+  it('unwinds newest-first, so the charge the buyer just saw disappears first', async () => {
+    net.replies.push(captured('CAP-A'), captured('CAP-B'), declined, refunded('CAP-B'), refunded('CAP-A'));
+    const cart = twoStoreCart();
+    cart.stores.push({ storeSlug: 'gimel', sellerPaymeId: 'MPL-C', goodsAgorot: 6000, shippingAgorot: 0, marketFeePercent: 12, productName: 'ג' });
+    const res = await captureSlices('AUTH1', cart, planSplit(cart), CREDS);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.refunded.map((r) => r.paymeSaleId)).toEqual(['CAP-B', 'CAP-A']);
+  });
+});
+
+describe('when the refund itself fails', () => {
+  it('reports the capture as unrefunded instead of swallowing it', async () => {
+    net.replies.push(captured('CAP-A'), declined, { status_code: 1, status_error_code: 305, status_error_details: 'incorrect status' });
+    const input = twoStoreCart();
+    const res = await captureSlices('AUTH1', input, planSplit(input), CREDS);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.refunded).toEqual([]);
+    expect(res.unrefunded).toHaveLength(1);
+    expect(res.unrefunded[0]!.leg.paymeSaleId).toBe('CAP-A');
+  });
+
+  it('never throws, whatever PayMe answer', async () => {
+    net.replies.push(captured('CAP-A'), declined, '<html>gateway timeout</html>');
+    const input = twoStoreCart();
+    await expect(captureSlices('AUTH1', input, planSplit(input), CREDS)).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe('releasing and refunding after the fact', () => {
+  it('releases an abandoned authorization', async () => {
+    net.replies.push(voided('AUTH1'));
+    await expect(releaseAuthorization('MPL-A', 'AUTH1', CREDS)).resolves.toMatchObject({ ok: true });
+  });
+
+  it('sends the amount for a partial refund of one store\'s capture', async () => {
+    net.replies.push({ status_code: 0, payme_sale_id: 'CAP-A', sale_status: 'partial-refund' });
+    await refundStoreCapture({ sellerPaymeId: 'MPL-A', paymeSaleId: 'CAP-A', amountAgorot: 2000 }, CREDS);
     expect(net.calls[0]!.body.sale_refund_amount).toBe(2000);
   });
 
-  it('refuses a partial refund below the minimum rather than reporting a refund that did not happen', async () => {
-    // The case callers get wrong: a multi-store order where only one small slice is cancelled. A ₪3
-    // remainder is not refundable in part, and the caller has to know that — silently rounding it
-    // up to ₪5 would give the buyer ₪2 that is not theirs, out of the seller's account.
-    const result = await refundStoreCharge({ sellerPaymeId: 'MPL-A', paymeSaleId: 'S-A', amountAgorot: 300 }, CREDS);
-    expect(result).toMatchObject({ ok: false });
+  it('refuses a partial refund below the minimum rather than reporting one that did not happen', async () => {
+    // A ₪3 remainder is not refundable in part. Silently rounding up to ₪5 would give the buyer ₪2
+    // that is not theirs, out of the seller's account.
+    await expect(refundStoreCapture({ sellerPaymeId: 'MPL-A', paymeSaleId: 'CAP-A', amountAgorot: 300 }, CREDS))
+      .resolves.toMatchObject({ ok: false });
     expect(net.calls).toHaveLength(0);
   });
 
-  it('reverses the whole sale at any size when no amount is given', async () => {
-    net.replies.push(refunded('S-A'));
-    const result = await refundStoreCharge({ sellerPaymeId: 'MPL-A', paymeSaleId: 'S-A' }, CREDS);
-    expect(result).toMatchObject({ ok: true, saleStatus: 'refunded' });
+  it('reverses the whole capture at any size when no amount is given', async () => {
+    net.replies.push(refunded('CAP-A'));
+    await expect(refundStoreCapture({ sellerPaymeId: 'MPL-A', paymeSaleId: 'CAP-A' }, CREDS))
+      .resolves.toMatchObject({ ok: true, saleStatus: 'refunded' });
     expect(net.calls[0]!.body).not.toHaveProperty('sale_refund_amount');
   });
 });

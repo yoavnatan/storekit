@@ -33,7 +33,7 @@ import { planBuyerInvoice } from '../../lib/invoicing/index.js';
 import { getSellerById } from '../../lib/seller-auth.js';
 import { merchantAccountsFor } from '../../lib/seller-merchant.js';
 import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
-import { planSplit, chargeSplit, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
+import { planSplit, authorizeCart, captureSlices, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
 import { commissionPercentForTier } from '../../lib/pricing.js';
 import { store as platform } from '../../config/store.config.js';
 
@@ -183,79 +183,76 @@ async function failCapture(orderIds: string[], checkoutRef: string, amountAgorot
  * act on: a charge that could not be given back.
  */
 async function chargeSplitAsCapture(
+  authorizationId: string,
   input: SplitInput,
   plan: SplitPlan,
   creds: PaymeCredentials,
   checkoutRef: string,
 ): Promise<{ ok: boolean; error?: string; refsByStore?: Map<string, string> }> {
-  const result = await chargeSplit(input, plan, creds);
+  const result = await captureSlices(authorizationId, input, plan, creds);
 
   if (result.ok) {
-    // One row per charge, because there IS one charge per store — the journal's job is to be an
+    // One row per capture, because there IS one per store — the journal's job is to be an
     // independent record of what happened at the provider, and collapsing N transactions into one
-    // entry would make it impossible to reconcile against PayMe's own statement.
-    for (const leg of result.charges) {
+    // entry would make it impossible to reconcile against PayMe's own statement. The delivery part
+    // is named on the row it rode in on, since it is no longer a transaction of its own.
+    for (const leg of result.captures) {
       await recordMoneyEvent({
         type: 'payment_attempted',
         checkoutRef,
-        ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
+        storeSlug: leg.storeSlug,
         amountAgorot: leg.amountAgorot,
         actor: 'buyer',
-        detail: `נגבה · ${leg.kind === 'shipping' ? 'משלוח (החשבון שלנו)' : `חנות ${leg.storeSlug}`} · אסמכתה ${leg.paymeSaleId}`,
+        detail: `\u05e0\u05d2\u05d1\u05d4 \u00b7 \u05d7\u05e0\u05d5\u05ea ${leg.storeSlug}${leg.marketFeeFixedAgorot ? ` \u00b7 \u05db\u05d5\u05dc\u05dc \u05de\u05e9\u05dc\u05d5\u05d7 ${formatAgorot(leg.marketFeeFixedAgorot)}` : ''} \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${leg.paymeSaleId}`,
       }).catch(() => { /* the order rows below are still written; a lost journal row is not a lost sale */ });
     }
-    const refsByStore = new Map<string, string>();
-    for (const leg of result.charges) if (leg.storeSlug) refsByStore.set(leg.storeSlug, leg.paymeSaleId);
-    return { ok: true, refsByStore };
+    return { ok: true, refsByStore: new Map(result.captures.map((c) => [c.storeSlug, c.paymeSaleId])) };
   }
 
   await recordMoneyEvent({
     type: 'payment_attempted',
     checkoutRef,
     actor: 'buyer',
-    detail: `נדחה · ${result.detail.slice(0, 200)}`,
+    detail: `\u05e0\u05d3\u05d7\u05d4 \u00b7 ${result.detail.slice(0, 200)}${result.voided ? ' \u00b7 \u05d4\u05d4\u05d7\u05d6\u05e7\u05d4 \u05e9\u05d5\u05d7\u05e8\u05e8\u05d4' : ''}`,
   }).catch(() => { /* the logError below still reports the whole failure */ });
 
-  // Every charge that was given back. `charge_voided` is exactly this word's definition: a charge
-  // succeeded, the purchase behind it did not, and the money went back.
+  // Every capture that was given back. `charge_voided` is exactly this word's definition: money
+  // moved, the purchase behind it did not, and it went back.
   for (const leg of result.refunded) {
     await recordMoneyEvent({
       type: 'charge_voided',
       checkoutRef,
-      ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
+      storeSlug: leg.storeSlug,
       amountAgorot: leg.amountAgorot,
       actor: 'buyer',
-      detail: `הוחזר במלואו · אסמכתה ${leg.paymeSaleId}`,
+      detail: `\u05d4\u05d5\u05d7\u05d6\u05e8 \u05d1\u05de\u05dc\u05d5\u05d0\u05d5 \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${leg.paymeSaleId}`,
     }).catch(() => { /* reported in aggregate below */ });
   }
 
-  // ‼️ And the ones that were not. Journalled BEFORE the alert, where nothing can drop them: this is
-  // money a real person paid for an order that does not exist, and the journal is the only place
-  // the amount and the reference survive.
+  // AND the ones that were not. Journalled BEFORE the alert, where nothing can drop them: this is
+  // money a real person paid for an order that does not exist.
   for (const failed of result.unrefunded) {
     await recordMoneyEvent({
       type: 'charge_voided',
       checkoutRef,
-      ...(failed.leg.storeSlug ? { storeSlug: failed.leg.storeSlug } : {}),
+      storeSlug: failed.leg.storeSlug,
       amountAgorot: failed.leg.amountAgorot,
       actor: 'buyer',
-      detail: `‼️ ההחזר נכשל · אסמכתה ${failed.leg.paymeSaleId} · ${failed.error.slice(0, 160)}`,
+      detail: `\u203c\ufe0f \u05d4\u05d4\u05d7\u05d6\u05e8 \u05e0\u05db\u05e9\u05dc \u00b7 \u05d0\u05e1\u05de\u05db\u05ea\u05d4 ${failed.leg.paymeSaleId} \u00b7 ${failed.error.slice(0, 160)}`,
     }).catch(() => { /* the logError below still reports it */ });
   }
   if (result.unrefunded.length) {
     await logError({
       source: 'server',
       route: '/api/checkout',
-      message: `split charge failed and ${result.unrefunded.length} charge(s) could not be refunded: ${result.unrefunded.map((u) => `${u.leg.paymeSaleId} (${u.error})`).join('; ')}`,
+      message: `split capture failed and ${result.unrefunded.length} capture(s) could not be refunded: ${result.unrefunded.map((u) => `${u.leg.paymeSaleId} (${u.error})`).join('; ')}`,
       statusCode: 500,
       actorRole: 'buyer',
-      resolutionHint: '‼️ הקונה חויב על הזמנה שלא נוצרה, וההחזר האוטומטי נכשל. צריך לבצע refund ידני ב-PayMe לפי מספרי האסמכתא ביומן הכספי. זו התקלה היחידה כאן שעולה לקונה כסף.',
+      resolutionHint: '\u203c\ufe0f \u05d4\u05e7\u05d5\u05e0\u05d4 \u05d7\u05d5\u05d9\u05d1 \u05e2\u05dc \u05d4\u05d6\u05de\u05e0\u05d4 \u05e9\u05dc\u05d0 \u05e0\u05d5\u05e6\u05e8\u05d4, \u05d5\u05d4\u05d4\u05d7\u05d6\u05e8 \u05d4\u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9 \u05e0\u05db\u05e9\u05dc. \u05e6\u05e8\u05d9\u05da \u05dc\u05d1\u05e6\u05e2 refund \u05d9\u05d3\u05e0\u05d9 \u05d1-PayMe \u05dc\u05e4\u05d9 \u05de\u05e1\u05e4\u05e8\u05d9 \u05d4\u05d0\u05e1\u05de\u05db\u05ea\u05d0 \u05d1\u05d9\u05d5\u05de\u05df \u05d4\u05db\u05e1\u05e4\u05d9.',
     }).catch(() => { /* nothing left to try */ });
   }
 
-  // The buyer is told a machine reason and never PayMe's own message: theirs is Hebrew
-  // merchant-facing prose and can name another seller's account.
-  return { ok: false, error: 'התשלום נדחה. לא נגבה ממך דבר — אפשר לנסות כרטיס אחר.' };
+  return { ok: false, error: '\u05d4\u05ea\u05e9\u05dc\u05d5\u05dd \u05e0\u05d3\u05d7\u05d4. \u05dc\u05d0 \u05e0\u05d2\u05d1\u05d4 \u05de\u05de\u05da \u05d3\u05d1\u05e8 \u2014 \u05d0\u05e4\u05e9\u05e8 \u05dc\u05e0\u05e1\u05d5\u05ea \u05db\u05e8\u05d8\u05d9\u05e1 \u05d0\u05d7\u05e8.' };
 }
 
 /** The orders were written pending and the capture has now succeeded. This is the ONLY place a
@@ -718,14 +715,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           // shipping. The shipping part of that total is charged to us, on the separate leg below,
           // and folding it in here is precisely what breaches the 60% ceiling.
           goodsAgorot: sub.subtotalAgorot - (sub.discount?.appliedAgorot ?? 0),
+          // This store's delivery, captured inside its own slice and returned to us as a fixed
+          // fee. It used to be one separate charge on "our marketplace account" — there is no such
+          // account, and charging the partner id is refused 174 (payment-split.ts's header).
+          shippingAgorot: sub.shippingAgorot,
           marketFeePercent: tiers.get(sellerId) ?? 0,
           productName: `${sub.storeName} · ${checkoutRef}`,
         };
       }),
-      // One charge for the whole cart, not one per store: each PayMe transaction costs us ₪1 flat
-      // (agreement, appendix ב׳), and this money is ours either way.
-      shippingAgorot: Object.values(storeSubtotals).reduce((sum, d) => sum + d.shippingAgorot, 0),
-      marketplaceSellerId: paymeCreds.marketplaceSellerId,
       checkoutRef,
       buyerEmail: buyerData.buyerEmail,
       buyerName: buyerData.buyerName,
@@ -796,17 +793,24 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     //
     // On the split path this is a no-op result rather than a call: nothing is held, so there is
     // nothing to authorize and — importantly — nothing for the catch below to have to release.
-    const payment = splitPlan
-      ? { ok: true as const, paymentRef: undefined, error: undefined }
+    //
+    // On the split path this IS a real hold — one authorization for the whole cart, which the
+    // per-store captures below draw slices out of. It is the reversible half the ordering rule
+    // needs: measured, `refund-sale` against an uncaptured authorization answers `voided`, so a
+    // failure between here and the captures costs the buyer nothing.
+    const payment = splitPlan && splitInput && paymeCreds
+      ? await (async () => {
+          const res = await authorizeCart(splitInput!, splitPlan!, paymeCreds);
+          return res.ok
+            ? { ok: true as const, paymentRef: res.authorizationId, error: undefined }
+            : { ok: false as const, paymentRef: undefined, error: res.detail };
+        })()
       : await paymentProvider.authorize({ amount: fromAgorot(grandTotalAgorot), checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
     // Journalled whether it succeeded or failed — a decline is exactly the kind of
     // event that is invisible afterwards (no order row is left behind to show it
     // happened) and exactly what someone asks about later.
     //
-    // Skipped on the split path, where nothing was authorized: a `payment_attempted` row saying
-    // "authorized ref=—" for a hold that does not exist is a false entry in the one ledger that is
-    // supposed to be independent of the order tables. That path journals its real charges below.
-    if (!splitPlan) await recordMoneyEvent({
+    await recordMoneyEvent({
       type: 'payment_attempted',
       checkoutRef,
       amountAgorot: grandTotalAgorot,
@@ -874,7 +878,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // already went through. Its failure shape is richer than a boolean for one reason: a refund can
     // itself fail, and that is money a real person is owed with nothing else pointing at it.
     const capture: { ok: boolean; error?: string; refsByStore?: Map<string, string> } = splitPlan && splitInput && paymeCreds
-      ? await chargeSplitAsCapture(splitInput, splitPlan, paymeCreds, checkoutRef)
+      ? await chargeSplitAsCapture(payment.paymentRef ?? '', splitInput, splitPlan, paymeCreds, checkoutRef)
       : await paymentProvider.capture({
           paymentRef: payment.paymentRef ?? '',
           idempotencyKey,
