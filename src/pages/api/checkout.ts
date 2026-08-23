@@ -21,6 +21,7 @@ import { recordAnalyticsEvent } from '../../lib/analytics.js';
 import { effectivePrice } from '../../lib/discounts.js';
 import { claimCheckout, completeCheckout, releaseCheckout, isValidIdempotencyKey, checkoutOwner } from '../../lib/checkout-idempotency.js';
 import { recordMoneyEvent } from '../../lib/money-events.js';
+import { commissionMismatch, commissionMismatchDetail } from '../../lib/commission-check.js';
 import { heCount } from '../../lib/he-count.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
@@ -34,7 +35,7 @@ import { getSellerById } from '../../lib/seller-auth.js';
 import { merchantAccountsFor } from '../../lib/seller-merchant.js';
 import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
 import { planSplit, authorizeCart, captureSlices, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
-import { commissionPercentForTier } from '../../lib/pricing.js';
+import { commissionPercentForTier, commissionOnAgorot } from '../../lib/pricing.js';
 import { store as platform } from '../../config/store.config.js';
 import { serverEnv } from '../../lib/runtime-env.js';
 
@@ -198,6 +199,40 @@ async function chargeSplitAsCapture(
     // entry would make it impossible to reconcile against PayMe's own statement. The delivery part
     // is named on the row it rode in on, since it is no longer a transaction of its own.
     for (const leg of result.captures) {
+      // **Our commission, against theirs** (area audit row 13). The percent is sent per sale, so
+      // the two should agree — and they can stop agreeing without anyone touching this repository:
+      // PayMe hold a default fee per merchant, it can be changed at their end, and a future code
+      // path that forgets to send the tier's rate falls back to whatever they have stored. Until
+      // now their figure came back on every capture and was dropped, so that drift would have been
+      // invisible on both sides. `commission-check.ts` carries the rounding tolerance and why it is
+      // one agora.
+      const mismatch = commissionMismatch(
+        commissionOnAgorot(leg.amountAgorot, leg.marketFeePercent),
+        leg.marketFeeTotalAgorot,
+      );
+      if (mismatch) {
+        const line = commissionMismatchDetail(mismatch, leg.storeSlug ?? '—', leg.paymeSaleId);
+        // BOTH, and they are different audiences: the journal is where the money is reconciled
+        // months later, the error log is what a person reads this week. Neither is allowed to fail
+        // the purchase — the buyer paid, the seller was paid, and the disagreement is about our own
+        // cut.
+        await recordMoneyEvent({
+          type: 'payment_attempted',
+          checkoutRef,
+          ...(leg.storeSlug ? { storeSlug: leg.storeSlug } : {}),
+          amountAgorot: mismatch.actualAgorot,
+          from: 'commission-expected',
+          to: String(mismatch.expectedAgorot),
+          actor: 'system',
+          detail: line,
+        }).catch(() => { /* the log below still reports it */ });
+        await logError({
+          source: 'server',
+          route: '/api/checkout',
+          message: line,
+          resolutionHint: 'העמלה שגבו PayMe שונה מזו שהמסלול של המוכר מגדיר. ייתכן שעמלת ברירת המחדל אצלם על בית העסק שונה ממה שאנחנו שולחים, או שמסלול שהשתנה אצלנו לא נשלח. הפרש שחוזר על עצמו הוא כסף אמיתי בכל מכירה.',
+        }).catch(() => { /* nothing left to try */ });
+      }
       await recordMoneyEvent({
         type: 'payment_attempted',
         checkoutRef,

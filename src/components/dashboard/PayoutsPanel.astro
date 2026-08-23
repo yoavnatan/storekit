@@ -31,6 +31,10 @@
  * account; `DB_MIGRATION_PLAN.md` §10 records why, and it is closed rather than pending.
  */
 import { BUSINESS_TYPES, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
+import ClearingDetailsForm from './ClearingDetailsForm.astro';
+import SubscriptionCard from './SubscriptionCard.astro';
+import type { SellerTierId } from '../../lib/pricing.js';
+import type { MerchantKyc } from '../../lib/merchant-kyc.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -43,9 +47,25 @@ interface Props {
    *  GO_LIVE §7 plans — nothing is blocked, so a line about being blocked would describe a rule
    *  that is not in force. The block renders only when there is really something to say. */
   clearing: { state: 'ready' | 'missing-details' | 'awaiting-approval'; signupLink?: string } | null;
+  /** What PayMe require about the business, as far as it has been filled in. Rendered under the
+   *  bank block (owner, 2026-08-23) — one screen owns everything to do with money, and the
+   *  "your shop is not live" card on the overview links straight here. */
+  kyc: Partial<MerchantKyc>;
+  /** The merchant category derived from the shop's own categories, or null when their list has no
+   *  row for this trade. Null is what makes the form render the field at all. */
+  derivedCategory: string | null;
+  /** True once nothing is outstanding — the fields collapse into one line with an edit button. */
+  kycComplete: boolean;
+  /** The seller's plan, read from his account. This panel STATES it; `/pricing` is where it is
+   *  chosen (`/api/seller/tier`). */
+  tier: SellerTierId | undefined;
+  /** What is on file, and whether PayMe are actually billing it. Both come from the server so this
+   *  card can never disagree with the publication gate about whether the seller is paying. */
+  subscription: { status: number; nextCharge?: string } | null;
+  subscriptionPaying: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { seller, multiStore, clearing, d } = Astro.props;
+const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, tier, subscription, subscriptionPaying, d } = Astro.props;
 
 /** One sentence per state, chosen here rather than in the markup so the three are visibly a set and
  *  a fourth state cannot be added without picking its words. */
@@ -199,6 +219,17 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       </div>
     </div>
   </form>
+
+  {/* Directly under the bank block, because it is the same errand: the bank account says where the
+      money goes and this says who the business is, and PayMe need both before they will open an
+      account at all. Rendered only when a clearing provider is configured — with none, nothing is
+      blocked and a form about being blocked would be a form about a rule that is not in force. */}
+  {clearing && <ClearingDetailsForm kyc={kyc} derivedCategory={derivedCategory} complete={kycComplete} d={d} />}
+
+  {/* Last of the three, because it is the last thing that happens: bank account, then the business
+      the processor examines, then the subscription that puts the shop live. The order on the screen
+      is the order of the errand. */}
+  {clearing && <SubscriptionCard tier={tier} subscription={subscription} paying={subscriptionPaying} d={d} />}
 
   {/* ── The rules, once, at the end ──────────────────────────────────────────────────────────
       Three questions in the order a seller asks them, each with one short answer. There is no

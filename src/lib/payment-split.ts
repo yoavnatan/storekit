@@ -200,6 +200,12 @@ export function planSplit(input: SplitInput): SplitPlan {
 
 export interface CapturedLeg extends SplitLeg {
   paymeSaleId: string;
+  /** **PayMe's own figure for what they kept for us on this capture** (`sale_market_fee_total`),
+   *  carried up so the caller can compare it with what our pricing said it would be
+   *  (`lib/commission-check.ts`). It used to be dropped here, which is why a disagreement between
+   *  the rate on a seller's dashboard and the money really deducted from his sale was invisible on
+   *  both sides. Absent when they did not report one — which is not a mismatch. */
+  marketFeeTotalAgorot?: number;
 }
 
 /** Money taken that could not be given back. A real person is out real money and nothing else
@@ -290,7 +296,11 @@ export async function captureSlices(
         marketFeePercent: leg.marketFeePercent,
         ...(input.callbackUrl ? { callbackUrl: input.callbackUrl } : {}),
       }, creds);
-      captured.push({ ...leg, paymeSaleId: sale.paymeSaleId });
+      captured.push({
+        ...leg,
+        paymeSaleId: sale.paymeSaleId,
+        ...(sale.marketFeeTotalAgorot !== undefined ? { marketFeeTotalAgorot: sale.marketFeeTotalAgorot } : {}),
+      });
       if (!saleIsPaid(sale.saleStatus)) {
         failure = `capture ${sale.paymeSaleId} came back '${sale.saleStatus || 'unknown'}', not completed`;
       }

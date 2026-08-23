@@ -39,6 +39,8 @@ import {
   type MerchantKyc, type MerchantKycField,
 } from './merchant-kyc.js';
 import { commissionPercentForTier } from './pricing.js';
+import { paymeCategoryForStore } from './merchant-category.js';
+import { getStoresBySellerId } from './stores.js';
 import { activePaymeCredentials, createSeller, isSandbox, PaymeError, type PaymeCredentials } from './payment-payme.js';
 import { logError } from './error-log.js';
 
@@ -139,11 +141,34 @@ export async function merchantAccountByProviderRef(providerRef: string): Promise
   return row ? toAccount(row) : null;
 }
 
-/** The KYC we hold for this seller, normalised. Partial is the normal state, not an error. */
+/** The KYC we hold for this seller, normalised. Partial is the normal state, not an error.
+ *
+ *  **Raw — it does not derive the merchant category.** `resolveMerchantKyc` does, and the two are
+ *  separate because a form has to know which fields are really STORED (so a save does not write
+ *  back a derived value as if the seller had typed it) while the account-opening path needs the
+ *  complete picture. */
 export async function merchantKycFor(sellerId: string): Promise<Partial<MerchantKyc>> {
   if (!isUuid(sellerId)) return {};
   const row = await firstRow<{ merchant_kyc: unknown }>('SELECT merchant_kyc FROM sellers WHERE id = $1', [sellerId]);
   return normalizeMerchantKyc(row?.merchant_kyc);
+}
+
+/**
+ * The KYC as PayMe will see it — stored fields, plus the merchant category derived from the
+ * seller's own shop when he has not given one.
+ *
+ * **This is what removes a field from the form** (owner, 2026-08-23): PayMe's category list runs to
+ * hundreds of trade-and-size rows and a seller cannot answer it, so `merchant-category.ts` answers
+ * it from the categories he already picked. A stored value always wins — the one shop whose trade
+ * we cannot name (`כלבו`, no cross-trade row exists) is asked, once, and his answer must not be
+ * overwritten by a derivation that would return null anyway.
+ */
+export async function resolveMerchantKyc(sellerId: string, storeCategories?: readonly string[]): Promise<Partial<MerchantKyc>> {
+  const kyc = await merchantKycFor(sellerId);
+  if (kyc.businessCategory) return kyc;
+  const categories = storeCategories ?? (await getStoresBySellerId(sellerId)).flatMap((s) => s.categories ?? []);
+  const derived = paymeCategoryForStore(categories);
+  return derived ? { ...kyc, businessCategory: derived } : kyc;
 }
 
 /** Store what a seller filled in, merged over what he filled in before — a form that asks for
@@ -179,7 +204,7 @@ export type EnsureMerchantResult =
  */
 export async function ensureMerchantAccount(
   sellerId: string,
-  context: { storeName: string; storeUrl: string; storeDescription: string },
+  context: { storeName: string; storeUrl: string; storeDescription: string; storeCategories?: readonly string[] },
   creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<EnsureMerchantResult> {
   const existing = await merchantAccountFor(sellerId);
@@ -189,7 +214,9 @@ export async function ensureMerchantAccount(
   const seller = await getSellerById(sellerId);
   if (!seller) return { status: 'failed', error: 'seller not found' };
 
-  const kyc = await merchantKycFor(sellerId);
+  // The RESOLVED picture, so a seller whose trade we can read off his own shop never met the
+  // category field at all.
+  const kyc = await resolveMerchantKyc(sellerId, context.storeCategories);
   const missing = missingMerchantKyc(kyc);
   // The bank block is PayMe's too, and it lives on the seller record rather than in `merchant_kyc`
   // because payouts needed it first. Reported in the same list so a seller is told everything that

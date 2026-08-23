@@ -1,0 +1,88 @@
+---
+/**
+ * The monthly subscription — the button that puts a shop on the site.
+ *
+ * ── Why it is on the Payments tab and not in a wizard ──
+ * It is the second half of the same errand as the two blocks above it: the bank account says where
+ * the seller's money lands, the business details are what the processor examines, and this is what
+ * he pays us. One screen owns money (owner, 2026-08-23).
+ *
+ * ── What it does NOT do ──
+ * It does not choose a plan. `Seller.tier` is written by `/api/seller/tier` — the public pricing
+ * page — and read here, so this card states which plan is in force rather than offering four.
+ *
+ * ── The button leads OFF-SITE, and the copy says so ──
+ * PayMe return their own payment page unless we hand them a card token, and we cannot: Hosted Fields
+ * need the merchant's `seller_public_key` and **the merchant here is ours**, whose key was never
+ * stored (`seller-subscription.ts`). Pretending otherwise — a spinner, then a redirect the seller
+ * did not expect — is how a payment gets abandoned halfway. So the sentence under the button names
+ * where it goes.
+ *
+ * ── Three states, one card ──
+ * Nothing yet · created and waiting to be paid · paying. The middle one is the state a seller lands
+ * in by closing the processor's tab, and it is the reason "continue to payment" exists at all: the
+ * subscription really was created, so starting a second one would be a second thing billing him.
+ */
+import { resolveTier, type SellerTierId } from '../../lib/pricing.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  /** The seller's plan. Absent falls back to the default, exactly as `resolveTier` does everywhere
+   *  else — a bad stored value must never break this render. */
+  tier: SellerTierId | undefined;
+  /** What is on file: `null` = none yet, `paying` = billing is running, otherwise it was created
+   *  and nobody has paid it. `payUrl` is present only in that middle state. */
+  subscription: { status: number; nextCharge?: string } | null;
+  paying: boolean;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { tier, subscription, paying, d } = Astro.props;
+const plan = resolveTier(tier);
+const created = !!subscription;
+---
+
+<section class="card card--flat p-4 md:p-5 mt-4" id="sub-card" data-paying={String(paying)}>
+  <h3 class="text-[1.05rem] font-bold m-0">{d.subTitle}</h3>
+  <p class="muted m-0 mt-1 text-[0.84rem]">{d.subWhy}</p>
+
+  {/* Label, colon, value, one per row — the shape facts take on this dashboard
+      (`feedback_labelled_grid_over_prose`), rather than a sentence a seller has to parse to find
+      his own commission rate in. */}
+  <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mt-4 text-[0.86rem] m-0">
+    <dt class="muted">{d.subPlan}</dt>
+    <dd class="m-0 font-semibold">{plan.monthlyFee} ₪ {d.subPerMonth}</dd>
+    <dt class="muted">{d.subCommission}</dt>
+    <dd class="m-0 font-semibold">{plan.commissionPercent}%</dd>
+    {paying && subscription?.nextCharge && (
+      <>
+        <dt class="muted">{d.subNextCharge}</dt>
+        {/* PayMe's own string, passed through unparsed — it is theirs, and re-formatting it is how
+            a displayed date and a billed date start disagreeing. */}
+        <dd class="m-0 font-semibold" dir="ltr">{subscription.nextCharge}</dd>
+      </>
+    )}
+  </dl>
+  {/* Every number above is before VAT, and `pricing.ts`'s header argues at length why saying so is
+      not optional: a seller who reads 99 and is invoiced 116.82 has been surprised by us on the one
+      screen where trust is being established. */}
+  <p class="muted m-0 mt-2 text-[0.76rem]">{d.subVat}</p>
+
+  <p class="hidden text-sm [color:var(--color-danger)] mt-3 mb-0" id="sub-error" role="alert"></p>
+
+  {paying ? (
+    <div class="flex items-center justify-between gap-3 flex-wrap mt-4">
+      <p class="m-0 text-[0.86rem] font-semibold">{d.subActive}</p>
+      <button type="button" class="btn btn--ghost btn--sm" id="sub-cancel">{d.subCancel}</button>
+    </div>
+  ) : (
+    <div class="mt-4">
+      {created && <p class="m-0 mb-2 text-[0.84rem]">{d.subAwaitingPayment}</p>}
+      <button type="button" class="btn btn--accent btn--sm" id="sub-start">
+        {created ? d.subResume : d.subStart}
+      </button>
+      {/* Said BEFORE the click, not after it. A redirect nobody was expecting is where a payment
+          gets abandoned. */}
+      <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
+    </div>
+  )}
+</section>

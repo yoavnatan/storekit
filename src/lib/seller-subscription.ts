@@ -114,10 +114,21 @@ export async function sellerIsSubscribed(
 }
 
 export type StartSubscriptionResult =
-  /** Billing has begun. `subscription.status` says whether the first charge already went through. */
-  | { status: 'ok'; subscription: SellerSubscription }
+  /** Billing has begun. `subscription.status` says whether the first charge already went through,
+   *  and `payUrl` is present when it has not — the page PayMe want the seller to enter a card on. */
+  | { status: 'ok'; subscription: SellerSubscription; payUrl?: string }
   /** He already had one that is being paid — asking again must never open a second. */
   | { status: 'already'; subscription: SellerSubscription }
+  /**
+   * One was created for him and nobody has paid it yet.
+   *
+   * **This is the case that makes a second `generate-subscription` a real charge.** On the hosted
+   * page route the subscription is created BEFORE anybody pays, so it sits `initial` — and
+   * `subscriptionIsPaying` is correctly false for it. Treating that as "he has none" is how a seller
+   * who pressed the button, closed PayMe's tab, and pressed it again ends up with two standing
+   * arrangements against one card, only one of which we know about.
+   */
+  | { status: 'pending'; subscription: SellerSubscription; payUrl?: string }
   /** No gateway on this deployment. Dev, and the pre-gateway window. */
   | { status: 'not-configured' }
   /** We hold no merchant account of our own to collect into — `PAYME_DELIVERY_MERCHANT_ID`. An
@@ -129,10 +140,17 @@ export type StartSubscriptionResult =
 /**
  * Begin billing this seller.
  *
- * `buyerKey` is his card, already tokenised in the browser by Hosted Fields — **no card number
- * reaches this process**, exactly as in the checkout. With a token PayMe charge the first iteration
- * immediately and server-to-server (measured: the response comes back `sub_paid: true`), so there is
- * no page to send anyone to and the seller's shop can go live in the same request.
+ * ── Two routes, and today only one of them is available to us ──
+ * **With a `buyerKey`** — his card tokenised in the browser by Hosted Fields, exactly as in the
+ * checkout — PayMe charge the first iteration immediately and server-to-server (measured:
+ * `sub_paid: true`), so nobody is sent anywhere and the shop can go live in the same request.
+ *
+ * **Without one** PayMe return `sub_url`: their own page, where the seller types a card
+ * (measured 2026-08-23: `sub_status: 1`, `sub_paid: false`, a real URL). ⚠️ **This is the route in
+ * use, and not by choice.** Hosted Fields need the merchant's `seller_public_key`, and the merchant
+ * here is OURS — `create-seller` returns that key exactly once and the account in §18 was opened
+ * without storing it, so for this one account it is gone. The repair is to store it when the
+ * production merchant is opened; `seller-merchant.ts`'s header carries the class.
  *
  * **Never throws**, for the same reason `ensureMerchantAccount` does not: it runs behind a button a
  * seller pressed, and an unhandled gateway error there is an error page in front of the one person
@@ -140,13 +158,30 @@ export type StartSubscriptionResult =
  */
 export async function startSubscription(
   sellerId: string,
-  input: { buyerKey: string; callbackUrl?: string },
+  input: { buyerKey?: string; callbackUrl?: string; returnUrl?: string },
   creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<StartSubscriptionResult> {
   const existing = await subscriptionFor(sellerId);
   if (existing && subscriptionIsPaying(existing.status)) return { status: 'already', subscription: existing };
   if (!creds) return { status: 'not-configured' };
   if (!creds.ownMerchantId) return { status: 'no-collection-account' };
+
+  // A subscription created and not yet paid is NOT "no subscription" — see the `pending` branch of
+  // the result type. Asked of PayMe rather than of our stored status, because the seller may have
+  // paid on their page since (their callback needs a public URL we do not have yet), and because it
+  // is where the page's own URL comes from.
+  if (existing?.providerRef && existing.status === PAYME_SUB_STATUS.initial) {
+    const upstream = await getSubscriptionStatus(creds.ownMerchantId, existing.providerRef, creds).catch(() => null);
+    if (upstream && subscriptionIsPaying(upstream.subStatus)) {
+      await refreshSubscription(sellerId, creds);
+      return { status: 'already', subscription: (await subscriptionFor(sellerId))! };
+    }
+    // Still unpaid — send him back to the same page. A cancelled or failed one falls through and a
+    // new subscription is created, which is right: he has nothing standing.
+    if (upstream && upstream.subStatus === PAYME_SUB_STATUS.initial) {
+      return { status: 'pending', subscription: existing, ...(upstream.subUrl ? { payUrl: upstream.subUrl } : {}) };
+    }
+  }
 
   const seller = await getSellerById(sellerId);
   if (!seller) return { status: 'failed', error: 'seller not found' };
@@ -159,12 +194,13 @@ export async function startSubscription(
       ownMerchantId: creds.ownMerchantId,
       priceAgorot,
       description: `מנוי חודשי — ${seller.name}`.slice(0, 120),
-      buyerKey: input.buyerKey,
+      ...(input.buyerKey ? { buyerKey: input.buyerKey } : {}),
       // Our own id, echoed on every callback. The seller id itself rather than a random one: a
       // notification then names the seller it is about without our having to trust anything else in
       // a body anyone on the internet can POST.
       correlationId: sellerId,
       ...(input.callbackUrl ? { callbackUrl: input.callbackUrl } : {}),
+      ...(input.returnUrl ? { returnUrl: input.returnUrl } : {}),
       buyerEmail: seller.email,
     }, creds);
 
@@ -178,7 +214,7 @@ export async function startSubscription(
          status = EXCLUDED.status, buyer_key = EXCLUDED.buyer_key, started_at = EXCLUDED.started_at,
          next_charge = EXCLUDED.next_charge, canceled_at = NULL, updated_at = now()
        RETURNING ${SUB_COLUMNS}`,
-      [sellerId, created.subPaymeId, tier, priceAgorot, created.subStatus, input.buyerKey, created.nextDate ?? null],
+      [sellerId, created.subPaymeId, tier, priceAgorot, created.subStatus, input.buyerKey ?? null, created.nextDate ?? null],
     );
     if (!row) return { status: 'failed', error: 'subscription row not written' };
 
@@ -193,7 +229,11 @@ export async function startSubscription(
         detail: `מנוי חודשי · מוכר ${sellerId} · אסמכתה ${created.subPaymeId}`,
       }).catch(() => { /* a lost journal row must not undo a started subscription */ });
     }
-    return { status: 'ok', subscription: toSubscription(row) };
+    // The row exists either way — a subscription PayMe are waiting to be paid is a real standing
+    // arrangement, and it is what `refreshSubscription` and the publication sweep look at when the
+    // seller finishes on their page. `payUrl` is where he has to go; its absence means the first
+    // charge already went through.
+    return { status: 'ok', subscription: toSubscription(row), ...(created.subUrl ? { payUrl: created.subUrl } : {}) };
   } catch (err) {
     const message = err instanceof PaymeError ? err.message : err instanceof Error ? err.message : String(err);
     await logError({

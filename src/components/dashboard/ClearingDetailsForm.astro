@@ -1,0 +1,147 @@
+---
+/**
+ * The ten fields PayMe require about a business, and the only place a seller types them.
+ *
+ * ── Where it sits, and why (owner, 2026-08-23) ──
+ * The Payments tab, directly under the bank block. One screen owns everything to do with money, the
+ * clearing-status line is already at the top of it, and the "your shop is not live" card on the
+ * overview links straight here. The alternative — a step inside a publish wizard — would have put
+ * the bank details on one screen and the business details on another, for one purpose.
+ *
+ * ── Not bulky, which is a requirement and not a preference (owner) ──
+ * Ten fields is a lot, so the shape does the work: two labelled groups, a two-column grid, native
+ * `date` inputs rather than three selects each, gender as two buttons rather than a dropdown of
+ * two, and the address on one row. Five rows in total. The merchant category is **usually not here
+ * at all** — `merchant-category.ts` derives it from the shop's own categories, and the field renders
+ * only for the one shop kind their list cannot name.
+ *
+ * ── The urgency line is the top of the form, on purpose ──
+ * *"שהמוכר ידע שהוא צריך למלא את זה כמה שיותר מהר"*. The honest reason is not a nag: PayMe's review
+ * takes up to seven business days and **does not begin until this is submitted**, so a week of
+ * waiting is bought by a day of delay here. That is a fact, so it is said as one.
+ *
+ * ── Nothing here blocks him ──
+ * A partial save is normal (`feedback_seller_form_burden`): whatever he fills in is stored, the rest
+ * is reported back, and he can leave and come back. The form has no required attributes and no
+ * client-side gate — the server decides what is still missing, from the same function that decides
+ * whether an account may be opened.
+ */
+import type { MerchantKyc } from '../../lib/merchant-kyc.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  /** What is already stored. Partial is the normal state. */
+  kyc: Partial<MerchantKyc>;
+  /** The code derived from the store's categories, when there is one. Present means the field is
+   *  not rendered at all — the seller never meets PayMe's several-hundred-row trade list. */
+  derivedCategory: string | null;
+  /** True once PayMe hold everything they need; the fields collapse into one line with an edit
+   *  button, the same shape the bank block uses. */
+  complete: boolean;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { kyc, derivedCategory, complete, d } = Astro.props;
+const v = (x: string | number | undefined): string => (x === undefined ? '' : String(x));
+---
+
+<form class="card card--flat p-4 md:p-5 mt-4" id="mk-form" data-unsaved-guard>
+  <h3 class="text-[1.05rem] font-bold m-0">{d.mkTitle}</h3>
+
+  {/* SERVER-rendered `hidden` on whichever half does not apply, never revealed by a script on load
+      — the flash class this project already has a memory for (`project_injected_overlay_flash`).
+      The server knows which state this is. */}
+  <div id="mk-summary" class="flex items-center justify-between gap-3 flex-wrap mt-3 p-3 border [border-color:var(--color-border)] rounded-[var(--radius)]" hidden={!complete}>
+    <p class="muted m-0 text-[0.84rem]">{d.mkOnFile}</p>
+    <button type="button" class="btn btn--ghost btn--sm shrink-0" id="mk-edit">{d.mkEdit}</button>
+  </div>
+
+  <div id="mk-fields" hidden={complete}>
+    {/* The one sentence that says why today rather than next week. Above the fields, because after
+        them it is advice about a form he has already filled in. */}
+    <p class="m-0 mt-2 text-[0.84rem]">{d.mkUrgent}</p>
+
+    <p class="muted m-0 mt-4 mb-1 text-[0.78rem] font-semibold">{d.mkOwnerLegend}</p>
+    <div class="grid gap-3 sm:grid-cols-2">
+      {/* `dir="ltr"` + `inputmode="numeric"`: ASCII digits on an RTL page group the wrong way round
+          when left to inherit. Same rule the bank fields above follow. */}
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkSocialId}</span>
+        <input class="input" name="ownerSocialId" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={v(kyc.ownerSocialId)} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkPhone}</span>
+        <input class="input" name="ownerPhone" type="tel" dir="ltr" inputmode="tel" autocomplete="tel" maxlength="15" value={v(kyc.ownerPhone)} />
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.mkPhoneHint}</p>
+      </label>
+      {/* A native `date` — three selects each would be six controls for two facts, which is exactly
+          the bulk this form is not allowed to have. It is also the one input a phone renders as a
+          proper picker. */}
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkBirthdate}</span>
+        <input class="input" name="ownerBirthdate" type="date" dir="ltr" value={v(kyc.ownerBirthdate)} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkIdIssued}</span>
+        <input class="input" name="ownerSocialIdIssued" type="date" dir="ltr" value={v(kyc.ownerSocialIdIssued)} />
+      </label>
+    </div>
+
+    {/* Two options, so two buttons — not a dropdown that has to be opened to see that it holds two
+        things, and not a raw `<select>` (banned site-wide). The value is PayMe's own 0/1 enum. */}
+    <fieldset class="border-0 p-0 m-0 mt-3">
+      <legend class="text-[0.85rem] mb-1.5 p-0">{d.mkGender}</legend>
+      {/* The value lives in a real hidden INPUT, not on a data attribute — so `FormData` carries it
+          like every other field and the unsaved-changes bar can be told it moved through
+          `announceValueChange`, which takes an input and is the one sanctioned way to say so
+          (guarded by `tests/unsaved-notice.test.ts`). */}
+      <input type="hidden" name="ownerGender" id="mk-gender-value" value={v(kyc.ownerGender)} />
+      <div class="flex gap-2" id="mk-gender">
+        <button type="button" class="btn btn--ghost btn--sm" data-gender="0" aria-pressed={kyc.ownerGender === 0}>{d.mkMale}</button>
+        <button type="button" class="btn btn--ghost btn--sm" data-gender="1" aria-pressed={kyc.ownerGender === 1}>{d.mkFemale}</button>
+      </div>
+    </fieldset>
+
+    {/* ONE grid for the whole business block, not a row per idea. The category is usually absent
+        (see below), and a two-column row holding only the registration date left an empty half the
+        width of the card — which is precisely the bulk this form is not allowed to have. Four
+        columns let the fields flow: whatever is rendered fills the row, and the address stays
+        together because `street` is given the wide column. */}
+    <p class="muted m-0 mt-5 mb-1 text-[0.78rem] font-semibold">{d.mkBusinessLegend}</p>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1.4fr_0.6fr]">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkRegisteredOn}</span>
+        <input class="input" name="businessRegisteredOn" type="date" dir="ltr" value={v(kyc.businessRegisteredOn)} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkCity}</span>
+        <input class="input" name="businessCity" autocomplete="address-level2" maxlength="60" value={v(kyc.businessCity)} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkStreet}</span>
+        <input class="input" name="businessStreet" autocomplete="address-line1" maxlength="80" value={v(kyc.businessStreet)} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.mkStreetNumber}</span>
+        <input class="input" name="businessStreetNumber" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="10" value={v(kyc.businessStreetNumber)} />
+      </label>
+      {/* Rendered ONLY when the shop's own categories cannot answer it — which is every seed
+          category but one. PayMe's list runs to hundreds of trade-and-size rows and asking a seller
+          to pick from it is the rubric `feedback_seller_form_burden` forbids; `merchant-category.ts`
+          answers it, and the exception is a department store, which their list genuinely has no row
+          for. Last in the grid so its absence closes the gap instead of leaving one. */}
+      {!derivedCategory && (
+        <label class="field sm:col-span-2">
+          <span class="text-[0.85rem]">{d.mkCategory}</span>
+          <input class="input" name="businessCategory" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="5" value={v(kyc.businessCategory)} />
+          <p class="muted m-0 mt-1 text-[0.76rem]">{d.mkCategoryHint}</p>
+        </label>
+      )}
+    </div>
+
+    <p class="hidden text-sm [color:var(--color-danger)] mt-2 mb-0" id="mk-error" role="alert"></p>
+    <div class="flex items-center gap-2 mt-4">
+      <button type="submit" class="btn btn--sm" id="mk-save">{d.mkSave}</button>
+      <button type="button" class="btn btn--ghost btn--sm" id="mk-cancel" hidden={!complete}>{d.payBankCancel}</button>
+    </div>
+  </div>
+</form>

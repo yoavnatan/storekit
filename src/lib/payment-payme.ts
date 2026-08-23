@@ -723,6 +723,9 @@ export interface GenerateSubscriptionInput {
    *  the seller it is about without trusting anything else in the body. */
   correlationId: string;
   callbackUrl?: string;
+  /** Where PayMe send the seller back after he pays on their page. Only meaningful without a
+   *  token — with one there is no page and nobody to send anywhere. */
+  returnUrl?: string;
   buyerEmail?: string;
 }
 
@@ -758,6 +761,7 @@ export async function generateSubscription(input: GenerateSubscriptionInput, cre
     sub_send_notification: false,
     ...(input.buyerKey ? { buyer_key: input.buyerKey } : {}),
     ...(input.callbackUrl ? { sub_callback_url: input.callbackUrl } : {}),
+    ...(input.returnUrl ? { sub_return_url: input.returnUrl } : {}),
     ...(input.buyerEmail ? { sub_email_address: input.buyerEmail } : {}),
   }, creds);
 
@@ -794,15 +798,19 @@ export async function cancelSubscription(ownMerchantId: string, subPaymeId: stri
  * is NOT "cancelled" — writing a verdict from a failed lookup is how a paying seller's shop goes
  * dark.
  */
-export async function getSubscriptionStatus(ownMerchantId: string, subPaymeId: string, creds: PaymeCredentials): Promise<{ subStatus: number; nextDate?: string } | null> {
+export async function getSubscriptionStatus(ownMerchantId: string, subPaymeId: string, creds: PaymeCredentials): Promise<{ subStatus: number; nextDate?: string; subUrl?: string } | null> {
   const res = await callPayme('get-subscriptions', { seller_payme_id: ownMerchantId }, creds);
   const items = Array.isArray(res.items) ? res.items as Record<string, unknown>[] : [];
   const found = items.find((i) => String(i.sub_payme_id ?? '') === subPaymeId);
   if (!found) return null;
   const nextDate = String(found.sub_next_date ?? '');
+  // Their own payment page, echoed back on the listing (measured). It is what lets a seller who
+  // closed the tab be sent to the SAME subscription instead of a second one being created for him.
+  const subUrl = String(found.sub_url ?? '');
   return {
     subStatus: Number(found.sub_status ?? PAYME_SUB_STATUS.initial),
     ...(nextDate ? { nextDate } : {}),
+    ...(subUrl ? { subUrl } : {}),
   };
 }
 

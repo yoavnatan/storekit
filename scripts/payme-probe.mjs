@@ -127,6 +127,18 @@ if (mode === 'exists') {
   say("seller's card token", tok);
   if (!ok(tok)) process.exit(1);
 
+  // The HOSTED-PAGE variant first, and it is the one that matters: **our own merchant's public key
+  // was never stored** (`create-seller` returns it once, §18 did not save it), so Hosted Fields
+  // cannot be drawn for a subscription and `sub_url` is the only route a seller's card can reach.
+  const page = await call('generate-subscription', {
+    seller_payme_id: DELIVERY, sub_currency: 'ILS', sub_price: 9900,
+    sub_description: 'מנוי חודשי — דזבין (עמוד)', sub_iteration_type: 3, sub_type: 1,
+    subscription_id: `probe-page-${Date.now()}`, sub_send_notification: false,
+  });
+  say('no token → hosted page', page, page.sub_url ? 'has sub_url' : 'NO sub_url');
+  console.log('  status', page.sub_status, '· paid', page.sub_paid, '·', String(page.sub_url ?? '').slice(0, 70));
+  if (ok(page)) await call('cancel-subscription', { seller_payme_id: DELIVERY, sub_payme_id: page.sub_payme_id });
+
   const sub = await call('generate-subscription', {
     seller_payme_id: DELIVERY,
     sub_currency: 'ILS',

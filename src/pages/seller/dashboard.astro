@@ -53,8 +53,12 @@ import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
-import { ensureMerchantAccount, clearingStatusFor } from '../../lib/seller-merchant.js';
+import { ensureMerchantAccount, clearingStatusFor, merchantKycFor } from '../../lib/seller-merchant.js';
+import { missingMerchantKyc } from '../../lib/merchant-kyc.js';
+import { paymeCategoryForStore } from '../../lib/merchant-category.js';
 import { publishHoldsFor, syncStorePublication } from '../../lib/store-publication.js';
+import { subscriptionFor } from '../../lib/seller-subscription.js';
+import { subscriptionIsPaying } from '../../lib/payment-payme.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
 import { openOrderCount } from '../../lib/store-lifecycle.js';
@@ -425,6 +429,20 @@ const seller = await getSellerById(sellerId);
 /** Whether his stores may take money, for the Payments tab — null when no clearing provider is
  *  configured at all, in which case nothing is blocked and there is nothing to say. */
 const clearingStatus = await clearingStatusFor(sellerId);
+// The clearing form's own data. `merchantKycFor` is the RAW record on purpose — the form shows what
+// the seller actually typed, so a save cannot write a derived value back as if he had. The derived
+// category is passed beside it and is what removes the field from the form entirely
+// (`merchant-category.ts`).
+const merchantKyc = clearingStatus ? await merchantKycFor(sellerId) : {};
+const derivedMerchantCategory = clearingStatus ? paymeCategoryForStore(allStores.flatMap((s) => s.categories ?? [])) : null;
+// "Complete" is asked of the RESOLVED picture — the seller has nothing left to do when the only
+// field still empty is one we can answer for him.
+// What is on file, read once for the card. `subscriptionIsPaying` rather than a comparison here:
+// the status is PayMe's integer and `payment-payme.ts` is the only place it is interpreted, so a
+// screen and the publication gate cannot disagree about whether this seller is paying.
+const subscription = clearingStatus ? await subscriptionFor(sellerId) : null;
+const merchantKycComplete = !!clearingStatus
+  && missingMerchantKyc(derivedMerchantCategory ? { ...merchantKyc, businessCategory: derivedMerchantCategory } : merchantKyc).length === 0;
 // Why this seller's shops are not on the site — computed once, read by the overview card. Asked
 // only when at least one of his stores is actually waiting: for a live seller it would be two DB
 // reads on every dashboard load to render nothing.
@@ -2941,6 +2959,12 @@ const orderStatusColors: Record<string, string> = {
             seller={seller}
             multiStore={allStores.length > 1}
             clearing={clearingStatus}
+            kyc={merchantKyc}
+            derivedCategory={derivedMerchantCategory}
+            kycComplete={merchantKycComplete}
+            tier={seller.tier}
+            subscription={subscription}
+            subscriptionPaying={!!subscription && subscriptionIsPaying(subscription.status)}
             d={d}
           />
         )}
@@ -4020,9 +4044,17 @@ const orderStatusColors: Record<string, string> = {
     },
 
     payouts: async () => {
-      const { initPayoutsTab, watchPayoutsFreshness } = await import('../../scripts/dashboard/payouts.js');
+      const [{ initPayoutsTab, watchPayoutsFreshness }, { initMerchantKycForm }, { initSubscriptionCard }] = await Promise.all([
+        import('../../scripts/dashboard/payouts.js'),
+        // A separate module and a separate form: the two post to different routes and save
+        // independently, so a seller can fill in his bank today and his ת.ז tomorrow.
+        import('../../scripts/dashboard/merchant-kyc.js'),
+        import('../../scripts/dashboard/subscription.js'),
+      ]);
       return () => {
         initPayoutsTab();
+        initMerchantKycForm();
+        initSubscriptionCard();
         // Once per page: it survives the panel being replaced by a refresh, which `initPayoutsTab`
         // deliberately does not (it binds the form that was just swapped out).
         watchPayoutsFreshness();
