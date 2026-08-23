@@ -36,6 +36,14 @@ export const PLATFORM_PAGE_SEGMENTS: readonly string[] = [
   // 'returns-policy' is the platform's, like 'terms': it is ONE policy for every shop (decisions §2),
   // so a buyer on a seller's custom domain must read the platform's copy and not a per-host one.
   'terms', 'contact', 'returns-policy',
+  // 'pricing' is the platform's for a sharper reason than the three beside it: it is what WE charge
+  // a seller, so serving it from a shop's own domain would put our seller pricing in front of that
+  // shop's customers, on the shop's brand, as if it were theirs.
+  'pricing',
+  // 'help' is the platform's for the same reason: the articles are about selling ON the platform,
+  // addressed to a seller. Served from a shop's own domain they would be that shop instructing its
+  // own customers on how to open a store.
+  'help',
   // 'review' is the platform's for the same reason 'buyer' is: it identifies a PERSON, from a
   // session cookie or a signed link, and both of those are scoped to the origin that issued them.
   // Served on a seller's domain the session simply is not there, and the link's signature is the

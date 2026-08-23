@@ -29,7 +29,7 @@ import { getPurchasedCountsByStoreSlugs } from '../src/lib/orders.js';
 import { toMerchantXml } from '../src/lib/product-feed.js';
 import { buildUrlSetXml } from '../src/lib/sitemap.js';
 import { feedChannelMeta, feedDocumentChunks, storeFeedItems } from '../src/lib/feed-document.js';
-import { platformStoreEntries } from '../src/lib/sitemap-document.js';
+import { platformPageEntries, platformStoreEntries } from '../src/lib/sitemap-document.js';
 import { newBuildStats, STORE_BATCH } from '../src/lib/catalog-build.js';
 import { readArtifactMeta, artifactStream, writeArtifact } from '../src/lib/artifacts.js';
 import {
@@ -132,7 +132,15 @@ describe('the streamed sitemap is the document it replaced', () => {
       getCategoriesByStoreIds(ids),
     ]);
     const baseUrl = stripTrailingSlashes(platform.url);
-    return stores.flatMap((s) => platformStoreEntries(s, products.get(s.id) ?? [], categories.get(s.id) ?? [], baseUrl) ?? []);
+    // The platform's own pages come FIRST, exactly as the build yields them (2026-08-23) — and
+    // through `platformPageEntries`, not a list typed here, for the reason this file's header
+    // gives: an expectation that restates what the build produces stops asserting anything the day
+    // one of them changes. What is genuinely owned here is that they lead, and that a shard split
+    // does not separate them from the catalogue that follows.
+    return [
+      ...platformPageEntries(baseUrl),
+      ...stores.flatMap((s) => platformStoreEntries(s, products.get(s.id) ?? [], categories.get(s.id) ?? [], baseUrl) ?? []),
+    ];
   }
 
   it('one shard is byte-identical to the single-shot serialiser over the same catalogue', async () => {

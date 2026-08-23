@@ -249,9 +249,72 @@ export const translations = {
       terms: 'תנאי שימוש',
       returns: 'ביטולים והחזרות',
       contact: 'צור קשר',
+      pricing: 'מחירים',
+      help: 'עזרה',
       // The licensing-exemption disclosure that sat here from 2026-08-16 is gone — see the comment
       // at the foot of `Footer.astro` for why the split model removes the obligation rather than
       // just the sentence.
+    },
+    // ── The pricing page (2026-08-23, CURRENT_TASK סשן ב׳) ──
+    // Every number on it comes from `lib/pricing.ts` and none is written here — the file is the
+    // single source, and a figure typed into a translation is a second one that drifts silently.
+    // What lives here is only the words around them.
+    //
+    // The register is the one the owner set for seller copy: name the ACTION, never the claim, and
+    // say "אצלנו" only where it means him. Two wordings are load-bearing and are quoted from
+    // decisions rather than invented — "קודם מוכרים. אחר כך משלמים." (pricing.ts: never
+    // "התחילו בחינם", which enters the Shopify comparison this platform loses) and the `+ מע״מ`
+    // that must appear beside every fee, because these are B2B prices the seller reclaims.
+    pricing: {
+      title: 'מחירים',
+      metaDesc: 'דמי מנוי חודשיים ועמלה על כל מכירה. בונים חנות שלמה בלי כרטיס אשראי, ומשלמים כשרוצים שהיא תעלה לאוויר.',
+      heading: 'מה זה עולה',
+      lede: 'מנוי חודשי ועמלה על כל מכירה. אין דמי הקמה ואין התחייבות.',
+      // The honest headline of the whole model, and the reason the page is a comparison and not a
+      // feature matrix: the tiers differ ONLY in the ratio between fee and commission. Inventing a
+      // feature difference to make a table look fuller would be inventing a product.
+      sameEverything: 'כל המסלולים כוללים בדיוק את אותם דברים. ההבדל היחיד הוא היחס בין המנוי לעמלה — ככל שמוכרים יותר, משתלם מנוי גבוה יותר ועמלה נמוכה יותר.',
+      vatNote: 'כל המחירים אינם כוללים מע״מ.',
+      perMonth: 'לחודש',
+      commissionLabel: 'עמלה על כל מכירה',
+      // The calculator. One question, one number — a seller who has to answer a rubric to find out
+      // what he pays has been handed a barrier (memory feedback_seller_form_burden).
+      calcTitle: 'איזה מסלול משתלם לכם',
+      calcQuestion: 'כמה אתם צפויים למכור בחודש?',
+      calcPlaceholder: 'למשל 8,000',
+      calcHint: 'הזינו סכום ונסמן את הזול ביותר עבורכם.',
+      calcTotal: 'סה״כ לחודש',
+      calcBest: 'המשתלם עבורכם',
+      calcSaves: 'חוסך {amount} בחודש',
+      // When billing starts. Its own section because it is the answer to the question that stops a
+      // seller from registering, and it is buried if it sits as a footnote under a price.
+      whenTitle: 'מתי מתחילים לחייב',
+      whenLead: 'קודם מוכרים. אחר כך משלמים.',
+      whenBody: 'המנוי מתחיל להיגבות במכירה הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה. עד אז לא נגבה דבר.',
+      buildTitle: 'בונים לפני שמשלמים',
+      buildBody: 'נרשמים, מעלים מוצרים, מעצבים ורואים את החנות — בלי כרטיס אשראי. בוחרים מסלול רק כשרוצים שהחנות תעלה לאוויר.',
+      includedTitle: 'מה כלול בכל מסלול',
+      included1: 'חנות משלכם עם כתובת משלכם, וקידום אורגני בגוגל',
+      included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש והקטגוריות',
+      included3: 'פרסום בסיסי בגוגל ובמטא, בלי לגעת בשום הגדרה',
+      included4: 'משלוחים עם שליח, מדבקות ומעקב',
+      included5: 'מוצרים, תמונות, וריאציות ומבצעים — בלי הגבלה',
+      adsTitle: 'פרסום ממומן',
+      adsBody: 'קמפיין בתשלום נגבה בנפרד לפי ההוצאה בפועל בגוגל ובמטא, בתוספת דמי ניהול של {percent}. תקציב שלא נוצל לא נגבה.',
+      choose: 'בחירת המסלול',
+      current: 'המסלול שלכם',
+      saving: 'שומר…',
+      saved: 'המסלול נשמר',
+      saveFailed: 'השמירה נכשלה. נסו שוב.',
+      ctaTitle: 'רוצים לראות איך זה נראה',
+      ctaBody: 'פתיחת חנות לוקחת כמה דקות ולא דורשת כרטיס אשראי.',
+      ctaButton: 'פתיחת חנות',
+      tiers: {
+        starter: { name: 'בסיס', for: 'לחנות שרק מתחילה' },
+        growth: { name: 'צמיחה', for: 'כשהמכירות נכנסות לקצב' },
+        pro: { name: 'מקצועי', for: 'לחנות עם מחזור קבוע' },
+        enterprise: { name: 'עסקי', for: 'לקטלוג גדול ומחזור גבוה' },
+      },
     },
     // The two pages a visitor lands on when the request could not be served. Same shape as the
     // store states above — one line and a way out — and for the same reason: a visitor here can
@@ -2490,6 +2553,52 @@ export const translations = {
       terms: 'Terms',
       returns: 'Returns',
       contact: 'Contact',
+      pricing: 'Pricing',
+      help: 'Help',
+    },
+    pricing: {
+      title: 'Pricing',
+      metaDesc: 'A monthly subscription and a commission on each sale. Build the whole shop with no card, and pay when you want it live.',
+      heading: 'What it costs',
+      lede: 'A monthly subscription and a commission on each sale. No setup fee and no commitment.',
+      sameEverything: 'Every plan includes exactly the same things. The only difference is the ratio between the subscription and the commission — the more you sell, the more a higher subscription with a lower commission is worth.',
+      vatNote: 'All prices exclude VAT.',
+      perMonth: 'per month',
+      commissionLabel: 'commission per sale',
+      calcTitle: 'Which plan works out cheapest',
+      calcQuestion: 'How much do you expect to sell in a month?',
+      calcPlaceholder: 'e.g. 8,000',
+      calcHint: 'Enter an amount and we will mark the cheapest one for you.',
+      calcTotal: 'Total per month',
+      calcBest: 'Cheapest for you',
+      calcSaves: 'saves {amount} a month',
+      whenTitle: 'When billing starts',
+      whenLead: 'Sell first. Pay after.',
+      whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up. Nothing is charged until then.',
+      buildTitle: 'Build before you pay',
+      buildBody: 'Sign up, add products, design the shop and look at it — with no card. You pick a plan only when you want the shop to go live.',
+      includedTitle: 'In every plan',
+      included1: 'Your own shop at your own address, and organic ranking on Google',
+      included2: 'Exposure inside the marketplace — home, search and categories',
+      included3: 'Baseline advertising on Google and Meta, with no setting to touch',
+      included4: 'Courier delivery, labels and tracking',
+      included5: 'Products, images, variants and sales — with no cap',
+      adsTitle: 'Paid advertising',
+      adsBody: 'A paid campaign is billed separately on what Google and Meta actually spent, plus a {percent} management fee. Budget you did not spend is never charged.',
+      choose: 'Choose this plan',
+      current: 'Your plan',
+      saving: 'Saving…',
+      saved: 'Plan saved',
+      saveFailed: 'Saving failed. Please try again.',
+      ctaTitle: 'Want to see what it looks like',
+      ctaBody: 'Opening a shop takes a few minutes and needs no card.',
+      ctaButton: 'Open a shop',
+      tiers: {
+        starter: { name: 'Starter', for: 'A shop that is just beginning' },
+        growth: { name: 'Growth', for: 'When sales find a rhythm' },
+        pro: { name: 'Pro', for: 'A shop with steady turnover' },
+        enterprise: { name: 'Business', for: 'A large catalogue and high turnover' },
+      },
     },
     errorPage: {
       notFoundTitle: 'Page not found',

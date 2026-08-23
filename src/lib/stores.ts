@@ -385,6 +385,11 @@ export const RESERVED_SLUGS = new Set<string>([
   // store router, so a seller registering the slug `review` would answer for everyone's review
   // links. `tests/external-contract.test.ts` is what caught it.
   'review',
+  // The pricing page (2026-08-23). Same class as the footer routes above, and it is linked from
+  // more places than they are — the footer, the registration form and the dashboard's publish card
+  // all point at it — so an unreserved `pricing` would hand a seller the page on which every other
+  // seller reads what the platform charges.
+  'pricing', 'help',
 ]);
 
 const LONGEST_RESERVED_SLUG = Math.max(...[...RESERVED_SLUGS].map((s) => s.length));

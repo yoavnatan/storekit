@@ -24,6 +24,7 @@ import { toSitemapDate, type SitemapEntry } from './sitemap.js';
 import { isStoreReady } from './store-readiness.js';
 import { stripTrailingSlashes, urlSegment } from './url-base.js';
 import { batches, STORE_BATCH, type CatalogBuildStats } from './catalog-build.js';
+import { HELP_ARTICLES } from './help-articles.js';
 
 /**
  * One store's URLs, rooted wherever the store is being served from.
@@ -104,6 +105,31 @@ export function platformStoreEntries(
 }
 
 /**
+ * The platform's own indexable pages. Exported so `tests/sitemap-content.test.ts` can assert the
+ * list rather than re-derive it, and pure so it needs no database.
+ *
+ * Priorities are relative and only compared within this document: the homepage is the entry to
+ * everything (1.0), the directory and the pricing page are the two a seller or a shopper arrives on
+ * from a search (0.8/0.7), help articles are long-tail answers (0.5), and the policy pages exist to
+ * be READ when linked rather than to be found (0.3) — they still have to be listed, because
+ * Merchant Center looks for a published returns policy and terms.
+ */
+export function platformPageEntries(baseUrl: string): SitemapEntry[] {
+  return [
+    { loc: `${baseUrl}/`, changefreq: 'daily', priority: '1.0' },
+    { loc: `${baseUrl}/stores`, changefreq: 'daily', priority: '0.8' },
+    { loc: `${baseUrl}/pricing`, changefreq: 'monthly', priority: '0.7' },
+    { loc: `${baseUrl}/help`, changefreq: 'monthly', priority: '0.6' },
+    ...HELP_ARTICLES.map((a): SitemapEntry => ({
+      loc: `${baseUrl}/help/${a.slug}`, changefreq: 'monthly', priority: '0.5',
+    })),
+    { loc: `${baseUrl}/terms`, changefreq: 'yearly', priority: '0.3' },
+    { loc: `${baseUrl}/returns-policy`, changefreq: 'yearly', priority: '0.3' },
+    { loc: `${baseUrl}/contact`, changefreq: 'yearly', priority: '0.3' },
+  ];
+}
+
+/**
  * Every URL the platform's sitemap lists, in order, one at a time.
  *
  * **Entries and not XML, unlike the feed's builder** — because this document is SHARDED. A sitemap
@@ -117,6 +143,28 @@ export function platformStoreEntries(
  */
 export async function* platformSitemapEntries(stats: CatalogBuildStats): AsyncGenerator<SitemapEntry> {
   const baseUrl = stripTrailingSlashes(platform.url);
+
+  // ── The platform's OWN pages, before anybody's shop (2026-08-23) ──
+  // They were in no sitemap at all, and it went unnoticed because each half looked complete. The
+  // static sitemap (`@astrojs/sitemap`) only sees routes that exist at BUILD time, and every page
+  // in `src/pages` is `prerender = false`; this document only ever listed stores and products. So
+  // the homepage, the directory and every policy page were reachable by crawl and advertised by
+  // nothing — the "valid sitemap, no error, missing URLs" class the SEO rule warns about, which is
+  // exactly why that rule says to check the BUILT output rather than the page tags.
+  //
+  // Listed here rather than in the static sitemap's config because this is the document that can
+  // hold an SSR route. The list is the indexable complement of `astro.config.mjs`'s sitemap filter:
+  // no /admin, /seller, /buyer, /checkout or /review (private), and no /search, /store-gone or
+  // /store-unavailable (they render `noindex`, and advertising a noindex URL is the "submitted URL
+  // marked noindex" contradiction Search Console reports).
+  //
+  // `/help/<slug>` comes off the corpus rather than being typed, so a new article is listed by
+  // writing it.
+  for (const entry of platformPageEntries(baseUrl)) {
+    stats.items++;
+    yield entry;
+  }
+
   const indexableStores = await getIndexableStores();
 
   for (const batch of batches(indexableStores, STORE_BATCH)) {

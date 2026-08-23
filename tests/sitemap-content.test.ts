@@ -150,3 +150,58 @@ describe('/sitemap-content.xml', () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * The platform's OWN pages — the second half of the same regression this file was written for, and
+ * it sat open until 2026-08-23.
+ *
+ * The store/product half was fixed by making this document enumerate them. Nobody then asked what
+ * listed `/`. The static sitemap only sees BUILD-time routes and every page in `src/pages` is
+ * `prerender = false`, so the homepage, the store directory and every policy page were advertised
+ * by neither document. Each half looked complete on its own, which is precisely why the SEO rule
+ * says to verify against the BUILT output rather than against page tags.
+ */
+describe('the platform pages are listed too', () => {
+  it('lists the homepage, the directory, pricing and help', async () => {
+    const { platformPageEntries } = await import('../src/lib/sitemap-document.js');
+    const locs = platformPageEntries('https://dezabin.co.il').map((e) => e.loc);
+    for (const path of ['/', '/stores', '/pricing', '/help', '/terms', '/returns-policy', '/contact']) {
+      expect(locs).toContain(`https://dezabin.co.il${path}`);
+    }
+  });
+
+  it('lists every help article, off the corpus rather than a typed list', async () => {
+    const { platformPageEntries } = await import('../src/lib/sitemap-document.js');
+    const { HELP_ARTICLES } = await import('../src/lib/help-articles.js');
+    const locs = platformPageEntries('https://dezabin.co.il').map((e) => e.loc);
+    for (const a of HELP_ARTICLES) expect(locs).toContain(`https://dezabin.co.il/help/${a.slug}`);
+  });
+
+  it('advertises nothing private and nothing that renders noindex', async () => {
+    const { platformPageEntries } = await import('../src/lib/sitemap-document.js');
+    const locs = platformPageEntries('https://dezabin.co.il').map((e) => e.loc);
+    // Private routes, and the three that set `noindex` in their own frontmatter. Listing one of
+    // those is the "submitted URL marked noindex" contradiction Search Console reports — the exact
+    // mistake `astro.config.mjs`'s sitemap filter was extended twice to avoid.
+    for (const banned of ['/admin', '/seller', '/buyer', '/checkout', '/review', '/search', '/store-gone', '/store-unavailable']) {
+      expect(locs.some((l) => l.includes(banned)), banned).toBe(false);
+    }
+  });
+
+  it('every listed path is a route that exists', async () => {
+    const { platformPageEntries } = await import('../src/lib/sitemap-document.js');
+    const { readdirSync } = await import('node:fs');
+    const { getHelpArticle } = await import('../src/lib/help.js');
+    const top = new Set(readdirSync('src/pages', { withFileTypes: true })
+      .map((e) => (e.isDirectory() ? e.name : e.name.replace(/\.(astro|ts)$/, ''))));
+    for (const { loc } of platformPageEntries('https://dezabin.co.il')) {
+      const path = new URL(loc).pathname;
+      if (path === '/') continue;
+      const [first, second] = path.replace(/^\//, '').split('/');
+      expect(top.has(first!), path).toBe(true);
+      // A help URL has to name a real article as well as a real route — a sitemap entry for a slug
+      // the corpus dropped is a 404 handed to Google on purpose.
+      if (first === 'help' && second) expect(getHelpArticle(second), path).toBeDefined();
+    }
+  });
+});
