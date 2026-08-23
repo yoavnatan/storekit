@@ -2052,6 +2052,11 @@ html:has(#dash-main-card.dash-nav-side) {
      pinned title has to cancel it exactly (see the full-bleed rule below), and two values that must
      agree are one value. */
   --dash-panel-pad: 1.5rem;
+  /* What the sheet leaves at each side of the window, so the strip above it can be its width
+     without measuring it. 2rem is the desktop card's own gutter; below 1180px the sheet is the
+     container, whose padding is the same 1rem a side — and on a phone it is full-bleed, which is
+     the one case the arithmetic cannot guess (measured: a 343px strip on a 375px sheet). */
+  --dash-sheet-inset: 2rem;
   /* The sheet's own top border sits between the gutter and the title, so it is part of the
      distance and not a rounding error — measured at exactly 1.00px of leftover travel without it.
      Separate from the gutter because it is a different fact: the phone layout has no top border
@@ -2073,6 +2078,7 @@ html:has(#dash-main-card.dash-nav-side) {
     /* Matches `.dash-section--bleed #dash-main-card .dash-panel` further up: at this width the
        sheet's single gutter is 0.8rem. */
     --dash-panel-pad: 0.8rem;
+    --dash-sheet-inset: 0px;
   }
 }
 
@@ -2088,21 +2094,70 @@ html:has(#dash-main-card.dash-nav-side) {
    child — the products panel wraps its toolbar and table in a div — hence two selectors. */
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-panel-head:first-child),
 #dash-main-card.dash-nav-side > .dash-panel:has(.products-header) { padding-top: 0; }
-/* ── A pinned title is the full width of the sheet it is pinned to ──
-   Owner, 2026-08-23: *"יש להן שוליים לבנות שלא יושבות טוב עם הפייד. צריך איכשהו שזה יהיה מקשה
-   אחת"*. The title sat inside the panel's inline padding, so a pinned bar was 48px narrower than
-   the card and the masking band above it was the card's full width: a grey strip resting on two
-   white shoulders. Two elements that are meant to read as one edge have to have the same edge.
-   Cancelling the padding with a negative margin and putting the same value back as the title's own
-   padding keeps every word exactly where it was — only the background and the rule under it grow.
-   The top corners follow the sheet's, because at rest this IS the sheet's top edge. */
+/* ══ THE PINNED TITLE *IS* THE TOP OF THE SHEET ══
+   Owner, 2026-08-23, after the fade came out and left the sheet's own top edge scrolling away with
+   everything else: *"התכוונתי שהחלק העליון של הקונטיינר יהיה רגיל, בורדר רדיוס, אטום, ומה שנגלל
+   ייגלל מתחתיו וכאילו ייעלם, מתחת לחלק האפור שמפריד בין הקונטיינר להדר הראשי."*
+
+   So the top edge does not scroll. It cannot be made to stay by itself — a border belongs to a box
+   and that box is moving — so the element that already stays becomes it: the title takes the
+   sheet's top border, its side borders for its own height, and its two top corners, and the sheet
+   gives them up. Nothing is drawn twice and nothing is drawn in two places; there is one top edge
+   and it happens to be sticky.
+
+   Three declarations make it the sheet's own width rather than the text column's: the negative
+   margin cancels the panel's inline padding AND its 1px side border, the same padding goes back on
+   as the title's own so every word stays exactly where it was, and the side borders continue the
+   lines the title is now sitting on top of.
+   Below 641px `--dash-sheet-edge` is 0 and the sheet is full-bleed, so all three collapse to the
+   flush bar that width already had. */
 #dash-main-card.dash-nav-side > .dash-panel { padding-inline: var(--dash-panel-pad); }
 #dash-main-card.dash-nav-side .dash-panel-head,
 #dash-main-card.dash-nav-side .products-header {
-  margin-inline: calc(-1 * var(--dash-panel-pad));
+  margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
   padding-inline: var(--dash-panel-pad);
+  border-top: var(--dash-sheet-edge, 0px) solid var(--color-border);
+  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-border);
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
+}
+/* …and the sheet gives them up, but only where a title actually took them. The four panels that
+   pin nothing (Overview, Reports, Payouts, Settings) keep their own top edge, because there is
+   nothing else there to hold it. */
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-panel-head:first-child),
+#dash-main-card.dash-nav-side > .dash-panel:has(.products-header) {
+  border-top-width: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* ── The grey between the header and that top edge, which also does not scroll ──
+   The other half of the same sentence: *"מתחת לחלק האפור שמפריד בין הקונטיינר להדר הראשי"*. The
+   sheet is tall, so once it starts moving its white body is what fills the gap — the separation
+   disappears exactly when it is doing the most work. A fixed strip in the page's own background
+   colour keeps it, and content vanishes between the header above and the sheet's top edge below.
+
+   **Solid, not a gradient** — that was the version he rejected, and he was right about why: there
+   is nothing here to fade INTO. The strip is the gap, edge to edge, and the rounded white edge
+   under it is what the eye reads.
+   No opacity gate and no scroll listener either, which the gradient needed: this paints the page's
+   own colour over the page's own colour until something scrolls up behind it, so at rest it is
+   invisible by construction rather than by state. `z-index: 5` puts it under the title (6) and
+   under the rail (7) and over everything that scrolls. */
+.dash-section:has(> #dash-main-card.dash-nav-side)::before {
+  content: "";
+  position: fixed;
+  inset-inline-start: var(--dash-rail-w, 0px);
+  inset-inline-end: 0;
+  width: min(var(--max-width), calc(100vw - var(--dash-rail-w, 0px) - var(--dash-sheet-inset, 2rem)));
+  margin-inline: auto;
+  /* The header's height is pinned inline on the element itself and may never change
+     (Header.astro), so this is exact; the extra pixel is overlap against a fractional rounding. */
+  top: calc(var(--site-header-h, 3.4rem) - 1px);
+  height: calc(var(--dash-gutter, 0px) + 1px);
+  background: var(--color-bg);
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* ── There is NO mask at the top of this scroll, and that is the decision ──

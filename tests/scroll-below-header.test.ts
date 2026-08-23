@@ -18,6 +18,39 @@ function walk(dir: string): string[] {
 
 const sourceFiles = walk('src').filter((f) => /\.(ts|astro)$/.test(f));
 
+/**
+ * **A sticky element cannot be used as a scroll TARGET, because a pinned one reports where it is
+ * pinned rather than where it belongs.**
+ *
+ * Opening the bulk-image panel from the bottom of a long products table scrolled to the panel's
+ * BOTTOM (owner, 2026-08-23). The panel lives above the table, so from down there it was already
+ * off the top of the screen — and its own `.bulk-upload-header` is `position: sticky`, so it
+ * measured at y:54, pinned under the site header. "You are already there", said the arithmetic;
+ * nothing moved; the galleries then loaded and grew the panel several hundred pixels above the
+ * viewport, and the unchanged scroll position was suddenly looking at its foot. Measured: panel
+ * top -452, bottom 133, header 54.
+ *
+ * The fix is to aim at the CONTAINER, whose top nothing pins, and this pins the fix: the two
+ * helpers that scroll a panel into view must pass the container they were given, never the header
+ * they looked up. A source assertion rather than a behavioural one because jsdom has no layout —
+ * every rect it reports is zero, so the bug is invisible to it by construction.
+ */
+describe('a scroll target is never a sticky element', () => {
+  const products = readFileSync('src/scripts/dashboard/products.ts', 'utf8');
+  const body = products.slice(
+    products.indexOf('function scrollStickyHeaderIntoView'),
+    products.indexOf('function scrollEditRowIntoView'),
+  );
+
+  it('scrollStickyHeaderIntoView scrolls the container, not the header it found', () => {
+    expect(body, 'the helper should be there to read').toContain('const header = container.querySelector');
+    // The lookup stays — it is the "has this rendered yet" guard — but it must not be the target.
+    expect(body).toContain('scrollBelowPinnedChrome(container');
+    const code = body.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
+    expect(code, 'aiming at the header is the bug this file names').not.toContain('scrollBelowPinnedChrome(header');
+  });
+});
+
 describe('scrolling to a target under the fixed header', () => {
   it("nobody uses scrollIntoView({block:'start'}) — it lands behind the fixed header", () => {
     // Code lines only: the helper and its call sites are allowed to NAME the call they replaced.

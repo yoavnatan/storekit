@@ -2302,10 +2302,22 @@ function scrollStickyHeaderIntoView(container: HTMLElement, headerSelector: stri
   const header = container.querySelector<HTMLElement>(headerSelector);
   if (!header) return;
 
-  // margin 0: land it flush against the bottom of whatever is pinned above it. (The edit-row
-  // header used to be sticky itself and this read "at its own pinned offset" — it is not anymore,
-  // see .edit-row-header in dashboard.css, but flush is still exactly where it belongs.)
-  const scrollToHeader = () => scrollBelowPinnedChrome(header, 0);
+  // **Aim at the CONTAINER, not at its header — because that header is sticky** (owner,
+  // 2026-08-23: *"זה לא נגלל לשם משום מה אם אני למטה, זה גולל לתחתית של הסקשן עריכת תמונות"*).
+  //
+  // A sticky element that is already PINNED reports the position it is pinned AT, not the position
+  // of the thing it belongs to. So opening the bulk-image panel from the bottom of a long table —
+  // where the panel, which lives above the table, is already off the top of the screen — measured
+  // its header at y:54 (pinned under the site header), computed "you are already there", and moved
+  // nothing. The panel then finished loading its galleries, grew several hundred pixels ABOVE the
+  // viewport, and the scroll position that had not moved was suddenly looking at its BOTTOM.
+  // Measured before the fix: panel top -452, bottom 133, header 54.
+  //
+  // The container's own top cannot lie: nothing pins it. And the header is its first child, so
+  // where the header is not pinned the two are the same number — which is why this is a fix and
+  // not a change of behaviour. The header lookup stays as the guard it always was: no header means
+  // the panel has not rendered yet and there is nothing to scroll to.
+  const scrollToHeader = () => scrollBelowPinnedChrome(container, 0);
   scrollToHeader();
 
   // This is the container's first time visible, so its lazy-loaded gallery images (or, for the
@@ -3970,6 +3982,21 @@ export function initBulkSelect(cloud: string, preset: string): void {
   const bulkDeleteBtn  = document.getElementById('bulk-delete-btn') as HTMLButtonElement | null;
   const bulkUploadBtn  = document.getElementById('bulk-upload-btn') as HTMLButtonElement | null;
   const bulkUploadLabel = document.getElementById('bulk-upload-label') as HTMLElement | null;
+  /**
+   * The phone's spelling of the same button (BulkActionBar.astro). It exists because "העלה
+   * תמונות" is the one label that pushes the floating bar onto a third line at 375px — and it was
+   * the only one nothing kept in step, so on a phone the button still said "תמונות" while the
+   * panel it had opened was sitting there waiting to be closed (owner, 2026-08-23: *"כשלוחצים על
+   * תמונות במובייל, זה צריך להפוך לסגור העלאת תמונות"*).
+   * The CLOSE wording is the same in both, and he asked for it by name: it is a state a seller has
+   * to get out of, so the word that gets them out is worth the width.
+   */
+  const bulkUploadLabelShort = bulkUploadBtn?.querySelector<HTMLElement>('.bulk-btn__label--short') ?? null;
+  function setUploadLabel(long: string, short: string): void {
+    if (bulkUploadLabel) bulkUploadLabel.textContent = long;
+    if (bulkUploadLabelShort) bulkUploadLabelShort.textContent = short;
+    bulkUploadBtn?.setAttribute('aria-label', long);
+  }
   const bulkEditBtn    = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
   const bulkEditLabel  = document.getElementById('bulk-edit-label') as HTMLElement | null;
   // Owned by promotions.ts (it runs the apply/clear request); this module only shows/hides it
@@ -4115,8 +4142,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
     if (empty && discountPanel?.open) discountPanel.close();
     if (empty && bulkEditLabel) bulkEditLabel.textContent = i.bulkEdit ?? 'ערוך';
     if (empty && bulkEditBtn) bulkEditBtn.setAttribute('aria-label', i.bulkEdit ?? 'ערוך');
-    if (empty && bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
-    if (empty && bulkUploadBtn) bulkUploadBtn.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
+    if (empty) setUploadLabel(i.bulkUploadImages ?? 'העלה תמונות', i.bulkUploadShort ?? 'תמונות');
     if (empty) selectAllChks.forEach((chk) => { chk.hidden = false; });
 
     // Ticked while "select all" is armed (it keeps selecting whatever the table
@@ -4333,8 +4359,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
     closeEditRowsFor(ids);
     renderUploadPanel();
     uploadPanel.hidden = false;
-    if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadClose ?? 'סגור העלאת תמונות';
-    bulkUploadBtn.setAttribute('aria-label', i.bulkUploadClose ?? 'סגור העלאת תמונות');
+    setUploadLabel(i.bulkUploadClose ?? 'סגור העלאת תמונות', i.bulkUploadClose ?? 'סגור העלאת תמונות');
     // Freezes the selection and takes the competing actions off the toolbar. It runs through
     // `updateBar` rather than being called directly so there is ONE order of operations for
     // "panel open" and "panel closed", instead of two that can drift.
@@ -4346,7 +4371,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
    *  cannot be left on by a route that forgot to lift it. */
   function closeUploadPanel(): void {
     if (uploadPanel) uploadPanel.hidden = true;
-    if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
+    setUploadLabel(i.bulkUploadImages ?? 'העלה תמונות', i.bulkUploadShort ?? 'תמונות');
     bulkUploadBtn?.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
     updateBar();
   }
