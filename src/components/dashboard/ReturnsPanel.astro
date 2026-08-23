@@ -1,6 +1,5 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
-import { heCount } from '../../lib/he-count.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
@@ -508,20 +507,32 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
         go unanswered too. `sellerOwesAction` is the same rule the tab badge counts by, so the
         number outside the panel and the number inside it cannot disagree.
 
-        **"שלא ממתינות לך" is gone and the middot with it** (owner, 2026-08-23: *"לא צריך את ה'שלא
-        ממתינות לך', פשוט 'ועוד 6 בקשות נוספות בתהליך'"*). The clause was the first fix said twice:
-        "בקשות נוספות בתהליך" already says these are not his, and spelling out the negative on top
-        of it is the shape he keeps cutting. `ועוד` also does what the middot could not — it joins
-        the two counts into one sentence rather than two facts stacked beside each other.
+        **"שלא ממתינות לך" is gone; the middot stays** (owner, 2026-08-23, in two steps: first
+        *"לא צריך את ה'שלא ממתינות לך'"*, then *"אולי בלי 'ועוד' אלא נקודה אמצעית שמפרידה בין
+        השניים"*). The clause was the first half said twice — "בקשות נוספות בתהליך" already says
+        these are not his, and spelling out the negative on top of it is the shape he keeps cutting.
+        And these ARE two facts rather than one sentence: how many need him, and how much else is
+        running. The middot separates two counts; `ועוד` would chain them into a total he never asked
+        for.
 
         "נוספות" drops when there is nothing for them to be additional TO: with no case of his own,
-        every open request is simply in progress, and the word would be pointing at an absence. */}
+        every open request is simply in progress, and the word would be pointing at an absence.
+
+        ⚠️ **Not `heCount` here, and that is a fix rather than a preference.** It appends the counting
+        word to whatever it was given — right for a bare noun (`הזמנה אחת`), wrong for a PHRASE,
+        because the noun is no longer the last thing in it. This line was passing phrases, so a shop
+        with exactly one case of each read *"בקשה מחכה לך אחד · בקשה נוספת בתהליך אחד"* — the wrong
+        gender, at the end of the wrong word. Written out instead: only one word changes between the
+        two forms, and it changes where Hebrew puts it. */}
     <p class="m-0 mt-1 text-[0.82rem] [color:var(--color-muted)]">
-      {mine.length > 0 && <span class="font-semibold [color:var(--color-text)]">{heCount(mine.length, 'בקשה מחכה לך', 'בקשות מחכות לך')}</span>}
-      {mine.length > 0 && waiting.length > 0 && ' ועוד '}
-      {waiting.length > 0 && (mine.length > 0
-        ? heCount(waiting.length, 'בקשה נוספת בתהליך', 'בקשות נוספות בתהליך')
-        : heCount(waiting.length, 'בקשה בתהליך', 'בקשות בתהליך'))}
+      {mine.length > 0 && (
+        <span class="font-semibold [color:var(--color-text)]">
+          {mine.length === 1 ? 'בקשה אחת מחכה לך' : `${mine.length} בקשות מחכות לך`}
+        </span>
+      )}
+      {mine.length > 0 && waiting.length > 0 && ' · '}
+      {waiting.length === 1 && (mine.length > 0 ? 'בקשה נוספת בתהליך' : 'בקשה אחת בתהליך')}
+      {waiting.length > 1 && `${waiting.length} ${mine.length > 0 ? 'בקשות נוספות בתהליך' : 'בקשות בתהליך'}`}
       {mine.length === 0 && waiting.length === 0 && 'אין בקשות פתוחות'}
     </p>
   </div>

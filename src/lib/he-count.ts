@@ -29,8 +29,14 @@ export function heCount(n: number, singular: string, plural: string): string {
  * Hebrew nouns ending in `ה` or `ת` are overwhelmingly feminine (`הזמנה`, `בקשה`, `חנות`) and the
  * rest take the masculine (`פריט`, `מוצר`, `יום`). It is a heuristic, stated as one — but it is a
  * heuristic over the handful of nouns this platform counts, every one of which it gets right, and
- * the alternative is a gender argument at every call site for somebody to pass wrong. A caller whose
- * noun it would get wrong passes the finished phrase as `singular` instead.
+ * the alternative is a gender argument at every call site for somebody to pass wrong.
+ *
+ * ⚠️ **`singular` must be a bare NOUN, not a phrase.** This line used to say a caller could pass a
+ * finished phrase instead, which is not something `heCount` can honour: it appends the counting word
+ * to whatever it is given, so a phrase gets it stuck on the end, after the preposition, and the
+ * gender is then decided by the last letter of a word that is not the noun. The returns tab was
+ * passing `'בקשה מחכה לך'` and rendering *"בקשה מחכה לך אחד"* — feminine noun, masculine word, wrong
+ * place. A call site with a phrase writes both forms out itself; there is only ever one word in it.
  */
 function oneFor(singular: string): string {
   return /[הת]$/.test(singular) ? 'אחת' : 'אחד';
