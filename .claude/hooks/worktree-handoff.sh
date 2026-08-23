@@ -110,9 +110,18 @@ if [ -n "$mine" ]; then
   cat <<'EOF'
   → If the work is FINISHED and the full verify is green, close it out yourself, without asking —
     standing instruction from the owner, 2026-08-05 ("אתה תחליט"), because the judgement of when it
-    is done is mine to make: rebase onto main, `verify -- --all`, fast-forward main, confirm
-    `git log main..<branch>` is empty, then `ExitWorktree remove`. Do NOT push; local is the
-    approval, publishing is not.
+    is done is mine to make: rebase onto main, `verify -- --all`, then **`ExitWorktree` with
+    action "keep"** — you are worktree-isolated and a guard refuses every git command aimed at the
+    shared checkout, so the merge CANNOT be done from in here — then `git merge --ff-only <branch>`
+    in the main checkout, confirm `git log main..<branch>` is empty, then `git worktree remove`.
+    Do NOT push; local is the approval, publishing is not.
+  → ⚠️ THE EXIT STEP IS THE ONE THAT KEEPS GETTING MISSED — three times now (2026-08-05, 08-10,
+    08-23), and the third time the owner had to say "אתה בטוח יכול למזג" twice. Two things produce
+    the mistake and both are misreadings: the guard's refusal ("a worktree-isolated session's git
+    operations must target its own worktree") describes where YOUR git runs, not whether merging is
+    allowed; and a live session in the main tree is not a reason either — a fast-forward adds
+    commits without touching anyone's uncommitted files, and `--ff-only` refuses rather than
+    clobbers. If main moved while you worked: EnterWorktree by path, rebase, exit keep, merge.
   → THE FULL VERIFY RUNS ONCE, BEFORE THE PUSH — not again because main moved (owner, 2026-08-21).
     A rebase onto a newer main changes the tree, so verify's content cache misses and the honest
     instinct is to run the whole thing again; and again when the next session merges; and again on
