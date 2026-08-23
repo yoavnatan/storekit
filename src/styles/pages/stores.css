@@ -21,7 +21,7 @@
    heads use — an existing answer, not a new one. */
 .stores-directory__title {
   font-size: 1.25rem;
-  font-weight: 641;
+  font-weight: 700;
   color: var(--color-text);
   margin: 0 0 0.9rem;
 }

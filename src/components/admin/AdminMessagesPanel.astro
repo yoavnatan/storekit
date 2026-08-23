@@ -283,7 +283,7 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
                         <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
                           <Fragment set:html={starRowHtml(review.rating, { px: 13 })} />
                           <a href={`/${review.storeSlug}/${review.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
-                             style="font-size:0.82rem;font-weight:553;color:var(--color-text);text-decoration:none">{review.productName}</a>
+                             style="font-size:0.82rem;font-weight:600;color:var(--color-text);text-decoration:none">{review.productName}</a>
                           <span style="font-size:0.75rem;color:var(--color-muted)">{review.reviewerName || '—'}</span>
                         </div>
                         <p dir="auto" class="whitespace-pre-line" style="margin:0;font-size:0.85rem;line-height:1.5;color:var(--color-muted);overflow-wrap:break-word">{review.body}</p>

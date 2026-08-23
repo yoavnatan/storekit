@@ -40,11 +40,11 @@ if (Astro.request.method === 'POST') {
       resolves to whichever one comes first rather than to this page content. */}
   <div style="max-width:360px;margin:4rem auto;padding:0 1rem">
     <div style="background:var(--color-surface);border:1.5px solid var(--color-border);border-radius:var(--radius);padding:2rem">
-      <h1 style="font-size:1.4rem;font-weight:641;margin:0 0 1.5rem;text-align:center;color:var(--color-text)">Admin Login</h1>
+      <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 1.5rem;text-align:center;color:var(--color-text)">Admin Login</h1>
       <form method="POST">
         <CsrfField />
         <label style="display:block;margin-bottom:1rem">
-          <span style="display:block;font-size:.875rem;font-weight:455;margin-bottom:.375rem;color:var(--color-text)">Password</span>
+          <span style="display:block;font-size:.875rem;font-weight:500;margin-bottom:.375rem;color:var(--color-text)">Password</span>
           {/* `.input` rather than the inline border it carried: an inline style beats every
               stylesheet, so the shared invalid-field line (forms.css) could never reach it. */}
           <input class="input" type="password" name="password" autofocus required

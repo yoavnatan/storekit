@@ -17,7 +17,7 @@ function getRangePortal(): FloatingPortal {
 }
 
 function buildMenu(options: RangeOption[], active: string): string {
-  return options.map((o) => `<button type="button" role="menuitem" data-key="${escapeHtml(o.key)}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${o.key === active ? 'font-weight:641;color:var(--color-primary)' : ''}">${escapeHtml(o.label)}</button>`).join('');
+  return options.map((o) => `<button type="button" role="menuitem" data-key="${escapeHtml(o.key)}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${o.key === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${escapeHtml(o.label)}</button>`).join('');
 }
 
 // The range picker is the same trigger + floating-portal dropdown the

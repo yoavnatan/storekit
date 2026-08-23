@@ -109,7 +109,7 @@ export function starRowHtml(avg: number | null, options: StarRowOptions = {}): s
   const fills = starFills(avg);
   const stars = fills.map((fill, i) => starHtml(fill, px, starTint(i, fills.length))).join('');
   const value = showValue
-    ? `<span style="font-size:${px}px;font-weight:641;color:var(--color-text);line-height:1">${escapeHtml(ratingDisplay(avg))}</span>`
+    ? `<span style="font-size:${px}px;font-weight:700;color:var(--color-text);line-height:1">${escapeHtml(ratingDisplay(avg))}</span>`
     : '';
   const count = countLabel
     ? `<span style="font-size:${px - 1}px;color:var(--color-muted);line-height:1">${escapeHtml(countLabel)}</span>`
@@ -159,7 +159,7 @@ export function cardStarRowHtml(agg: RatingAggregate, ariaLabel?: string): strin
     // This star is a MARK saying "there is a rating"; the number beside it is the measurement, so a
     // half-filled icon would be the same fact drawn twice and worse both times.
     + `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:block;width:${px}px;height:${px}px;max-width:none;color:var(--color-rating-to);flex:0 0 auto"><path d="${STAR_PATH}"/></svg>`
-    + `<span style="font-size:${px}px;font-weight:641;color:var(--color-text);line-height:1">${escapeHtml(ratingDisplay(avg))}</span>`
+    + `<span style="font-size:${px}px;font-weight:700;color:var(--color-text);line-height:1">${escapeHtml(ratingDisplay(avg))}</span>`
     + `<span style="font-size:${px - 1}px;color:var(--color-muted);line-height:1">(${agg.count})</span>`
     + '</span>';
 }

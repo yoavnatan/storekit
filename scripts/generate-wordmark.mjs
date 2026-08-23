@@ -87,20 +87,12 @@ const TAGLINE_SIZE = 0.33;
  *  purpose: the gap is what keeps this a subtitle rather than a second name. */
 const TAGLINE_GAP = 0.24;
 
-/** The second line's weight, in the site's interface face.
- *
- *  380, and that number is "regular" — it is not a lighter setting. The face is Noto Sans
- *  Hebrew, which lays down 4-7% more ink than Heebo at the same number, so the whole site's
- *  weight scale was re-solved against Heebo's density on 2026-08-23 and 400 became 380
- *  (`--font-weight-normal` in tokens.css carries the table and the measurement). This line
- *  is LIVE TEXT in that same face, so it follows the same scale or it renders heavier than
- *  every other "regular" on the page — and the poster, which OUTLINES it at this weight,
- *  would then disagree with the site it is a picture of.
- *
- *  Genuinely lighter was considered and is out: at 0.245em of the lockup a 300 Hebrew line
- *  goes thin enough to disappear against a very heavy name, which is the opposite of the
- *  contrast the lockup is built on. Change it by looking at the poster, not by reading this. */
-const TAGLINE_WEIGHT = 380;
+/** The second line's weight, in Heebo. 400 and not 300 for one reason that has
+ *  nothing to do with taste: main.css ships Heebo 400–800 and the tagline is
+ *  LIVE TEXT, so 300 would be an eleventh and twelfth font file (latin + hebrew)
+ *  on every page of the site for one line on two of them. At this size the
+ *  difference between them is small; the cost is not. */
+const TAGLINE_WEIGHT = 400;
 
 /** Tracking on the second line, in the TAGLINE's own em.
  *
@@ -189,25 +181,11 @@ const face = (file) => opentype.parse(readFileSync(resolve(FONTS, file)).buffer)
  *  5.1307 ink-to-cap against the browser's own 5.1330, which is rounding. */
 const lf = face('LibreFranklin-ExtraBold.ttf');
 
-/** The interface face, variable, instanced at the tagline's weight for the OUTLINED
- *  slogan in the poster lockups. The advance caveat above does not bite here: the
- *  second line is CENTRED, not matched to a width, so nothing downstream depends on
- *  its exact advance. Nothing in `brand-lockup.ts` comes from this face either — only
- *  the two `public/brand/dezabin-lockup*.svg` files do.
- *
- *  TWO FILES, PICKED BY SCRIPT, AND THEY ARE THE SITE'S OWN BINARIES. Noto Sans Hebrew
- *  ships subsetted per script, so the Hebrew slogan and MARKETPLACE come from
- *  different files; `assets/brand-fonts/NotoSansHebrew-Variable-{Hebrew,Latin}.ttf` are
- *  those exact woff2 files from `node_modules/@fontsource-variable/noto-sans-hebrew`,
- *  decompressed (opentype.js cannot read woff2). That is the point rather than a
- *  workaround: a poster outlined from a DIFFERENT binary than the browser paints is
- *  how a lockup drifts, and this one cannot. Re-decompress from the package if the
- *  dependency is ever bumped. */
-const tagFace = {
-  rtl: face('NotoSansHebrew-Variable-Hebrew.ttf'),
-  ltr: face('NotoSansHebrew-Variable-Latin.ttf'),
-};
-const TAG_FACE_AT = { variation: { wght: TAGLINE_WEIGHT } };
+/** Heebo, variable, instanced at the tagline's weight for the outlined slogan.
+ *  The advance caveat above does not bite here: the second line is CENTRED, not
+ *  matched to a width, so nothing downstream depends on its exact advance. */
+const heebo = face('Heebo-Variable.ttf');
+const HEEBO_AT = { variation: { wght: TAGLINE_WEIGHT } };
 
 /** A glyph's ink box, in font units, y measured UP from the baseline. */
 function ink(font, ch, opts = {}) {
@@ -406,7 +384,7 @@ export const INK_HEIGHT_EM = ${r5(H / UPEM)};
  *  gives every letter its own full ramp and reads as pieces stuck together. */
 export const GRADIENT = { from: '${BRAND_A}', to: '${BRAND_B}', x1: 0, y1: 0, x2: ${r(INK_W)}, y2: ${r(H)} };
 
-/** The second line, which is still live text in the interface face because it follows the
+/** The second line, which is still live Heebo text because it follows the
  *  visitor's language.
  *
  *  It is CENTRED under the wordmark now, not flush with it — so there is no
@@ -476,11 +454,10 @@ const files = {
  * side, which is exactly the "MARKETPLACE isn't centred" the owner spotted.
  */
 function lockupFile({ text, dir, tracking, paint, defs }) {
-  const f = tagFace[dir];
-  const first = run(f, text, { size: TAG_SIZE_UNITS, x: 0, y: 0, tracking, dir, opts: TAG_FACE_AT });
+  const first = run(heebo, text, { size: TAG_SIZE_UNITS, x: 0, y: 0, tracking, dir, opts: HEEBO_AT });
   const shift = (INK_W - (first.box.x2 - first.box.x1)) / 2 - first.box.x1;
   const lift = H + TAGLINE_GAP * CAP - first.box.y1;
-  const placed = run(f, text, { size: TAG_SIZE_UNITS, x: shift, y: lift, tracking, dir, opts: TAG_FACE_AT });
+  const placed = run(heebo, text, { size: TAG_SIZE_UNITS, x: shift, y: lift, tracking, dir, opts: HEEBO_AT });
   const height = placed.box.y2;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r(-PAD)} ${r(-PAD)} ${r(INK_W + PAD * 2)} ${r(height + PAD * 2)}">
   <!-- ${POSTER_NOTE} The full lockup: wordmark plus slogan, both outlined. -->${defs ? `\n  <defs>${defs}</defs>` : ''}
@@ -547,5 +524,5 @@ console.log(`brand lockup regenerated — Libre Franklin ExtraBold, the face's o
   D width       ${r(MARK_W)}u = ${r5(MARK_W / UPEM)}em
   pen for "e"   ${r(PEN)}u
   wordmark ink  ${r5(INK_W / UPEM)}em wide, box ${r5((INK_W + PAD * 2) / UPEM)}em (margin ${BOX_MARGIN} of the height)
-  tagline       ${r5(TAG_SIZE_UNITS / UPEM)}em, gap ${r5((TAGLINE_GAP * CAP) / UPEM)}em, Noto Sans Hebrew ${TAGLINE_WEIGHT}, tracking he ${TAGLINE_TRACK_HE} / en ${TAGLINE_TRACK_EN}
+  tagline       ${r5(TAG_SIZE_UNITS / UPEM)}em, gap ${r5((TAGLINE_GAP * CAP) / UPEM)}em, Heebo ${TAGLINE_WEIGHT}, tracking he ${TAGLINE_TRACK_HE} / en ${TAGLINE_TRACK_EN}
   files         src/lib/brand-lockup.ts, public/favicon.svg, public/brand/*.svg`);

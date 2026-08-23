@@ -361,7 +361,7 @@ export function initReturnsTab(): void {
   function openSortMenu(trigger: HTMLElement): void {
     portal.open(trigger, '13rem', () => toolbarMenuTitle('מיין לפי') + RETURN_SORTS.map((o) => {
       const on = o.key === sortKey;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-ret-sort="${o.key}" style="${on ? 'font-weight:641;color:var(--color-primary)' : ''}">${escapeHtml(o.label)}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-ret-sort="${o.key}" style="${on ? 'font-weight:700;color:var(--color-primary)' : ''}">${escapeHtml(o.label)}</button>`;
     }).join(''), (menu) => {
       menu.querySelectorAll<HTMLButtonElement>('[data-ret-sort]').forEach((btn) => {
         btn.addEventListener('click', () => {

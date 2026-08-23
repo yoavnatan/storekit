@@ -108,7 +108,7 @@
   background: var(--color-text);
   color: #fff;
   font-size: 0.74rem;
-  font-weight: 455;
+  font-weight: 500;
   line-height: 1.35;
   border-radius: var(--radius-sm);
   padding: 0.4rem 0.6rem;
@@ -172,12 +172,12 @@
 .wl-controls .btn { height: 30px; padding-top: 0; padding-bottom: 0; }
 .cart-line__info { flex: 1; min-width: 0; }
 .cart-line__footer { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.3rem; }
-.cart-line__price { flex: 1; font-size: 0.82rem; font-weight: 553; color: var(--color-text); }
+.cart-line__price { flex: 1; font-size: 0.82rem; font-weight: 600; color: var(--color-text); }
 .cart-line__qty { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); overflow: hidden; }
 .cart-line__qty button { width: 24px; height: 24px; border: none; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background 0.1s; }
 .cart-line__qty button:hover { background: var(--color-surface); }
 .cart-line__qty button:disabled { opacity: 0.35; }
-.cart-line__qty span { min-width: 1.5rem; text-align: center; font-size: 0.82rem; font-weight: 553; }
+.cart-line__qty span { min-width: 1.5rem; text-align: center; font-size: 0.82rem; font-weight: 600; }
 .cart-line__rm { width: 26px; height: 26px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-muted); transition: background 0.1s, color 0.1s; }
 .cart-line__rm:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
 /* A line the buyer can no longer buy. Still fully legible — it is there so they can SEE which
@@ -185,7 +185,7 @@
    the recognition, so it dims rather than the text. */
 .cart-line--gone img,
 .cart-line--gone .cart-line__img-placeholder { opacity: 0.55; }
-.cart-line--gone .cart-line__info strong { color: var(--color-muted); font-weight: 553; }
+.cart-line--gone .cart-line__info strong { color: var(--color-muted); font-weight: 600; }
 
 .cart-empty { color: var(--color-muted); text-align: center; padding: 2rem 0; }
 
@@ -197,7 +197,7 @@
 .cart-other-stores-label {
   display: inline-block;
   font-size: 0.72rem;
-  font-weight: 553;
+  font-weight: 600;
   color: var(--color-muted);
   padding: 0 0 0.15rem;
   border-bottom: 1px solid var(--color-border);
@@ -214,7 +214,7 @@
   padding: 0.6rem 0 0.4rem;
 }
 .cart-store-group__name {
-  font-weight: 641;
+  font-weight: 700;
   font-size: 0.9rem;
   color: var(--color-primary);
   text-decoration: none;

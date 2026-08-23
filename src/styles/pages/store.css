@@ -226,7 +226,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   cursor: pointer;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 455;
+  font-weight: 500;
   color: var(--color-muted);
   line-height: 1;
   transition: color 0.13s, border-color 0.13s, background 0.13s;
@@ -259,14 +259,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    the same day it landed: "עדיף הפונט הקודם שהיה, היה הרבה יותר ניטרלי").
    The three-step hierarchy above is his and stays; only the family goes back, and
    with it the two values that existed solely to compensate for a serif — 700 and
-   -0.01em return to the platform face's measured 800 / -0.03em. Neutral is the requirement:
+   -0.01em return to Heebo's measured 800 / -0.03em. Neutral is the requirement:
    this page has to look right for a tool shop, a fashion boutique and a grocery,
    and a serif is a voice, which is a thing one of those three always wants and the
    other two do not. If a seller wants their own voice here, that is a LOGO, not a
    second platform font. */
 .store-name {
   font-size: clamp(1.75rem, 5vw, 2.75rem);
-  font-weight: 730;
+  font-weight: 800;
   color: var(--color-text);
   margin: 0;
   letter-spacing: -0.03em;
@@ -325,7 +325,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 .store-tagline {
   margin: 0.5rem 0 0;
   font-size: clamp(1rem, 2.2vw, 1.15rem);
-  font-weight: 455;
+  font-weight: 500;
   color: var(--color-text);
   line-height: 1.45;
 }
@@ -412,7 +412,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   align-items: center;
   gap: 0.4rem;
   font-size: 0.8rem;
-  font-weight: 455;
+  font-weight: 500;
   color: var(--color-muted);
   cursor: pointer;
   list-style: none;
@@ -852,7 +852,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 
 .category-breadcrumb__current {
   color: var(--color-text);
-  font-weight: 553;
+  font-weight: 600;
 }
 
 .category-chip {
@@ -873,13 +873,12 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   padding: 0.35rem 0.9rem;
   font-size: 0.82rem;
   /* 600, not the 500 every other chip-sized control in this row carries (owner, 2026-08-20:
-     "מרגיש לי שהפונט לא מספיק קריא"). At 0.82rem the interface face's 500 is barely a step off 400
-     (measured on Heebo, and still true of Noto Sans Hebrew), and a
+     "מרגיש לי שהפונט לא מספיק קריא"). At 0.82rem Heebo's 500 is barely a step off 400, and a
      category name is the one label in the row a shopper actually READS rather than recognises
      by shape. The pressed state, the dropdown options and the mobile drawer below take the same
      step for the same reason, so a category reads the same weight wherever it is drawn. The
      size stays put — bolder, not bigger, is what keeps the row the height it was designed at. */
-  font-weight: 553;
+  font-weight: 600;
   line-height: 1.5;
   cursor: pointer;
   background: var(--color-bg);
@@ -943,7 +942,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
-  font-weight: 553;
+  font-weight: 600;
 }
 
 .category-chip:hover {
@@ -973,7 +972,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    products sit behind the chip, and whether it drills into subcategories. */
 .category-chip__count {
   font-size: 0.72rem;
-  font-weight: 455;
+  font-weight: 500;
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1032,7 +1031,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   font-size: 0.82rem;
   /* Same step as the chip that opened this panel — a category must not get lighter
      on the way from the row into the menu. */
-  font-weight: 553;
+  font-weight: 600;
   font-family: inherit;
   color: var(--color-text);
   background: none;
@@ -1059,7 +1058,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   border-radius: 0;
   background: none;
   font: inherit;
-  font-weight: 553;
+  font-weight: 600;
   font-size: 0.82rem;
   color: var(--color-text);
   cursor: pointer;
@@ -1084,7 +1083,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   gap: 0.5rem;
   padding: 0.35rem 0.8rem;
   font-size: 0.82rem;
-  font-weight: 455;
+  font-weight: 500;
   font-family: inherit;
   line-height: 1.5;
   color: var(--color-text);
@@ -1176,7 +1175,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
-.category-drawer__head h2 { margin: 0; font-size: 1rem; font-weight: 641; }
+.category-drawer__head h2 { margin: 0; font-size: 1rem; font-weight: 700; }
 #category-drawer-close {
   background: none;
   border: none;
@@ -1206,13 +1205,13 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   font-size: 0.9rem;
   /* `font: inherit` above resets this to the body's 400, so the weight has to be re-stated
      AFTER it — the drawer is the mobile face of the same chip row and reads at the same step. */
-  font-weight: 553;
+  font-weight: 600;
   color: var(--color-text);
   text-align: start;
   cursor: pointer;
 }
 .category-drawer-option:hover { background: var(--color-bg); }
-.category-drawer-option.is-selected { font-weight: 641; color: var(--color-primary); }
+.category-drawer-option.is-selected { font-weight: 700; color: var(--color-primary); }
 
 .category-drawer-chev {
   flex-shrink: 0;
@@ -1241,7 +1240,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   flex-shrink: 0;
   padding: 0.35rem 0.9rem;
   font-size: 0.82rem;
-  font-weight: 455;
+  font-weight: 500;
   font-family: inherit;
   line-height: 1.5;
   color: var(--color-text);
@@ -1282,7 +1281,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 .products-heading {
   margin-bottom: 1rem;
   font-size: 0.78rem;
-  font-weight: 553;
+  font-weight: 600;
   color: var(--color-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1317,7 +1316,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   gap: 0.5rem;
   padding: 0.65rem 1.5rem;
   font-size: 0.875rem;
-  font-weight: 553;
+  font-weight: 600;
   font-family: inherit;
   color: var(--color-text);
   background: var(--color-surface);
@@ -1623,7 +1622,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 
 .product-card__name {
   font-size: 0.9375rem;
-  font-weight: 553;
+  font-weight: 600;
   margin: 0;
   color: var(--color-text);
 }
@@ -1650,7 +1649,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 
 .product-card__price {
   font-size: 0.9375rem;
-  font-weight: 380;
+  font-weight: 400;
   color: var(--color-text);
   line-height: 1;
 }
@@ -1808,7 +1807,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   transform: translateX(-50%);
   color: rgba(255, 255, 255, 0.6);
   font-size: 0.78rem;
-  font-weight: 455;
+  font-weight: 500;
   letter-spacing: 0.04em;
   pointer-events: none;
 }
@@ -1866,7 +1865,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   padding: 0.35rem 0.9rem;
   font-family: inherit;
   font-size: 0.82rem;
-  font-weight: 455;
+  font-weight: 500;
   line-height: 1.5;
   color: var(--color-text);
   background: var(--color-bg);
@@ -1911,7 +1910,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   background: var(--color-primary);
   color: var(--color-surface);
   font-size: 0.7rem;
-  font-weight: 641;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1991,7 +1990,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   flex: 0 0 auto;
   min-width: 4.5rem;
   font-size: 0.78rem;
-  font-weight: 553;
+  font-weight: 600;
   color: var(--color-muted);
 }
 .facet-group__values {
@@ -2018,7 +2017,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   padding: 0.35rem 0.7rem;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 455;
+  font-weight: 500;
   color: var(--color-muted);
   background: none;
   border: 1px dashed var(--color-border);

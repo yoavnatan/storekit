@@ -25,74 +25,109 @@
 /* Tailwind CSS v4 — utilities available across the project */
 @import "tailwindcss";
 
-/* NOTO SANS HEBREW, self-hosted — the interface face (owner, 2026-08-23).
- *
- * It replaced Heebo, and the reason is not fashion. Heebo's Hebrew was drawn to sit
- * beside Roboto, so this screen inherited Android-2014 shapes: rectangular counters,
- * narrow apertures, heavy horizontals. The owner named it exactly — *"מרובע מדי,
- * מיושן קצת אפילו"* — on the seller dashboard's store name, which is the line that
- * sits directly under the wordmark and therefore the place the mismatch shows. Six
- * free Hebrew faces were rendered on the real dashboard beside the real lockup
- * before the pick.
- *
- * GOOGLE SANS WAS PICKED FIRST AND WITHDRAWN THE SAME HOUR, which is worth keeping
- * because the objection is a rule and not a preference: *"גוגל נראה כמו תוכנה של
- * גוגל"*. It is a fine face, and it is also the face of Gmail, Android and Search —
- * a platform whose whole job is to be a NEUTRAL FRAME around somebody else's shop
- * cannot wear another company's identity, because the shop then reads as being on
- * their software rather than on ours. That is the same test the serif failed on
- * 2026-08-09 (see the note below): the question is never what a face costs, it is
- * whose voice it is. Noto Sans Hebrew answers it with nobody's.
- *
- * ONE VARIABLE FILE PER SCRIPT, NOT FIVE. Heebo shipped ten static cuts (5 weights ×
- * 2 scripts) and preloaded all ten. The `wght` cut here is 12KB Hebrew + 20KB Latin
- * for the whole 100–900 range, so this block is two rules and BaseLayout's preload
- * list is two links. Fontsource ships three cuts of this family — `wght`, `wdth` and
- * `standard`; `wght` is the smallest and weight is the only axis this site varies.
- *
- * THE RANGE IS 100–900, WHICH IS WHY NOTHING ELSE IN THE REPO MOVED. Google Sans
- * stops at 700 and would have taken about twenty rules with it — prices, stat
- * numbers, the header's store name, all at 800 — because a variable range clamps an
- * out-of-range request SILENTLY rather than failing it, and 800 would have painted
- * as 700 while the CSS still said 800. This family covers everything the site asks
- * for, and `tests/font-preload.test.ts` reads the range straight off these rules and
- * holds every file under `src/` to it, so the next swap cannot reopen that quietly.
- *
- * `font-display: optional` and the mandatory preload are unchanged, and so is their
- * reason: `swap` repainted every page in the fallback face and visibly reflowed
- * ~150-300ms later, warm cache included (measured with Playwright's layout-shift
- * observer, 2026-07-16). `optional` uses a face only if it is already available at
- * first paint, and the preload is what makes it available.
- * `tests/font-preload.test.ts` fails the build on a face declared here without one.
- * Only hebrew + latin — this site's two alphabets; the family also ships Greek and
- * Cyrillic, which nothing here would ever resolve to. */
+/* Heebo, self-hosted (was a render-blocking cross-origin fonts.googleapis.com
+ * request in BaseLayout.astro's <head> — removed there). Hand-written
+ * @font-face rules instead of `@import '@fontsource/heebo/{weight}.css'`
+ * (still what physically ships the font files, just imported for their raw
+ * asset URLs, not their CSS) for one reason: fontsource's own CSS hardcodes
+ * `font-display: swap`, which — even self-hosted, even warm-cache — still
+ * paints text in the fallback font first and then visibly re-flows once
+ * Heebo loads. On a real page (not a synthetic slow-3G test) that swap
+ * repaint is what read as "the text distorts for a second" on every
+ * navigation/refresh (reported 2026-07-16) — not a one-time first-visit
+ * cost, since a fresh MPA navigation re-triggers it every time regardless
+ * of cache. `font-display: optional` fixes this at the font level: the
+ * browser only uses Heebo if it's *already available* near-instantly (true
+ * on every load after the first, since it's cached same-origin) — no
+ * swap-triggered repaint. Trade-off: a genuinely cold first-ever visit may
+ * render one frame in the fallback font and just keep it for that page view
+ * — acceptable, and still better than a visible reflow on every load after.
+ * Only hebrew+latin subsets (this site's actual alphabets) — fontsource's
+ * own files also ship math/symbols/latin-ext subsets that are irrelevant
+ * here and would just be extra unused font requests. */
 @font-face {
-  font-family: 'Noto Sans Hebrew';
+  font-family: 'Heebo';
   font-style: normal;
   font-display: optional;
-  font-weight: 100 900;
-  ascent-override: 97.03%;
-  descent-override: 38.97%;
-  line-gap-override: 0%;
-  src: url('@fontsource-variable/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-wght-normal.woff2') format('woff2-variations');
+  font-weight: 400;
+  src: url('@fontsource/heebo/files/heebo-hebrew-400-normal.woff2') format('woff2');
   unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
 }
 @font-face {
-  font-family: 'Noto Sans Hebrew';
+  font-family: 'Heebo';
   font-style: normal;
   font-display: optional;
-  font-weight: 100 900;
-  ascent-override: 97.03%;
-  descent-override: 38.97%;
-  line-gap-override: 0%;
-  src: url('@fontsource-variable/noto-sans-hebrew/files/noto-sans-hebrew-latin-wght-normal.woff2') format('woff2-variations');
+  font-weight: 400;
+  src: url('@fontsource/heebo/files/heebo-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 500;
+  src: url('@fontsource/heebo/files/heebo-hebrew-500-normal.woff2') format('woff2');
+  unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 500;
+  src: url('@fontsource/heebo/files/heebo-latin-500-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 600;
+  src: url('@fontsource/heebo/files/heebo-hebrew-600-normal.woff2') format('woff2');
+  unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 600;
+  src: url('@fontsource/heebo/files/heebo-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 700;
+  src: url('@fontsource/heebo/files/heebo-hebrew-700-normal.woff2') format('woff2');
+  unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 700;
+  src: url('@fontsource/heebo/files/heebo-latin-700-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 800;
+  src: url('@fontsource/heebo/files/heebo-hebrew-800-normal.woff2') format('woff2');
+  unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
+}
+@font-face {
+  font-family: 'Heebo';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 800;
+  src: url('@fontsource/heebo/files/heebo-latin-800-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
-/* THERE IS EXACTLY ONE FAMILY ON THIS SITE (2026-08-05; a second one was tried and
- * reverted 2026-08-09 — the rule survives BOTH attempts, and it survived the 2026-08-23
- * swap of WHICH family too: Heebo → Noto Sans Hebrew replaced the one face, it did not
- * add a second, and everything below applies unchanged to the face that is here now).
+/* HEEBO IS THE ONLY FAMILY ON THIS SITE (2026-08-05; a second one was tried and
+ * reverted 2026-08-09 — the rule survives BOTH attempts).
  *
  * Attempt one: a single Rubik face lived here for one line — the Hebrew under the
  * wordmark in BrandLogo.astro — and it went. It cost an eleventh font preload on
@@ -118,7 +153,7 @@
  *
  * `tests/font-preload.test.ts` still stands and still fails the build on any face
  * here that has no preload in BaseLayout.astro. It was written for attempt two and
- * outlives it: it is what makes the `optional` strategy honest for the base face too. */
+ * outlives it: it is what makes the `optional` strategy honest for Heebo too. */
 
 /* ============================================================
  *  main.css — single entry point for all styles.

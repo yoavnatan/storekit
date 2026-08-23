@@ -616,11 +616,11 @@ export function initPerformanceTab(): void {
   function buildProductMenu(): string {
     // A "clear" row at the top deselects any product and collapses the section
     // back to its empty state (data-product-id="" → selectProduct('')).
-    const clear = `<button type="button" role="option" aria-selected="${!selectedProductId}" data-product-id="" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] [color:var(--color-muted)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${!selectedProductId ? 'font-weight:641' : ''}">${escHtml(i18n.perfProductClear ?? '')}</button>
+    const clear = `<button type="button" role="option" aria-selected="${!selectedProductId}" data-product-id="" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] [color:var(--color-muted)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${!selectedProductId ? 'font-weight:700' : ''}">${escHtml(i18n.perfProductClear ?? '')}</button>
       <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`;
     const options = productList.map((p) => {
       const selected = p.id === selectedProductId;
-      return `<button type="button" role="option" aria-selected="${selected}" data-product-id="${escHtml(p.id)}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${selected ? 'font-weight:641;color:var(--color-primary)' : ''}">${escHtml(p.name)}</button>`;
+      return `<button type="button" role="option" aria-selected="${selected}" data-product-id="${escHtml(p.id)}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escHtml(p.name)}</button>`;
     }).join('');
     // The wrapper bleeds over the portal's own 0.3rem padding on all sides
     // (negative margins, padding restored inside) and its sticky `top` is pulled
@@ -810,7 +810,7 @@ export function initPerformanceTab(): void {
 
   function buildPanelHtml(): string {
     const activePreset = picker!.dataset.activePreset ?? '';
-    const presetsHtml = PRESETS.map((p) => `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === activePreset ? 'font-weight:641;color:var(--color-primary)' : ''}">${i18n[PRESET_LABEL_KEY[p]] ?? p}</button>`).join('');
+    const presetsHtml = PRESETS.map((p) => `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === activePreset ? 'font-weight:700;color:var(--color-primary)' : ''}">${i18n[PRESET_LABEL_KEY[p]] ?? p}</button>`).join('');
     // Custom-range row mirrors the advertising picker: both date fields AND the
     // inline Apply sit on ONE line (so the button never falls below the fold,
     // forcing a scroll — CURRENT_TASK item 1). A labelled sub-group makes clear

@@ -27,7 +27,7 @@ const MENU_ITEM_CLASS = 'product-menu__item flex items-center gap-2 w-full py-[.
 
 function typeItemHtml(id: string, label: string, active: string): string {
   const selected = id === active;
-  return `<button type="button" class="${MENU_ITEM_CLASS}" data-money-type="${id}"${selected ? ' aria-current="true" style="font-weight:641;color:var(--color-primary)"' : ''}>${label}</button>`;
+  return `<button type="button" class="${MENU_ITEM_CLASS}" data-money-type="${id}"${selected ? ' aria-current="true" style="font-weight:700;color:var(--color-primary)"' : ''}>${label}</button>`;
 }
 
 function sectionLabelHtml(text: string): string {

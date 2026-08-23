@@ -108,12 +108,12 @@ textarea.input { resize: none; }
 
 .bulk-bar__count {
   font-size: 0.82rem;
-  font-weight: 455;
+  font-weight: 500;
   color: var(--color-text);
   white-space: nowrap;
   padding-inline-end: 0.15rem;
 }
-.bulk-bar__count strong { font-weight: 641; }
+.bulk-bar__count strong { font-weight: 700; }
 
 .bulk-bar__sep {
   width: 1px;
@@ -721,7 +721,7 @@ textarea.input { resize: none; }
 
 .products-table th {
   text-align: start;
-  font-weight: 553;
+  font-weight: 600;
   color: var(--color-muted);
   font-size: 0.8rem;
   text-transform: uppercase;
@@ -759,7 +759,7 @@ textarea.input { resize: none; }
 .products-table tbody tr[data-product-display] td { transition: background 0.15s; }
 .products-table tbody tr[data-product-display]:hover td { background: var(--color-bg); }
 
-.product-name { display: block; font-weight: 455; }
+.product-name { display: block; font-weight: 500; }
 
 .product-desc {
   display: block;
@@ -881,7 +881,7 @@ textarea.input { resize: none; }
 #bulk-upload-panel:not([hidden]) ~ #products-table thead th {
   top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
 }
-.edit-row-title { font-weight: 553; font-size: 0.95rem; }
+.edit-row-title { font-weight: 600; font-size: 0.95rem; }
 
 /* Gallery image widget */
 .gallery-widget { margin-top: 0.25rem; }
@@ -953,7 +953,7 @@ textarea.input { resize: none; }
 
 .gallery-slot__label {
   font-size: 0.65rem;
-  font-weight: 641;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -1477,7 +1477,7 @@ textarea.input { resize: none; }
     grid-area: price;
     align-self: center;
     font-size: 0.8rem;
-    font-weight: 641;
+    font-weight: 700;
     color: var(--color-accent);
     padding-top: 0;
   }
@@ -1485,7 +1485,7 @@ textarea.input { resize: none; }
     grid-area: stock;
     align-self: center;
     font-size: 0.78rem;
-    font-weight: 553;
+    font-weight: 600;
     color: var(--color-text);
     padding-top: 0;
   }
@@ -1544,14 +1544,14 @@ textarea.input { resize: none; }
     align-self: center;
     padding-top: 0.05rem;
     color: var(--color-text) !important;
-    font-weight: 553;
+    font-weight: 600;
   }
   .products-table tr[data-product-display] .purchased-col {
     grid-area: purchased;
     align-self: center;
     padding-top: 0.05rem;
     color: var(--color-text) !important;
-    font-weight: 553;
+    font-weight: 600;
   }
   .products-table tr[data-product-display] .date-col {
     grid-area: date;
@@ -1815,7 +1815,7 @@ textarea.input { resize: none; }
 .cleanup-mode-toggle { display: flex; gap: 0.25rem; }
 .cleanup-mode-btn {
   display: inline-flex; align-items: center; gap: 0.3rem;
-  font-size: 0.78rem; font-weight: 455;
+  font-size: 0.78rem; font-weight: 500;
   padding: 0.25rem 0.75rem; border-radius: 20px;
   border: 1.5px solid var(--color-border);
   background: var(--color-surface); color: var(--color-muted);
@@ -1888,7 +1888,7 @@ textarea.input { resize: none; }
 
 .cleanup-shadow-toggle {
   display: inline-flex; align-items: center; gap: 0.3rem;
-  font-size: 0.78rem; font-weight: 455; font-family: inherit;
+  font-size: 0.78rem; font-weight: 500; font-family: inherit;
   padding: 0.25rem 0.75rem; border-radius: 20px;
   border: 1.5px solid var(--color-border);
   background: var(--color-surface); color: var(--color-muted);
@@ -1938,7 +1938,7 @@ textarea.input { resize: none; }
   gap: 0.4rem;
   padding: 0.65rem 1rem;
   font-size: 0.875rem;
-  font-weight: 455;
+  font-weight: 500;
   color: var(--color-muted);
   background: none;
   border: none;
@@ -1972,7 +1972,7 @@ textarea.input { resize: none; }
 .dash-tab--active {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
-  font-weight: 553;
+  font-weight: 600;
 }
 
 /* Tab panels */
@@ -2922,7 +2922,7 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
   background: var(--color-text);
   color: var(--color-surface);
   font-size: 0.78rem;
-  font-weight: 455;
+  font-weight: 500;
   line-height: 1.3;
   white-space: nowrap;
   pointer-events: none;
@@ -3016,7 +3016,7 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
 .admin-dash .dash-panel-head h2,
 .seller-dash .products-header h2 {
   font-size: 1rem;
-  font-weight: 553;
+  font-weight: 600;
 }
 
 /* ── Reports tab ─────────────────────────────────────────────────────────────
@@ -3060,7 +3060,7 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
   top: 0;
   z-index: 1;
   background: var(--color-bg);
-  font-weight: 553;
+  font-weight: 600;
   font-size: 0.78rem;
   color: var(--color-muted);
   white-space: nowrap;

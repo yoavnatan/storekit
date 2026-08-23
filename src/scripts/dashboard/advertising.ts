@@ -421,7 +421,7 @@ export function initAdvertisingTab(): void {
     function buildPanelHtml(): string {
       const active = rangeRoot!.dataset.activePreset ?? 'lifetime';
       const presetsHtml = PRESETS.map(([key, labelKey]) =>
-        `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${key}" style="${key === active ? 'font-weight:641;color:var(--color-primary)' : ''}">${i18n[labelKey] ?? key}</button>`).join('');
+        `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${key}" style="${key === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${i18n[labelKey] ?? key}</button>`).join('');
       // The custom-range row is a distinct labelled sub-group with its OWN small
       // "Apply" scoped to the two date fields — a full-width Apply at the very
       // bottom read as "apply the whole menu" when the presets above already

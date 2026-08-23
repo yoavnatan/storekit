@@ -293,7 +293,7 @@ const STORES_NAMED = 2;
       display: flex; align-items: center; justify-content: center;
       color: var(--color-muted); flex-shrink: 0;
     }
-    .my-name  { font-size: 0.83rem; font-weight: 553; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .my-name  { font-size: 0.83rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .my-email { font-size: 0.72rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 
     .my-nav {
@@ -309,13 +309,13 @@ const STORES_NAMED = 2;
       display: flex; align-items: center; gap: 0.5rem;
       width: 100%; padding: 0.5rem 0.65rem;
       border-radius: var(--radius); border: none; background: none;
-      font-size: 0.855rem; font-weight: 455; color: var(--color-muted);
+      font-size: 0.855rem; font-weight: 500; color: var(--color-muted);
       cursor: pointer; font-family: inherit; text-align: start;
       transition: background 0.1s, color 0.1s;
       position: relative;
     }
     .my-nav-btn:hover { background: var(--color-bg); color: var(--color-text); }
-    .my-nav-btn.is-active { background: var(--color-bg); color: var(--color-text); font-weight: 553; }
+    .my-nav-btn.is-active { background: var(--color-bg); color: var(--color-text); font-weight: 600; }
     .my-nav-btn svg { flex-shrink: 0; }
     .my-nav-label { flex: 1; }
     .my-nav-badge {
@@ -458,7 +458,7 @@ const STORES_NAMED = 2;
       .my-topbar-title {
         /* Intentionally not flex:1 — only the button and this text itself
            should be clickable, not the rest of the bar's empty space. */
-        font-size: 0.9rem; font-weight: 641; color: var(--color-text);
+        font-size: 0.9rem; font-weight: 700; color: var(--color-text);
         cursor: pointer; padding-inline-end: 0.35rem;
       }
       /* The sticky topbar's title takes over as the single mobile heading —
@@ -570,7 +570,7 @@ const STORES_NAMED = 2;
     }
 
     .panel-head {
-      font-size: 1rem; font-weight: 641; color: var(--color-text);
+      font-size: 1rem; font-weight: 700; color: var(--color-text);
       margin: 0 0 1.1rem; padding-bottom: 0.7rem;
       border-bottom: 1px solid var(--color-border);
     }
@@ -645,7 +645,7 @@ const STORES_NAMED = 2;
       transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
     }
     .o-card--open .o-card__chevron { transform: rotate(180deg); }
-    .o-id   { font-size: 0.8rem; font-weight: 641; font-family: monospace; color: var(--color-text); white-space: nowrap; }
+    .o-id   { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--color-text); white-space: nowrap; }
     .o-date { font-size: 0.74rem; color: var(--color-muted); white-space: nowrap; }
     /* One line: this used to name the card's single store and now names the
        order's, which on a phone would otherwise wrap and make the collapsed
@@ -657,7 +657,7 @@ const STORES_NAMED = 2;
     .o-stores-more { color: color-mix(in srgb, var(--color-muted) 75%, transparent); }
     .o-items { font-size: 0.79rem; color: var(--color-muted); margin-bottom: 0.45rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .o-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
-    .o-badge { font-size: 0.7rem; font-weight: 553; padding: 0.13rem 0.5rem; border-radius: 999px; }
+    .o-badge { font-size: 0.7rem; font-weight: 600; padding: 0.13rem 0.5rem; border-radius: 999px; }
     .o-badge--ship { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
     /* Cancelled is the one status where "your order" and "nothing is coming"
        differ, so it does not get to look like the rest of the pipeline. The
@@ -667,7 +667,7 @@ const STORES_NAMED = 2;
       color: var(--color-danger);
       border-color: color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
     }
-    .o-total { margin-inline-start: auto; font-size: 0.875rem; font-weight: 641; color: var(--color-text); }
+    .o-total { margin-inline-start: auto; font-size: 0.875rem; font-weight: 700; color: var(--color-text); }
 
     .o-card__body {
       border-top: 1px solid var(--color-border);
@@ -688,7 +688,7 @@ const STORES_NAMED = 2;
       display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
       margin-bottom: 0.5rem;
     }
-    .o-store-name { font-size: 0.75rem; font-weight: 641; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; display: block; transition: color 0.12s; }
+    .o-store-name { font-size: 0.75rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; display: block; transition: color 0.12s; }
     .o-store-name:hover { color: var(--color-accent); }
     .o-item-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
     .o-item { display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; }
@@ -712,7 +712,7 @@ const STORES_NAMED = 2;
     .o-item__img-placeholder { width: 40px; height: 40px; border-radius: var(--radius-sm); flex-shrink: 0; background: var(--color-bg); border: 1px solid var(--color-border); }
     .o-item__name { flex: 1; color: var(--color-text); }
     .o-item__qty  { color: var(--color-muted); font-size: 0.8rem; }
-    .o-item__price { font-weight: 641; color: var(--color-text); margin-inline-start: auto; }
+    .o-item__price { font-weight: 700; color: var(--color-text); margin-inline-start: auto; }
     .o-store-sub {
       display: flex; justify-content: space-between; align-items: center;
       margin-top: 0.5rem; padding-top: 0.5rem;
@@ -726,7 +726,7 @@ const STORES_NAMED = 2;
     .o-return { padding-top: 0.5rem; }
     .o-return-btn {
       background: none; border: 0; padding: 0; cursor: pointer;
-      font: inherit; font-size: 0.8rem; font-weight: 553;
+      font: inherit; font-size: 0.8rem; font-weight: 600;
       color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px;
     }
     /* The sentence that replaces the button while the parcel is in transit. Muted and unadorned —
@@ -747,7 +747,7 @@ const STORES_NAMED = 2;
     /* The chosen reason, while the photo field is open. Border and weight — no fill, because the
        button is still the thing you press, not a badge. */
     .o-return-why button.is-chosen {
-      border-color: var(--color-accent); color: var(--color-accent); font-weight: 553;
+      border-color: var(--color-accent); color: var(--color-accent); font-weight: 600;
     }
     .o-return-photo { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--color-muted); width: 100%; }
     .o-return-photo[hidden] { display: none; }
@@ -766,7 +766,7 @@ const STORES_NAMED = 2;
       font-size: 0.82rem; color: var(--color-muted);
     }
     .o-grand-total strong { font-size: 1rem; color: var(--color-text); }
-    .o-section-title { font-size: 0.72rem; font-weight: 641; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
+    .o-section-title { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
 
     /* ── Orders toolbar: sub-tabs (active/history) + search ── */
     .o-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.6rem; }
@@ -776,7 +776,7 @@ const STORES_NAMED = 2;
     }
     .o-subtab-btn {
       border: none; background: none; cursor: pointer; font-family: inherit;
-      font-size: 0.8rem; font-weight: 553; color: var(--color-muted);
+      font-size: 0.8rem; font-weight: 600; color: var(--color-muted);
       padding: 0.35rem 0.85rem; border-radius: 999px;
       display: flex; align-items: center; gap: 0.35rem;
       transition: background 0.12s, color 0.12s;
@@ -877,24 +877,24 @@ const STORES_NAMED = 2;
     .m-to   { font-size: 0.74rem; color: var(--color-muted); }
     .m-date { font-size: 0.72rem; color: var(--color-muted); }
     .m-ref  { font-size: 0.72rem; color: var(--color-accent); margin-bottom: 0.2rem; }
-    .m-subj { font-size: 0.875rem; font-weight: 553; color: var(--color-text); margin: 0 0 0.2rem; }
+    .m-subj { font-size: 0.875rem; font-weight: 600; color: var(--color-text); margin: 0 0 0.2rem; }
     .m-body { font-size: 0.8rem; color: var(--color-muted); margin: 0; line-height: 1.5; }
     .m-unread {
       display: inline-block; margin-top: 0.35rem;
-      font-size: 0.68rem; font-weight: 641;
+      font-size: 0.68rem; font-weight: 700;
       color: #dc2626; background: #fee2e2;
       border-radius: 999px; padding: 0.08rem 0.38rem;
     }
 
     /* ── Profile panel ── */
     .prof-section-title {
-      font-size: 0.8rem; font-weight: 641; color: var(--color-muted);
+      font-size: 0.8rem; font-weight: 700; color: var(--color-muted);
       text-transform: uppercase; letter-spacing: 0.04em;
       margin: 0 0 1rem;
     }
     .prof-field { margin-bottom: 0.9rem; }
     .prof-label {
-      display: block; font-size: 0.78rem; font-weight: 553;
+      display: block; font-size: 0.78rem; font-weight: 600;
       color: var(--color-muted); margin-bottom: 0.28rem;
     }
     .prof-input {
@@ -920,7 +920,7 @@ const STORES_NAMED = 2;
     .prof-actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
     .prof-save {
       padding: 0.5rem 1.25rem;
-      font-size: 0.875rem; font-weight: 553; font-family: inherit;
+      font-size: 0.875rem; font-weight: 600; font-family: inherit;
       background: var(--color-text); color: var(--color-surface);
       border: none; border-radius: var(--radius); cursor: pointer;
       transition: opacity 0.15s;
@@ -2239,7 +2239,7 @@ const STORES_NAMED = 2;
     openBmsgPortal(trigger, '13rem', () => {
       return bmsgSortOptions().map((o) => {
         const selected = o.col === bmsgSortCol && o.dir === bmsgSortDir;
-        return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:641;color:var(--color-primary)' : ''}">${escB(o.label())}</button>`;
+        return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escB(o.label())}</button>`;
       }).join('');
     }, (portal) => {
       portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {

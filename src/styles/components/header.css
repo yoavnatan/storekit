@@ -101,7 +101,7 @@ body { padding-top: 3.4rem; }
    line — otherwise the store-name path (inline-flex) and the platform-logo
    fallback (inline-block) rendered at different heights and shifted the row. */
 .logo {
-  font-weight: 730; font-size: 1.3rem; color: var(--color-text); letter-spacing: -0.01em;
+  font-weight: 800; font-size: 1.3rem; color: var(--color-text); letter-spacing: -0.01em;
   display: inline-flex; align-items: center; line-height: 1;
 }
 /* NB header height is pinned INLINE on <header> (height:3.4rem;box-sizing:border-box)
@@ -109,7 +109,7 @@ body { padding-top: 3.4rem; }
    never flash-then-shrink (dev-server injects CSS via JS post-paint). Keep that inline. */
 
 nav ul { margin: 0; }
-nav a { font-weight: 455; font-size: 0.9rem; color: var(--color-muted); }
+nav a { font-weight: 500; font-size: 0.9rem; color: var(--color-muted); }
 nav a:hover { color: var(--color-text); }
 
 .cart-btn-wrap {
@@ -139,7 +139,7 @@ nav a:hover { color: var(--color-text); }
   background: var(--color-brand-dark);
   color: #fff;
   font-size: 10.5px;
-  font-weight: 641;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -269,7 +269,7 @@ nav a:hover { color: var(--color-text); }
   width: 100%;
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  font-weight: 455;
+  font-weight: 500;
   text-align: start;
   color: var(--color-text);
   text-decoration: none;
@@ -309,7 +309,7 @@ nav a:hover { color: var(--color-text); }
 
 .lang-toggle-btn {
   font-size: 0.78rem;
-  font-weight: 641;
+  font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--color-muted);
   background: none;
@@ -507,7 +507,7 @@ nav a:hover { color: var(--color-text); }
 
 .hsd-section-label {
   font-size: 0.7rem;
-  font-weight: 553;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-muted);
@@ -614,7 +614,7 @@ nav a:hover { color: var(--color-text); }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 641;
+  font-weight: 700;
   font-size: 1.4rem;
   color: #fff;
   background: linear-gradient(135deg, #2a3c40, #3a5260);
@@ -633,7 +633,7 @@ nav a:hover { color: var(--color-text); }
 .hsd-result-name {
   flex: 1;
   font-size: 0.82rem;
-  font-weight: 455;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -664,7 +664,7 @@ nav a:hover { color: var(--color-text); }
   background: none;
   font-family: inherit;
   font-size: 0.8rem;
-  font-weight: 553;
+  font-weight: 600;
   color: var(--color-text);
   text-align: center;
   cursor: pointer;
@@ -885,29 +885,8 @@ nav a:hover { color: var(--color-text); }
    0.66px high — the site is Hebrew-first, so the exact case is the common one, and the residual on
    the other is under a pixel. Still ONE declaration for both the header and its settings preview,
    for the reason below. */
-/* RE-DERIVED AGAIN 2026-08-23, when the interface face went Heebo → Noto Sans Hebrew, and this
-   time the warning above is the thing that fired. −0.013em was measured against Heebo's letter
-   heights; under Noto Sans Hebrew the same declaration left Hebrew sitting 1.32px LOW — the exact
-   symptom the owner reported three times — while Latin sat 0.30px low. Nothing looked broken and
-   no test could have caught it: a font swap moves a value that is expressed in the FACE'S OWN em.
-   **Re-measure this on any future family change. It is not a constant, it is a metric.**
-
-   Measured on the running site at DPR 2, per script and on the band the eye actually centres:
-   Hebrew on a letter with neither ascender nor descender (מ), Latin on the cap (H). Both come out
-   constant across every store name, which is the tell that they are font metrics rather than
-   per-word noise — the previous pass's ±0.008em spread was the lamed in "כלים של אליקים" pulling
-   the word's own ink box up, and excluding ascenders as well as descenders removes it.
-
-     required, Hebrew-exact  −0.0765em   → Latin then sits 1.02px high
-     required, Latin-exact   −0.0273em   → Hebrew then sits 1.02px low
-     shipped                 −0.061em    → Hebrew 0.32px low, Latin 0.70px high
-
-   The gap between the two is 1.02px and is a property of the face, so no single value serves both.
-   −0.061em is the one that keeps BOTH under a pixel while leaving Hebrew — the script this site is
-   built for — effectively exact. It also lands almost precisely where the Heebo value did
-   (Hebrew ~0.0, Latin 0.66px high), so the lockup did not change character in the move. */
 .site-header .store-name-text,
-.hdr-preview .store-name-text { transform: translateY(0.035em); }
+.hdr-preview .store-name-text { transform: translateY(-0.013em); }
 
 /* `text-box-trim: trim-both; text-box-edge: cap alphabetic` was tried here and REJECTED, measured,
    so it is not tried again. It looks like the principled fix — let the browser trim the box to the
@@ -1029,7 +1008,7 @@ nav a:hover { color: var(--color-text); }
   background: var(--color-bg);
   color: var(--color-muted);
   font-size: 0.75rem;
-  font-weight: 455;
+  font-weight: 500;
   line-height: 1;
   text-decoration: none;
   transition: color 0.1s, border-color 0.1s;

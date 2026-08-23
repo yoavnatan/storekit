@@ -424,7 +424,7 @@ const i18n = {
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
               <span class="pm-qty-val" aria-live="polite"
-                    style="min-width:2rem;text-align:center;font-weight:553;font-size:0.875rem;color:var(--color-text)">1</span>
+                    style="min-width:2rem;text-align:center;font-weight:600;font-size:0.875rem;color:var(--color-text)">1</span>
               <button type="button" class="pm-qty-inc" aria-label={t.cart.qtyIncrease}
                       style="width:2rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted);transition:background 0.1s">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -465,8 +465,8 @@ const i18n = {
         <div style="padding:0.875rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:0.5rem">
           <div dir="auto">
             ${product.storeDemo ? demoProductBadgeHtml(i18n.demoBadge ?? '', 'inline') : ''}
-            <h2 id="pm-name" style="font-size:1.2rem;font-weight:641;color:var(--color-text);margin:0 0 0.4rem;line-height:1.35">${escHtml(name)}</h2>
-            <p style="font-size:1.45rem;font-weight:641;margin:0"${pmPriceView(product).isDiscounted ? '' : ' class="[color:var(--color-accent)]"'}>${priceHtml(pmPriceView(product), { saleLabel: i18n.saleWas })}</p>
+            <h2 id="pm-name" style="font-size:1.2rem;font-weight:700;color:var(--color-text);margin:0 0 0.4rem;line-height:1.35">${escHtml(name)}</h2>
+            <p style="font-size:1.45rem;font-weight:700;margin:0"${pmPriceView(product).isDiscounted ? '' : ' class="[color:var(--color-accent)]"'}>${priceHtml(pmPriceView(product), { saleLabel: i18n.saleWas })}</p>
           </div>
           ${descHtml}
           ${pmVariants.length ? `<div class="pm-variants" style="display:flex;flex-direction:column;gap:0.75rem">
@@ -474,7 +474,7 @@ const i18n = {
               const isCv = isColorVariantName(v.name);
               const isSingleOption = v.options.length === 1;
               return `<div class="variant-group" data-variant-group="${escHtml(v.name)}">
-                <p style="font-size:0.72rem;font-weight:553;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
+                <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
                   ${v.options.map((opt) => {
                     const { display, hex } = resolveColor(opt);

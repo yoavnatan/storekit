@@ -134,7 +134,7 @@ export function productSeoBodyHtml(
     const colour = h.done ? 'var(--color-muted)' : 'var(--color-text)';
     return `<li data-seo-hint="${h.id}" data-done="${h.done ? '1' : '0'}" style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.2rem 0;color:${colour}">
       <span style="display:inline-flex;flex-shrink:0;margin-top:0.2rem">${h.done ? CHECK_ON : CHECK_OFF}</span>
-      <span><span style="font-weight:455${h.done ? ';text-decoration:line-through;text-decoration-thickness:1px' : ''}">${escapeHtml(label)}</span>: ${escapeHtml(text)}</span>
+      <span><span style="font-weight:500${h.done ? ';text-decoration:line-through;text-decoration-thickness:1px' : ''}">${escapeHtml(label)}</span>: ${escapeHtml(text)}</span>
     </li>`;
   }).join('');
 
@@ -212,8 +212,8 @@ export function productSeoMeterView(input: ProductSeoInput, l: ProductSeoLabels)
  */
 function productSeoMeterHtml(view: ProductSeoMeterView, l: ProductSeoLabels): string {
   return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:0.6rem;flex-wrap:wrap">
-      <p style="margin:0;font-size:0.87rem;font-weight:455">${escapeHtml(l.heading)}</p>
-      <p style="margin:0;font-size:0.78rem;color:var(--color-muted);white-space:nowrap"><span data-seo-level style="font-weight:553;color:${view.color}">${escapeHtml(view.levelText)}</span> · <span data-seo-progress>${escapeHtml(view.progressText)}</span></p>
+      <p style="margin:0;font-size:0.87rem;font-weight:500">${escapeHtml(l.heading)}</p>
+      <p style="margin:0;font-size:0.78rem;color:var(--color-muted);white-space:nowrap"><span data-seo-level style="font-weight:600;color:${view.color}">${escapeHtml(view.levelText)}</span> · <span data-seo-progress>${escapeHtml(view.progressText)}</span></p>
     </div>
     <div aria-hidden="true" style="margin-top:0.45rem;height:4px;border-radius:999px;background:var(--color-bg);overflow:hidden">
       <div data-seo-meter style="height:100%;border-radius:999px;width:${view.percent}%;background-color:${view.color};transition:width 0.3s ease-out,background-color 0.3s ease-out"></div>

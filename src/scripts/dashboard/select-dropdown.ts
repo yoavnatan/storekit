@@ -88,7 +88,7 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
         // never in the trigger label — the trigger keeps mirroring the plain option text.
         const meta = opts.optionMeta?.(o.value) ?? '';
         const metaHtml = meta ? `<span class="shrink-0 text-[.8125rem] [color:var(--color-muted)]">${escHtml(meta)}</span>` : '';
-        return `<button type="button" role="option" aria-selected="${selected}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-surface)]" data-value="${escHtml(o.value)}" style="${selected ? 'font-weight:641;color:var(--color-primary)' : ''}"><span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(o.textContent ?? '')}</span>${metaHtml}</button>`;
+        return `<button type="button" role="option" aria-selected="${selected}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-surface)]" data-value="${escHtml(o.value)}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}"><span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(o.textContent ?? '')}</span>${metaHtml}</button>`;
       })
       .join('');
   }

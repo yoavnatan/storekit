@@ -50,11 +50,11 @@
 }
 
 .cart-preview__info { min-width: 0; }
-.cart-preview__added { margin: 0; font-size: 0.75rem; font-weight: 553; color: var(--color-primary); }
+.cart-preview__added { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--color-primary); }
 .cart-preview__name {
   margin: 0.15rem 0 0;
   font-size: 0.88rem;
-  font-weight: 553;
+  font-weight: 600;
   color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;

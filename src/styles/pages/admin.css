@@ -5,14 +5,14 @@
 code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius: var(--radius-sm); }
 
 .admin-empty { color: var(--color-muted); font-size: 0.875rem; }
-.admin-link { color: var(--color-accent); text-decoration: none; font-size: 0.82rem; font-weight: 553; }
+.admin-link { color: var(--color-accent); text-decoration: none; font-size: 0.82rem; font-weight: 600; }
 .admin-link:hover { text-decoration: underline; }
 /* Plain red text action (e.g. "block store"), same weight/size as .admin-link
    so it flows inline with the sibling links instead of reading as a heavy
    button. A <button> reset (no bg/border/padding) keeps it visually a link. */
 .admin-link--danger { color: var(--color-danger); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
 .admin-link--danger:disabled { opacity: 0.55; cursor: default; }
-.admin-panel-subtitle { font-size: 0.95rem; font-weight: 553; margin: 1.5rem 0 1rem; }
+.admin-panel-subtitle { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 1rem; }
 
 /* ── Messages tab: new-conversation composer ── */
 .admin-msg-compose-toggle-row { margin-bottom: 1rem; }
@@ -139,8 +139,8 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   box-shadow: var(--shadow-hover);
   border-color: var(--color-primary);
 }
-.admin-stat-card dt { font-size: 0.78rem; color: var(--color-muted); font-weight: 455; margin-bottom: 0.4rem; }
-.admin-stat-card dd { font-size: 1.4rem; font-weight: 730; color: var(--color-text); margin: 0; }
+.admin-stat-card dt { font-size: 0.78rem; color: var(--color-muted); font-weight: 500; margin-bottom: 0.4rem; }
+.admin-stat-card dd { font-size: 1.4rem; font-weight: 800; color: var(--color-text); margin: 0; }
 .admin-stat-card--warning dd { color: var(--color-warning); }
 
 /* ── Sellers accordion ── */
@@ -162,7 +162,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 }
 .admin-seller-card__summary::-webkit-details-marker { display: none; }
 .admin-seller-card__identity { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.admin-seller-card__name { font-weight: 641; color: var(--color-text); }
+.admin-seller-card__name { font-weight: 700; color: var(--color-text); }
 .admin-seller-card__email { font-size: 0.82rem; color: var(--color-muted); }
 /* Join date sits under the email (CURRENT_TASK admin item 2) — identity context
    belongs with the identity, not mixed into the numeric stats column. */
@@ -191,8 +191,8 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
    column ends up being, a tile now truncates inside its own box instead of printing over the next
    one. Without it the failure is silent and looks like a rendering glitch rather than a value that
    did not fit. Both lines carry it — the label overflowed first. */
-.admin-seller-card__stat-label { font-size: 0.68rem; font-weight: 455; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.admin-seller-card__stat-value { font-weight: 641; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.admin-seller-card__stat-label { font-size: 0.68rem; font-weight: 500; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-seller-card__stat-value { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 /* The payout state, in the identity column under the join date — NOT a row of its own across the
    card (owner, 2026-08-11: "התווית לא צריכה ליצור שורה חדשה, היא יכולה לשבת ליד פרטי המוכר").
    It is a fact about this seller, so it belongs with the other facts about them. */
@@ -245,7 +245,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   list-style: none;
 }
 .admin-store-block__summary::-webkit-details-marker { display: none; }
-.admin-store-block__name { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 553; }
+.admin-store-block__name { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; }
 .admin-store-block__nums { font-size: 0.78rem; color: var(--color-muted); }
 .admin-store-block .admin-inline-table { padding: 0 0.75rem 0.6rem; }
 
@@ -270,7 +270,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-inline-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 .admin-inline-table th {
   text-align: start; padding: 0.4rem 0.6rem;
-  font-size: 0.72rem; font-weight: 553; color: var(--color-muted);
+  font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
   border-bottom: 1px solid var(--color-border);
 }
 .admin-inline-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--color-border); }
@@ -304,7 +304,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 }
 .admin-table th {
   text-align: start; padding: 0.625rem 0.875rem;
-  font-size: 0.75rem; font-weight: 553; color: var(--color-muted);
+  font-size: 0.75rem; font-weight: 600; color: var(--color-muted);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg); white-space: nowrap;
 }
@@ -314,7 +314,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-nowrap { white-space: nowrap; font-size: 0.8rem; }
 
 .admin-badge {
-  display: inline-block; font-size: 0.72rem; font-weight: 553;
+  display: inline-block; font-size: 0.72rem; font-weight: 600;
   padding: 0.2rem 0.55rem; border-radius: 999px; white-space: nowrap;
 }
 .admin-badge--paid { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
@@ -332,15 +332,15 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   padding: 0.7rem 0.9rem; background: var(--color-surface);
   border: 1px solid var(--color-border); border-radius: var(--radius);
 }
-.admin-ads-conn__label { font-size: 0.9rem; font-weight: 553; color: var(--color-text); }
+.admin-ads-conn__label { font-size: 0.9rem; font-weight: 600; color: var(--color-text); }
 .admin-ads-conn__row code { font-size: 0.8rem; background: var(--color-bg); padding: 0.1rem 0.35rem; border-radius: var(--radius-sm); }
 
 .admin-ads-progress { position: relative; height: 1.5rem; background: var(--color-bg); border-radius: 999px; margin: 1rem 0 0.25rem; overflow: hidden; }
 .admin-ads-progress__bar { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.3s ease; }
-.admin-ads-progress__label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 553; color: var(--color-text); }
+.admin-ads-progress__label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 600; color: var(--color-text); }
 
 .admin-ads-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin-top: 1rem; }
-.admin-ads-form__field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; font-weight: 553; color: var(--color-muted); }
+.admin-ads-form__field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; font-weight: 600; color: var(--color-muted); }
 .admin-ads-form__field .input { max-width: 12rem; }
 .admin-ads-form__saved { font-size: 0.82rem; align-self: center; }
 
@@ -350,23 +350,23 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   padding: 0.6rem 0.9rem; background: var(--color-surface);
   border: 1px solid var(--color-border); border-radius: var(--radius);
 }
-.admin-ads-promoted__name { font-size: 0.9rem; font-weight: 553; color: var(--color-accent); text-decoration: none; }
+.admin-ads-promoted__name { font-size: 0.9rem; font-weight: 600; color: var(--color-accent); text-decoration: none; }
 .admin-ads-promoted__name:hover { text-decoration: underline; }
 
 .admin-ads-heading { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 
 /* Second value under a stat-card's headline number (e.g. "חשיפות · ₪ הוצאה"). */
-.admin-stat-card__sub { display: block; font-size: 0.72rem; font-weight: 455; color: var(--color-muted); margin-top: 0.2rem; }
+.admin-stat-card__sub { display: block; font-size: 0.72rem; font-weight: 500; color: var(--color-muted); margin-top: 0.2rem; }
 
 /* Divider between the insights zone and the management zone. */
-.admin-ads-zone { margin: 2.5rem 0 0; padding-top: 1.25rem; border-top: 2px solid var(--color-border); font-size: 1.05rem; font-weight: 730; color: var(--color-text); }
+.admin-ads-zone { margin: 2.5rem 0 0; padding-top: 1.25rem; border-top: 2px solid var(--color-border); font-size: 1.05rem; font-weight: 800; color: var(--color-text); }
 
 /* Ad dashboard date-range picker — just holds the trigger button now; the
    presets/custom row moved into a floating-portal dropdown (advertising-platform.ts). */
 .admin-ads-range { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
 
 /* Period-over-period delta under a headline total. */
-.admin-delta { display: block; font-size: 0.72rem; font-weight: 553; margin-top: 0.3rem; }
+.admin-delta { display: block; font-size: 0.72rem; font-weight: 600; margin-top: 0.3rem; }
 .admin-delta--up { color: var(--color-success); }
 .admin-delta--down { color: var(--color-danger); }
 
@@ -376,9 +376,9 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 
 /* ── Brand campaign manager ── */
 .admin-brand-create { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); margin-bottom: 1rem; }
-.admin-brand-create > summary { cursor: pointer; padding: 0.75rem 0.9rem; font-size: 0.9rem; font-weight: 641; color: var(--color-primary); }
+.admin-brand-create > summary { cursor: pointer; padding: 0.75rem 0.9rem; font-size: 0.9rem; font-weight: 700; color: var(--color-primary); }
 .admin-brand-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; padding: 0 0.9rem 1rem; }
-.admin-brand-form__field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; font-weight: 553; color: var(--color-muted); }
+.admin-brand-form__field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; font-weight: 600; color: var(--color-muted); }
 .admin-brand-form__field--wide { grid-column: 1 / -1; }
 .admin-brand-form__field > span { display: flex; align-items: center; gap: 0.35rem; }
 .admin-brand-form textarea.input { resize: none; font-family: inherit; }
@@ -412,9 +412,9 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-brand-card__dest { font-size: 0.78rem; color: var(--color-accent); text-decoration: none; word-break: break-all; }
 .admin-brand-card__dest:hover { text-decoration: underline; }
 .admin-brand-card__stats { display: flex; flex-wrap: wrap; gap: 0.15rem 1rem; font-size: 0.78rem; color: var(--color-muted); margin-top: 0.15rem; }
-.admin-brand-card__stats b { color: var(--color-text); font-weight: 641; }
+.admin-brand-card__stats b { color: var(--color-text); font-weight: 700; }
 .admin-brand-card__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.85rem; margin-top: 0.25rem; }
-.admin-brand-card__budget { display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; color: var(--color-muted); font-weight: 553; }
+.admin-brand-card__budget { display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; color: var(--color-muted); font-weight: 600; }
 .admin-brand-card__budget .input { width: 6rem; padding: 0.25rem 0.4rem; }
 .admin-brand-card__actions [data-brand-save], .admin-brand-card__actions [data-brand-toggle], .admin-brand-card__actions [data-brand-delete] { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
 @media (max-width: 560px) {
@@ -428,10 +428,10 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-ads-promo-tier:disabled, .admin-ads-promo-cancel:disabled { opacity: 0.55; cursor: default; }
 
 .admin-ads-glossary { margin-top: 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
-.admin-ads-glossary > summary { cursor: pointer; padding: 0.75rem 0.9rem; font-size: 0.85rem; font-weight: 553; color: var(--color-text); }
+.admin-ads-glossary > summary { cursor: pointer; padding: 0.75rem 0.9rem; font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
 .admin-ads-glossary[open] > summary { border-bottom: 1px solid var(--color-border); }
 .admin-ads-glossary dl { margin: 0; padding: 0.75rem 0.9rem; display: grid; grid-template-columns: minmax(9rem, auto) 1fr; gap: 0.45rem 1rem; font-size: 0.85rem; }
-.admin-ads-glossary dt { font-weight: 641; color: var(--color-text); }
+.admin-ads-glossary dt { font-weight: 700; color: var(--color-text); }
 .admin-ads-glossary dd { margin: 0; color: var(--color-muted); }
 @media (max-width: 560px) {
   .admin-ads-glossary dl { grid-template-columns: 1fr; gap: 0.1rem 0; }
@@ -547,7 +547,7 @@ tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decor
   }
   .admin-alerts-time { order: -2; font-size: 0.78rem; color: var(--color-muted); }
   .admin-alerts-source { order: -1; text-align: start; }
-  .admin-alerts-message { font-weight: 553; }
+  .admin-alerts-message { font-weight: 600; }
   .admin-alerts-field-label { display: inline; color: var(--color-muted); }
   .admin-alerts-details-btn__label { display: inline; }
   .admin-alerts-details-btn { padding: 0.2rem 0.4rem; }
@@ -590,12 +590,12 @@ tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decor
 }
 .admin-store-row__info { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
 .admin-store-row__info-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
-.admin-store-row__name { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 641; color: var(--color-text); }
+.admin-store-row__name { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 700; color: var(--color-text); }
 .admin-store-row__seller { font-size: 0.78rem; }
 .admin-store-row__count { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 button.admin-store-row__count { padding: 0; text-align: start; }
-.admin-store-row__revenue { font-size: 0.82rem; font-weight: 641; color: var(--color-success); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.admin-store-row__revenue-label { color: var(--color-muted); font-weight: 455; }
+.admin-store-row__revenue { font-size: 0.82rem; font-weight: 700; color: var(--color-success); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.admin-store-row__revenue-label { color: var(--color-muted); font-weight: 500; }
 /* All row actions (performance/view/block) flow together as one inline group so
    they never split across rows — on the mobile card they stay a single wrapping
    line at the end, not a stray full-width button (owner feedback). */
@@ -662,7 +662,7 @@ button.admin-store-row__count { padding: 0; text-align: start; }
   background: var(--color-surface);
   border: 1px solid var(--color-primary);
   color: var(--color-primary);
-  font-size: 0.78rem; font-weight: 553; line-height: 1.1;
+  font-size: 0.78rem; font-weight: 600; line-height: 1.1;
   box-shadow: var(--shadow-card);
   /* The chip itself is the moving part. A separate animated dot was tried first and dropped: its
      offset from the label had to be computed from the text's rendered width, so it drifted away

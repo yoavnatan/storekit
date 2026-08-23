@@ -272,7 +272,7 @@ function indexPage(entries, siteUrl, defaultReplyTo) {
 <style>
   :root { color-scheme: light; }
   body { margin:0; padding:24px; background:#eef0f4; color:#1c2333;
-         font-family:'Noto Sans Hebrew',system-ui,-apple-system,'Segoe UI',Arial,sans-serif; line-height:1.6; }
+         font-family:'Heebo',system-ui,-apple-system,'Segoe UI',Arial,sans-serif; line-height:1.6; }
   header { max-width:1140px; margin:0 auto 24px; }
   h1 { margin:0 0 6px; font-size:24px; }
   header p { margin:0 0 4px; color:#5a6478; font-size:14px; }

@@ -1,11 +1,8 @@
 Copyright 2020 The Libre Franklin Project Authors (https://github.com/googlefonts/Libre-Franklin)
 Copyright 2015 The Heebo Project Authors (https://github.com/OdedEzer/heebo)
 Copyright 2018 The Chakra Petch Project Authors (https://github.com/m4rc1e/Chakra-Petch.git)
-Copyright 2024 The Noto Project Authors (https://github.com/notofonts/hebrew)
-  — Noto Sans Hebrew is the site's interface face since 2026-08-23, and it also
-    outlines the slogan in the poster lockups. Heebo was that face until then and
-    is kept for the archived lockup, as is Chakra Petch, which drew the wordmark
-    until 2026-08-21. The licence below covers all four.
+  — Chakra Petch drew the wordmark until 2026-08-21 and is kept for the archived
+    lockup in assets/brand-archive; the licence below covers all three.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

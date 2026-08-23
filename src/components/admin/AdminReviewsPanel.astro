@@ -118,7 +118,7 @@ const anyFilter = hasActiveReviewFilters(query);
             <div class="flex flex-wrap items-center" style="gap:0.4rem;margin-bottom:0.2rem">
               <Fragment set:html={starRowHtml(r.rating, { px: 13 })} />
               <a href={`/${r.storeSlug}/${r.productSlug}#reviews`} target="_blank" rel="noopener noreferrer"
-                 style="font-size:0.82rem;font-weight:553;color:var(--color-text);text-decoration:none">{r.productName}</a>
+                 style="font-size:0.82rem;font-weight:600;color:var(--color-text);text-decoration:none">{r.productName}</a>
               <span style="font-size:0.75rem;color:var(--color-muted)">{r.storeName}</span>
               {/* Same mark the shopper sees, so the two screens agree about what this row is.
                   Without it 83 seeded ratings sit here looking exactly like buyers' own — and

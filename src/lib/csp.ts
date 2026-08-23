@@ -83,7 +83,7 @@ export function contentSecurityPolicy(): string {
     // Tailwind and the component styles compile to files, but Astro still emits inline style
     // attributes, and a style attribute is not a script — the risk profile is not comparable.
     'style-src': ["'self'", "'unsafe-inline'"],
-    'font-src': ["'self'"],   // The interface face is self-hosted; a font arriving from anywhere else is a bug.
+    'font-src': ["'self'"],   // Heebo is self-hosted; a font arriving from anywhere else is a bug.
     'connect-src': ["'self'", ...originsFor('connect-src')],
     'frame-src': ["'self'", ...originsFor('frame-src')],
     'worker-src': ["'self'", 'blob:'],

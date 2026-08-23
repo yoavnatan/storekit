@@ -545,12 +545,12 @@ const pmI18n = {
                side as the (per-language) product name instead of staying pinned right. -->
           <div class="flex flex-col gap-2" dir="auto">
             <ProductDemoBadge demo={isDemo} variant="inline" />
-            <h1 id="product-name-heading" style="font-size:1.5rem;font-weight:641;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
+            <h1 id="product-name-heading" style="font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
             {/* Between the name and the price, which is where a shopper looks for it — and a link
                 rather than a decoration, because the one thing anyone wants from a star row is to
                 read what is behind it. Renders nothing at all when there are no reviews. */}
             <StarRating value={ratingAvg} count={ratingAggregate.count} size="lg" showValue showCount linkToReviews />
-            <p style="font-size:1.25rem;font-weight:730;line-height:1;margin:0" class={pv.isDiscounted ? undefined : '[color:var(--color-accent)]'}>
+            <p style="font-size:1.25rem;font-weight:800;line-height:1;margin:0" class={pv.isDiscounted ? undefined : '[color:var(--color-accent)]'}>
               <Fragment set:html={priceHtml(pv, { saleLabel: t.store.saleWas })} />
             </p>
             <StoreSaleBanner sale={shopStore.sale} dir="auto" compact product={product} scopeLabel={saleScopeLabel} />
@@ -570,7 +570,7 @@ const pmI18n = {
                 const rendered = renderedSelection[v.name];
                 return (
                   <div class="flex flex-col gap-2 variant-group" data-variant-group={v.name}>
-                    <p style="font-size:0.75rem;font-weight:553;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);margin:0">
+                    <p style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);margin:0">
                       {v.name}
                     </p>
                     <div class="flex flex-wrap gap-2" role="group" aria-label={v.name}>
@@ -684,7 +684,7 @@ const pmI18n = {
                        "to checkout" button appears next to it). -->
                   <button type="button" id="add-to-cart-btn"
                           class="btn flex-auto"
-                          style="white-space:nowrap;height:48px;font-size:0.9375rem;font-weight:553"
+                          style="white-space:nowrap;height:48px;font-size:0.9375rem;font-weight:600"
                           data-slug={product.slug}
                           data-product-id={product.id}
                           data-name={product.name}
@@ -698,7 +698,7 @@ const pmI18n = {
                   </button>
 
                   <a href={checkoutHref} id="to-checkout-btn" class="btn btn--accent flex-shrink-0"
-                     style="display:none;height:48px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:553">
+                     style="display:none;height:48px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:600">
                     {t.store.toCheckout}
                   </a>
                 </div>
@@ -797,8 +797,8 @@ const pmI18n = {
                 <tbody>
                   {product.specs!.map((s) => (
                     <tr style="border-bottom:1px solid var(--color-border)">
-                      <td style="padding:0.4rem 0;padding-inline-start:0.75rem;padding-inline-end:3rem;color:var(--color-muted);white-space:nowrap;font-weight:455">{s.label}</td>
-                      <td dir="auto" style="padding:0.4rem 0;color:var(--color-text);font-weight:380;text-align:end">{s.value}</td>
+                      <td style="padding:0.4rem 0;padding-inline-start:0.75rem;padding-inline-end:3rem;color:var(--color-muted);white-space:nowrap;font-weight:500">{s.label}</td>
+                      <td dir="auto" style="padding:0.4rem 0;color:var(--color-text);font-weight:400;text-align:end">{s.value}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -867,7 +867,7 @@ const pmI18n = {
       {(ratingAggregate.count > 0 || canReview) && (
         <section id={REVIEWS_SECTION_ANCHOR} style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border);scroll-margin-top:5rem" aria-labelledby="reviews-heading">
           <div class="flex flex-wrap items-baseline gap-x-2" style="margin:0 0 0.875rem">
-            <p id="reviews-heading" style="font-size:0.875rem;font-weight:553;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0">
+            <p id="reviews-heading" style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0">
               {t.reviews.title}
             </p>
             {/* A showcase store's ratings are written by the seeder, not by buyers, and the page
@@ -887,14 +887,14 @@ const pmI18n = {
           {ratingAggregate.count > 0 && (
             <div class="flex flex-wrap items-center gap-x-8 gap-y-4" style="margin-bottom:1.25rem">
               <div class="flex flex-col gap-1" dir="auto">
-                <span style="font-size:2rem;font-weight:730;line-height:1;color:var(--color-text)">{ratingDisplay(ratingAvg!)}</span>
+                <span style="font-size:2rem;font-weight:800;line-height:1;color:var(--color-text)">{ratingDisplay(ratingAvg!)}</span>
                 <StarRating value={ratingAvg} count={ratingAggregate.count} size="md" showCount />
                 {/* Said ONCE, about the whole set, and it used to sit on every single row (owner,
                     2026-08-17: "יש תגובה שזה לא יופיע שם? אז למה צריך את זה?"). He is right and it
                     is the standing rule against furniture: a label that is true of every row is not
                     information, it is decoration repeated N times. As a claim about ALL of them it
                     is the opposite — the strongest thing this page can say, and one line long. */}
-                <span style="font-size:0.75rem;color:var(--color-success);font-weight:553">{t.reviews.allVerified}</span>
+                <span style="font-size:0.75rem;color:var(--color-success);font-weight:600">{t.reviews.allVerified}</span>
               </div>
               {/* The distribution, five rows always — a histogram that hides its empty rows
                   re-scales itself on every new review and stops being comparable. */}
@@ -942,12 +942,12 @@ const pmI18n = {
                     pages. The step of 1 through eleven hues also inherits the palette's own
                     ordering, which is built so no two ADJACENT entries share a colour family. */}
                 <span aria-hidden="true" class="flex items-center justify-center"
-                      style={`flex:0 0 auto;width:34px;height:34px;border-radius:50%;color:#fff;font-size:0.85rem;font-weight:641;line-height:1;background:${soloHueGradient(reviewHueStart + rowIndex)}`}>
+                      style={`flex:0 0 auto;width:34px;height:34px;border-radius:50%;color:#fff;font-size:0.85rem;font-weight:700;line-height:1;background:${soloHueGradient(reviewHueStart + rowIndex)}`}>
                   {reviewerInitial(r.reviewerName || t.reviews.anonymous)}
                 </span>
                 <div class="min-w-0" style="flex:1 1 auto">
                   <div class="flex flex-wrap items-center gap-x-2 gap-y-1" style="margin-bottom:0.2rem">
-                    <span dir="auto" style="font-size:0.82rem;font-weight:553;color:var(--color-text)">{r.reviewerName || t.reviews.anonymous}</span>
+                    <span dir="auto" style="font-size:0.82rem;font-weight:600;color:var(--color-text)">{r.reviewerName || t.reviews.anonymous}</span>
                     <time datetime={r.createdAt.slice(0, 10)} style="font-size:0.72rem;color:var(--color-muted);margin-inline-start:auto">
                       {reviewDateFormat.format(new Date(r.createdAt))}
                     </time>
@@ -984,7 +984,7 @@ const pmI18n = {
                divider between them would read as two unrelated sections of the page. */
             : 'margin-top:1.5rem'}
           aria-labelledby={`related-heading-${gi}`}>
-          <p id={`related-heading-${gi}`} style="font-size:0.875rem;font-weight:553;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
+          <p id={`related-heading-${gi}`} style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
             {group.kind === 'category'
               ? `${t.product.moreIn}${group.categoryName}`
               : `${t.product.moreFrom}${shopStore.name}`}
@@ -1024,9 +1024,9 @@ const pmI18n = {
                       <ProductDemoBadge demo={isDemo} />
                     </div>
                     <div dir="auto" style="padding:0.5rem 0.6rem 0.6rem">
-                      <p style="font-size:0.75rem;font-weight:553;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)">{p.name}</p>
+                      <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)">{p.name}</p>
                       <Fragment set:html={cardStarRowHtml({ count: p.reviewCount ?? 0, sum: p.reviewRatingSum ?? 0 }, t.reviews.starsAria)} />
-                      <p style="font-size:0.75rem;font-weight:641;margin:0.2rem 0 0;color:var(--color-accent)"><Fragment set:html={priceHtml(resolvePrice(p, shopStore.sale), { saleLabel: t.store.saleWas })} /></p>
+                      <p style="font-size:0.75rem;font-weight:700;margin:0.2rem 0 0;color:var(--color-accent)"><Fragment set:html={priceHtml(resolvePrice(p, shopStore.sale), { saleLabel: t.store.saleWas })} /></p>
                     </div>
                   </a>
                 </div>
@@ -1062,12 +1062,12 @@ const pmI18n = {
             <span id="sticky-mini-price"><Fragment set:html={priceHtml(pv, { saleLabel: t.store.saleWas })} /></span>
           </div>
           <button type="button" id="sticky-add-to-cart-btn" class="btn flex-shrink-0"
-                  style="white-space:nowrap;height:44px;font-size:0.9375rem;font-weight:553">
+                  style="white-space:nowrap;height:44px;font-size:0.9375rem;font-weight:600">
             <span class="btn-label">{t.store.addToCart}</span>
           </button>
 
           <a href={checkoutHref} id="sticky-to-checkout-btn" class="btn btn--accent flex-shrink-0"
-             style="display:none;height:44px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:553">
+             style="display:none;height:44px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:600">
             {t.store.toCheckout}
           </a>
         </div>
@@ -1988,7 +1988,7 @@ const pmI18n = {
     // this hint — both buttons that call it are server-rendered and carry them.
     const lead = btn.dataset.strLoginHint ?? 'כדי לשלוח הודעה יש';
     const link = btn.dataset.strLoginHintLink ?? 'להתחבר';
-    hint.innerHTML = `<span>${escHtml(lead)} <a href="${escHtml(loginUrl)}" style="color:var(--color-accent);font-weight:553;text-decoration:underline">${escHtml(link)}</a></span>`;
+    hint.innerHTML = `<span>${escHtml(lead)} <a href="${escHtml(loginUrl)}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">${escHtml(link)}</a></span>`;
     hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:var(--shadow-card);font-size:0.8rem;color:var(--color-text)';
     hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
     const container = btn.parentElement ?? btn;
