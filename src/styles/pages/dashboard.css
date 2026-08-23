@@ -2147,7 +2147,14 @@ html:has(#dash-main-card.dash-nav-side) {
   --dash-sheet-edge: 1px;
 }
 #dash-main-card.dash-nav-side {
-  --dash-tabs-h: calc(var(--dash-gutter, 0px) + var(--dash-sheet-edge, 0px));
+  /* **The gutter alone — NOT gutter + edge.** A panel that pins a title has given its own top
+     border away to that title, so there is no border between the gutter and the bar and nothing to
+     add. Counting it anyway made the sticky `top` one pixel LOWER than the bar's natural position,
+     and sticky moves an element in either direction to satisfy its offset — so the title sat 1px
+     down from the sheet's edge, which is the hairline everything above it then had to be tuned
+     around. With the two equal, the bar's resting position and its pinned position are the same
+     number and the strip above it lands exactly on its top edge. */
+  --dash-tabs-h: var(--dash-gutter, 0px);
 }
 /* Nothing above the sheet on a phone, so nothing above the title either — `.dash-section--bleed`
    already takes the gutter and the top border away, and these two make the sticky offsets agree
@@ -2212,6 +2219,17 @@ html:has(#dash-main-card.dash-nav-side) {
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }
+/* **The title's top border is the DESKTOP's alone**, because that is the only width where the
+   panel IS the sheet. Below 1180px the sheet is `#dash-main-card` and it keeps its own top border,
+   so a second one on the bar directly under it stacks two 1px rules into one smudged 2px line —
+   the thing `.dash-section--bleed > .card` already refuses to do against the site header. Measured
+   at 834px: card edge at 66.39, bar edge at 67.39. Below 641px there is no sheet border at all and
+   nothing to double. */
+@media (max-width: 1179.98px) {
+  #dash-main-card.dash-nav-side .dash-panel-head,
+  #dash-main-card.dash-nav-side .products-header { border-top-width: 0; }
+}
+
 /* ── The two corners, filled ──
    **A rounded corner is a hole, and a hole in a pinned bar shows what is scrolling behind it**
    (owner, 2026-08-23: *"כשגוללים למעלה יש משהו שמבצבץ מבעד לסטיקי"*). A background is clipped by
@@ -2302,11 +2320,13 @@ html:has(#dash-main-card.dash-nav-side) {
   /* The header's height is pinned inline on the element itself and may never change
      (Header.astro), so this is exact; the extra pixel is overlap against a fractional rounding. */
   top: calc(var(--site-header-h, 3.4rem) - 1px);
-  /* Gutter + the sheet's own top edge + the pixel of overlap — the strip has to REACH the title,
-     and the title's top is `header + gutter + edge`. Written without the edge it stopped 1px
-     short, which is the hairline he saw next (*"יש עדיין כמה פיקסלים למעלה"*): content scrolling
-     up stayed visible through a one-pixel slot between the strip and the bar under it. */
-  height: calc(var(--dash-gutter, 0px) + var(--dash-sheet-edge, 0px) + 1px);
+  /* Down to the sheet's top edge and not a pixel further, which is where the pinned title now
+     starts as well. Further would hide the top BORDER of the panels that pin nothing — Overview and
+     Settings keep their own, and so does any panel for the second it spends showing skeleton rows
+     instead of its title (owner, 2026-08-23: *"בסקירה כללית במצב 0 הבורדר למעלה מוסתר"*, and the
+     same thing during a tab load). Less would leave a one-pixel slot above the title for content to
+     show through. There is exactly one right answer and it is the gutter. */
+  height: calc(var(--dash-gutter, 0px) + 1px);
   background: var(--color-bg);
   pointer-events: none;
   z-index: 5;

@@ -351,7 +351,10 @@ const STORES_NAMED = 2;
         flex-wrap: wrap;
         align-items: center;
         gap: 0.15rem 0.7rem;
-        margin-top: 1rem;
+        /* The foot of the drawer, not the row after the menu: `auto` collects every spare pixel
+           above it, so a short list pushes this to the bottom edge and a long one leaves it exactly
+           where the list ends. Same one line the seller's rail uses. */
+        margin-top: auto;
         padding: 0.75rem 0.15rem 0.25rem;
         border-top: 1px solid var(--color-border);
         font-size: 0.75rem;
@@ -490,13 +493,20 @@ const STORES_NAMED = 2;
         z-index: 99;
       }
 
+      /* A column, so the links can go to the FOOT of it (owner, 2026-08-23: *"הפוטר צריך לשבת
+         למטה"*). They arrived directly under the last nav row, which is where the document order
+         puts them and not where a footer belongs; `margin-top: auto` below needs a flex parent to
+         mean anything. `min-height: 100%` on the content so a short drawer still fills its own
+         height and the auto margin has slack to spend. */
       .my-sidebar {
         position: fixed;
         right: 0; top: 0; bottom: 0;
         width: 230px;
+        display: flex;
+        flex-direction: column;
         background: var(--color-surface);
         pointer-events: auto;
-        padding: 1.25rem 0.75rem 2rem;
+        padding: 1.25rem 0.75rem 1.1rem;
         box-shadow: var(--shadow-sheet);
         transform: translateX(100%);
         visibility: hidden;
