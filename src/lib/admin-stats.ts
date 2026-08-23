@@ -21,6 +21,7 @@ import { EMPTY_STORE_REVENUE, type StoreRevenue } from './order-reporting.js';
 import { countsAsRevenue } from './orders.js';
 import { businessMonthKey } from './business-day.js';
 import { isDemoStore } from './demo-stores.js';
+import { storeSliceGoodsAgorot } from './order-totals.js';
 
 export type { StoreRevenue };
 
@@ -32,17 +33,13 @@ export function orderNetForStore(order: Order, storeSlug: string): number {
   // repoints slugs): every order this code path CREATES has storeSubtotals, but reading one that
   // doesn't must answer 0, not throw — this runs inside order status changes, so an exception
   // here turns a legacy row into a failed cancellation the seller can do nothing about.
-  const sub = order.storeSubtotals?.[storeSlug];
-  if (!sub) return 0;
-  // Floored at zero. The discount is written against the subtotal alone (see the
-  // orders API), so this can only go negative on a row stored before that was true —
-  // and a report must never show negative revenue for a sale that happened. The row
-  // itself is not silently accepted: reconcile.ts reports any discount that exceeds
-  // its subtotal, so the data error surfaces as a discrepancy rather than as a
-  // number quietly bent back into range here.
-  // No rounding: both operands are integer agorot, so the difference is exact. `roundMoney` used
-  // to sit here because subtracting two ILS floats produced a tail; there is no tail to trim now.
-  return Math.max(0, sub.subtotalAgorot - (sub.discount?.appliedAgorot ?? 0));
+  // Through `storeSliceGoodsAgorot`, not inline (2026-08-23). The arithmetic — subtotal minus the
+  // applied discount, floored at zero — is the same question `/api/checkout` asks of the amounts it
+  // has just computed, in the window before any order row exists, to report a conversion value to
+  // Google and Meta. Two copies of it is the shape `storeSliceTotalAgorot` was extracted to end
+  // after three surfaces drifted apart on the SAME field; this one is the second reader, so it
+  // borrows rather than restating. The floor's reasoning lives with the function.
+  return storeSliceGoodsAgorot(order.storeSubtotals?.[storeSlug]);
 }
 
 /** GMV for one order on the SAME basis every per-store surface uses: the sum of its

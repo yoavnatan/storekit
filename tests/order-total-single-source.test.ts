@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { storeSliceTotalAgorot } from '../src/lib/order-totals';
+import { storeSliceGoodsAgorot, storeSliceTotalAgorot } from '../src/lib/order-totals';
 
 // One definition of "what this store's slice of the order came to" (order-totals.ts).
 // It was computed inline in five places and three of them dropped the seller's discount:
@@ -34,6 +34,38 @@ describe('storeSliceTotalAgorot', () => {
   });
 });
 
+// The GOODS half of the same slice. It is what `/api/checkout` hands the browser as the conversion
+// value reported to Google and Meta, so an error here is not a display error: it is every ROAS on
+// the platform, and it is invisible on screen because no page shows this number.
+describe('storeSliceGoodsAgorot', () => {
+  it('is the subtotal when there is no discount, and shipping is not in it', () => {
+    expect(storeSliceGoodsAgorot({ subtotalAgorot: 100, shippingAgorot: 3000 })).toBe(100);
+  });
+
+  it('subtracts the applied discount', () => {
+    expect(storeSliceGoodsAgorot({ subtotalAgorot: 100, shippingAgorot: 20, discount: { appliedAgorot: 30 } })).toBe(70);
+  });
+
+  it('never reports a negative sale, however corrupt the row', () => {
+    // Its sibling deliberately has no floor, because a negative TOTAL means a bad row and
+    // reconcile.ts should see it. This one is consumed by an ad network's optimiser and by a
+    // revenue report, and neither may be handed a negative sale.
+    expect(storeSliceGoodsAgorot({ subtotalAgorot: 100, shippingAgorot: 20, discount: { appliedAgorot: 150 } })).toBe(0);
+  });
+
+  it('a missing subtotal row is 0, not NaN', () => {
+    expect(storeSliceGoodsAgorot(undefined)).toBe(0);
+  });
+
+  it('the two answers differ by exactly the carriage', () => {
+    // The invariant that keeps them from drifting into two unrelated definitions: whatever the
+    // discount does, goods + shipping is the total, as long as the discount has not eaten past the
+    // subtotal (the corrupt case above, where the floor makes them legitimately differ).
+    const sub = { subtotalAgorot: 8000, shippingAgorot: 3000, discount: { appliedAgorot: 500 } };
+    expect(storeSliceTotalAgorot(sub) - storeSliceGoodsAgorot(sub)).toBe(sub.shippingAgorot);
+  });
+});
+
 describe('no surface recomputes an order total inline', () => {
   function walk(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -51,6 +83,21 @@ describe('no surface recomputes an order total inline', () => {
     const offenders = walk('src')
       .filter((f) => !f.endsWith('lib/order-totals.ts'))
       .filter((f) => INLINE_TOTAL.test(readFileSync(f, 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
+  // The GOODS half, added 2026-08-23 when `/api/checkout` became its second reader. Same guard,
+  // same reason: `admin-stats.ts#orderNetForStore` had spelled this subtraction out by hand since
+  // it was written, and the checkout was one keystroke from becoming the second copy — which is
+  // exactly how the `subtotal + shipping` family ended up in five places and wrong in three.
+  //
+  // `<something>.subtotalAgorot - <something>.discount…` — the shape both copies had.
+  const INLINE_GOODS = /\.subtotalAgorot\s*-\s*\(?[\w.[\]!?'"]*\bdiscount\b/;
+
+  it('every revenue surface goes through order-totals.ts too', () => {
+    const offenders = walk('src')
+      .filter((f) => !f.endsWith('lib/order-totals.ts'))
+      .filter((f) => INLINE_GOODS.test(readFileSync(f, 'utf8')));
     expect(offenders).toEqual([]);
   });
 });

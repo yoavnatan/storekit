@@ -23,7 +23,7 @@ import { claimCheckout, completeCheckout, releaseCheckout, isValidIdempotencyKey
 import { recordMoneyEvent } from '../../lib/money-events.js';
 import { commissionMismatch, commissionMismatchDetail } from '../../lib/commission-check.js';
 import { heCount } from '../../lib/he-count.js';
-import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { storeSliceGoodsAgorot, storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { checkoutClosedReason } from '../../lib/site-mode.js';
@@ -760,7 +760,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           // Goods minus the seller's order discount — NOT `storeSliceTotalAgorot`, which includes
           // shipping. The shipping part of that total is charged to us, on the separate leg below,
           // and folding it in here is precisely what breaches the 60% ceiling.
-          goodsAgorot: sub.subtotalAgorot - (sub.discount?.appliedAgorot ?? 0),
+          //
+          // Through `storeSliceGoodsAgorot` rather than spelled out, which also floors it at zero:
+          // a corrupt row cannot hand a negative amount to a payment gateway, and `planSplit`'s
+          // minimum still refuses the slice either way. Written inline first, and the tree scan in
+          // `tests/order-total-single-source.test.ts` refused it — the same guard that exists
+          // because five surfaces once computed `subtotal + shipping` by hand and three of them
+          // dropped the discount.
+          goodsAgorot: storeSliceGoodsAgorot(sub),
           // This store's delivery. Summed with the others into ONE capture to our own merchant
           // account, which is what keeps it out of the seller's 60% ceiling.
           shippingAgorot: sub.shippingAgorot,
@@ -794,6 +801,24 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       return abort({ error: 'cannot-charge', refusals: splitPlan.refusals }, 409);
     }
   }
+  // ── The conversion figure Google and Meta are handed (2026-08-23, CURRENT_TASK סשן ב׳ item 3) ──
+  // The buyer's browser fires the `purchase` / `Purchase` event, and it must not compute the amount
+  // itself: what the cart holds is a re-priced ESTIMATE, and a sale that ended between the re-price
+  // and the charge would be reported above what was really taken. This is the charged figure, from
+  // the same `storeSubtotals` the payment is derived from.
+  //
+  // **Goods only, shipping reported beside it and never inside it.** Under the split model the
+  // carriage is charged to the platform's own merchant account and is nobody's sale
+  // (`order-totals.ts#storeSliceGoodsAgorot`), so folding it into `value` would inflate every ROAS
+  // the seller and the owner read by the shipping fee — most visibly on cheap items, where it is
+  // the larger half. GA4 takes `shipping` as its own field for exactly this reason.
+  //
+  // Declared out here, beside `checkoutRef`, because the response is returned from three places and
+  // one of them is the catch (a post-commit failure still returns 201 — the buyer paid).
+  const conversion = {
+    revenueAgorot: Object.values(storeSubtotals).reduce((sum, d) => sum + storeSliceGoodsAgorot(d), 0),
+    shippingAgorot: Object.values(storeSubtotals).reduce((sum, d) => sum + d.shippingAgorot, 0),
+  };
 
   const orderIds: string[] = [];
   const createdOrders: Order[] = [];
@@ -1101,7 +1126,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // send is internally resilient (never throws) and logs its own failures.
     void sendOrderConfirmationEmails(createdOrders).catch(() => { /* fully handled inside */ });
 
-    return json({ orderIds, checkoutRef }, 201);
+    // `conversion` rides on the 201s only, never on the `replayed: true` response above: the same
+    // purchase arriving twice is one sale, and the browser fires the conversion event off the
+    // presence of this field precisely so a replay cannot double-count it.
+    return json({ orderIds, checkoutRef, ...conversion }, 201);
   } catch (err) {
     // ── Give the money back before anything else ──
     // Reached only when the charge SUCCEEDED and the purchase then did not. It is the first thing
@@ -1166,7 +1194,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // A post-commit failure still returns the successful response: the buyer paid
     // and the orders exist, so sending them an error would invite exactly the
     // duplicate purchase this endpoint now guards against.
-    if (committed) return json({ orderIds, checkoutRef }, 201);
+    if (committed) return json({ orderIds, checkoutRef, ...conversion }, 201);
     return json({ error: 'Checkout failed, please try again' }, 500);
   }
 }

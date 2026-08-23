@@ -190,3 +190,81 @@ export function trackInitiateCheckout(input: readonly TrackLine[]): void {
     num_items: numItems,
   }));
 }
+
+/**
+ * The buyer PAID — GA4 `purchase` / Meta `Purchase`. The end of the funnel, and until 2026-08-23
+ * the only stage of it that was never sent.
+ *
+ * ── Why its absence was not a small gap ──
+ * Everything the platform does with advertising rests on this one event, in three separate ways:
+ *   · **Optimisation.** Performance Max and Advantage+ are bidding systems: they need a conversion
+ *     to bid towards. With the funnel ending at `begin_checkout`, both networks were being taught
+ *     to find people who reach the payment form — including everyone who then abandons it.
+ *   · **Measurement.** ROAS has no numerator without this. The seller's advertising tab and the
+ *     owner's cross-check against Ads Manager (GO_LIVE §2.5) are both comparisons against a figure
+ *     that was never reported.
+ *   · **Retargeting**, which is what the owner actually asked about ("לקוח רואה מוצר ואז הוא רואה
+ *     אותו שוב ברחבי הרשת"). Meta's dynamic catalog ads require exactly three pixel events —
+ *     ViewContent, AddToCart and Purchase — each carrying `content_ids` that match the catalog
+ *     feed's row ids. Two of the three were firing. The third is what tells Meta to STOP chasing a
+ *     shopper with the item they already bought, so its absence did not merely weaken retargeting,
+ *     it made it follow buyers around with a product they own.
+ *
+ * ── The amount is the server's, never this page's ──
+ * `value` arrives from `/api/checkout`'s response and is the figure actually charged
+ * (`order-totals.ts#storeSliceGoodsAgorot`, summed over the stores). The cart's own numbers are a
+ * re-priced estimate: a sale that ended in the seconds between the re-price and the charge would be
+ * reported here above what was really taken, and this is the number every ROAS on the platform
+ * divides by.
+ *
+ * **Shipping is passed beside the value, never inside it** — GA4 has a field for it, and under the
+ * split model the carriage is charged to the platform's own merchant account and is nobody's sale.
+ * Meta has no such field, so it simply never sees it; a `Purchase` value that quietly included
+ * ₪30 of carriage would overstate every campaign's return, worst on the cheap items where the fee
+ * is the larger half.
+ *
+ * ── Fired once, at the response, not on the confirmation page ──
+ * The obvious home would be `/checkout/success`, and it is the wrong one twice over. That page is
+ * reached by the back button and by a shared `?order=` link, so it would need a de-duplication
+ * clock of its own; and it deliberately renders nothing out of the order it loads, so feeding it
+ * item ids and a total would turn an order id into a disclosure of what was in the basket. Here the
+ * event fires exactly once, on the one response that says a charge succeeded — and never on the
+ * idempotency REPLAY of that response, which carries no `conversion` field for that reason.
+ *
+ * `transactionId` is the checkout reference, shared by every store's order in one basket: one card
+ * entry is one conversion, and reporting it per store would multiply a single sale by the number of
+ * shops the buyer happened to visit.
+ */
+export function trackPurchase(
+  input: readonly TrackLine[],
+  transactionId: string,
+  value: number,
+  shipping: number,
+): void {
+  // Same rule as every call above (`reportable`): a line with no catalog id is dropped rather than
+  // sent under a blank one. Unlike the others, the EVENT still fires when every line is dropped —
+  // `value` came from the server and the money really moved, so a conversion with no item breakdown
+  // is a true, if poorer, report; suppressing it would lose the sale from ROAS entirely.
+  const lines = input.filter(reportable);
+  const numItems = lines.reduce((sum, l) => sum + l.qty, 0);
+  tap('dataLayer', () => window.dataLayer?.push({
+    event: 'purchase',
+    ecommerce: {
+      transaction_id: transactionId,
+      currency: 'ILS',
+      value,
+      shipping,
+      items: lines.map((l) => ({
+        item_id: l.id, item_name: l.name, price: l.price, item_category: l.category ?? '', quantity: l.qty,
+      })),
+    },
+  }));
+  tap('fbq', () => window.fbq?.('track', 'Purchase', {
+    content_ids: lines.map((l) => l.id),
+    contents: lines.map((l) => ({ id: l.id, quantity: l.qty, item_price: l.price })),
+    content_type: 'product',
+    value,
+    currency: 'ILS',
+    num_items: numItems,
+  }, { eventID: transactionId }));
+}

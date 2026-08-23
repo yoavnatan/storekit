@@ -29,3 +29,26 @@ export function storeSliceTotalAgorot(sub: StoreSliceAmounts | undefined): numbe
   if (!sub) return 0;
   return sub.subtotalAgorot + sub.shippingAgorot - (sub.discount?.appliedAgorot ?? 0);
 }
+
+/** The GOODS half of the same slice — what the buyer paid for the products themselves, after the
+ *  seller's order discount and **without** carriage.
+ *
+ *  Why it is a second function and not a subtraction at the call site: two questions are being
+ *  asked of the same three fields and they have different right answers. "What was this order?"
+ *  is goods + shipping — the buyer's statement, the order card. "What did this sale earn?" is
+ *  goods alone: the carrier's fee is nobody's income, and under the split model it is not even the
+ *  seller's money, because shipping is charged to the platform's own merchant account
+ *  (AI_INSTRUCTIONS → Payment architecture).
+ *
+ *  `admin-stats.ts#orderNetForStore` is this same arithmetic asked of a stored `Order`. This one is
+ *  asked of the amounts as `/api/checkout` computes them, in the window before any order row
+ *  exists — which is where the conversion value reported to Google and Meta is taken from.
+ *
+ *  Floored at zero, unlike its sibling, and for the reason `orderNetForStore` gives: the discount
+ *  is written against the subtotal alone, so a negative here is a corrupt row, and the surfaces
+ *  that consume revenue — a report, an ad network's ROAS — must never be handed a negative sale.
+ *  `reconcile.ts` is what reports the corruption. */
+export function storeSliceGoodsAgorot(sub: StoreSliceAmounts | undefined): number {
+  if (!sub) return 0;
+  return Math.max(0, sub.subtotalAgorot - (sub.discount?.appliedAgorot ?? 0));
+}

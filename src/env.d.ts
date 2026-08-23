@@ -2,7 +2,11 @@
 
 interface Window {
   dataLayer?: Record<string, unknown>[];
-  fbq?: (action: string, event: string, params?: Record<string, unknown>) => void;
+  /** The fourth argument is Meta's per-event options bag. Only `eventID` is used here, and only on
+   *  `Purchase`: it is the key Meta de-duplicates a conversion by, so if the same sale ever also
+   *  arrives over the server-side Conversions API it is counted once rather than twice. Passing the
+   *  checkout reference means that key already exists, before the server-side half is built. */
+  fbq?: (action: string, event: string, params?: Record<string, unknown>, options?: { eventID?: string }) => void;
   __sessionUserId: string;
   __pendingCartSync: 'merge' | 'replace' | '';
   /** The store's verified custom hostname when the page is served on it (else ''); set by

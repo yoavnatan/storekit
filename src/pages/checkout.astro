@@ -339,7 +339,7 @@ for (const s of await getVisibleStores()) {
     import { spawnRipple } from '../lib/ripple.js';
     import { mountSavingsRowMoment } from '../lib/savings-celebration.js';
     import { checkoutAttemptKey, clearCheckoutAttemptKey } from '../lib/checkout-attempt-key.js';
-    import { trackInitiateCheckout } from '../lib/tracking.js';
+    import { trackInitiateCheckout, trackPurchase } from '../lib/tracking.js';
     import { adItemId } from '../lib/ad-item-id.js';
     import { isValidEmail } from '../lib/email-address.js';
     import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../scripts/dashboard/select-dropdown.js';
@@ -1387,7 +1387,10 @@ for (const s of await getVisibleStores()) {
 
       try {
         const res  = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string; productName?: string; outOfStock?: OutOfStockDetail; coupon?: { storeSlug?: string } };
+        // `revenueAgorot`/`shippingAgorot` are optional in the type for a reason that is not
+        // defensive typing: the idempotency REPLAY of a checkout returns the same orderIds WITHOUT
+        // them, and their absence is what stops one sale being reported to Google and Meta twice.
+        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string; productName?: string; outOfStock?: OutOfStockDetail; coupon?: { storeSlug?: string }; revenueAgorot?: number; shippingAgorot?: number };
         // A code that stopped being valid between typing it and pressing pay — it expired, the
         // seller switched it off, or somebody else took the last use of a capped one. Handled
         // exactly like a changed price and for the same reason: the buyer is not at fault, the
@@ -1437,6 +1440,38 @@ for (const s of await getVisibleStores()) {
         // this key, or it would be replayed as this one.
         clearCheckoutAttemptKey();
         const ref = data.checkoutRef ?? data.orderIds[0]!.slice(0, 8).toUpperCase();
+        // GA4 `purchase` / Meta `Purchase` — the end of the funnel, and the event both networks bid
+        // towards (lib/tracking.ts carries the full argument, including why it fires here and not on
+        // the confirmation page). Guarded on `revenueAgorot` being a number rather than on the
+        // response being ok: the idempotency REPLAY is also a 200 with orderIds, and it omits this
+        // field precisely so one sale sent twice is counted once.
+        //
+        // BEFORE the redirect on the next line, deliberately. `dataLayer.push` runs GTM's matching
+        // tags synchronously, and `fbq` hands its call to a beacon that survives the navigation;
+        // firing after `location.href` would be firing into a page that is already tearing down.
+        //
+        // Wrapped in its own try, and this is the load-bearing part rather than caution.
+        // `trackPurchase` cannot throw (lib/tracking.ts#tap), but the lines are BUILT here, and the
+        // enclosing catch belongs to the pay button: anything thrown between here and the redirect
+        // is reported to a buyer who has already been charged as "the checkout failed", leaves the
+        // paid items in their cart, and strands them on the payment form. Reporting a sale is never
+        // worth that, so this block can only ever cost the report.
+        try {
+          if (typeof data.revenueAgorot === 'number') {
+            // The same lines the pay button submitted, under the same catalog id `begin_checkout`
+            // used (lib/ad-item-id.ts) — matching ids is the whole mechanism of catalog retargeting,
+            // so the two events must be built the same way or Meta joins them to nothing.
+            const soldLines = purchased
+              .filter(({ item }) => item.productId)
+              .map(({ item }) => ({
+                id: adItemId(item.productId!, item.selectedVariants),
+                name: item.name, price: item.price, qty: item.qty,
+              }));
+            // Agorot on the wire, shekels in the event: this is a hand-off boundary exactly like the
+            // one /api/checkout crosses for the gateway, so the division happens once, at the edge.
+            trackPurchase(soldLines, ref, data.revenueAgorot / 100, (data.shippingAgorot ?? 0) / 100);
+          }
+        } catch { /* a sale that went unreported is not a sale that failed */ }
         // Only the purchased items leave the cart — anything the buyer left unchecked stays.
         purchased.forEach(({ storeSlug, item }) => removeItem(storeSlug, item.cartKey));
         window.location.href = `/checkout/success?order=${encodeURIComponent(ref)}`;
