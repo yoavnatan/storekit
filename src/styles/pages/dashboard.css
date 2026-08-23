@@ -324,17 +324,47 @@ textarea.input { resize: none; }
    WORD was the thing that did not fit (74% of it visible at 1600px) even though the gauge
    did. A column wide enough for its mark and too narrow for its name is a column nobody can
    learn. */
-.products-table .seo-col       { width: 2.6rem; padding-inline: 0.15rem; }
-.products-table .actions-col   { width: 2.8rem; padding-inline: 0.15rem; }
+ /* Sized to their contents and not a pixel more (owner, 2026-08-23: *"תעשה שהריווח שם של
+    ה-SEO והנקודות יצטמצם גם הוא"*). The gauge is 21px and the kebab's hover circle is 28px;
+    at 2.6rem/2.8rem each sat centred in a cell half again its size, and the two of them
+    together put a visible hole at the end of every row. 1.7rem and 2.1rem leave each control
+    about 3px of air a side — enough that nothing touches an edge, little enough that the two
+    read as one group. Measured at every width down to 660: neither is clipped. */
+.products-table .seo-col       { width: 1.7rem; padding-inline: 0.1rem; }
+.products-table .actions-col   { width: 2.1rem; padding-inline: 0.1rem; }
 
-.products-table .name-col      { width: 22%; }
+/* ── THE SHARES ARE A BUDGET, AND IT WAS SPENT IN THE WRONG PLACE ──
+   Owner, 2026-08-23, pointing at the end of a row: *"למה ה-SEO כל כך רחוק מהשלוש נקודות ועל
+   חשבון זה דברים אחרים מתכווצים"*. He had the symptom exactly and the culprit only half, so
+   every column was measured for what it OCCUPIES against what its content actually needs:
+
+       column      room    content    spare
+       date        87.5      48.7      38.8
+       stock       87.5      47.5      40.0
+       price       78.1      41.3      36.8
+       SEO         25.8      21.0       4.8   <- already tight
+       name       190.8     190.8       0.0   <- truncating
+       category   115.6     115.7       0.0   <- truncating
+
+   The SEO column was never the waste; the NUMBER columns were, and the name and the category
+   paid for it. A date is eight characters and a stock count three or four, so both were holding
+   nearly twice what they can ever show, while the two columns a seller actually READS had no
+   spare at all and had begun to ellipsise.
+
+   Rebalanced against that table rather than by eye. The number columns keep a real margin — a
+   price can reach ₪50,000 and a stock count five digits plus its variants chevron, and the demo
+   catalogue shows neither, so these are sized for the worst case and not for what is on screen
+   today. SEO and the kebab give back the padding that made them sit apart, which is the gap he
+   saw; both still clear their contents (21px gauge, 28px button) at the narrowest table this
+   layout reaches. */
+.products-table .name-col      { width: 25%; }
 .products-table .sku-col       { width: 11%; }
-.products-table .cat-col       { width: 14%; }
-.products-table .price-col     { width: 10%; }
+.products-table .cat-col       { width: 15%; }
+.products-table .price-col     { width: 9%; }
 .products-table .stock-col     { width: 11%; }
-.products-table .wishlist-col  { width: 7%; }
-.products-table .purchased-col { width: 8%; }
-.products-table .date-col      { width: 11%; }
+.products-table .wishlist-col  { width: 6%; }
+.products-table .purchased-col { width: 7%; }
+.products-table .date-col      { width: 8%; }
 
 .products-table .name-col .product-name {
   white-space: nowrap;
@@ -342,15 +372,15 @@ textarea.input { resize: none; }
   text-overflow: ellipsis;
 }
 
-/* The date heading has two spellings and CSS picks one — see the markup for why. Above the
-   narrow state it reads "נוסף בתאריך"; below it, "נוסף", which is the same word the mobile
-   card has always used. Shortening the WORD rather than widening the column is what keeps
-   every heading readable without giving a low-value column more room than it earns. */
-.date-label--short { display: none; }
-@media (max-width: 1339.98px) {
-  .date-label--long  { display: none; }
-  .date-label--short { display: inline; }
-}
+/* THE DATE HEADING IS "נוסף" AT EVERY WIDTH, and the long spelling never shows.
+   It was width-switched for one round and measured afterwards: at 1600px — the widest this
+   was ever going to get — "נוסף בתאריך" still showed only 61% of itself, because the column
+   is sized for a date (eight characters) and the heading is eleven. A word that never fits
+   anywhere is not a wide-screen luxury, it is a heading nobody can read. The short form is
+   the one the mobile card has always used, and the sort button's `aria-label` still carries
+   the full sentence, so nothing is lost to a screen reader or to search.
+   Both spans stay in the markup: the switch is one line away if the column ever earns it. */
+.date-label--long { display: none; }
 
 /* ── Toggle 1: the serial number ──
    First to go, and it is the right first: it is the only column carrying nothing about the

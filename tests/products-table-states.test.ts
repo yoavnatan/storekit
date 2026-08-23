@@ -88,7 +88,9 @@ describe('the products table has three states', () => {
     // "נוסף בתאריך" is the longest heading in the table and the only one that could not stay
     // readable in the narrow state on width alone — 65% of it visible at 660px. The short form
     // already existed for the mobile card.
-    expect(css).toMatch(/\.date-label--short\s*\{\s*display:\s*none/);
+    // The long spelling is hidden at EVERY width: measured at 1600px it still showed only 61%
+    // of itself, because the column is sized for an eight-character date. Both spans stay in the
+    // markup so the switch is one line away if the column ever earns it.
     expect(css).toMatch(/\.date-label--long\s*\{\s*display:\s*none/);
     const markup = read('src/pages/seller/dashboard.astro');
     expect(markup).toContain('date-label--long');
