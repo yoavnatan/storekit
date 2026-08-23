@@ -1951,6 +1951,22 @@ export const translations = {
       total: 'סה"כ לתשלום',
       toPayment: 'לתשלום',
       paymentDetails: 'פרטי תשלום',
+      // ── The card, entered once for the whole cart (Hosted Fields) ──
+      // The number is typed into PayMe's own iframes, so these labels sit BESIDE fields this page
+      // does not own — they are ours, the boxes are theirs. Named for what the buyer types, never
+      // for the mechanism.
+      cardTitle: 'פרטי כרטיס',
+      cardNumber: 'מספר כרטיס',
+      cardExpiry: 'תוקף',
+      cardCvc: 'שלוש ספרות בגב הכרטיס',
+      // Said once, where the card is asked for. Not a standing reassurance banner — it is the one
+      // sentence that answers "למה אני מקליד את זה כאן".
+      cardSecureNote: 'הפרטים נשמרים אצל חברת הסליקה ולא אצלנו.',
+      cardLoadFailed: 'טופס הכרטיס לא נטען. רעננו את הדף ונסו שוב.',
+      cardDeclined: 'הכרטיס לא התקבל. בדקו את הפרטים או נסו כרטיס אחר.',
+      // A single charge per חנות ועוד אחד למשלוח — הקונה יראה כמה שורות בדף האשראי, וזה בדיוק
+      // הסוג של הפתעה ששווה משפט אחד מראש.
+      cardSplitNote: 'החיוב מתבצע בנפרד לכל חנות, ולכן יופיעו כמה שורות בדף האשראי.',
       changeShipping: 'שנה',
       changeShippingMethod: 'שנה שיטת משלוח',
       deliveryMethod: 'שיטת משלוח',
@@ -3779,6 +3795,14 @@ export const translations = {
       total: 'Total',
       toPayment: 'Proceed to payment',
       paymentDetails: 'Payment details',
+      cardTitle: 'Card details',
+      cardNumber: 'Card number',
+      cardExpiry: 'Expiry',
+      cardCvc: 'CVC',
+      cardSecureNote: 'Your card is held by the payment processor, not by us.',
+      cardLoadFailed: 'The card form could not be loaded. Refresh the page and try again.',
+      cardDeclined: 'The card was not accepted. Check the details or try another card.',
+      cardSplitNote: 'Each store is charged separately, so you will see several lines on your statement.',
       changeShipping: 'Change',
       changeShippingMethod: 'Change method',
       deliveryMethod: 'Delivery method',

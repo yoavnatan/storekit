@@ -116,6 +116,42 @@ plan** (`790`), so the join is the `seller_payme_id` we store. A new seller is
 Processing `2.50%` + `₪0.70`; foreign `3.15%` + `₪0.10`; `market_fee` default `0.00`.
 Minimum sale and minimum partial refund: **500 agorot**.
 
+### 9. ⚠️ `get-sellers` does NOT return the public key — `create-seller` is the only place it exists
+Measured 2026-08-23 against `Dezabin TestA`. The response is rich — `seller_fees`,
+`seller_processing_percent`, `seller_wallets`, `seller_address`, the personal and business blocks —
+and there is **no key of any kind in it**: not `seller_public_key`, not the callback secret.
+
+**So both of those are returned exactly once, by `create-seller`, and cannot be re-fetched.** If the
+`seller_merchant_accounts` row loses them, that seller can never take a card again (no public key to
+initialise Hosted Fields) and his callbacks can never be verified (no secret) — and the only repair
+is opening a SECOND merchant account for him, which costs ₪65 a month forever and cannot be undone,
+because the sandbox and the live API both lack a delete. Treat those two columns as unrecoverable.
+
+The same call also confirmed the approval fields' real types, which the callback route parses:
+`seller_approved` and `seller_active` come back as JSON **booleans** (`false` / `true`), not as the
+string `'1'` their older spec shows elsewhere. `getSellerStatus` accepts both.
+
+### 10. Hosted Fields — their published example is READABLE, unlike the guides
+`github.com/PayMeService/payme-jsapi` (read 2026-08-23). This is worth stating plainly because an
+earlier session concluded the browser half could not be written without talking to PayMe: that was
+true of `payme.stoplight.io`, and false of the example repository, which is plain files.
+
+    <script src="https://cdn.payme.io/hf/v1/hostedfields.js"></script>
+    PayMe.create(apiKey, { testMode, language, tokenIsPermanent })   // tokenIsPermanent defaults TRUE
+      → instance.hostedFields().create(PayMe.fields.NUMBER|EXPIRATION|CVC).mount('#id')
+      → instance.tokenize(saleData) → { token, card: { cardMask, … } }
+
+`token` maps to `buyer_key` on `generate-sale`. Their example's `apiKey` is a plain UUID, **not** an
+`MPL…`-shaped `seller_payme_id` — so it is the `seller_public_key` from `create-seller`, and the
+older note in `GO_LIVE` §3.1 saying the SDK takes the seller id describes a previous example.
+
+**⚠️ Still not measured, and it cannot be from here:** none of this has been run in a browser. Doing
+so needs a merchant that is APPROVED and whose public key we hold, and we have neither — our two
+test sellers are `seller_approved: false` and their public keys were never captured (see 9 above).
+Creating a third to get one is exactly what this file's warning forbids. So the remaining unknowns
+are: whether the public key is really the right argument, and which origin serves the field iframes
+(`lib/csp.ts` declares all three PayMe hosts rather than guessing narrow).
+
 ---
 
 ## Still unmeasured — do not guess these

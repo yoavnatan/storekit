@@ -8,6 +8,7 @@ import { isDemoStore } from '../lib/demo-stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { SHIPPING_RATES, availableDeliveryMethods, offersSelfPickup, type DeliveryMethod } from '../lib/shipping.js';
 import { checkoutIsOpen } from '../lib/site-mode.js';
+import { CARD_CONTAINERS } from '../scripts/checkout-card.js';
 
 const checkoutOpen = checkoutIsOpen();
 
@@ -250,6 +251,43 @@ for (const s of await getVisibleStores()) {
             </div>
           </div>
 
+          {/* ── The card ──────────────────────────────────────────────────────────────────────
+              Three EMPTY divs, and that is the whole point: PayMe mount their own iframes into
+              them, so the card number is typed into their document and never touches this origin
+              (`src/scripts/checkout-card.ts`). Our labels sit beside boxes we do not own.
+
+              Server-rendered HIDDEN and revealed only once the fields really mount. The opposite
+              order is the flash this repo already has a memory for
+              (`project_injected_overlay_flash`) — and worse here than cosmetic: a card form drawn
+              before it works invites a buyer to type into three dead rectangles. With no gateway
+              configured it simply never appears, and the mock path runs exactly as before. */}
+          <div id="payme-card" class="bg-[color:var(--color-surface)] rounded-[var(--radius)] p-5 border-[1.5px] [border-color:var(--color-border)] mb-5" hidden>
+            <h3 class="text-[.9375rem] font-semibold [color:var(--color-text)] mb-1">{c.cardTitle}</h3>
+            <p class="text-[.8rem] [color:var(--color-muted)] m-0 mb-4">{c.cardSecureNote}</p>
+            <div class="grid gap-3.5">
+              <div>
+                <label for={CARD_CONTAINERS.number} class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.cardNumber}</label>
+                {/* A fixed height, because the iframe arrives after paint and a box that grows from
+                    nothing shifts every control under it while the buyer is reading them. */}
+                <div id={CARD_CONTAINERS.number} class="w-full h-[42px] py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] box-border"></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label for={CARD_CONTAINERS.expiry} class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.cardExpiry}</label>
+                  <div id={CARD_CONTAINERS.expiry} class="w-full h-[42px] py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] box-border"></div>
+                </div>
+                <div>
+                  <label for={CARD_CONTAINERS.cvc} class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.cardCvc}</label>
+                  <div id={CARD_CONTAINERS.cvc} class="w-full h-[42px] py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] box-border"></div>
+                </div>
+              </div>
+            </div>
+            {/* Shown only for a cart spanning more than one shop — at one store there is one line
+                on the statement and the sentence would be noise about a distinction the buyer does
+                not have (`feedback_no_standing_screen_prose`). */}
+            <p id="payme-split-note" class="text-[.8rem] [color:var(--color-muted)] m-0 mt-4" hidden>{c.cardSplitNote}</p>
+          </div>
+
           {/* The platform is live but not selling yet (lib/site-mode.ts). Rendered on the SERVER,
               above the pay button, so the shopper reads it before filling anything in rather than
               after — the API's 503 is the guarantee, this is the courtesy.
@@ -469,6 +507,16 @@ for (const s of await getVisibleStores()) {
     // Last figure the savings row was rendered with — read when the count-up fires, which is
     // several re-renders after the page loaded.
     let lastTotalSaving = 0;
+    /** The grand total exactly as the summary last rendered it, in ILS.
+     *
+     *  Kept for one job: the figure shown to PayMe's card form, so the amount the buyer approves on
+     *  screen and the amount their bank names are the same number. **It is a LABEL, never the
+     *  charge** — `/api/checkout` derives every amount from the product rows and the token carries
+     *  no price at all, which is why a stale value here could mislead but could never overcharge.
+     *  Assigned from `renderCart`'s own `grandTotal` rather than recomputed, for the reason
+     *  `lastTotalSaving` above it exists: a second derivation is how a decoration comes to disagree
+     *  with the row it decorates. */
+    let lastGrandTotal = 0;
     const savingsBand = savingsRowEl && savingsAmountEl && savingsRuleRow
       ? mountSavingsRowMoment({
           row: savingsRowEl,
@@ -832,6 +880,7 @@ for (const s of await getVisibleStores()) {
       // moment they are needed — the decoration must never be able to disagree with the row it
       // decorates, and a second derivation is how it would.
       lastTotalSaving = totalSaving;
+      lastGrandTotal = grandTotal;
       savingsBand?.setActive(totalSaving > 0);
 
       const totalEl = document.getElementById('grand-total-amount');
@@ -1042,8 +1091,56 @@ for (const s of await getVisibleStores()) {
         // position is stable while the section expands below it — no need to wait out the 420ms
         // max-height transition.
         scrollBelowPinnedChrome(toPaymentBtn, 0, 'bottom');
+        // The card fields are drawn HERE and not on page load: their SDK is a third-party script on
+        // a money page, and a buyer who never reaches the payment step should never have fetched it.
+        void mountCardFields();
       }
     });
+
+    // ── The card, once the buyer asks to pay ────────────────────────────────────────────────
+    //
+    // `cardFields` stays null on the mock path and in the pre-gateway window, and the submit below
+    // simply sends no token — exactly the flow that ran before this existed. It is null on FAILURE
+    // too, which is a different thing, so `cardRequired` records that cards WERE meant to work: a
+    // buyer whose card form failed to load must be told, not quietly walked into a server refusal
+    // whose message is about something else.
+    let cardFields: import('../scripts/checkout-card.js').CardFields | null = null;
+    let cardRequired = false;
+    let cardMounting: Promise<void> | null = null;
+
+    async function mountCardFields(): Promise<void> {
+      // Memoised on the promise: the accordion can be opened, closed and opened again, and the
+      // fields must be mounted exactly once — a second `mount()` into a container that already
+      // holds an iframe is their SDK's problem, and not one worth handing it.
+      if (cardMounting) return cardMounting;
+      cardMounting = (async () => {
+        const firstStore = getActiveStoreCarts()[0]?.storeSlug;
+        if (!firstStore) return;
+        const { fetchCardConfig, loadCardFields } = await import('../scripts/checkout-card.js');
+        const config = await fetchCardConfig(firstStore);
+        if (!config.active) return;      // no gateway, or this seller cannot take cards yet
+        cardRequired = true;
+        const cardBox = document.getElementById('payme-card');
+        try {
+          cardFields = await loadCardFields(config, document.documentElement.lang === 'en' ? 'en' : 'he');
+          // Revealed only now — after the iframes really mounted. Drawing the box first would show
+          // three dead rectangles and invite the buyer to type into them.
+          cardBox?.removeAttribute('hidden');
+          if (getActiveStoreCarts().length > 1) document.getElementById('payme-split-note')?.removeAttribute('hidden');
+        } catch (err) {
+          // Loud. This is exactly the class row 11 of the area audit is about: a failure that
+          // leaves the screen looking idle and correct. The buyer cannot pay, so they are told so
+          // where they are looking, and the console keeps the real reason for us.
+          //
+          // Looked up here rather than closed over: this runs from the accordion handler, and the
+          // submit handler's own `errEl` is scoped to it.
+          console.error(err);
+          const failEl = document.getElementById('form-global-error');
+          if (failEl) { failEl.textContent = i18n['cardLoadFailed'] ?? 'טופס הכרטיס לא נטען. רעננו את הדף ונסו שוב.'; failEl.classList.remove('hidden'); }
+        }
+      })().finally(() => { /* the promise stays memoised either way — a retry is a reload */ });
+      return cardMounting;
+    }
 
     // ── Validation ─────────────────────────────────────────
     function setFieldErr(field: string, show: boolean): void {
@@ -1246,6 +1343,47 @@ for (const s of await getVisibleStores()) {
         coupons: couponCodesFor(new Set(purchased.map(p => p.storeSlug))),
         idempotencyKey: checkoutAttemptKey(),
       };
+
+      // ── The card, exchanged for a token, and ONLY now ──────────────────────────────────────
+      //
+      // After every check above and immediately before the request, because a token is the last
+      // thing to obtain and the first thing that goes stale: tokenising and then discovering the
+      // price moved would leave the buyer holding a token for an order they are about to be shown
+      // a new total for.
+      //
+      // Nothing here reads a card number — `tokenize` talks to PayMe's own iframes and hands back a
+      // string. A decline is the buyer's own input being refused, so its message is safe to show
+      // them; anything else is ours and gets the generic line.
+      if (cardRequired) {
+        if (!cardFields) {
+          if (errEl) { errEl.textContent = i18n['cardLoadFailed'] ?? 'טופס הכרטיס לא נטען. רעננו את הדף ונסו שוב.'; errEl.classList.remove('hidden'); }
+          labelEl?.classList.remove('hidden');
+          loadingEl?.classList.add('hidden');
+          if (submitBtn) submitBtn.disabled = false;
+          return;
+        }
+        try {
+          const name = (body.buyerName || '').split(/\s+/).filter(Boolean);
+          (body as Record<string, unknown>)['buyerKey'] = await cardFields.tokenize({
+            firstName: name[0] ?? body.buyerName,
+            lastName: name.slice(1).join(' ') || (name[0] ?? body.buyerName),
+            email: body.buyerEmail,
+            phone: body.buyerPhone,
+            // SHEKELS as a decimal string — their unit, and the opposite of the agorot the server
+            // charges in. Formatted from the integer total the summary was rendered from, so the
+            // figure the buyer approves and the figure their bank shows are the same one.
+            amountIls: lastGrandTotal.toFixed(2),
+            label: i18n['paymentDetails'] ?? 'תשלום',
+          });
+        } catch (err) {
+          console.error(err);
+          if (errEl) { errEl.textContent = i18n['cardDeclined'] ?? 'הכרטיס לא התקבל. בדקו את הפרטים או נסו כרטיס אחר.'; errEl.classList.remove('hidden'); }
+          labelEl?.classList.remove('hidden');
+          loadingEl?.classList.add('hidden');
+          if (submitBtn) submitBtn.disabled = false;
+          return;
+        }
+      }
 
       try {
         const res  = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });

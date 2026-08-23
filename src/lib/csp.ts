@@ -55,6 +55,22 @@ export const BROWSER_ORIGINS: readonly ExternalOrigin[] = [
   { origin: 'https://www.facebook.com', directives: ['img-src', 'connect-src'], why: 'The Pixel’s no-JS tracking image and its event beacons.' },
   { origin: 'https://pay.hyp.co.il', directives: ['frame-src', 'connect-src'], why: 'The embedded payment page (lib/payment-hyp.ts). Without this the checkout iframe is blank.' },
   { origin: 'https://*.creditguard.co.il', directives: ['frame-src', 'connect-src'], why: 'Hyp Enterprise serves the same payment page from this domain; declared now so the two integration modes do not differ by a header nobody would think to change.' },
+  // ── PayMe Hosted Fields (the split model, `lib/payment-payme.ts`) ──
+  // The buyer's card number is typed into IFRAMES served by PayMe, inside our own page, so the
+  // number never touches this origin and never reaches our server. That is the whole reason this
+  // codebase is out of PCI scope, and it is why three directives are needed rather than one: the
+  // loader is a script, each field is a frame, and tokenising is a request from inside them.
+  //
+  // ⚠️ The loader origin is from their own integration example and is certain. Which origin serves
+  // the FIELD IFRAMES is not measured — it has never been run in a browser (no card entry existed
+  // until now), and their guide pages do not load as text. Both API hosts are declared because the
+  // failure mode of guessing too narrow is silent and awful: the fields render blank, the buyer
+  // cannot type a card, and nothing on the page says why. Too broad here costs nothing — these are
+  // our payment provider's own hosts either way. **Narrow it once it has been watched in a real
+  // browser**, which is the same session that verifies the callback signature (GO_LIVE §3.1.2).
+  { origin: 'https://cdn.payme.io', directives: ['script-src', 'frame-src', 'connect-src'], why: 'The Hosted Fields loader, and the card/expiry/CVC field iframes it mounts.' },
+  { origin: 'https://sandbox.payme.io', directives: ['frame-src', 'connect-src'], why: 'Hosted Fields tokenises against the API host; this is the staging one.' },
+  { origin: 'https://live.payme.io', directives: ['frame-src', 'connect-src'], why: 'The same, in production. Both are declared so the environment switch is a variable and not a header change.' },
 ];
 
 function originsFor(directive: CspDirective): string[] {
