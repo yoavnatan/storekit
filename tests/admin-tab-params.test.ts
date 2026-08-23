@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ADMIN_TAB_PARAMS, stripForeignTabParams } from '../src/lib/admin-nav.js';
+import { ADMIN_TAB_PARAMS, stripForeignTabParams, NOT_A_TAB_FILTER } from '../src/lib/admin-nav.js';
 
 // Every admin tab's filter/sort/pager state shares ONE `/admin?` URL, and the tab
 // controller only rewrites `panel`. So a param with no registered owner never gets
@@ -22,7 +22,9 @@ const QUERY_PARSERS = [
 
 // `panel` is the tab selector itself — owned by no single tab, and the one param
 // the cleanup must always keep.
-const NOT_A_FILTER = new Set(['panel']);
+/** Read from the module rather than repeated here: a second list is how the two would disagree
+ *  about what "belongs to a tab" means, and this test exists to catch exactly that shape. */
+const NOT_A_FILTER = new Set(NOT_A_TAB_FILTER);
 
 function paramsReadIn(file: string): string[] {
   const src = readFileSync(file, 'utf8');

@@ -30,6 +30,18 @@ export function buildAdminUrl(panel: string, params: Record<string, string | und
 // `tests/admin-tab-params.test.ts` scans the admin page + its query parsers and
 // fails if a param is read but unclaimed here, so a new filter can't silently
 // start leaking again.
+/**
+ * `nav` is NOT in the table below, and that is the point of it being named here instead.
+ *
+ * The table lists params each TAB owns, so switching tabs can drop the other tabs' filters.
+ * `?nav=top` belongs to no tab — it is the whole page's layout (rail or horizontal strip), the
+ * same opt-out the seller's dashboard carries — so it has to survive every switch rather than be
+ * cleaned by one. A param that is not in the table is never deleted, which is exactly the
+ * behaviour it needs; `NOT_A_TAB_FILTER` says so out loud so the ownership test can tell "nobody
+ * claimed this" from "this belongs to the page".
+ */
+export const NOT_A_TAB_FILTER: readonly string[] = ['panel', 'nav'];
+
 export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   overview: [],
   // The open queue takes no filters — it shows every open request, and its normal length is near

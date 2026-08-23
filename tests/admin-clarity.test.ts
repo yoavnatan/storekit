@@ -103,7 +103,9 @@ describe('the tab strip is pinned on the admin dashboard too', () => {
   });
 
   it('carries the scope class and measures the real bar heights', () => {
-    expect(adminPage).toContain('class="card admin-dash"');
+    // The class list is composed now (the rail adds `dash-nav-side` unless `?nav=top`), so this
+    // asks for the two classes rather than for one literal string.
+    expect(adminPage).toMatch(/class=\{`card admin-dash\$\{navSide \? ' dash-nav-side' : ''\}`\}/);
     expect(adminPage).toContain('initStickyOffsets()');
   });
 

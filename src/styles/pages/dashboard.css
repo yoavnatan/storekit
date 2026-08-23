@@ -2088,7 +2088,17 @@ textarea.input { resize: none; }
   align-items: stretch;
   gap: 0.55rem;
 }
-#dash-main-card.dash-nav-side #dash-view-store { width: 100%; justify-content: center; }
+/* The one action in the rail's head, whichever dashboard it is: "צפה בחנות" for a seller,
+   "התנתקות" for the admin. Keyed to the slot rather than to either id, because a 15.5rem column has
+   room for one full-width control and no room for a row of them. */
+#dash-main-card.dash-nav-side .dash-head__top > .btn { width: 100%; justify-content: center; }
+/* The admin's title is a heading rather than a store name, and it arrives with a 1.3rem utility on
+   it. Same size as the seller's store name for the same reason: at 1.3rem it wrapped onto two lines
+   and became the tallest thing in the rail. */
+#dash-main-card.dash-nav-side.admin-dash .dash-head__top > h1 { font-size: 1.05rem; }
+/* Collapsed, the head is the toggle and nothing else — an admin dashboard has no avatar to stand in
+   for its own name, so the words simply go rather than being squeezed. */
+html.dash-nav-mini #dash-main-card.dash-nav-side.admin-dash .dash-head { display: none; }
 /* Air between the address line and the button above it. The address inherits `mt-3 sm:mt-1` from
    the full-width layout, where the button sits BESIDE it rather than on top of it; stacked in the
    rail those 4px read as the two being one control (owner, 2026-08-23). */
@@ -2212,7 +2222,13 @@ html:has(#dash-main-card.dash-nav-side) {
 #dash-main-card.dash-nav-side .products-header::after {
   content: "";
   position: absolute;
-  top: 0;
+  /* **Against the BORDER box, not the padding box** (owner, 2026-08-23: *"במצב של 0 גלילה יש קצת
+     בורדר רדיוס בצדדים שמבצבץ"*). An absolutely positioned child is placed inside its containing
+     block's PADDING box, so at `top: 0; left: 0` each wedge started one pixel in — and that one
+     pixel is the bar's own curved border, which stayed visible outside the fill as a hairline
+     hook at each corner. Pulling both offsets out by the border width puts the wedge on the same
+     corner the radius is measured from, and `--radius` is that box's outer curve exactly. */
+  top: calc(-1 * var(--dash-sheet-edge, 0px));
   width: var(--radius);
   height: var(--radius);
   background: var(--color-bg);
@@ -2227,13 +2243,13 @@ html:has(#dash-main-card.dash-nav-side) {
    percentage so it follows the box instead of repeating the radius. */
 #dash-main-card.dash-nav-side .dash-panel-head::before,
 #dash-main-card.dash-nav-side .products-header::before {
-  left: 0;
+  left: calc(-1 * var(--dash-sheet-edge, 0px));
   -webkit-mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
   mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
 }
 #dash-main-card.dash-nav-side .dash-panel-head::after,
 #dash-main-card.dash-nav-side .products-header::after {
-  right: 0;
+  right: calc(-1 * var(--dash-sheet-edge, 0px));
   -webkit-mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
   mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
 }
@@ -2855,7 +2871,10 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
   flex-wrap: wrap;
   align-items: center;
   gap: 0.15rem 0.7rem;
-  padding: 0.7rem 0.65rem 0.15rem;
+  /* The bottom value is not symmetry with the top: this block is the last thing in a column that
+     ends at the foot of the WINDOW, so 0.15rem put its last line about two pixels off the screen's
+     edge (owner, 2026-08-23: *"כל מה שבפוטר שנצא בסיידבר צמוד מדי לקצה התחתון של המסך"*). */
+  padding: 0.7rem 0.65rem 0.85rem;
   margin-inline: 0.65rem;
   border-top: 1px solid var(--color-border);
   font-size: 0.75rem;
@@ -2884,7 +2903,9 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
 /* In the drawer the foot is the last thing in a scrollable sheet, and a link 2px off the bottom
    edge reads as clipped. */
 @media (max-width: 1179.98px) {
-  .dash-rail-foot { padding-bottom: 0.6rem; }
+  /* The drawer scrolls and ends where its own padding does, so it needs less than the column that
+     ends at the window's edge — but not nothing. */
+  .dash-rail-foot { padding-bottom: 0.75rem; }
 }
 
 /* ── The alert dots the tab strip already had, as a class ──

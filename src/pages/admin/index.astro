@@ -3,6 +3,9 @@ export const prerender = false;
 import '../../styles/pages/admin.css';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
+import DashNavDrawer from '../../components/dashboard/DashNavDrawer.astro';
+import DashRailToggle from '../../components/dashboard/DashRailToggle.astro';
+import AdminTabIcon from '../../components/dashboard/AdminTabIcon.astro';
 import { isAdminRequest } from '../../lib/admin-auth.js';
 import { getStoreOverview, getSellerCards, attachProducts, getStoreRows, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery, countStoreStates, countEmptyStores } from '../../lib/admin-stats.js';
 import { getAllSellers, getSubscriptionAccrual } from '../../lib/seller-auth.js';
@@ -107,6 +110,19 @@ const tabs = [
   { id: 'moneylog', label: 'יומן כספי' },
   { id: 'statement', label: 'דוח חשבונאי' },
 ] as const;
+
+/**
+ * The rail, on the same terms as the seller's (`seller/dashboard.astro`): on by default, and
+ * `?nav=top` puts the horizontal strip back for a side-by-side look. Owner, 2026-08-23: *"אני רוצה
+ * את כל העיקרון הזה של הסיידבר גם על הדשבורד אדמין."*
+ *
+ * Nothing about the tabs changes — same ids, same `role="tab"`, same `data-panel` — so
+ * `DashTabsBoot`, the panel swap, the `?panel=` restore and the arrow walk are untouched. Every
+ * rule the layout needs already exists in dashboard.css under `.dash-nav-side`, which is why this
+ * is a class and a wrapper rather than a second implementation. Thirteen tabs on one horizontal
+ * line was worse here than the seller's eleven ever were.
+ */
+const navSide = Astro.url.searchParams.get('nav') !== 'top';
 
 const requestedPanel = Astro.url.searchParams.get('panel');
 const initialPanel = tabs.some((t) => t.id === requestedPanel) ? requestedPanel! : 'overview';
@@ -612,20 +628,27 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
     as being logged into two things at once (2026-07-14, see CURRENT_TASK.md
     → סשן ב׳). The avatar itself already doesn't render — isLoggedIn stays
     false since there's no buyer/seller session active. */}
-<BaseLayout title={badgeTotal > 0 ? `(${badgeTotal}) Admin Dashboard` : 'Admin Dashboard'} noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
+<BaseLayout title={badgeTotal > 0 ? `(${badgeTotal}) Admin Dashboard` : 'Admin Dashboard'} noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true} dashNav={navSide}>
   {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
       one, so this nested a second <main> carrying the SAME id, and the skip link then
       resolves to whichever one comes first rather than to this page content. */}
   <div class="section container dash-section">
-    <div id="dash-main-card" class="card admin-dash">
+    <div id="dash-main-card" class={`card admin-dash${navSide ? ' dash-nav-side' : ''}`}>
+      {/* The rail is ONE element — head and list together — because on a phone the whole thing is
+          the drawer. Same shape as the seller's, and the same reason. */}
+      <div class="dash-rail">
+      {navSide && <DashRailToggle />}
       <div class="dash-head">
         <div class="dash-head__top">
+          {/* 1.05rem in the rail, not 1.3: this line lives in a 15.5rem column there, and the
+              seller's store name learned the same lesson. The utility stays as the wide default
+              and dashboard.css overrides it under `.dash-nav-side`. */}
           <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">דשבורד ניהול</h1>
           <a href="/admin/logout" class="btn btn--ghost btn--sm">התנתקות</a>
         </div>
       </div>
 
-      <div class="dash-tabs" role="tablist">
+      <div class="dash-tabs" role="tablist" id="dash-nav-list" data-rail>
         {tabs.map((tab) => {
           const count = badgeFor[tab.id] ?? 0;
           return (
@@ -637,16 +660,23 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
               aria-selected={initialPanel === tab.id}
               tabindex={initialPanel === tab.id ? 0 : -1}
             >
-              {tab.label}
+              <AdminTabIcon id={tab.id} />
+              <span class="dash-tab__label">{tab.label}</span>
               {/* data-tab-alert: read by scripts/dashboard/tab-alert-edges.ts, which puts a dot of
-                  this colour on the strip's edge while the tab is scrolled out of view. "danger"
-                  for all of them — every count here means "rows you have not seen", which is the
-                  same thing the site already paints red everywhere else. */}
+                  this colour on the strip's edge while the tab is scrolled out of view, and by
+                  `DashNavDrawer`, which carries the loudest one out onto the phone's menu button.
+                  "danger" for all of them — every count here means "rows you have not seen", which
+                  is the same thing the site already paints red everywhere else. */}
               <span id={`tab-count-${tab.id}`} class="dash-tab__count" data-tab-alert="danger" style="margin-inline-start:0.25rem" hidden={count === 0}>{count > 0 ? `(${count})` : ''}</span>
             </button>
           );
         })}
       </div>
+      </div>
+      {/* Behaviour only — the button that opens it is in the site header (Header.astro, `dashNav`).
+          No `DashRailFoot` here: those are a shop's own site links, and this page belongs to the
+          person who runs the platform. */}
+      {navSide && <DashNavDrawer />}
       <DashTabsBoot />
 
       <AdminPanelShell panel="overview" title="סקירה כללית" active={shows('overview')}>

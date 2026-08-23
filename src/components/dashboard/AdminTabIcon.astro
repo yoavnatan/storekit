@@ -1,0 +1,39 @@
+---
+/**
+ * One glyph per admin tab.
+ *
+ * The admin's tabs were labels and nothing else, which was fine on a horizontal strip and is not
+ * fine in a rail: collapsed, a rail is icons, and a rail of thirteen blank squares is not a
+ * navigation. Owner, 2026-08-23: *"אני רוצה את כל העיקרון הזה של הסיידבר גם על הדשבורד אדמין."*
+ *
+ * **Where the concept already exists on the seller's side, the glyph is the same one** — orders is
+ * the same clipboard, messages the same speech bubble, returns the same turning arrow, advertising
+ * the same megaphone, performance the same bars. An admin looking at the same idea twice should not
+ * have to learn it twice (memory `project_admin_surface_parity`), and the two dashboards are read
+ * by one person here.
+ *
+ * A `switch` rather than a map of path strings: the paths stay as real `<svg>` markup that an
+ * editor can see, and nothing has to go through `set:html` to render a shape we wrote ourselves.
+ * `aria-hidden`, `currentColor`, 16px — the same three rules every other icon in this codebase
+ * follows.
+ */
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+const A = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' } as const;
+---
+
+{id === 'overview' && <svg {...A}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>}
+{id === 'data' && <svg {...A}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>}
+{id === 'sellers' && <svg {...A}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>}
+{id === 'stores' && <svg {...A}><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-6h6v6"/></svg>}
+{id === 'orders' && <svg {...A}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>}
+{id === 'performance' && <svg {...A}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
+{id === 'advertising' && <svg {...A}><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>}
+{id === 'messages' && <svg {...A}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+{id === 'reviews' && <svg {...A}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>}
+{id === 'alerts' && <svg {...A}><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}
+{id === 'returns' && <svg {...A}><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>}
+{id === 'moneylog' && <svg {...A}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/></svg>}
+{id === 'statement' && <svg {...A}><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>}
