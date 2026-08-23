@@ -50,7 +50,10 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   // decision an admin cannot look up is one he cannot defend, and the case somebody rings back about
   // is exactly the one a cap would have dropped.
   returns: ['rq', 'rpage'],
-  data: ['datapreset'],
+  // `datafrom`/`datato` ride with `datapreset=custom`, exactly as the ad tab's three do — and they
+  // have to be claimed here or `stripForeignTabParams` drops them on the way back into the tab and
+  // a custom window silently becomes the 7-day fallback.
+  data: ['datapreset', 'datafrom', 'datato'],
   sellers: ['sq', 'ssort', 'sblocked', 'spage', 'snew'],
   // `stblocked` is the retired yes/no form of `ststate` — still parsed (parseStoreQuery) so an
   // older bookmark keeps filtering to blocked stores, so it still has to be owned here or it

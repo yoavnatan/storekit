@@ -31,12 +31,16 @@ const rangePresets: { key: AdRangePreset; label: string }[] = [
   { key: '30d', label: '30 יום' },
   { key: 'thisMonth', label: 'החודש' },
 ];
-const activeLabel = (rangePresets.find((p) => p.key === activePreset) ?? rangePresets[2]!).label;
+const fmtDate = (iso: string): string => iso.split('-').reverse().join('/');
+// A custom window has no preset name, so the trigger says the window itself — the same thing the
+// advertising tab's trigger does, and the only honest label for "the two dates he typed".
+const activeLabel = activePreset === 'custom'
+  ? `${fmtDate(range.from)} – ${fmtDate(range.to)}`
+  : (rangePresets.find((p) => p.key === activePreset) ?? rangePresets[2]!).label;
 // Preset key → its panel-swap URL, handed to the client dropdown (data-panel.ts)
 // so choosing a preset navigates via swapPanel exactly like the range pickers on
 // the performance/advertising tabs, instead of a chip row.
 const rangeOptions = rangePresets.map((p) => ({ key: p.key, label: p.label, url: buildUrl(p.key) }));
-const fmtDate = (iso: string): string => iso.split('-').reverse().join('/');
 const pct = (n: number): string => `${n.toFixed(1)}%`;
 const productLabel = (id: string): string => productNames.get(id) ?? id;
 
@@ -95,7 +99,10 @@ const rateCards = [
     <h2 class="m-0 text-base font-semibold">נתונים ותנועה באתר</h2>
     <p class="muted text-[0.82rem] m-0 mt-1">משפך הקנייה, נטישות ותובנות על התנהגות המבקרים.</p>
   </div>
-  <div id="data-range-picker" data-active-preset={activePreset}>
+  {/* `data-from`/`data-to` are what the custom row opens PRE-FILLED with — the window currently on
+      screen, so "narrow this by two days" is an edit rather than a re-entry. Same three attributes
+      the advertising picker reads (`#admin-ads-range`). */}
+  <div id="data-range-picker" data-active-preset={activePreset} data-from={range.from} data-to={range.to}>
     <button
       type="button"
       id="data-range-trigger"

@@ -256,10 +256,17 @@ const statementPeriodAsked =
     ? statementPeriod(askedFrom, askedTo)
     : monthPeriod(statementMonths.includes(askedMonth) ? askedMonth : statementMonths[0]!);
 
-const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth'];
+// `custom` is in the list, and it is the whole point of the list being separate from
+// AD_RANGE_PRESETS: the four buttons are what the dropdown OFFERS, and the fifth value is what an
+// admin who typed two dates arrives with. Owner, 2026-08-23: *"לא רואה טווח תאריכים כמו כל שאר
+// הלשוניות בדשבורד אדמין, בלשונית נתונים"* — Advertising and Performance both end their menu with a
+// from/to row, and this tab had presets only. Same params shape as the ad tab one line above it
+// (`adpreset`/`adfrom`/`adto`), so `coerceRange` does the validating for both and a hand-edited URL
+// with a reversed or unparseable pair falls back instead of querying on nonsense.
+const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth', 'custom'];
 const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
 const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
-const dataRange = presetRange(dataPreset)!;
+const dataRange = dataPreset === 'custom' ? coerceRange(sp.get('datafrom'), sp.get('datato')) : presetRange(dataPreset)!;
 
 // ── WAVE 1: needs nothing but the URL ──
 const [
