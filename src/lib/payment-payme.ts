@@ -389,9 +389,12 @@ export async function createSeller(input: CreateSellerInput, creds: PaymeCredent
 export async function getSellerStatus(sellerPaymeId: string, creds: PaymeCredentials): Promise<{ approved: boolean; active: boolean } | null> {
   const res = await callPayme('get-sellers', { seller_payme_id: sellerPaymeId }, creds);
   const items = Array.isArray(res.items) ? (res.items as Record<string, unknown>[]) : [];
-  // Matched on the id rather than taken as `items[0]`. `get-sellers` accepts an ARRAY for every
-  // attribute and is a search, not a fetch — so a filter that PayMe ever loosen would silently
-  // return somebody else's merchant, and this would write their approval onto our seller.
+  // Matched on the id rather than taken as `items[0]`, and this stopped being a precaution on
+  // 2026-08-23: **`get-sales` was measured IGNORING its `payme_sale_id` filter entirely**, returning
+  // the caller's whole list — and with no seller scope, other partners' sales in the shared sandbox.
+  // `get-sellers` did filter correctly when probed, so the two endpoints do not behave alike and
+  // neither can be trusted to. Reading `items[0]` here would write another merchant's approval onto
+  // our seller and open a store that PayMe have not approved.
   const found = items.find((item) => String(item.seller_payme_id ?? '') === sellerPaymeId);
   if (!found) return null;
   return {
@@ -416,8 +419,11 @@ export interface CaptureBuyerTokenInput {
    *  the whole deployment in PCI scope. `§3.1.1` item 1: `pay-sale`/`capture-buyer-token` being
    *  open to us is a TESTING affordance, not the shipping integration. */
   creditCardNumber?: string;
-  expiryMonth?: string;
-  expiryYear?: string;
+  /** **`MMYY`, one field.** Measured 2026-08-23: sending `credit_card_exp_month` and
+   *  `credit_card_exp_year` — the obvious pair, and what this originally sent — is refused with
+   *  `Required parameter is missing · credit_card_exp`. Loud, which is the only reason it cost
+   *  minutes rather than a debugging session. */
+  expiry?: string;
   cvv?: string;
   buyerName?: string;
   buyerEmail?: string;
@@ -446,8 +452,7 @@ export async function captureBuyerToken(input: CaptureBuyerTokenInput, creds: Pa
     seller_payme_id: input.sellerPaymeId,
     buyer_is_permanent: true,
     ...(input.creditCardNumber ? { credit_card_number: input.creditCardNumber } : {}),
-    ...(input.expiryMonth ? { credit_card_exp_month: input.expiryMonth } : {}),
-    ...(input.expiryYear ? { credit_card_exp_year: input.expiryYear } : {}),
+    ...(input.expiry ? { credit_card_exp: input.expiry } : {}),
     ...(input.cvv ? { credit_card_cvv: input.cvv } : {}),
     ...(input.buyerName ? { buyer_name: input.buyerName } : {}),
     ...(input.buyerEmail ? { buyer_email: input.buyerEmail } : {}),
@@ -481,7 +486,21 @@ export interface GenerateSaleInput {
   /** Our percentage cut, overriding the merchant's default. `0` is meaningful and must survive:
    *  the shipping sale on our own account takes no market fee at all. */
   marketFeePercent?: number;
-  /** AGOROT here; converted to the shekels PayMe want at the edge. See the module header. */
+  /**
+   * A FIXED cut, on top of the percentage. AGOROT here; converted to the shekels PayMe want at the
+   * edge (see the module header).
+   *
+   * **The field name is `market_fee_fixed`, and this was proved rather than assumed.** PayMe told
+   * the owner in writing that a fixed fee is available and called it *"direct market fee"*. That is
+   * their conversational name for it: a paid sandbox sale with `direct_market_fee: 15` came back
+   * `sale_market_fee_fixed: 0`, `sale_market_fee_total: 0` — silently ignored — while the same sale
+   * with `market_fee_fixed: 15` came back `1500` (measured 2026-08-23).
+   *
+   * ⚠️ **That silence is the danger, and it generalises past this one field.** PayMe accept unknown
+   * parameters without complaint, so a misspelled fee field is not an error — it is a sale where we
+   * take nothing and nobody finds out until the month's distribution fee is short. Never rename a
+   * field here from a document; change it only against a paid sale whose fee you read back.
+   */
   marketFeeFixedAgorot?: number;
   callbackUrl?: string;
   returnUrl?: string;

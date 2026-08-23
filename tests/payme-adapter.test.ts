@@ -94,6 +94,24 @@ describe('the unit trap: sale_price in agorot, market_fee_fixed in shekels', () 
     expect(marketFeeTotalAgorot({ salePriceAgorot: 5000, marketFeePercent: 12, marketFeeFixedAgorot: 1500 })).toBe(2100);
   });
 
+  it('sends the fixed fee as `market_fee_fixed` — the name `direct_market_fee` is silently ignored', async () => {
+    // PayMe called it "direct market fee" in writing to the owner, and that is their conversational
+    // name, not the API's. Measured on two paid sandbox sales of ₪50: `market_fee_fixed: 15` came
+    // back `sale_market_fee_total: 1500`; `direct_market_fee: 15` came back `0`.
+    //
+    // **This test exists because the failure is SILENT.** PayMe accept unknown parameters without
+    // complaint, so a rename here — from their email, from a doc, from a plausible guess — is not a
+    // build error and not a rejected call. It is a month of sales on which we took nothing.
+    net.replies.push({ status_code: 0, payme_sale_id: 'S1', sale_status: 'completed' });
+    await generateSale({
+      sellerPaymeId: 'MPL-A', salePriceAgorot: 5000, productName: 'x', transactionId: 't',
+      marketFeePercent: 0, marketFeeFixedAgorot: 1500,
+    }, CREDS);
+    const body = lastBody();
+    expect(body).toHaveProperty('market_fee_fixed', 15);
+    expect(body).not.toHaveProperty('direct_market_fee');
+  });
+
   it('keeps a market_fee of 0 instead of dropping it', async () => {
     // The shipping sale runs on OUR merchant account with no market fee at all. A truthiness test
     // here would omit the field and silently fall back to that merchant's default percentage —
@@ -181,6 +199,19 @@ describe('the 60% ceiling on our cut', () => {
 });
 
 describe('the buyer token — single-use unless permanent', () => {
+  it('sends the expiry as ONE `credit_card_exp` field', async () => {
+    // Measured: the obvious `credit_card_exp_month` + `credit_card_exp_year` pair — which is what
+    // this sent until 2026-08-23 — is refused with `Required parameter is missing ·
+    // credit_card_exp`. A loud failure, unlike the fee field above, and that is the whole
+    // difference between a minute and a debugging session.
+    net.replies.push({ status_code: 0, buyer_key: 'BK1' });
+    await captureBuyerToken({ sellerPaymeId: 'MPL-A', creditCardNumber: '12312312', expiry: '1230', cvv: '123' }, CREDS);
+    const body = lastBody();
+    expect(body).toHaveProperty('credit_card_exp', '1230');
+    expect(body).not.toHaveProperty('credit_card_exp_month');
+    expect(body).not.toHaveProperty('credit_card_exp_year');
+  });
+
   it('ALWAYS asks for a permanent token', async () => {
     // Measured: an ordinary token answers `Buyer inactive` on the second charge, so store one
     // succeeds and store two fails. There is no caller-facing switch for this, deliberately —

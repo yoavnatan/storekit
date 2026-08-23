@@ -100,30 +100,39 @@ case that breaches it. **This is why shipping is charged as its own sale on our 
 account instead** — that route touches no ceiling at all, and was measured working: a ₪30 sale under
 a second account with `market_fee: 0`, paid with the same token, completed.
 
-**⚠️ There are TWO different ceilings here and a previous note ran them together. Corrected
-2026-08-23, after the owner asked why he had only ever heard about 100% and 110%.**
+**✅ RESOLVED 2026-08-23 by the owner producing the actual exchange with PayMe. Two sessions had
+guessed at this and the second guess — mine — was wrong; the record is below so nobody guesses a
+third time.**
 
-They are not the same setting and they are not about the same thing:
+The owner asked them, verbatim:
 
-| | what it limits | value | how we know |
-|---|---|---|---|
-| **Capture ceiling** | how much of an AUTHORIZATION may be captured | 100% | measured — ₪11 against a ₪10 authorization was refused, `352 · Invalid price, out of min-max bounds` (item 4 above) |
-| **`market_fee` ceiling** | how much of a SALE may be OUR cut | 60% | measured — `Market fee exceed allowed maximum of 60%`, a refusal in their own words |
+> *"האם בפיצול ניתן להגדיר גם סכום דינמי שלא מחושב באחוזים מהעסקה? (למשל — דמי משלוח שהקונה משלם
+> ואני צריך שיעברו אליי כדי שאשלם לחברת המשלוחים)?"*
 
-**What PayMe's representative discussed — 100%, and raising it "to 110% for example" — was the
-CAPTURE ceiling**, i.e. capturing slightly more than was authorized. That is a normal thing for a
-gateway to offer (a tip, a weight-based delivery adjustment) and it has nothing to do with our
-commission. He never mentioned 60%.
+PayMe answered:
 
-**The 60% is not something anybody told us. It is an error string the API returned**, so it is true
-whether or not it was ever discussed — and it is the one that shapes the design. An earlier session
-guessed the two were one setting and wrote that his "110%" offer applied to the market fee. That
-guess was flagged as a reading at the time and is now recorded as almost certainly WRONG: raising a
-capture ceiling would not move a market-fee cap.
+> *"כן. זה אומר שכשאתה עושה לכידה בשווי 500 ש״ח שהם 100%, אני צריך להעלות לך את האפשרות בהגדרות
+> אצלי ל‑110% לדוגמה."*
 
-**Consequence, and it is the useful part: asking to raise the 60% is a NEW request, not the
-acceptance of an offer already made.** It is also not urgent — the design above sidesteps the cap
-entirely by charging delivery on our own account, and nothing depends on the answer.
+**So the "110%" IS about our cut, not about capture-versus-authorization.** The question was
+explicitly about a FIXED amount for delivery — `market_fee_fixed` — and the answer is yes, plus:
+the cap on the total distribution fee is **a per-account setting on their side that they can raise
+on request.** The 60% we measured is simply its current value on our account.
+
+What this corrects, in both directions:
+* An earlier session guessed the 110% applied to the market fee. **That guess was right**, and it
+  was marked "a READING, not a measurement" — correctly, because it was one.
+* On 2026-08-23 I argued the opposite: that he must have meant the capture ceiling, since 110% of a
+  sale as commission is arithmetically absurd. **That reasoning was wrong** — he is talking about
+  the ceiling SETTING's value, not about taking 110% of a sale — and it was written into this file
+  and into `GO_LIVE` with more confidence than an inference deserves.
+
+**The consequence is a real design option, not a footnote.** Folding delivery into the seller's sale
+as `market_fee_fixed` is now known to be available, and it would remove one line from the buyer's
+card statement on every single-store order. It is not automatically the right choice — see
+`GO_LIVE` §3.1.2 for the three costs (refund entanglement, a blended fee figure that has to be
+decomposed per order, and their settlement date) — but it is a live choice, and it was previously
+recorded as closed.
 
 ### 7. `create-seller` returns more than an id
 `seller_payme_id`, `seller_payme_secret` (the per-seller callback signing key),
@@ -172,6 +181,49 @@ test sellers are `seller_approved: false` and their public keys were never captu
 Creating a third to get one is exactly what this file's warning forbids. So the remaining unknowns
 are: whether the public key is really the right argument, and which origin serves the field iframes
 (`lib/csp.ts` declares all three PayMe hosts rather than guessing narrow).
+
+### 11. ⚠️ `market_fee_fixed` is the real field. `direct_market_fee` is silently IGNORED
+PayMe told the owner in writing that a fixed cut is available and called it **"direct market fee"**
+(*"אתה יכול להשתמש ב-direct market fee או ב-market fee, הראשון זה עמלה קבועה לדוגמה ״5 שקלים״,
+השני זה אחוז מתוך העסקה"*). That is their conversational name, not the API's. Measured 2026-08-23,
+two paid sandbox sales of ₪50 each, same token, fee read back with `get-sales`:
+
+| sent | `sale_market_fee_fixed` | `sale_market_fee_total` |
+|---|---|---|
+| `market_fee_fixed: 15` | `15` | `1500` ✅ |
+| `direct_market_fee: 15` | `0` | `0` ❌ |
+
+**⚠️ The generalisable danger is the SILENCE, not the name.** PayMe accept unknown parameters without
+any complaint, so a misspelled fee field is not an error — it is a sale on which we take nothing,
+discovered a month later when the distribution fee is short. **Never change a fee field name from a
+document. Change it only against a paid sale whose fee you read back.**
+
+Also confirmed on the same pair: `market_fee: 0` really is honoured (`sale_market_fee: "0.00"`), so
+sending an explicit zero is meaningful and must not be dropped as falsy — which is what the shipping
+leg on our own account depends on.
+
+### 12. ⚠️ `get-sales` IGNORES its `payme_sale_id` filter — and its id field is spelled differently
+Measured 2026-08-23, and it is two traps in one call.
+
+**The filter does nothing.** `get-sales` with `payme_sale_id` returned the whole list regardless —
+26 items, then 27 as more sales were made. Given no `seller_payme_id` either, that list is not even
+scoped to us: **it contains other partners' sales**, because the sandbox is shared. Anything reading
+`items[0]` from this endpoint is reading a stranger's transaction. (`get-sellers`, probed the same
+day, DID filter correctly — so the two endpoints do not behave alike and neither may be assumed to.)
+
+**The id is `sale_payme_id` here and `payme_sale_id` on `generate-sale`.** The same value, two
+spellings, two endpoints. Matching on the wrong one returns `undefined` for every row, which is how
+the first attempt at the fee measurement above silently "found no match" while looking straight at
+the answer.
+
+The defence is in `payment-payme.ts#getSellerStatus`: match the row by id in code, never index into
+`items`. It was written as a precaution and turned out to be a live bug class.
+
+### 13. `capture-buyer-token` wants `credit_card_exp` as ONE field, `MMYY`
+Not `credit_card_exp_month` + `credit_card_exp_year`, which is what our adapter sent until
+2026-08-23. Refused loudly — `Required parameter is missing · credit_card_exp` — which is the good
+kind of failure, and the only reason it cost minutes. Testing path only; production enters the card
+in Hosted Fields and sends no card fields at all.
 
 ---
 
