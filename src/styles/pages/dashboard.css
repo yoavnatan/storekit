@@ -278,8 +278,13 @@ textarea.input { resize: none; }
      The extra class does. It scopes nothing new — the container IS `.prod-cq`, so anything this
      block can match is already inside it — it just outranks the base rule the way this block
      always assumed it did. */
-  .prod-cq .products-table td { padding-inline: 0.4rem; padding-block: 0.6rem; }
-  .prod-cq .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.4rem; }
+  /* 0.25rem, down from 0.4 (owner, 2026-08-23: *"הכותרות מוסתרות לגמרי אי אפשר להבין מה קורה
+     שם"*). Thirteen columns × two sides is where this range's width actually goes: at 0.4rem it
+     was 166px of a 578px table spent on air, while "מלאי" was rendering one pixel wide and
+     "נוסף בתאריך" twenty-five of the seventy-four it wants. Padding is the only thing here that
+     can give without a column losing a word, so it gives first and it gives everywhere. */
+  .prod-cq .products-table td { padding-inline: 0.25rem; padding-block: 0.6rem; }
+  .prod-cq .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.25rem; }
   /* The sort chevron (.sort-icon) has flex-shrink:0 (see base rule) so it
      never gets squeezed — meaning when the button itself doesn't fit, 100%
      of the deficit lands on .sort-btn__label, crushing even short labels
@@ -337,8 +342,26 @@ textarea.input { resize: none; }
      over the neighbouring column and the table's own edge, visible only on hover, which is when
      the background appears. Sized to the button plus this block's 0.4rem cell padding on both
      sides (1.75 + 0.8 = 2.55). The 4% it gives back is absorbed by the percentage columns. */
-  .products-table .seo-col       { width: 2.45rem; padding-inline: 0.15rem; }
-  .products-table .actions-col   { width: 2.6rem; }
+  /* **Both sized to the WIDGET, and pushed together** (same report: *"צריך להצמיד את ה-SEO יותר
+     לשלוש נקודות"*). Neither of these columns has a heading anyone reads at this width — one is a
+     gauge and the other a kebab — so every pixel they hold beyond their own glyph is a pixel taken
+     from a column whose heading is a word. The gauge measures 21px and the kebab's hover circle
+     1.75rem, and these are those plus the smallest gutter this table uses anywhere. */
+  /* `.prod-cq` on these two, and only these two, because they are the only rules in this block
+     that fight the cell padding a few lines up — `.prod-cq .products-table td` outranks a plain
+     `.products-table .seo-col`, so the tighter padding these ask for was silently not applying and
+     the gauge came out 2px wider than its own cell (measured: room 19 against a 21px gauge). */
+  /* **Under ~780px of table the SKU column goes, the way `row-num` already does.** Below that
+     width four headings were still unreadable after every gutter had been spent — "מלאי" was
+     showing seven pixels of thirty — and the SKU is 117px of a 578px table, a fifth of it, for a
+     code nobody scans DOWN a column. It is not lost: the row's own edit form carries it, and below
+     640px the card layout labels it outright. Ranked against the alternative — a table where you
+     cannot tell which column is stock — this is the cheaper thing to drop. */
+  @container prodtable (max-width: 780px) {
+    .products-table .sku-col { display: none; }
+  }
+  .prod-cq .products-table .seo-col     { width: 1.8rem; padding-inline: 0.1rem; }
+  .prod-cq .products-table .actions-col { width: 2.3rem; padding-inline: 0.15rem; }
   .products-table .name-col .product-name {
     white-space: nowrap;
     overflow: hidden;
@@ -2121,6 +2144,50 @@ html:has(#dash-main-card.dash-nav-side) {
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }
+/* ── The two corners, filled ──
+   **A rounded corner is a hole, and a hole in a pinned bar shows what is scrolling behind it**
+   (owner, 2026-08-23: *"כשגוללים למעלה יש משהו שמבצבץ מבעד לסטיקי"*). A background is clipped by
+   `border-radius`, so the 10×10 square at each top corner of this bar is simply not painted — and
+   behind it is the panel's own content, drawn under the bar's stacking context but over the
+   sheet's white. Two little triangles of product rows, sliding upward through the top edge.
+   The element cannot fill them itself for the same reason it cannot paint them: any background it
+   declares is clipped the same way. So two boxes that are NOT clipped by it sit in the corners and
+   paint the page colour, with the rounding cut out of them by a radial mask — the corner is the
+   page showing through, which is what a rounded corner means here anyway.
+   `--color-bg` and not a tint: above this bar there is only ever the fixed strip (also
+   `--color-bg`) and, past it, the site header. */
+#dash-main-card.dash-nav-side .dash-panel-head::before,
+#dash-main-card.dash-nav-side .dash-panel-head::after,
+#dash-main-card.dash-nav-side .products-header::before,
+#dash-main-card.dash-nav-side .products-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: var(--radius);
+  height: var(--radius);
+  background: var(--color-bg);
+  pointer-events: none;
+}
+#dash-main-card.dash-nav-side .dash-panel-head::before,
+#dash-main-card.dash-nav-side .products-header::before {
+  inset-inline-start: 0;
+  -webkit-mask: radial-gradient(circle at var(--radius) var(--radius), transparent var(--radius), #000 0);
+  mask: radial-gradient(circle at var(--radius) var(--radius), transparent var(--radius), #000 0);
+}
+#dash-main-card.dash-nav-side .dash-panel-head::after,
+#dash-main-card.dash-nav-side .products-header::after {
+  inset-inline-end: 0;
+  -webkit-mask: radial-gradient(circle at 0 var(--radius), transparent var(--radius), #000 0);
+  mask: radial-gradient(circle at 0 var(--radius), transparent var(--radius), #000 0);
+}
+/* Nothing to round at the width where the sheet is full-bleed, and a page-coloured square in each
+   corner of an edge-to-edge bar would be two visible notches rather than none. */
+@media (max-width: 640px) {
+  #dash-main-card.dash-nav-side .dash-panel-head::before,
+  #dash-main-card.dash-nav-side .dash-panel-head::after,
+  #dash-main-card.dash-nav-side .products-header::before,
+  #dash-main-card.dash-nav-side .products-header::after { display: none; }
+}
 /* …and the sheet gives them up, but only where a title actually took them. The four panels that
    pin nothing (Overview, Reports, Payouts, Settings) keep their own top edge, because there is
    nothing else there to hold it. */
@@ -2154,7 +2221,11 @@ html:has(#dash-main-card.dash-nav-side) {
   /* The header's height is pinned inline on the element itself and may never change
      (Header.astro), so this is exact; the extra pixel is overlap against a fractional rounding. */
   top: calc(var(--site-header-h, 3.4rem) - 1px);
-  height: calc(var(--dash-gutter, 0px) + 1px);
+  /* Gutter + the sheet's own top edge + the pixel of overlap — the strip has to REACH the title,
+     and the title's top is `header + gutter + edge`. Written without the edge it stopped 1px
+     short, which is the hairline he saw next (*"יש עדיין כמה פיקסלים למעלה"*): content scrolling
+     up stayed visible through a one-pixel slot between the strip and the bar under it. */
+  height: calc(var(--dash-gutter, 0px) + var(--dash-sheet-edge, 0px) + 1px);
   background: var(--color-bg);
   pointer-events: none;
   z-index: 5;

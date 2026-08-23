@@ -2317,7 +2317,12 @@ function scrollStickyHeaderIntoView(container: HTMLElement, headerSelector: stri
   // where the header is not pinned the two are the same number — which is why this is a fix and
   // not a change of behaviour. The header lookup stays as the guard it always was: no header means
   // the panel has not rendered yet and there is nothing to scroll to.
-  const scrollToHeader = () => scrollBelowPinnedChrome(container, 0);
+  // **A margin, not flush** (owner, 2026-08-23: *"זה צריך שהקונטיינר כן יהיה עם מרווח חשוף מעט
+  // מעליו"*). Landed at 0 the panel's top edge sat one pixel under the site header's line, which
+  // reads as "the top of this is off screen" rather than as "here is the top of it". 12px is the
+  // same gutter the sheet itself keeps above its own top edge (`--dash-gutter`, dashboard.css), so
+  // an opened panel is inset from the chrome by exactly what everything else on this page is.
+  const scrollToHeader = () => scrollBelowPinnedChrome(container, 12);
   scrollToHeader();
 
   // This is the container's first time visible, so its lazy-loaded gallery images (or, for the
