@@ -61,14 +61,20 @@ export const BROWSER_ORIGINS: readonly ExternalOrigin[] = [
   // codebase is out of PCI scope, and it is why three directives are needed rather than one: the
   // loader is a script, each field is a frame, and tokenising is a request from inside them.
   //
-  // ⚠️ The loader origin is from their own integration example and is certain. Which origin serves
-  // the FIELD IFRAMES is not measured — it has never been run in a browser (no card entry existed
-  // until now), and their guide pages do not load as text. Both API hosts are declared because the
-  // failure mode of guessing too narrow is silent and awful: the fields render blank, the buyer
-  // cannot type a card, and nothing on the page says why. Too broad here costs nothing — these are
-  // our payment provider's own hosts either way. **Narrow it once it has been watched in a real
-  // browser**, which is the same session that verifies the callback signature (GO_LIVE §3.1.2).
-  { origin: 'https://cdn.payme.io', directives: ['script-src', 'frame-src', 'connect-src'], why: 'The Hosted Fields loader, and the card/expiry/CVC field iframes it mounts.' },
+  // ✅ **MEASURED IN A REAL BROWSER, 2026-08-23 — and the guess was wrong.** This block used to say
+  // the field origin was unmeasured and that declaring all three API hosts covered it. It did not:
+  // the SDK frames **`https://hf.payme.io`**, a fourth host that appeared in none of their
+  // documents, and Chrome refused it with
+  // `Framing 'https://hf.payme.io/' violates ... frame-src`. Three empty rectangles, no card entry,
+  // and the only trace anywhere was a console line — exactly the silent failure the old comment
+  // was afraid of, arriving from the direction it did not look.
+  //
+  // That is the whole argument for driving the thing in a browser rather than reasoning about it:
+  // every host here was defensible and the set was still incomplete. The three API hosts stay
+  // declared — `connect-src` really does reach them to tokenise — and `hf.payme.io` is the one the
+  // fields themselves come from.
+  { origin: 'https://hf.payme.io', directives: ['frame-src', 'connect-src'], why: 'Where the card/expiry/CVC field iframes are actually served from — measured in a browser, 2026-08-23. Without it the fields are blocked and the buyer cannot type a card.' },
+  { origin: 'https://cdn.payme.io', directives: ['script-src', 'frame-src', 'connect-src'], why: 'The Hosted Fields loader script.' },
   { origin: 'https://sandbox.payme.io', directives: ['frame-src', 'connect-src'], why: 'Hosted Fields tokenises against the API host; this is the staging one.' },
   { origin: 'https://live.payme.io', directives: ['frame-src', 'connect-src'], why: 'The same, in production. Both are declared so the environment switch is a variable and not a header change.' },
 ];

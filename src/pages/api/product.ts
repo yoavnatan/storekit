@@ -4,7 +4,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 // One definition of "is this store / this product this seller's" — shared with the dashboard's
 // no-JS fallback handlers, which is where it was missing entirely (lib/store-ownership.ts).
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
-import { createProduct, updateProduct, deleteProduct, getProductsByStoreId, isSkuTaken, comboSkusTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
+import { createProduct, updateProduct, deleteProduct, getProductsByStoreId, isSkuTaken, comboSkusTaken, countStockAlerts, type StoreProduct, StoreFullError } from '../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides, remapComboKeys } from '../../lib/variant-combo.js';
 import { parseImages, parseCategoryId, parseSku, parseBrand, parseWeight, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
 import { normalizeProductDiscount } from '../../lib/discount-input.js';
@@ -133,7 +133,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const catPathStr = categoryId ? categoryPath(await getCategoriesByStoreId(storeId), categoryId) : '';
     const finalTags = withAutoTags(tags, catPathStr, allVariantValues(variants));
 
-    const product = await createProduct(storeId, {
+    // The store's own ceiling (`store-products.ts#MAX_PRODUCTS_PER_STORE`) is enforced inside the
+    // INSERT, so it is a throw rather than a return here — and it is caught rather than allowed to
+    // become a 500, because a seller at his limit has done nothing wrong and needs a sentence he
+    // can act on.
+    let product;
+    try {
+      product = await createProduct(storeId, {
       name, description, price, stock: resolveTotalStock(stock, variants, variantStock),
       images: images.length ? images : undefined,
       categoryId,
@@ -148,7 +154,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
       variantSku: Object.keys(variantSku).length ? variantSku : undefined,
-    });
+      });
+    } catch (err) {
+      if (err instanceof StoreFullError) return json({ ok: false, error: 'store-full', limit: err.limit }, 409);
+      throw err;
+    }
     // A brand-new public page — the highest-value IndexNow signal (fire-and-forget).
     pingProductChange(ownerStore, product.slug);
     // Every image here is new, so render them at the widths buyers will ask for

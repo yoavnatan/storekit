@@ -70,8 +70,7 @@ import {
   isProductVisible,
   STORE_PREVIEW_SLOTS,
   type StoreProduct,
-  type StoreProductCounts,
-} from '../../lib/store-products.js';
+  type StoreProductCounts, StoreFullError } from '../../lib/store-products.js';
 import { formatPrice, cdnSrc, cdnThumb, store as platformConfig } from '../../config/store.config.js';
 import { jsonForScript } from '../../lib/json-script.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
@@ -371,8 +370,15 @@ if (Astro.request.method === 'POST') {
     } else if (!ownerStore) {
       error = d.notYours;
     } else {
-      await createProduct(ownerStore.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
-      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1${panelParam}`));
+      // The no-JS fallback path, so the store's ceiling has to be answered here too — a throw
+      // would render an error page to a seller whose only mistake was a full catalogue.
+      try {
+        await createProduct(ownerStore.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
+      } catch (err) {
+        if (!(err instanceof StoreFullError)) throw err;
+        error = d.csvStoreFull;
+      }
+      if (!error) return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1${panelParam}`));
     }
   } else if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');

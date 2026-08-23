@@ -39,6 +39,8 @@ import {
   isSkuTaken,
   restockProduct,
   updateProduct,
+  StoreFullError,
+  MAX_PRODUCTS_PER_STORE,
 } from '../src/lib/store-products.js';
 
 const KERAMIKA = '22222222-2222-4222-8222-000000000001';
@@ -562,5 +564,43 @@ describe('a discount outside its allowed band', () => {
 
     const live = await createProduct(storeId, { name: 'C', price: 100, discount: { type: 'percent', value: 20 } });
     expect((await updateProduct(live.id, { discount: { type: 'percent', value: 0 } }))!.discount).toBeUndefined();
+  });
+});
+
+/**
+ * The store's own product ceiling — what stops a seller spamming the platform.
+ *
+ * Owner, 2026-08-23: *"אסור שאנשים יספימו לי את האתר בכך שהם יעלו פתאום קובץ עם 1000000 מוצרים"*.
+ * `MAX_IMPORT_ROWS` bounds one CSV at 5,000 rows and always did; nothing bounded a seller who
+ * uploads two hundred of them, and every product is a row, a search-index entry, a sitemap URL and
+ * a line in the Merchant Center feed the whole platform shares.
+ *
+ * Asserted against a LOWERED limit rather than by writing 5,000 rows: the number is a policy and
+ * the mechanism is the thing that can break. What matters is that the refusal happens inside the
+ * INSERT — a read-then-write check would let two concurrent imports past the same count.
+ */
+describe('the per-store product ceiling', () => {
+  it('refuses the row that would exceed it, and says so as an error a caller can name', async () => {
+    const storeId = await freshStore();
+    const existing = await getProductsByStoreId(storeId);
+    expect(existing).toHaveLength(0);
+
+    // Fill to the ceiling by lowering it — the real 5,000 is a policy number, not the mechanism.
+    // The statement asks `count(*) < LIMIT`, so a store already at or over it takes nothing more.
+    await query(
+      `INSERT INTO store_products (id, store_id, slug, name, price_agorot, stock, created_at)
+       SELECT gen_random_uuid(), $1, 'filler-' || g, 'filler ' || g, 100, 1, now()
+         FROM generate_series(1, $2) g`,
+      [storeId, MAX_PRODUCTS_PER_STORE],
+    );
+    await expect(createProduct(storeId, { name: 'one too many', price: 10 })).rejects.toBeInstanceOf(StoreFullError);
+    // And nothing landed: a refusal that half-wrote would be worse than no ceiling at all.
+    expect(await getProductsByStoreId(storeId)).toHaveLength(MAX_PRODUCTS_PER_STORE);
+  }, 120_000);
+
+  it('still accepts a product while there is room, so the guard is not simply "always no"', async () => {
+    const storeId = await freshStore();
+    const p = await createProduct(storeId, { name: 'under the ceiling', price: 10 });
+    expect(p.id).toBeTruthy();
   });
 });

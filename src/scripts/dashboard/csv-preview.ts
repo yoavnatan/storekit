@@ -21,6 +21,10 @@ export function csvErrorMessage(i: Record<string, string>, error?: string): stri
   if (error === 'missing-columns') return i.csvMissingColumns ?? 'Missing required columns.';
   if (error === 'empty-file') return i.csvEmptyFile ?? 'The file is empty.';
   if (error === 'too-many-rows') return i.csvTooManyRows ?? 'The file has too many rows.';
+  // The STORE's ceiling, not the file's — a seller who uploads valid files repeatedly meets this
+  // one rather than the row cap. Its numbers travel on the response so the sentence can say how
+  // much room is left instead of naming a limit and leaving him to subtract.
+  if (error === 'store-full') return i.csvStoreFull ?? 'This store is at its product limit.';
   return i.csvImportFailed ?? 'Import failed.';
 }
 

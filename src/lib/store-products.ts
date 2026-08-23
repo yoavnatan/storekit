@@ -484,6 +484,35 @@ function discountValues(discount: ProductDiscount | undefined): unknown[] {
 }
 
 /**
+ * How many products one store may hold.
+ *
+ * **Why there is a ceiling at all** (owner, 2026-08-23): *"אסור שאנשים יספימו לי את האתר בכך שהם
+ * יעלו פתאום קובץ עם 1000000 מוצרים"*. `MAX_IMPORT_ROWS` already bounds one CSV at 5,000 rows, but
+ * nothing bounded a seller who uploads two hundred of them. Registering is free and every product
+ * costs the platform a row, a search-index entry, a sitemap URL and a line in the Merchant Center
+ * feed that every OTHER seller's ads depend on staying valid — so an unbounded catalogue is not
+ * only our storage, it is everybody's distribution.
+ *
+ * **Why this number.** The same 5,000 as `MAX_IMPORT_ROWS`, which makes the two one idea rather
+ * than two: **one clean import fills an empty store.** It is five times the CSV feature's stated
+ * ~1,000-product target and far beyond the "catalogue stores with dozens of products" this platform
+ * is built for (AI_INSTRUCTIONS → Target segment), so a real seller will never meet it. Raising it
+ * is one line, and it is a decision about how much of the shared feed one seller may occupy.
+ */
+export const MAX_PRODUCTS_PER_STORE = 5000;
+
+/** The store is at its ceiling. A distinct error rather than a `false`, because it travels up
+ *  through `withTransaction` and a bulk batch, and every caller has to say something different and
+ *  true about it — silently creating nothing is the outcome that would look like a bug. */
+export class StoreFullError extends Error {
+  readonly limit = MAX_PRODUCTS_PER_STORE;
+  constructor() {
+    super(`store is at its ${MAX_PRODUCTS_PER_STORE}-product ceiling`);
+    this.name = 'StoreFullError';
+  }
+}
+
+/**
  * Add one product.
  *
  * **The slug is settled by the unique index, not by a scan that ran before it.** Two products
@@ -519,9 +548,15 @@ export async function createProductIn(tx: Queryable, storeId: string, input: Cre
          category_id, tags, specs, variants, seller_note,
          discount_type, discount_percent, discount_amount_agorot, discount_show_badge,
          discount_starts_at, discount_ends_at, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-               $11::uuid, $12::text[], $13::jsonb, $14::jsonb, $15,
-               $16, $17, $18, $19, $20::date, $21::date, now())
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+              $11::uuid, $12::text[], $13::jsonb, $14::jsonb, $15,
+              $16, $17, $18, $19, $20::date, $21::date, now()
+        -- The ceiling, inside the statement rather than read-then-write, for exactly the reason
+        -- decrementStock is one statement: a count read a moment earlier is a count from before the
+        -- other request. Two concurrent imports each seeing 4,999 would both be allowed and the
+        -- store would end up over. Here the row simply does not land. (No backtick in this comment
+        -- on purpose — it sits inside a template literal and would end the string.)
+        WHERE (SELECT count(*) FROM store_products WHERE store_id = $2) < ${MAX_PRODUCTS_PER_STORE}
        ON CONFLICT (store_id, slug) DO NOTHING
        RETURNING id`,
       [
@@ -535,7 +570,14 @@ export async function createProductIn(tx: Queryable, storeId: string, input: Cre
         ...discountValues(discount),
       ],
     );
-    if (!created[0]) continue;
+    // Two different things produce no row, and they need opposite responses: a taken slug (retry
+    // with the next one) and a full store (stop, and say so). The count is only read on this rare
+    // path, so the common case is still one statement.
+    if (!created[0]) {
+      const full = await tx.query<{ n: string }>('SELECT count(*) AS n FROM store_products WHERE store_id = $1', [storeId]);
+      if (Number(full.rows[0]?.n ?? 0) >= MAX_PRODUCTS_PER_STORE) throw new StoreFullError();
+      continue;
+    }
 
     await writeChildren(tx, id, {
       images: images ?? [],

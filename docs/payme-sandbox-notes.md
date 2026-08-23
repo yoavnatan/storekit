@@ -425,6 +425,41 @@ Both confirmed by the real `create-seller` response in §18: the key came back a
 `createSeller` already reads the object shape and already treats an absent flag as not-approved —
 both were written from their documentation before this call proved them.
 
+### 21. ✅ THE CARD FIELDS RENDER — and the CSP was declaring the wrong hosts
+Driven in a real browser 2026-08-23 (Playwright, a built server, a merchant opened through our own
+`ensureMerchantAccount`). This is the one part of the purchase flow that had never run in a browser.
+
+**Their field iframes come from `https://hf.payme.io`.** `lib/csp.ts` declared `cdn.payme.io`,
+`sandbox.payme.io` and `live.payme.io` — the loader and both API hosts — and **none of them is it**:
+
+    Framing 'https://hf.payme.io/' violates the following Content Security Policy directive:
+    "frame-src 'self' … https://cdn.payme.io https://sandbox.payme.io https://live.payme.io"
+
+Three empty rectangles, no card entry, one console line. The old comment in `csp.ts` said the field
+origin was unmeasured and that declaring all three API hosts covered it "because guessing too narrow
+fails silently and awfully" — the reasoning was right and the answer was still wrong, which is the
+whole argument for driving it rather than reading about it. Fixed; the four frames that mount are
+`/service/primary`, `/service/field/cardNumber`, `/service/field/cardExpiration`, `/service/field/cvc`.
+
+**`seller_public_key` is the right argument.** It arrives as a plain UUID and appears verbatim as the
+`t=` parameter on every field iframe. The older note in GO_LIVE §3.1 saying the SDK takes the
+`seller_payme_id` was describing their previous example.
+
+**And a merchant has to be created through OUR code to be usable at all.** Not because of approval —
+sandbox skips that deliberately — but because `create-seller` returns `seller_public_key` exactly
+once. The two test merchants were created by hand with curl, so neither can ever draw a card field.
+A fourth was opened through `ensureMerchantAccount` and all three unrecoverable columns were stored.
+
+⚠️ Still not driven: typing a real card and `tokenize()` end to end in the browser. The server half
+of that path is measured (`payme-probe.mjs flow`).
+
+### 22. ⚠️ They enforce the ת.ז check digit and we deliberately do not
+`create-seller` refused `999999999` with `101 · ת.ז לא תקינה`. `merchant-kyc.ts` validates the SHAPE
+only (nine digits) and its header argues why — a false rejection is unrecoverable from the seller's
+side. Both positions are defensible and together they produce a bad outcome: a seller who mistypes
+his ת.ז gets a store that silently cannot sell, and the only trace is a line in our error log. He is
+shown "details are missing", which is true and unhelpful. Worth surfacing PayMe's own message.
+
 ---
 
 ## Still unmeasured — do not guess these

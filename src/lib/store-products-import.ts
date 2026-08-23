@@ -1,4 +1,4 @@
-import { getProductsByStoreId } from './store-products.js';
+import { getProductsByStoreId, MAX_PRODUCTS_PER_STORE, StoreFullError } from './store-products.js';
 import { bulkUpsertProducts, updateChangesProduct, CSV_MAX_DIMENSIONS } from './store-products-bulk.js';
 import { getCategoriesByStoreId, getAncestorChain } from './store-categories.js';
 import {
@@ -146,6 +146,26 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
     delete r.comboLabelByKey;
   }
 
+  // ── The store's own ceiling ────────────────────────────────────────────────────────────────
+  //
+  // `MAX_IMPORT_ROWS` bounds ONE file; this bounds the store. A seller who uploads two hundred
+  // valid 5,000-row files would otherwise reach a million products, and every one of them is a row,
+  // a search-index entry, a sitemap URL and a line in the Merchant Center feed the whole platform
+  // shares (owner, 2026-08-23). `createProductIn` refuses inside its own INSERT and is the real
+  // guard; this is the same answer given BEFORE anything is written, with the numbers in it,
+  // because a batch that dies at row 3,000 tells the seller nothing he can act on.
+  //
+  // Counted over CREATES only: an import that is entirely updates does not grow the store, and
+  // refusing one because the store is already full would lock a full catalogue out of being edited.
+  const creating = results.filter((r) => r.action === 'create' && !r.unchanged).length;
+  const room = MAX_PRODUCTS_PER_STORE - existingProducts.length;
+  if (creating > room) {
+    return { ok: false, status: 400, body: {
+      ok: false, error: 'store-full',
+      limit: MAX_PRODUCTS_PER_STORE, existing: existingProducts.length, creating, room: Math.max(0, room),
+    } };
+  }
+
   // Preview only: what the seller is about to create that no row-level error would ever mention —
   // products with no image (the format carries none, and an image-less product is dropped from the
   // ad feed) and with no real description. Advisory, never a gate; see csv-import-advisory.ts.
@@ -155,7 +175,18 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
   // and the cursor below both skip error AND unchanged rows in lock-step, so positional pairing with
   // bulkUpsertProducts' output stays exact.
   const validRows = results.filter((r) => r.action !== 'error' && !r.unchanged && r.input);
-  const upserted = await bulkUpsertProducts(storeId, validRows.map((r) => ({ id: r.id, ...r.input! })));
+  // The ceiling was checked above against a count read a moment ago, so two imports landing together
+  // can still meet it inside the transaction. That throw rolls the whole batch back — which is the
+  // right outcome — and it is turned into the same answer the pre-check gives rather than a 500.
+  let upserted;
+  try {
+    upserted = await bulkUpsertProducts(storeId, validRows.map((r) => ({ id: r.id, ...r.input! })));
+  } catch (err) {
+    if (err instanceof StoreFullError) {
+      return { ok: false, status: 400, body: { ok: false, error: 'store-full', limit: MAX_PRODUCTS_PER_STORE } };
+    }
+    throw err;
+  }
 
   // An update row that explicitly set a stock value (blank cells preserve the existing stock) —
   // treat that the same as the single-product edit form: the seller reviewed/re-entered stock, so
