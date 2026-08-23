@@ -1,0 +1,110 @@
+---
+/**
+ * The four plans, side by side, and the one input that says which of them is cheapest for you.
+ *
+ * ── Why a comparison and not a feature matrix ──
+ * Every tier includes exactly the same product. The ONLY thing that differs is the ratio between
+ * the monthly fee and the per-sale commission (`lib/pricing.ts` — the ladder is tuned so each tier
+ * owns a real revenue band). A table with ticks and crosses would therefore have to invent
+ * differences, and inventing one is inventing a product. So the page states the sameness plainly and
+ * spends its space on the only question a seller actually has: which row is cheapest for me.
+ *
+ * ── The numbers are read, never typed ──
+ * `SELLER_TIERS` is the single source since 2026-07-27, and every figure on this page interpolates
+ * from it. `+ מע״מ` sits beside each one because these are B2B prices the seller reclaims — the
+ * convention is the opposite of the storefront's, and pricing.ts's header is where that is argued.
+ *
+ * ── The calculator's arithmetic lives in the DOM, not in a JSON blob ──
+ * Each card carries its own fee and commission as `data-` attributes, so the script re-reads the
+ * same numbers the page rendered rather than a second copy of them shipped alongside. It also keeps
+ * a `<script is:inline>`-shaped JSON payload off the page entirely (memory
+ * `project_json_script_xss`).
+ */
+import { SELLER_TIERS } from '../lib/pricing.js';
+import type { getT } from '../i18n/index.js';
+import type { SellerTierId } from '../lib/pricing.js';
+
+interface Props {
+  p: ReturnType<typeof getT>['pricing'];
+}
+const { p } = Astro.props;
+---
+
+<section class="mt-10" aria-labelledby="calc-title">
+  <h2 id="calc-title" class="text-[1.15rem] font-bold m-0">{p.calcTitle}</h2>
+  <div class="card card--flat p-4 md:p-5 mt-3">
+    <label for="calc-revenue" class="block font-semibold text-[0.92rem]">{p.calcQuestion}</label>
+    {/* `inputmode="numeric"` and not `type="number"`: the field takes a formatted amount with
+        separators, and a number input rejects them outright on some browsers and silently blanks
+        itself on others. The script parses digits out of whatever is typed. */}
+    <div class="flex items-center gap-2 mt-2">
+      <span class="text-[1.05rem] font-bold" aria-hidden="true">₪</span>
+      <input
+        id="calc-revenue"
+        type="text"
+        inputmode="numeric"
+        autocomplete="off"
+        placeholder={p.calcPlaceholder}
+        class="input max-w-[12rem]"
+      />
+    </div>
+    <p class="muted m-0 mt-2 text-[0.84rem]" id="calc-hint">{p.calcHint}</p>
+  </div>
+</section>
+
+<ul
+  id="tier-list"
+  role="list"
+  class="list-none p-0 m-0 mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+  data-label-best={p.calcBest}
+  data-label-total={p.calcTotal}
+  data-label-saves={p.calcSaves}
+  data-label-choose={p.choose}
+  data-label-current={p.current}
+  data-label-saving={p.saving}
+  data-label-saved={p.saved}
+  data-label-failed={p.saveFailed}
+>
+  {SELLER_TIERS.map((tier) => {
+    const copy = p.tiers[tier.id as SellerTierId];
+    // `card--flat`: the card itself is not clickable — the button inside it is — and a shadow on
+    // hover would claim otherwise (Hard rules → a shadow means the surface FLOATS).
+    // The calculator sets `data-best` on the winning card; what that LOOKS like is decided in
+    // `cards.css`, beside the `.card` rule it has to beat — a Tailwind
+    // `data-[best]:[border-color:…]` here would be dead, because unlayered legacy CSS wins over a
+    // layered utility whatever the specificity. It was written that way first and
+    // `tests/unlayered-css-beats-utility.test.ts` refused it.
+    return (
+      <li
+        class="card card--flat p-4 flex flex-col"
+        data-tier={tier.id}
+        data-fee={String(tier.monthlyFee)}
+        data-commission={String(tier.commissionPercent)}
+      >
+        <h3 class="text-[1.05rem] font-bold m-0">{copy.name}</h3>
+        <p class="muted m-0 mt-1 text-[0.84rem]">{copy.for}</p>
+
+        <p class="m-0 mt-4 flex items-baseline gap-1">
+          <span class="text-[1.6rem] font-bold tabular-nums">₪{tier.monthlyFee}</span>
+          <span class="muted text-[0.84rem]">{p.perMonth}</span>
+        </p>
+        <p class="m-0 mt-1 text-[0.88rem]">
+          <span class="font-semibold tabular-nums">{tier.commissionPercent}%</span>
+          <span class="muted"> {p.commissionLabel}</span>
+        </p>
+
+        {/* Filled by the calculator and empty until then — an amount with no revenue behind it
+            would be a made-up figure, and a placeholder digit is worse than a blank line. It is
+            `aria-live` because it changes under a field the reader is still typing in. */}
+        <p class="m-0 mt-3 text-[0.86rem] min-h-[1.4rem]" data-role="calc" aria-live="polite"></p>
+
+        {/* Pushed to the bottom so the four buttons line up however uneven the copy above them is. */}
+        <button type="button" class="btn btn--ghost btn--sm mt-auto" data-role="choose">
+          {p.choose}
+        </button>
+      </li>
+    );
+  })}
+</ul>
+
+<p class="muted m-0 mt-3 text-[0.82rem]">{p.vatNote}</p>

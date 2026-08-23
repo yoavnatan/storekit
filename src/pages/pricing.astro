@@ -1,0 +1,124 @@
+---
+/**
+ * מחירים — what the platform charges a seller, on one public page.
+ *
+ * ── Why it is public and not a panel in the dashboard (CURRENT_TASK סשן ב׳: "במיקום הנכון") ──
+ * The plan is chosen at the LAST moment, not the first: a seller registers, builds a whole shop and
+ * looks at it with no card, and picks a plan only when he wants it to go live
+ * (`lib/store-publication.ts`). That decision puts the price in two places at once — in front of a
+ * stranger deciding whether to register at all, and in front of a seller deciding which plan to
+ * start. They are the same comparison, so they are the same page, and it is a public one because
+ * only the public version can be indexed, linked and read before anybody has an account.
+ *
+ * A tier card buried in the payouts panel would have been the other choice, and it is worse twice:
+ * the prospect never sees it, and the seller reads a four-way comparison in a column beside a bank
+ * form. What the dashboard needs instead is a LINK here, which is what the publish card's
+ * "subscription" hold gives it.
+ *
+ * ── Server-rendered, like every other page on this site ──
+ * Nothing here needs a session — "which plan am I on" is fetched afterwards
+ * (`scripts/pricing-tiers.ts`) precisely so the document itself is the same for everyone. It is
+ * `prerender = false` only because every page in `src/pages` is, and the header's signed-in state
+ * comes from the frontmatter (see BaseLayout).
+ *
+ * ── Every figure is interpolated ──
+ * Fees and percentages come from `lib/pricing.ts`, the advertising margin from `boostFeePercent`.
+ * Nothing on this page is a typed number, because a price written in a translation and again in the
+ * code is a price that will disagree with itself — and the copy a seller can hold us to is this one.
+ */
+export const prerender = false;
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PricingTiers from '../components/PricingTiers.astro';
+import { getLang, getT } from '../i18n/index.js';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { boostFeePercent } from '../lib/pricing.js';
+import { store as platform } from '../config/store.config.js';
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const p = t.pricing;
+
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+
+const included = [p.included1, p.included2, p.included3, p.included4, p.included5];
+
+// The seller-facing figure and the one the platform books are the same number by construction —
+// `boostFeePercent` exists so a config override cannot leave the tooltip saying less than the
+// accounting takes (pricing.ts).
+const adsBody = p.adsBody.replace('{percent}', `${boostFeePercent(platform.ads?.boostCommissionPercent)}%`);
+---
+
+<BaseLayout
+  title={p.title}
+  description={p.metaDesc}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <div class="container py-8 max-w-[64rem]">
+    <h1 class="text-[1.6rem] md:text-[2rem] font-bold m-0">{p.heading}</h1>
+    <p class="m-0 mt-2 text-[1rem]">{p.lede}</p>
+    <p class="muted m-0 mt-2 text-[0.9rem] max-w-[46rem]">{p.sameEverything}</p>
+
+    <PricingTiers p={p} />
+
+    {/* Two sections that are one answer between them: nothing is charged until you sell, and
+        nothing has to be paid before you can build. They sit together, directly under the prices,
+        because they are what turns a number into a decision someone can actually make. */}
+    <div class="grid gap-3 sm:grid-cols-2 mt-10">
+      <section class="card card--flat p-4 md:p-5" aria-labelledby="when-title">
+        <h2 id="when-title" class="text-[1.05rem] font-bold m-0">{p.whenTitle}</h2>
+        <p class="m-0 mt-2 font-semibold">{p.whenLead}</p>
+        <p class="muted m-0 mt-1 text-[0.9rem]">{p.whenBody}</p>
+      </section>
+      <section class="card card--flat p-4 md:p-5" aria-labelledby="build-title">
+        <h2 id="build-title" class="text-[1.05rem] font-bold m-0">{p.buildTitle}</h2>
+        <p class="muted m-0 mt-2 text-[0.9rem]">{p.buildBody}</p>
+      </section>
+    </div>
+
+    <section class="mt-10" aria-labelledby="included-title">
+      <h2 id="included-title" class="text-[1.15rem] font-bold m-0">{p.includedTitle}</h2>
+      {/* One list for all four plans, which is the point being made: there is nothing here that a
+          tier unlocks. Ticks per column would say the opposite of the sentence at the top. */}
+      <ul role="list" class="list-none p-0 m-0 mt-3 grid gap-2 sm:grid-cols-2">
+        {included.map((line) => (
+          <li class="flex items-start gap-2 text-[0.92rem]">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" class="shrink-0 mt-[0.15rem] [color:var(--color-success)]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 10.5 8 14.5 16 6" />
+            </svg>
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <section class="card card--flat p-4 md:p-5 mt-10" aria-labelledby="ads-title">
+      <h2 id="ads-title" class="text-[1.05rem] font-bold m-0">{p.adsTitle}</h2>
+      {/* Advertising is a separate component and is never offset against the subscription or the
+          commission (AI_INSTRUCTIONS → Business model). Saying so on the pricing page is what stops
+          a seller reading the tier fee as "and my ads are in there". */}
+      <p class="muted m-0 mt-2 text-[0.9rem]">{adsBody}</p>
+    </section>
+
+    {!isLoggedIn && (
+      <section class="card card--flat p-5 mt-10 text-center" aria-labelledby="cta-title">
+        <h2 id="cta-title" class="text-[1.15rem] font-bold m-0">{p.ctaTitle}</h2>
+        <p class="muted m-0 mt-2 text-[0.9rem]">{p.ctaBody}</p>
+        {/* `self-center` — `.card` is a flex column, so without it the button spans the whole card
+            regardless of its own `inline-flex`. This one is centred because the card is. */}
+        <a href="/seller/register" class="btn btn--accent mt-4 self-center">{p.ctaButton}</a>
+      </section>
+    )}
+  </div>
+</BaseLayout>
+
+<script>
+  import { initPricingTiers } from '../scripts/pricing-tiers.js';
+  initPricingTiers();
+</script>

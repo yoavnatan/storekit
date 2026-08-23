@@ -16,3 +16,14 @@
    a layered Tailwind utility loses to the unlayered `.card:hover` above
    regardless of specificity (see reset.css's layer(base) note). */
 .card--flat:hover { box-shadow: none; }
+
+/* The one card in a row that the pricing calculator has just named as the cheapest
+   (`scripts/pricing-tiers.ts` sets `data-best`). Here, and unlayered, for exactly the reason the
+   comment above gives — `.card` sets `border-color` from this sheet, so the Tailwind utility form
+   `data-[best]:[border-color:…]` is dead on arrival regardless of specificity. It was written that
+   way first and `tests/unlayered-css-beats-utility.test.ts` refused it, which is the whole point of
+   that guard.
+
+   Colour is never the only signal: the card also says so in words on its own calc line (WCAG 2.1
+   AA), and this border is the redundant half. */
+.card[data-best] { border-color: var(--color-accent); }

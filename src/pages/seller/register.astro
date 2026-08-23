@@ -147,6 +147,15 @@ if (Astro.request.method === 'POST') {
       </li>
     </ul>
 
+    {/* ── The price, named on the form (2026-08-23) ──
+        A registration form that never mentions money reads as one hiding it, and this one asks for
+        no card at all — which is a stronger thing to say when the reader can go and check what the
+        card would eventually be for. It is the sentence, not a button: the action on this page is
+        registering, and a second call to action beside it competes with the one that matters. */}
+    <p class="mt-4 text-center text-[0.85rem] muted">
+      <a href="/pricing">{t.footer.pricing}</a>
+    </p>
+
     {showcase && (
       <p class="mt-4 text-center text-[0.85rem]">
         <a
