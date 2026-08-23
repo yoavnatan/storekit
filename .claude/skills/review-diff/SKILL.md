@@ -146,10 +146,19 @@ correct.
 marked by the session that happened to be working in that area — which is the cheap half, and the
 half that finds the least: an area you have just spent a day inside is the one you least need to
 re-read. The rows that stayed open are the ones nobody had a reason to open, which is precisely
-the condition the feed bugs lived under. `.claude/hooks/next-area-audit.sh` now names the
-lowest-numbered open row at session start, before any work has created an opinion about which
-area is interesting. It does not block; it removes the discretion that was quietly selecting for
-the areas least worth auditing.
+the condition the feed bugs lived under. `.claude/hooks/next-area-audit.sh` names the row at
+session start, before any work has created an opinion about which area is interesting. It does not
+block; it removes the discretion that was quietly selecting for the areas least worth auditing.
+
+**Two candidates, not one, and both still picked by the hook (owner, 2026-08-23: "למה לא לבחור בכל
+סשן ביקורת שנכון לעשות לפי המצב הקיים בפרוייקט ובסשנים").** The lowest-numbered open row is a FIRST
+READ — the whole area end to end plus a guard test, and roughly a day. The worst-drifted row below
+is a RE-READ, bounded by the files that moved, and hours. Printing only the first meant a session
+with an hour and no appetite for a whole area took NEITHER, and the drift list underneath it was
+read as trivia for a week. Both are named the same size now, with what each costs. **What the
+session decides is how much room it has** — a fact about the session — and never which area looks
+interesting, which is the judgement the 2026-08-10 rule exists to remove and which picked the area
+it had just spent the day inside every single time it was allowed.
 
 **A ✅ EXPIRES, and that is measured now rather than remembered (owner, 2026-08-16).** The table has
 always said a ✅ is a statement about code that existed on that date; nothing acted on it. Row 7
@@ -157,7 +166,7 @@ audited the dashboard's forms on 08-09, the panel-loading model underneath them 
 08-11, and the row still read ✅ while five separate bugs came out of exactly that change — every
 one of them reported by the owner rather than caught here. `npm run audit:drift` asks git which
 rows have had code move under them since the day they were marked, ranked by how many files; the
-session-start hook names the worst three. **Re-running every audit on a schedule was the obvious
+session-start hook names the worst one as the cheap candidate beside the queue head. **Re-running every audit on a schedule was the obvious
 answer and it is the wrong one** — it never finishes and it spends most of its time re-reading code
 nobody touched. Re-opening a row when its subject moves does finish, and a re-read is far cheaper
 than the audit was: only what changed has to be read again. The paths each row watches live in
