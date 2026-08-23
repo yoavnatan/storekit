@@ -6,7 +6,7 @@ import { orderHelpUrl } from './order-token.js';
 import { formatAgorot } from './money.js';
 import type { Order } from './orders.js';
 import type { ReturnRequest } from './return-requests.js';
-import { isPartialReturn, type ReturnStatus } from './returns.js';
+import { returnedGoods, returnedGoodsCount, type ReturnedGoods, type ReturnStatus } from './returns.js';
 
 /**
  * Who hears about a return, and through which channel — decisions §7, and nothing more than it says.
@@ -33,37 +33,19 @@ import { isPartialReturn, type ReturnStatus } from './returns.js';
 /**
  * What actually came back, in words that survive being wrong about the count.
  *
- * The parcel notifications used to open *"המוצר חזר אליך"* — one product, definite, as if the
- * seller already knew which. He does not: nothing in these messages names an item or an order, and
- * the owner was explicit that this is fine (2026-08-23: *"לא ברור איזה מוצר או איזו הזמנה, וזה
- * בסדר"*). What is not fine is the article and the number. A definite "המוצר" promises an
- * antecedent the sentence never gives, and a return may hold several lines or the whole order
- * (*"ואולי בכלל מדובר במוצרים?"* — it may).
+ * These messages used to open *"המוצר חזר אליך"* — one product, definite, as if the seller already
+ * knew which. He does not: nothing here names an item or an order, and the owner was explicit that
+ * this is fine (2026-08-23: *"לא ברור איזה מוצר או איזו הזמנה, וזה בסדר"*). What is not fine is the
+ * article and the number — a definite "המוצר" promises an antecedent the sentence never gives, and
+ * a return may hold several lines or a whole order (*"ואולי בכלל מדובר במוצרים?"* — it may).
  *
- * So the subject is read off `returnedLines`, which is the only thing here that knows: absent means
- * the whole order came back (`isPartialReturn`'s own contract), one unit means one product, and
- * anything else is plural. Gender comes with it — Hebrew needs the pronoun and the verb to agree,
- * so they travel together rather than being reassembled at each call site.
+ * The table itself is `returns.ts#returnedGoods`, shared with the seller's card, which had exactly
+ * the same singular in exactly the same sentences.
  */
-interface ReturnedSubject {
-  /** "מוצר חזר אליך" — the opener, already inflected. */
-  cameBack: string;
-  /** The object pronoun for that subject: אותו / אותם / אותה. */
-  it: string;
-  /** "מחכה לך" / "מחכים לך". */
-  waiting: string;
-}
-
-function returnedSubject(request: ReturnRequest): ReturnedSubject {
-  const lines = request.returnedLines;
-  if (!isPartialReturn(lines)) return { cameBack: 'ההזמנה חזרה אליך', it: 'אותה', waiting: 'מחכה לך' };
-  // `qty` is per line and a line can hold several of the same product, so the units are what
-  // decide the number — two of one product is still "מוצרים". Clamped at 1 because a stored 0
-  // would silently turn a real parcel into "no products".
-  const units = lines!.reduce((n, l) => n + Math.max(1, l.qty), 0);
-  return units > 1
-    ? { cameBack: 'מוצרים חזרו אליך', it: 'אותם', waiting: 'מחכים לך' }
-    : { cameBack: 'מוצר חזר אליך', it: 'אותו', waiting: 'מחכה לך' };
+function returnedSubject(request: ReturnRequest): ReturnedGoods {
+  // 0 when the whole order came back: nothing here has read the order, so counting its lines is not
+  // available and "ההזמנה" is the true thing to say. `returnedGoods` states that contract.
+  return returnedGoods(returnedGoodsCount(request.returnedLines));
 }
 
 /** The buyer-facing sentence for each state that earns a message. Absent = no message: `in_transit`
@@ -275,15 +257,17 @@ export async function notifySellerReturnDeadline(
       // Orders.
       type: 'return_update',
       title: what === 'answer' ? 'בקשת החזרה — היום היום האחרון לענות'
-        // Left as it was, deliberately: its own body sends the seller to press a button labelled
-        // "המוצר הגיע אליי" (ReturnsPanel), so re-numbering the title alone would leave the
-        // message and the control it names disagreeing. That copy is one sweep, not this one.
-        : what === 'missing_parcel' ? 'הקונה מסר שהוא שלח את המוצר — האם הוא הגיע?'
-        : `${subject.cameBack} ו${subject.waiting}`,
+        : what === 'missing_parcel' ? `הקונה מסר שהוא שלח את ${subject.the} — ${subject.arrived} אליך?`
+        : `${subject.cameBackToYou} ו${subject.waitsForYou}`,
       body: what === 'missing_parcel'
         // Both answers, plainly, because either one may be the true one and he is the only person who
         // knows which. Naming what happens if he says nothing is the point: the case leaves his hands.
-        ? 'אם המוצר הגיע אליך — סמן "המוצר הגיע אליי" בלשונית ההחזרות. אם הוא לא הגיע, אל תסמן כלום. מחר הבקשה תעבור לבדיקה שלנו ואנחנו נכריע בה, והכסף יישאר מוקפא עד ההכרעה.'
+        //
+        // It no longer QUOTES the button. It used to say press *"המוצר הגיע אליי"* verbatim, and
+        // that label is itself per-card now (ReturnsPanel#goods) — so on a three-item return the
+        // message named a control that says something else. Describing the action survives a
+        // relabelling; quoting one does not.
+        ? `אם ${subject.the} ${subject.arrived} אליך — סמן בלשונית ההחזרות שקיבלת ${subject.it}. אם לא, אל תסמן כלום. מחר הבקשה תעבור לבדיקה שלנו ואנחנו נכריע בה, והכסף יישאר מוקפא עד ההכרעה.`
         : what === 'answer'
         // Why he MAY refuse, then what happens if he says nothing, then the thing he might actually
         // want: silence works in his favour here, so a warning that only states the default has
@@ -294,7 +278,7 @@ export async function notifySellerReturnDeadline(
         // option to a seller who had not considered it, and it is the one claim in this mechanism
         // that nothing can verify (owner, 2026-08-17: "לא מזמין בעיות?"). The button is still on the
         // card for the seller who genuinely needs it; the nudge only names the step he owes.
-        : `${subject.cameBack} ועוד לא סימנת שבדקת ${subject.it}. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.`,
+        : `${subject.cameBackToYou} ועוד לא סימנת שבדקת ${subject.it}. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.`,
       relatedId: request.orderId,
       storeSlug: request.storeSlug,
     });

@@ -4,8 +4,8 @@ import { cdnThumb } from '../../lib/cdn.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 import {
   isOpen, returnClockDueISO, returnLane, isPartialReturn, disputeCause, sellerOwesAction,
-  OFFER_ANSWER_DAYS, RETURN_REASON_LABELS as REASON,
-  type ReturnStatus, type ReturnReason, type DisputeCause, type ReturnLane,
+  OFFER_ANSWER_DAYS, RETURN_REASON_LABELS as REASON, returnedGoods, returnedGoodsCount,
+  type ReturnStatus, type ReturnReason, type DisputeCause, type ReturnLane, type ReturnedGoods,
 } from '../../lib/returns.js';
 import type { ReturnRequest, ReturnOrderFacts } from '../../lib/return-requests.js';
 
@@ -88,23 +88,25 @@ const cloudPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
 
 /** What the case IS, in the seller's words. Every status in the machine has one — a card that
  *  printed a raw English state would be the exact bug the buyer dashboard already had once. */
-const STATUS: Record<ReturnStatus, string> = {
+// Three of these are a function of the card rather than a constant: `g` is `goods(r)`, the
+// singular/plural pair for what is actually coming back (see that function).
+const STATUS: Record<ReturnStatus, string | ((g: ReturnedGoods) => string)> = {
   requested: 'הקונה מחכה לתשובה שלך.',
-  approved: 'אישרת את הבקשה, והקונה אמור לשלוח את המוצר בחזרה.',
+  approved: (g) => `אישרת את הבקשה, והקונה אמור לשלוח את ${g.the} בחזרה.`,
   // ⚠️ Read `statusLine()` before using this one directly — inside the statutory window nobody
   // approved anything, and the card must not tell the seller he did.
-  in_transit: 'לפי הקונה, המוצר כבר בדרך אליך.',
-  received: 'המוצר הגיע אליך וממתין שתבדוק אותו.',
+  in_transit: (g) => `לפי הקונה, ${g.the} כבר בדרך אליך.`,
+  received: (g) => `${g.the} ${g.arrived} אליך ו${g.waiting} שתבדוק ${g.it}.`,
   // "העברת את זה אלינו. אנחנו מכריעים" until 2026-08-20 — the owner's note was that it *"נשמע לא
   // טוב"*, and he was right about more than the tone. It addressed the seller as the one who did it,
   // on a card the sweep can also land here without him touching anything (`in_transit` goes to
   // `disputed` on its own after a fortnight of silence), and "אנחנו מכריעים" is present tense for
   // something nobody has started.
   disputed: 'הבקשה ממתינה להכרעת המערכת.',
-  offered: 'הצעת לקונה סכום במקום החזרת המוצר, ואנחנו מחכים לתשובתו.',
+  offered: 'הצעת לקונה סכום במקום ההחזרה, ואנחנו מחכים לתשובתו.',
   rejected: 'סירבת לבקשה.',
   refunded: 'הבקשה נסגרה, והכסף בדרכו חזרה לקונה.',
-  expired: 'הבקשה נסגרה מאליה, והמוצר לא חזר אליך.',
+  expired: (g) => `הבקשה נסגרה מאליה, ו${g.the} לא ${g.cameBack} אליך.`,
 };
 
 /**
@@ -125,9 +127,10 @@ function statusLine(r: ReturnRequest): string {
     // than register: "אמור" says the buyer is under an obligation the seller might have to chase,
     // when in fact this is simply the next step and the clock enforces it. Naming the DESTINATION
     // ("אליך") is the other half — the sentence never said where the goods were going.
-    return 'הבקשה אושרה אוטומטית — זו זכות הקונה בתוך 14 יום. הלקוח שולח את המוצר אליך.';
+    return `הבקשה אושרה אוטומטית — זו זכות הקונה בתוך 14 יום. הלקוח שולח את ${goods(r).the} אליך.`;
   }
-  return STATUS[r.status];
+  const line = STATUS[r.status];
+  return typeof line === 'function' ? line(goods(r)) : line;
 }
 
 /** The tone each state carries. `danger` only where the seller is holding something up. */
@@ -137,8 +140,12 @@ const TONE: Record<ReturnStatus, string> = {
 };
 
 /** The moves the seller may make FROM each state, with the words for them. Derived from the machine
- *  in `returns.ts`; anything it does not allow simply has no button. */
-const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kind: string }[]>> = {
+ *  in `returns.ts`; anything it does not allow simply has no button.
+ *
+ *  A `label` is a function where the button names the goods — a card holding three of them must not
+ *  offer "המוצר הגיע אליי" (see `goods`). `movesFor` resolves them per card. */
+type MoveLabel = string | ((g: ReturnedGoods) => string);
+const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: MoveLabel; kind: string }[]>> = {
   requested: [
     { to: 'approved', label: 'אשר', kind: 'accent' },
     { to: 'rejected', label: 'סרב', kind: 'ghost' },
@@ -152,9 +159,9 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
   approved:   [
     { to: 'offered', label: 'הצע החזר חלקי במקום החזרה', kind: 'ghost' },
   ],
-  in_transit: [{ to: 'received', label: 'המוצר הגיע אליי', kind: 'accent' }],
+  in_transit: [{ to: 'received', label: (g) => `${g.the} ${g.arrived} אליי`, kind: 'accent' }],
   received: [
-    { to: 'refunded', label: 'המוצר תקין — החזר לו את הכסף', kind: 'accent' },
+    { to: 'refunded', label: (g) => `${g.the} ${g.ok} — החזר לו את הכסף`, kind: 'accent' },
     { to: 'disputed', label: 'הגיע ריק או משומש', kind: 'ghost' },
   ],
 };
@@ -167,10 +174,13 @@ const MOVES: Partial<Record<ReturnStatus, { to: ReturnStatus; label: string; kin
  * Nothing else here needs to change for it: `received` already starts the 2-business-day clock and
  * already offers both answers, so an in-store return is refunded or disputed exactly like a posted one.
  */
-function movesFor(status: ReturnStatus): { to: ReturnStatus; label: string; kind: string }[] {
-  const base = MOVES[status] ?? [];
-  if (status === 'approved' && acceptsInStoreReturns) {
-    return [{ to: 'received', label: 'הקונה הביא את המוצר לחנות', kind: 'accent' }, ...base];
+function movesFor(r: ReturnRequest): { to: ReturnStatus; label: string; kind: string }[] {
+  const g = goods(r);
+  const resolve = (m: { to: ReturnStatus; label: MoveLabel; kind: string }): { to: ReturnStatus; label: string; kind: string } =>
+    ({ ...m, label: typeof m.label === 'function' ? m.label(g) : m.label });
+  const base = (MOVES[r.status] ?? []).map(resolve);
+  if (r.status === 'approved' && acceptsInStoreReturns) {
+    return [{ to: 'received', label: `הקונה הביא את ${g.the} לחנות`, kind: 'accent' }, ...base];
   }
   return base;
 }
@@ -185,6 +195,7 @@ function deadlineLine(r: ReturnRequest): string | null {
   const due = returnClockDueISO(r);
   if (!due) return null;
   const day = formatBusinessDateShort(due);
+  const g = goods(r);
   if (r.status === 'requested') {
     // Inside the statutory window there is nothing to answer — it was approved on arrival — so this
     // branch only ever describes a request the seller may really refuse.
@@ -199,7 +210,7 @@ function deadlineLine(r: ReturnRequest): string | null {
     return `יש לך זמן להשיב עד ${day}. אם לא תשיב, הבקשה תיסגר כסירוב והכסף יישאר אצלך.`;
   }
   if (r.status === 'approved') {
-    return `הקונה אמור לשלוח את המוצר עד ${day}. אם לא ישלח, הבקשה תיסגר והכסף יישאר אצלך.`;
+    return `הקונה אמור לשלוח את ${g.the} עד ${day}. אם לא ישלח, הבקשה תיסגר והכסף יישאר אצלך.`;
   }
   // A separate clock now, and a separate SENTENCE, because the two used to share both: an approved
   // request that the buyer never posted closes in the seller's favour on day 7, but once the buyer has
@@ -207,13 +218,13 @@ function deadlineLine(r: ReturnRequest): string | null {
   // that plainly is also the honest warning: if the parcel really did arrive, marking it received is
   // how he keeps the case out of our hands.
   if (r.status === 'in_transit') {
-    return `כשהמוצר יגיע, סמן שקיבלת אותו. אם לא תסמן עד ${day}, נבדוק את המקרה ונכריע בעצמנו.`;
+    return `כש${g.the} ${g.willArrive}, סמן שקיבלת ${g.it}. אם לא תסמן עד ${day}, נבדוק את המקרה ונכריע בעצמנו.`;
   }
   if (r.status === 'offered') {
     return `הקונה אמור להשיב להצעה עד ${day}. אם לא ישיב, הבקשה תיסגר והכסף יישאר אצלך.`;
   }
   if (r.status === 'received') {
-    return `יש לך זמן לבדוק את המוצר עד ${day}. אם לא תשיב עד אז, הכסף יחזור לקונה אוטומטית.`;
+    return `יש לך זמן לבדוק את ${g.the} עד ${day}. אם לא תשיב עד אז, הכסף יחזור לקונה אוטומטית.`;
   }
   return null;
 }
@@ -314,7 +325,7 @@ function offerCeilingShekels(agorot: number): number {
 function hasNextHalf(r: ReturnRequest): boolean {
   return Boolean(
     deadlineLine(r)
-    || movesFor(r.status).length > 0
+    || movesFor(r).length > 0
     // A dispute whose cause we cannot name has nothing for this half to say — the chip and the
     // title already carry the state — so it takes the full-width record like a closed case.
     || disputeNote(r) !== ''
@@ -327,8 +338,35 @@ function hasNextHalf(r: ReturnRequest): boolean {
 /** How many lines are coming back — what the approve dialog needs to say מוצר or מוצרים. */
 function returningCount(r: ReturnRequest): number {
   const items = orderFacts?.get(r.orderId)?.items ?? [];
-  if (isPartialReturn(r.returnedLines)) return r.returnedLines!.length;
-  return items.length || 1;
+  // UNITS, not lines — `returnedGoodsCount`, the same count the notifications use. One line holding
+  // two of the same product is still "מוצרים", and counting lines made this card say "המוצר" while
+  // the notification about the very same parcel said "מוצרים".
+  if (isPartialReturn(r.returnedLines)) return returnedGoodsCount(r.returnedLines);
+  // A whole-order return: unlike a notification, the card HAS the order, so it names the products
+  // rather than falling back to "ההזמנה". `|| 1` for the case where the order could not be read —
+  // one product is the safe singular, never zero.
+  return items.reduce((n, i) => n + Math.max(1, i.qty), 0) || 1;
+}
+
+/**
+ * The goods on THIS card, inflected — because half of them are not one product.
+ *
+ * The card was written throughout as *"המוצר"*: the status line, the deadline line, the buttons and
+ * the four-sentence explainer. A return may hold several lines or a whole order, so on those cards
+ * every one of those sentences described a different case from the one on screen — the owner's
+ * point when he read the matching notification (2026-08-23: *"ואולי בכלל מדובר במוצרים?"*).
+ *
+ * The count was already here — `returningCount`, built for the approve dialog, which has been
+ * saying מוצר or מוצרים since it was written (`scripts/dashboard/returns.ts`). What was missing is
+ * that the card around it never asked. The WORDS are `returns.ts#returnedGoods`, shared with the
+ * notifications, which carried the same singular in the same sentences.
+ *
+ * Note what is NOT here: a sentence that quotes a button label. The explainer used to tell the
+ * seller to press *"המוצר הגיע אליי"* verbatim — and that label is one of the things that now
+ * varies, so it named a control half the cards do not have. It describes the action instead.
+ */
+function goods(r: ReturnRequest): ReturnedGoods {
+  return returnedGoods(returningCount(r));
 }
 
 function itemsLine(r: ReturnRequest): string {
@@ -852,8 +890,8 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
           the list, so on a phone it is the longest thing on screen and the least specific. */}
       {(r.status === 'approved' || r.status === 'in_transit') && (
         <p class={`m-0 text-[0.8rem] [color:var(--color-muted)] ${MORE}`}>
-          כשהחבילה תגיע אליך, סמן "המוצר הגיע אליי". מאותו רגע יש לך יומיים לבדוק אותה: אם הכול
-          תקין, החזר לקונה את הכסף. ואם החבילה הגיעה ריקה או שהמוצר משומש, אפשר להעביר את המקרה
+          כשהחבילה תגיע אליך, סמן שקיבלת אותה. מאותו רגע יש לך יומיים לבדוק אותה: אם הכול
+          תקין, החזר לקונה את הכסף. ואם החבילה הגיעה ריקה או שהתוכן משומש, אפשר להעביר את המקרה
           להכרעה שלנו.
         </p>
       )}
@@ -871,16 +909,16 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
           buyer's AGREEMENT, and said nothing about what happens if the buyer never answers.
           `OFFER_ANSWER_DAYS` is that answer, and it is named here rather than left to the deadline
           line — the seller reads this BEFORE making the offer, when there is no deadline yet. */}
-      {movesFor(r.status).some((m) => m.to === 'offered') && (
+      {movesFor(r).some((m) => m.to === 'offered') && (
         <p class={`m-0 text-[0.8rem] [color:var(--color-muted)] ${MORE}`}>
           אפשר להציע לקונה החזר כספי חלקי במקום שיחזיר את המוצר, אם יסכים לכך. אם לא ישיב תוך
           {OFFER_ANSWER_DAYS} ימים, הבקשה תיסגר והכסף יישאר אצלך.
         </p>
       )}
 
-      {movesFor(r.status).length > 0 && (
+      {movesFor(r).length > 0 && (
         <div class="flex gap-2 mt-1 flex-wrap">
-          {movesFor(r.status).map((m) => (
+          {movesFor(r).map((m) => (
             <button
               type="button"
               class={`btn btn--sm ${m.kind === 'accent' ? 'btn--accent' : ''}`}
@@ -908,7 +946,7 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
           the same one piece of state `returns.ts` reads to tell a first press from a second, rather
           than a second flag two files would have to agree about. `!hidden` because the wrapper is
           `flex` (memory `project_tailwind_hidden_vs_flex`). */}
-      {movesFor(r.status).some((m) => m.to === 'disputed') && (
+      {movesFor(r).some((m) => m.to === 'disputed') && (
         <div class="flex flex-col gap-2 has-[textarea[hidden]]:!hidden" data-dispute-wrap>
           <label class="flex flex-col gap-1 text-[0.85rem]">
             <span class="[color:var(--color-muted)]">ספר לנו מה היה בחבילה — זה מה שנכריע לפיו</span>
@@ -942,7 +980,7 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
           the one piece of state saying whether an offer has been asked for, and `returns.ts` reads
           it to tell a first press from a second. `!hidden`, because this label is `flex` and an
           unimportant `hidden` utility loses to it (memory `project_tailwind_hidden_vs_flex`). */}
-      {movesFor(r.status).some((m) => m.to === 'offered') && (
+      {movesFor(r).some((m) => m.to === 'offered') && (
         <div class="flex flex-wrap items-center gap-2 text-[0.85rem] has-[input[hidden]]:!hidden" data-offer-wrap>
           <label class="flex items-center gap-2">
             <span class="[color:var(--color-muted)]">סכום ההחזר המוצע, בשקלים</span>

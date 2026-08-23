@@ -4,7 +4,7 @@ import path from 'node:path';
 import { NON_RETURNABLE_SUBJECTS } from '../src/lib/return-eligibility.js';
 import {
   RETURN_REASON_LABELS, RETURN_TRANSITIONS, sellerOwesAction, sellerActionSql,
-  returnShippingPayer, refundAmountAgorot,
+  returnShippingPayer, refundAmountAgorot, returnedGoods, returnedGoodsCount,
 } from '../src/lib/returns.js';
 import { translations } from '../src/i18n/translations.js';
 
@@ -294,6 +294,37 @@ describe("a return's notification opens the returns tab", () => {
     expect(buyerCalls.length).toBeGreaterThan(0);
     for (const call of buyerCalls) {
       expect(call).toMatch(/type:\s*'order_update'/);
+    }
+  });
+
+  it('counts the goods off the request, and says ההזמנה when only the order could', () => {
+    expect(returnedGoodsCount(null)).toBe(0);
+    expect(returnedGoodsCount([])).toBe(0);
+    expect(returnedGoodsCount([{ position: 0, qty: 1 }])).toBe(1);
+    // Two of ONE product is still "מוצרים" — the units decide, not the line count.
+    expect(returnedGoodsCount([{ position: 0, qty: 2 }])).toBe(2);
+    // A stored 0 must not turn a real parcel into no products at all.
+    expect(returnedGoodsCount([{ position: 0, qty: 0 }])).toBe(1);
+
+    expect(returnedGoods(0).the).toBe('ההזמנה');
+    expect(returnedGoods(1).the).toBe('המוצר');
+    expect(returnedGoods(3).the).toBe('המוצרים');
+    // Every field of a row agrees with its own subject — the whole reason they travel together.
+    expect(returnedGoods(1).cameBackToYou).toBe('מוצר חזר אליך');
+    expect(returnedGoods(3).cameBackToYou).toBe('מוצרים חזרו אליך');
+    expect(returnedGoods(3).it).toBe('אותם');
+    expect(returnedGoods(0).arrived).toBe('הגיעה');
+  });
+
+  it("no seller-facing sentence QUOTES the arrival button's label", () => {
+    // The label is per-card now (`ReturnsPanel#goods`) — "המוצר הגיע אליי" on a one-item return and
+    // "המוצרים הגיעו אליי" on a three-item one. Anything that quotes one of those verbatim is
+    // naming a control that half the cards do not have, which is what the notification body and the
+    // card's own explainer both did. Describe the action; never quote the label.
+    for (const file of ['src/lib/return-notify.ts', 'src/components/dashboard/ReturnsPanel.astro']) {
+      const code = fs.readFileSync(path.join(process.cwd(), file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+      expect(code, `${file} quotes a button label that varies per card`).not.toContain('"המוצר הגיע אליי"');
     }
   });
 

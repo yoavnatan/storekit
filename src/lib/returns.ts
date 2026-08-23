@@ -264,6 +264,77 @@ export function isPartialReturn(lines: ReturnedLine[] | null | undefined): boole
 }
 
 /**
+ * The words for the goods coming back, inflected — one table, because half of these returns are not
+ * one product.
+ *
+ * Every seller-facing sentence about a return was written as *"המוצר"*: the card's status line, its
+ * deadline line, the button that marks the parcel arrived, the explainer under it, and both parcel
+ * notifications. A request may hold several lines or a whole order, so on those cards each of those
+ * sentences described a different case from the one on screen. The owner read it on the
+ * notification (2026-08-23: *"כדאי לרשום מוצר חזר אליך, ואולי בכלל מדובר במוצרים?"* — it may) and
+ * the same singular was everywhere behind it.
+ *
+ * **Here rather than in either caller, and that is the point.** The approve dialog had already been
+ * choosing מוצר or מוצרים for months (`scripts/dashboard/returns.ts`) while the card around it
+ * said "המוצר" — one surface counting and its neighbour not is exactly the drift a second copy
+ * produces. The panel and the notifications now read the same table.
+ *
+ * `count` is how many distinct products are coming back. **0 means "a whole order, size unknown"** —
+ * a notification holds the request but not the order behind it, so it cannot count lines it never
+ * read, and "ההזמנה" is the one true thing it can say. A caller that DOES know (the card does, via
+ * `orderFacts`) passes the real number and gets the products named instead.
+ */
+export interface ReturnedGoods {
+  /** המוצר / המוצרים / ההזמנה — definite, for a sentence that has already introduced them. */
+  the: string;
+  /** מוצר חזר אליך / מוצרים חזרו אליך / ההזמנה חזרה אליך — indefinite, for an alert that opens on it. */
+  cameBackToYou: string;
+  /** אותו / אותם / אותה */
+  it: string;
+  /** הגיע / הגיעו / הגיעה */
+  arrived: string;
+  /** יגיע / יגיעו / תגיע */
+  willArrive: string;
+  /** חזר / חזרו / חזרה */
+  cameBack: string;
+  /** ממתין / ממתינים / ממתינה */
+  waiting: string;
+  /** מחכה לך / מחכים לך */
+  waitsForYou: string;
+  /** תקין / תקינים / תקינה */
+  ok: string;
+}
+
+export function returnedGoods(count: number): ReturnedGoods {
+  if (count <= 0) {
+    return {
+      the: 'ההזמנה', cameBackToYou: 'ההזמנה חזרה אליך', it: 'אותה', arrived: 'הגיעה',
+      willArrive: 'תגיע', cameBack: 'חזרה', waiting: 'ממתינה', waitsForYou: 'מחכה לך', ok: 'תקינה',
+    };
+  }
+  if (count === 1) {
+    return {
+      the: 'המוצר', cameBackToYou: 'מוצר חזר אליך', it: 'אותו', arrived: 'הגיע',
+      willArrive: 'יגיע', cameBack: 'חזר', waiting: 'ממתין', waitsForYou: 'מחכה לך', ok: 'תקין',
+    };
+  }
+  return {
+    the: 'המוצרים', cameBackToYou: 'מוצרים חזרו אליך', it: 'אותם', arrived: 'הגיעו',
+    willArrive: 'יגיעו', cameBack: 'חזרו', waiting: 'ממתינים', waitsForYou: 'מחכים לך', ok: 'תקינים',
+  };
+}
+
+/** How many products a request brings back, or 0 when only the order behind it could say.
+ *  The companion to `returnedGoods` for a caller holding the request and nothing else. */
+export function returnedGoodsCount(lines: ReturnedLine[] | null | undefined): number {
+  if (!isPartialReturn(lines)) return 0;
+  // `qty` is per line and a line can hold several of the same product, so units decide the number —
+  // two of one product is still "מוצרים". Clamped at 1 because a stored 0 would silently turn a
+  // real parcel into no products at all.
+  return lines!.reduce((n, l) => n + Math.max(1, l.qty), 0);
+}
+
+/**
  * What comes back on a PARTIAL return (decisions §4).
  *
  * **The original delivery charge is never in it, and that is the rule rather than an oversight.**
