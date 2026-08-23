@@ -62,6 +62,27 @@ Written here rather than in a task list because the pattern this file exists to 
 **PayMe's apparent limitations keep turning out to be settings.** Multi-capture read as "not enabled"
 and was a switch plus a wrong endpoint. Do not design around any of these before asking.
 
+0. **⚠️ FOR THE INTEGRATION CALL — raise this even though our design works.** The owner asked for
+   this to stay open (2026-08-23): *"אני מרגיש שיש פה משהו שאני לא מבין… אם לא כדאי לדבר עם מי
+   שיעזור לנו עם האינטגרציה בפועל — לעשות את מה שהוא תיאר עם הלכידה 110%"*. **He is right to keep
+   it open, and the reason is not that our design is unsound.**
+
+   What we built: authorize goods + delivery TOGETHER, then capture each store's goods and capture
+   the delivery to our own merchant. Total drawn = 100% of the authorization. Measured working, and
+   it needs nothing from PayMe.
+
+   What PayMe described: authorize the sale, then capture past it — *"לכידה בשווי 500 ש״ח שהם 100%…
+   להעלות ל-110%"* — which only makes sense if the delivery is NOT inside the authorized amount.
+
+   Both reach the same place. **The question worth asking the person who does the real integration
+   is why they described it the other way round**, because a vendor's recommended pattern usually
+   encodes something the API does not state: a settlement rule, an issuer behaviour, a chargeback
+   consequence, or how the two shapes appear on a cardholder's statement. Ours has been proved to
+   work in the sandbox; that is not the same as knowing it is the shape they support in production.
+
+   Ask it as: *"we authorize goods + delivery together and capture within 100% — you described
+   authorizing the sale and capturing past it at 110%. Is there a reason to prefer yours?"*
+
 1. **Can the PARTNER account accept card payments?** `174 · אפשרות זו אינה נתמכת במשתמשים מסוג זה`
    describes a *type*, which is a setting. If yes, the delivery fee has somewhere to land and both
    workarounds in `payme-sandbox-notes.md` §15 disappear.
