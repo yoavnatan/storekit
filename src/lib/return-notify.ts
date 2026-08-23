@@ -6,7 +6,7 @@ import { orderHelpUrl } from './order-token.js';
 import { formatAgorot } from './money.js';
 import type { Order } from './orders.js';
 import type { ReturnRequest } from './return-requests.js';
-import type { ReturnStatus } from './returns.js';
+import { isPartialReturn, type ReturnStatus } from './returns.js';
 
 /**
  * Who hears about a return, and through which channel — decisions §7, and nothing more than it says.
@@ -29,6 +29,42 @@ import type { ReturnStatus } from './returns.js';
  * down must not roll back an approval or leave a request half-moved — the rule `settleStatusChange`
  * states, applied here for the same reason. Failures are logged by the adapter, not by pretending.
  */
+
+/**
+ * What actually came back, in words that survive being wrong about the count.
+ *
+ * The parcel notifications used to open *"המוצר חזר אליך"* — one product, definite, as if the
+ * seller already knew which. He does not: nothing in these messages names an item or an order, and
+ * the owner was explicit that this is fine (2026-08-23: *"לא ברור איזה מוצר או איזו הזמנה, וזה
+ * בסדר"*). What is not fine is the article and the number. A definite "המוצר" promises an
+ * antecedent the sentence never gives, and a return may hold several lines or the whole order
+ * (*"ואולי בכלל מדובר במוצרים?"* — it may).
+ *
+ * So the subject is read off `returnedLines`, which is the only thing here that knows: absent means
+ * the whole order came back (`isPartialReturn`'s own contract), one unit means one product, and
+ * anything else is plural. Gender comes with it — Hebrew needs the pronoun and the verb to agree,
+ * so they travel together rather than being reassembled at each call site.
+ */
+interface ReturnedSubject {
+  /** "מוצר חזר אליך" — the opener, already inflected. */
+  cameBack: string;
+  /** The object pronoun for that subject: אותו / אותם / אותה. */
+  it: string;
+  /** "מחכה לך" / "מחכים לך". */
+  waiting: string;
+}
+
+function returnedSubject(request: ReturnRequest): ReturnedSubject {
+  const lines = request.returnedLines;
+  if (!isPartialReturn(lines)) return { cameBack: 'ההזמנה חזרה אליך', it: 'אותה', waiting: 'מחכה לך' };
+  // `qty` is per line and a line can hold several of the same product, so the units are what
+  // decide the number — two of one product is still "מוצרים". Clamped at 1 because a stored 0
+  // would silently turn a real parcel into "no products".
+  const units = lines!.reduce((n, l) => n + Math.max(1, l.qty), 0);
+  return units > 1
+    ? { cameBack: 'מוצרים חזרו אליך', it: 'אותם', waiting: 'מחכים לך' }
+    : { cameBack: 'מוצר חזר אליך', it: 'אותו', waiting: 'מחכה לך' };
+}
 
 /** The buyer-facing sentence for each state that earns a message. Absent = no message: `in_transit`
  *  and `received` are the mechanism working, not news the buyer can act on. */
@@ -199,7 +235,11 @@ export async function notifySellerReturnOpened(
     await createNotification({
       userId: sellerId,
       role: 'seller',
-      type: 'order_update',
+      // `return_update`, not `order_update` — the type is what picks the tab the click opens
+      // (notification-link.ts), and this one belongs to "החזרות". Under `order_update` the body
+      // below told the seller to go and look at the returns tab while the click itself took him
+      // to Orders.
+      type: 'return_update',
       title: request.withinStatutory ? 'התקבלה בקשת החזרה' : 'בקשת החזרה מחכה לתשובתך',
       body: request.withinStatutory
         // Said plainly, because a seller who thinks he is being asked to decide will look for a
@@ -226,14 +266,20 @@ export async function notifySellerReturnDeadline(
   request: ReturnRequest,
   what: 'answer' | 'open_parcel' | 'missing_parcel',
 ): Promise<void> {
+  const subject = returnedSubject(request);
   try {
     await createNotification({
       userId: sellerId,
       role: 'seller',
-      type: 'order_update',
+      // See `notifySellerReturnOpened` — this is the one the owner clicked, and it landed on
+      // Orders.
+      type: 'return_update',
       title: what === 'answer' ? 'בקשת החזרה — היום היום האחרון לענות'
+        // Left as it was, deliberately: its own body sends the seller to press a button labelled
+        // "המוצר הגיע אליי" (ReturnsPanel), so re-numbering the title alone would leave the
+        // message and the control it names disagreeing. That copy is one sweep, not this one.
         : what === 'missing_parcel' ? 'הקונה מסר שהוא שלח את המוצר — האם הוא הגיע?'
-        : 'המוצר חזר אליך ומחכה לך',
+        : `${subject.cameBack} ו${subject.waiting}`,
       body: what === 'missing_parcel'
         // Both answers, plainly, because either one may be the true one and he is the only person who
         // knows which. Naming what happens if he says nothing is the point: the case leaves his hands.
@@ -248,7 +294,7 @@ export async function notifySellerReturnDeadline(
         // option to a seller who had not considered it, and it is the one claim in this mechanism
         // that nothing can verify (owner, 2026-08-17: "לא מזמין בעיות?"). The button is still on the
         // card for the seller who genuinely needs it; the nudge only names the step he owes.
-        : 'המוצר חזר אליך ועוד לא סימנת שבדקת אותו. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.',
+        : `${subject.cameBack} ועוד לא סימנת שבדקת ${subject.it}. אם לא תסמן מחר, הקונה יקבל את כספו בחזרה והסכום יקוזז מהתשלום הבא שלך.`,
       relatedId: request.orderId,
       storeSlug: request.storeSlug,
     });

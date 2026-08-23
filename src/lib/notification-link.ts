@@ -52,6 +52,15 @@ export function notificationHref(n: Linkable): string {
     case 'new_order':
     case 'order_update':
       return '/seller/dashboard?panel=orders';
+    // A return is NOT an order update, even though it carries an order's id (owner, 2026-08-23:
+    // *"לחיצה עליו לא מביאה להחזרות אלא להזמנות"*). Every one of these was written as
+    // `order_update` — the type it is closest to — and so every one of them landed on the orders
+    // tab, including the one whose own body says *"תראה אותה בלשונית החזרות"*. `relatedId` stays
+    // the order id, because that is what the returns panel and the order card both key off; what
+    // changed is which tab owns the answer. The buyer keeps `order_update` for the same news: his
+    // dashboard has no returns tab, and a return shows inside the order it came from.
+    case 'return_update':
+      return '/seller/dashboard?panel=returns';
     case 'payout_status':
       return '/seller/dashboard?panel=payouts';
     // Both stock alerts and a feed rejection are fixed on the product itself — the feed

@@ -8,7 +8,7 @@ import type { NotificationType } from '../src/lib/notifications.js';
 // the author is made to decide where it lands, instead of it silently defaulting to a dashboard
 // root — which is how 'feed_status' ended up sending sellers to the buyer dashboard.
 const SELLER_TYPES: NotificationType[] = [
-  'new_message', 'new_order', 'order_update', 'low_stock', 'out_of_stock',
+  'new_message', 'new_order', 'order_update', 'return_update', 'low_stock', 'out_of_stock',
   'admin_message', 'domain_status', 'feed_status', 'payout_status',
 ];
 const BUYER_TYPES: NotificationType[] = ['seller_reply', 'new_message', 'order_update'];
@@ -33,12 +33,23 @@ describe('notificationHref', () => {
     expect(notificationHref({ role: 'seller', type: 'order_update' })).toBe('/seller/dashboard?panel=orders');
   });
 
+  it('opens the returns tab for a return, never the orders tab', () => {
+    // Owner, 2026-08-23: *"לחיצה עליו לא מביאה להחזרות אלא להזמנות"*. Every seller-facing return
+    // notification was typed `order_update` because it carries an order's id — including the one
+    // whose body tells him to look at the returns tab. `relatedId` is still the order id here on
+    // purpose: the destination must come from the type, not from what the row happens to point at.
+    const href = notificationHref({ role: 'seller', type: 'return_update', relatedId: 'order-1' });
+    expect(href).toBe('/seller/dashboard?panel=returns');
+    expect(href).not.toContain('panel=orders');
+  });
+
   it('lands each seller type on the tab that can act on it', () => {
     const expected: Record<string, string> = {
       new_message: '/seller/dashboard?panel=messages',
       admin_message: '/seller/dashboard?panel=messages',
       new_order: '/seller/dashboard?panel=orders',
       order_update: '/seller/dashboard?panel=orders',
+      return_update: '/seller/dashboard?panel=returns',
       payout_status: '/seller/dashboard?panel=payouts',
       low_stock: '/seller/dashboard?panel=products',
       out_of_stock: '/seller/dashboard?panel=products',
@@ -88,7 +99,7 @@ describe('one routing table, two renderers', () => {
   it('neither renderer branches on notification type to build a link', () => {
     for (const file of ['../src/components/Header.astro', '../src/layouts/BaseLayout.astro']) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-      const lines = source.split('\n').filter((l) => /panel=(orders|messages|products|settings|payouts)|tab=(orders|messages)/.test(l));
+      const lines = source.split('\n').filter((l) => /panel=(orders|returns|messages|products|settings|payouts)|tab=(orders|messages)/.test(l));
       for (const line of lines) {
         expect(line, `${file} builds a notification link from its type`).not.toMatch(/type\s*===?\s*'/);
       }

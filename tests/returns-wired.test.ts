@@ -254,3 +254,54 @@ describe('the return reasons are spelled out in exactly one place', () => {
     ).toEqual([]);
   });
 });
+
+describe("a return's notification opens the returns tab", () => {
+  /**
+   * The bug this pins, in the owner's words (2026-08-23): *"אם מתקבלת התראה על מוצר שחזר — לחיצה
+   * עליו לא מביאה להחזרות אלא להזמנות"*.
+   *
+   * Every seller-facing return notification carries `relatedId: request.orderId`, and it was typed
+   * `order_update` to match — the closest existing type, and the one whose destination is the
+   * ORDERS panel (notification-link.ts). So the deadline warning about a parcel sitting unopened,
+   * and the "התקבלה בקשת החזרה" whose own body says *תראה אותה בלשונית "החזרות"*, both landed one
+   * tab away from the thing they were about.
+   *
+   * Checked against the source rather than by calling the writers: each one ends in a `try` that
+   * swallows everything, so a wrong `type` cannot fail anything at runtime — which is exactly why
+   * it survived being written, reviewed and shipped.
+   */
+  const source = fs.readFileSync(path.join(process.cwd(), 'src/lib/return-notify.ts'), 'utf8');
+  // Each createNotification({ … }) call, split on the call itself. Crude on purpose: a regex that
+  // understands nesting is a parser, and all that has to be true here is "these two keys appear in
+  // the same object".
+  const calls = source.split('createNotification({').slice(1).map((c) => c.slice(0, 400));
+
+  it('finds the notification writers it means to check', () => {
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("types every seller-facing one 'return_update', never 'order_update'", () => {
+    const sellerCalls = calls.filter((c) => /role:\s*'seller'/.test(c));
+    expect(sellerCalls.length).toBeGreaterThan(0);
+    for (const call of sellerCalls) {
+      expect(call, "a seller's return notification typed as an order update lands on the orders tab")
+        .toMatch(/type:\s*'return_update'/);
+    }
+  });
+
+  it("leaves the BUYER's on 'order_update', because his dashboard has no returns tab", () => {
+    const buyerCalls = calls.filter((c) => /role:\s*'buyer'/.test(c));
+    expect(buyerCalls.length).toBeGreaterThan(0);
+    for (const call of buyerCalls) {
+      expect(call).toMatch(/type:\s*'order_update'/);
+    }
+  });
+
+  it('never opens a parcel message with a definite single product', () => {
+    // *"כדאי לרשום מוצר חזר אליך, ואולי בכלל מדובר במוצרים"* — the count is read off
+    // `returnedLines` now (`returnedSubject`), so the literal has to be gone rather than merely
+    // rephrased in one of the two places it was written.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).not.toContain('המוצר חזר אליך');
+  });
+});
