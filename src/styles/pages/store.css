@@ -678,6 +678,9 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 .store-controls__row {
   display: flex;
   align-items: center;
+  /* The containing block for `.facet-panel` — at every width, not just on a phone.
+     See the note over `.facet-panel`. */
+  position: relative;
   /* Was flex-wrap:wrap from when the chip row itself could wrap onto
      several lines (pre-scroll-conversion) — the category row now scrolls
      internally instead of ever needing a second line, so this row should
@@ -687,6 +690,20 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   flex-wrap: nowrap;
   gap: 0.5rem;
 }
+
+/* THE FILTER AND SORT BUTTONS KEEP TO THE ROW'S END even when the chip row is not
+   there to push them (owner, 2026-08-23: "כפתור הסינון נצמד להתחלה של העמוד").
+   `.category-filters-wrap` is `flex: 1 1 auto` and normally eats every spare pixel,
+   so these margins resolve to zero — but a LEAF category has no children to offer,
+   the wrap goes `display: none`, and the row was left handing all 900-odd pixels to
+   nobody: both controls slid to the inline START, a whole page away from where they
+   sit on every other view. Measured at 1440 before the fix: the filter button at
+   x=1218 instead of x=230. `auto` on both, cancelled on sort whenever the filter is
+   present, so the pair travels together and sort is still the outermost of the two
+   when there are no attributes to filter on at all. */
+.store-controls__row > .facet-dropdown-wrap,
+.store-controls__row > .sort-dropdown-wrap { margin-inline-start: auto; }
+.store-controls__row > .facet-dropdown-wrap ~ .sort-dropdown-wrap { margin-inline-start: 0; }
 
 /* One row, no wrap — overflow scrolls horizontally instead, with edge
    arrows floating directly over the chips themselves (position:absolute +
@@ -1833,8 +1850,11 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 
    Almost nothing else is new: a value chip IS a `.category-chip`, same geometry,
    same 10px corner, same pressed fill via `aria-current`. */
+/* `static`, so the panel below hangs off `.store-controls__row` rather than off this
+   button — read the note over `.facet-panel` for why that is the safety net and not
+   just a preference. */
 .facet-dropdown-wrap {
-  position: relative;
+  position: static;
   flex-shrink: 0;
 }
 
@@ -1895,6 +1915,19 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   font-variant-numeric: tabular-nums;
 }
 
+/* ANCHORED TO THE ROW, NOT TO ITS BUTTON — at every width. Hung off its own trigger,
+   the menu's width and the trigger's position are two independent numbers and nothing
+   stops their sum leaving the page: at a leaf category the trigger sat at the row's
+   inline start and 27rem-worth of menu ran 210px past a 1440 viewport (350px at 900 and
+   at 768). The rule above puts the buttons back at the row's end, which happens to make
+   it fit — but "it fits where the button currently is" is not a guarantee, and the owner
+   asked for one (2026-08-23: "גם אם היה נשאר איפה שהוא — הדרופדאון לא היה גולש מחוץ
+   לעמוד"). With the ROW as the containing block, `inset-inline-end: 0` plus
+   `max-width: 100%` makes overflow arithmetically impossible: the menu is pinned to one
+   edge of the row and can never be wider than it. This was already the phone-width rule
+   for exactly this reason; it turned out the reasoning was never width-specific.
+   `#sort-menu` keeps its own wrapper — it is 11rem, and it sits at the row's end by
+   construction. */
 .facet-panel {
   position: absolute;
   top: 100%;
@@ -1916,8 +1949,8 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
      at 22rem it still read as a column ("למה בדסקטופ הדרופדאון סינון כל כך צר?"). This is not a
      panel that wants the page's width — it is a menu — so it stops here rather than tracking the
      viewport. */
-  min-width: 27rem;
-  max-width: calc(100vw - 1.5rem);
+  min-width: min(27rem, 100%);
+  max-width: 100%;
   max-height: min(60vh, 26rem);
   overflow-y: auto;
 }
@@ -1941,6 +1974,18 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   align-items: baseline;
   gap: 0.6rem;
   flex-wrap: wrap;
+}
+/* One line between attributes, the site's own 1px in `--color-border` — the same
+   separator `.user-dropdown__sep` uses, because this is the same kind of object: a
+   menu whose items are groups rather than rows. The panel's `gap` alone was reading
+   as "too close" (owner, 2026-08-23: "צריך קו מפריד עדין בין הפרטים … כרגע צמוד
+   מדי"), and the reason is that a chip row has no baseline of its own to separate
+   it from the next attribute's label — colour's chips and material's name were one
+   block of small type. `padding-top` matches the gap above the line, so the rule
+   sits centred in the space rather than crowding the group it belongs to. */
+.facet-group + .facet-group {
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--color-border);
 }
 .facet-group__label {
   flex: 0 0 auto;
@@ -1984,19 +2029,10 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 .facet-more:hover { color: var(--color-text); border-color: var(--color-muted); }
 
 @media (max-width: 640px) {
-  /* ANCHORED TO THE ROW, NOT TO ITS BUTTON. A 22rem menu hung off a button sitting mid-row has
-     nowhere to go on a 375px screen: `inset-inline-end` is the LEFT edge in RTL, so it grew
-     rightward off the viewport and cut the attribute names off. Dropping the containing block to
-     the row lets the same `inset-inline-end: 0` mean "the row's edge", which is the full width
-     the menu is allowed anyway. The sort menu keeps its own wrapper and is unaffected — it is
-     11rem and starts at the row's other end. */
-  .store-controls__row { position: relative; }
-  .facet-dropdown-wrap { position: static; }
-  .facet-panel {
-    min-width: 0;
-    width: 100%;
-    inset-inline-end: 0;
-  }
+  /* The row-anchoring that used to live here is now the base rule — 375px was simply the
+     first width at which the menu was measured leaving the page, not the only one.
+     `min-width: min(27rem, 100%)` up there is what collapses it to the row's width here,
+     so nothing about the phone layout changed. */
 
   /* At phone widths the attribute name earns its own line: `min-width` on the
      label plus wrapped chips beside it left roughly two chips per row. */
