@@ -5,7 +5,7 @@ import { ownedStore } from '../../../lib/store-ownership.js';
 import { pauseStore, resumeStore, requestStoreClosure, openOrderCount } from '../../../lib/store-lifecycle.js';
 import { pingStoreChange } from '../../../lib/indexnow.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
+import { isLifecycleMailState, sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
 
 /** The seller's own pause / reopen / close switch. Its own route rather than another `_action`
  *  branch in /api/store: that endpoint is the settings FORM (multi-field, merged field-by-field
@@ -55,7 +55,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   //
   // Not awaited: the state is already saved, and the seller must not sit on a spinner while a
   // mail provider answers. sendStoreLifecycleEmail never throws and logs its own failures.
-  if (result.state !== 'blocked') {
+  if (isLifecycleMailState(result.state)) {
     const seller = await getSellerById(sellerId);
     if (seller) {
       void sendStoreLifecycleEmail({

@@ -1,9 +1,20 @@
 /** What state a store is in, as one table — the same shape (and for the same reason) as
  *  order-status-rules.ts.
  *
- *  Four different things can take a store off the shelf, and they are NOT the same event:
+ *  Five different things can keep a store off the shelf, and they are NOT the same event:
  *
- *    active   the normal state.
+ *    active       the normal state.
+ *    unpublished  built, never public. The seller registers, fills the shop and looks at it before
+ *             he is ever asked for a card (owner, 2026-08-23) — so "the store row exists" and
+ *             "strangers can reach it" are now separated by a real interval. TWO independent
+ *             things hold a store inside it, and they are deliberately ONE state: PayMe examine
+ *             every business before it may clear a card (up to seven business days, agreement
+ *             §11), and a seller who has not started a subscription is not paying to be on the
+ *             platform. The consequence is identical either way — the seller sees his shop, the
+ *             public does not — so what differs is only the sentence he is told, which is
+ *             `lib/store-publication.ts`'s job. Two flags would have been able to contradict each
+ *             other; one state cannot. It ends by itself, with nothing to press:
+ *             `syncStorePublication` runs when either hold lifts.
  *    paused   the SELLER stopped selling — an operational halt (restocking, a move, a break in
  *             activity). Not a holiday mode and not a soft-delete: the storefront stays up and
  *             says so, and nothing about the store is lost. Reversible in one click.
@@ -17,7 +28,10 @@
  *             and the only one of the five a seller cannot undo.
  *
  *  Precedence is the order above, reversed: an admin block outranks whatever the seller chose,
- *  so a blocked store cannot be un-blocked by pausing and un-pausing it.
+ *  so a blocked store cannot be un-blocked by pausing and un-pausing it. `unpublished` sits at the
+ *  BOTTOM of that order, below `paused`: a store that never went live cannot meaningfully be
+ *  paused, and if both are somehow true the two answer identically on every row that matters — so
+ *  the deliberate seller action is the one worth naming.
  *
  *  NOTHING here deletes anything. Every state is a flag on the store record, so orders, money
  *  events, ad spend and every historical figure derived from them stay exactly as they were —
@@ -27,12 +41,19 @@
  *  identically.
  */
 
-export type StoreLifecycle = 'active' | 'paused' | 'closing' | 'closed' | 'blocked';
+export type StoreLifecycle = 'active' | 'unpublished' | 'paused' | 'closing' | 'closed' | 'blocked';
 
 export interface StoreLifecycleRule {
-  /** Does the store's own URL serve the storefront? A paused store deliberately still does —
+  /** Does the store's own URL serve the storefront **to the public**? A paused store deliberately
+   *  still does —
    *  going 404 for a two-week operational halt throws away the Google standing the store built,
-   *  and that standing is the platform's whole pitch. It comes back the moment it reopens. */
+   *  and that standing is the platform's whole pitch. It comes back the moment it reopens.
+   *
+   *  An `unpublished` store answers false and therefore 404s — it has no standing to lose, has
+   *  never been linked from anywhere, and a shop a stranger can read but not buy from is the exact
+   *  thing this state exists to prevent. **Its OWNER still sees it**, which is not an exception to
+   *  this flag: the owner check is a separate question the storefront route asks after this one
+   *  (`store-publication.ts#mayPreviewStore`), so nothing here has to know about sessions. */
   reachable: boolean;
   /** May a platform surface LIST it — homepage, /stores, search, sitemap, llms.txt, the
    *  Merchant/Meta product feed? Also drives `noindex` on the storefront: a page that no
@@ -50,11 +71,12 @@ export interface StoreLifecycleRule {
 }
 
 export const STORE_LIFECYCLE_RULES: Record<StoreLifecycle, StoreLifecycleRule> = {
-  active:  { reachable: true,  discoverable: true,  sellable: true,  gone: false },
-  paused:  { reachable: true,  discoverable: false, sellable: false, gone: false },
-  closing: { reachable: true,  discoverable: false, sellable: false, gone: false },
-  closed:  { reachable: false, discoverable: false, sellable: false, gone: true  },
-  blocked: { reachable: false, discoverable: false, sellable: false, gone: false },
+  active:      { reachable: true,  discoverable: true,  sellable: true,  gone: false },
+  unpublished: { reachable: false, discoverable: false, sellable: false, gone: false },
+  paused:      { reachable: true,  discoverable: false, sellable: false, gone: false },
+  closing:     { reachable: true,  discoverable: false, sellable: false, gone: false },
+  closed:      { reachable: false, discoverable: false, sellable: false, gone: true  },
+  blocked:     { reachable: false, discoverable: false, sellable: false, gone: false },
 };
 
 /** The store fields this module reads. Declared as its own interface so the pure logic can be
@@ -67,6 +89,10 @@ export interface StoreLifecycleFlags {
   closePendingAt?: string;
   /** Closure completed at this instant. Terminal. */
   closedAt?: string;
+  /** When the store first became public. Absent = never was — see `unpublished` above. Written
+   *  only by lib/store-publication.ts and never cleared: taking a live store off the site is what
+   *  pause, close and block are for, and each of those carries its own reason. */
+  publishedAt?: string;
 }
 
 export function storeLifecycle(store: StoreLifecycleFlags): StoreLifecycle {
@@ -74,6 +100,7 @@ export function storeLifecycle(store: StoreLifecycleFlags): StoreLifecycle {
   if (store.closedAt) return 'closed';
   if (store.closePendingAt) return 'closing';
   if (store.pausedAt) return 'paused';
+  if (!store.publishedAt) return 'unpublished';
   return 'active';
 }
 
@@ -102,4 +129,11 @@ export function storeHttpStatus(store: StoreLifecycleFlags): 200 | 404 | 410 {
 export function showsPausedNotice(store: StoreLifecycleFlags): boolean {
   const state = storeLifecycle(store);
   return state === 'paused' || state === 'closing';
+}
+
+/** Is the store live to the public — the one question most callers actually mean by "is it on the
+ *  site". True only for `active`: every other state either 404s, says it is closed, or was never
+ *  published. */
+export function isStorePublished(store: StoreLifecycleFlags): boolean {
+  return storeLifecycle(store) === 'active';
 }

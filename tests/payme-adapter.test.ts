@@ -38,9 +38,11 @@ const {
   marketFeeFixedShekels, marketFeeTotalAgorot, exceedsMarketFeeCeiling, refuseSale, saleIsPaid,
   createSeller, captureBuyerToken, generateSale, refundSale,
   callbackSignature, verifyCallbackSignature,
+  PAYME_SUB_STATUS, PAYME_MIN_SUBSCRIPTION_AGOROT, PAYME_ITERATION_MONTHLY,
+  subscriptionIsPaying, generateSubscription, cancelSubscription, getSubscriptionStatus,
 } = await import('../src/lib/payment-payme.js');
 
-const CREDS = { clientKey: 'test-client-key', marketplaceSellerId: 'MPL-US', baseUrl: 'https://sandbox.payme.io/api/' };
+const CREDS = { clientKey: 'test-client-key', ownMerchantId: 'MPL-US', baseUrl: 'https://sandbox.payme.io/api/' };
 
 /** The body of the last request the adapter built. */
 function lastBody(): Record<string, unknown> {
@@ -451,5 +453,93 @@ describe('environment', () => {
       if (before === undefined) delete process.env.PAYME_CLIENT_KEY; else process.env.PAYME_CLIENT_KEY = before;
       if (beforeGate === undefined) delete process.env.PAYME_DEV_LIVE; else process.env.PAYME_DEV_LIVE = beforeGate;
     }
+  });
+});
+
+/**
+ * The SELLER's monthly fee — the money that runs the other way.
+ *
+ * Every number here was measured against the live sandbox on 2026-08-23
+ * (`scripts/payme-probe.mjs subscription`), and the two that matter are the ones a document would
+ * have got wrong: `sub_status` really comes back `2`, and PayMe's own Generate page says the enum
+ * is "0 active, 1 inactive", which is not true of anything.
+ */
+describe('subscriptions — the seller pays US', () => {
+  it("charges OUR merchant account, monthly, and never asks for a payment page when a token is in hand", async () => {
+    net.replies = [{ status_code: 0, sub_payme_id: 'SUB1', sub_status: PAYME_SUB_STATUS.active, sub_url: 'https://sandbox.payme.io/subscription/generate/SUB1', sub_next_date: '2026-09-23 20:44:07' }];
+    const created = await generateSubscription({
+      ownMerchantId: 'MPL-US', priceAgorot: 9900, description: 'מנוי', buyerKey: 'BUYER1',
+      correlationId: 'seller-1', buyerEmail: 'a@b.co',
+    }, CREDS);
+
+    const body = lastBody();
+    expect(body.seller_payme_id).toBe('MPL-US');
+    expect(body.sub_price).toBe(9900);
+    expect(body.sub_iteration_type).toBe(PAYME_ITERATION_MONTHLY);
+    // `sub_type: 1` = regular. 10 is a TEMPLATE, whose payment link never expires — a standing
+    // page that charges a named seller is not something this platform may leave lying around.
+    expect(body.sub_type).toBe(1);
+    // Their receipts are off: two systems mailing a seller about one charge is a support thread.
+    expect(body.sub_send_notification).toBe(false);
+    expect(created.subPaymeId).toBe('SUB1');
+    // **The URL is dropped on a token subscription, and that is the point of the branch.** PayMe
+    // return it anyway, already paid — rendering it as "finish your payment" would send a paying
+    // seller to a page that charges him a second time.
+    expect(created.subUrl).toBeUndefined();
+  });
+
+  it('keeps the payment page when there is no card yet, because then somebody really does have to visit it', async () => {
+    net.replies = [{ status_code: 0, sub_payme_id: 'SUB2', sub_status: PAYME_SUB_STATUS.initial, sub_url: 'https://pay.me/SUB2' }];
+    const created = await generateSubscription({
+      ownMerchantId: 'MPL-US', priceAgorot: 9900, description: 'מנוי', correlationId: 'seller-1',
+    }, CREDS);
+    expect(created.subUrl).toBe('https://pay.me/SUB2');
+    expect(created.subStatus).toBe(PAYME_SUB_STATUS.initial);
+  });
+
+  it("refuses below PayMe's minimum here rather than discovering it as a failed charge", async () => {
+    net.replies = [{ status_code: 0, sub_payme_id: 'nope' }];
+    await expect(generateSubscription({
+      ownMerchantId: 'MPL-US', priceAgorot: PAYME_MIN_SUBSCRIPTION_AGOROT - 1, description: 'מנוי', correlationId: 'seller-1',
+    }, CREDS)).rejects.toBeInstanceOf(PaymeError);
+    expect(net.calls).toHaveLength(0);
+  });
+
+  // A card that expired between iterations is not a seller refusing to pay. PayMe retry daily and
+  // cancel on the seventh failure, so taking his shop off the site on the first decline would
+  // punish the two identically — and the shop would go dark a week before the answer was in.
+  it('treats a subscription mid-dunning as still paying, and a cancelled one as not', () => {
+    expect(subscriptionIsPaying(PAYME_SUB_STATUS.active)).toBe(true);
+    expect(subscriptionIsPaying(PAYME_SUB_STATUS.retrying)).toBe(true);
+    expect(subscriptionIsPaying(PAYME_SUB_STATUS.initial)).toBe(false);
+    expect(subscriptionIsPaying(PAYME_SUB_STATUS.failed)).toBe(false);
+    expect(subscriptionIsPaying(PAYME_SUB_STATUS.canceled)).toBe(false);
+    expect(subscriptionIsPaying(PAYME_SUB_STATUS.completed)).toBe(false);
+    // 0 is what their Generate page calls "active". It is in neither list, and must never read as
+    // paying — that page is wrong and this is where being wrong would cost something.
+    expect(subscriptionIsPaying(0)).toBe(false);
+  });
+
+  // `get-sales` was measured ignoring its own filter entirely (§12). No endpoint here may be
+  // assumed to behave like another, so the match is on the id and never on `items[0]`.
+  it('matches a subscription by id and reports null rather than somebody else\'s row', async () => {
+    net.replies = [{ status_code: 0, items: [
+      { sub_payme_id: 'OTHER', sub_status: PAYME_SUB_STATUS.active },
+      { sub_payme_id: 'SUB1', sub_status: PAYME_SUB_STATUS.canceled, sub_next_date: '2026-09-23 20:44:07' },
+    ] }];
+    expect(await getSubscriptionStatus('MPL-US', 'SUB1', CREDS)).toEqual({
+      subStatus: PAYME_SUB_STATUS.canceled, nextDate: '2026-09-23 20:44:07',
+    });
+
+    net.replies = [{ status_code: 0, items: [{ sub_payme_id: 'OTHER', sub_status: PAYME_SUB_STATUS.active }] }];
+    // Null, and NOT "cancelled": a lookup that found nothing is not a verdict, and turning one into
+    // a verdict is how a paying seller's shop goes dark.
+    expect(await getSubscriptionStatus('MPL-US', 'SUB1', CREDS)).toBeNull();
+  });
+
+  it('cancels by PayMe\'s own id, on our account', async () => {
+    net.replies = [{ status_code: 0 }];
+    await cancelSubscription('MPL-US', 'SUB1', CREDS);
+    expect(lastBody()).toMatchObject({ seller_payme_id: 'MPL-US', sub_payme_id: 'SUB1' });
   });
 });

@@ -235,10 +235,16 @@ describe('the registry itself', () => {
     // matters — never mailing about an inquiry already answered, already handled, or newer than the
     // grace window — is asserted in `tests/inbox-digest-db.test.ts`, because that is what keeps the
     // channel worth having at all.
+    // And `store-publication` (2026-08-23) — the only job that makes something PUBLIC. Its
+    // idempotency argument is the strongest here and it is structural: publication is derived from
+    // the two holds in `store-publication.ts` and written as `published_at`, which is set once and
+    // never cleared, so a second pass finds the same shops already live and its query does not
+    // return them at all. What it must never do is the reverse — un-publish on a hold that came
+    // back — and it cannot, because it only ever writes a timestamp.
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact', 'store-publication'],
     );
   });
 });

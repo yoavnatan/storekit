@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { activePaymeCredentials, getSellerStatus, verifyCallbackSignature } from '../../../lib/payment-payme.js';
 import { merchantAccountByProviderRef, merchantCallbackSecret, setMerchantApproval } from '../../../lib/seller-merchant.js';
+import { syncStorePublication } from '../../../lib/store-publication.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
 import { logError } from '../../../lib/error-log.js';
 import { readFormBody, BODY_LIMIT } from '../../../lib/request-body.js';
@@ -111,7 +112,17 @@ async function handleSellerNotification(body: URLSearchParams): Promise<Response
       // that says why.
       await setMerchantApproval(providerRef, status.approved && status.active);
     }
-    return ack('seller-updated');
+    // **This is what puts the shop on the site.** A seller who built his store and started paying
+    // has been waiting on PayMe's examination — up to seven business days he can do nothing about —
+    // and this notification is the moment it ends. Publishing is derived from both holds rather than
+    // from this one fact (`store-publication.ts`), so an approval arriving before the subscription
+    // correctly changes nothing, and it is idempotent because PayMe may deliver the same
+    // notification twice.
+    //
+    // Awaited but never allowed to fail the acknowledgement: PayMe retry anything that is not a 200,
+    // and a retry would re-run a publication that already happened rather than fixing anything.
+    const published = await syncStorePublication(account.sellerId).catch(() => [] as string[]);
+    return ack(published.length ? 'seller-updated-published' : 'seller-updated');
   } catch (err) {
     await logError({
       source: 'server',

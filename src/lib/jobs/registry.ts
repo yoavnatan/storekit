@@ -36,6 +36,7 @@ import { runOrderSla } from '../order-sla-run.js';
 import { runReturnsSweep } from '../returns-run.js';
 import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { runInboxDigest } from '../inbox-digest.js';
+import { runStorePublicationSweep } from '../store-publication-run.js';
 
 export interface Job {
   /** Primary key in `job_runs`. Never rename one — the row is the schedule's memory, and a renamed
@@ -475,4 +476,30 @@ const inboxDigest: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail];
+/**
+ * Put a seller's shop on the site the moment PayMe stop holding it back.
+ *
+ * *What it fixes:* a shop is built unpublished and goes live when clearing is approved and the
+ * subscription is running (`store-publication.ts`). PayMe announce the approval on a callback — and
+ * **that callback needs a public URL this platform does not have yet**, so today this job is the
+ * only thing that would ever end a real seller's wait. Once a host exists it becomes the cover for
+ * a notification they dropped, which is a failure nothing else would report.
+ *
+ * *Idempotent:* publication is derived from current state and `published_at` is written once, so a
+ * second pass finds the same shops already live and changes nothing.
+ *
+ * *Every 30 minutes:* the seller is waiting on a human decision at PayMe that takes up to seven
+ * business days, so the answer changes at most once — but it is the last half hour of a week-long
+ * wait, and it is one statement when nothing is pending. The lease covers one PayMe round trip per
+ * waiting seller.
+ */
+const storePublication: Job = {
+  name: 'store-publication',
+  intervalSec: 30 * MINUTE,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    return runStorePublicationSweep();
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication];

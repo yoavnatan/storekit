@@ -274,6 +274,11 @@ export const translations = {
       // so wording that implies a sandbox would be a lie he could act on (see
       // lib/own-store-guard.ts for the one thing he genuinely can't do here).
       ownerPreview: 'זו החנות החיה שלך — כך קונה רואה אותה',
+      // The same bar, for a store that has not gone public yet (lib/store-publication.ts). It says
+      // the ONE fact that changes what the seller is looking at — nobody else can reach this page
+      // — and stops there: what is still missing, and when it lifts, is a sentence with a next
+      // step in it, and that belongs on the dashboard where the step is.
+      ownerPreviewUnpublished: 'החנות עדיין לא באוויר — רק אתה רואה את הדף הזה',
       ownerPreviewBack: 'ללוח הניהול',
       ownerCannotBuy: 'זו החנות שלך — לא ניתן לקנות ממנה',
       products: 'מוצרים',
@@ -1038,6 +1043,21 @@ export const translations = {
       // silently refuses every checkout is the worst version of this, because the seller finds out
       // from a shopper. Named for the ACTION he has to take, never for our internal state
       // (`feedback_seller_copy_register`).
+      // The publication card (components/dashboard/PublishStatusCard.astro). One line per hold and
+      // nothing else: the seller has to know WHAT is missing, WHO can fix it and WHEN — a paragraph
+      // about the model is not any of the three. `pubWaitingNote` is the whole point of the
+      // approval line: he is a week into a wait he cannot shorten and has done nothing wrong.
+      pubTitle: 'החנות עדיין לא באוויר',
+      pubBuildOn: 'אפשר להמשיך לבנות הכל — מוצרים, עיצוב, קטגוריות ומבצעים. רק המכירה והפרסום ממתינים.',
+      pubHoldSubscription: 'מנוי חודשי לא הופעל',
+      pubHoldSubscriptionNote: 'ברגע שהמנוי מתחיל, החנות עולה לאוויר.',
+      pubHoldSubscriptionCta: 'להתחלת המנוי',
+      pubHoldDetails: 'חסרים פרטים לפתיחת חשבון סליקה',
+      pubHoldDetailsNote: 'בלי חשבון סליקה אין לאן שהכסף של הקונה ייכנס.',
+      pubHoldDetailsCta: 'להשלמת הפרטים',
+      pubHoldApproval: 'חברת הסליקה בודקת את העסק',
+      pubHoldApprovalNote: 'הבדיקה נמשכת עד שבעה ימי עסקים ואין מה לעשות בינתיים. החנות תעלה לאוויר לבד ברגע שהאישור מגיע, ונשלח מייל.',
+      pubGoesLive: 'העלייה לאוויר אוטומטית — אין כפתור ללחוץ.',
       payClearingTitle: 'חשבון סליקה',
       payClearingReady: 'החנויות שלכם יכולות למכור.',
       payClearingMissing: 'החנויות שלכם עדיין לא יכולות למכור — חסרים פרטים לפתיחת חשבון סליקה.',
@@ -2428,6 +2448,7 @@ export const translations = {
     },
     store: {
       ownerPreview: 'This is your live store — this is how a shopper sees it',
+      ownerPreviewUnpublished: 'This store is not live yet — nobody else can see this page',
       ownerPreviewBack: 'To dashboard',
       ownerCannotBuy: 'This is your own store — you cannot buy from it',
       products: 'Products',
@@ -3010,6 +3031,17 @@ export const translations = {
       payDetailsSave: 'Save details',
       payDetailsSaved: 'Details saved',
       payDetailsFailed: 'Could not save. Check your connection and try again.',
+      pubTitle: 'This store is not live yet',
+      pubBuildOn: 'You can keep building everything — products, design, categories and sales. Only selling and advertising are waiting.',
+      pubHoldSubscription: 'No monthly subscription yet',
+      pubHoldSubscriptionNote: 'The store goes live as soon as the subscription starts.',
+      pubHoldSubscriptionCta: 'Start the subscription',
+      pubHoldDetails: 'Details are missing to open a clearing account',
+      pubHoldDetailsNote: 'Without a clearing account there is nowhere for a buyer\'s money to go.',
+      pubHoldDetailsCta: 'Complete the details',
+      pubHoldApproval: 'The processor is reviewing your business',
+      pubHoldApprovalNote: 'The review takes up to seven business days and there is nothing to do meanwhile. The store goes live by itself the moment approval arrives, and we will email you.',
+      pubGoesLive: 'Going live is automatic — there is no button to press.',
       payClearingTitle: 'Clearing account',
       payClearingReady: 'Your stores can take orders.',
       payClearingMissing: 'Your stores cannot take orders yet — some details are still needed to open a clearing account.',

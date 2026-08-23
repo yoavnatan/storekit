@@ -12,6 +12,7 @@
  *   node scripts/payme-probe.mjs sellers               our merchants, and their approval state
  *   node scripts/payme-probe.mjs sale <sale-id>        one sale read back, with its real fee split
  *   node scripts/payme-probe.mjs flow                  the whole checkout, end to end, on test cards
+ *   node scripts/payme-probe.mjs subscription          the SELLER's monthly fee, created and cancelled
  *
  * **Sandbox only, and it refuses to run against anything else.** The sandbox is shared with PayMe's
  * other partners and has no delete, so this creates SALES freely and merchants never
@@ -109,6 +110,47 @@ if (mode === 'exists') {
   if (DELIVERY) say('  capture ₪30 → our delivery merchant', await capture(DELIVERY, 3000, 'משלוח', 0));
   else console.log('  (no PAYME_DELIVERY_MERCHANT_ID — the delivery leg cannot be probed)');
 
+} else if (mode === 'subscription') {
+  // How the SELLER's monthly fee is collected — the one thing a seller owes us that has a
+  // collection path (`docs/payme-sandbox-notes.md` §16). The money runs the OTHER way from the
+  // checkout: it is charged to the seller's card onto OUR OWN merchant account, so
+  // `seller_payme_id` here is ours and the card belongs to the seller. The probe stands in for a
+  // seller with one of their test cards.
+  if (!DELIVERY) { console.error('no PAYME_DELIVERY_MERCHANT_ID — our own merchant is what collects a subscription'); process.exit(1); }
+
+  const tok = await call('capture-buyer-token', {
+    seller_payme_id: DELIVERY, buyer_is_permanent: true,
+    credit_card_number: '12312312', credit_card_exp: '1230', credit_card_cvv: '123',
+    buyer_name: 'Probe Seller', buyer_email: 'random@paymeservice.com',
+    buyer_phone: '0500000001', buyer_social_id: '9999999999',
+  });
+  say("seller's card token", tok);
+  if (!ok(tok)) process.exit(1);
+
+  const sub = await call('generate-subscription', {
+    seller_payme_id: DELIVERY,
+    sub_currency: 'ILS',
+    sub_price: 9900,                    // the base tier, in agorot. Their documented minimum is 500.
+    sub_description: 'מנוי חודשי — דזבין',
+    sub_iteration_type: 3,              // monthly
+    sub_type: 1,                        // regular; 10 is a template
+    buyer_key: tok.buyer_key,           // with a token there is no page for anyone to visit
+    subscription_id: `probe-${Date.now()}`,
+    sub_send_notification: false,
+  });
+  console.log(redact(JSON.stringify(sub, null, 2)));
+  if (!ok(sub)) process.exit(1);
+
+  // Read it back, then cancel — the sandbox is shared, and a recurring charge left running is the
+  // one thing here that would keep happening after the probe exits.
+  const list = await call('get-subscriptions', { seller_payme_id: DELIVERY });
+  const found = (list.items ?? []).find((i) => i.sub_payme_id === sub.sub_payme_id);
+  console.log('read back:', found ? redact(JSON.stringify(found, null, 2)) : `not among ${list.items?.length ?? 0} items`);
+
+  const cancelled = await call('cancel-subscription', { seller_payme_id: DELIVERY, sub_payme_id: sub.sub_payme_id });
+  say('cancel', cancelled);
+  if (!ok(cancelled)) console.log(redact(JSON.stringify(cancelled, null, 2)));
+
 } else {
-  console.log(fs.readFileSync(new URL(import.meta.url)).toString().split('\n').slice(2, 18).join('\n'));
+  console.log(fs.readFileSync(new URL(import.meta.url)).toString().split('\n').slice(2, 19).join('\n'));
 }

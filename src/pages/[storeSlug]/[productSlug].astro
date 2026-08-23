@@ -19,6 +19,7 @@ import { demoProductBadgeHtml } from '../../lib/demo-badge.js';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
 import ShareMenu from '../../components/ShareMenu.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
+import { mayPreviewStore } from '../../lib/store-publication.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
@@ -59,7 +60,15 @@ if (!shopStore) {
 // "this store is gone", which is a weaker and slower signal, and the address bar left the URL the
 // shopper actually followed. A rewrite renders the same page AT this URL and carries its status
 // (404.astro sets it), which is what both Google and the shopper should be given.
-if (!isStoreVisible(shopStore)) {
+// Read HERE and not further down: it is a cookie parse with no round trip, and the guard below is
+// the first thing on the page that needs to know who is asking.
+const userId = getSellerSession(Astro.cookies);
+// A shop that was built and never published (`store-status.ts`, `unpublished`) is 404 to the world
+// and the ordinary storefront to its owner — that is the whole point of letting a seller build
+// before he pays. The session cookie is the only thing standing in front of it, so the check is on
+// the id it carries and never on anything in the URL.
+const ownerPreview = mayPreviewStore(shopStore, userId);
+if (!ownerPreview && !isStoreVisible(shopStore)) {
   return Astro.rewrite(storeHttpStatus(shopStore) === 410 ? '/store-gone' : '/404');
 }
 // Operational halt by the seller (store-status.ts). The URL keeps working — no redirect, no 404,
@@ -100,7 +109,6 @@ const platformBoundary = hasActiveCustomDomain(shopStore)
   ? platformBoundaryData(Astro.cookies, Astro.response.headers)
   : null;
 
-const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
@@ -390,7 +398,7 @@ const pmI18n = {
   type="product"
   jsonLd={jsonLd}
   canonical={productUrl}
-  noindex={isDemo || adLanding}
+  noindex={isDemo || adLanding || ownerPreview}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
@@ -405,7 +413,7 @@ const pmI18n = {
   <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
   {isOwner && (
-    <OwnerStoreBar label={t.store.ownerPreview} backLabel={t.store.ownerPreviewBack} dashboardHref={dashboardHref} />
+    <OwnerStoreBar label={ownerPreview ? t.store.ownerPreviewUnpublished : t.store.ownerPreview} backLabel={t.store.ownerPreviewBack} dashboardHref={dashboardHref} />
   )}
 
   <div class="product-detail-page"

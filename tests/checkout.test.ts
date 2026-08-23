@@ -23,10 +23,19 @@ const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?:
 });
 const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
-const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; pausedAt?: string; closePendingAt?: string; closedAt?: string; demo?: boolean; previousSlugs?: string[]; sale?: { active: boolean; title: string; percent?: number } }> = {
+/** A store that is on the site. `store-status.ts` reads a missing `publishedAt` as "built and never
+ *  published", which is not sellable — so every fixture here that is meant to take an order says so. */
+const LIVE = '2026-01-01T00:00:00.000Z';
+
+const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; pausedAt?: string; closePendingAt?: string; closedAt?: string; publishedAt?: string; demo?: boolean; previousSlugs?: string[]; sale?: { active: boolean; title: string; percent?: number } }> = {
   'test-store': {
     id: 's1',
     slug: 'test-store',
+    // A live store, which is what every case in this suite is about. Stated rather than assumed:
+    // `store-status.ts` reads a missing `publishedAt` as "built and never published", so a fixture
+    // that omits it is a shop that cannot sell — and the whole suite would fail on the one field
+    // nobody meant to test.
+    publishedAt: LIVE,
     name: 'Test Store',
     sellerId: 'seller-1',
     address: 'Herzl 1, Tel Aviv', // present so self-pickup is offerable
@@ -470,7 +479,7 @@ describe('POST /api/checkout — server-side price re-validation', () => {
   it("still lets a seller buy from somebody ELSE's store", async () => {
     // The rule is about his own store, not about sellers shopping. Getting this wrong would turn
     // every registered business on the platform into someone who cannot buy anything here.
-    STORES['other-store'] = { id: 's4', slug: 'other-store', name: 'Other', sellerId: 'seller-9' };
+    STORES['other-store'] = { id: 's4', slug: 'other-store', name: 'Other', sellerId: 'seller-9', publishedAt: LIVE };
     SELLER_ACCOUNTS[validBuyer.buyerEmail] = { id: 'seller-1', email: validBuyer.buyerEmail };
     try {
       const res = await POST(makeContext({
@@ -496,7 +505,7 @@ describe('POST /api/checkout — server-side price re-validation', () => {
 
   it('refuses the WHOLE cart when only one of its stores belongs to the logged-in seller', async () => {
     // Otherwise the self-dealt item would ride along inside an otherwise legitimate order.
-    STORES['other-store'] = { id: 's3', slug: 'other-store', name: 'Other', sellerId: 'seller-9' };
+    STORES['other-store'] = { id: 's3', slug: 'other-store', name: 'Other', sellerId: 'seller-9', publishedAt: LIVE };
     getSellerSession.mockReturnValue('seller-1');
     try {
       const res = await POST(makeContext({
@@ -517,7 +526,7 @@ describe('POST /api/checkout — server-side price re-validation', () => {
   it('lets a logged-in seller buy from a store he does NOT own', async () => {
     // The block is self-dealing, not "sellers may not shop" — a seller is a buyer
     // everywhere else in the mall.
-    STORES['other-store'] = { id: 's3', slug: 'other-store', name: 'Other', sellerId: 'seller-9' };
+    STORES['other-store'] = { id: 's3', slug: 'other-store', name: 'Other', sellerId: 'seller-9', publishedAt: LIVE };
     getSellerSession.mockReturnValue('seller-1');
     try {
       const res = await POST(makeContext({

@@ -22,6 +22,10 @@ export interface StoreStateBadge {
 
 const BADGES: Partial<Record<ReturnType<typeof storeLifecycle>, StoreStateBadge>> = {
   blocked: { label: 'חסום', variant: 'failed' },
+  // Not a fault and not a penalty — the shop is built and waiting on clearing or on a subscription
+  // (`store-publication.ts`), which is why it takes the same muted treatment as a closed store
+  // rather than the warning colour the seller-caused halts get.
+  unpublished: { label: 'לפני עלייה לאוויר', variant: 'muted' },
   paused: { label: 'מוקפאת', variant: 'warning' },
   closing: { label: 'לקראת סגירה', variant: 'warning' },
   closed: { label: 'סגורה', variant: 'muted' },

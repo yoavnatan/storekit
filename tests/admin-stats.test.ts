@@ -15,6 +15,10 @@ function makeStore(overrides: Partial<Store> = {}): Store {
     tagline: '',
     description: '',
     colors: { primary: '#000', accent: '#000' },
+    // A live store by default: `store-status.ts` reads a missing `publishedAt` as "built and never
+    // published", and every case in this file is about a store that is already on the site. The
+    // unpublished state gets its own row below, said out loud.
+    publishedAt: '2026-01-01T00:00:00.000Z',
     createdAt: new Date().toISOString(),
     ...overrides,
   };
@@ -108,6 +112,7 @@ describe('filterAndSortStoreRows', () => {
       makeStoreRow({ store: makeStore({ id: 'closing', closePendingAt: NOW }) }),
       makeStoreRow({ store: makeStore({ id: 'closed', closedAt: NOW }) }),
       makeStoreRow({ store: makeStore({ id: 'active' }) }),
+      makeStoreRow({ store: makeStore({ id: 'unpublished', publishedAt: undefined }) }),
     ];
     const only = (state: StoreStateFilter) =>
       filterAndSortStoreRows(rows, { q: '', sortCol: 'name', sortDir: 'asc', state, emptyOnly: false }).map((r) => r.store.id);
@@ -116,7 +121,8 @@ describe('filterAndSortStoreRows', () => {
     expect(only('closing')).toEqual(['closing']);
     expect(only('closed')).toEqual(['closed']);
     expect(only('active')).toEqual(['active']);
-    expect(only('all')).toHaveLength(5);
+    expect(only('unpublished')).toEqual(['unpublished']);
+    expect(only('all')).toHaveLength(6);
   });
 });
 
@@ -128,9 +134,10 @@ describe('countStoreStates', () => {
       makeStoreRow({ store: makeStore({ id: 'p1', pausedAt: NOW }) }),
       makeStoreRow({ store: makeStore({ id: 'c1', closePendingAt: NOW }) }),
       makeStoreRow({ store: makeStore({ id: 'b1', blocked: true }) }),
+      makeStoreRow({ store: makeStore({ id: 'u1', publishedAt: undefined }) }),
     ];
     const counts = countStoreStates(rows);
-    expect(counts).toEqual({ all: 5, active: 2, paused: 1, closing: 1, closed: 0, blocked: 1 });
+    expect(counts).toEqual({ all: 6, active: 2, unpublished: 1, paused: 1, closing: 1, closed: 0, blocked: 1 });
     // The chips must partition the list — a store counted twice, or not at all, would make the
     // numbers on screen disagree with the rows behind them.
     const { all, ...states } = counts;

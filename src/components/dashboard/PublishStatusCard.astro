@@ -1,0 +1,72 @@
+---
+/**
+ * Why this shop is not on the site yet, and what — if anything — the seller can do about it.
+ *
+ * Renders NOTHING once the shop is live, like `OnboardingChecklist` beside it: guidance that
+ * retires itself instead of becoming permanent chrome.
+ *
+ * ── Why it is the first thing on the dashboard ──
+ * A seller who built a whole shop and cannot see it on the internet has exactly one question, and
+ * the platform has to answer it before he has to go looking. The owner's instruction is the whole
+ * spec: *"ולמוכר צריך להיות ברור מה חסר ומתי — הוא ממתין שבוע ולא עשה כלום רע"*.
+ *
+ * ── One row per hold, and the rows are not the same kind of thing ──
+ * Two of them are HIS to fix and carry a button. The third — PayMe examining the business, up to
+ * seven business days (agreement §11) — is nobody's to fix, so it deliberately has no button and
+ * says so: an action he cannot take, drawn as an action, is what turns a wait into a worry.
+ *
+ * The holds come from `lib/store-publication.ts`, computed once on the page. This component picks
+ * words, and nothing else.
+ */
+import type { PublishHold } from '../../lib/store-publication.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  /** Empty means the shop is live (or nothing is gating it) — the component renders nothing. */
+  holds: PublishHold[];
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { holds, d } = Astro.props;
+
+/** Label, consequence and — only where one exists — the tab that fixes it. A hold with no `panel`
+ *  is one nobody can act on, and the absence of the key is what stops a button being drawn. */
+const ROWS: Record<PublishHold, { title: string; note: string; cta?: string; panel?: string }> = {
+  subscription: {
+    title: d.pubHoldSubscription, note: d.pubHoldSubscriptionNote,
+    cta: d.pubHoldSubscriptionCta, panel: 'payouts',
+  },
+  'clearing-details': {
+    title: d.pubHoldDetails, note: d.pubHoldDetailsNote,
+    cta: d.pubHoldDetailsCta, panel: 'payouts',
+  },
+  'clearing-approval': { title: d.pubHoldApproval, note: d.pubHoldApprovalNote },
+};
+---
+
+{holds.length > 0 && (
+  <section class="card card--flat p-4 md:p-5 mb-4" id="publish-status" data-publish-holds={holds.join(',')}>
+    <h3 class="text-[1.05rem] font-bold m-0">{d.pubTitle}</h3>
+    {/* The reassurance sits directly under the title because it is the thing that stops the card
+        reading as a wall: nothing he built is lost or blocked, only the outward half is waiting. */}
+    <p class="muted m-0 mt-1 text-[0.86rem]">{d.pubBuildOn}</p>
+
+    <ul class="list-none p-0 m-0 mt-4 flex flex-col gap-3">
+      {holds.map((hold) => (
+        <li class="border-t [border-color:var(--color-border)] pt-3 first:border-t-0 first:pt-0">
+          <p class="m-0 font-semibold text-[0.92rem]">{ROWS[hold].title}</p>
+          <p class="muted m-0 mt-1 text-[0.84rem]">{ROWS[hold].note}</p>
+          {/* `data-goto-panel` is the dashboard's own tab-switch mechanism
+              (scripts/dashboard/ui.ts#initGotoPanelLinks) — the same one the overview stat cards
+              use, so this button behaves exactly like every other jump on the page. */}
+          {ROWS[hold].panel && (
+            <button type="button" class="btn btn--ghost btn--sm mt-2" data-goto-panel={ROWS[hold].panel}>
+              {ROWS[hold].cta}
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+
+    <p class="muted m-0 mt-3 text-[0.8rem]">{d.pubGoesLive}</p>
+  </section>
+)}

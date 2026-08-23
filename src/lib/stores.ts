@@ -163,6 +163,10 @@ export interface Store {
    *  by itself when the last one is done (store-lifecycle.ts#settleStoreClosure). */
   closePendingAt?: string;
   closedAt?: string;
+  /** When the store first became public. Absent = built but never live: the seller previews it,
+   *  the public gets a 404 and no platform surface lists it (lib/store-status.ts, `unpublished`).
+   *  Written only by lib/store-publication.ts. */
+  publishedAt?: string;
   createdAt: string;
 }
 
@@ -210,7 +214,7 @@ const COLUMNS = `s.id, s.seller_id, s.slug, s.name, s.tagline, s.description, s.
     s.address_visible, s.hours, s.hours_visible, s.blocked, s.demo, s.promo_weight, s.bg_colors,
     s.feed_sync, s.feed_export_token, s.custom_domain_hostname, s.custom_domain_status,
     s.custom_domain_added_at, s.custom_domain_checked_at,
-    s.paused_at, s.close_pending_at, s.closed_at, s.created_at,
+    s.paused_at, s.close_pending_at, s.closed_at, s.published_at, s.created_at,
     (SELECT array_agg(p.slug::text ORDER BY p.replaced_at, p.slug)
        FROM store_previous_slugs p WHERE p.store_id = s.id) AS previous_slugs`;
 
@@ -266,6 +270,7 @@ interface StoreRow {
   paused_at: Date | string | null;
   close_pending_at: Date | string | null;
   closed_at: Date | string | null;
+  published_at: Date | string | null;
   created_at: Date | string | null;
   previous_slugs: string[] | null;
 }
@@ -334,6 +339,8 @@ function toStore(row: StoreRow): Store {
   if (closePendingAt) store.closePendingAt = closePendingAt;
   const closedAt = iso(row.closed_at);
   if (closedAt) store.closedAt = closedAt;
+  const publishedAt = iso(row.published_at);
+  if (publishedAt) store.publishedAt = publishedAt;
   return store;
 }
 
@@ -457,8 +464,12 @@ export async function createStore(sellerId: string, { name, slug: rawSlug, tagli
     if (isReservedSlug(slug)) continue;
 
     const row = await firstRow<StoreRow>(
-      `INSERT INTO stores (id, seller_id, slug, name, tagline, description, colors, created_at)
-       SELECT $1, $2, $3, $4, $5, $6, $7::jsonb, now()
+      // `published_at` is named and left NULL — the column DEFAULTS to now() so that a row written
+      // by a seeder or a fixture means "already on the site", and this is the one place where the
+      // opposite is true: a shop a real person just opened is his to build and look at before he is
+      // asked for a card, and it goes public when `store-publication.ts` says both holds are clear.
+      `INSERT INTO stores (id, seller_id, slug, name, tagline, description, colors, created_at, published_at)
+       SELECT $1, $2, $3, $4, $5, $6, $7::jsonb, now(), NULL
         WHERE NOT EXISTS (SELECT 1 FROM store_previous_slugs WHERE slug = $3)
        ON CONFLICT (slug) DO NOTHING
        RETURNING ${INSERT_RETURNING}`,
@@ -847,7 +858,7 @@ export function isStoreVisible(store: Store): boolean {
   return isStoreReachable(store);
 }
 
-export { isStoreDiscoverable, canStoreSell, storeLifecycle, storeHttpStatus, showsPausedNotice } from './store-status.js';
+export { isStoreDiscoverable, canStoreSell, storeLifecycle, storeHttpStatus, showsPausedNotice, isStorePublished } from './store-status.js';
 export type { StoreLifecycle } from './store-status.js';
 
 /** getAllStores(), pre-filtered to what a platform surface may LIST — the version every public
@@ -926,6 +937,9 @@ const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }>
   pausedAt:       { sql: 'paused_at = $::timestamptz', value: (v) => v ?? null },
   closePendingAt: { sql: 'close_pending_at = $::timestamptz', value: (v) => v ?? null },
   closedAt:       { sql: 'closed_at = $::timestamptz', value: (v) => v ?? null },
+  // Set once, by lib/store-publication.ts, and never cleared through here — see the column comment
+  // in migration 20260823_203823.
+  publishedAt:    { sql: 'published_at = $::timestamptz', value: (v) => v ?? null },
 };
 
 export type StoreUpdate = Partial<Omit<Store, 'id' | 'sellerId' | 'createdAt' | 'slug' | 'previousSlugs'>>;

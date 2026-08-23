@@ -79,10 +79,20 @@ export const PAYME_CURRENCY = 'ILS';
 
 export interface PaymeCredentials {
   clientKey: string;
-  /** Our own marketplace merchant account — the one the SHIPPING charge is made against, because
-   *  a delivery fee is ours to collect and ours to pay a courier out of. Separate from a seller's
-   *  `seller_payme_id`, and absent it the shipping leg cannot run. */
-  marketplaceSellerId?: string;
+  /**
+   * **Our own MERCHANT account** — `PAYME_DELIVERY_MERCHANT_ID`, opened with `create-seller` like
+   * any seller's (`docs/payme-sandbox-notes.md` §18). Two charges are made against it and neither
+   * can be made anywhere else: the delivery leg of a cart, which is ours to collect and ours to pay
+   * a courier out of, and the seller's monthly subscription, which is money flowing towards us
+   * rather than through us.
+   *
+   * ⚠️ **It is NOT `PAYME_SELLER_API_ID`**, which this field used to read. That value is the
+   * PARTNER identity, and §15 measured that charging it anything is refused with
+   * `174 · אפשרות זו אינה נתמכת במשתמשים מסוג זה` — being the partner does not exempt us from
+   * needing a merchant account to accept a card. Nothing read this field while it held the wrong
+   * value, which is the only reason the mistake cost nothing.
+   */
+  ownMerchantId?: string;
   /** `https://sandbox.payme.io/api/` or `https://live.payme.io/api/`. Trailing slash included. */
   baseUrl: string;
 }
@@ -97,10 +107,10 @@ export interface PaymeCredentials {
 export function paymeCredentials(): PaymeCredentials | null {
   const clientKey = serverEnv('PAYME_CLIENT_KEY');
   if (!clientKey) return null;
-  const marketplaceSellerId = serverEnv('PAYME_SELLER_API_ID');
+  const ownMerchantId = serverEnv('PAYME_DELIVERY_MERCHANT_ID');
   return {
     clientKey,
-    ...(marketplaceSellerId ? { marketplaceSellerId } : {}),
+    ...(ownMerchantId ? { ownMerchantId } : {}),
     baseUrl: serverEnv('PAYME_BASE_URL') || 'https://sandbox.payme.io/api/',
   };
 }
@@ -649,6 +659,151 @@ export async function refundSale(input: RefundSaleInput, creds: PaymeCredentials
     ...(input.refundAmountAgorot !== undefined ? { sale_refund_amount: input.refundAmountAgorot } : {}),
   }, creds);
   return { paymeSaleId: String(res.payme_sale_id ?? input.paymeSaleId), saleStatus: String(res.sale_status ?? '') };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Subscriptions — the SELLER's monthly fee, and the only collection path we have
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Everything below runs the OPPOSITE way from the checkout, and reading it as "another sale" is the
+ * mistake to avoid: here the card belongs to the SELLER and the merchant account is OURS. It is the
+ * one thing a seller owes us that has somewhere to be collected from — GO_LIVE §3.0.1 records the
+ * hole, and this is the half of it that closes, because the split model leaves us no balance of his
+ * to deduct from. PayMe price it at ללא עלות (appendix ב׳) and handle the dunning themselves: a
+ * failed iteration is retried daily and the subscription is cancelled on the seventh failure.
+ *
+ * Measured against the live sandbox 2026-08-23 (`scripts/payme-probe.mjs subscription`), which is
+ * where every number in here comes from.
+ */
+
+/** PayMe's `sub_iteration_type`. Monthly is the only one this platform bills on. */
+export const PAYME_ITERATION_MONTHLY = 3;
+
+/** PayMe's own minimum iteration price, agorot — the same 500 as a sale, documented on their
+ *  Generate page. Every tier is far above it; the constant exists so a discount can never quietly
+ *  produce a subscription PayMe would refuse. */
+export const PAYME_MIN_SUBSCRIPTION_AGOROT = 500;
+
+/**
+ * `sub_status`, from their own Subscriptions page — **not the two-value enum their Generate page
+ * prints**, which says "0 active, 1 inactive" and is simply wrong: a subscription created here came
+ * back `2`, and 0 is not in the real list at all.
+ *
+ * Kept as PayMe's numbers rather than mapped to words at this layer, for the reason `saleIsPaid`
+ * gives: a status nobody has met should be visible as itself instead of bucketed as one we know.
+ */
+export const PAYME_SUB_STATUS = {
+  initial: 1,
+  active: 2,
+  failed: 4,
+  canceled: 5,
+  completed: 6,
+  retrying: 7,
+} as const;
+
+/** Is the seller paying right now? `retrying` counts as paying — PayMe are mid-dunning and will
+ *  either succeed or cancel within a week, and taking a working shop off the site on the first
+ *  declined card would punish an expired card exactly as hard as a refusal to pay. */
+export function subscriptionIsPaying(subStatus: number): boolean {
+  return subStatus === PAYME_SUB_STATUS.active || subStatus === PAYME_SUB_STATUS.retrying;
+}
+
+export interface GenerateSubscriptionInput {
+  /** OURS. See `PaymeCredentials.ownMerchantId` — the partner id is refused with `174`. */
+  ownMerchantId: string;
+  /** One iteration, agorot. */
+  priceAgorot: number;
+  description: string;
+  /** The seller's card, tokenised. **With it the first iteration is charged immediately and
+   *  server-to-server** (measured: `sub_paid: true` on the response), so there is no page for
+   *  anyone to visit. Without it PayMe return `sub_url` and the seller pays on their page. */
+  buyerKey?: string;
+  /** Our own id for this subscription, echoed back on every callback — how a notification finds
+   *  the seller it is about without trusting anything else in the body. */
+  correlationId: string;
+  callbackUrl?: string;
+  buyerEmail?: string;
+}
+
+export interface GeneratedSubscription {
+  /** PayMe's id, and what `cancel-subscription` is called with. */
+  subPaymeId: string;
+  /** Their numeric status — compare with `PAYME_SUB_STATUS`, never with a literal. */
+  subStatus: number;
+  /** Present when nobody has paid yet: the page the seller enters a card on. Absent on a token
+   *  subscription, which is already paid by the time this returns. */
+  subUrl?: string;
+  /** When the next iteration is due, PayMe's string. Passed through unparsed — it is display and
+   *  reconciliation material, and their format is `YYYY-MM-DD HH:MM:SS`. */
+  nextDate?: string;
+}
+
+export async function generateSubscription(input: GenerateSubscriptionInput, creds: PaymeCredentials): Promise<GeneratedSubscription> {
+  if (input.priceAgorot < PAYME_MIN_SUBSCRIPTION_AGOROT) {
+    throw new PaymeError('generate-subscription', -1, `sub_price ${input.priceAgorot} is below PayMe's minimum of ${PAYME_MIN_SUBSCRIPTION_AGOROT}`);
+  }
+  const res = await callPayme('generate-subscription', {
+    seller_payme_id: input.ownMerchantId,
+    sub_currency: PAYME_CURRENCY,
+    sub_price: input.priceAgorot,
+    sub_description: input.description.slice(0, 500),
+    sub_iteration_type: PAYME_ITERATION_MONTHLY,
+    // 1 = regular. 10 is a template, whose link never expires — a standing payment page for a
+    // per-seller charge is not something this platform should be creating.
+    sub_type: 1,
+    subscription_id: input.correlationId,
+    // Their receipts are ours to send, in our own words, from `lib/email/`. Two systems mailing a
+    // seller about the same charge is how a support conversation starts.
+    sub_send_notification: false,
+    ...(input.buyerKey ? { buyer_key: input.buyerKey } : {}),
+    ...(input.callbackUrl ? { sub_callback_url: input.callbackUrl } : {}),
+    ...(input.buyerEmail ? { sub_email_address: input.buyerEmail } : {}),
+  }, creds);
+
+  const subPaymeId = String(res.sub_payme_id ?? '');
+  if (!subPaymeId) throw new PaymeError('generate-subscription', PAYME_OK, 'succeeded without a sub_payme_id');
+  const subUrl = String(res.sub_url ?? '');
+  const nextDate = String(res.sub_next_date ?? '');
+  return {
+    subPaymeId,
+    subStatus: Number(res.sub_status ?? PAYME_SUB_STATUS.initial),
+    // Only when there is still something for a person to do. PayMe return the URL on a token
+    // subscription too, already paid, and rendering that as "finish your payment" would send a
+    // paying seller to a page that charges him twice.
+    ...(subUrl && !input.buyerKey ? { subUrl } : {}),
+    ...(nextDate ? { nextDate } : {}),
+  };
+}
+
+/** Stop billing. Idempotent at their end for our purposes: cancelling an already-cancelled
+ *  subscription is refused with a code, never a second charge. */
+export async function cancelSubscription(ownMerchantId: string, subPaymeId: string, creds: PaymeCredentials): Promise<void> {
+  await callPayme('cancel-subscription', { seller_payme_id: ownMerchantId, sub_payme_id: subPaymeId }, creds);
+}
+
+/**
+ * What PayMe say this subscription's status is — asked of THEM, never read off a callback body.
+ *
+ * Same rule as `getSellerStatus`, and for the same reason: `sub_callback_url` is a public address,
+ * and a handler that believed `sub_status=2` would let anyone on the internet publish any store on
+ * this platform for free.
+ *
+ * ⚠️ **Matched by id, never `items[0]`.** `get-sales` was measured ignoring its own filter (§12),
+ * and no endpoint here may be assumed to behave like another. `null` = PayMe do not know it, which
+ * is NOT "cancelled" — writing a verdict from a failed lookup is how a paying seller's shop goes
+ * dark.
+ */
+export async function getSubscriptionStatus(ownMerchantId: string, subPaymeId: string, creds: PaymeCredentials): Promise<{ subStatus: number; nextDate?: string } | null> {
+  const res = await callPayme('get-subscriptions', { seller_payme_id: ownMerchantId }, creds);
+  const items = Array.isArray(res.items) ? res.items as Record<string, unknown>[] : [];
+  const found = items.find((i) => String(i.sub_payme_id ?? '') === subPaymeId);
+  if (!found) return null;
+  const nextDate = String(found.sub_next_date ?? '');
+  return {
+    subStatus: Number(found.sub_status ?? PAYME_SUB_STATUS.initial),
+    ...(nextDate ? { nextDate } : {}),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -15,13 +15,17 @@ import { isStoreDiscoverable } from '../src/lib/store-status.js';
 // only the fs layer is faked. So the demo assertion below tests the route + the
 // actual rule, not the mock (see lib/demo-stores.ts).
 
+// `publishedAt` on every row, and stated rather than defaulted: `isStoreDiscoverable` is the real
+// rule here, and it reads a missing one as "built and never published" — which is undiscoverable,
+// correctly, and would empty this sitemap for a reason that has nothing to do with what it asserts.
+const LIVE = '2026-01-01T00:00:00.000Z';
 const ALL_STORES = [
-  { id: 's1', slug: 'acme', createdAt: '2026-01-02T09:00:00.000Z' },
-  { id: 's2', slug: 'showcase-fashion', createdAt: '2026-01-03T09:00:00.000Z', demo: true },
+  { id: 's1', slug: 'acme', createdAt: '2026-01-02T09:00:00.000Z', publishedAt: LIVE },
+  { id: 's2', slug: 'showcase-fashion', createdAt: '2026-01-03T09:00:00.000Z', publishedAt: LIVE, demo: true },
   // On its own verified domain — excluded from the platform's copy, and the subject of the
   // custom-host case below.
   {
-    id: 's3', slug: 'boots', createdAt: '2026-01-04T09:00:00.000Z',
+    id: 's3', slug: 'boots', createdAt: '2026-01-04T09:00:00.000Z', publishedAt: LIVE,
     customDomain: { hostname: 'boots.example', status: 'active', addedAt: '2026-01-04T09:00:00.000Z' },
   },
 ];

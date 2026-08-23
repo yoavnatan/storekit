@@ -36,6 +36,15 @@ import { sendEmail } from './index.js';
  *  loses days of advertising and never sees a message saying so. That is the letter. */
 export type LifecycleMailState = 'paused' | 'closing' | 'closed' | 'active';
 
+/** `unpublished` is deliberately not one either, and it is the reason this guard exists: every
+ *  letter above is about a LIVE shop going away or coming back, and a shop that has never been
+ *  public has neither happened to it. What a waiting seller is told — what is missing and that
+ *  nothing is his fault — is `store-publication.ts`'s, on the screen where the next step is.
+ *  A guard rather than a cast, so adding a sixth lifecycle state forces the same decision again. */
+export function isLifecycleMailState(state: string): state is LifecycleMailState {
+  return state === 'paused' || state === 'closing' || state === 'closed' || state === 'active';
+}
+
 const DASHBOARD = `${SITE}/seller/dashboard?panel=settings`;
 const ORDERS = `${SITE}/seller/dashboard?panel=orders`;
 const ADVERTISING = `${SITE}/seller/dashboard?panel=advertising`;

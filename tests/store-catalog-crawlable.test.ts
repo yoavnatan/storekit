@@ -136,7 +136,7 @@ describe('the store page keeps its catalog crawlable', () => {
     // store: it is the platform's own ad landing, which must stay out of the index so it never
     // competes with the seller's domain (custom-domain.ts#AD_LANDING_PARAM). Every other shelf —
     // each category, each page — stays indexable, which is what this assertion is really pinning.
-    expect(page).toContain('noindex={!storeReady || isDemo || isComposedView || adLanding}');
+    expect(page).toContain('noindex={!storeReady || isDemo || isComposedView || adLanding || ownerPreview}');
   });
 
   it('redirects past the last page rather than serving an empty shelf', () => {

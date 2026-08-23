@@ -32,7 +32,10 @@ async function robotsFor(host: string): Promise<string> {
   return (await GET(ctx as never)).text();
 }
 
-const SELLER_STORE = { slug: 'acme', customDomain: { hostname: 'shop.acme.co.il', status: 'active' } };
+// `publishedAt`: robots only names a host's sitemap for a store that is actually live — an
+// unpublished store's pages all 404 and its sitemap is empty by construction, so pointing a crawler
+// at one would describe nothing (`robots.txt.ts`).
+const SELLER_STORE = { slug: 'acme', publishedAt: '2026-01-01T00:00:00.000Z', customDomain: { hostname: 'shop.acme.co.il', status: 'active' } };
 
 describe('robots.txt on the platform host', () => {
   beforeEach(() => { byCustomDomain.mockReset(); });

@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { store as platform } from '../config/store.config.js';
-import { getStoreByCustomDomain } from '../lib/stores.js';
+import { getStoreByCustomDomain, isStorePublished } from '../lib/stores.js';
 import { isPlatformHost } from '../lib/custom-domain.js';
 import { stripTrailingSlashes } from '../lib/url-base.js';
 import { siteIsHiddenFromSearch } from '../lib/site-mode.js';
@@ -97,7 +97,13 @@ export async function GET(ctx: APIContext): Promise<Response> {
     // the exact cross-host reference this route was written to stop, restated by the route itself in
     // its own fall-through. An engine ignores it, Search Console reports it against the SELLER's
     // property, and the honest answer is that this host declares no sitemap.
-    return txt(body(store ? [`https://${store.customDomain!.hostname}/sitemap-content.xml`] : [], false));
+    // `isStorePublished` for the same reason as the paragraph above: a store that has not gone live
+    // yet answers 404 on every one of its pages and its sitemap is empty by construction
+    // (`isStoreDiscoverable`), so naming one would point a crawler at a document that describes
+    // nothing. It comes back the moment the shop is published, with no cache to wait out beyond the
+    // five minutes below.
+    const named = store && isStorePublished(store) ? [`https://${store.customDomain!.hostname}/sitemap-content.xml`] : [];
+    return txt(body(named, false));
   }
 
   const base = stripTrailingSlashes(platform.url);

@@ -425,7 +425,9 @@ describe('the discovery lists', () => {
 
   it('keeps a showcase store out of everything a search engine or a feed may see', async () => {
     const store = await createStore(DANA, { name: 'Demo', slug: freshBase() });
-    await updateStore(store.id, { demo: true });
+    // Published explicitly: `createStore` opens a shop UNPUBLISHED (store-publication.ts), which is
+    // undiscoverable for a reason that has nothing to do with the demo rule this case is about.
+    await updateStore(store.id, { demo: true, publishedAt: new Date().toISOString() });
     expect((await getIndexableStores()).map((s) => s.id)).not.toContain(store.id);
     expect((await getDemoStores()).map((s) => s.id)).toContain(store.id);
   });

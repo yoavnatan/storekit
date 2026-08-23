@@ -41,7 +41,7 @@ const { storeRows, q, sortCol, sortDir, state, stateCounts, emptyOnly, emptyCoun
 // The state chips. Labels come from the same map the row badges use, so a chip and the badge on
 // the rows it filters to can never say different words for the same state.
 const STATE_LABELS: Record<StoreStateFilter, string> = {
-  all: 'הכל', active: 'פעילות', paused: 'מוקפאות', closing: 'לקראת סגירה', closed: 'סגורות', blocked: 'חסומות',
+  all: 'הכל', active: 'פעילות', unpublished: 'לפני עלייה לאוויר', paused: 'מוקפאות', closing: 'לקראת סגירה', closed: 'סגורות', blocked: 'חסומות',
 };
 // An empty state is not worth a chip — on a healthy platform that would be four zeros between the
 // admin and the two filters they actually use. "הכל" and "פעילות" always show so the row never

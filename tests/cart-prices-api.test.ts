@@ -22,7 +22,9 @@ const PRODUCTS: Record<string, {
   },
 };
 
-const STORE = { id: 's1', slug: 'test-store', name: 'Test Store', sellerId: 'seller-1' };
+// `publishedAt` is stated: `store-status.ts` reads its absence as "built and never published", and
+// every case here is about a cart line in a store a shopper can actually buy from.
+const STORE = { id: 's1', slug: 'test-store', name: 'Test Store', sellerId: 'seller-1', publishedAt: '2026-01-01T00:00:00.000Z' };
 
 // Lookup stubbed, lifecycle rule REAL (store-status.js is pure) — same reason as the
 // store-products mock below: a hand-written `() => true` would have kept this suite green after

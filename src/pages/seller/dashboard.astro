@@ -10,6 +10,7 @@ import { COMBO_STOCK_HIT, COMBO_STOCK_VALUE, INLINE_EDIT_HINT, STOCK_CELL_GROUP,
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
 import TopProductsList from '../../components/dashboard/TopProductsList.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
+import PublishStatusCard from '../../components/dashboard/PublishStatusCard.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
@@ -53,6 +54,7 @@ import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboa
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 import { ensureMerchantAccount, clearingStatusFor } from '../../lib/seller-merchant.js';
+import { publishHoldsFor, syncStorePublication } from '../../lib/store-publication.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
 import { openOrderCount } from '../../lib/store-lifecycle.js';
@@ -344,6 +346,11 @@ if (Astro.request.method === 'POST') {
         storeUrl: `${platformConfig.url}/${urlSegment(newStoreSlug)}`,
         storeDescription: description || tagline,
       });
+      // A store opens UNPUBLISHED (`store-publication.ts`) — the seller builds it and looks at it
+      // before he is ever asked for a card. This asks the gate to re-run rather than assuming an
+      // answer, so a seller who is already approved and already paying gets his SECOND store live
+      // immediately, with nothing to press, while a first-time seller's stays private.
+      await syncStorePublication(sellerId);
       return Astro.redirect(machineUrl(`/seller/dashboard?store=${newStoreId}`));
     }
   } else if (action === 'add-product') {
@@ -412,6 +419,12 @@ const seller = await getSellerById(sellerId);
 /** Whether his stores may take money, for the Payments tab — null when no clearing provider is
  *  configured at all, in which case nothing is blocked and there is nothing to say. */
 const clearingStatus = await clearingStatusFor(sellerId);
+// Why this seller's shops are not on the site — computed once, read by the overview card. Asked
+// only when at least one of his stores is actually waiting: for a live seller it would be two DB
+// reads on every dashboard load to render nothing.
+const publishHolds = allStores.some((s) => storeLifecycle(s) === 'unpublished')
+  ? await publishHoldsFor(sellerId)
+  : [];
 /** The reason the Orders tab is narrowed, when the seller arrived from the payments tab. Whitelisted
  *  rather than echoed: it is printed on the page, and an unknown value simply means no banner. */
 const ordersFromBasis = ['payment', 'unshipped'].includes(Astro.url.searchParams.get('ofrom') ?? '')
@@ -1348,6 +1361,9 @@ const orderStatusColors: Record<string, string> = {
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2>{d.tabOverview}</h2>
         </div>
+        {/* Above the checklist, because it outranks it: a seller whose shop cannot go live is not
+            helped by being told to upload a banner first. */}
+        <PublishStatusCard holds={publishHolds} d={d} />
         <OnboardingChecklist steps={onboardingSteps} />
         {showTabHints && <TabHint text={d.tabHintOverview} />}
         {/* Each card jumps to its tab (data-goto-panel, initGotoPanelLinks() in ui.ts) — same pattern as AdminOverviewPanel.astro. favoritedBy has no dedicated tab of its own, so it stays a plain (non-button) stat. Box style matches the performance tab's KPI cards (perf-kpis below) for visual consistency between the two stat grids. */}

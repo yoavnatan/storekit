@@ -305,7 +305,7 @@ export type StoreStateFilter = StoreLifecycle | 'all';
  *  them: "how many of the stores called X are paused" is a real question, "how many are paused
  *  out of the ones I am already looking at only the paused of" is not. */
 export function countStoreStates(rows: StoreRow[]): Record<StoreStateFilter, number> {
-  const counts = { all: rows.length, active: 0, paused: 0, closing: 0, closed: 0, blocked: 0 };
+  const counts = { all: rows.length, active: 0, unpublished: 0, paused: 0, closing: 0, closed: 0, blocked: 0 };
   for (const r of rows) counts[storeLifecycle(r.store)]++;
   return counts;
 }
@@ -381,7 +381,7 @@ const VALID_STORE_SORT_COMBOS = new Set(['name:asc', 'name:desc', 'revenue:desc'
 
 /** Every value the state filter accepts — the chip row's order, and the whitelist a hand-edited
  *  query param is checked against. */
-export const STORE_STATE_FILTERS = ['all', 'active', 'paused', 'closing', 'closed', 'blocked'] as const;
+export const STORE_STATE_FILTERS = ['all', 'active', 'unpublished', 'paused', 'closing', 'closed', 'blocked'] as const;
 
 export function parseStoreQuery(sp: URLSearchParams): AdminStoreQuery {
   const requested = sp.get('stsort') ?? 'name:asc';
