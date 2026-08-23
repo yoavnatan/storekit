@@ -1949,7 +1949,12 @@ const orderStatusColors: Record<string, string> = {
                   <button type="button" class="sort-btn" data-sort-col="purchased" aria-label={`${d.sortByLabel} ${d.colPurchased}`}><span class="sort-btn__label">{d.colPurchased}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
                 <th class="date-col">
-                  <button type="button" class="sort-btn" data-sort-col="createdAt" aria-label={`${d.sortByLabel} ${d.colDateAdded}`}><span class="sort-btn__label">{d.colDateAdded}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                  <button type="button" class="sort-btn" data-sort-col="createdAt" aria-label={`${d.sortByLabel} ${d.colDateAdded}`}>{/* Both spellings, one shown — this is the longest heading in the table and the only one
+                        that could not stay readable in the narrow state on width alone (measured: 65% of
+                        it visible at 660px). The column does not need to be wider; the WORD needs to be
+                        shorter, and the short form already exists for the mobile card. CSS picks, so the
+                        two can never disagree about which width gets which. */}
+                    <span class="sort-btn__label date-label--long">{d.colDateAdded}</span><span class="sort-btn__label date-label--short">{d.colDateAddedShort}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
                 {/* The gauge column's header. Two things had to be true at once and they pull
                     against each other: the heading has to sit directly ABOVE the dials, and the dials

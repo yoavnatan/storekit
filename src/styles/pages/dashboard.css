@@ -268,37 +268,107 @@ textarea.input { resize: none; }
 /* The products table's query container — the wrapper added in seller/dashboard.astro. Its own
    comment carries the reasoning; this is the declaration the two share-sets below query. Named,
    like `msgpanel`, so a future nested container cannot capture them by accident. */
-.prod-cq { container-type: inline-size; container-name: prodtable; }
+/* ══ THE PRODUCTS TABLE HAS THREE STATES, AND NOTHING ELSE MOVES ══
+   Owner, 2026-08-23, watching a screen recording of his own resize: *"יש עדיין קפיצות מאוד
+   מוזרות בריווחים מלא פעמים"*, then the specification, which is the whole of this block:
+   *"יש שם פעם אחת של היעלמות של המספר הסידורי, אחר כך היעלמות של המק״ט, ואח״כ מעבר לכרטיסייה.
+   זהו. רק לוודא שתמיד הכותרות נראות לעין לפחות ברובן."*
 
-/* ══ A COLUMN LEAVES ONCE AND DOES NOT COME BACK ══
-   Owner, 2026-08-23: *"אין בעיה שתהיה קפיצה פשוט שלא ילך ויחזור ילך ויחזור"* — a jump is
-   fine, a column that disappears and reappears is not.
+   WHAT WAS HERE BEFORE, and why it produced what he saw. Two hand-tuned sets of column
+   percentages swapped at a breakpoint, a third set nested inside one of them, and three
+   padding regimes that switched independently — all keyed to the TABLE's width through a
+   container query. The table's width is not monotonic in the window's (the side rail hands
+   its column back at 1180), so the sets swapped, swapped back thirty pixels later, and
+   swapped again. **Measured on the running dashboard, dragging 1440 → 700 in 5px steps: 52
+   abrupt steps at five distinct widths.** Every one of them was a column jumping to a
+   different declared width, not a column shrinking.
 
-   The blocks below decide what fits from the TABLE's width, which is right on its own terms
-   and is what makes the rail's own collapse re-flow the columns correctly. But the table's
-   width is NOT monotonic in the window's: the rail hands back its column at 1180, so
-   narrowing the WINDOW can make the TABLE wider. Measured before this rule existed, dragging
-   1440 → 660 took the serial number away at 1320, gave it back at 1170 and took it again at
-   1140; the SKU did the same at 1290 / 1170 / 1100. Three transitions each, and from the
-   seller's side the interface is simply flickering as he resizes.
+   WHAT IS HERE NOW. One set of widths, one padding, and three toggles. Percentages scale
+   with the table, so between the toggles every column shrinks continuously and nothing
+   steps. The three toggles are the three he named and are keyed to the WINDOW, so they can
+   only ever fire once each on the way down:
 
-   So the rule is: a column may hide for either reason, and once the WINDOW has passed the
-   width where it went, it stays gone. Both conditions only ever say `display: none`, so
-   their union can add hiding and never take it away — and the window only gets narrower, so
-   the result is monotonic by construction. The thresholds are the widths at which each
-   column actually first disappeared, read off the sweep rather than chosen.
+     ≤1180  the serial number goes   (also where the rail collapses, so they move together
+                                      rather than colliding — that collision was half the jumps)
+     ≤900   the SKU column goes      (its value moves under the product name, never off screen)
+     ≤640   the table becomes cards  (unchanged, further down this file)
 
-   The cost, stated plainly: between 1180 and 900 the rail is icons and the table is wide
-   enough for both columns, and they stay hidden anyway. That is the price of never going
-   backwards, and it is the one he asked to pay. */
-@media (max-width: 1329.98px) {
-  .products-table .row-num { display: none; }
+   THE CONSTRAINT HE ATTACHED — "the headings must stay mostly readable" — is what the single
+   set is tuned against rather than a general tidiness. `tests/products-table-states.test.ts`
+   holds both halves: three transitions and no more, and every heading above its legibility
+   floor at the narrowest width of each state.
+
+   `.prod-cq` is no longer a query container; it stays only as a specificity booster, because
+   `.products-table td { padding: 0.75rem }` sits hundreds of lines below and would otherwise
+   win on source order. That trap is real — it silently beat this padding for weeks. */
+
+.products-table { table-layout: fixed; }
+.products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* THE PADDING SHRINKS WITH THE WINDOW INSTEAD OF STEPPING (owner, 2026-08-23: *"אני בטוח
+   שיש דרך יותר מתוחכמת לגרום למרווחים שם להתכווץ לפי רוחב המסך"* — there is, and this is it).
+   Three padding regimes used to swap at breakpoints, which is most of what he saw jumping.
+   `clamp` makes the same range continuous: roomy where there is room, tight where there is
+   not, and never a step. 0.25rem is the floor at which two neighbouring numbers still read as
+   two columns; 0.75rem is the desktop value this table has always had. */
+.prod-cq .products-table td { padding-inline: clamp(0.25rem, 0.55vw, 0.75rem); padding-block: 0.65rem; }
+.prod-cq .products-table th { padding-inline: clamp(0.25rem, 0.55vw, 0.75rem); }
+
+/* Fixed columns carry a control or a picture, so they do not scale with the table: a
+   checkbox, a thumbnail, the SEO gauge and the kebab are the same size at every width.
+   Everything else is a share, which is what makes the shrink continuous. */
+.products-table .check-col     { width: 2.4rem; overflow: visible; }
+.products-table .row-num       { width: 2.4rem; }
+.products-table .thumb-col     { width: 4rem; }
+/* 2.6rem, not 2.2: the gauge is 21px and the heading is the word "SEO", and at 2.2rem the
+   WORD was the thing that did not fit (74% of it visible at 1600px) even though the gauge
+   did. A column wide enough for its mark and too narrow for its name is a column nobody can
+   learn. */
+.products-table .seo-col       { width: 2.6rem; padding-inline: 0.15rem; }
+.products-table .actions-col   { width: 2.8rem; padding-inline: 0.15rem; }
+
+.products-table .name-col      { width: 22%; }
+.products-table .sku-col       { width: 11%; }
+.products-table .cat-col       { width: 14%; }
+.products-table .price-col     { width: 10%; }
+.products-table .stock-col     { width: 11%; }
+.products-table .wishlist-col  { width: 7%; }
+.products-table .purchased-col { width: 8%; }
+.products-table .date-col      { width: 11%; }
+
+.products-table .name-col .product-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-@media (max-width: 1289.98px) {
+
+/* The date heading has two spellings and CSS picks one — see the markup for why. Above the
+   narrow state it reads "נוסף בתאריך"; below it, "נוסף", which is the same word the mobile
+   card has always used. Shortening the WORD rather than widening the column is what keeps
+   every heading readable without giving a low-value column more room than it earns. */
+.date-label--short { display: none; }
+@media (max-width: 1339.98px) {
+  .date-label--long  { display: none; }
+  .date-label--short { display: inline; }
+}
+
+/* ── Toggle 1: the serial number ──
+   First to go, and it is the right first: it is the only column carrying nothing about the
+   product — a position in the current sort, which changes when the sort does. */
+@media (max-width: 1339.98px) {
+  .products-table .row-num { display: none; }
+  .products-table .sort-icon { display: none; }
+}
+
+/* ── Toggle 2: the SKU column ──
+   The column goes; the VALUE does not. It moves under the product name in the same query
+   that drops it, so "what is this product's SKU" is answerable at every width the dashboard
+   has — see `.product-sku-inline`. */
+@media (max-width: 1179.98px) {
   .products-table .sku-col { display: none; }
-  /* The value follows, in the same condition that takes its column — see .product-sku-inline. */
   .products-table .product-sku-inline { display: block; }
 }
+
 
 @media (max-width: 999px) {
   /* Toolbar stays ONE line across the whole table range (tablet + small desktop),
@@ -322,235 +392,6 @@ textarea.input { resize: none; }
 /* The same rules, asked of the TABLE's width instead of the page's — see `.prod-cq` above.
    The toolbar keeps the viewport query it was split out of: what compacts there is button
    LABELS, and that row is already a horizontal scroller, so it has no width to run out of. */
-@container prodtable (max-width: 999px) {
-  .products-table { table-layout: fixed; }
-  /* **`.prod-cq` is here to WIN, not to scope** (found 2026-08-23, while measuring the columns).
-     The base rule is `.products-table td { padding: 0.75rem }` and it sits several hundred lines
-     BELOW this block. Same specificity, later in the source — so this `padding-inline` has been
-     losing to it since the day it was written, and every width in this block was reasoning about
-     0.4rem of cell padding while the browser applied 0.75rem. That is ~120px across thirteen
-     columns, on the range that has the least width to spare; a container query adds no specificity
-     of its own, so nothing about the `@container` wrapper ever made this rule stronger.
-     The extra class does. It scopes nothing new — the container IS `.prod-cq`, so anything this
-     block can match is already inside it — it just outranks the base rule the way this block
-     always assumed it did. */
-  /* 0.25rem, down from 0.4 (owner, 2026-08-23: *"הכותרות מוסתרות לגמרי אי אפשר להבין מה קורה
-     שם"*). Thirteen columns × two sides is where this range's width actually goes: at 0.4rem it
-     was 166px of a 578px table spent on air, while "מלאי" was rendering one pixel wide and
-     "נוסף בתאריך" twenty-five of the seventy-four it wants. Padding is the only thing here that
-     can give without a column losing a word, so it gives first and it gives everywhere. */
-  .prod-cq .products-table td { padding-inline: 0.25rem; padding-block: 0.6rem; }
-  .prod-cq .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.25rem; }
-  /* The sort chevron (.sort-icon) has flex-shrink:0 (see base rule) so it
-     never gets squeezed — meaning when the button itself doesn't fit, 100%
-     of the deficit lands on .sort-btn__label, crushing even short labels
-     down to 1 character before the icon gives up any space. The chevron is
-     decorative at this width (row-num, similarly non-essential, is already
-     dropped outright below) — hiding it here hands its ~15px back to the
-     label, which is what actually needs to stay legible. */
-  .products-table .sort-icon { display: none; }
-  .products-table .row-num { display: none; }
-  /* Fixed width + never clip: 4% shrank below the 15px checkbox at the narrow end of this range,
-     and the th `overflow:hidden` above then erased part of it. The select-all must always be visible. */
-  .products-table .check-col     { width: 2.25rem; overflow: visible; }
-  /* Fixed width, not a %: the thumbnail (.thumb-wrap) is a fixed 42px, so a percentage column
-     that shrinks below ~55px (thumb + cell padding) let the image overflow into the name cell and
-     ride over the product title. A fixed width sized to the thumb keeps it in its own lane. */
-  .products-table .thumb-col     { width: 3.6rem; }
-  /* The name/category balance is NOT fixed by moving percent between them — tried on 2026-08-12
-     (name 16.5 / cat 10) and reverted the same day: the chip went to "ד…", and a category that
-     cannot be read is not a narrower column, it is a missing one. The room comes from .seo-col
-     below instead, which is sized to its gauge rather than to its heading. */
-  /* 21%, up from 13 — and the 8 points are not taken from anywhere, they were never being used.
-     With the cell padding actually applying (see `.prod-cq` above, which had been silently losing
-     to the base rule), every other column in this block ended up carrying 8–24px more than its
-     content asks for: 103px of slack in total, on the range where the product NAME was down to
-     nine characters and an ellipsis. Each column below is now set to what it measured as needing
-     and the name takes the remainder, which is the same discipline the wide block uses. */
-  .products-table .name-col      { width: 20.3%; }
-  /* +1% over the long-standing 13.5, taken from date-col below (12% still clears "01/08/26" and
-     the heading was already ellipsizing). The gauge column costs this range ~54px, and at 13.5 the
-     category chip had gone from just-fitting to clipped — which is a category you cannot read. */
-  .products-table .cat-col       { width: 12.5%; }
-  /* Fixed here too, and for the reason the wide block gives: a SKU's longest form is known, and a
-     percentage re-decides at every width whether it fits. At 9% of a 982px table it was 88px
-     against 128 needed, so a 14-character code came back as nine and a dash — the failure he
-     described as invisible today only because the demo's codes are short. The 27px comes from
-     `price` and `date`, both of which were carrying more than their content asked for at this
-     width (measured: 38px and 15px of slack). */
-  .products-table .sku-col       { width: 7.3rem; }
-  /* Price and stock are both `.num` (nowrap) and start-aligned, so in RTL a price
-     too wide for its column bleeds LEFT, over the stock number sitting flush
-     against its edge — 10% couldn't hold "1,234.50 ₪". Price takes 3% more: 1.5%
-     from stock's own trailing slack (all of it on the likes side, so the stock
-     number moves toward the heart without the heart moving or shrinking) and 1.5%
-     from cat-col, the one neighbour whose chip wraps instead of overflowing.
-     Budget stays at 89% so every untouched column keeps its share. */
-  .products-table .price-col     { width: 9.2%; }
-  .products-table .stock-col     { width: 8.2%; }
-  .products-table .wishlist-col  { width: 5.7%; }
-  .products-table .purchased-col { width: 5.3%; }
-  .products-table .date-col      { width: 9.3%; }
-  /* Fixed width, not a %, for the third time in this block and the same reason as .check-col and
-     .thumb-col above: the kebab button is a fixed 1.75rem, and its hover state paints a FULL
-     circle of that size. Under `table-layout: fixed` a 4% column drops to ~15rem*0.04 at the
-     narrow end of this range — narrower than the button — so the circle spilled out of the cell
-     over the neighbouring column and the table's own edge, visible only on hover, which is when
-     the background appears. Sized to the button plus this block's 0.4rem cell padding on both
-     sides (1.75 + 0.8 = 2.55). The 4% it gives back is absorbed by the percentage columns. */
-  /* **Both sized to the WIDGET, and pushed together** (same report: *"צריך להצמיד את ה-SEO יותר
-     לשלוש נקודות"*). Neither of these columns has a heading anyone reads at this width — one is a
-     gauge and the other a kebab — so every pixel they hold beyond their own glyph is a pixel taken
-     from a column whose heading is a word. The gauge measures 21px and the kebab's hover circle
-     1.75rem, and these are those plus the smallest gutter this table uses anywhere. */
-  /* `.prod-cq` on these two, and only these two, because they are the only rules in this block
-     that fight the cell padding a few lines up — `.prod-cq .products-table td` outranks a plain
-     `.products-table .seo-col`, so the tighter padding these ask for was silently not applying and
-     the gauge came out 2px wider than its own cell (measured: room 19 against a 21px gauge). */
-  /* **Under ~780px of table the SKU column goes, the way `row-num` already does.** Below that
-     width four headings were still unreadable after every gutter had been spent — "מלאי" was
-     showing seven pixels of thirty — and the SKU is 117px of a 578px table, a fifth of it, for a
-     code nobody scans DOWN a column. It is not lost: the row's own edit form carries it, and below
-     640px the card layout labels it outright. Ranked against the alternative — a table where you
-     cannot tell which column is stock — this is the cheaper thing to drop. */
-  /* 960px of table, not 780 — measured. Above it the SKU column is affordable: at a 918px table
-     with the SKU present nothing is cut at all. Below it there is a band (a ~800px table) where
-     keeping the column put "נרכשו" back to 31 visible pixels of 36 and "נוסף בתאריך" to 60 of 74,
-     which is the same complaint one breakpoint lower down. The threshold is where the trade
-     actually flips, rather than a round number. */
-  @container prodtable (max-width: 960px) {
-    .products-table .sku-col { display: none; }
-    /* The same query, so the two can never disagree: the value appears in the name cell in the
-       exact condition that takes its column away. See `.product-sku-inline` for why. */
-    .products-table .product-sku-inline { display: block; }
-    /* **And the name takes the width the SKU let go of** (owner, 2026-08-23: *"ה-SEO רחוק מדי
-       מהשלוש נקודות וזה בא על חשבון הקריאות של כותרות חשובות"*). Under `table-layout: fixed` any
-       width the declared columns do not claim is handed back to ALL of them in proportion — so
-       dropping a 117px column quietly widened the gauge and the kebab along with everything else,
-       and the two columns that need the least grew by the same percentage as the ones starving.
-       Claiming it explicitly leaves no spare to distribute — and it goes to the four columns whose
-       HEADINGS were the complaint, not to the name, which was tried first and made every one of
-       them worse (measured at 660px: stock fell from 19 visible pixels back to 12). The name is
-       the column that ellipsises by design; these four are the ones you have to be able to read
-       the top of. */
-    .products-table .cat-col       { width: 16%; }
-    .products-table .stock-col     { width: 12%; }
-    .products-table .purchased-col { width: 8%; }
-    .products-table .date-col      { width: 15%; }
-  }
-  /* Declared a little over their glyphs on purpose: with the percentages above claiming more than
-     100% of a narrow table, `table-layout: fixed` shrinks EVERY column in proportion — these two
-     included — so a width that is exactly the gauge becomes a width that is not. 2.1rem and 2.6rem
-     survive the worst shrink in this range with the gauge and the kebab's hover circle intact
-     (measured at 660px: 29.6 and 36.6 against a 21px gauge and a 28px button). */
-  .prod-cq .products-table .seo-col     { width: 2.1rem; padding-inline: 0.1rem; }
-  .prod-cq .products-table .actions-col { width: 2.6rem; padding-inline: 0.15rem; }
-  .products-table .name-col .product-name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-}
-
-/* Full desktop — the SAME discipline as the tablet block above, and it is here because
-   its absence was a bug, not a decision (owner, 2026-08-05: "the table goes outside its
-   bounds at a certain width, it happened suddenly").
-   Above 999px the table was left on `table-layout: auto`, which sizes a table to its own
-   CONTENT: its width is the sum of every column's min-content, so the longest product name
-   and the longest category path in the catalogue decide how wide the table is. Measured on
-   the demo catalogue at 2026-08-05: 983px of min-content, against a panel that is only
-   918px at a 1000px viewport and 1078px at 1200px. Between those two the table overflowed
-   its panel and pushed `documentElement.scrollWidth` past the viewport.
-   That is also why it appeared out of nowhere: nothing about the LAYOUT changed — one
-   product whose name is longer than every other one widens the table for the whole store,
-   so the same dashboard overflows today and did not yesterday.
-   `table-layout: fixed` removes the class of bug rather than tuning the numbers: the
-   columns below are shares of whatever width the panel has, so content can no longer vote
-   on width at ANY viewport and the table fits by construction.
-   The breakpoint itself stays, and it is not the bug — it is where the columns' shares
-   change. At the narrow end price and date cannot ellipsize into anything a seller can
-   read, so `name` gives its room up to them (13% there); here there is room and it takes
-   the largest share instead. Fixed-px columns (checkbox, thumbnail, kebab) repeat that
-   block's reasoning too: those cells hold a fixed-size WIDGET, and a percentage that
-   drops below it lets the widget spill into its neighbour. */
-@container prodtable (min-width: 1000px) {
-  .products-table { table-layout: fixed; }
-  .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* ══ Every column is sized for its own worst reasonable content, measured ══
-     Owner, 2026-08-23, with the numbers: five columns could not hold theirs, and the table only
-     looked intact because `.num` cells are `nowrap` and simply bleed into the neighbour's padding
-     — *"זה לא נראה שבור היום רק כי תאי .num הם nowrap והמספר גולש לריפוד של השכן, וכי המק"טים
-     בדמו קצרים."*
-
-     The method, so it can be repeated rather than re-argued: clone the header row and one body row
-     into a `table-layout: auto` table off-screen, write the worst reasonable value into each cell,
-     and read back the width the browser gives the column — which is `max(heading, cell)` with every
-     real chip, chevron and icon in it. Measured at a 1110px table (1440px viewport, rail open):
-
-       column      was    needs
-       row-num    36.8     57.5   ← a 4-digit ordinal
-       sku        70.9    127.6   ← a 14-character SKU
-       cat       114.6    130.8   ← a two-level path
-       wishlist   39.3     57.8   ← five characters and a heart
-       stock     103.7     91.9   ← five digits and the variants chevron (fits; his 103 counted
-                                     the sort chevron, which this block hides)
-
-     Two levers, both of which he named, and a third that fell out of doing it properly.
-
-     **1. Padding, in the narrow columns only.** A cell pays 0.75rem on each side, and thirteen
-     columns of that is 312px — 28% of the table — spent on air. Where the content is a number or a
-     short token, most of that air is doing nothing: `.seo-col` already ran at 0.15rem and nobody
-     ever called it cramped. Cutting it where it is not read gives 68px back to where it is.
-
-     **2. A count over 999 is shortened** (`lib/format-count.ts`) — but only where the number is
-     read and never typed. Stock is edited in place from its own text, so it keeps its digits; its
-     column is paid for out of padding instead. That file's header has the whole rule.
-
-     **3. Bounded content gets a FIXED width, not a percentage.** A SKU, a date, a purchase count
-     and an ordinal have a longest form that is known; a percentage of a table whose width is not
-     known re-opens the question at every viewport, which is how `sku` came to be 6.5% and 57px
-     short. Only the four columns that genuinely stretch — name, category, price, stock — are
-     shares, and they are the four that can ellipsize without losing a word. */
-  /* The select-all must never be clipped — same exception, same reason, as the tablet block. */
-  .products-table .check-col     { width: 2.5rem; overflow: visible; }
-  /* A 4-digit ordinal at 14.9px measures 33.5px, and this column is nothing but that number: at
-     0.75rem of padding a side it was carrying 12.8px of room for it. Same 0.15rem as `.seo-col`,
-     for the same reason — there is no text here for a gutter to separate. */
-  .products-table .row-num       { width: 2.4rem; padding-inline: 0.15rem; }
-  /* 42px thumbnail + this block's 0.75rem cell padding on both sides. */
-  .products-table .thumb-col     { width: 4.2rem; }
-  /* The one column that is allowed to lose words, so it takes whatever the others do not need.
-     The name is ellipsised by design and the full string is one click away — the cell opens an
-     input carrying all of it. */
-  .products-table .name-col      { width: 21.2%; }
-  /* Fixed, and sized for 14 characters: a SKU is the seller's own code and does not grow with the
-     catalogue. At 6.5% it was 70.9px against 127.6 needed — the largest deficit in the table, and
-     invisible on a demo whose SKUs are four characters. */
-  .products-table .sku-col       { width: 7.4rem; padding-inline: 0.4rem; }
-  .products-table .cat-col       { width: 11.1%; padding-inline: 0.5rem; }
-  /* Price and stock are `.num` (nowrap) and start-aligned, so in RTL an overlong value
-     bleeds LEFT over its neighbour instead of wrapping. Both are sized for the widest
-     realistic string ("1,234.50 ₪" / five digits and the variants chevron), not the demo
-     catalogue's two-digit numbers. */
-  .products-table .price-col     { width: 8.2%; padding-inline: 0.5rem; }
-  .products-table .stock-col     { width: 8.3%; padding-inline: 0.5rem; }
-  /* Five characters and an 11px heart. `compactCount` is what makes "five" a ceiling rather than a
-     guess — without it this column is sized for however many people happen to like a product. */
-  .products-table .wishlist-col  { width: 2.8rem; padding-inline: 0.15rem; }
-  .products-table .purchased-col { width: 4.3rem; padding-inline: 0.4rem; }
-  /* "נוסף בתאריך" is the longest heading in this table and the first thing to clip; the cell under
-     it is a fixed-format date. Both are bounded, so this is a number and not a share. */
-  .products-table .date-col      { width: 6.6rem; padding-inline: 0.4rem; }
-  .products-table .seo-col       { width: 2rem; padding-inline: 0.15rem; }
-  .products-table .actions-col   { width: 3.4rem; }
-  /* One line + "…", not a wrap: rows stay a uniform height, and the full name is one click
-     away — the cell is click-to-edit and opens an input carrying the whole string. */
-  .products-table .name-col .product-name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-}
 
 /* ── Mobile-only sort/filter toolbar — on desktop, sort + filter live in the
    table's own header row (.sort-btn per column + a funnel button where

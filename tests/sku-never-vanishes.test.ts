@@ -71,9 +71,20 @@ describe('the SKU never leaves the row', () => {
       'the card rule must come AFTER the reveal — same specificity, so source order is what decides',
     ).toBeGreaterThan(reveal);
 
-    // The reveal has to sit in the very query that drops the column, or the two can disagree.
-    const dropBlock = css.slice(css.indexOf('@container prodtable (max-width: 960px)'));
-    expect(dropBlock.slice(0, 800)).toContain('.products-table .sku-col { display: none; }');
-    expect(dropBlock.slice(0, 800)).toContain('.products-table .product-sku-inline { display: block; }');
+    /**
+     * THE REVEAL MUST SIT IN THE VERY QUERY THAT DROPS THE COLUMN — that is the invariant, and
+     * it is deliberately not tied to which query that is. It was a container query until
+     * 2026-08-23 and is a viewport media query now (the table's three states); pinning the
+     * mechanism rather than the pairing made this test fail on a refactor that kept the
+     * behaviour perfectly intact, which is a test failing for the wrong reason.
+     *
+     * So: find whichever block hides `.sku-col`, and require the reveal inside that same block.
+     */
+    const drop = /@[a-z-]+[^{]*\{[^{}]*\.products-table \.sku-col\s*\{\s*display:\s*none;[\s\S]*?\n\}/.exec(css);
+    expect(drop, 'nothing drops the SKU column at all').not.toBeNull();
+    expect(
+      drop![0],
+      'the column is dropped without the line under the name appearing — the SKU would be off screen',
+    ).toContain('.product-sku-inline { display: block; }');
   });
 });
