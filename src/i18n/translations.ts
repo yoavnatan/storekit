@@ -1032,6 +1032,17 @@ export const translations = {
       // *"אם יש חשבון בנק לא צריך לשים שם את האינפוטים ככה פתוחים, הפרטים צריכים להופיע בתוך מסגרת
       // קטנה סגורה, עם כפתור ״ערוך״"*. An open form says "this is unfinished" every time the tab is
       // opened, on the one screen a seller visits to check that everything is in order.
+      // ── The clearing account, and whether this seller may sell at all ──
+      // Under the split model the buyer's money goes straight into the seller's own merchant
+      // account, so a seller without one cannot take an order. That has to be SAID: a store that
+      // silently refuses every checkout is the worst version of this, because the seller finds out
+      // from a shopper. Named for the ACTION he has to take, never for our internal state
+      // (`feedback_seller_copy_register`).
+      payClearingTitle: 'חשבון סליקה',
+      payClearingReady: 'החנויות שלכם יכולות למכור.',
+      payClearingMissing: 'החנויות שלכם עדיין לא יכולות למכור — חסרים פרטים לפתיחת חשבון סליקה.',
+      payClearingWaiting: 'חברת הסליקה בודקת את העסק. עד שתאשר, החנויות לא יכולות למכור.',
+      payClearingLink: 'להשלמת הפרטים אצל חברת הסליקה',
       payBankOnFile: 'חשבון לתשלומים',
       payBankEdit: 'ערוך',
       payBankCancel: 'ביטול',
@@ -2983,6 +2994,11 @@ export const translations = {
       payDetailsSave: 'Save details',
       payDetailsSaved: 'Details saved',
       payDetailsFailed: 'Could not save. Check your connection and try again.',
+      payClearingTitle: 'Clearing account',
+      payClearingReady: 'Your stores can take orders.',
+      payClearingMissing: 'Your stores cannot take orders yet — some details are still needed to open a clearing account.',
+      payClearingWaiting: 'The processor is reviewing your business. Until it approves, your stores cannot take orders.',
+      payClearingLink: 'Finish your details with the processor',
       payBankOnFile: 'Payout account',
       payBankEdit: 'Edit',
       payBankCancel: 'Cancel',

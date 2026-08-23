@@ -19,9 +19,12 @@
  * store-opening card, skippable — `payout-details.ts`'s header carries the rule, and both surfaces
  * still write through `parsePayoutDetails` so neither can half-save an account.
  *
- * ⚠️ The gate itself is NOT built: nothing yet refuses to publish a store whose seller has no
- * merchant account, because there is no adapter to open one with. It arrives with the adapter, and
- * this panel is where the seller will read the account's status.
+ * **The gate is built (2026-08-23).** `/api/checkout` refuses a store whose seller has no APPROVED
+ * merchant account, in the pre-pass, before any stock moves (`seller-merchant.ts#merchantBlockFor`).
+ * So this panel now carries the one thing a seller must not have to discover from a shopper: that
+ * his shop cannot take an order, and what is standing in the way. Rendered only when a clearing
+ * provider is configured at all — with none, nothing is blocked and a status line about it would be
+ * a sentence about a rule that is not in force.
  *
  * **One account, one registered business** — one subscription, one commission rate, one ח״פ, one
  * bank account, however many stores (`pricing.ts`). A seller with a second ח״פ opens a second
@@ -34,9 +37,23 @@ interface Props {
   seller: PayoutDetails;
   /** More than one store, so the "these details cover all of them" line is worth saying. */
   multiStore: boolean;
+  /** Whether this seller's stores can take money, and what is in the way if not.
+   *
+   *  **`null` means no clearing provider is configured**, which is dev and the pre-gateway window
+   *  GO_LIVE §7 plans — nothing is blocked, so a line about being blocked would describe a rule
+   *  that is not in force. The block renders only when there is really something to say. */
+  clearing: { state: 'ready' | 'missing-details' | 'awaiting-approval'; signupLink?: string } | null;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { seller, multiStore, d } = Astro.props;
+const { seller, multiStore, clearing, d } = Astro.props;
+
+/** One sentence per state, chosen here rather than in the markup so the three are visibly a set and
+ *  a fourth state cannot be added without picking its words. */
+const CLEARING_LINE: Record<NonNullable<Props['clearing']>['state'], string> = {
+  'ready': d.payClearingReady,
+  'missing-details': d.payClearingMissing,
+  'awaiting-approval': d.payClearingWaiting,
+};
 
 const TYPE_LABEL: Record<string, string> = {
   exempt: d.payBusinessExempt,
@@ -56,6 +73,34 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     <h2 class="m-0 text-base font-semibold">{d.payTitle}</h2>
     <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle}</p>
   </div>
+
+  {/* Above the bank form, because it is the consequence of that form and a seller reads down. Only
+      a PROBLEM gets a card (`feedback_no_standing_screen_prose`); the ready state is one quiet line,
+      because "everything is fine" earns no more than that. */}
+  {clearing && (
+    <div
+      class={`mb-4 rounded-[var(--radius)] ${clearing.state === 'ready' ? '' : 'card card--flat p-4 md:p-5'}`}
+      id="pay-clearing"
+      data-clearing-state={clearing.state}
+    >
+      {clearing.state === 'ready'
+        ? <p class="muted m-0 text-[0.82rem]">{d.payClearingTitle}: {CLEARING_LINE[clearing.state]}</p>
+        : (
+          <>
+            <h3 class="text-[1.05rem] font-bold m-0">{d.payClearingTitle}</h3>
+            <p class="m-0 mt-1 text-[0.9rem]">{CLEARING_LINE[clearing.state]}</p>
+            {/* PayMe's own onboarding page, where the seller finishes the details we deliberately
+                do not ask for. `rel="noopener"` because `target="_blank"` otherwise hands the opened
+                page a live `window.opener` back into the dashboard. */}
+            {clearing.signupLink && (
+              <a class="btn btn--ghost btn--sm mt-3" href={clearing.signupLink} target="_blank" rel="noopener noreferrer">
+                {d.payClearingLink}
+              </a>
+            )}
+          </>
+        )}
+    </div>
+  )}
 
   <form class="card card--flat p-4 md:p-5" id="pay-details-form" data-unsaved-guard>
     <h3 class="text-[1.05rem] font-bold m-0">

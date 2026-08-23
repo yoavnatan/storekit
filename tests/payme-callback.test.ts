@@ -44,7 +44,7 @@ vi.mock('../src/lib/payment-payme.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/lib/payment-payme.js')>();
   return {
     ...actual,
-    paymeCredentials: () => (state.credsConfigured ? { clientKey: 'CK', baseUrl: 'https://sandbox.payme.io/api/' } : null),
+    activePaymeCredentials: () => (state.credsConfigured ? { clientKey: 'CK', baseUrl: 'https://sandbox.payme.io/api/' } : null),
     getSellerStatus: async () => {
       if (state.upstreamThrows) throw new Error('network down');
       return state.upstream;

@@ -32,7 +32,7 @@ import { checkCoupon, normalizeCouponCode } from '../../lib/coupons.js';
 import { planBuyerInvoice } from '../../lib/invoicing/index.js';
 import { getSellerById } from '../../lib/seller-auth.js';
 import { merchantAccountsFor } from '../../lib/seller-merchant.js';
-import { paymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
+import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
 import { planSplit, chargeSplit, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
 import { commissionPercentForTier } from '../../lib/pricing.js';
 import { store as platform } from '../../config/store.config.js';
@@ -683,14 +683,19 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // the numbers already in hand. Discovering "this store's slice is ₪4, below PayMe's minimum" one
   // charge later would mean a completed charge on a real card that has to be unwound, for a
   // condition we could have named a moment earlier.
-  const paymeCreds = paymeCredentials();
+  const paymeCreds = activePaymeCredentials();
   let splitInput: SplitInput | null = null;
   let splitPlan: SplitPlan | null = null;
   if (paymeCreds) {
     // The permanent buyer token, from Hosted Fields — the buyer typed a card once, on PayMe's own
     // field, so no card number ever reaches this process. Its absence is a 400 and not a decline:
     // there is nothing to charge and nothing was attempted.
-    if (!isString(buyerKey)) return abort({ error: 'missing-card' }, 400);
+    // Length-capped, not pattern-matched. Their own example is
+    // `XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`, but the format is theirs to change and a regex built
+    // from one example would start refusing real tokens without warning. What must be bounded is
+    // the SIZE: the body cap is 256KB, and without this a caller could push a quarter-megabyte
+    // string straight into an outbound request to PayMe.
+    if (!isString(buyerKey) || buyerKey.trim().length > 200) return abort({ error: 'missing-card' }, 400);
 
     const accounts = await merchantAccountsFor([...storeSellers.values()]);
     // Each seller's own tier commission (`lib/pricing.ts`), per sale rather than off the merchant's

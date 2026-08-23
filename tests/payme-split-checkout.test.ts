@@ -33,6 +33,7 @@ vi.mock('../src/lib/outbound-fetch.js', () => ({
 const { planSplit, chargeSplit, refundStoreCharge } = await import('../src/lib/payment-split.js');
 const { SHIPPING_RATES } = await import('../src/lib/shipping.js');
 const { PAYME_MIN_SALE_AGOROT } = await import('../src/lib/payment-payme.js');
+const { storeSliceTotalAgorot } = await import('../src/lib/order-totals.js');
 
 const CREDS = { clientKey: 'ck', marketplaceSellerId: 'MPL-US', baseUrl: 'https://sandbox.payme.io/api/' };
 
@@ -274,6 +275,53 @@ describe('when the refund itself fails', () => {
     net.replies.push(sale('S-A'), declined, '<html>gateway timeout</html>');
     const input = twoStoreCart();
     await expect(chargeSplit(input, planSplit(input), CREDS)).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe('the buyer is charged exactly what the order says — the invariant', () => {
+  /** `storeSliceTotalAgorot`'s definition, restated from the other side: goods + shipping − the
+   *  seller's discount. The split cuts that total in a different place (goods to the seller,
+   *  shipping to us), so the only thing that must hold is that the pieces add back up. */
+  function orderTotals(slices: { subtotalAgorot: number; shippingAgorot: number; discount?: { appliedAgorot: number } }[]): number {
+    return slices.reduce((sum, s) => sum + storeSliceTotalAgorot(s), 0);
+  }
+
+  it('the legs sum to the sum of the order totals, with and without discounts', () => {
+    // The failure this catches is the one that would be invisible: charge the seller's goods
+    // WITHOUT subtracting his coupon, and every order card says ₪80 while the buyer's card says
+    // ₪100. Nothing else in this repo compares those two numbers, because until now there was one
+    // charge and it was the total by construction.
+    const slices = [
+      { subtotalAgorot: 6000, shippingAgorot: 3000 },
+      { subtotalAgorot: 9000, shippingAgorot: 3000, discount: { appliedAgorot: 1500 } },
+    ];
+    const { legs, refusals } = planSplit({
+      buyerKey: 'BK1',
+      stores: slices.map((s, i) => ({
+        storeSlug: `s${i}`,
+        sellerPaymeId: `MPL-${i}`,
+        goodsAgorot: s.subtotalAgorot - (s.discount?.appliedAgorot ?? 0),
+        marketFeePercent: 12,
+        productName: `s${i}`,
+      })),
+      shippingAgorot: slices.reduce((sum, s) => sum + s.shippingAgorot, 0),
+      marketplaceSellerId: 'MPL-US',
+      checkoutRef: 'REF',
+    });
+    expect(refusals).toEqual([]);
+    expect(legs.reduce((sum, l) => sum + l.amountAgorot, 0)).toBe(orderTotals(slices));
+  });
+
+  it('a self-pickup cart still sums, with no shipping leg at all', () => {
+    const slices = [{ subtotalAgorot: 6000, shippingAgorot: 0 }];
+    const { legs } = planSplit({
+      buyerKey: 'BK1',
+      stores: [{ storeSlug: 's0', sellerPaymeId: 'MPL-0', goodsAgorot: 6000, marketFeePercent: 12, productName: 's0' }],
+      shippingAgorot: 0,
+      marketplaceSellerId: 'MPL-US',
+      checkoutRef: 'REF',
+    });
+    expect(legs.reduce((sum, l) => sum + l.amountAgorot, 0)).toBe(orderTotals(slices));
   });
 });
 

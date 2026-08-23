@@ -1,9 +1,10 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getSellerStatus, paymeCredentials, verifyCallbackSignature } from '../../../lib/payment-payme.js';
+import { activePaymeCredentials, getSellerStatus, verifyCallbackSignature } from '../../../lib/payment-payme.js';
 import { merchantAccountByProviderRef, merchantCallbackSecret, setMerchantApproval } from '../../../lib/seller-merchant.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
 import { logError } from '../../../lib/error-log.js';
+import { readFormBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 /**
  * PayMe's server-to-server notifications.
@@ -53,16 +54,19 @@ function ack(status: string): Response {
 }
 
 export async function POST({ request }: APIContext): Promise<Response> {
-  const creds = paymeCredentials();
+  const creds = activePaymeCredentials();
   // Nothing is configured, so nothing here can be genuine. Not an error — this is dev, where the
   // route exists and answers politely rather than 404-ing and looking like a deploy problem.
   if (!creds) return ack('not-configured');
 
-  // `x-www-form-urlencoded`, their format, not JSON. Read with a cap: this is a public endpoint and
-  // an unbounded body read is a memory exhaustion anybody can trigger.
-  const raw = await request.text();
-  if (raw.length > 64_000) return ack('too-large');
-  const body = new URLSearchParams(raw);
+  // `x-www-form-urlencoded`, their format, not JSON. Through `readFormBody`, which counts the bytes
+  // off the stream rather than trusting `Content-Length` — this was written as
+  // `await request.text()` with a length check afterwards, which is the exact shape that module's
+  // header exists to name: the body is fully buffered BEFORE the check, so on a public endpoint the
+  // cap protects against a large body sent honestly and against nothing else.
+  const read = await readFormBody(request, BODY_LIMIT.form);
+  if (!read.ok) return ack('too-large');
+  const body = read.value;
   const notifyType = body.get('notify_type') ?? '';
 
   if (notifyType.startsWith('seller-')) return handleSellerNotification(body);
@@ -87,7 +91,7 @@ export async function POST({ request }: APIContext): Promise<Response> {
  * from `get-sellers`, over our own authenticated call.
  */
 async function handleSellerNotification(body: URLSearchParams): Promise<Response> {
-  const creds = paymeCredentials()!;
+  const creds = activePaymeCredentials()!;
   const providerRef = body.get('seller_payme_id') ?? '';
   if (!providerRef) return ack('no-seller-id');
 
@@ -130,7 +134,7 @@ async function handleSellerNotification(body: URLSearchParams): Promise<Response
  * stranger and a free purchase.
  */
 async function handleSaleNotification(body: URLSearchParams): Promise<Response> {
-  const creds = paymeCredentials()!;
+  const creds = activePaymeCredentials()!;
   const paymeSaleId = body.get('payme_sale_id') ?? '';
   const paymeTransactionId = body.get('payme_transaction_id') ?? '';
   const signature = body.get('payme_signature') ?? '';

@@ -34,7 +34,7 @@ vi.mock('../src/lib/outbound-fetch.js', () => ({
 
 const {
   PAYME_MIN_SALE_AGOROT, PAYME_MIN_REFUND_AGOROT, PAYME_MAX_MARKET_FEE_PERCENT,
-  PaymeError, isSandbox,
+  PaymeError, isSandbox, paymeCredentials, paymeIsActive, activePaymeCredentials,
   marketFeeFixedShekels, marketFeeTotalAgorot, exceedsMarketFeeCeiling, refuseSale, saleIsPaid,
   createSeller, captureBuyerToken, generateSale, refundSale,
   callbackSignature, verifyCallbackSignature,
@@ -350,5 +350,48 @@ describe('environment', () => {
   it('knows the sandbox from the base URL we configured, never from an id', () => {
     expect(isSandbox(CREDS)).toBe(true);
     expect(isSandbox({ ...CREDS, baseUrl: 'https://live.payme.io/api/' })).toBe(false);
+  });
+
+  it('does NOT go live in development just because the sandbox keys are in .env', () => {
+    // They are, on the developer's own machine. A credentials-only rule would mean every demo
+    // purchase posts a real sale to a sandbox that is SHARED with PayMe's other partners and has no
+    // delete — and would block the whole demo checkout on day one, since a seeded seller has no
+    // merchant account and never will. In PRODUCTION the credentials ARE the whole switch, which is
+    // the half `site-mode.ts` argues at length; these tests run with `import.meta.env.PROD` false,
+    // so what they can pin is the dev half.
+    const before = process.env.PAYME_CLIENT_KEY;
+    const beforeGate = process.env.PAYME_DEV_LIVE;
+    try {
+      process.env.PAYME_CLIENT_KEY = 'ck';
+      delete process.env.PAYME_DEV_LIVE;
+      expect(paymeCredentials()).not.toBeNull();      // configured…
+      expect(paymeIsActive()).toBe(false);            // …and deliberately not in use
+      expect(activePaymeCredentials()).toBeNull();
+
+      process.env.PAYME_DEV_LIVE = '1';
+      expect(paymeIsActive()).toBe(true);
+      // Only the exact value. 'true', 'yes' and '0' are all somebody being approximate about
+      // sending real charges from a laptop.
+      for (const nearly of ['true', 'yes', '0', '']) {
+        process.env.PAYME_DEV_LIVE = nearly;
+        expect(paymeIsActive(), nearly).toBe(false);
+      }
+    } finally {
+      if (before === undefined) delete process.env.PAYME_CLIENT_KEY; else process.env.PAYME_CLIENT_KEY = before;
+      if (beforeGate === undefined) delete process.env.PAYME_DEV_LIVE; else process.env.PAYME_DEV_LIVE = beforeGate;
+    }
+  });
+
+  it('is inactive with no client key however the gate is set', () => {
+    const before = process.env.PAYME_CLIENT_KEY;
+    const beforeGate = process.env.PAYME_DEV_LIVE;
+    try {
+      delete process.env.PAYME_CLIENT_KEY;
+      process.env.PAYME_DEV_LIVE = '1';
+      expect(paymeIsActive()).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env.PAYME_CLIENT_KEY; else process.env.PAYME_CLIENT_KEY = before;
+      if (beforeGate === undefined) delete process.env.PAYME_DEV_LIVE; else process.env.PAYME_DEV_LIVE = beforeGate;
+    }
   });
 });

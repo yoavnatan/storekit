@@ -52,7 +52,7 @@ import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
-import { ensureMerchantAccount } from '../../lib/seller-merchant.js';
+import { ensureMerchantAccount, clearingStatusFor } from '../../lib/seller-merchant.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
 import { openOrderCount } from '../../lib/store-lifecycle.js';
@@ -409,6 +409,9 @@ const hasNoStore = allStores.length === 0;
 // its bank and business details. It used to arrive with a whole payout account beside it — what
 // was payable, what was held and why — and none of that exists any more (PayoutsPanel.astro).
 const seller = await getSellerById(sellerId);
+/** Whether his stores may take money, for the Payments tab — null when no clearing provider is
+ *  configured at all, in which case nothing is blocked and there is nothing to say. */
+const clearingStatus = await clearingStatusFor(sellerId);
 /** The reason the Orders tab is narrowed, when the seller arrived from the payments tab. Whitelisted
  *  rather than echoed: it is printed on the page, and an unknown value simply means no banner. */
 const ordersFromBasis = ['payment', 'unshipped'].includes(Astro.url.searchParams.get('ofrom') ?? '')
@@ -1256,7 +1259,11 @@ const orderStatusColors: Record<string, string> = {
           {/* No dot here any more (2026-08-21). It fired when released money had no bank account
               to go to — a state that cannot occur once the processor pays each seller directly.
               The details still matter, but they gate OPENING a merchant account rather than
-              receiving a transfer, and that gate is not built yet (PayoutsPanel.astro). */}
+              receiving a transfer, and that gate IS built now (2026-08-23) — `/api/checkout`
+              refuses a store whose seller has no approved merchant account. A dot for it was
+              considered and left out: the tab strip's dots are for something that CHANGED and
+              wants a look, and "you have never been able to sell" is a standing state, said in
+              full on the panel itself rather than as a mark that never goes away. */}
         </button>
         <button
           class={`dash-tab${initialPanel === 'settings' ? ' dash-tab--active' : ''}`}
@@ -2906,6 +2913,7 @@ const orderStatusColors: Record<string, string> = {
           <PayoutsPanel
             seller={seller}
             multiStore={allStores.length > 1}
+            clearing={clearingStatus}
             d={d}
           />
         )}

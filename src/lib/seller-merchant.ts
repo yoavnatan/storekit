@@ -26,7 +26,7 @@ import {
   type MerchantKyc, type MerchantKycField,
 } from './merchant-kyc.js';
 import { commissionPercentForTier } from './pricing.js';
-import { createSeller, paymeCredentials, PaymeError, type PaymeCredentials } from './payment-payme.js';
+import { activePaymeCredentials, createSeller, PaymeError, type PaymeCredentials } from './payment-payme.js';
 import { logError } from './error-log.js';
 
 /** What a caller may see. **No secret** — see the module header. */
@@ -167,7 +167,7 @@ export type EnsureMerchantResult =
 export async function ensureMerchantAccount(
   sellerId: string,
   context: { storeName: string; storeUrl: string; storeDescription: string },
-  creds: PaymeCredentials | null = paymeCredentials(),
+  creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<EnsureMerchantResult> {
   const existing = await merchantAccountFor(sellerId);
   if (existing) return { status: 'ready', account: existing };
@@ -298,12 +298,58 @@ function splitName(name: string): { firstName: string; lastName: string } {
  */
 export type MerchantBlock = 'no-account' | 'not-approved';
 
-export async function merchantBlockFor(sellerId: string, creds: PaymeCredentials | null = paymeCredentials()): Promise<MerchantBlock | null> {
+export async function merchantBlockFor(sellerId: string, creds: PaymeCredentials | null = activePaymeCredentials()): Promise<MerchantBlock | null> {
   if (!creds) return null;
   const account = await merchantAccountFor(sellerId);
   if (!account) return 'no-account';
   if (!account.approved) return 'not-approved';
   return null;
+}
+
+/**
+ * What the seller's own Payments tab has to say about his ability to sell.
+ *
+ * The dashboard's version of `merchantBlockFor`, and it is a separate function because it answers a
+ * different question: that one decides whether a checkout proceeds, this one decides what a person
+ * is told. **`null` means no clearing provider is configured**, so nothing is blocked and a line
+ * about being blocked would describe a rule that is not in force.
+ *
+ * The seller must not learn from a shopper that his shop cannot take an order.
+ */
+export async function clearingStatusFor(
+  sellerId: string,
+  creds: PaymeCredentials | null = activePaymeCredentials(),
+): Promise<{ state: 'ready' | 'missing-details' | 'awaiting-approval'; signupLink?: string } | null> {
+  if (!creds) return null;
+  const account = await merchantAccountFor(sellerId);
+  if (account) {
+    // The link is rendered as an `href` on the seller's dashboard, so it is shape-checked before it
+    // gets there. It comes from PayMe rather than from a request, which is why this is defence in
+    // depth rather than the primary guard — but `https:` only is the same rule `lib/image-url.ts`
+    // and `lib/safe-redirect.ts` apply for the same reason: a `javascript:` string in an href is
+    // script execution, and "the value came from our provider" is an assumption, not a check.
+    const link = safeMerchantLink(account.signupLink);
+    return account.approved
+      ? { state: 'ready' }
+      : { state: 'awaiting-approval', ...(link ? { signupLink: link } : {}) };
+  }
+  // No account, which under this model always has the same cause: PayMe cannot be asked to open one
+  // until we hold what they require. So the seller is told what is missing rather than that
+  // something failed — the second is true and useless.
+  return { state: 'missing-details' };
+}
+
+/** An `https:` absolute URL, or null. Parsed rather than pattern-matched, so the answer is the
+ *  URL parser's own reading of the string and not ours — `javascript:` with whitespace or control
+ *  characters in it is exactly the family a naive `startsWith('https')` waves through. */
+export function safeMerchantLink(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Record PayMe's verdict on a business. Written by the seller callback, which is the only thing

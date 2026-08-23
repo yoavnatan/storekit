@@ -47,7 +47,7 @@
 
 import { serverEnv } from './runtime-env.js';
 import { paymentProvider, MockPaymentProvider } from './payment.js';
-import { paymeCredentials } from './payment-payme.js';
+import { paymeIsActive } from './payment-payme.js';
 
 /**
  * True when nothing configured here can actually take money. Asked of the objects and of the
@@ -66,7 +66,7 @@ import { paymeCredentials } from './payment-payme.js';
  * at the wrong provider.
  */
 export function paymentsAreMock(): boolean {
-  if (paymeCredentials()) return false;
+  if (paymeIsActive()) return false;
   return paymentProvider instanceof MockPaymentProvider;
 }
 

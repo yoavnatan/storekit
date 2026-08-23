@@ -40,6 +40,7 @@
  */
 import crypto from 'node:crypto';
 import { agorotToDecimalString } from './money.js';
+import { commissionOnAgorot } from './pricing.js';
 import { outboundFetch } from './outbound-fetch.js';
 import { serverEnv } from './runtime-env.js';
 
@@ -109,6 +110,36 @@ export function paymeCredentials(): PaymeCredentials | null {
  *  and it is derived from the base URL we deliberately configured, never guessed from an id. */
 export function isSandbox(creds: PaymeCredentials): boolean {
   return creds.baseUrl.includes('sandbox.payme.io');
+}
+
+/**
+ * Should this process actually route checkouts through PayMe?
+ *
+ * **Credentials alone are the answer in PRODUCTION, deliberately** — `site-mode.ts` argues it at
+ * length: a `CHECKOUT_OPEN` flag fails not because it gets set wrongly but because on the one day
+ * it matters nobody remembers it exists, so wiring the gateway must open the shop by itself.
+ *
+ * **In DEVELOPMENT they are not, and that is not a hedge.** The sandbox keys live in `.env` on the
+ * developer's own machine, so a credentials-only rule would mean every demo purchase — `seed:demo`
+ * has a catalogue of them — posts a real `generate-sale` to a sandbox that is SHARED with PayMe's
+ * other partners and **has no delete** (`docs/payme-sandbox-notes.md`). It would also block the
+ * whole demo checkout on day one, because a seeded seller has no merchant account and never will.
+ * So dev keeps the mock provider unless someone deliberately asks otherwise, one run at a time.
+ *
+ * `PAYME_DEV_LIVE=1` is named for what it DOES rather than for what it is for, exactly like
+ * `ALLOW_MOCK_CHECKOUT`: what it does is send this developer's clicks to a real payment gateway.
+ */
+export function paymeIsActive(): boolean {
+  if (!paymeCredentials()) return false;
+  if (import.meta.env.PROD) return true;
+  return serverEnv('PAYME_DEV_LIVE') === '1';
+}
+
+/** Credentials, but only when this process should really be using them. The one call every
+ *  application path should make — `paymeCredentials()` itself is for code that needs the values
+ *  regardless (a probe, a test). */
+export function activePaymeCredentials(): PaymeCredentials | null {
+  return paymeIsActive() ? paymeCredentials() : null;
 }
 
 /** A PayMe error, carrying their own code so a caller can branch on it rather than on prose. Their
@@ -192,8 +223,13 @@ export function marketFeeFixedShekels(agorot: number): number {
  * exists — so our figure and theirs cannot disagree by a rounding.
  */
 export function marketFeeTotalAgorot(input: { salePriceAgorot: number; marketFeePercent: number; marketFeeFixedAgorot?: number }): number {
-  const percentPart = Math.round((input.salePriceAgorot * input.marketFeePercent) / 100);
-  return percentPart + (input.marketFeeFixedAgorot ?? 0);
+  // `commissionOnAgorot` and not `Math.round(price * pct / 100)` written out again, even though
+  // that is all it is. It is `pricing.ts`'s definition of "the platform's cut of a figure held in
+  // agorot", and the percentage PayMe apply here IS that cut — so a hand-rolled copy is two
+  // definitions of one number, and the day they round differently our predicted commission and the
+  // seller's reported commission disagree by an agora with no way to tell which is right. Written
+  // out once, caught reviewing this diff.
+  return commissionOnAgorot(input.salePriceAgorot, input.marketFeePercent) + (input.marketFeeFixedAgorot ?? 0);
 }
 
 /**
