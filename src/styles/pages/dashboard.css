@@ -2064,6 +2064,61 @@ textarea.input { resize: none; }
   }
   #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-column: 2; grid-row: 1; }
 
+
+  /* ══ COLLAPSED: the same rail, 186px narrower ══
+     Owner, 2026-08-23: *"רצועה שמתכווצת לאייקונים, עם השם בריחוף, והבחירה נזכרת."*
+     Nothing is removed from the DOM and no tab changes, so the arrow walk, the roving tabindex,
+     the badge writers and `?panel=` restore all carry on not knowing about this. What changes is
+     one custom property and what each row shows of itself. */
+  /* `:has(...)` is repeated here and not dropped for brevity: `:has()` takes the specificity of
+     its most specific argument, so the 15.5rem rule above carries an ID and a bare
+     `html.dash-nav-mini` loses to it — silently, with the class applied and the width unchanged
+     (measured: 248px in both states). */
+  html.dash-nav-mini:has(#dash-main-card.dash-nav-side) { --dash-rail-w: 3.75rem; }
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab {
+    justify-content: center;
+    padding-inline: 0;
+    gap: 0;
+  }
+  /* The label stays in the DOM — it is the accessible name of the button, and it is what the hover
+     tooltip reads. `display:none` would take both away. */
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab__label,
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-toggle__label,
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-foot { display: none; }
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-toggle {
+    justify-content: center;
+    padding-inline: 0;
+    margin-inline: 0.5rem;
+  }
+  /* A count that had a row's worth of space to sit at the end of now has none, so it goes back to
+     the corner of the icon — the same placement the header's drawer trigger uses, and for the same
+     reason: a marker has to reach the outside of whatever is hiding its row. */
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-badge,
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-dot {
+    position: absolute;
+    margin: 0;
+    top: 0.3rem;
+    inset-inline-end: 0.5rem;
+  }
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-badge {
+    min-width: 0;
+    padding: 0 0.22rem;
+    font-size: 0.6rem;
+    line-height: 1.5;
+  }
+  /* The store block keeps its identity and loses its prose: the avatar is the one part of it that
+     still reads at this width, and it is also the switcher's own button — so "open another store"
+     survives the collapse, which "view store" and the address do not (both a click away, once the
+     rail is open again). */
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-head { padding: 0.9rem 0 0.7rem; }
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-head__top { align-items: center; }
+  html.dash-nav-mini #dash-main-card.dash-nav-side #store-switcher-btn { justify-content: center; }
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-store-name,
+  html.dash-nav-mini #dash-main-card.dash-nav-side .store-switcher__chevron,
+  html.dash-nav-mini #dash-main-card.dash-nav-side #dash-view-store,
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-head .muted { display: none; }
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-nav-sep { margin-inline: 0.75rem; }
+
   #dash-main-card.dash-nav-side .dash-tabs {
     --dash-tab-pad: 0.65rem;
     padding-block: 0 1.5rem;
@@ -2164,6 +2219,70 @@ textarea.input { resize: none; }
   box-shadow: 0 0 0 2px var(--color-surface);
 }
 .dash-nav-trigger__dot[data-level="warning"] { background: var(--color-warning); }
+
+/* ── The rail's width control (DashRailToggle.astro) ──
+   `order` and `margin-top: auto` are what let one component be both early in the DOM (its boot
+   script must run before the rail's width is painted) and low on the screen. Everything else in
+   the rail keeps the default `order: 0`, so those two declarations place this and the foot after
+   all of it without any of it having to know.
+   It reads as a control and not as a destination: no icon-plus-label row like a tab, no active
+   mark, and the muted colour the foot's links use. */
+.dash-rail-toggle {
+  order: 1;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.65rem;
+  margin-inline: 0.65rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.12s;
+}
+.dash-rail-toggle:hover { background: var(--color-bg); color: var(--color-text); }
+/* Nothing to collapse below the rail's breakpoint — the rail is a drawer there, and a drawer that
+   is 3.75rem wide is a drawer with nothing in it. Written as a max-width override next to the base
+   rule rather than as a min-width rule in the desktop block, because that block sits EARLIER in
+   this file and a same-specificity rule later in the source wins whatever the viewport says. */
+@media (max-width: 1179.98px) {
+  .dash-rail-toggle { display: none; }
+}
+.dash-rail-toggle__icon { flex-shrink: 0; transition: transform 0.2s ease; }
+/* The chevron points the way the rail will move. In RTL the rail is on the right, so "closing" it
+   is a move to the right — the mirror of the glyph as drawn. */
+[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(-1); }
+html.dash-nav-mini .dash-rail-toggle__icon { transform: scaleX(-1); }
+[dir="rtl"] html.dash-nav-mini .dash-rail-toggle__icon,
+html.dash-nav-mini [dir="rtl"] .dash-rail-toggle__icon { transform: none; }
+
+/* ── The hover label of a collapsed rail ──
+   On `document.body` rather than inside the tab, because the rail scrolls vertically and an
+   element that scrolls on one axis clips the other — so a tooltip drawn inside a row would be cut
+   off exactly at the rail's edge, which is where it has to appear. Placed by
+   `DashRailToggle.astro` against the row's rect.
+   It floats over the page, so by the elevation rule it is one of the few things that earns a
+   shadow — same one the dropdowns use, for the same reason. */
+.dash-rail-tip {
+  position: fixed;
+  z-index: 80;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.dash-rail-tip.is-on { opacity: 1; }
 
 /* ── The rail's foot: the four site-wide links (DashRailFoot.astro) ──
    `margin-top: auto` is what makes this a FOOT rather than the last thing after the list: the rail

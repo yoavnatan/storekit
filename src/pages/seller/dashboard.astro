@@ -25,6 +25,7 @@ import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astr
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import DashNavDrawer from '../../components/dashboard/DashNavDrawer.astro';
 import DashRailFoot from '../../components/dashboard/DashRailFoot.astro';
+import DashRailToggle from '../../components/dashboard/DashRailToggle.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
@@ -971,6 +972,10 @@ const orderStatusColors: Record<string, string> = {
           content column now starts at the top of the card, beside the rail, instead of below
           whichever row the store block had made tall. */}
       <div class="dash-rail">
+      {/* First in the rail and last on the screen — its boot script has to run before the rail's
+          width is painted, and its button belongs at the foot; flex `order` reconciles the two.
+          DashRailToggle.astro carries the reasoning. */}
+      {navSide && <DashRailToggle />}
       <!-- ── Store header ── -->
       <div class="dash-head">
         <div class="dash-head__top">
@@ -1104,7 +1109,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="overview"
           aria-selected={initialPanel === 'overview'}
           tabindex={initialPanel === 'overview' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>{d.tabOverview}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="dash-tab__label">{d.tabOverview}</span></button>
         <button
           class={`dash-tab${initialPanel === 'orders' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -1114,7 +1119,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'orders' ? 0 : -1}
           style="position:relative"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>{d.tabOrders}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg><span class="dash-tab__label">{d.tabOrders}</span>
           {newOrdersCount > 0 && (
             <span class="dash-tab-badge" data-tab-alert="danger" aria-label={t.dashboard.orderNewCount.replace('{n}', String(newOrdersCount))}>{newOrdersCount}</span>
           )}
@@ -1128,7 +1133,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'returns' ? 0 : -1}
           style="position:relative"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>{d.tabReturns}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg><span class="dash-tab__label">{d.tabReturns}</span>
           {openReturnsCount > 0 && (
             <span class="dash-tab-badge" data-tab-alert="danger" aria-label={t.dashboard.returnsOpenCount.replace('{n}', String(openReturnsCount))}>{openReturnsCount}</span>
           )}
@@ -1142,7 +1147,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'messages' ? 0 : -1}
           style="position:relative"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span class="dash-tab__label">{t.dashboard.tabMessages}</span>
           {unreadMsgRows > 0 && (
             <span class="dash-tab-dot" data-tab-alert="danger" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
           )}
@@ -1157,7 +1162,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'products' ? 0 : -1}
           style="position:relative"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>{d.tabProducts}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span class="dash-tab__label">{d.tabProducts}</span>
           {/* The severity this marker declares to scripts/dashboard/tab-alert-edges.ts, so the tab
               strip's edge can flag it while this tab is scrolled off screen. "warning" — a wrong
               state that can wait; the red ones below are someone waiting on the seller. */}
@@ -1170,7 +1175,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="promotions"
           aria-selected={initialPanel === 'promotions'}
           tabindex={initialPanel === 'promotions' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>{d.tabPromotions}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg><span class="dash-tab__label">{d.tabPromotions}</span></button>
         <div class="dash-nav-sep" aria-hidden="true"></div>
         <button
           class={`dash-tab${initialPanel === 'advertising' ? ' dash-tab--active' : ''}`}
@@ -1181,7 +1186,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'advertising' ? 0 : -1}
           style="position:relative"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>{d.tabAdvertising}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg><span class="dash-tab__label">{d.tabAdvertising}</span>
           {/* "warning", like the stock badge: the campaign has already STOPPED, so nothing is
               being spent while it waits — but it stays stopped until the seller puts the products
               back or uploads a photo, which is why it is a dot at all. The self-healing pause
@@ -1197,7 +1202,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="performance"
           aria-selected={initialPanel === 'performance'}
           tabindex={initialPanel === 'performance' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>{d.tabPerformance}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="dash-tab__label">{d.tabPerformance}</span></button>
         {/* Next to Performance and not next to Orders, deliberately: the two answer the same
             question — "how did this period go" — and a seller who wants the rows behind a figure
             looks beside the figure. */}
@@ -1208,7 +1213,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="reports"
           aria-selected={initialPanel === 'reports'}
           tabindex={initialPanel === 'reports' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>{d.tabReports}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg><span class="dash-tab__label">{d.tabReports}</span></button>
         <div class="dash-nav-sep" aria-hidden="true"></div>
         {/* Between Messages and Settings, and the position is the argument: this is the seller's
             own money rather than the store's operation, so it sits at the end of the working tabs
@@ -1222,7 +1227,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'payouts' ? 0 : -1}
           style="position:relative"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>{d.tabPayouts}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg><span class="dash-tab__label">{d.tabPayouts}</span>
           {/* No dot here any more (2026-08-21). It fired when released money had no bank account
               to go to — a state that cannot occur once the processor pays each seller directly.
               The details still matter, but they gate OPENING a merchant account rather than
@@ -1235,7 +1240,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="settings"
           aria-selected={initialPanel === 'settings'}
           tabindex={initialPanel === 'settings' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>{d.tabSettings}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span class="dash-tab__label">{d.tabSettings}</span></button>
       </div>
       {/* The site-wide links, at the foot of the rail — this page's only footer, `BaseLayout`
           having been told to skip its own (DashRailFoot.astro says why the move was the condition

@@ -1,0 +1,159 @@
+---
+/**
+ * The rail's width, as a choice the seller makes once.
+ *
+ * Owner, 2026-08-23: *"רצועה שמתכווצת לאייקונים, עם השם בריחוף, והבחירה נזכרת."* Collapsed, the
+ * rail is 3.75rem of icons and the products table gets back the 186px the labels were spending;
+ * expanded, it is the list. Nothing else changes — same buttons, same ids, same order — so every
+ * script that walks `[role="tab"]` is untouched by the state.
+ *
+ * **Three things here are not obvious, and each is a bug avoided.**
+ *
+ * 1. **The class lands on `<html>`, and this script is the rail's FIRST child.** The width of a
+ *    navigation column is layout, so a class applied after the rail has painted is a visible jump
+ *    on every single load — the class of defect memory `project_prepaint_seed_drift` and
+ *    `project_injected_overlay_flash` are both about. Running before the rail's own contents are
+ *    parsed means the first layout is already the right one. `<html>` rather than the card because
+ *    the card's width is set by `--dash-rail-w`, which is declared on the root.
+ *
+ * 2. **The button is rendered here but sits at the FOOT** (`order`/`margin-top:auto` in
+ *    dashboard.css). Those are the two things this component has to be: early in the DOM, and low
+ *    on the screen. Flex `order` is what lets it be both without a second component.
+ *
+ * 3. **The hover label is a real element positioned by script, not a `::after` on the tab.** The
+ *    rail is `overflow-y: auto`, and an element with `overflow-y` other than `visible` clips its
+ *    other axis too — so a tooltip drawn inside a tab would be cut off at the rail's edge, which
+ *    is precisely where it needs to appear. Same answer the products panel's escaping menus give
+ *    (`combo-filter-portal`): one element on `document.body`, placed against the tab's rect.
+ */
+import { getLang, getT } from '../../i18n/index.js';
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const d = t.dashboard;
+---
+
+<script is:inline>
+  (function () {
+    try {
+      if (localStorage.getItem('dash-nav-mini') === '1') {
+        document.documentElement.classList.add('dash-nav-mini');
+      }
+    } catch (e) {
+      /* Private mode, or storage blocked. The rail simply opens expanded, which is the state a
+         seller who has never chosen gets anyway — there is nothing to fall back FROM. */
+    }
+  })();
+</script>
+
+<button
+  type="button"
+  id="dash-rail-toggle"
+  class="dash-rail-toggle"
+  aria-controls="dash-nav-list"
+  aria-expanded="true"
+  data-label-collapse={d.navCollapse}
+  data-label-expand={d.navExpand}
+>
+  {/* One glyph, rotated by CSS for the other direction — two icons would be two things to keep
+      pointing the right way, and in RTL "collapse" and "expand" are already mirrored once by the
+      writing direction. */}
+  <svg class="dash-rail-toggle__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <polyline points="15 18 9 12 15 6"/>
+  </svg>
+  <span class="dash-rail-toggle__label">{d.navCollapse}</span>
+</button>
+
+<script is:inline>
+  (function () {
+    var btn = document.getElementById('dash-rail-toggle');
+    if (!btn) return;
+    var root = document.documentElement;
+    var MINI = 'dash-nav-mini';
+
+    function label() {
+      return root.classList.contains(MINI)
+        ? btn.getAttribute('data-label-expand')
+        : btn.getAttribute('data-label-collapse');
+    }
+    function sync() {
+      var mini = root.classList.contains(MINI);
+      btn.setAttribute('aria-expanded', mini ? 'false' : 'true');
+      btn.setAttribute('aria-label', label());
+      var text = btn.querySelector('.dash-rail-toggle__label');
+      if (text) text.textContent = label();
+      if (mini) hide();
+    }
+    sync();
+
+    btn.addEventListener('click', function () {
+      var mini = !root.classList.contains(MINI);
+      root.classList.toggle(MINI, mini);
+      try { localStorage.setItem('dash-nav-mini', mini ? '1' : '0'); } catch (e) { /* see above */ }
+      sync();
+    });
+
+    // ── The hover label ──
+    var tip = null;
+    var forEl = null;
+
+    function isMini() {
+      // Asked of the rail's real width rather than of the viewport: below 1180px the rail is a
+      // drawer, where the labels are on screen and a tooltip would be a second copy of them.
+      var rail = document.querySelector('.dash-rail');
+      return root.classList.contains(MINI) && !!rail && getComputedStyle(rail).position === 'sticky';
+    }
+    function hide() {
+      if (tip) tip.classList.remove('is-on');
+      forEl = null;
+    }
+    function show(tab) {
+      if (!isMini()) return;
+      var span = tab.querySelector('.dash-tab__label');
+      var text = span ? span.textContent.trim() : '';
+      if (!text) return;
+      if (!tip) {
+        tip = document.createElement('div');
+        tip.className = 'dash-rail-tip';
+        tip.setAttribute('role', 'presentation');
+        document.body.appendChild(tip);
+      }
+      tip.textContent = text;
+      forEl = tab;
+      // **Placed a frame later, and re-placed on every hover.** Both halves are one bug, seen once
+      // on a reload with the pointer already resting on a row: the browser replays a `mouseover`
+      // onto whatever is under the cursor, and measuring in that same tick used a box the new
+      // layout had not produced yet — the label landed 162px off, in the middle of the table. A
+      // frame is enough for layout, and re-placing unconditionally means a stale position can
+      // never survive into the next hover.
+      requestAnimationFrame(function () {
+        if (forEl !== tab || !tip) return;
+        var r = tab.getBoundingClientRect();
+        var t = tip.getBoundingClientRect();
+        // The rail sits on the START side, so the label opens towards the content — away from the
+        // screen edge in either writing direction.
+        var rtl = getComputedStyle(document.documentElement).direction === 'rtl';
+        tip.style.top = Math.round(r.top + r.height / 2 - t.height / 2) + 'px';
+        tip.style.left = Math.round(rtl ? r.left - t.width - 8 : r.right + 8) + 'px';
+        tip.classList.add('is-on');
+      });
+    }
+
+    document.addEventListener('mouseover', function (e) {
+      var el = e.target instanceof Element ? e.target : null;
+      var tab = el && el.closest('.dash-rail [role="tab"]');
+      if (tab) show(tab);
+      else if (forEl && !(el && el.closest('.dash-rail-tip'))) hide();
+    });
+    // Keyboard reaches the rail by arrow keys (roving tabindex), so focus is the other way in.
+    document.addEventListener('focusin', function (e) {
+      var el = e.target instanceof Element ? e.target : null;
+      var tab = el && el.closest('.dash-rail [role="tab"]');
+      if (tab) show(tab); else hide();
+    });
+    // A tooltip left behind by a scroll or a resize is pointing at nothing.
+    window.addEventListener('scroll', hide, { passive: true });
+    window.addEventListener('resize', hide);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+  })();
+</script>

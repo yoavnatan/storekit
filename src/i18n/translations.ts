@@ -878,6 +878,10 @@ export const translations = {
       /** The rail's own footer link, which is `/contact?report=fault` — the short form of
        *  `report.kindFault`, because a rail row is a label and not a sentence. */
       navReportFault: 'דיווח על תקלה',
+      /** The rail's width control. One button, two names — it says what pressing it will DO, so
+       *  the name has to follow the state rather than describe the rail. */
+      navCollapse: 'כווץ תפריט',
+      navExpand: 'הרחב תפריט',
       tabProducts: 'מוצרים',
       tabOrders: 'הזמנות',
       tabReturns: 'החזרות',
@@ -2873,6 +2877,8 @@ export const translations = {
       navMenu: 'Dashboard menu',
       navMenuClose: 'Close menu',
       navReportFault: 'Report a fault',
+      navCollapse: 'Collapse menu',
+      navExpand: 'Expand menu',
       tabProducts: 'Products',
       tabOrders: 'Orders',
       tabReturns: 'Returns',
