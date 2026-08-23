@@ -2128,6 +2128,20 @@ html.dash-nav-mini #dash-main-card.dash-nav-side.admin-dash .dash-head { display
    header and pinned at 0, so it had 37px of travel AND 37px of gap; both are this value, and it is
    12.
 
+   **24 was rendered against it later the same day and rejected — don't re-propose it.** The ask was
+   for the dashboard to open like the rest of the site does (*"קצת יותר ריווח בין ההדר לבין
+   הקונטיינר… יותר כמו הריווחים בשאר הפלטפורמה"* — the rest of the site opens at `.section`'s 3rem,
+   container.css). Both values were rendered side by side and the reason 24 loses is visible in the
+   picture rather than arguable from the number: **the rail is flush against the site header and
+   the panel card is not**, so this gap is not air above a page — it is the distance by which the
+   card's top edge disagrees with the rail's. 48px on a content page is one edge moving away from
+   the header; 24px here is two edges that no longer line up, and the wider it gets the more the
+   shell reads as two pieces. 12 is the smallest value that still keeps the card off the header's
+   line. Air the dashboard genuinely wants goes INSIDE the sheet — the panel's own top padding —
+   where there is only one edge to move. On a phone this is 0 for the same family of reason: a
+   sheet that runs edge to edge has no gap to open (the 640px block below, and
+   `.dash-section--bleed` states it).
+
    **`--dash-tabs-h` is how it reaches the four `top:` rules, and that is deliberate.** Every sticky
    offset in this file is written `calc(var(--site-header-h) + var(--dash-tabs-h) + …)` — it was the
    height of the horizontal strip, which the rail layout does not have. Declaring the gutter there
