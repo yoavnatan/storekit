@@ -354,6 +354,44 @@
 }
 
 @theme {
+  /* ── THE WEIGHT SCALE, RE-SOLVED FOR THE FACE (2026-08-23) ──
+     Owner, on the day the interface face changed: *"אני רוצה שזה יישב בדיוק על הפיקסל ועל
+     העובי, רק עם הפונט החדש"* — the new letterforms, the old density, and nothing else moving.
+
+     Noto Sans Hebrew is a heavier face than Heebo at the same number. Measured by rendering
+     the same Hebrew line at the same px and counting the ink actually laid down:
+
+         weight   Heebo -> Noto      too heavy by
+           400      519 -> 541            4%
+           500      587 -> 624            6%
+           600      714 -> 753            5%
+           700      786 -> 835            6%
+           800      859 -> 916            7%
+
+     Letter HEIGHT is within 1%, so this is not the face reading bigger — the strokes are
+     genuinely thicker, and the line comes out 4% wider with them. That is what he saw.
+
+     Because the face is VARIABLE, its weight is a continuous axis rather than five cuts, so
+     the answer is not "drop everything one step" (400 would land 8% LIGHT, overshooting the
+     other way) — it is to solve for the axis value that matches Heebo's ink at each step.
+     Sampled every 5 units from 300 to 800 and interpolated:
+
+         400 -> 380    500 -> 455    600 -> 553    700 -> 641    800 -> 730
+
+     These are Tailwind's OWN weight tokens, so `font-medium` / `font-semibold` / `font-bold`
+     across ~410 call sites all follow from here. The raw `font-weight: NNN` declarations in
+     the legacy stylesheets were moved to match; `tests/font-weight-scale.test.ts` holds the
+     two halves to the same table so they cannot drift apart.
+
+     SWAPPING THE FAMILY AGAIN MEANS RE-SOLVING THESE. They are a property of the pair
+     (this face, Heebo's density), not constants — the same measurement that produced them is
+     in `scratchpad`-style form in the test's header so it can be re-run rather than guessed. */
+  --font-weight-normal: 380;
+  --font-weight-medium: 455;
+  --font-weight-semibold: 553;
+  --font-weight-bold: 641;
+  --font-weight-extrabold: 730;
+
   /* Corner-radius scale — three steps, and every rounded surface in the app
      picks one. Declared here rather than in :root because `--radius-*` is
      Tailwind v4's OWN theme namespace: in :root these would sit alongside
@@ -493,6 +531,17 @@
 
 body {
   font-family: var(--font-base);
+  /* **The default weight is 380, not the browser's 400** — and this line is the whole reason
+     the re-solved scale above actually reaches the page. Tailwind's `--font-weight-*` tokens
+     only apply where a `font-normal` / `font-medium` class or an explicit `font-weight` says
+     so; every element that declares NO weight — a table cell, a price, a paragraph, a chip —
+     inherits `normal`, which is the browser's 400 and has nothing to do with our scale.
+     Measured right after the tokens landed: buttons and tabs had moved to 455/553 while the
+     panel heading, the price column and the category chip were still sitting at 400, i.e. the
+     four percent heavier that this whole pass exists to remove, on exactly the text there is
+     the most of. Inherited from `body` so a component can still override it and nothing has
+     to repeat it. */
+  font-weight: var(--font-weight-normal);
   background: var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;

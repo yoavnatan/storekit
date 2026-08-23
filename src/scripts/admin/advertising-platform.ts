@@ -167,7 +167,7 @@ function wireStyledSelect(cfg: { trigger: string; hidden: string; label: string;
     if (brandSelectPortal.currentTrigger() === trigger) { brandSelectPortal.close(); return; }
     brandSelectPortal.open(trigger, '14rem', () => cfg.options.map((o) => {
       const selected = o.value === hidden.value;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${escapeHtml(o.value)}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escapeHtml(o.label)}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${escapeHtml(o.value)}" style="${selected ? 'font-weight:641;color:var(--color-primary)' : ''}">${escapeHtml(o.label)}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -461,7 +461,7 @@ function initAdRangePicker(): void {
     const from = root!.dataset.from ?? '';
     const to = root!.dataset.to ?? '';
     const presetsHtml = AD_RANGE_PRESETS.map((p) =>
-      `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p.key}" style="${p.key === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${p.label}</button>`).join('');
+      `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p.key}" style="${p.key === active ? 'font-weight:641;color:var(--color-primary)' : ''}">${p.label}</button>`).join('');
     return `${presetsHtml}
       <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
       <div class="px-3 pt-1.5 pb-2">

@@ -427,7 +427,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       // (ממתין לאיסוף שליח) returns as a CARRIER-driven state once shipping is
       // wired — not a manual toggle with nothing behind it (see GO_LIVE §5).
       orderStatusPortal.open(statusTrigger, '11rem', () => Object.entries(labelMap).filter(([v]) => ['processing', 'shipped', 'delivered'].includes(v)).map(([v, l]) =>
-        `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${currentVal === v ? 'font-weight:700' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${l}</button>`
+        `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${currentVal === v ? 'font-weight:641' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${l}</button>`
       ).join(''), (portal) => {
         portal.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((opt) => {
           opt.addEventListener('click', () => {
@@ -563,7 +563,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       const MANUAL = ['processing', 'shipped', 'delivered'];
       orderStatusPortal.open(statusBadge, '12rem', () => [
         ...MANUAL.map((v) =>
-          `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${pending === v ? 'font-weight:700' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${labelMap[v] ?? v}</button>`
+          `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${pending === v ? 'font-weight:641' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${labelMap[v] ?? v}</button>`
         ),
         `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
         `<div class="px-2 pb-1"><button type="button" class="btn btn--accent btn--sm w-full order-quick-save">${tt('orderSave')}</button></div>`,
@@ -951,7 +951,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   function openOrdersSort(trigger: HTMLElement): void {
     ordersPortal.open(trigger, '13rem', () => toolbarMenuTitle(tt('sortByLabel')) + ORDER_SORT_OPTIONS.map((o) => {
       const selected = o.col === ordersSortCol && o.dir === ordersSortDir;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label()}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:641;color:var(--color-primary)' : ''}">${o.label()}</button>`;
     }).join(''), (portal) => {
       portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
         btn.addEventListener('click', () => {

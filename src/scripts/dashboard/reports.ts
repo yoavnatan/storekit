@@ -283,7 +283,7 @@ export function initReportsTab(): void {
   function rangeMenuHtml(): string {
     const active = picker?.dataset.preset ?? '';
     const item = (p: PeriodPreset): string =>
-      `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(t[PERIOD_PRESET_LABEL_KEY[p]] ?? p)}</button>`;
+      `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === active ? 'font-weight:641;color:var(--color-primary)' : ''}">${esc(t[PERIOD_PRESET_LABEL_KEY[p]] ?? p)}</button>`;
     // Both fields AND Apply on ONE line, and the whole menu tall enough not to scroll — both
     // learned by the performance picker, whose Apply button fell below the portal's 320px cap.
     // `dir="ltr"` belongs on each DATE FIELD, never on the row that holds them. A date is an LTR

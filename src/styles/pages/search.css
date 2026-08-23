@@ -14,7 +14,7 @@
   background: var(--color-surface);
   padding: 0.4rem 0.8rem;
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 455;
   font-family: inherit;
   color: var(--color-text);
   cursor: pointer;
@@ -25,7 +25,7 @@
 
 .search-page__title {
   font-size: 1.3rem;
-  font-weight: 800;
+  font-weight: 730;
   color: var(--color-text);
   margin: 0;
   min-width: 0;
@@ -49,7 +49,7 @@
 .search-section { margin-bottom: 2.5rem; }
 .search-section__title {
   font-size: 1.05rem;
-  font-weight: 700;
+  font-weight: 641;
   color: var(--color-text);
   margin: 0 0 1rem;
 }
@@ -124,7 +124,7 @@
 }
 .search-product-card__name {
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 455;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -138,7 +138,7 @@
 }
 .search-product-card__price {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 553;
 }
 
 @media (max-width: 640px) {

@@ -73,7 +73,7 @@
    name would undo that on the first long store name. */
 .store-card__name {
   font-size: 0.97rem;
-  font-weight: 700;
+  font-weight: 641;
   color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
@@ -177,7 +177,7 @@
    (this file is unlayered legacy CSS). */
 .store-card__tag {
   font-size: 0.68rem;
-  font-weight: 500;
+  font-weight: 455;
   color: var(--color-muted);
   --badge-hue: var(--color-muted);
   /* Off the capsule on EVERY card, not only the invite ones (owner, 2026-08-18), following the
@@ -226,7 +226,7 @@
      So the eye-catching is the COLOUR's job, which is the change that stays; the weight only has to
      say "outranks a category label", and 600 says it. Two full-strength signals for one message is
      the stacking the design line rules out anyway. */
-  font-weight: 600;
+  font-weight: 553;
   /* The hue at full strength, mixed toward the text colour so it stays legible against the 11%
      wash of itself that `.badge-finish` puts behind it — a chip whose ink and fill are the same
      colour at different alphas is the one way this pairing can go unreadable. */
@@ -564,7 +564,7 @@
 .home-category-row-label {
   display: block;
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 553;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-muted);
@@ -601,7 +601,7 @@
   background: var(--color-surface);
   color: var(--color-text);
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 553;
   text-decoration: none;
   white-space: nowrap;
   transition: border-color 0.15s, box-shadow 0.15s;

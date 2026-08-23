@@ -16,7 +16,7 @@
   background: var(--color-accent);
   color: #fff;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 641;
   padding: 0.2rem 0.65rem;
   border-radius: var(--radius-pill);
   text-transform: uppercase;
@@ -31,13 +31,13 @@
   flex: 1;
 }
 
-.plan-card__name { font-size: 1.05rem; font-weight: 700; }
+.plan-card__name { font-size: 1.05rem; font-weight: 641; }
 .plan-card__name a:hover { color: var(--color-primary); }
 .plan-card__desc { font-size: 0.88rem; }
 
 .plan-card__price {
   font-size: 2rem;
-  font-weight: 800;
+  font-weight: 730;
   color: var(--color-accent);
   line-height: 1;
   margin: 0.4rem 0;
@@ -45,7 +45,7 @@
 
 .plan-card__period {
   font-size: 1rem;
-  font-weight: 400;
+  font-weight: 380;
   color: var(--color-muted);
 }
 

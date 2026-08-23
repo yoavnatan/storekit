@@ -87,15 +87,20 @@ const TAGLINE_SIZE = 0.33;
  *  purpose: the gap is what keeps this a subtitle rather than a second name. */
 const TAGLINE_GAP = 0.24;
 
-/** The second line's weight, in the site's interface face. 400 and not 300, for one
- *  reason that has nothing to do with taste: the tagline is LIVE TEXT, and under Heebo a
- *  weight the site did not already ship meant two more font files (latin + hebrew) on
- *  every page for one line that renders on two of them. The face is variable now
- *  (2026-08-23) and 300 costs no extra file, so this is a free number again — but it
- *  stays at 400, because at 0.245em of the lockup a 300 Hebrew line goes thin enough to
- *  disappear against a very heavy name, which is the opposite of the contrast device the
- *  lockup is. Change it by looking at the poster, not by reading this. */
-const TAGLINE_WEIGHT = 400;
+/** The second line's weight, in the site's interface face.
+ *
+ *  380, and that number is "regular" — it is not a lighter setting. The face is Noto Sans
+ *  Hebrew, which lays down 4-7% more ink than Heebo at the same number, so the whole site's
+ *  weight scale was re-solved against Heebo's density on 2026-08-23 and 400 became 380
+ *  (`--font-weight-normal` in tokens.css carries the table and the measurement). This line
+ *  is LIVE TEXT in that same face, so it follows the same scale or it renders heavier than
+ *  every other "regular" on the page — and the poster, which OUTLINES it at this weight,
+ *  would then disagree with the site it is a picture of.
+ *
+ *  Genuinely lighter was considered and is out: at 0.245em of the lockup a 300 Hebrew line
+ *  goes thin enough to disappear against a very heavy name, which is the opposite of the
+ *  contrast the lockup is built on. Change it by looking at the poster, not by reading this. */
+const TAGLINE_WEIGHT = 380;
 
 /** Tracking on the second line, in the TAGLINE's own em.
  *

@@ -643,7 +643,7 @@ function chipHtml(dimName: string, value: string, i18n: Record<string, string>, 
 function removeConfirmHtml(kind: 'dim' | 'chip' | 'tag', i18n: Record<string, string>): string {
   return `<span class="remove-confirm" data-remove-confirm data-remove-kind="${kind}" style="display:inline-flex;align-items:center;gap:0.3rem;white-space:nowrap;font-size:0.78rem;flex-shrink:0">
     <span style="color:var(--color-muted)">${esc(i18n.confirmDeleteShort ?? 'Sure?')}</span>
-    <button type="button" data-remove-confirm-yes style="color:var(--color-danger,#dc2626);background:none;border:none;cursor:pointer;font-weight:700;padding:0 0.15rem;font-size:0.78rem">${esc(i18n.confirmYes ?? 'Yes')}</button>
+    <button type="button" data-remove-confirm-yes style="color:var(--color-danger,#dc2626);background:none;border:none;cursor:pointer;font-weight:641;padding:0 0.15rem;font-size:0.78rem">${esc(i18n.confirmYes ?? 'Yes')}</button>
     <button type="button" data-remove-confirm-no style="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0 0.15rem;font-size:0.78rem">${esc(i18n.confirmNo ?? 'No')}</button>
   </span>`;
 }
@@ -819,7 +819,7 @@ function comboHeaderHtml(dims: VariantDimension[], i18n: Record<string, string>)
   // Between the dimensions and the stock column, and deliberately neither sortable nor filterable:
   // it is an identifier, not something a seller scans a catalogue by. Stock keeps the sticky end
   // column, because that is the number they came here to read.
-  const skuHeader = `<th style="padding:0.4rem 0.6rem;text-align:start;border-bottom:1px solid var(--color-border);white-space:nowrap;font-size:0.82rem;font-weight:600;color:var(--color-text)">${esc(i18n.variantComboSkuCol ?? 'SKU')}</th>`;
+  const skuHeader = `<th style="padding:0.4rem 0.6rem;text-align:start;border-bottom:1px solid var(--color-border);white-space:nowrap;font-size:0.82rem;font-weight:553;color:var(--color-text)">${esc(i18n.variantComboSkuCol ?? 'SKU')}</th>`;
   return `<tr data-variant-combo-header>${dimHeaders}${skuHeader}<th style="padding:0.4rem 0.6rem;text-align:end;border-bottom:1px solid var(--color-border);white-space:nowrap;${STOCK_COL_STICKY};z-index:2">
     <button type="button" class="combo-sort-btn" data-combo-sort-col="stock" aria-label="${esc(`${sortBy} ${i18n.variantStockColLabel ?? 'Stock'}`)}">${esc(i18n.variantStockColLabel ?? 'Stock')}${SORT_ICON_SVG}</button>
   </th></tr>`;
@@ -828,8 +828,8 @@ function comboHeaderHtml(dims: VariantDimension[], i18n: Record<string, string>)
 function comboTotalRowHtml(dims: VariantDimension[], i18n: Record<string, string>): string {
   const label = `${i18n.variantComboTotal ?? 'Total'} (${i18n.variantFilterAll ?? 'All'})`;
   return `<tr data-variant-combo-total-row>
-    <td colspan="${dims.length + 1}" data-variant-combo-total-label style="padding:0.4rem 0.6rem;font-size:0.82rem;font-weight:600;color:var(--color-text);white-space:nowrap;border-top:1px solid var(--color-border);position:sticky;bottom:0;background:var(--color-surface)">${esc(label)}</td>
-    <td data-variant-combo-total-value style="padding:0.4rem 0.6rem;text-align:end;font-weight:600;color:var(--color-text);border-top:1px solid var(--color-border);position:sticky;inset-inline-end:0;bottom:0;background:var(--color-surface);z-index:1">0</td>
+    <td colspan="${dims.length + 1}" data-variant-combo-total-label style="padding:0.4rem 0.6rem;font-size:0.82rem;font-weight:553;color:var(--color-text);white-space:nowrap;border-top:1px solid var(--color-border);position:sticky;bottom:0;background:var(--color-surface)">${esc(label)}</td>
+    <td data-variant-combo-total-value style="padding:0.4rem 0.6rem;text-align:end;font-weight:553;color:var(--color-text);border-top:1px solid var(--color-border);position:sticky;inset-inline-end:0;bottom:0;background:var(--color-surface);z-index:1">0</td>
   </tr>`;
 }
 
@@ -1234,7 +1234,7 @@ function openComboFilterPortal(wrap: HTMLElement, editor: HTMLElement, i18n: Rec
   comboFilterOpenEditor = editor;
 
   const portal = getComboFilterPortal();
-  const items = values.map(v => `<label class="combo-filter-item" style="display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.75rem;border-radius:var(--radius-sm);cursor:pointer;font-size:0.82rem;font-weight:400;text-transform:none;letter-spacing:normal;white-space:nowrap"><input type="checkbox" data-combo-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">${esc(v)}</label>`).join('');
+  const items = values.map(v => `<label class="combo-filter-item" style="display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.75rem;border-radius:var(--radius-sm);cursor:pointer;font-size:0.82rem;font-weight:380;text-transform:none;letter-spacing:normal;white-space:nowrap"><input type="checkbox" data-combo-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">${esc(v)}</label>`).join('');
   // Disabled while nothing in this column is ticked — see filterClearButtonHtml().
   const clearState = selected.size
     ? 'cursor:pointer;color:var(--color-muted)'
@@ -3395,7 +3395,7 @@ function openMobileSortMenu(trigger: HTMLElement): void {
     const i = getDashI18n();
     return toolbarMenuTitle(i.sortByLabel ?? 'מיין לפי') + PRODUCT_SORT_OPTIONS.map((opt) => {
       const selected = opt.col === productsSortCol && opt.dir === productsSortDir;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full whitespace-nowrap py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full whitespace-nowrap py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="${selected ? 'font-weight:641;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
     }).join('');
   }, (portal) => {
     portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {

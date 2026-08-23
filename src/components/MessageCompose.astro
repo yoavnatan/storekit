@@ -32,7 +32,7 @@ const t = getT(getLang(Astro.cookies));
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
       <div>
-        <h2 style="font-size:1rem;font-weight:700;margin:0;color:var(--color-text)">{t.messages.send}</h2>
+        <h2 style="font-size:1rem;font-weight:641;margin:0;color:var(--color-text)">{t.messages.send}</h2>
         <p id="mc-to-name" style="font-size:0.8rem;color:var(--color-muted);margin:2px 0 0"></p>
       </div>
       <button type="button" id="mc-close" aria-label={t.messages.close} style="width:2rem;height:2rem;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--color-muted);background:none;border:none;cursor:pointer">
@@ -49,7 +49,7 @@ const t = getT(getLang(Astro.cookies));
 
       <!-- Subject -->
       <label style="display:flex;flex-direction:column;gap:0.35rem">
-        <span style="font-size:0.82rem;font-weight:600;color:var(--color-text)">{t.messages.subject}</span>
+        <span style="font-size:0.82rem;font-weight:553;color:var(--color-text)">{t.messages.subject}</span>
         <input
           id="mc-subject"
           name="subject"
@@ -64,7 +64,7 @@ const t = getT(getLang(Astro.cookies));
 
       <!-- Content -->
       <label style="display:flex;flex-direction:column;gap:0.35rem">
-        <span style="font-size:0.82rem;font-weight:600;color:var(--color-text)">{t.messages.content}</span>
+        <span style="font-size:0.82rem;font-weight:553;color:var(--color-text)">{t.messages.content}</span>
         <textarea
           id="mc-content"
           name="content"

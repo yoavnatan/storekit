@@ -55,11 +55,11 @@ const stars = Array.from({ length: RATING_MAX }, (_, i) => i + 1);
   data-str-pick={t.reviews.pickStar}
 >
   {productName && (
-    <p dir="auto" style="font-size:0.9rem;font-weight:600;color:var(--color-text);margin:0">{productName}</p>
+    <p dir="auto" style="font-size:0.9rem;font-weight:553;color:var(--color-text);margin:0">{productName}</p>
   )}
 
   <div class="flex flex-col gap-1.5">
-    <span id={`rating-label-${productId}`} style="font-size:0.78rem;font-weight:600;color:var(--color-muted)">
+    <span id={`rating-label-${productId}`} style="font-size:0.78rem;font-weight:553;color:var(--color-muted)">
       {t.reviews.yourRating}
     </span>
     {/* Mirrors with the page, like every other star row on the site — `lib/star-html.ts`'s header
@@ -85,7 +85,7 @@ const stars = Array.from({ length: RATING_MAX }, (_, i) => i + 1);
   </div>
 
   <label class="flex flex-col gap-1.5">
-    <span style="font-size:0.78rem;font-weight:600;color:var(--color-muted)">{t.reviews.yourWords}</span>
+    <span style="font-size:0.78rem;font-weight:553;color:var(--color-muted)">{t.reviews.yourWords}</span>
     {/* `resize:none` is a site-wide ban, not a choice here (AI_INSTRUCTIONS → Micro-interactions). */}
     <textarea class="review-body" rows="3" maxlength={REVIEW_BODY_MAX} dir="auto"
               style="resize:none;width:100%;border:1px solid var(--color-border);border-radius:var(--radius);padding:0.55rem 0.7rem;font:inherit;font-size:0.9rem;background:var(--color-surface);color:var(--color-text)"></textarea>

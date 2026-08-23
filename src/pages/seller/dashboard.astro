@@ -1768,7 +1768,7 @@ const orderStatusColors: Record<string, string> = {
                 unlayered in tokens.css (clamp up to 2rem) and unlayered CSS beats @layer
                 utilities whatever the specificity — a Tailwind text-size here silently loses. */}
             <div style="display:flex;align-items:start;justify-content:space-between;gap:0.75rem;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
-              <h2 id="bulk-discount-heading" style="font-size:1rem;font-weight:700;line-height:1.4;margin:0;color:var(--color-text)">
+              <h2 id="bulk-discount-heading" style="font-size:1rem;font-weight:641;line-height:1.4;margin:0;color:var(--color-text)">
                 {d.bulkDiscountTitle} <span id="bulk-discount-count" class="muted font-normal"></span>
               </h2>
               <button type="button" id="bulk-discount-close" aria-label={d.cancel} class="shrink-0 w-8 h-8 rounded-[var(--radius)] flex items-center justify-center [color:var(--color-muted)] bg-transparent border-0 cursor-pointer hover:bg-[color:var(--color-bg)]">
@@ -3247,7 +3247,7 @@ const orderStatusColors: Record<string, string> = {
     background: var(--color-surface);
     border: 1.5px solid var(--color-border);
     border-radius: 9999px; cursor: pointer;
-    font-family: inherit; font-size: 0.83rem; font-weight: 500;
+    font-family: inherit; font-size: 0.83rem; font-weight: 455;
     color: var(--color-text); white-space: nowrap;
     transition: border-color 0.12s;
   }
@@ -3309,7 +3309,7 @@ const orderStatusColors: Record<string, string> = {
     width: 34px; height: 34px; border-radius: var(--radius-sm); flex-shrink: 0;
     background: var(--color-bg); border: 1px solid var(--color-border);
   }
-  .eom-item__name { flex: 1; font-size: 0.82rem; font-weight: 500; color: var(--color-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .eom-item__name { flex: 1; font-size: 0.82rem; font-weight: 455; color: var(--color-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .eom-item__meta { font-size: 0.78rem; color: var(--color-muted); flex-shrink: 0; white-space: nowrap; }
   .eom-item__del {
     width: 24px; height: 24px; border-radius: var(--radius-sm); flex-shrink: 0;
@@ -3346,7 +3346,7 @@ const orderStatusColors: Record<string, string> = {
     background: #ef4444;
     color: #fff;
     font-size: 0.65rem;
-    font-weight: 700;
+    font-weight: 641;
     line-height: 1;
     min-width: 16px;
     height: 16px;
@@ -3481,7 +3481,7 @@ const orderStatusColors: Record<string, string> = {
 <!-- ── Edit Order Details Modal ── -->
 <dialog id="edit-order-modal" aria-labelledby="eom-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(520px,96vw);box-shadow:var(--shadow-overlay);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
-    <h2 id="eom-title" style="font-size:0.95rem;font-weight:700;margin:0">{t.dashboard.eomTitle}</h2>
+    <h2 id="eom-title" style="font-size:0.95rem;font-weight:641;margin:0">{t.dashboard.eomTitle}</h2>
     <button id="edit-order-modal-close" type="button" aria-label={t.dashboard.eomClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;transition:background 0.1s">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -3491,7 +3491,7 @@ const orderStatusColors: Record<string, string> = {
     <input type="hidden" id="edit-order-store-slug" value="" />
 
     <!-- Buyer details -->
-    <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0">{t.dashboard.eomBuyerDetails}</p>
+    <p style="font-size:0.75rem;font-weight:641;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0">{t.dashboard.eomBuyerDetails}</p>
     <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
       <label class="field" style="flex:1">
         <span>{t.dashboard.eomFullName}</span>
@@ -3523,35 +3523,35 @@ const orderStatusColors: Record<string, string> = {
 
     <!-- Items (delete only) -->
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem;margin-top:0.1rem">
-      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.orderItems}</p>
+      <p style="font-size:0.75rem;font-weight:641;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.orderItems}</p>
       <div id="eom-items-list"></div>
     </div>
 
     <!-- Shipping method (placeholder — wired later) -->
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
-      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.eomShippingMethod}</p>
+      <p style="font-size:0.75rem;font-weight:641;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.eomShippingMethod}</p>
       <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.6rem 0.85rem;gap:0.75rem">
         <div style="display:flex;align-items:center;gap:0.55rem">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted);flex-shrink:0" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-          <span id="eom-shipping-label" style="font-size:0.85rem;font-weight:500;color:var(--color-text)">{t.dashboard.eomShippingStandard}</span>
+          <span id="eom-shipping-label" style="font-size:0.85rem;font-weight:455;color:var(--color-text)">{t.dashboard.eomShippingStandard}</span>
           <span id="eom-shipping-amount" style="font-size:0.82rem;color:var(--color-muted)"></span>
         </div>
         <button
           type="button"
           disabled
           title={t.dashboard.eomComingSoon}
-          style="font-size:0.75rem;font-weight:500;color:var(--color-muted);background:none;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:0.25rem 0.6rem;cursor:default;font-family:inherit;opacity:0.6;flex-shrink:0"
+          style="font-size:0.75rem;font-weight:455;color:var(--color-muted);background:none;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:0.25rem 0.6rem;cursor:default;font-family:inherit;opacity:0.6;flex-shrink:0"
         >{t.dashboard.eomChangeShipping}</button>
       </div>
     </div>
 
     <!-- Discount -->
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
-      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.orderEditDiscount}</p>
+      <p style="font-size:0.75rem;font-weight:641;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.orderEditDiscount}</p>
       <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <div style="display:flex;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
-          <button type="button" id="eom-dtype-pct" class="eom-dtype-btn eom-dtype-btn--active" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">%</button>
-          <button type="button" id="eom-dtype-amt" class="eom-dtype-btn" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:600;border:none;border-right:1px solid var(--color-border);cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">₪</button>
+          <button type="button" id="eom-dtype-pct" class="eom-dtype-btn eom-dtype-btn--active" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:553;border:none;cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">%</button>
+          <button type="button" id="eom-dtype-amt" class="eom-dtype-btn" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:553;border:none;border-right:1px solid var(--color-border);cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">₪</button>
         </div>
         <input class="input" id="eom-discount-val" type="number" min="0" step="1" placeholder="0" style="width:90px" />
         <span id="eom-discount-preview" style="font-size:0.82rem;color:var(--color-muted)"></span>
@@ -3573,7 +3573,7 @@ const orderStatusColors: Record<string, string> = {
 <dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(440px,96vw);box-shadow:var(--shadow-overlay);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
     <div>
-      <h2 id="pbm-title" style="font-size:0.95rem;font-weight:700;margin:0">{d.perfBreakdownTitle}</h2>
+      <h2 id="pbm-title" style="font-size:0.95rem;font-weight:641;margin:0">{d.perfBreakdownTitle}</h2>
       <p id="pbm-subtitle" class="muted" style="font-size:0.78rem;margin:0.15rem 0 0"></p>
     </div>
     <button id="perf-breakdown-close" type="button" aria-label={d.perfBreakdownClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;flex-shrink:0">

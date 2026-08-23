@@ -197,7 +197,7 @@
                 <strong>${esc(i.name)}</strong>
                 ${variantLine}
                 <div class="cart-line__footer">
-                  ${gone ? `<span class="cart-line__price" style="font-weight:500;color:var(--color-muted)">${esc(i18n.unavailable ?? '')}</span>` : `
+                  ${gone ? `<span class="cart-line__price" style="font-weight:455;color:var(--color-muted)">${esc(i18n.unavailable ?? '')}</span>` : `
                   <span class="cart-line__price">${formatPrice(i.price)}</span>
                   <div class="cart-line__qty" dir="ltr">
                     <button data-act="dec" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}" ${i.qty <= 1 ? 'disabled' : ''}>−</button>
