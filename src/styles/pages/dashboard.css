@@ -314,6 +314,36 @@ textarea.input { resize: none; }
 .prod-cq .products-table td { padding-inline: clamp(0.25rem, 0.55vw, 0.75rem); padding-block: 0.65rem; }
 .prod-cq .products-table th { padding-inline: clamp(0.25rem, 0.55vw, 0.75rem); }
 
+/* ══ EVERY CELL CONTAINS ITS OWN CONTENT ══
+   Owner, 2026-08-23, after watching a date draw over the SEO gauge and then a price over the
+   stock: *"אני מניח שבמספרים גבוהים הכל עולה על הכל שם. חשבתי שיש הפרדה בין העמודות."* There
+   wasn't. `.num` cells are `white-space: nowrap` and nothing bounded them, so a value wider than
+   its column did not truncate — it simply drew across the neighbour. The columns looked separate
+   only because the demo catalogue's numbers are short.
+
+   That is also the oldest note in CURRENT_TASK about this table, written before any of today's
+   work: five columns could not hold their own worst-case content, and it *"does not look broken
+   today only because .num cells are nowrap and the number spills into the neighbour's padding"*.
+   The spill was the thing hiding the shortfall.
+
+   One rule ends the whole class, and it is deliberately on the CELL rather than on the five
+   columns that happened to be caught: a value that outgrows its column now ellipsises inside it.
+   Nothing can overlap anything, at any value, in any column — including ones added later.
+
+   It also makes the widths honest. A column that is too narrow now SHOWS "…" instead of
+   borrowing its neighbour's space, so the next person to measure sees the shortfall rather than
+   inheriting a layout that quietly looked fine.
+
+   THREE COLUMNS ARE EXEMPT, AND THE LINE IS CONTENT vs CONTROL. Ellipsis is a way of saying
+   "there is more text here"; a checkbox, a gauge and a kebab have no more, so clipping one can
+   only ever be damage. Measured after this rule went in and before the exemption existed: at
+   1440 the gauge and the kebab each sat 2px past their cell's start edge and were being shaved.
+   `.check-col` was already exempt for the same reason written differently — its focus ring is
+   drawn outside its own box, and clipping that is an accessibility regression. */
+.prod-cq .products-table td { overflow: hidden; text-overflow: ellipsis; }
+.prod-cq .products-table .seo-col,
+.prod-cq .products-table .actions-col { overflow: visible; }
+
 /* Fixed columns carry a control or a picture, so they do not scale with the table: a
    checkbox, a thumbnail, the SEO gauge and the kebab are the same size at every width.
    Everything else is a share, which is what makes the shrink continuous. */
@@ -357,14 +387,23 @@ textarea.input { resize: none; }
    today. SEO and the kebab give back the padding that made them sit apart, which is the gap he
    saw; both still clear their contents (21px gauge, 28px button) at the narrowest table this
    layout reaches. */
-.products-table .name-col      { width: 25%; }
-.products-table .sku-col       { width: 11%; }
-.products-table .cat-col       { width: 15%; }
-.products-table .price-col     { width: 9%; }
-.products-table .stock-col     { width: 11%; }
-.products-table .wishlist-col  { width: 6%; }
-.products-table .purchased-col { width: 7%; }
-.products-table .date-col      { width: 8%; }
+/* A PRICE AND A DATE GET A FLOOR, NOT A SHARE — their worst case does not scale with the
+   table. "₪ 149,900.00" is 95px whatever the window is doing, and a truncated price is not a
+   layout compromise, it is a number a seller cannot read. Same for a four-digit year. Measured
+   against real worst-case values rather than the demo catalogue, which has no SKUs, three-digit
+   stock and four-digit prices and so hid every one of these shortfalls (CURRENT_TASK asked for
+   exactly this check: "with a long SKU and big numbers, not with the demo").
+   The percentage columns take what is left, which is what a share is for: they hold text that
+   ellipsises by design and has a tooltip behind it. */
+.products-table .price-col     { width: 6.6rem; }
+.products-table .date-col      { width: 6.8rem; }
+.products-table .stock-col     { width: 4.6rem; }
+.products-table .purchased-col { width: 4.2rem; }
+.products-table .wishlist-col  { width: 4rem; }
+
+.products-table .name-col      { width: 46%; }
+.products-table .sku-col       { width: 20%; }
+.products-table .cat-col       { width: 34%; }
 
 .products-table .name-col .product-name {
   white-space: nowrap;
