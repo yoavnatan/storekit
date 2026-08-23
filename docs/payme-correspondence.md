@@ -116,23 +116,31 @@ not what the vendor considers the answer.
 `direct_market_fee` is **silently ignored** (measured, `payme-sandbox-notes.md` §11). PayMe accept
 unknown parameters without complaint, so this distinction is worth money.
 
-### 3. ✅ The 110% is simple arithmetic, and the owner is the one who saw it
-Three sessions argued about which ceiling PayMe meant. The owner read it plainly (2026-08-23):
+### 3. ✅ RESOLVED — and the resolution is that PayMe's own suggestion does not scale
+Three sessions argued about which of the two ceilings their "110%" referred to. The owner settled it
+in two steps, and the second step is the one that matters.
 
-> *"כי אז 30 שקל משלוח זה פשוט 110 שח מ-300 לדוגמא"*
+**First he read the arithmetic plainly:** ₪300 of goods plus ₪30 of delivery is ₪330 — 110% of ₪300.
+So the number is the CAPTURE ceiling: their model authorizes the goods and then captures past the
+authorization to pull the delivery through.
 
-**₪300 of goods plus ₪30 of delivery is ₪330 — 110% of ₪300.** That is all the number is. Their
-model authorizes the GOODS and then captures past it to pull the delivery through, so the capture
-ceiling has to go above 100%.
+**Then he broke it:** *"אבל 20 שקל ועוד 30 שקל משלוח זה לא 110 אחוז."* Correct. That is **250%**. And
+₪10 with ₪30 of delivery is 400%.
 
-Ours authorizes goods AND delivery together and captures exactly 100% of that. Same money, same
-single purchase, no ceiling to raise. **Both are the capture ceiling; neither is about the 60% cap
-on our commission**, which is a separate limit that our design also stays clear of because delivery
-is captured to our own merchant rather than folded into the seller's sale
-(`payme-sandbox-notes.md` §18).
+**So "110%" is an example Yakir happened to pick, not a formula.** Under their model the ceiling
+that would actually be required is `(goods + delivery) / goods`, which rises without bound as the
+item gets cheaper — so no single setting fixes it, and a marketplace selling small items would keep
+discovering new failures at new price points. It is the same shape as the 60% market-fee cap, which
+also bites hardest on a cheap item with real delivery.
 
-The reason to still raise it on the integration call is question 0 above — not that ours is unsound,
-but that a vendor describing a different shape usually knows something the API does not state.
+**Our design has no such dependency.** Authorize goods AND delivery together, capture exactly 100%
+of that, and the ratio between them never enters the arithmetic. Delivery is captured to our own
+merchant account rather than folded into the seller's sale, so the 60% cap does not enter it either
+(`payme-sandbox-notes.md` §18). Nothing has to be raised, at any price point.
+
+⚠️ **This does not close question 0 above.** Knowing why they described the other shape is still
+worth a sentence on the integration call — a vendor recommending a pattern usually knows something
+the API does not state. But it is now a question about their reasoning, not about a limit we need.
 
 ## Why the linked documentation is not quoted here
 

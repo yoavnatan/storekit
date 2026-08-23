@@ -125,6 +125,13 @@ exactly as the agreement's §10.4 describes it.
 Therefore: **delivery-by-fixed-fee is constrained by the 60%, never by the 100%.** ₪10 of goods with
 ₪30 of delivery is an 87% cut and is refused `308`.
 
+**⚠️ And PayMe's own suggested shape does not scale — the owner found this, 2026-08-23.** Their
+"110%" is the capture ceiling: authorize the goods, then capture past it to pull the delivery
+through. ₪300 + ₪30 really is 110% — but ₪20 + ₪30 is **250%**, and ₪10 + ₪30 is 400%. The required
+ceiling is `(goods + delivery) / goods`, which rises without bound as the item gets cheaper, so no
+single setting fixes it. Authorizing goods AND delivery together and capturing 100% has no such
+dependency, which is what this codebase does.
+
 **Which leaves what PayMe offered.** Their words are *"כשעושה **לכידה** בשווי 500 ש״ח שהם **100%**…
 להעלות ל-110%"* — capture language and the capture number, i.e. the FIRST row. ⚠️ That reading is an
 inference from their wording and not a measurement, and it matters: **if it is right, the 110% they
