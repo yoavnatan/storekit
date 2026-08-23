@@ -875,6 +875,9 @@ export const translations = {
        *  the open tab's own label, so it needs a name that says what pressing it does. */
       navMenu: 'תפריט הדשבורד',
       navMenuClose: 'סגירת התפריט',
+      /** The rail's own footer link, which is `/contact?report=fault` — the short form of
+       *  `report.kindFault`, because a rail row is a label and not a sentence. */
+      navReportFault: 'דיווח על תקלה',
       tabProducts: 'מוצרים',
       tabOrders: 'הזמנות',
       tabReturns: 'החזרות',
@@ -2869,6 +2872,7 @@ export const translations = {
       tabOverview: 'Overview',
       navMenu: 'Dashboard menu',
       navMenuClose: 'Close menu',
+      navReportFault: 'Report a fault',
       tabProducts: 'Products',
       tabOrders: 'Orders',
       tabReturns: 'Returns',

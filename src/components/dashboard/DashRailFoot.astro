@@ -1,0 +1,42 @@
+---
+/**
+ * The four site-wide links, at the bottom of the navigation rail.
+ *
+ * **This is the page's footer, moved — not a second one.** The hard rule is one minimalist footer
+ * per page (`Footer.astro`, AI_INSTRUCTIONS → Architecture), and it still holds: `BaseLayout` is
+ * told `dashNav` and skips rendering its own, so a dashboard has exactly one of these and it is
+ * this. The move is what makes the rail possible at all — with the rail running the full height of
+ * the viewport and the panel scrolling behind it, a footer at the END of the document is a footer
+ * a seller reaches only after eight hundred product rows. Owner, 2026-08-23: *"הפעם הפוטר יורד
+ * לתחתית הרצועה — תנאי שימוש, צור קשר, דיווח על תקלה ומתג שפה. בלי זה אל תבנה את זה בכלל."*
+ *
+ * Four links and no more, because those are the four he named. What the page footer carries and
+ * this one does not is "open a store" (the reader already has one) and the © line (chrome for a
+ * shopper's page, not for a working surface).
+ *
+ * "Report a fault" is `/contact?report=fault`, which is the link `ReportForm.astro` was built to
+ * receive — it preselects the kind and captures the page it came from, so the seller types the
+ * problem and nothing else.
+ */
+import CsrfField from '../CsrfField.astro';
+import { getLang, getT } from '../../i18n/index.js';
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const nextLang = lang === 'he' ? 'en' : 'he';
+---
+
+<div class="dash-rail-foot">
+  <a href="/terms">{t.footer.terms}</a>
+  <a href="/contact">{t.footer.contact}</a>
+  <a href="/contact?report=fault">{t.dashboard.navReportFault}</a>
+  {/* data-native-submit for the same reason the page footer's copy carries it: `/api/lang` answers
+      303 and only a full navigation re-renders the page in the other language, so the dashboard's
+      FormFallbackGuard must not intercept this one as an unsaved AJAX form. */}
+  <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form" data-native-submit>
+    <CsrfField />
+    <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
+      {t.nav.switchLang}
+    </button>
+  </form>
+</div>

@@ -24,6 +24,7 @@ import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
 import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import DashNavDrawer from '../../components/dashboard/DashNavDrawer.astro';
+import DashRailFoot from '../../components/dashboard/DashRailFoot.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
@@ -217,14 +218,6 @@ const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel)
  * so the choice survives every tab switch without this file doing anything about it.
  */
 const navSide = Astro.url.searchParams.get('nav') !== 'top';
-/** The open tab's own label — the drawer trigger's text, because with the list behind a drawer
- *  nothing else on screen says which tab you are on. */
-const PANEL_LABELS: Record<string, string> = {
-  overview: d.tabOverview, products: d.tabProducts, promotions: d.tabPromotions,
-  orders: d.tabOrders, returns: d.tabReturns, performance: d.tabPerformance,
-  reports: d.tabReports, advertising: d.tabAdvertising, messages: t.dashboard.tabMessages,
-  payouts: d.tabPayouts, settings: d.tabSettings,
-};
 
 // ── ONE PANEL PER REQUEST (2026-08-11, SELLER_LAZY_PANELS_PLAN.md) ──
 //
@@ -941,7 +934,7 @@ const orderStatusColors: Record<string, string> = {
 
 ---
 
-<BaseLayout title={hasNoStore ? d.noStoreTitle : d.title} noindex={true} isLoggedIn={true} hasStore={!hasNoStore} storeMode={true} sellerMode={true}>
+<BaseLayout title={hasNoStore ? d.noStoreTitle : d.title} noindex={true} isLoggedIn={true} hasStore={!hasNoStore} storeMode={true} sellerMode={true} dashNav={navSide && !!store && !showCreateStore}>
   {showCreateStore ? (
     <CreateStoreCard first={hasNoStore} error={error} vocabulary={categoryVocabulary} />
   ) : store ? (
@@ -964,7 +957,10 @@ const orderStatusColors: Record<string, string> = {
   <script type="application/json" id="category-tree-data" set:html={jsonForScript(categoryTree)} />
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-invoice-preset={cloudinaryInvoicePreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-host={platformHost} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section dash-section--bleed">
-    <div id="dash-main-card" class={`card seller-dash${navSide ? ' dash-nav-side' : ''}`} style="margin-bottom:1.5rem">
+    {/* No bottom margin in the side layout: the sheet is `min-height`-ed to the foot of the
+        viewport there (dashboard.css), so 1.5rem below it is 1.5rem of scrollbar on a page that
+        otherwise has none. */}
+    <div id="dash-main-card" class={`card seller-dash${navSide ? ' dash-nav-side' : ''}`} style={navSide ? undefined : 'margin-bottom:1.5rem'}>
 
       {/* **The rail is ONE element: the store block and the tab list inside it.**
           It has to be one element because on a phone the whole thing is the drawer — the owner
@@ -1241,14 +1237,20 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'settings' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>{d.tabSettings}</button>
       </div>
+      {/* The site-wide links, at the foot of the rail — this page's only footer, `BaseLayout`
+          having been told to skip its own (DashRailFoot.astro says why the move was the condition
+          on building the rail at all). Inside the rail, so a phone gets it in the drawer. */}
+      {navSide && <DashRailFoot />}
       </div>
-      {/* **Outside the rail, and a direct child of the card.** Two reasons, both learned the hard
-          way. Inside the rail it IS the drawer, so the button that opens it was hidden along with
-          it — the menu simply had no way in on a phone. And `position: sticky` travels only inside
-          its own containing block, so from anywhere shallower than the card it scrolls away after
-          a screenful. Here it is a sibling of the rail and of every panel, pinned under the site
-          header, and above 1180px it is `display:none` because the rail is simply there. */}
-      {navSide && <DashNavDrawer label={PANEL_LABELS[initialPanel] ?? d.navMenu} menuLabel={d.navMenu} />}
+      {/* **The trigger that opens this on a phone is in the SITE HEADER, not here** (owner,
+          2026-08-23: *"הפס עם ההמבורגר במובייל צריך להיעלם… צריך פתרון אחר לגמרי"*). It was a
+          full-width bar in this position, and a bar costs a row it cannot earn: it named the open
+          tab, which the panel's own sticky title says one line below it, and it pushed that title
+          down under itself. A header that is already fixed can carry an icon for free, and it is
+          pinned by construction rather than by a `position: sticky` that has to be reasoned about.
+          `DashNavDrawer` is the behaviour only now — the scrim, Escape, the focus trap; it finds
+          the button by id wherever the header put it. */}
+      {navSide && <DashNavDrawer />}
 
       <DashTabsBoot />
 

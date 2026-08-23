@@ -36,7 +36,7 @@ import '../styles/main.css';
 
 const {
   title, description, image, type, noindex, jsonLd, canonical,
-  isLoggedIn, hasStore, storeMode, storeName, storeSlug, storeLogo, storeDemo, storeHeaderLogo, sellerMode, hideNav, showSearch, isHome,
+  isLoggedIn, hasStore, storeMode, storeName, storeSlug, storeLogo, storeDemo, storeHeaderLogo, sellerMode, hideNav, showSearch, isHome, dashNav,
   dataLayer, productPrice, productCurrency, preloadImage, noTracking,
 } = Astro.props;
 
@@ -343,7 +343,7 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
         Empty until a navigation actually starts, and it needs no teardown — the
         document is replaced. */}
     <div id="nav-progress" class="progress-track fixed inset-x-0 top-[var(--site-header-h,3.4rem)] z-[70] pointer-events-none" role="status" aria-label={t.nav.loading}></div>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} storeLogo={storeLogo} storeDemo={storeDemo} storeHeaderLogo={storeHeaderLogo} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} initialUnreadCount={initialUnreadCount} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} storeLogo={storeLogo} storeDemo={storeDemo} storeHeaderLogo={storeHeaderLogo} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} dashNav={dashNav} initialUnreadCount={initialUnreadCount} />
     {/* Arms every `[data-sticky-glass]` bar inline, and BEFORE <main> rather than from a page
         module or the end of the body — a sticky bar pins on the first pixel of scroll whether the
         page's imports (or even the rest of its HTML) have arrived or not. The component carries
@@ -352,7 +352,12 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
     <main id="main-content">
       <slot />
     </main>
-    <Footer />
+    {/* **The one page without this footer is the one that carries it somewhere else.** The seller
+        dashboard's rail runs the full height of the viewport and ends in the same four links
+        (`DashRailFoot.astro`), so rendering this as well would be two footers on one page — and
+        the copy at the end of the document is the one nobody reaches, being eight hundred product
+        rows down. Still one footer per page; only its address changed. */}
+    {!dashNav && <Footer />}
     <CartDrawer />
     <AddToCartPreview />
     <WishlistDrawer />

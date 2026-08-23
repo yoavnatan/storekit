@@ -50,10 +50,15 @@ interface Props {
   hideNav?: boolean;
   showSearch?: boolean;
   isHome?: boolean;
+  /** The seller dashboard's side-navigation layout: draw the drawer trigger. Below the rail's
+   *  1180px breakpoint it is the only way into the tab list, and the header is the one bar on the
+   *  page that is already pinned — so it costs the dashboard no row of its own. `DashNavDrawer`
+   *  owns everything that happens when it is pressed and finds it by id. */
+  dashNav?: boolean;
   initialUnreadCount?: number;
 }
 
-const { storeDemo = false, isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug, storeLogo, storeHeaderLogo, initialUnreadCount = 0 } = Astro.props;
+const { storeDemo = false, isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, dashNav = false, storeName, storeSlug, storeLogo, storeHeaderLogo, initialUnreadCount = 0 } = Astro.props;
 const initialUnreadLabel = initialUnreadCount > 99 ? '99+' : String(initialUnreadCount);
 
 // Same SSR-not-async-fetch fix as the notif badge above, for the other
@@ -341,6 +346,30 @@ const strEmpty   = t.store.noProductsFound;
 
     <!-- Actions -->
     <div class="header-actions" style={storeMode ? 'flex-shrink:0' : undefined}>
+      {/* The seller dashboard's menu, below the rail's breakpoint. First in the cluster, so in RTL
+          it is the control nearest the wordmark and furthest from the account icons it is not one
+          of. Icon only: the panel it opens onto already carries its own title one line down, and a
+          second copy of that word was the whole reason the bar this replaces had to go. */}
+      {dashNav && (
+        <button
+          id="dash-nav-trigger"
+          class="cart-btn dash-nav-trigger"
+          type="button"
+          aria-label={t.dashboard.navMenu}
+          aria-expanded="false"
+          aria-controls="dash-nav-list"
+          style="position:relative"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          {/* A marker inside a closed drawer cannot be seen, which is the same problem the strip's
+              off-screen beacon solves — so the trigger carries the loudest severity out. Same
+              two-value vocabulary as `data-tab-alert`: red = a person is waiting, amber = a wrong
+              state that can wait. Hidden by markup and raised by `DashNavDrawer`, never the other
+              way round: a dot painted by markup and cleared by script flashes on every load of a
+              store with nothing wrong. */}
+          <span class="dash-nav-trigger__dot" id="dash-nav-trigger-dot" hidden></span>
+        </button>
+      )}
       {/* Mobile search icon — store pages only, hidden on desktop via CSS */}
       {storeMode && storeSlug && !sellerMode && (
         <button id="mobile-search-btn" class="cart-btn mobile-search-btn" aria-label={lang === 'he' ? 'חיפוש' : 'Search'} aria-expanded="false" aria-controls="mobile-search-panel">

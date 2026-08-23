@@ -1947,67 +1947,122 @@ textarea.input { resize: none; }
 
 /* ── Desktop: a real column beside the panel ── */
 @media (min-width: 1180px) {
-  /* **The rail is added BESIDE the content, not carved out of it** (owner, 2026-08-22: the
-     products table's headings came out as one letter and an ellipsis, and then *"אולי כדאי
-     להרחיב את כל הלייאוט של כל האתר?!"*).
-     The answer to the wider question is no, and this is why it does not need to be yes. The site's
-     1160px (`--max-width`, tokens.css) is a READING width, chosen for a shopping surface: the
-     product grid is `repeat(auto-fill, minmax(220px, 1fr))` and the homepage's rows are sized to a
-     whole-number fit at that width, so moving it moves those too, for pages that were not the
-     complaint. What actually happened here is narrower than that: a 15.5rem rail appeared inside a
-     box whose width had not changed, so an 11-column table lost 248px it never agreed to give.
-     Adding the rail's width to the section restores the content column to exactly what it is in
-     the top-strip layout — the same table, the same headings, plus a rail. `.container` keeps
-     `width: 100%`, so this is a cap and never a horizontal scrollbar.
-     `--dash-rail-w` is declared HERE, on the section, and not on the card: the card cannot hand a
-     value up to the ancestor that sizes it, and two numbers that must agree are one number. */
-  /* **Declared on the root so the site HEADER can read it too** (owner, 2026-08-23: *"גם ההדר
-     צריך להיות מותאם לרוחב של הקונטיינרים החדשים"* — and he was right: the dashboard was 248px
-     wider than the header above it, so the store name and the header's own icons stopped lining
-     up with anything). One number, two consumers, no way for them to drift. */
+  /* ══ THE SHELL: a sidebar and a main, and nothing wrapped around both ══
+     Owner, 2026-08-23: *"כלומר להפריד לגמרי בין הסייד בר לבין המיין"* — and then, when asked what
+     it should look like: *"קח דוגמא מפייסבוק"*. So this is that shape, which is also the shape of
+     every dashboard built since about 2019, and it is worth naming what it fixes rather than only
+     what it is.
+
+     The layout that came before put the rail and the panel inside ONE bordered, rounded card,
+     centred at the site's reading width. Three complaints follow from that single decision, and
+     all three go away with it:
+       · the card rested 20px under the header with a rounded top corner, and a scroll deleted the
+         gap AND the corner AND the border in one frame (*"ואז כשגוללים הוא פתאום נצמד להדר וזה
+         מכוער"*) — a full-width sheet has a top edge, so its top edge changing IS the page
+         changing;
+       · the rail could not be still, because a sticky child cannot leave its parent's box and that
+         box ended 47.8px above the document's bottom (measured; see `padding-block: 0` below);
+       · the rail floated in the middle of the screen with page background beyond it, which reads
+         as a panel rather than as the side of the application.
+     Now: the shell runs edge to edge, the rail is at the viewport's start edge in the surface
+     colour, and the main column is page background with the panel on it as a card of its own.
+     Nothing encloses the two, so there is no shared edge left to misbehave.
+
+     **Full bleed here does NOT reopen "should the whole site be wider"** (owner, 2026-08-22, and
+     the answer was no). The site's 1160px is a READING width for shopping surfaces — the product
+     grid and the homepage rows are sized to a whole-number fit at it, so moving it moves pages
+     that were never the complaint. Nothing here touches `--max-width`; the PANEL still honours it
+     (`max-width: var(--max-width)` below), so the products table is the width it always was. What
+     changed is only what sits either side of it: page background instead of nothing.
+     The site header goes full bleed with it, for the reason he gave when the card was widened
+     (2026-08-23: *"גם ההדר צריך להיות מותאם לרוחב של הקונטיינרים החדשים"*) — an application whose
+     chrome stops 140px short of its own sidebar is two designs on one screen. */
   html:has(#dash-main-card.dash-nav-side) { --dash-rail-w: 15.5rem; }
   .dash-section:has(> #dash-main-card.dash-nav-side),
   html:has(#dash-main-card.dash-nav-side) .site-header > .container {
-    max-width: calc(var(--max-width) + var(--dash-rail-w));
+    max-width: none;
   }
+  /* **Both ends, and the bottom one is not symmetry — it is the sticky bug** (measured
+     2026-08-23). `.section` sets `padding-block: 3rem` and only the top was ever overridden, so
+     the document ran 47.8px past the shell's bottom. A sticky element cannot leave its own
+     containing block, so at the foot of the scroll the rail was squeezed up out of its pinned
+     position by exactly that 47.8px — the "slides a few pixels" he saw, arriving at the END of a
+     scroll rather than the start, which is why it looked like the pin failing rather than like
+     padding. With the shell running to the last pixel of the document, the rail's floor and the
+     viewport's floor are the same line and the travel measures 0.00px. */
+  .dash-section:has(> #dash-main-card.dash-nav-side) { padding: 0; }
 
   #dash-main-card.dash-nav-side {
     display: grid;
     grid-template-columns: var(--dash-rail-w, 15.5rem) minmax(0, 1fr);
-    grid-template-rows: auto 1fr;
     align-items: start;
+    /* Not a card any more: no border, no radius, no elevation, and the page's own background
+       rather than a surface. The white in this layout belongs to the two things that are actually
+       surfaces — the rail and the panel. */
+    background: var(--color-bg);
+    border: 0;
+    border-radius: 0;
+    /* So a short tab (Payouts, an empty Reports) still fills the screen instead of ending in a
+       torn edge of page background halfway down, and so the rail always has a full column to
+       stand in. */
+    min-height: calc(100vh - var(--site-header-h, 3.4rem));
   }
   /* Everything not placed explicitly goes in the CONTENT column — a flash message, and whatever a
      later session adds between the head and the panels. A new child landing in the rail by
      auto-placement would be the silent failure here. */
   #dash-main-card.dash-nav-side > * { grid-column: 2; }
 
-  /* **The rail is one grid item, and the content column starts at the TOP of the card.**
-     It was two items in two rows, which is where the enormous empty band above the products
-     toolbar came from (owner, 2026-08-23: *"שמת לי איזה רווח מאוד גדול בין הסקשן לבין התוכן"*):
-     the store block made row 1 as tall as itself, and the panel — sitting in row 2 — began below
-     it, across the whole width. One item cannot do that. */
+  /* **Zero travel: the rail's resting position IS its pinned position, so it cannot move.**
+     (owner, 2026-08-23: *"הסייד בר שיורד כמה פיקסלים לפני שהוא נהיה סטיקי, הוא אמור להיות ממש יציב
+     ולא לזוז בכלל"*.) It was pinned at `header + 0.5rem` while resting at `header + 20px` of
+     section padding, so any scroll slid it 12.6px up and stopped it — and a sticky element that
+     moves at all reads as a bug, because nothing else on the page moved with it.
+     The number is not tuned: the shell has no padding above it, which puts its top edge exactly at
+     the foot of the header, and the rail is the shell's first child. Natural top and sticky top
+     are therefore the same expression, and the only way to get this wrong again is to put
+     something back above the shell.
+     Full height rather than `max-height`, because the four site links live at the FOOT of this
+     column (`DashRailFoot.astro`) and a foot needs a bottom to sit on. */
   #dash-main-card.dash-nav-side > .dash-rail {
     grid-column: 1;
-    grid-row: 1 / -1;
+    grid-row: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    /* Sticky as a whole. The store block scrolls away WITH the list only if the list is short
-       enough to need it; on any real viewport the rail fits, so what the seller sees is a
-       navigation that simply does not move — which is what was asked for, without pinning
-       anything separately. */
     position: sticky;
-    top: calc(var(--site-header-h, 3.4rem) + 0.5rem);
+    top: var(--site-header-h, 3.4rem);
     align-self: start;
-    max-height: calc(100vh - var(--site-header-h, 3.4rem) - 1.5rem);
+    height: calc(100vh - var(--site-header-h, 3.4rem));
     overflow-y: auto;
     scrollbar-width: none;
     z-index: 7;
     background: var(--color-surface);
+    /* The seam between the sidebar and the page. On the rail and not on the panel because the rail
+       is the element that runs the whole height — a border on a panel stops where that panel's
+       content stops, which is what left the line hanging in mid-air on a short tab. */
+    border-inline-end: 1px solid var(--color-border);
   }
   #dash-main-card.dash-nav-side > .dash-rail::-webkit-scrollbar { display: none; }
 
+  /* **The panel is the card now.** It carries the surface, the border and the radius the shell
+     gave up, and it is centred at the site's reading width inside whatever the rail leaves —
+     which is what keeps an 11-column table the width it was tuned for on a 1440px screen and
+     stops it stretching to 2000px on a wider one.
+     `margin-block` rather than `padding` on the shell: the gap above the card has to be page
+     background, so that the card's top edge slides under the site header on a scroll instead of
+     dragging a white band up with it. That is the whole difference between this and the sheet it
+     replaces, and it is why nothing here needs to know the header's height. */
+  #dash-main-card.dash-nav-side > .dash-panel {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 1rem auto 1.5rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+  }
+  #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-column: 2; grid-row: 1; }
 
   #dash-main-card.dash-nav-side .dash-tabs {
     --dash-tab-pad: 0.65rem;
@@ -2016,13 +2071,6 @@ textarea.input { resize: none; }
     max-height: none;
     overflow: visible;
   }
-  #dash-main-card.dash-nav-side > .dash-panel,
-  #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-column: 2; }
-  #dash-main-card.dash-nav-side > #dash-hydrating-bar { grid-row: 1; }
-  #dash-main-card.dash-nav-side > .dash-panel { grid-row: 1 / -1; }
-
-  /* The trigger is a phone control; at this width the rail is simply there. */
-  #dash-main-card.dash-nav-side .dash-nav-trigger { display: none; }
 }
 
 /* ── Phone and tablet: the same list, as a drawer ──
@@ -2087,72 +2135,81 @@ textarea.input { resize: none; }
 }
 .dash-nav-overlay.is-open { opacity: 1; pointer-events: auto; }
 
-/* The trigger, and it is not decoration: with the list behind a drawer, this line is the only
-   thing on screen that says which tab is open. So it names it. */
-/* **It sticks, and what made that possible was moving it in the DOM** (owner, 2026-08-23:
-   *"ואיכשהו איכשהו שהכפתור עם ההמבורגר יישאר סטיקי"*). A sticky box travels only inside its own
-   containing block. While this button lived inside `.dash-head` it had a box a few hundred pixels
-   tall, so `position:sticky` did nothing at all once the head had scrolled past — measured at
-   -723px off the top of an 800px viewport. It is a direct child of the card now, whose box is the
-   whole dashboard, so the same one line works. Pinning the head instead was tried and rejected:
-   it put the store's whole identity on screen on every tab, which is not what was asked for.
-   `width:max-content` so a stuck full-width element does not drag a surface-coloured bar across
-   the page behind it, and the inline margin matches `.dash-head`'s own padding at this width so it
-   still lines up with the store name above it. */
-/* **A BAR, not a button floating over the page** (owner, 2026-08-23: *"הסטיקי כפתור עם ההמבורגר
-   נשאר תקוע על גבי התוכן"*). It was a `max-content` chip with a rounded border, pinned — so the
-   rows scrolled through the transparent strip either side of it and it read as something stuck to
-   the glass rather than as part of the page. A pinned element has to be opaque across the full
-   width it occupies, or it is a smudge.
-   So: full width, the surface colour, one rule underneath it, and the control itself is the only
-   thing in it. Square, because it spans edge to edge — the same argument as the sheet it sits on.
-   Its own height feeds nothing; the page below simply starts after it. */
-.dash-nav-trigger {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.55rem 0.8rem;
-  margin: 0;
-  position: sticky;
-  top: var(--site-header-h, 3.4rem);
-  z-index: 9;
-  font: inherit;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 0;
-  border-bottom: 1px solid var(--color-border);
-  border-radius: 0;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.dash-nav-trigger:hover { background: var(--color-bg); }
-.dash-nav-trigger__icon {
-  position: relative;
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--color-muted);
+/* ── The drawer's trigger, which is a header icon ──
+   **Third position, and the first one that costs the page nothing.** It was inside `.dash-head`
+   (where `position: sticky` did nothing, its containing block having scrolled past), then a
+   full-width pinned bar directly under the header (which named the open tab a second time and
+   pushed the panel's own sticky title down under itself). The header is already `position: fixed`
+   and already carries a row of round icon buttons, so this is one more of them: `.cart-btn` gives
+   it the site's own hit area, hover and focus ring, and everything below it starts exactly where
+   it started before the rail existed.
+   Only the dot and the breakpoint are this file's business. */
+.dash-nav-trigger { display: none; }
+@media (max-width: 1179.98px) {
+  .dash-nav-trigger { display: inline-flex; }
 }
 /* Just off the icon's corner, the way a badge sits on an app icon — close enough to belong to it,
-   clear of the three lines so neither reads as part of the other. */
+   clear of the three lines so neither reads as part of the other. Same vocabulary as the strip's
+   own off-screen beacon: a marker that is now inside a closed drawer has to reach the outside
+   somehow, and this button is the only element outside it. */
 .dash-nav-trigger__dot {
   position: absolute;
-  top: -2px;
-  inset-inline-end: -3px;
-}
-/* Same vocabulary as the strip's own off-screen beacon: a marker that is now inside a closed
-   drawer has to reach the outside somehow, and this is the only element outside it. */
-.dash-nav-trigger__dot {
+  top: 0.45rem;
+  inset-inline-end: 0.45rem;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--color-danger);
-  /* A ring in the button's own fill, so the dot stays legible where it overlaps the glyph. */
+  /* A ring in the header's own fill, so the dot stays legible where it overlaps the glyph. */
   box-shadow: 0 0 0 2px var(--color-surface);
 }
 .dash-nav-trigger__dot[data-level="warning"] { background: var(--color-warning); }
+
+/* ── The rail's foot: the four site-wide links (DashRailFoot.astro) ──
+   `margin-top: auto` is what makes this a FOOT rather than the last thing after the list: the rail
+   is a full-height flex column, so the free space collects above this block and it settles on the
+   bottom edge whether the store has eleven tabs or the list is scrolled. A rule above it, because
+   these links are not navigation of the same kind as the rows they follow — the same 1px the
+   groups inside the list are separated by, at the same inset.
+   Muted and small: this is the page's footer, and a footer that competes with the navigation above
+   it has stopped being one. */
+.dash-rail-foot {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.7rem;
+  padding: 0.7rem 0.65rem 0.15rem;
+  margin-inline: 0.65rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  line-height: 1.9;
+}
+.dash-rail-foot a,
+.dash-rail-foot .lang-toggle-btn {
+  color: var(--color-muted);
+  text-decoration: none;
+  font-size: inherit;
+  transition: color 0.15s;
+}
+.dash-rail-foot a:hover,
+.dash-rail-foot .lang-toggle-btn:hover { color: var(--color-text); }
+/* The language control is a form (only a full navigation can re-render the page in the other
+   language), so its button has to be talked out of looking like one — it is a link that happens to
+   need a POST. */
+.dash-rail-foot .lang-toggle-form { display: inline-flex; }
+.dash-rail-foot .lang-toggle-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+/* In the drawer the foot is the last thing in a scrollable sheet, and a link 2px off the bottom
+   edge reads as clipped. */
+@media (max-width: 1179.98px) {
+  .dash-rail-foot { padding-bottom: 0.6rem; }
+}
 
 /* ── The alert dots the tab strip already had, as a class ──
    They were four copies of the same seven inline declarations (orders, advertising, messages,

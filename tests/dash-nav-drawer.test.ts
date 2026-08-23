@@ -3,22 +3,26 @@
  * The side-navigation drawer's inline script, run against a document built in the REAL order.
  *
  * The bug this exists for shipped and was found by the owner in one tap (2026-08-22: *"במובייל
- * התפריט צד לא נפתח שום דבר לא קורה"*). `DashNavDrawer` renders inside `.dash-head` — that is
- * where its trigger belongs in the layout — and `.dash-head` is parsed BEFORE `.dash-tabs`. The
- * script is `is:inline`, so it runs the instant the parser reaches it, and its opening
- * `getElementById('dash-nav-list')` therefore returned null. The guard below it returned, nothing
- * was ever bound, and the drawer was dead: no error, no warning, and a screenshot of the closed
- * page looks exactly right. `DashTabsBoot` sidesteps the same trap by being rendered AFTER its
- * strip; this component cannot be.
+ * התפריט צד לא נפתח שום דבר לא קורה"*). The component's script is `is:inline`, so it runs the
+ * instant the parser reaches it — inside the card, and therefore BEFORE `.dash-tabs`. Its opening
+ * `getElementById('dash-nav-list')` returned null, the guard below it returned, nothing was ever
+ * bound, and the drawer was dead: no error, no warning, and a screenshot of the closed page looks
+ * exactly right. `DashTabsBoot` sidesteps the same trap by being rendered AFTER its strip; this
+ * component cannot be, because its scrim belongs where the card is.
  *
  * So the ORDER is the test. Building the DOM with the list first would pass against the broken
  * code — which is the whole lesson of memory `feedback_test_starting_state`: a green suite proves
  * nothing if the state it starts from is not the state the bug lives in.
  *
+ * The fixture also places the TRIGGER where the page puts it since 2026-08-23 — in the site
+ * header, i.e. outside the card and parsed before it. That is the other half of the same property:
+ * the script binds one element it can only find upwards and one it can only find downwards, and a
+ * fixture that put them both in one place would prove neither.
+ *
  * jsdom has no layout, so the breakpoint question (`isDrawer()` reads a computed `position`) is
  * not decidable here and is not asserted; it was driven in a real browser instead. What IS here is
- * everything the early return took away: opening, `aria-expanded`, Escape, the scrim, focus, the
- * trigger's label following the chosen tab, and the alert dot.
+ * everything the early return took away: opening, `aria-expanded`, Escape, the scrim, focus, and
+ * the alert dot.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -40,24 +44,26 @@ const tab = (panel: string, label: string, marker = ''): string =>
      data-panel="${panel}" aria-selected="${panel === 'products'}">${label}${marker}</button>`;
 
 /**
- * `.dash-head` (with the drawer inside it) FIRST, the tab list after — the real page's order, and
- * the only order that can catch this.
+ * The real page's order: the site header (carrying the trigger) first, then the card, then the
+ * scrim where the component renders it, and the tab list LAST — which is the only order that can
+ * catch this.
  */
 function render(): void {
   document.body.innerHTML = `
+    <header class="site-header">
+      <button type="button" id="dash-nav-trigger" class="cart-btn dash-nav-trigger" aria-expanded="false" aria-controls="dash-nav-list">
+        <span class="dash-nav-trigger__dot" id="dash-nav-trigger-dot" hidden></span>
+      </button>
+    </header>
     <div id="dash-main-card" class="card seller-dash dash-nav-side">
-      <div class="dash-head">
-        <h1>חנות</h1>
-        <button type="button" id="dash-nav-trigger" class="dash-nav-trigger" aria-expanded="false" aria-controls="dash-nav-list">
-          <span id="dash-nav-trigger-label">מוצרים</span>
-          <span class="dash-nav-trigger__dot" id="dash-nav-trigger-dot" hidden></span>
-        </button>
+      <div class="dash-rail">
+        <div class="dash-head"><h1>חנות</h1></div>
         <div class="dash-nav-overlay" id="dash-nav-overlay"></div>
-      </div>
-      <div class="dash-tabs" role="tablist" id="dash-nav-list" data-rail>
-        ${tab('overview', 'סקירה כללית')}
-        ${tab('products', 'מוצרים', '<span class="dash-tab-badge" data-tab-alert="warning">3</span>')}
-        ${tab('orders', 'הזמנות', '<span class="dash-tab-dot" data-tab-alert="danger"></span>')}
+        <div class="dash-tabs" role="tablist" id="dash-nav-list" data-rail>
+          ${tab('overview', 'סקירה כללית')}
+          ${tab('products', 'מוצרים', '<span class="dash-tab-badge" data-tab-alert="warning">3</span>')}
+          ${tab('orders', 'הזמנות', '<span class="dash-tab-dot" data-tab-alert="danger"></span>')}
+        </div>
       </div>
     </div>`;
 }
@@ -112,10 +118,18 @@ describe('the drawer opens', () => {
     expect(isOpen()).toBe(false);
   });
 
-  it('renames the trigger to the tab that was chosen', () => {
+  it('closes when a tab is chosen — including a synthetic click from an overview card', () => {
+    // "Is this a drawer?" is asked of the rail's computed `position`, so that one media query in
+    // dashboard.css stays the single definition of the breakpoint. jsdom has no layout and would
+    // answer `static` for every width, so the fixture states the answer the only way it can: an
+    // inline `position` is what `getComputedStyle` reports back.
+    document.querySelector<HTMLElement>('.dash-rail')!.style.position = 'fixed';
     click(trigger());
-    click(document.getElementById('tab-orders')!);
-    expect(document.getElementById('dash-nav-trigger-label')!.textContent!.trim()).toBe('הזמנות');
+    // `[data-goto-panel]` jumps arrive as `.click()`, and one landing with the drawer open would
+    // leave the seller reading a panel through a scrim. Delegated on the document, so both kinds
+    // of click go through the same path.
+    document.getElementById('tab-orders')!.click();
+    expect(isOpen()).toBe(false);
   });
 });
 

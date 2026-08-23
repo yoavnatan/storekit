@@ -205,14 +205,57 @@ const STORES_NAMED = 2;
        same reason. Classnames are file-specific-prefixed (my-/o-/m-/prof-)
        so global scope doesn't risk colliding with other pages. */
     /* ── Desktop layout ── */
+    /* The 4rem that used to close this page sits on `.my-content-wrap` instead, and that is a
+       sticky fix rather than a tidy-up (measured 2026-08-23: the sidebar slid 63.98px). A sticky
+       element cannot leave its containing block, and for a grid item that block is the grid AREA
+       — which ends where the content column ends. `padding-bottom` on the grid CONTAINER is 64px
+       of document past that point, so at the foot of the scroll the sidebar was squeezed up out of
+       its pinned position by exactly that much. It arrives at the END of a scroll, which is why it
+       reads as the pin failing rather than as spacing, and it is the same bug the seller
+       dashboard's rail had for the same reason (dashboard.css, `padding: 0` on `.dash-section`).
+       Inside the column, the same 64px is part of the row, the sidebar's floor is the document's
+       floor, and the travel measures 0.00px — with the page looking identical. */
     .my-page {
       max-width: var(--max-width);
       margin-inline: auto;
-      padding: 2rem 1.5rem 4rem;
+      padding: 2rem 1.5rem 0;
       display: grid;
       grid-template-columns: 220px 1fr;
       gap: 1.25rem;
       align-items: start;
+    }
+    .my-content-wrap { padding-bottom: 4rem; }
+
+    /* ── The seam at the top of the scroll ──
+       This page rests 2rem under the site header and then, on the first pixel of scroll, hands
+       that 2rem back: a card's rounded top corner and its heading pass under the header's line and
+       are cut in half by it. Owner, 2026-08-23, about the same defect on the seller dashboard and
+       then here: *"שלא סתם יגלל לתוך ההדר"* — and with it the fix he wanted tried:
+       *"לשים מעל החלק הנגלל איזה סטיקי קבוע בגובה ההפרדה בצבע האפור עם פייד"*.
+       So: a band the exact height of that separation, in the page's own background colour,
+       opaque for its first third and fading out over the rest. Content does not arrive at the
+       header any more, it dissolves into the page a moment before it gets there.
+       It is the page's own `--color-bg` and not a tint, which is what keeps this a MASK rather
+       than a decoration: over the grey either side of a card it is invisible, and over the card it
+       reads as the card passing behind the page rather than under a coloured pane.
+       `pointer-events: none` because a fixed layer across the top of the page would otherwise eat
+       the first 2rem of every click. `z-index: 30` sits under the site header's own 50 (so the
+       header still paints over it) and under the mobile topbar dock's 40 (which is opaque and
+       solves the same problem its own way — hence the query below).
+       Not a shadow, deliberately: the header is a BAR and bars in this design are border-only
+       (elevation rule, base/tokens.css). This adds no depth; it removes a hard edge. */
+    .my-page::before {
+      content: "";
+      position: fixed;
+      inset-inline: 0;
+      /* The header's height is pinned inline on the element itself and may never change
+         (Header.astro), so this is exact rather than a guess; the extra pixel is overlap, so a
+         fractional rounding can never leave a hairline of un-masked content. */
+      top: calc(3.4rem - 1px);
+      height: 2rem;
+      background: linear-gradient(to bottom, var(--color-bg) 0 0.7rem, transparent);
+      pointer-events: none;
+      z-index: 30;
     }
 
     /* ── Sidebar ── */
@@ -290,9 +333,17 @@ const STORES_NAMED = 2;
     @media (max-width: 768px) {
       .my-page {
         grid-template-columns: 1fr;
-        padding: 0 0 3rem;
+        padding: 0;
         gap: 0;
       }
+      /* One column here, so there is no sticky sibling to keep on its feet — but the space still
+         has to come from somewhere, and taking it from the same element keeps one number instead
+         of two that must agree. */
+      .my-content-wrap { padding-bottom: 3rem; }
+      /* No separation to mask at this width: the topbar dock is opaque, spans the full width and
+         is pinned to the header, so nothing is ever seen sliding into it. Two answers to one
+         problem is how the second one drifts. */
+      .my-page::before { display: none; }
 
       /* The dock is the sticky element, not the bar itself: the bar floats
          inside it as a card (same recipe as the sidebar's .my-nav — surface,

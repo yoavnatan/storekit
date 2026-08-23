@@ -8,12 +8,20 @@
  * that download takes — which is the exact failure that script was written for (owner,
  * 2026-07-31: *"הכל תקוע"*). Zero network, runs during parse, works from the first paint.
  *
- * It owns everything the drawer needs and nothing else: open/close, `aria-expanded`, Escape, the
- * scrim, the focus trap while open, closing on a tab choice, and the trigger's label — which is
- * the open tab's name, because with the list hidden nothing else on screen says where you are.
+ * It owns the BEHAVIOUR and the scrim, and nothing else: open/close, `aria-expanded`, Escape, the
+ * focus trap while open, closing on a tab choice, and carrying the loudest alert marker out of the
+ * closed drawer onto the trigger.
+ *
+ * **The trigger itself is in the site header** (`Header.astro`, `dashNav`), which is why nothing
+ * here renders a button. It was a full-width bar inside the card until 2026-08-23, and that cost a
+ * row it could not earn: it named the open tab, which the panel's own sticky title already says
+ * one line below, and it pushed that title down under itself (owner: *"הפס עם ההמבורגר במובייל
+ * צריך להיעלם. הוא תופס שורה שלמה, יוצר כותרת כפולה"*). A header that is already `position: fixed`
+ * carries an icon at no vertical cost and is pinned by construction — no `position: sticky` whose
+ * containing block has to be reasoned about, which is what the two previous attempts got wrong.
  *
  * Rendered only by the side layout (`?nav=top` omits it), and the trigger only paints below the
- * rail's breakpoint — above it the rail is simply there and `.dash-nav-trigger` is `display:none`.
+ * rail's breakpoint — above it the rail is simply there.
  *
  * **That breakpoint is 1180px, not 1024, and the number came from the products table.** A rail is
  * 15.5rem the content column does not get, and at 1024 that left the table 693px — where "נוסף
@@ -21,38 +29,7 @@
  * 2026-08-22). A tablet gets the drawer instead, which is what every dashboard of this shape does
  * and which hands those 248px straight back to the table.
  */
-interface Props {
-  /** The tab open on this request — the trigger's starting label. */
-  label: string;
-  /** Accessible name for the trigger, whose visible text is a tab name rather than an action. */
-  menuLabel: string;
-}
-const { label, menuLabel } = Astro.props;
 ---
-
-<button
-  type="button"
-  id="dash-nav-trigger"
-  class="dash-nav-trigger"
-  aria-label={menuLabel}
-  aria-expanded="false"
-  aria-controls="dash-nav-list"
->
-  {/* A marker inside a closed drawer cannot be seen, which is the same problem the strip's
-      off-screen beacon solves — so the trigger carries the loudest severity out. Same two-value
-      vocabulary as `data-tab-alert`: red = a person is waiting, amber = a wrong state that can
-      wait. Hidden by default, because a dot painted by markup and cleared by script would flash
-      on every load of a store with nothing wrong.
-      **On the hamburger, not after the label** (owner, 2026-08-23: *"הנקודה האדומה לא במקום הנכון,
-      היא צריכה להיות על ההמבורגר"*). The label names the tab you are ON; a dot beside it reads as
-      a claim about that tab. The icon is the thing that opens the list where the marker actually
-      lives, so that is what it belongs to. */}
-  <span class="dash-nav-trigger__icon">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-    <span class="dash-nav-trigger__dot" id="dash-nav-trigger-dot" hidden></span>
-  </span>
-  <span id="dash-nav-trigger-label">{label}</span>
-</button>
 
 <div class="dash-nav-overlay" id="dash-nav-overlay" aria-hidden="true"></div>
 
@@ -61,21 +38,20 @@ const { label, menuLabel } = Astro.props;
     var card = document.getElementById('dash-main-card');
     var trigger = document.getElementById('dash-nav-trigger');
     var scrim = document.getElementById('dash-nav-overlay');
-    var labelEl = document.getElementById('dash-nav-trigger-label');
     var dot = document.getElementById('dash-nav-trigger-dot');
     if (!card || !trigger || !scrim) return;
 
     /**
      * **The tab list is looked up on demand, not once at the top, and that is not a style choice.**
-     * This component renders inside `.dash-head`, so that its trigger sits on the store header's
-     * own padding — and `.dash-head` is parsed BEFORE `.dash-tabs`. An inline script runs the
-     * instant the parser reaches it, so a `getElementById('dash-nav-list')` here returns null, and
-     * the guard above then returned before binding anything: the drawer opened for nobody, with no
-     * error (owner, 2026-08-22: *"במובייל התפריט צד לא נפתח שום דבר לא קורה"*).
+     * This component is rendered where its scrim belongs, which is inside the card and therefore
+     * before `.dash-tabs` has finished parsing. An inline script runs the instant the parser
+     * reaches it, so a `getElementById('dash-nav-list')` here returns null, and the guard above
+     * then returned before binding anything: the drawer opened for nobody, with no error (owner,
+     * 2026-08-22: *"במובייל התפריט צד לא נפתח שום דבר לא קורה"*).
      * Resolving it per call costs nothing a person can measure and cannot go stale — which also
      * covers the panel loader, since a swapped panel never replaces the strip but a future one
-     * might. `DashTabsBoot` avoids the same trap by being rendered AFTER its strip; this one cannot
-     * be, because its button has a place in the layout.
+     * might. The TRIGGER needs none of this: it is in the site header, which the parser has been
+     * past for a while by the time this runs.
      */
     function navList() { return document.getElementById('dash-nav-list'); }
     /** The element that IS the drawer — the rail, which holds the store block and the list. */
@@ -161,27 +137,13 @@ const { label, menuLabel } = Astro.props;
       }
     });
 
-    // A tab choice closes the drawer and renames the trigger. Delegated on the list so it covers
-    // the synthetic clicks too — the overview cards' `[data-goto-panel]` jumps go through
-    // `.click()`, and one of them landing with the drawer still open would leave the seller
-    // looking at a panel through a scrim.
+    // A tab choice closes the drawer. Delegated on the document so it covers the synthetic clicks
+    // too — the overview cards' `[data-goto-panel]` jumps go through `.click()`, and one of them
+    // landing with the drawer still open would leave the seller looking at a panel through a scrim.
     document.addEventListener('click', function (e) {
       var target = e.target instanceof Element ? e.target : null;
       var tab = target && target.closest('[role="tab"][data-panel]');
       if (!tab) return;
-      // **The tab's own text, WITHOUT its markers** (owner, 2026-08-23: *"יש עליו עדיין מספרים
-      // בלי שום עיצוב (ו-0)"*). `tab.textContent` walks every descendant, so a tab carrying a count
-      // handed back "מוצרים15" — and an orders tab whose badge is a zero handed back "הזמנות0".
-      // The digits then landed in a plain `<span>` with none of the badge's styling, because the
-      // badge itself was never copied, only its text. Direct text nodes only: the label is the
-      // tab's own words, the icon and the badge are elements.
-      if (labelEl) {
-        var words = '';
-        for (var n = tab.firstChild; n; n = n.nextSibling) {
-          if (n.nodeType === 3) words += n.nodeValue;
-        }
-        labelEl.textContent = words.trim() || (tab.getAttribute('data-panel') || '');
-      }
       if (isDrawer()) close();
     });
 
