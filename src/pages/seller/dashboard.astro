@@ -1986,7 +1986,7 @@ const orderStatusColors: Record<string, string> = {
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
                     <td class="sku-col"><span class="sku-col-label">{d.skuLabel}: </span>{p.sku || <span style="color:var(--color-border)">—</span>}</td>
-                    <td class="cat-col"><span class="cat-col-label">{d.categoryLabel}: </span>{productCategoryPaths.get(p.id) ? <span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">{productCategoryPaths.get(p.id)}</span> : <span style="color:var(--color-border)">—</span>}</td>
+                    <td class="cat-col"><span class="cat-col-label">{d.categoryLabel}: </span>{productCategoryPaths.get(p.id) ? <span class="product-cat-chip">{productCategoryPaths.get(p.id)}</span> : <span style="color:var(--color-border)">—</span>}</td>
                     <td class={`num product-price price-col group cursor-text ${INLINE_EDIT_HINT}`}>{formatPrice(p.price)}</td>
                     <td class={`num product-stock stock-col group cursor-text ${STOCK_CELL_GROUP}`}>
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">

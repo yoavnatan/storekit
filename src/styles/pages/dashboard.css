@@ -204,10 +204,36 @@ textarea.input { resize: none; }
 
 .sku-col { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
 
-/* Category chip truncates instead of overflowing once its column gets tight
-   (≤999px table below, and the mobile card) — harmless elsewhere since a
-   short chip never reaches this width anyway. */
-.product-cat-chip { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+/* ── THE CATEGORY IS A PATH, NOT A BADGE ──
+   Owner, 2026-08-23, looking at a rendering of this table: *"ככה אני רוצה ... שהקטגוריות
+   ייראו"*. It was a primary-tinted pill, which gave the one cell in the row that is pure
+   reference the loudest treatment in it. A badge says STATE — "3 במלאי", "מבצע", "טיוטה" —
+   and a category is not a state, it is the product's address. Grey text says address.
+
+   IT ALSO GAVE THE COLUMN ITS WIDTH BACK, which is the part worth keeping: the pill's own
+   inline padding plus `white-space: nowrap` were most of why a two-level path did not fit.
+   Measured on the real dashboard at 1440 (CURRENT_TASK): 86px of room against 116px needed,
+   which the ellipsis hid rather than solved — "בית וגן › ריהוט" arrived as "בית וגן › ריה…",
+   a label that has stopped labelling. Wrapping to a second line is what actually fixed it.
+
+   TWO LINES AND NO MORE. A three-level path still clamps, and `initCategoryChipTips` still
+   gives exactly the clipped ones a tooltip — it measures HEIGHT now as well as width, because
+   a clamp overflows downwards and the old width-only check would have called every one of
+   them "fits". All three renderers (server, full client re-render, single-cell update) carry
+   only the class name now: the look moved out of their Tailwind class lists and in here, so
+   they cannot drift from each other the way `project_client_renderer_i18n_drift` describes. */
+.product-cat-chip {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-width: 100%;
+  overflow: hidden;
+  /* The td is `white-space: nowrap` (.cat-col) — without this the clamp has nothing to clamp. */
+  white-space: normal;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--color-muted);
+}
 
 /* Stock number has no column header to lean on once thead disappears on the
    mobile card (≤640px, see below) — a plain number reads as ambiguous, so
@@ -2953,8 +2979,16 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
    first test asks about. */
 
 /* Money and counts: aligned to the END of the column and tabular, so a column of figures forms a
-   readable stack instead of a ragged edge. `font-variant-numeric`, not a monospace face — Heebo's
-   own tabular figures keep the whole table in one typeface. */
+   readable stack instead of a ragged edge. `font-variant-numeric`, not a monospace face, which
+   keeps the whole table in one typeface.
+
+   THE DECLARATION IS BELT AND BRACES UNDER THE CURRENT FACE, and that is worth writing down
+   rather than deleting. Noto Sans Hebrew (2026-08-23) ships NO `tnum` feature at all — checked on
+   the shipped woff2 — so this line resolves to nothing; the column is even anyway because the
+   face's default figures are already monospaced (all ten digits measure 570/1000). Keep the
+   declaration: it is what makes the column survive a face whose defaults are proportional, and it
+   costs nothing when they are not. If a future face has neither, this is where the ragged column
+   comes from. */
 .report-num {
   text-align: end;
   font-variant-numeric: tabular-nums;

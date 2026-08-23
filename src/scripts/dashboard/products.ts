@@ -1768,7 +1768,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="cat-col"><span class="cat-col-label">${esc(i.categoryLabel ?? 'Category')}: </span>${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="cat-col"><span class="cat-col-label">${esc(i.categoryLabel ?? 'Category')}: </span>${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price price-col group cursor-text ${INLINE_EDIT_HINT}">${fmtPrice(p.price)}</td>
     <td class="num product-stock stock-col group cursor-text ${STOCK_CELL_GROUP}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total class="${stockEditHint(!!p.variants?.length)}">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
@@ -2197,7 +2197,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
 
       const category = String(fd.get('category') ?? '').trim();
       const catCell = displayRow.querySelector<HTMLElement>('.cat-col');
-      if (catCell) catCell.innerHTML = `<span class="cat-col-label">${esc(i18n.categoryLabel ?? 'Category')}: </span>` + (category ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(category)}</span>` : `<span style="color:var(--color-border)">—</span>`);
+      if (catCell) catCell.innerHTML = `<span class="cat-col-label">${esc(i18n.categoryLabel ?? 'Category')}: </span>` + (category ? `<span class="product-cat-chip">${esc(category)}</span>` : `<span style="color:var(--color-border)">—</span>`);
       displayRow.dataset.category = category;
 
       const sku = String(fd.get('sku') ?? '').trim();
@@ -2863,9 +2863,9 @@ function thumbSrcOf(wrap: HTMLElement): string {
 /**
  * Give a category chip the site's tooltip — but ONLY when its text is actually cut off.
  *
- * The chip is one line with an ellipsis (`.product-cat-chip`), and a real category path is
- * routinely longer than the column: "בית וגן › ריהוט › כיסאות" arrives as "בית וגן › ריה…", which
- * is a label that has stopped labelling (owner, 2026-08-15). A `title` would have been the
+ * The path is clamped to two lines (`.product-cat-chip`), and a real category path can still be
+ * longer than that: "בית וגן › ריהוט › כיסאות" arrives cut, which is a label that has stopped
+ * labelling (owner, 2026-08-15). A `title` would have been the
  * browser's own grey box, which this dashboard spent a session removing, so it is `data-tooltip` —
  * the explicit opt-in that `tooltip.ts` binds — and `initInfoTooltips` is called on the same rows.
  *
@@ -2875,7 +2875,11 @@ function thumbSrcOf(wrap: HTMLElement): string {
  */
 export function initCategoryChipTips(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('.product-cat-chip').forEach((chip) => {
-    const clipped = chip.scrollWidth > chip.clientWidth + 1;
+    // BOTH AXES, since 2026-08-23. The path used to be one nowrap line, so overflow could only
+    // ever be horizontal; it is a two-line clamp now, and a clamp overflows DOWNWARDS. A
+    // width-only check would have reported every clipped three-level path as "fits" and silently
+    // dropped the tooltip that is the entire reason a clipped path is acceptable at all.
+    const clipped = chip.scrollWidth > chip.clientWidth + 1 || chip.scrollHeight > chip.clientHeight + 1;
     if (!clipped) { delete chip.dataset.tooltip; return; }
     if (chip.dataset.tooltip === chip.textContent) return;
     chip.dataset.tooltip = chip.textContent ?? '';
