@@ -47,8 +47,14 @@ const posix = (p: string): string => relative('.', p).replaceAll('\\', '/');
  *  route behind it is not public; it is authorized by something other than a cookie, which is the
  *  whole point of guest checkout. `tests/order-access-throttle.test.ts` covers the half this scan
  *  cannot see — that the guessable credential is metered. */
+/** `verify\w*Signature` and not the bare `verifySignature` it was written as: the second provider
+ *  to arrive named its function `verifyCallbackSignature` (`payment-payme.ts`), and a pattern
+ *  spelled for one provider's function name fails every future one — which reads as "this route
+ *  skipped authorization" when the truth is "this route authorizes and the guard cannot see it".
+ *  A guard that goes red for the wrong reason gets its allowlist widened, which is how the real
+ *  rule dies. */
 const ESTABLISHES_IDENTITY =
-  /getSellerSession|getUserSession|getBuyerSession|requireAdmin|isAdminRequest|ownedStore|ownedProduct|verifySignature|resolveOrderAccess/;
+  /getSellerSession|getUserSession|getBuyerSession|requireAdmin|isAdminRequest|ownedStore|ownedProduct|verify\w*Signature|resolveOrderAccess/;
 
 const MUTATING_HANDLER = /export (?:const|async function) (?:POST|PUT|PATCH|DELETE)\b/;
 

@@ -197,7 +197,12 @@ export const MONEY_EVENT_GROUPS: readonly { label: string; types: readonly Money
  */
 export function moneyActorLabel(actor: string): string {
   if (actor === 'buyer') return 'הקונה';
-  if (actor === 'system') return 'המערכת (ג׳וב מתוזמן)';
+  // 'המערכת' and not 'המערכת (ג׳וב מתוזמן)'. It said the latter while a scheduled job was the only
+  // thing that wrote it; PayMe's callback (`/api/payme/callback`) now writes it too, and a row that
+  // names the wrong cause on the one screen read during a money incident is worse than a row that
+  // names a general one. Which part of the system it was is on the row's own detail line, where it
+  // belongs (`feedback_no_standing_screen_prose`).
+  if (actor === 'system') return 'המערכת';
   if (actor === 'admin') return 'אדמין';
   return actor ? `מוכר/ת ${actor.slice(0, 8)}` : '—';
 }

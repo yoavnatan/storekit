@@ -332,6 +332,40 @@ export async function createSeller(input: CreateSellerInput, creds: PaymeCredent
   };
 }
 
+/**
+ * Ask PayMe what a merchant's status actually is.
+ *
+ * **This exists because the seller callback cannot be verified.** Their sale callback carries
+ * `payme_signature`; their SELLER callback carries no signature field at all (their spec's
+ * attribute table for "Callback upon Seller creation or update"), so a POST claiming
+ * `seller_approved: 1` is a claim by whoever sent it — and acting on it would let anyone on the
+ * internet unblock any store on this platform.
+ *
+ * So the callback is treated as a HINT — "something about this merchant changed" — and the truth
+ * comes from here, over a call WE make, authenticated by our own client key. Same shape as
+ * `payment-hosted.ts#readReturn` asking Hyp rather than believing the browser, and the same rule as
+ * `checkout-idempotency.ts#checkoutOwner`: an identifier that arrives from outside is an
+ * identifier, never a permission.
+ *
+ * Returns null when PayMe do not know the merchant, which is a different answer from "not
+ * approved" and must stay one: a caller must not read "we could not find him" as a verdict.
+ */
+export async function getSellerStatus(sellerPaymeId: string, creds: PaymeCredentials): Promise<{ approved: boolean; active: boolean } | null> {
+  const res = await callPayme('get-sellers', { seller_payme_id: sellerPaymeId }, creds);
+  const items = Array.isArray(res.items) ? (res.items as Record<string, unknown>[]) : [];
+  // Matched on the id rather than taken as `items[0]`. `get-sellers` accepts an ARRAY for every
+  // attribute and is a search, not a fetch — so a filter that PayMe ever loosen would silently
+  // return somebody else's merchant, and this would write their approval onto our seller.
+  const found = items.find((item) => String(item.seller_payme_id ?? '') === sellerPaymeId);
+  if (!found) return null;
+  return {
+    // `=== true` and `=== '1'` explicitly: their own example returns a JSON boolean here and the
+    // string `'1'` elsewhere for the same concept, and `Boolean('0')` is true.
+    approved: found.seller_approved === true || found.seller_approved === '1' || found.seller_approved === 1,
+    active: found.seller_active === true || found.seller_active === '1' || found.seller_active === 1,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The buyer's token — one card entry, N charges
 // ─────────────────────────────────────────────────────────────────────────────

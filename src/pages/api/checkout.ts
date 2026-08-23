@@ -35,6 +35,7 @@ import { merchantAccountsFor } from '../../lib/seller-merchant.js';
 import { paymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
 import { planSplit, chargeSplit, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
 import { commissionPercentForTier } from '../../lib/pricing.js';
+import { store as platform } from '../../config/store.config.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -723,6 +724,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       checkoutRef,
       buyerEmail: buyerData.buyerEmail,
       buyerName: buyerData.buyerName,
+      // Named per sale rather than left to the merchant's stored default, so which URL PayMe post
+      // to is a fact in this repository and not a setting in a panel nobody here can see. The
+      // charge completes synchronously either way — the callback is corroboration, and
+      // `/api/payme/callback` deliberately cannot move an order.
+      callbackUrl: `${platform.url}/api/payme/callback`,
     };
     splitPlan = planSplit(splitInput);
     if (splitPlan.refusals.length) {
