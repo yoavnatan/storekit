@@ -82,6 +82,20 @@ describe('where it must never be used', () => {
     }
   });
 
+  /**
+   * The exact figure is offered as a `title`, and the client renderer builds that attribute by
+   * string concatenation — so it goes through the shared escaper like every other value that lands
+   * inside `attr="…"` here. The type says `number`; the value arrives as JSON off an API route,
+   * and memory `project_attribute_escaping_xss` is three separate fixes of believing otherwise.
+   */
+  it('escapes the exact figure it puts in a title attribute', () => {
+    const client = read('src/scripts/dashboard/products.ts');
+    for (const field of ['wishlistCount', 'purchasedCount']) {
+      expect(client, field).toContain(`title="\${esc(p.${field})}"`);
+      expect(client, `${field} unescaped`).not.toContain(`title="\${p.${field}}"`);
+    }
+  });
+
   /** Both renderers of the products row have to agree, or the table changes shape when a filter
    *  rebuilds it — memory `project_client_renderer_i18n_drift`. */
   it('is used by BOTH renderers of the products row, or by neither', () => {

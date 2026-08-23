@@ -68,6 +68,7 @@ function renderTab(productIds: string[]): void {
          hidden on a BUTTON now means one thing only, which is what this file is about - the image
          panel has taken that action away. -->
     <div id="bulk-bar" class="bulk-bar">
+      <button id="bulk-clear" type="button"></button>
       <span id="bulk-count">0</span>
       <button id="bulk-delete-btn" type="button"></button>
       <button id="bulk-edit-btn" type="button"><span id="bulk-edit-label"></span></button>
@@ -170,8 +171,24 @@ describe('opening the panel freezes the selection it was built from', () => {
     expect(document.getElementById('bulk-edit-btn')!.hidden).toBe(true);
     expect(document.getElementById('bulk-delete-btn')!.hidden).toBe(true);
     expect(document.getElementById('bulk-discount-btn')!.hidden).toBe(true);
+    // The floating bar's "clear selection" goes with them (added 2026-08-23 with the bar). It is
+    // not one of the three that ACT on the list, but it empties it — and the bar is counting the
+    // PANEL while this is open, so the number would not have moved and the seller would have had
+    // no way to see that their selection was gone until the panel closed.
+    expect(document.getElementById('bulk-clear')!.hidden).toBe(true);
     // …and leaves the one way out.
     expect(uploadBtn().hidden).toBe(false);
+  });
+
+  it('ignores a press of the bar\'s clear button while the panel is open', () => {
+    tick('p1'); tick('p2');
+    openPanel();
+    // `hidden` is the visual half; a programmatic click still reaches a hidden button, and the
+    // overview cards' jumps in this codebase are exactly that. The handler has to refuse too.
+    document.getElementById('bulk-clear')!.click();
+    expect(panel().hidden).toBe(false);
+    expect(box('p1').checked).toBe(true);
+    expect(box('p2').checked).toBe(true);
   });
 
   it('ignores the thumbnail/row-number shortcut into the selection', () => {

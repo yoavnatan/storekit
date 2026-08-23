@@ -1772,9 +1772,9 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="num product-price price-col group cursor-text ${INLINE_EDIT_HINT}">${fmtPrice(p.price)}</td>
     <td class="num product-stock stock-col group cursor-text ${STOCK_CELL_GROUP}"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total class="${stockEditHint(!!p.variants?.length)}">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
-      ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"${isCompacted(p.wishlistCount ?? 0) ? ` title="${p.wishlistCount}"` : ''}><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${compactCount(p.wishlistCount ?? 0)}</span>`
+      ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"${isCompacted(p.wishlistCount ?? 0) ? ` title="${esc(p.wishlistCount)}"` : ''}><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${compactCount(p.wishlistCount ?? 0)}</span>`
       : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem"><span class="purchased-col-label">${esc(i.colPurchased ?? 'Purchased')}: </span>${(p.purchasedCount ?? 0) > 0 ? `<span${isCompacted(p.purchasedCount ?? 0) ? ` title="${p.purchasedCount}"` : ''}>${compactCount(p.purchasedCount ?? 0)}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem"><span class="purchased-col-label">${esc(i.colPurchased ?? 'Purchased')}: </span>${(p.purchasedCount ?? 0) > 0 ? `<span${isCompacted(p.purchasedCount ?? 0) ? ` title="${esc(p.purchasedCount)}"` : ''}>${compactCount(p.purchasedCount ?? 0)}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="date-col"><span class="date-col-label">${esc(i.colDateAddedShort ?? 'Added')}: </span>${esc(fmtDateAdded(p.createdAt))}</td>
     <td class="seo-col">${productSeoRowGaugeHtml(productSeoInputFrom(p), productSeoLabels(i))}</td>
     <td class="actions actions-col">
@@ -4031,6 +4031,9 @@ export function initBulkSelect(cloud: string, preset: string): void {
       if (bulkDeleteBtn) bulkDeleteBtn.hidden = true;
       if (bulkEditBtn) bulkEditBtn.hidden = true;
       if (bulkDiscountBtn) bulkDiscountBtn.hidden = true;
+      // And the bar's own dismissal, for the same reason as the three above: it would act on a
+      // list the seller can no longer see or correct. The panel's "סגור" is the way out.
+      if (bulkClearBtn) bulkClearBtn.hidden = true;
     }
     // The row menu's own "ערוך", for a product the panel holds.
     //
@@ -4103,6 +4106,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
     if (bulkDeleteBtn) bulkDeleteBtn.hidden = false;
     if (bulkEditBtn) bulkEditBtn.hidden = false;
     if (bulkDiscountBtn) bulkDiscountBtn.hidden = false;
+    if (bulkClearBtn) bulkClearBtn.hidden = false;
     // `!locked` is redundant while `count` reads the panel (an open panel is never empty), and it
     // stays as the statement that this branch is about a selection the seller cleared — never
     // about a panel that is open and holding work.
@@ -4150,6 +4154,12 @@ export function initBulkSelect(cloud: string, preset: string): void {
   // be several screens above whatever the seller is looking at, so "untick them all" has to be
   // reachable from the bar rather than only from the checkbox at the top of the table.
   bulkClearBtn?.addEventListener('click', () => {
+    // Not while the image panel holds a frozen selection: the bar is describing the PANEL then, so
+    // this would empty the real selection underneath it with the count unchanged and no way for
+    // the seller to see that it had happened. `applyImagePanelLock` takes the button away as well;
+    // this is the same guard at the other end, because a listener bound to a hidden element still
+    // answers a programmatic click.
+    if (imagePanelOpen()) return;
     clearBulkSelection();
     disarmSelectAll();
     syncBulkSelectionToRows();
