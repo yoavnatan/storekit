@@ -72,7 +72,19 @@ export interface SplitInput {
    *  zero sale. Each PayMe transaction costs us ₪1 flat (agreement, appendix ב׳), so this is one
    *  charge for the cart and not one per store. */
   shippingAgorot: number;
-  /** Our own marketplace merchant account, which the shipping charge lands in. */
+  /**
+   * The merchant account the delivery charge lands in.
+   *
+   * **⚠️ BROKEN AS CONFIGURED, measured 2026-08-23 — this is fed `PAYME_SELLER_API_ID`, which is the
+   * partner/API identity and NOT a merchant.** Charging it anything is refused
+   * `174 · אפשרות זו אינה נתמכת במשתמשים מסוג זה`, both as a token sale and as a multi-capture leg;
+   * the same call to a real seller account completes. The design was built on an earlier note saying
+   * a ₪30 sale "under a second account" worked — that account was a SELLER, and nobody checked.
+   *
+   * The fix is a merchant account of our own, opened with `create-seller` like any seller's, whose
+   * id goes here. `docs/payme-sandbox-notes.md` §15 carries the alternative and why PayMe's own
+   * answer about the 60% ceiling was right after all.
+   */
   marketplaceSellerId: string | undefined;
   /** Our reference for the whole purchase. Every PayMe `transaction_id` below is derived from it,
    *  so their records and ours can be matched without a lookup table. */

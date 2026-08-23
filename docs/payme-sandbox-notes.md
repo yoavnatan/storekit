@@ -225,6 +225,54 @@ Not `credit_card_exp_month` + `credit_card_exp_year`, which is what our adapter 
 kind of failure, and the only reason it cost minutes. Testing path only; production enters the card
 in Hosted Fields and sends no card fields at all.
 
+### 14. ✅ MULTI-CAPTURE WORKS — and the session that said otherwise called the wrong endpoint
+Measured 2026-08-23. `§3.1.1` item 4 concluded multi-capture was "not enabled on our key" after
+authorizing ₪100, capturing ₪40 and being refused a second capture. **That measurement used
+`capture-sale`, which is the single-capture endpoint.** PayMe's own guide documents a different call:
+`generate-sale` with `sale_type: "multi-capture"` and `origin_sale_id`.
+
+Walked properly, it works, including the thing it exists for — *"at least 2 users from the same
+marketplace"*:
+
+| step | result |
+|---|---|
+| `generate-sale` `sale_type: authorize`, ₪100, buyer token | `authorized` |
+| `generate-sale` `sale_type: multi-capture`, ₪40 → seller **A** | `completed` |
+| `generate-sale` `sale_type: multi-capture`, ₪60 → seller **B** | `completed` |
+| a further ₪10 | refused `352 · סכום העסקה חורג מהמגבלות` |
+| ₪30 then ₪70 of a ₪100 authorization | both `completed`; ₪1 more refused `352` |
+| `refund-sale` on an uncaptured authorization | `voided` — an abandoned checkout is releasable |
+
+**The ceiling on TOTAL captured is 100% of the authorization**, and that is the setting PayMe offered
+to raise to 110%. The 60% market-fee cap is separate and still applies here — a ₪50 capture with a
+₪36 cut was refused `308 · Market fee exceed allowed maximum of 60%`.
+
+### 15. ⚠️⚠️ OUR PARTNER ACCOUNT CANNOT RECEIVE MONEY — `174`, and it breaks a shipped design
+`PAYME_SELLER_API_ID` is the partner/API identity, **not a merchant**. Charging it anything is
+refused:
+
+    generate-sale → seller_payme_id = PAYME_SELLER_API_ID
+    → 174 · אפשרות זו אינה נתמכת במשתמשים מסוג זה
+
+Measured both ways — as a multi-capture leg and as an ordinary token sale — and refused identically.
+The same call to a real seller account completes, which is the control.
+
+**This invalidates the shipping design in `lib/payment-split.ts`.** It charges delivery as its own
+sale "on OUR merchant account", and there is no such account: the note it was built on said a ₪30
+sale "under a second account" completed, and that second account was a SELLER, never ours. Nobody
+checked, because the built code was only ever exercised against a mock.
+
+**And it makes PayMe right about the 110%, which two sessions argued about and both got wrong.** With
+no account of our own to charge, the delivery fee has to ride on the seller's sale as
+`market_fee_fixed` — and then a cheap item breaches the 60% cap exactly as they said (₪10 goods +
+₪30 delivery ≈ 87%). Their answer 3 was correct and complete; the disagreement was ours.
+
+**Two ways out, and the first needs nothing from them:**
+1. **Give ourselves a real merchant account** via `create-seller`, like any seller, and charge
+   delivery to that. Capturing to a different seller is measured working (item 14). No ceiling
+   involved, money arrives as an ordinary sale.
+2. Ask PayMe to raise the market-fee ceiling and fold delivery into the seller's capture.
+
 ---
 
 ## Still unmeasured — do not guess these
