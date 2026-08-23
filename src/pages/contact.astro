@@ -86,6 +86,25 @@ const description = lang === 'he'
         : `${platform.name} is a marketplace: each store is run by an independent business, and ${platform.name} operates the platform they sell on.`}
     </p>
 
+    {/* ── The help centre, above every channel that reaches a person (2026-08-23) ──
+        This is the mechanism behind "מינימום מגע", and it only works if it comes FIRST. Placed
+        under the mailto it would be read by whoever had already decided to write; placed here it is
+        read by everyone, and most seller questions on this page have an article that answers them
+        in less time than composing the message would take. It deliberately claims nothing about
+        response times — `/contact` says why the page never invents an SLA, and pointing at a
+        faster answer is not the same as promising one. */}
+    <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
+      {lang === 'he' ? 'לפני שכותבים' : 'Before you write'}
+    </h2>
+    <p style="max-width:60ch">
+      {lang === 'he'
+        ? 'רוב השאלות של מוכרים — פתיחת חנות, מלאי, הזמנות, חיובים וקידום — כבר עונות בעצמן במרכז העזרה.'
+        : 'Most seller questions — opening a store, stock, orders, billing and promotion — are already answered in the help centre.'}
+    </p>
+    <p style="margin-top:0.5rem">
+      <a href="/help">{lang === 'he' ? 'מרכז העזרה' : 'Help centre'}</a>
+    </p>
+
     <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
       {lang === 'he' ? 'שאלה על הזמנה שביצעת' : 'A question about an order you placed'}
     </h2>

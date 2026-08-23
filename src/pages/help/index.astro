@@ -1,0 +1,100 @@
+---
+/**
+ * מרכז העזרה — the one place help lives (CURRENT_TASK סשן ב׳: "לא מפוזר").
+ *
+ * ── What it is for ──
+ * Support at minimum touch. A seller with a question either finds the answer here in a few seconds
+ * or writes to a person, and everything about this page is aimed at the first outcome: one screen
+ * with every article on it, grouped by the order of a seller's week, and a filter that narrows as
+ * they type. There is no pagination and no "browse categories" step — with a corpus this size, one
+ * more click is one more reason to give up and send a message instead.
+ *
+ * ── Why the whole corpus renders, and the search is client-side ──
+ * The filter is a substring match over cards that are already in the DOM, so there is no endpoint,
+ * no index and no request between typing and seeing. It also means the page works with JavaScript
+ * off — every article is a real link on a rendered page, which is the same reason the store's
+ * category chips are `<a href>` and not buttons.
+ *
+ * It is also an SEO surface, and not incidentally: these are Hebrew answers to questions Israeli
+ * sellers actually type, on the platform's own domain (Core priorities → SEO-first).
+ */
+export const prerender = false;
+
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getSellerSession } from '../../lib/seller-auth.js';
+import { getStoresBySellerId } from '../../lib/stores.js';
+import { HELP_GROUPS, articlesInGroup } from '../../lib/help.js';
+
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+
+const groups = HELP_GROUPS.map((g) => ({ ...g, articles: articlesInGroup(g.id) }))
+  .filter((g) => g.articles.length > 0);
+---
+
+<BaseLayout
+  title="מרכז העזרה"
+  description="תשובות למה שמוכרים במתחם שואלים — פתיחת חנות, מוצרים ומלאי, הזמנות, חיובים וקידום."
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <div class="container py-8 max-w-[56rem]" dir="rtl">
+    <h1 class="text-[1.6rem] md:text-[2rem] font-bold m-0">מרכז העזרה</h1>
+    <p class="muted m-0 mt-2">תשובות קצרות למה ששואלים הכי הרבה. אם לא מצאתם — כתבו לנו.</p>
+
+    <div class="mt-5">
+      <label for="help-search" class="sr-only">חיפוש בעזרה</label>
+      <input
+        id="help-search"
+        type="search"
+        autocomplete="off"
+        placeholder="מה אתם מחפשים?"
+        class="input w-full max-w-[24rem]"
+      />
+      {/* Announced, not just filtered: someone typing into a box that quietly empties the page has
+          no way to tell a bad search from a broken one. */}
+      <p class="muted m-0 mt-2 text-[0.84rem] !hidden" id="help-empty" role="status">
+        לא נמצאה תשובה. אפשר <a href="/contact">לכתוב לנו</a> ונענה.
+      </p>
+    </div>
+
+    {groups.map((group) => (
+      <section class="mt-8" data-help-group aria-labelledby={`g-${group.id}`}>
+        <h2 id={`g-${group.id}`} class="text-[1.1rem] font-bold m-0">{group.title}</h2>
+        <ul role="list" class="list-none p-0 m-0 mt-3 grid gap-2 sm:grid-cols-2">
+          {group.articles.map((a) => (
+            <li data-help-article data-help-text={`${a.title} ${a.summary} ${a.body.join(' ')}`}>
+              {/* The whole card is the link — one target, one hover signal (Hard rules →
+                  micro-interactions: one hover signal, never stacked). */}
+              <a
+                href={`/help/${a.slug}`}
+                class="card p-4 block no-underline [color:inherit] h-full"
+              >
+                <span class="block font-semibold text-[0.95rem]">{a.title}</span>
+                <span class="muted block mt-1 text-[0.86rem]">{a.summary}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
+
+    <section class="card card--flat p-4 md:p-5 mt-10" aria-labelledby="help-contact">
+      <h2 id="help-contact" class="text-[1.05rem] font-bold m-0">לא מצאתם תשובה</h2>
+      <p class="muted m-0 mt-2 text-[0.9rem]">
+        כתבו לנו ונחזור אליכם. הפנייה נשמרת כשיחה בלוח הניהול, כך שהתשובה מחכה לכם במקום אחד.
+      </p>
+      {/* `self-start`, not `inline-flex`: `.card` is a flex COLUMN, so a direct child stretches to
+          its width whatever its own display is, and the button came out edge to edge. */}
+      <a href="/contact" class="btn btn--ghost btn--sm mt-3 self-start">כתיבה אלינו</a>
+    </section>
+  </div>
+</BaseLayout>
+
+<script>
+  import { initHelpSearch } from '../../scripts/help-search.js';
+  initHelpSearch();
+</script>

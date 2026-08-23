@@ -1,0 +1,74 @@
+---
+/**
+ * One help article.
+ *
+ * ── A missing slug is a 404, not a redirect to the index ──
+ * The opposite of the store router's rule, and for the opposite reason. A store URL that no longer
+ * resolves is somebody's shop and is worth keeping reachable; a help slug that resolves to nothing
+ * is a broken link, and answering it with the index would tell Google that every mistyped URL is a
+ * real page with the index's content — a duplicate-content pattern on a surface built to be
+ * indexed. `Astro.rewrite` into the platform's own 404 rather than a redirect, so the URL stays
+ * where it is and a crawler sees the status the link deserves.
+ *
+ * ── Structured data ──
+ * `FAQPage` is deliberately NOT emitted. It describes a page of question/answer pairs, and this is
+ * one article with a body; claiming the wrong type is the kind of thing that gets structured data
+ * ignored across a whole domain rather than on one page. If a genuine Q&A page is ever written, it
+ * gets the schema then.
+ */
+export const prerender = false;
+
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getSellerSession } from '../../lib/seller-auth.js';
+import { getStoresBySellerId } from '../../lib/stores.js';
+import { getHelpArticle, relatedArticles } from '../../lib/help.js';
+
+const article = getHelpArticle(Astro.params.slug ?? '');
+if (!article) return Astro.rewrite('/404');
+
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+const related = relatedArticles(article);
+---
+
+<BaseLayout
+  title={article.title}
+  description={article.summary}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <div class="container py-8 max-w-[44rem]" dir="rtl">
+    <p class="m-0 text-[0.86rem]"><a href="/help" class="muted">מרכז העזרה</a></p>
+    <h1 class="text-[1.5rem] md:text-[1.8rem] font-bold m-0 mt-2">{article.title}</h1>
+    <p class="muted m-0 mt-2">{article.summary}</p>
+
+    {/* One `<p>` per paragraph, no markup in the data. `leading-[1.75]` because these are read
+        end-to-end rather than scanned, unlike everything else on the dashboard. */}
+    <div class="mt-6 flex flex-col gap-4 text-[0.95rem] leading-[1.75]">
+      {article.body.map((para) => <p class="m-0">{para}</p>)}
+    </div>
+
+    {related.length > 0 && (
+      <section class="mt-9" aria-labelledby="related-title">
+        <h2 id="related-title" class="text-[1rem] font-bold m-0">קראו גם</h2>
+        <ul role="list" class="list-none p-0 m-0 mt-3 flex flex-col gap-2">
+          {related.map((r) => (
+            <li>
+              <a href={`/help/${r.slug}`} class="text-[0.92rem]">{r.title}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <section class="card card--flat p-4 mt-9" aria-labelledby="still-stuck">
+      <h2 id="still-stuck" class="text-[0.98rem] font-bold m-0">זה לא ענה לכם</h2>
+      <p class="muted m-0 mt-2 text-[0.88rem]">כתבו לנו ונחזור אליכם.</p>
+      {/* `self-start` — `.card` is a flex column, so a direct child stretches to its full width. */}
+      <a href="/contact" class="btn btn--ghost btn--sm mt-3 self-start">כתיבה אלינו</a>
+    </section>
+  </div>
+</BaseLayout>
