@@ -1933,9 +1933,18 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   inset-inline-end: 0;
   z-index: 20;
   margin-top: 0.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
+  /* ONE COLUMN FOR THE NAMES, MEASURED RATHER THAN GUESSED. The names line up so every
+     attribute's values start on the same edge — that part was always the intent. It was being
+     bought with `min-width: 4.5rem` on the label, a fixed 72px chosen before there were any real
+     attributes to measure, and the Hebrew ones measure 24–26px: some 55px of nothing between a
+     word and its own chips (owner, 2026-08-23: "למה כל כך הרבה מרווח בין הכותרת של הפרט לבין הערכים שלו").
+     `max-content` asks the widest label how wide the column is, so the alignment survives an
+     attribute named "אורך שרוול" and costs nothing on one named "צבע". `minmax(0, …)` on both
+     tracks so a pathologically long name shrinks instead of pushing the chips out of the menu. */
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  row-gap: 0.65rem;
+  column-gap: 0.6rem;
   padding: 0.7rem 0.8rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -1959,7 +1968,8 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    clear. Aligned to the inline END so it sits under the trigger's own corner rather than over the
    first attribute's name. */
 .facet-clear {
-  align-self: flex-end;
+  grid-column: 1 / -1;
+  justify-self: end;
   margin-bottom: -0.15rem;
   font-size: 0.76rem;
   color: var(--color-muted);
@@ -1968,11 +1978,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 }
 .facet-clear:hover { color: var(--color-text); text-decoration: underline; }
 
+/* `subgrid`, so the group is still a BOX — it carries the separator below and its own padding —
+   while its two children sit in the PANEL's tracks. `display: contents` would also align them and
+   would take the box away with it. */
 .facet-group {
-  display: flex;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   align-items: baseline;
-  gap: 0.6rem;
-  flex-wrap: wrap;
 }
 /* One line between attributes, the site's own 1px in `--color-border` — the same
    separator `.user-dropdown__sep` uses, because this is the same kind of object: a
@@ -1987,8 +2000,6 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   border-top: 1px solid var(--color-border);
 }
 .facet-group__label {
-  flex: 0 0 auto;
-  min-width: 4.5rem;
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--color-muted);
@@ -1998,7 +2009,6 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-  flex: 1 1 10rem;
   min-width: 0;
 }
 /* The chips WRAP here, unlike the category row which scrolls: there are at most
@@ -2033,16 +2043,10 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
      `min-width: min(27rem, 100%)` up there is what collapses it to the row's width here,
      so nothing about the phone layout changed. */
 
-  /* At phone widths the attribute name earns its own line: `min-width` on the
-     label plus wrapped chips beside it left roughly two chips per row. */
-  .facet-group { flex-direction: column; align-items: stretch; gap: 0.35rem; }
-  .facet-group__label { min-width: 0; }
-  /* `flex-basis` is measured along the MAIN axis, and the main axis just turned
-     vertical — so the row's `flex: 1 1 12rem` stopped meaning "at least 12rem
-     wide" and started meaning "192px TALL". Measured at 375px: a 200px void
-     between each attribute name and its own chips, with the chips sitting at
-     the bottom of it. Nothing about the desktop rule was wrong; it simply does
-     not survive the axis flip, which is why it is re-stated rather than
-     removed. */
-  .facet-group__values { flex: 0 0 auto; }
+  /* At phone widths the attribute name earns its own line: the name column plus
+     wrapped chips beside it left roughly two chips per row. Dropping the panel to a
+     single track is the whole change — each group is `subgrid`, so its label and its
+     values stack into two rows on their own. */
+  .facet-panel { grid-template-columns: minmax(0, 1fr); }
+  .facet-group { align-items: stretch; row-gap: 0.35rem; }
 }
