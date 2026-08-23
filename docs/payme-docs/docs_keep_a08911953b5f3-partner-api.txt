@@ -1,0 +1,44 @@
+# https://payme.stoplight.io/docs/keep/a08911953b5f3-partner-api
+
+Partner API
+Export
+v1.0.0
+API Base URL
+Staging:
+https://<partner_domain>.keep.co.il
+Production:
+https://<partner_domain>.keep.co.il
+Mock Server:
+https://stoplight.io/mocks/payme/keep/1565025539
+Security
+OAuth 2.0
+
+Client Credentials OAuth Flow
+
+Token URL: /oauth2/token
+
+Refresh URL: /oauth2/token
+
+Scopes:
+
+partner-api - Partner API access
+
+PayMe Book-keeping Partner API for integrators.
+
+Overview
+
+Authentication Methods
+
+Client Credentials - Server-to-server authentication
+Refresh Token - Token renewal
+Token Lifecycle
+Obtain tokens via Client Credentials
+Use access_token for API requests
+When access_token expires (check expires_in)
+Use refresh_token to obtain new access_token
+When refresh_token expires, re-authenticate
+Best Practices
+Store credentials securely - Never expose client_secret in client-side code
+Use HTTPS - All API requests must use HTTPS
+Implement token refresh - Proactively refresh tokens before expiration
+Handle errors gracefully - Implement retry logic with exponential backoff

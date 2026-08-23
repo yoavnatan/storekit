@@ -1,0 +1,204 @@
+# https://payme.stoplight.io/docs/Products-Customers/493mmkbtpx4iz-get-products
+
+Get Products
+GET
+https://sandbox.payme.io/api/products?
+
+The GET /products endpoint provides access to product data, enabling clients to filter and sort through available products. Clients can specify parameters such as product status, creation date range, currency, description, order columns, and directions. Additionally, the endpoint allows for pagination and setting price ranges.
+
+The response will include a list of products that match the specified query parameters, along with metadata such as the total number of products available and pagination details. This endpoint is essential for applications that require dynamic and flexible product searches.
+
+Request
+Query Parameters
+status
+string
+required
+
+The product status - indicates if the product is available or not.
+
+Allowed values:
+Available
+Not Available
+created_at[]
+string<date-time>
+
+Common date range. Use [min] / [max] on query parameters.
+
+currency
+string
+
+The product currency - ISO 3 letters.
+
+description
+string
+
+The product description.
+
+due_date
+string<date-time>
+
+Common date range. Use [min] / [max] on query parameters.
+
+items_per_page
+integer
+
+The count of items returned under the page, up to 500 per page.
+
+name
+string
+
+The product name.
+
+page
+integer
+
+The page number
+
+price_inc_vat_max
+number
+
+The maximum price include VAT -> Store price only. (store_configuration)
+
+price_inc_vat_min
+number
+
+The minimum price include VAT -> Store Price only. (store_configuration)
+
+sort_by
+string
+
+The column name that will be used for ordering the results.
+
+sort_direction
+string
+
+The direction of ordering.
+
+Headers
+Authorization
+string
+required
+
+Bearer <ACCESS_TOKEN>
+
+Responses
+200
+400
+401
+500
+
+Request validated.
+
+Body
+application/json
+application/json
+guid
+string
+product_remote_id
+string
+name
+string
+status
+integer
+category
+string
+description
+string
+store_prices
+object
+currency
+string
+vat_free
+boolean
+price_without_vat
+number
+price_include_vat
+number
+costs
+object
+currency
+string
+vat_free
+boolean
+price_without_vat
+integer
+price_include_vat
+number
+Parameters
+status*
+:
+Available
+Not Available
+Available
+created_at[]
+:
+currency
+:
+description
+:
+due_date
+:
+items_per_page
+:
+name
+:
+page
+:
+price_inc_vat_max
+:
+price_inc_vat_min
+:
+sort_by
+:
+sort_direction
+:
+Authorization*
+:
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request GET \
+  --url 'https://sandbox.payme.io/api/products?status=Available' \
+  --header 'Accept: application/json, json' \
+  --header 'Authorization: '
+Response Example
+1
+{
+2
+  "guid": "string",
+3
+  "product_code": "string",
+4
+  "name": "string",
+5
+  "status": 0,
+6
+  "category": 0,
+7
+  "description": "string",
+8
+  "store_configuration": {
+9
+    "currency": "string",
+10
+    "vat_free": true,
+11
+    "price_without_vat": 0,
+12
+    "price_include_vat": 0
+13
+  },
+14
+  "costs_details": {
+15
+    "currency": "string",
+16
+    "vat_free": true,
+17
+    "price_without_vat": 0,
+18
+    "price_include_vat": 0
+19
+  }
+20
+}

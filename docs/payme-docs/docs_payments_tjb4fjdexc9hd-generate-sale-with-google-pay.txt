@@ -1,0 +1,192 @@
+# https://docs.payme.io/docs/payments/tjb4fjdexc9hd-generate-sale-with-google-pay
+
+Generate Sale with Google Pay
+POST
+https://sandbox.payme.io/api/generate-sale
+Overview
+
+In order to initiate the process of paying using Google Pay APM, you will first need to initiate a generate-sale request to our API.
+
+The request shall include "google-pay" as the sale_payment_method.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID (MPL).
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sale_price
+string
+required
+
+The sale price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+1000
+currency
+string
+required
+
+The sale currency (ISO 4217 Code).
+
+Example:
+ILS
+product_name
+string
+required
+
+What is the payment for.
+
+Example:
+T-Shirt
+language
+string
+
+The language of the user interface.
+
+Example:
+he
+sale_payment_method
+any
+required
+
+The payment method used for the transaction.
+You can use also multi to allow buyer to select his preffered payment method.
+
+Allowed value:
+google-pay
+sale_type
+string
+required
+
+The required sale type.
+
+Example:
+sale
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+status_code
+number
+
+0 - Success 1 - Failure
+
+Example:
+0
+sale_url
+string
+
+The URL to complete the payment.
+
+Example:
+https://preprod.paymeservice.com/sale/generate/sale_guid
+payme_sale_id
+string
+
+Our unique sale ID
+
+Example:
+SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_code
+number
+
+Our unique sale code (for display purposes only)
+
+Example:
+1234567
+price
+number
+
+Sale final price.
+
+Example:
+1000
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+currency
+string
+
+The currency of the payment.
+
+Example:
+ILS
+sale_payment_method
+any
+
+The payment method used to generate the new payment.
+
+Allowed value:
+google-pay
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sale_price": "1000",
+4
+  "currency": "ILS",
+5
+  "product_name": "T-Shirt",
+6
+  "language": "he",
+7
+  "sale_payment_method": "google-pay",
+8
+  "sale_type": "sale"
+9
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/generate-sale \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sale_price": "1000",
+  "currency": "ILS",
+  "product_name": "T-Shirt",
+  "language": "he",
+  "sale_payment_method": "google-pay",
+  "sale_type": "sale"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "sale_url": "https://preprod.paymeservice.com/sale/generate/sale_guid",
+4
+  "payme_sale_id": "SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+5
+  "payme_sale_code": 1234567,
+6
+  "price": 1000,
+7
+  "transaction_id": "12345",
+8
+  "currency": "ILS",
+9
+  "sale_payment_method": "google-pay"
+10
+}

@@ -1,0 +1,14 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/7wjoatlji002j-wallets
+
+Wallets
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api
+Production:
+https://live.payme.io/api
+Mock Server:
+https://stoplight.io/mocks/payme/4-b2b-payments---api-reference/120362708
+
+Our wallets solution is used to easily transfer funds between sellers, partners.

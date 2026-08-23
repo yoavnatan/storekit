@@ -44,7 +44,7 @@ export interface MerchantKyc {
   ownerPhone: string;
   /** ISO `YYYY-MM-DD` — when the business was registered. */
   businessRegisteredOn: string;
-  /** Merchant category code. See `MERCHANT_CATEGORY_FALLBACK`. */
+  /** PayMe's own five-digit merchant category code — NOT an ISO 18245 MCC. See the block below. */
   businessCategory: string;
   businessCity: string;
   businessStreet: string;
@@ -52,20 +52,27 @@ export interface MerchantKyc {
 }
 
 /**
- * The MCC used when a seller has not chosen one.
+ * ⚠️ **There is no default merchant category, and that is a finding rather than an omission.**
  *
- * `5999 — Miscellaneous and Specialty Retail Stores` is the ISO 18245 catch-all for exactly this
- * platform's population: a general online shop selling goods. It is a real code and not a
- * placeholder, which matters because an invented one would be rejected at underwriting and the
- * seller would be the one waiting.
+ * This used to fall back to `5999` — ISO 18245's "Miscellaneous and Specialty Retail Stores", the
+ * international catch-all. **PayMe do not use ISO 18245.** Their own Israeli MCC list (read from
+ * their documentation 2026-08-23) is a private numbering starting at 10000 and enumerated by trade:
+ * `10009 מאפיה`, `10200 הלבשה כללית`, `10223 מסחר קמעונאי במוצרי פרזול-חנויות כלליות`, and so on for
+ * hundreds of rows. `5999` is not in it at all, so every seller onboarded with that fallback would
+ * have been created against a code their system does not recognise.
  *
- * ⚠️ It is nonetheless a DEFAULT and not a claim about any particular seller. PayMe price and
- * underwrite by category, and a store selling something they treat differently is exactly the kind
- * of mismatch that surfaces as a restricted account rather than as an error. Whether sellers pick
- * their own category — and from what list — is a product decision that has not been made
- * (GO_LIVE §3.1.2).
+ * And there is no generic row to replace it with: the closest candidates are all "general" WITHIN a
+ * trade, never across trades. So a category is a fact about a particular business that has to be
+ * chosen, and a value we invent is worse than a value we do not have — an unrecognised code is a
+ * merchant PayMe cannot underwrite, discovered by the seller as a restricted account.
+ *
+ * `missingMerchantKyc` therefore treats an absent category as missing, exactly like a bank account:
+ * the seller is simply not onboarded yet, which is a state the whole flow already handles.
+ *
+ * ⚠️ **Open product decision:** who picks, and from what. The list is far too long to put in front
+ * of a seller, and `feedback_seller_form_burden` forbids a rubric he cannot answer. Mapping our own
+ * store categories onto theirs is the obvious route and nobody has done it (GO_LIVE §3.1.2).
  */
-export const MERCHANT_CATEGORY_FALLBACK = '5999';
 
 /** Every field of `MerchantKyc`, in the order a form would ask them. The single source for
  *  "what is still missing" — a hand-written list at a call site is the copy that goes stale the
@@ -148,9 +155,11 @@ export function normalizeMerchantKyc(input: unknown): Partial<MerchantKyc> {
   const registered = isoDate(raw.businessRegisteredOn);
   if (registered) out.businessRegisteredOn = registered;
 
-  // Falls back rather than staying absent: a seller cannot be blocked from selling over a code he
-  // has never been shown a list of. See `MERCHANT_CATEGORY_FALLBACK`.
-  out.businessCategory = digits(raw.businessCategory, 4) || MERCHANT_CATEGORY_FALLBACK;
+  // No fallback — see the header. Their codes are five digits and their own (10000+), not ISO's
+  // four, so the WIDTH is theirs too: a four-digit value is an ISO code somebody carried across,
+  // and it would not be recognised.
+  const category = digits(raw.businessCategory, 5)
+  if (category.length === 5) out.businessCategory = category;
 
   const city = text(raw.businessCity, 60);
   if (city) out.businessCity = city;
@@ -175,16 +184,24 @@ export function isCompleteMerchantKyc(kyc: Partial<MerchantKyc> | null | undefin
 /**
  * PayMe's `seller_inc` enum, from the business type we already hold.
  *
- * Their list is wider than ours (corporation, partnership, non-profit, LLC), and ours is the three
- * that decide how a seller invoices a buyer (`payout-details.ts`). Mapped rather than merged: an
- * `exempt` seller is PayMe's `5 — Exempt Company`, a `licensed` one is a sole trader (`1`), and a
- * `company` is `2 — Licensed Company`. **`0` is a private individual, which this platform never
- * has** — sellers are registered businesses only (AI_INSTRUCTIONS → Business model) — so it is not
- * a fallback here: an unknown value maps to sole trader, the commonest case, rather than to a
- * category we have contractually excluded.
+ * **CORRECTED 2026-08-23 against their real list, and two of the three were wrong.** The values had
+ * been taken from their old raw spec, which describes a different enum entirely
+ * (`0/1 individual, 2 licensed company, 5 exempt`). Their documentation's Israeli list is:
+ *
+ *     1 private individual | 2 osek murshe | 3 limited company | 4 partnership | 5 osek patur | ...
+ *
+ * So a `company` is **3**, not 2; and a `licensed` seller (osek murshe) is **2**, not 1. Only
+ * `exempt` happened to land on the right number.
+ *
+ * **The old fallback was the worst part:** an unknown type returned `1`, which in this list is a
+ * PRIVATE INDIVIDUAL - precisely the category the platform excludes (sellers are registered
+ * businesses only, AI_INSTRUCTIONS -> Business model) and that PayMe would underwrite differently.
+ * It now returns `null` and `create-seller` is not called: a business type we cannot map is a
+ * seller we do not yet know enough about, which the onboarding already handles honestly.
  */
-export function paymeIncorporation(businessType: string | undefined): number {
-  if (businessType === 'company') return 2;
+export function paymeIncorporation(businessType: string | undefined): number | null {
+  if (businessType === 'company') return 3;
+  if (businessType === 'licensed') return 2;
   if (businessType === 'exempt') return 5;
-  return 1;
+  return null;
 }

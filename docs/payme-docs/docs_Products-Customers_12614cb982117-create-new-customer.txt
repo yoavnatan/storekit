@@ -1,0 +1,281 @@
+# https://payme.stoplight.io/docs/Products-Customers/12614cb982117-create-new-customer
+
+Create New Customer
+POST
+https://sandbox.payme.io/api/customers
+
+This endpoint allows clients to add new customers to the system by sending the necessary information in the request.
+
+Request
+Headers
+Authorization
+string
+required
+
+Bearer <ACCESS_TOKEN>
+
+Body
+application/json
+application/json
+customer_remote_id
+string
+
+The customer's first name.
+
+>= 1 characters
+<= 10 characters
+first_name
+string
+required
+
+The customer's first name.
+
+>= 2 characters
+<= 25 characters
+last_name
+string
+required
+
+The customer's last name.
+
+>= 2 characters
+<= 25 characters
+email
+string
+required
+
+The customer's email.
+
+>= 4 characters
+<= 255 characters
+Match pattern:
+^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+phone_number
+string
+required
+
+The customer's mobile number.
+
+>= 9 characters
+<= 30 characters
+country
+string
+
+The customer's country.
+
+>= 2 characters
+<= 100 characters
+city
+string
+
+The customer's city.
+
+>= 2 characters
+<= 100 characters
+street
+string
+
+The customer's street.
+
+>= 2 characters
+<= 100 characters
+building_number
+string
+
+The customer's building number.
+
+>= 2 characters
+<= 100 characters
+floor
+string
+
+The customer's floor.
+
+>= 2 characters
+<= 25 characters
+zip
+string
+
+The customer's ZIP code.
+
+>= 2 characters
+<= 20 characters
+middle_name
+string
+
+The customer's middle name.
+
+>= 2 characters
+<= 100 characters
+company_name
+string
+
+The customer's company name.
+
+>= 2 characters
+<= 100 characters
+gender
+string
+
+The customer's gender. Allowed values:
+
+Male
+Female
+Other
+>= 2 characters
+<= 5 characters
+description
+string
+
+The customer description.
+
+>= 2 characters
+<= 100 characters
+birthday
+string<date>
+
+The customer's birthday.Show all...
+
+>= 10 characters
+<= 10 characters
+Example:
+04-30-2024
+additional_phone
+string
+
+Additional phone number of the customer.
+
+>= 9 characters
+<= 30 characters
+payment_tokens
+object
+payment_method
+string
+
+The payment method of the token. Allowed values:
+
+Credit Card
+IL Direct Debit
+token_guid
+string
+
+The unique identifier of the token in PayMe.
+
+Example:
+BUYER163-123213-123123123-123123
+Responses
+200
+400
+401
+500
+
+Customer created successfully.
+
+Body
+application/json
+application/json
+responses
+/
+200
+guid
+integer
+
+The unique PayMe customer identifier.
+
+created_at
+string<date-time>
+
+The timestamp of the creation.
+
+Example:
+04-30-2024 00:00:00
+Parameters
+Authorization*
+:
+Body
+1
+{
+2
+  "customer_remote_id": "string",
+3
+  "first_name": "string",
+4
+  "last_name": "string",
+5
+  "email": "string",
+6
+  "phone_number": "stringstr",
+7
+  "country": "string",
+8
+  "city": "string",
+9
+  "street": "string",
+10
+  "building_number": "string",
+11
+  "floor": "string",
+12
+  "zip": "string",
+13
+  "middle_name": "string",
+14
+  "company_name": "string",
+15
+  "gender": "strin",
+16
+  "description": "string",
+17
+  "birthday": "04-30-2024",
+18
+  "additional_phone": "stringstr",
+19
+  "payment_tokens": {
+20
+    "payment_method": "string",
+21
+    "token_guid": "BUYER163-123213-123123123-123123"
+22
+  }
+23
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/customers \
+  --header 'Accept: application/json' \
+  --header 'Authorization: ' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "customer_remote_id": "string",
+  "first_name": "string",
+  "last_name": "string",
+  "email": "string",
+  "phone_number": "stringstr",
+  "country": "string",
+  "city": "string",
+  "street": "string",
+  "building_number": "string",
+  "floor": "string",
+  "zip": "string",
+  "middle_name": "string",
+  "company_name": "string",
+  "gender": "strin",
+  "description": "string",
+  "birthday": "04-30-2024",
+  "additional_phone": "stringstr",
+  "payment_tokens": {
+    "payment_method": "string",
+    "token_guid": "BUYER163-123213-123123123-123123"
+  }
+}'
+Response Example
+1
+{
+2
+  "guid": 0,
+3
+  "created_at": "04-30-2024 00:00:00"
+4
+}

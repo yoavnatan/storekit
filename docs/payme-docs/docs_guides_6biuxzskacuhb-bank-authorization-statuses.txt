@@ -1,0 +1,10 @@
+# https://payme.stoplight.io/docs/guides/6biuxzskacuhb-bank-authorization-statuses
+
+Bank Authorization Statuses
+STATUS	DESCRIPTION	NOTES
+1	Bank authorization opened successfully	
+2	Bank authorization failed	
+3	Bank authorization canceled by the account owner	Meaning the buyer canceled the authorization in the bank app
+5	Authorization moved from previous account	Please notes that the buyer key stays the same
+6	Account changed	Please notes that the buyer key stays the same
+13	Frozen authorization reactivated	Meaning the buyer froze the authorization in the bank app

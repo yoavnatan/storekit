@@ -1,0 +1,39 @@
+# https://docs.payme.io/docs/payments/lpm2cfnrx5bno-resume
+
+Resume
+PATCH
+https://sandbox.payme.io/api/subscriptions/{sub_payme_id}/resume
+Overview
+
+Relevant only for Direct API Integration
+
+This endpoint is used to resume subscriptions is in status "paused". You can find more information in our guide - How to create a subscription .
+
+Request
+Path Parameters
+sub_payme_id
+string
+required
+Headers
+PayMe-Merchant-Key
+string
+
+MPL. Your private key in PayMe system.
+
+Responses
+200
+
+OK
+
+Parameters
+sub_payme_id*
+:
+PayMe-Merchant-Key
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request PATCH \
+  --url https://sandbox.payme.io/api/subscriptions/{sub_payme_id}/resume \
+  --header 'Content-Type: application/json' \
+  --header 'PayMe-Merchant-Key: '

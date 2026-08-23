@@ -1,0 +1,15 @@
+# https://payme.stoplight.io/docs/guides/ort17682q5o8a-sale-statuses
+
+Sale Statuses
+SALE TYPE	SALE STATUS	DESCRIPTION
+1	initial	Creation status, a payment was not attempted
+2	completed	The sale was paid successfully
+3	refunded	The sale was fully refunded
+4	partial-refund	The sale was partially refunded
+5	authorized	The sale was authorized successfully
+6	failed	The sale failed
+7	chargeback	The sale was chargedbacked
+8	canceled	The sale was canceled
+9	voided	The authorization was fully voided
+10	partial-void	The authorization was partially voided
+11	partial-chargeback	The sale was partially chargedbacked

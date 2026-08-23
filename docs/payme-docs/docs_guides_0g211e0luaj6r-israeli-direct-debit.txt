@@ -1,0 +1,119 @@
+# https://payme.stoplight.io/docs/guides/0g211e0luaj6r-israeli-direct-debit
+
+Israeli Direct Debit
+
+In order to create a direct debit mandate for Israeli customers, you can use our generate-sale API endpoint to complete the two actions of:
+
+Generating a mandate request.
+Generating a new payment request.
+Generating a new bank authorization
+Prerequisits
+Activating the service via vas-enable endpoint or the app marketplace.
+
+The solution is based on our iFrame, where the following details will be collected:
+
+Account type (Invididual/Company/Non-Profit/etc)
+Account Owner Name
+Account Owner Social ID/Business Code
+Email Address
+Phone Number
+Bank
+Bank Branch
+Bank Account Number
+Signature
+
+In order to create a new bank authorization request, you will need to initiate the following request:
+
+POST https://<env>.payme.io/api/generate-sale
+{
+"seller_payme_id": "MPLTEST",
+"sale_price": "1000",
+"currency": "ILS",
+"product_name": "Shirt",
+"sale_payment_method": "il-direct-debit",
+"sale_type": "token"
+}
+
+Please note that all fields are mandatory even though no actual charge will be captured for this type of sale.
+
+The response will include a URL for our iframe for the user to insert the details:
+
+{
+"status_code": 0,
+"sale_url": "https://sandbox.payme.io/sale/generate/SALEGUID",
+"payme_sale_id": "SALEGUID",
+"payme_sale_code": 123456,
+"price": 100,
+"transaction_id": "",
+"currency": "ILS",
+"sale_payment_method": "il-direct-debit"
+}
+
+Once the bank authorization request was successfully created, the token for the buyer will remain inactive until we receive an official update from the bank that the authorization was successfully created and the account can be charged - this process can take up to 7 work days.
+
+Creating a new payment request using the Israeli Direct Debit Payment Method
+
+In order to create a new payment request using the IL DD, you will need to use our generate-sale API in the following form:
+
+{
+"seller_payme_id": "MPLTEST",
+"sale_price": "1000",
+"currency": "ILS",
+"product_name": "Shirt",
+"language": "en",
+"sale_payment_method": "il-direct-debit",
+"sale_type": "sale",
+"buyer_key": "BUYER1234"
+}
+
+If the charging request was succesful, you will receive the following response:
+
+{
+"status_code": 1,
+"payme_status": "success",
+"status_error_code": null,
+"payme_sale_id": "SALEGUID",
+"payme_sale_code": 1088759,
+"sale_created": "2022-07-03 08:52:16",
+"payme_sale_status": "pending",
+"sale_status": "initial",
+"currency": "ILS",
+"transaction_id": "",
+"is_token_sale": false,
+"price": 1000,
+"payme_signature": "signatureID",
+"sale_deferred_months": null,
+"payme_transaction_id": "TRANGUID",
+"payme_transaction_total": "1000",
+"payme_transaction_card_brand": "PrivateLabel",
+"payme_transaction_auth_number": null,
+"payme_transaction_voucher": null,
+"payme_transaction_emv_uid": null,
+"payme_transaction_acquirer": null,
+"payme_transaction_auth_source": null,
+"payme_transaction_card_issuer": null,
+"payme_transaction_credit_type": null,
+"buyer_name": "Ran Tester",
+"buyer_email": "TestTest@paymeservice.com",
+"buyer_phone": "05222222",
+"buyer_card_mask": null,
+"buyer_card_exp": null,
+"buyer_card_is_foreign": false,
+"buyer_social_id": "123456789",
+"installments": 1,
+"transaction_first_payment": "1000",
+"transaction_periodical_payment": 0,
+"sale_paid_date": "2022-07-03 08:54:10",
+"sale_release_date": null,
+"sale_3ds": false
+}
+
+In this phase, the payment request will go through a process of validation with the related bank. The approval will be received after 8 calendar days - a decline will be received earlier than that. Both approval and declines can be communicated using our callback system.
+
+Authorization Cancellations and Revokes
+
+The bank is eligible to revoke an authorization at any point of time - this means that once an authorization is revoked, PayMe will update the token to be inactive and you won't be able to use it for new payments anymore. The update can be communicated using our callback system to your designated URL.
+
+Israeli Direct Debit
+Generating a new bank authorization
+Creating a new payment request using the Israeli Direct Debit Payment Method

@@ -1,0 +1,342 @@
+# https://docs.payme.io/docs/payments/e89af92c463ee-pay
+
+Pay
+POST
+https://sandbox.payme.io/api/pay-subscription
+Overview
+
+Relevant only for Direct API Integration
+
+This endpoint is used to pay subscriptions. You can find more information in our guide - How to create a subscription .
+
+Request
+Body
+application/json
+json
+application/xml
+multipart/form-data
+application/json
+sub_payme_id
+string
+
+Our unique subscription ID
+
+Example:
+SUB16885-68336QPL-UQSSS1CC-SYKXI53N
+credit_card_number
+string
+
+Buyer's credit card number
+
+Example:
+45804******04580
+credit_card_cvv
+string
+
+Buyer's credit card CVV
+
+Example:
+123
+credit_card_exp
+string
+
+Buyer's credit card expiary date
+
+Example:
+0429
+buyer_email
+string
+
+Buyer's email address
+
+Example:
+test@gmail.com
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+Cancellation status code ( 0 - Success, 1 - Failure)
+
+Example:
+0
+payme_status
+string
+
+PayMe status
+
+Example:
+success
+seller_payme_id
+string
+
+Our unique seller ID (MPL)
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sub_payme_id
+string
+
+Subscription ID
+
+Example:
+SUB16885-68336QPL-UQSSS1CC-SYKXI53N
+sub_payme_code
+integer
+
+Subscription code
+
+Example:
+477004
+sub_created
+string
+
+Subscription creation timestamp
+
+Example:
+2023-07-05 17:45:36
+sub_start_date
+string
+
+Subscription start timestamp
+
+Example:
+2023-07-05 17:45:36
+sub_prev_date
+string
+
+Subscription last payment date
+
+Example:
+2023-07-05 17:45:36
+sub_next_date
+string
+
+Subscription next payment date
+
+Example:
+2023-07-12 17:45:36
+sub_status
+integer
+
+You can find all the subscription statuses here
+
+Example:
+2
+sub_iteration_type
+integer
+
+You can find all the subscription iteration types here
+
+sub_currency
+string
+
+Subscription currency
+
+Example:
+ILS
+sub_price
+integer
+
+Total subscription price
+
+Example:
+100
+sub_description
+string
+
+Subscription description
+
+Example:
+Services
+sub_iterations
+integer
+
+Number of iterations
+
+Example:
+3
+sub_iterations_completed
+integer
+
+Number of iterations that was paid
+
+Example:
+1
+sub_iterations_skipped
+integer
+
+The count of unpaid iterations and their corresponding dates have elapsed.
+
+Example:
+0
+sub_iterations_left
+integer
+
+The count of iterations left
+
+Example:
+2
+sub_paid
+boolean
+
+Indicates if the current iteration paid
+
+Default:
+true
+sub_payment_date
+string
+
+The payment due date
+
+Example:
+2022-08-15 15:51:29
+buyer_card_mask
+string
+
+Buyer's credit card number
+
+Example:
+458045******4580
+buyer_card_exp
+string
+
+Buyer's credit card expiary date
+
+Example:
+0429
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_email
+string
+
+Buyer's email address
+
+Example:
+test@gmail.com
+buyer_phone
+string or null
+
+Buyer's phone number
+
+Example:
++7920521234567
+buyer_social_id
+string or null
+
+Buyer's social ID
+
+Example:
+123456789
+Body
+1
+{
+2
+  "sub_payme_id": "SUB16885-68336QPL-UQSSS1CC-SYKXI53N",
+3
+  "credit_card_number": "4580458045804580",
+4
+  "credit_card_cvv": "123",
+5
+  "credit_card_exp": "0130",
+6
+  "buyer_email": "test@gmail.com",
+7
+  "buyer_name": "John Doe"
+8
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/pay-subscription \
+  --header 'Accept: application/json, application/xml, multipart/form-data, text/html, text/plain, application/EDI-X12, application/EDIFACT' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "sub_payme_id": "SUB16885-68336QPL-UQSSS1CC-SYKXI53N",
+  "credit_card_number": "4580458045804580",
+  "credit_card_cvv": "123",
+  "credit_card_exp": "0130",
+  "buyer_email": "test@gmail.com",
+  "buyer_name": "John Doe"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "payme_status": "success",
+4
+  "status_error_code": 0,
+5
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+6
+  "sub_payme_id": "SUB16885-68336QPL-UQSSS1CC-SYKXI53N",
+7
+  "sub_payme_code": 477004,
+8
+  "sub_created": "2023-07-05 17:45:36",
+9
+  "sub_start_date": "2023-07-05 17:45:36",
+10
+  "sub_prev_date": null,
+11
+  "sub_next_date": "2023-07-05 17:45:36",
+12
+  "sub_status": 2,
+13
+  "sub_iteration_type": 1,
+14
+  "sub_currency": "USD",
+15
+  "sub_price": 100,
+16
+  "sub_description": "sub-description",
+17
+  "sub_iterations": -1,
+18
+  "sub_iterations_completed": 0,
+19
+  "sub_iterations_skipped": 0,
+20
+  "sub_iterations_left": -1,
+21
+  "sub_paid": true,
+22
+  "sub_error_text": null,
+23
+  "sub_payment_date": "2022-08-15 15:51:29",
+24
+  "buyer_card_mask": "458045******4580",
+25
+  "buyer_card_exp": "0130",
+26
+  "buyer_name": "John Doe",
+27
+  "buyer_email": "test@gmail.com",
+28
+  "buyer_phone": null,
+29
+  "buyer_social_id": null
+30
+}

@@ -1,0 +1,240 @@
+# https://payme.stoplight.io/docs/payments/8nd07j6ilj6t7-additional-services-disable
+
+Additional Services Disable
+POST
+https://sandbox.payme.io/api/vas-disable
+Overview
+
+This endpoint is used to disable additional services for a seller.
+
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+Your private key provided by us for authentication
+
+Example:
+XXXXXXXX
+seller_payme_id
+string
+required
+
+Merchant's unique seller ID for correlation with us.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+vas_payme_id
+string
+required
+
+VAS's unique ID of the desingated seller which you willing to disable the service for.
+
+Example:
+VASLDEMO-VASLDEMO-VASLDEMO-1234567
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+0 success 1 failrue
+
+Default:
+0
+seller_payme_id
+string
+
+Merchant's unique seller ID for correlation with us.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+vas_payme_id
+string
+
+VAS's unique ID.
+
+Example:
+VASLDEMO-VASLDEMO-VASLDEMO-1234567
+vas_description
+string
+
+Description of the value add service.
+
+Example:
+שירותי מקדמה (זיכוי מהיר ו\\או ניכוי)
+vas_type
+string
+
+The type of the value add service.
+
+Example:
+Settlements
+vas_name
+null
+
+The name of the value add service.
+
+vas_api_key
+null
+
+The API key of the value add service.
+
+vas_guid
+string
+
+The guid of the value add service.
+
+Example:
+VASLDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+vas_is_active
+boolean
+True = Active
+False = Not active
+vas_payer_type
+integer
+
+The payer type
+
+Example:
+2
+vas_price_currency
+string
+
+VAS fee currency
+
+Example:
+ILS
+vas_price_setup_fixed
+integer
+
+VAS setup price (fixed)
+
+Example:
+0
+vas_price_periodic_fixed
+integer
+
+VAS periodic price (fixed)
+
+Example:
+0
+vas_price_periodic_variable
+string
+
+VAS periodic price (fixed)
+
+Example:
+"0.00"
+vas_price_usage_fixed
+integer
+
+VAS usage price (fixed)
+
+Example:
+0
+vas_price_usage_variable
+string
+
+VAS usage price (fixed)
+
+Example:
+"0.00"
+vas_market_fee
+null
+
+VAS market fee
+
+vas_period
+integer
+VAS PERIOD	CODE
+Instant	1
+Daily	2
+Monthly	3
+Yearly	4
+Example:
+1
+vas_data
+array[object]
+
+Data that saved under the VAS
+
+Body
+1
+{
+2
+  "payme_client_key": "XXXXXXXX",
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+4
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567"
+5
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/vas-disable \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "XXXXXXXX",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+4
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+5
+  "vas_description": "שירותי מקדמה (זיכוי מהיר ו\\\\או ניכוי)",
+6
+  "vas_type": "Settlements",
+7
+  "vas_name": null,
+8
+  "vas_api_key": null,
+9
+  "vas_guid": "VASLDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+10
+  "vas_is_active": true,
+11
+  "vas_payer_type": 2,
+12
+  "vas_price_currency": "ILS",
+13
+  "vas_price_setup_fixed": 0,
+14
+  "vas_price_periodic_fixed": 0,
+15
+  "vas_price_periodic_variable": "\"0.00\"",
+16
+  "vas_price_usage_fixed": 0,
+17
+  "vas_price_usage_variable": "\"0.00\"",
+18
+  "vas_market_fee": null,
+19
+  "vas_period": 1,
+20
+  "vas_data": [
+21
+    {}
+22
+  ]
+23
+}

@@ -1,0 +1,594 @@
+# https://payme.stoplight.io/docs/payments/4239571881646-create-seller
+
+Create Seller
+POST
+https://sandbox.payme.io/api/create-seller
+Overview
+
+Relevant only to PayMe's partners. This endpoint allows you to create a seller as one of PayMe's partners. You can find more information in the following guide - How to Create New Sellers.
+
+Testing
+
+For testing purposes you can use the following testing values:
+
+ATTRIBUTES	VALUE
+seller_social_id	9999999999
+seller_email	random@paymeservice.com Note that by using this email you will not receive any automatic emails sent from the system
+seller_bank_code	54
+seller_bank_branch	123 Any 3 digits
+seller_bank_account_number	123456 Any 6 digits
+Callback upon Seller creation or update
+
+Once the Seller is created or updated, we will notify the marketplace with the Seller details with a POST request of type x-www-form-urlencoded to the marketplace Default Callback URL.
+
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+PayMe Partner Key.
+
+Example:
+payme_key
+seller_first_name
+string
+required
+
+Seller's first name
+
+Example:
+FirstName
+seller_last_name
+string
+required
+
+Seller's last name
+
+Example:
+LastName
+seller_social_id
+string
+required
+
+Seller's social ID
+
+Example:
+564827517
+seller_birthdate
+string
+required
+
+Seller's personal birth date. ( dd/mm/yyyy structured)
+
+Example:
+01/01/2000
+seller_social_id_issued
+string
+required
+
+Seller's personal social ID issuing day.( dd/mm/yyyy structured)
+
+Example:
+18/08/1995
+seller_gender
+integer
+required
+
+Seller's gender ( 0- Male, 1- Female)
+
+Allowed values:
+0
+1
+seller_email
+string
+required
+
+Seller's email address
+
+Example:
+random@payme.com
+seller_phone
+string
+required
+
+Seller's phone number
+
+Example:
++9720520000000
+seller_contact_email
+string
+
+Seller's contact email
+
+Example:
+test@example.com
+seller_contact_phone
+string
+
+Seller's contact phone number that will be displayed to the buyers. If not stated, will be copied from seller_phone
+
+Example:
++9720520000000
+seller_bank_code
+number
+required
+
+Seller's bank code (Israeli only) Please see the full list of banks here.
+
+Example:
+10
+seller_bank_branch
+number
+required
+
+Seller's bank branch code
+
+Example:
+100
+seller_bank_account_number
+string
+required
+
+Seller's bank account number
+
+Example:
+1111111
+seller_description
+string
+required
+
+Seller’s description, including offered product line and services. Limited to 255 characters.
+
+Example:
+An online store which specializes in smartphones
+seller_site_url
+string
+required
+
+Seller’s site URL.
+
+Example:
+www.smartphonesmartphones.com
+seller_person_business_type
+number
+required
+
+Business MCC (Merchant category code). List of codes here.
+
+Example:
+10010
+seller_inc
+number
+required
+
+Seller incorporation type (IL Only)
+You can find all the seller incorporation types here.
+
+Example:
+1
+seller_inc_code
+string
+
+Seller's business ID (ח.פ, ע.מ), required when seller_inc is not 1.
+
+Example:
+123456
+seller_retail_type
+number
+
+Seller's retail type. (1 - Card not present (online) seller, 2 - Card present seller).
+
+Example:
+1
+seller_merchant_name
+string
+required
+
+Seller's merchant name, required when seller_inc is not 1.
+
+Match pattern:
+Smartphone expert
+seller_address_city
+string
+required
+
+Seller's business address - City.
+
+Example:
+Tel Aviv
+seller_address_street
+string
+required
+
+Seller's business address - Street.
+
+Example:
+Kaplan
+seller_address_street_number
+string
+required
+
+Street number
+
+Example:
+23
+seller_address_country
+string
+required
+
+Seller's business address - Country code according to the ISO 3166. You can fond all the country codes here.
+
+Example:
+IL
+market_fee
+number
+
+A decimal between 0.00 and 60.00 representing the percent of the sale price that is collected for the marketplace (includes VAT). This fee is added on top of our fees and transferred to the marketplace once a month. Default value is 0
+
+Example:
+30.00
+language
+string
+
+Changes the error message language to English. Default value is Hebrew (he).
+
+Example:
+he
+seller_plan
+string
+
+A predefined set of settings for the seller. If required, this value will be provided by your Account Manager.
+
+Example:
+VPLN1495-705158GS-EHPNO6AP-8FQI54DF
+seller_merchant_name_en
+string
+
+The seller's international name in English
+
+Example:
+Merchant Name
+seller_additional_details
+object
+first_name
+string
+
+Seller's first name
+
+Example:
+John
+last_name
+string
+
+Seller's last name
+
+Example:
+Smith
+social_id
+string
+
+Seller's social ID
+
+Example:
+9999999999
+social_id_issued
+string
+
+The social id document issuing date ( dd/mm/yyyy structured)
+
+Example:
+01/01/2004
+type
+array[number]
+
+Possible Role. An individual can have multiple roles in a company.
+You can find all the individual seller types here.
+
+type_copy
+array[number]
+
+Possible Role. An individual can have multiple roles in a company.
+You can find all the individual seller types here.
+
+email
+string
+
+Seller's Email
+
+Example:
+email@domain.com
+files
+object
+
+Files related to the individual, like id
+
+seller_dba
+string
+
+The seller's legal/registered name in Hebrew.
+
+Example:
+Name in Hebrew
+seller_dba_en
+string
+
+The seller's legal/registered international name in English.
+
+Example:
+Name in English
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us.
+
+Example:
+123456
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+number
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+seller_payme_id
+string
+
+The MPL the authorization will be given for
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+seller_payme_secret
+string
+
+The seller's secret key
+
+Example:
+1QPaGXXXXXXXXXXXXXXvYnB
+seller_public_key
+object
+
+PayMe seller's public key details
+
+uuid
+string
+
+PayMe seller's public key
+
+Example:
+86e0bXXXXXXXXXXXXXXXXc54
+description
+string
+
+PayMe seller's public key description
+
+Example:
+PayMe-Public-Key
+is_active
+boolean
+
+Indicates if the public key is active or not (active = true)
+
+seller_id
+string
+
+The seller's ID
+
+Example:
+123456
+seller_dashboard_signup_link
+string
+
+Link for the signup process
+
+Example:
+https://www1-staging.isracard-global.com/update-details?t=ZXlKcGRpSTZJamR3XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+Body
+1
+{
+2
+  "payme_client_key": "payme_key",
+3
+  "seller_first_name": "FirstName",
+4
+  "seller_last_name": "LastName",
+5
+  "seller_social_id": "564827517",
+6
+  "seller_birthdate": "01/01/2000",
+7
+  "seller_social_id_issued": "18/08/1995",
+8
+  "seller_gender": 0,
+9
+  "seller_email": "random@payme.com",
+10
+  "seller_phone": "+9720520000000",
+11
+  "seller_contact_email": "test@example.com",
+12
+  "seller_contact_phone": "+9720520000000",
+13
+  "seller_bank_code ": 10,
+14
+  "seller_bank_branch": 100,
+15
+  "seller_bank_account_number": "1111111",
+16
+  "seller_description": "An online store which specializes in smartphones",
+17
+  "seller_site_url": "www.smartphonesmartphones.com",
+18
+  "seller_person_business_type": 10010,
+19
+  "seller_inc": 1,
+20
+  "seller_inc_code": "123456",
+21
+  "seller_retail_type": 1,
+22
+  "seller_merchant_name": "string",
+23
+  "seller_address_city": "Tel Aviv",
+24
+  "seller_address_street": "Kaplan",
+25
+  "seller_address_street_number": "23",
+26
+  "seller_address_country": "IL",
+27
+  "market_fee": "30.00",
+28
+  "language": "he",
+29
+  "seller_plan": "VPLN1495-705158GS-EHPNO6AP-8FQI54DF",
+30
+  "seller_merchant_name_en": "Merchant Name",
+31
+  "seller_additional_details": {
+32
+    "first_name": "John",
+33
+    "last_name": "Smith",
+34
+    "social_id": "9999999999",
+35
+    "social_id_issued": "01/01/2004",
+36
+    "type": [
+37
+      2
+38
+    ],
+39
+    "type_copy": [
+40
+      2
+41
+    ],
+42
+    "email": "email@domain.com",
+43
+    "files": {
+44
+      "type": 90,
+45
+      "url": "https://example.com/file2",
+46
+      "base64": "iVBORw0KGgoAAAANSUhEUgAABQsAAAFTCAYAAACeUVpKAAAABHNCSVQICAgIfAhkiAAAIABJREFUeJzs3Xd8FVX",
+47
+      "name": "jpg",
+48
+      "mime_type": "string"
+49
+    }
+50
+  },
+51
+  "seller_dba": "Name in Hebrew",
+52
+  "seller_dba_en": "Name in English",
+53
+  "seller_id": "123456"
+54
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/create-seller \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "payme_key",
+  "seller_first_name": "FirstName",
+  "seller_last_name": "LastName",
+  "seller_social_id": "564827517",
+  "seller_birthdate": "01/01/2000",
+  "seller_social_id_issued": "18/08/1995",
+  "seller_gender": 0,
+  "seller_email": "random@payme.com",
+  "seller_phone": "+9720520000000",
+  "seller_contact_email": "test@example.com",
+  "seller_contact_phone": "+9720520000000",
+  "seller_bank_code ": 10,
+  "seller_bank_branch": 100,
+  "seller_bank_account_number": "1111111",
+  "seller_description": "An online store which specializes in smartphones",
+  "seller_site_url": "www.smartphonesmartphones.com",
+  "seller_person_business_type": 10010,
+  "seller_inc": 1,
+  "seller_inc_code": "123456",
+  "seller_retail_type": 1,
+  "seller_merchant_name": "string",
+  "seller_address_city": "Tel Aviv",
+  "seller_address_street": "Kaplan",
+  "seller_address_street_number": "23",
+  "seller_address_country": "IL",
+  "market_fee": "30.00",
+  "language": "he",
+  "seller_plan": "VPLN1495-705158GS-EHPNO6AP-8FQI54DF",
+  "seller_merchant_name_en": "Merchant Name",
+  "seller_additional_details": {
+    "first_name": "John",
+    "last_name": "Smith",
+    "social_id": "9999999999",
+    "social_id_issued": "01/01/2004",
+    "type": [
+      2
+    ],
+    "type_copy": [
+      2
+    ],
+    "email": "email@domain.com",
+    "files": {
+      "type": 90,
+      "url": "https://example.com/file2",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAABQsAAAFTCAYAAACeUVpKAAAABHNCSVQICAgIfAhkiAAAIABJREFUeJzs3Xd8FVX",
+      "name": "jpg",
+      "mime_type": "string"
+    }
+  },
+  "seller_dba": "Name in Hebrew",
+  "seller_dba_en": "Name in English",
+  "seller_id": "123456"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+4
+  "seller_payme_secret": "1QPaGXXXXXXXXXXXXXXvYnB",
+5
+  "seller_public_key": {
+6
+    "uuid": "86e0bXXXXXXXXXXXXXXXXc54",
+7
+    "description": "PayMe-Public-Key",
+8
+    "is_active": true
+9
+  },
+10
+  "seller_id": "123456",
+11
+  "seller_dashboard_signup_link": "https://www1-staging.isracard-global.com/update-details?t=ZXlKcGRpSTZJamR3XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+12
+}

@@ -1,0 +1,418 @@
+# https://payme.stoplight.io/docs/payments/eaaeb301f65b9-refund-pos-sale
+
+Refund POS Sale
+PUT
+https://sandbox.payme.io/api/sales
+
+In order to refund a sale paid via a POS device, you can use PUT function which will trigger a manual refund request sent back to the device.
+
+You will need to chain the sale GUID unique identifier to the endpoint URL in the following form:
+
+https://<env>.payme.io/api/sales/{sale_guid}
+
+Example:
+
+https://<env>.payme.io/api/sales/SALEGUID-TEST123-TEST123-TEST123
+
+The request will trigger a refund that will be sent to the designated device per the device ID mentioned in the request (see request example below)
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+
+PayMe's unqiue seller ID
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+product_name
+string
+
+Product's description
+
+Example:
+Product Name
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+transaction_id
+string
+
+The external transaction ID.
+
+Example:
+12345
+sale_callback_url
+string
+
+The callback url for the specific sale.
+
+Example:
+https://www.example.com/callback_payment
+payment
+object
+
+The payment object.
+
+method
+string
+
+The payment method.
+
+Example:
+pos
+pos_id
+string
+
+The POS ID - the device that will be used to process the refund request.
+
+Example:
+001
+action
+string
+
+The action - must be refund in order to complete this action.
+
+Example:
+refund
+amount
+string
+
+The sale amount in Agorot
+
+Example:
+10000
+language
+string
+
+The language of the customer's interface.
+
+Example:
+he
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+PayMe's payment status (success/failure)
+
+Example:
+0
+payme_status
+string
+
+Sale status
+
+Example:
+success
+payme_sale_id
+string
+
+PayMe's unique Sale ID
+
+Example:
+SALE1635-XXXXXXXX-XXXXXXXX-O0POYBAJ
+payme_sale_code
+integer
+
+PayMe's unique Sale code
+
+Example:
+809283
+sale_created
+string
+
+The date the sale was created (timestamp)
+
+Example:
+2021-11-02 16:36:13
+payme_sale_status
+string
+
+PayMe's sale status
+
+Example:
+completed
+sale_status
+string
+
+Sale status
+
+Example:
+completed
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+transaction_id
+string
+
+Transaction ID
+
+Example:
+12345
+is_token_sale
+boolean
+
+Was the card tokenized or not
+
+price
+integer
+
+Payment price
+
+Example:
+100
+payme_signature
+string
+
+PayMe's signature for the payment
+
+Example:
+0efd912d7dc26c658f841e577afa2b79
+sale_description
+string
+
+Sale description
+
+Example:
+Description
+payme_transaction_id
+string
+
+PayMe transaction ID
+
+Example:
+TRAN1635-8638707F-FDCJJP3T-0IJMAP8K
+payme_transaction_total
+string
+
+Transaction total amount
+
+Example:
+1000
+payme_transaction_card_brand
+string
+
+The card brand
+
+Example:
+Visa
+payme_transaction_auth_number
+string
+
+Transaction authorization number
+
+Example:
+5973894
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_email
+string
+
+Buyer's email address
+
+Example:
+Test@example.com
+buyer_phone
+string
+
+Buyer's phone number
+
+Example:
++972520000000
+buyer_card_mask
+string
+
+Card mask
+
+Example:
+458045******4580
+buyer_card_exp
+string
+
+Buyer's card expiration date
+
+Example:
+10/26
+buyer_card_is_foreign
+boolean
+
+Is the card foreign or domestic? (For IL Sellers only)
+
+buyer_social_id
+string
+
+Buyer's social ID number
+
+Example:
+999999999
+installments
+integer
+
+Number of installments used for the payment
+
+Example:
+12
+sale_paid_date
+string
+
+Sale paid date
+
+Example:
+2021-11-02 16:36:13
+Body
+1
+{
+2
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "product_name": "Product Name",
+4
+  "currency": "ILS",
+5
+  "transaction_id": "12345",
+6
+  "sale_callback_url": "https://www.example.com/callback_payment",
+7
+  "payment": {
+8
+    "method": "pos",
+9
+    "pos_id": "001",
+10
+    "action": "refund ",
+11
+    "amount": "10000"
+12
+  },
+13
+  "language": "he"
+14
+}
+Send API Request
+Server 1
+Request Sample: Shell / cURL
+curl --request PUT \
+  --url https://sandbox.payme.io/api/sales \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "product_name": "Product Name",
+  "currency": "ILS",
+  "transaction_id": "12345",
+  "sale_callback_url": "https://www.example.com/callback_payment",
+  "payment": {
+    "method": "pos",
+    "pos_id": "001",
+    "action": "refund ",
+    "amount": "10000"
+  },
+  "language": "he"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "payme_status": "success",
+4
+  "status_error_code": 0,
+5
+  "payme_sale_id": "SALE1688-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+6
+  "payme_sale_code": 12346578,
+7
+  "sale_created": "2023-06-29 13:33:54",
+8
+  "payme_sale_status": "authorized",
+9
+  "sale_status": "authorized",
+10
+  "currency": "ILS",
+11
+  "transaction_id": "string",
+12
+  "is_token_sale": false,
+13
+  "price": 100,
+14
+  "payme_signature": "db1c276**********c5b39",
+15
+  "sale_description": "bbb",
+16
+  "sale_deferred_months": null,
+17
+  "payme_transaction_id": "TRAN1688-034834SZ-OYNALKNE-DWOXFEUZ",
+18
+  "payme_transaction_total": "100",
+19
+  "payme_transaction_card_brand": "Mastercard",
+20
+  "payme_transaction_auth_number": "12345678",
+21
+  "payme_transaction_voucher": null,
+22
+  "payme_transaction_emv_uid": "2306**********102613",
+23
+  "payme_transaction_acquirer": "PayMe",
+24
+  "payme_transaction_auth_source": "CreditCompany",
+25
+  "payme_transaction_card_issuer": "Isracard",
+26
+  "payme_transaction_credit_type": "RegularCredit",
+27
+  "buyer_name": "First Name",
+28
+  "buyer_email": "test@example.com",
+29
+  "buyer_phone": "+15417543010",
+30
+  "buyer_card_mask": "532610******5846",
+31
+  "buyer_card_exp": "0426",
+32
+  "buyer_card_is_foreign": false,
+33
+  "buyer_social_id": "123456782",
+34
+  "installments": 1,
+35
+  "transaction_first_payment": "100",
+36
+  "transaction_periodical_payment": 0,
+37
+  "transaction_arn": "2306**********2613",
+38
+  "sale_paid_date": "2023-06-29 13:33:54",
+39
+  "sale_release_date": null,
+40
+  "sale_3ds": false,
+41
+  "redirect_url": null
+42
+}

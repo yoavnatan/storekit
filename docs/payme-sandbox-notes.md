@@ -6,8 +6,11 @@ session. Where something is *not* measured it says so.
 
 This file exists because the same wrong turn was taken twice: PayMe's guide pages
 (`payme.stoplight.io/docs/guides/…`) are a JavaScript application that returns a title and no body
-to any fetch, so a session that needs a fact reaches for the readable spec instead — and the
-readable spec is **old**. It does not know `pay-sale`, `update-seller`, `market_fee_fixed` or
+to any FETCH, so a session that needs a fact reaches for the readable spec instead — and the
+readable spec is **old**. ⚠️ **That sentence became an excuse, and it is only half true: a headless
+browser renders them fine.** They are captured in `docs/payme-docs/` since 2026-08-23 (§17), and
+four of this file's corrections came out of them. Read those before trusting the raw spec for
+anything. It does not know `pay-sale`, `update-seller`, `market_fee_fixed` or
 multi-capture. A session that trusts it will conclude, confidently and wrongly, that a cart cannot
 span several sellers.
 
@@ -342,6 +345,37 @@ registration.
 ⚠️ Unbuilt, and deliberately: `generate-subscription`, `cancel-subscription` and `get-subscriptions`
 exist on the account (endpoint discovery, §"What exists") but none has been called. Nothing here is
 measured.
+
+### 17. Their documentation IS readable — with a browser. Four corrections came straight out of it
+`docs/payme-docs/` holds 133 rendered pages, captured 2026-08-23 with Playwright after every
+non-browser route failed (no sitemap; a crawler user-agent gets `403`; their content API resolves
+the route but wants an internal node id). **The header of this file has said since 2026-08-21 that
+their guides "return a title and no body to any fetch", and that was true and became an excuse.**
+Three sessions designed against the old raw spec instead. What the pages then corrected:
+
+* **`seller_inc` — two of our three values were wrong.** Their Israeli list is
+  `1 פרטי · 2 עוסק מורשה · 3 חברה בע"מ · 4 שותפות · 5 עוסק פטור · 6 עמותה`. We were sending `2` for a
+  limited company (that is עוסק מורשה) and `1` for an עוסק מורשה — and `1` is a PRIVATE INDIVIDUAL,
+  the category the platform contractually excludes, which was also the fallback for anything
+  unmapped. Fixed in `merchant-kyc.ts#paymeIncorporation`, which now returns null rather than guess.
+* **The merchant category is not an ISO 18245 MCC.** Theirs is a private numbering from 10000 up,
+  enumerated by trade (`10009 מאפיה`, `10200 הלבשה כללית`). Our `5999` fallback is not in their list
+  at all. There is no cross-trade generic row, so there is no safe default and the field is now
+  simply required.
+* **An authorization is held for up to 168 hours**, and capturing after that fails. Not a constraint
+  the checkout hits — it captures immediately — but it bounds anything that ever defers a capture.
+* **`market_fee` is documented `>= 0, <= 60`** in their own API reference, which agrees with the
+  `308` refusal measured here. One of the few places a page and a measurement can be checked
+  against each other, and they match.
+
+⚠️ **What is still NOT there: the callback signature formula.** Their callbacks page lists
+`payme_signature` as an attribute and links to an "MD5 Signature" page that the crawl did not
+capture. So `verifyCallbackSignature` still rests on the OLD raw spec, and remains the one part of
+the adapter with no confirmation from either a measurement or a current page.
+
+⚠️ **And a name that will mislead the next reader: "Generate Multi Checkout Payment" is not
+multi-seller.** It is one payment page offering several payment METHODS (card, bit, Apple Pay,
+Google Pay). Multi-capture is the multi-seller mechanism.
 
 ---
 

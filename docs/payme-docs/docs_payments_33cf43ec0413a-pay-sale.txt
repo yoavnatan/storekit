@@ -1,0 +1,422 @@
+# https://docs.payme.io/docs/payments/33cf43ec0413a-pay-sale
+
+Pay Sale
+POST
+https://sandbox.payme.io/api/pay-sale
+Overview
+
+This endpoint can be used only if you are using our Direct Integration method.
+
+This endpoint allows you to pay on a sale you created.
+By sending this request, a few actions occur: the sale is processed, the buyer is charged, and you receive an asynchronous response with the sale data.
+
+You can find more information in the following guide - Direct API - How to create and pay sale.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID
+
+Example:
+abc123_vvds1234
+sale_price
+string
+required
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075. Note that the minimum value is 500.
+
+Example:
+140
+currency
+string
+required
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+USD
+installments
+string
+required
+
+Amount of installments for the sale.
+
+Example:
+12
+language
+string
+
+The language of the response and callback.
+
+Example:
+he
+sale_callback_url
+string
+
+Callback response to your page regarding call to our API. Default value is taken from the Merchant's settings. Note that you may not send a "localhost" URL as value
+
+Example:
+https://www.example.com/payment/callback
+sale_return_url
+string
+required
+
+Once the payment was completed successfully, the user will be redirected to this URL
+
+Example:
+https://www.example.com/payment/callback
+capture_buyer
+number
+
+Flag for requesting the buyer's token for this payment (0 - do not capture token, 1 - capture token). For additional information see Tokens explanation below
+
+Example:
+0
+buyer_key
+string
+required
+
+Buyer key for an instant-payment with the token. This key is received through the use of capture_buyer. Note that this attribute cannot co-exist with the capture_buyer parameter in the same request
+
+Example:
+BUYER168-XXXXXXXX-XXXXXXXX-WQIWVVLB
+payme_sale_id
+string
+required
+
+Our unique sale ID
+
+Example:
+SALE1687-XXXXXXXX-XXXXXXXX-XXXXXXXX
+credit_card_number
+number
+required
+
+The card the transaction will be paid with.
+
+Example:
+411111******1111
+credit_card_exp
+string
+required
+
+The expiration date of the card used to pay for the transaction (MM/YY)
+
+Example:
+10/25
+credit_card_cvv
+string
+required
+
+The CVV of the card used to pay for the transaction. (3/4 digit code)
+
+Example:
+100
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+number
+
+Status of the capture request (0 - success, 1 - error)
+
+Example:
+0
+payme_status
+string
+
+PayMe's payment status (success/failure)
+
+Example:
+success
+payme_sale_id
+string
+
+PayMe's unique Sale ID
+
+Example:
+SALE1635-XXXXXXXX-XXXXXXXX-O0POYBAJ
+payme_sale_code
+number
+
+PayMe's unique Sale code
+
+Example:
+809283
+sale_created
+string
+
+The date the sale was created (timestamp)
+
+Example:
+2021-11-02 16:36:13
+payme_sale_status
+string
+
+PayMe's sale status
+
+Example:
+completed
+sale_status
+string
+
+Sale status
+
+Example:
+completed
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name
+
+Example:
+USD
+transaction_id
+string
+
+Transaction ID
+
+Example:
+12345
+is_token_sale
+boolean
+
+Was the card tokenized or not
+
+price
+number
+
+Payment price
+
+Example:
+100
+payme_signature
+string
+
+PayMe's signature for the payment
+
+Example:
+0efd912d7dc26c658f841e577afa2b79
+payme_transaction_id
+string
+
+PayMe transaction ID
+
+Example:
+TRAN1635-8638707F-FDCJJP3T-0IJMAP8K
+payme_transaction_total
+string
+
+Transaction total amount
+
+Example:
+1000
+payme_transaction_card_brand
+string
+
+The card brand
+
+Example:
+Visa
+payme_transaction_auth_number
+string
+
+Transaction authorization number
+
+Example:
+5973894
+payme_transaction_voucher
+string
+
+PayMe's transaction voucher
+
+Example:
+116790
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_email
+string
+
+Buyer's email address
+
+Example:
+Test@example.com
+buyer_phone
+string
+
+Buyer's phone number
+
+Example:
++972520000000
+buyer_card_mask
+string
+
+Card mask
+
+Example:
+458045******4580
+buyer_card_exp
+string
+
+Buyer's card expiration date
+
+Example:
+10/26
+buyer_card_is_foreign
+boolean
+
+Is the card foreign or domestic? (For IL Sellers only)
+
+buyer_social_id
+string
+
+Buyer's social ID number
+
+Example:
+999999999
+installments
+number
+
+Number of installments used for the payment
+
+Example:
+12
+sale_paid_date
+string
+
+Sale paid date
+
+Example:
+2021-11-02 16:36:13
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sale_price": "1000",
+4
+  "currency": "ILS",
+5
+  "installments": "1",
+6
+  "buyer_email": "test@test.com",
+7
+  "buyer_name": "Test User",
+8
+  "language": "en",
+9
+  "sale_callback_url": "https://www.example.com/payment/callback",
+10
+  "sale_return_url": "https://www.example.com/payment/success",
+11
+  "capture_buyer": 0,
+12
+  "payme_sale_id": "Copy here payme_sale_id from generate-sale request",
+13
+  "credit_card_number": 4111111111111111,
+14
+  "credit_card_exp": "0322",
+15
+  "credit_card_cvv": 123
+16
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/pay-sale \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sale_price": "1000",
+  "currency": "ILS",
+  "installments": "1",
+  "buyer_email": "test@test.com",
+  "buyer_name": "Test User",
+  "language": "en",
+  "sale_callback_url": "https://www.example.com/payment/callback",
+  "sale_return_url": "https://www.example.com/payment/success",
+  "capture_buyer": 0,
+  "payme_sale_id": "Copy here payme_sale_id from generate-sale request",
+  "credit_card_number": 4111111111111111,
+  "credit_card_exp": "0322",
+  "credit_card_cvv": 123
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "payme_status": "success",
+4
+  "payme_sale_id": "SALE1635-XXXXXXXX-XXXXXXXX-O0POYBAJ",
+5
+  "payme_sale_code": 809283,
+6
+  "sale_created": "2021-11-02 16:36:13",
+7
+  "payme_sale_status": "completed",
+8
+  "sale_status": "completed",
+9
+  "currency": "USD",
+10
+  "transaction_id": "12345",
+11
+  "is_token_sale": true,
+12
+  "price": 100,
+13
+  "payme_signature": "0efd912d7dc26c658f841e577afa2b79",
+14
+  "payme_transaction_id": "TRAN1635-8638707F-FDCJJP3T-0IJMAP8K",
+15
+  "payme_transaction_total": "1000",
+16
+  "payme_transaction_card_brand": "Visa",
+17
+  "payme_transaction_auth_number": "5973894",
+18
+  "payme_transaction_voucher": "116790",
+19
+  "buyer_name": "John Doe",
+20
+  "buyer_email": "Test@example.com",
+21
+  "buyer_phone": "+972520000000",
+22
+  "buyer_card_mask": "458045******4580",
+23
+  "buyer_card_exp": "10/26",
+24
+  "buyer_card_is_foreign": true,
+25
+  "buyer_social_id": "999999999",
+26
+  "installments": 12,
+27
+  "sale_paid_date": "2021-11-02 16:36:13"
+28
+}

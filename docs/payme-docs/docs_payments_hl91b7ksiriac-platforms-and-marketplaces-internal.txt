@@ -1,0 +1,12 @@
+# https://docs.payme.io/docs/payments/hl91b7ksiriac-platforms-and-marketplaces-internal
+
+Platforms & Marketplaces - Internal
+Export
+v1.2
+API Base URL
+Staging:
+https://sandbox.payme.io/api
+Production:
+https://live.payme.io/api
+Mock Server:
+https://stoplight.io/mocks/payme/payments/203606254

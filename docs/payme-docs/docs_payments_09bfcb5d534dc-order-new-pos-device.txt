@@ -1,0 +1,215 @@
+# https://docs.payme.io/docs/payments/09bfcb5d534dc-order-new-pos-device
+
+Order New POS Device
+POST
+https://sandbox.payme.io/api/vas-enable
+Overview
+
+In order to be initiate the process of receiving a physical Point Of Sale (POS) device, you will first need to generate a new request to https://.payme.io/api/vas-enable using your personal VAS identifier.
+
+Once the VAS is activated, the process will be initiated and the following operations will take place:
+
+New terminal request (takes up to 5 business days)
+Physical device internal preparation (Immediate once terminal is ready)
+
+The API request for activating the service will look as follows:
+
+1st step
+
+Add the payment method via vas-enable
+
+{
+"payme_client_key": "payme_client_key",
+"seller_payme_id": "seller_payme_id",
+"vas_payme_id": "vas_payme_id"
+}
+2nd step
+
+Add the device type via vas-enable
+
+{
+"payme_client_key": "payme",
+"seller_payme_id":"MPL15991-MPL15991-MPL15991-MPL15991",
+"vas_payme_id": "VASL1545-8192915E-8192915E-8192915E",
+"extend_items": true,
+"vas_data": {
+"number_of_devices": 3,
+"items":[
+{
+"pos_id": "123",
+"shipping_address": "address of shipping",
+"name": "name of the device"
+},
+{
+"pos_id": "123",
+"shipping_address": "address of shipping",
+"name": "name of the device"
+}
+]
+}
+}
+
+Once the VAS is activated, the process will be synchronous and there's no further action required to be completed by the partner or seller until receiving the device and starting to process immidiately.
+
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+The PayMe Secret Client Key
+
+Example:
+payme
+seller_payme_id
+string
+required
+
+The unique seller identifier (MPL).
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+vas_payme_id
+string
+required
+
+The unique activation key.
+
+Example:
+VASLDEMO-VASLDEMO-VASLDEMO-VASLDEMO
+vas_data
+object
+required
+
+The predefined data object that allows you to request specific device amount and a per device information.
+
+number_of_devices
+integer
+required
+
+The number of requested devices.
+
+Example:
+1
+items
+array[object]
+required
+
+The devices array. The items count must be equal to number_of_devices value.
+
+extend_items
+boolean
+required
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+string
+
+The status code.
+
+Example:
+0
+seller_payme_id
+string
+
+The unique seller ID.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+message
+string
+
+The message for either success of failure.
+
+Example:
+Action Completed Successfully.
+Body
+1
+{
+2
+  "payme_client_key": "payme",
+3
+  "seller_payme_id": "MPL15991-MPL15991-MPL15991-MPL15991",
+4
+  "vas_payme_id": "VASL1545-8192915E-8192915E-8192915E",
+5
+  "vas_data": {
+6
+    "number_of_devices": 3,
+7
+    "items": [
+8
+      {
+9
+        "pos_id": "123",
+10
+        "shipping_address": "address of shipping",
+11
+        "name": "name of the device"
+12
+      },
+13
+      {
+14
+        "pos_id": "123",
+15
+        "shipping_address": "address of shipping",
+16
+        "name": "name of the device"
+17
+      }
+18
+    ]
+19
+  }
+20
+}
+Send API Request
+Server 1
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/vas-enable \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "payme",
+  "seller_payme_id": "MPL15991-MPL15991-MPL15991-MPL15991",
+  "vas_payme_id": "VASL1545-8192915E-8192915E-8192915E",
+  "vas_data": {
+    "number_of_devices": 3,
+    "items": [
+      {
+        "pos_id": "123",
+        "shipping_address": "address of shipping",
+        "name": "name of the device"
+      },
+      {
+        "pos_id": "123",
+        "shipping_address": "address of shipping",
+        "name": "name of the device"
+      }
+    ]
+  }
+}'
+Response Example
+1
+{
+2
+  "status_code": "0",
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+4
+  "message": "Action Completed Successfully."
+5
+}

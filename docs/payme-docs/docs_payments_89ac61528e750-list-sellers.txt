@@ -1,0 +1,521 @@
+# https://payme.stoplight.io/docs/payments/89ac61528e750-list-sellers
+
+List Sellers
+POST
+https://sandbox.payme.io/api/get-sellers
+Overview
+
+You can retreive data on your sellers using this endpoint.
+
+Query pagination (more than 500 results)
+
+If you are sending a query and expect to receive more than 500 results, make sure you use this function of Query Pagination.
+
+{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  ...
+  "page_size": 100, // Max allowed page size is 500
+  "page": 1
+}
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+PayMe Partner Key
+
+Example:
+XXXXXXXX
+seller_payme_id
+string
+
+Our unique seller ID (MPL).
+If you are a partner, you can use multiple seller_payme_id attributes to retreive data for these specific sellers
+
+Example:
+MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_created_max
+string
+
+Latest date and time for which to retrieve sellers. ISO-8601 formatted
+
+Example:
+2016-01-02 00:00:00
+seller_created_min
+string
+
+Earliest creation date and time for which to retrieve sellers. ISO-8601 formatted
+
+Example:
+2016-01-01 00:00:00
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us
+
+Example:
+12345
+seller_first_name
+string
+Example:
+John
+seller_last_name
+string
+
+First name of the account owner
+
+Example:
+Doe
+seller_social_id
+string
+
+Last name of the account owner
+
+Example:
+999999999
+seller_email
+string
+
+Seller's personal email
+
+Example:
+personal@example.com
+seller_phone
+string
+
+Seller's personal phone
+
+Example:
++9720540123456
+seller_contact_email
+string
+
+Seller's contact email that will be displayed to the buyers
+
+Example:
+contact@example.com
+seller_contact_phone
+string
+
+Seller's contact phone that will be displayed to the buyers
+
+Example:
+031234567
+seller_inc
+object
+number
+one of: object
+Available Values
+object
+seller_inc_code
+string
+
+Seller's business ID (ח.פ, ע.מ)
+
+Example:
+123456
+selelr_merchant_name
+string
+
+Seller's merchant name
+
+Example:
+Store name
+market_fee
+number
+
+A decimal between 0-30 representing the percent of the sale price that is collected for the marketplace (includes VAT)
+
+Example:
+30.00
+seller_active
+boolean
+
+Seller's active state
+
+seller_approved
+boolean
+
+Seller's approval state
+
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+items_count
+number
+
+Number of sellers
+
+items
+array[object]
+seller_payme_id
+string
+
+Our unique seller ID (MPL)
+
+Example:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us
+
+Example:
+12345
+seller_created
+string
+
+Exact creation date and time for which to retrieve sellers. ISO-8601 formatted
+
+Example:
+2016-01-01 15:15:15
+seller_active
+boolean
+
+Seller is Active in the system or not
+
+seller_approved
+boolean
+
+Seller is approved in the system (T/F)
+
+seller_approved_date
+string
+
+The date the seller was approved in the system
+
+Example:
+2016-01-02 00:00:00
+seller_is_paid_directly
+boolean
+
+Seller is paid directly by PayMe or by the acquirers. (true is paid by the acquirers)
+
+seller_is_discount
+boolean
+
+Seller has a discount rate
+
+seller_withdrawal_plan
+number
+
+Seller withdrawl plan (see get-withdrawls API)
+
+Example:
+3
+seller_withdrawal_date
+null
+seller_personal_details
+object
+seller_business_details
+object
+seller_address
+object
+seller_fees
+object
+seller_currencies
+array[object]
+
+Seller enabled currencies
+
+seller_wallets
+object
+seller_monthly_invoices
+object
+status_code
+number
+
+0 for Sucessful requests, 1 for Failed requests
+
+Example:
+0
+Body
+1
+{
+2
+  "payme_client_key": "XXXXXXXX",
+3
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+4
+  "seller_created_max": "2016-01-02 00:00:00",
+5
+  "seller_created_min": "2016-01-01 00:00:00",
+6
+  "seller_id": "12345",
+7
+  "seller_first_name": "John",
+8
+  "seller_last_name": "Doe",
+9
+  "seller_social_id": "999999999",
+10
+  "seller_email": "personal@example.com",
+11
+  "seller_phone": "+9720540123456",
+12
+  "seller_contact_email": "contact@example.com",
+13
+  "seller_contact_phone": "031234567",
+14
+  "seller_inc": {
+15
+    "Available Values": {
+16
+      "0 Private Individual": 0,
+17
+      "1 Sole Proprietorship ": 0,
+18
+      "2 Licensed Company": 0,
+19
+      "3 Corporation": 0,
+20
+      "4 Registered Partnership": 0,
+21
+      "5 Exempt Company": 0,
+22
+      "6 Non Profit": 0,
+23
+      "7 LLC Limited Liability Company": 0
+24
+    }
+25
+  },
+26
+  "seller_inc_code": "123456",
+27
+  "selelr_merchant_name": "Store name",
+28
+  "market_fee": "30.00",
+29
+  "seller_active": true,
+30
+  "seller_approved": true
+31
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-sellers \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "XXXXXXXX",
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "seller_created_max": "2016-01-02 00:00:00",
+  "seller_created_min": "2016-01-01 00:00:00",
+  "seller_id": "12345",
+  "seller_first_name": "John",
+  "seller_last_name": "Doe",
+  "seller_social_id": "999999999",
+  "seller_email": "personal@example.com",
+  "seller_phone": "+9720540123456",
+  "seller_contact_email": "contact@example.com",
+  "seller_contact_phone": "031234567",
+  "seller_inc": {
+    "Available Values": {
+      "0 Private Individual": 0,
+      "1 Sole Proprietorship ": 0,
+      "2 Licensed Company": 0,
+      "3 Corporation": 0,
+      "4 Registered Partnership": 0,
+      "5 Exempt Company": 0,
+      "6 Non Profit": 0,
+      "7 LLC Limited Liability Company": 0
+    }
+  },
+  "seller_inc_code": "123456",
+  "selelr_merchant_name": "Store name",
+  "market_fee": "30.00",
+  "seller_active": true,
+  "seller_approved": true
+}'
+Response Example
+1
+{
+2
+  "items_count": 0,
+3
+  "items": [
+4
+    {
+5
+      "seller_payme_id": "XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+6
+      "seller_id": "12345",
+7
+      "seller_created": "2016-01-01 15:15:15",
+8
+      "seller_active": true,
+9
+      "seller_approved": true,
+10
+      "seller_approved_date": "2016-01-02 00:00:00",
+11
+      "seller_is_paid_directly": true,
+12
+      "seller_is_discount": true,
+13
+      "seller_withdrawal_plan": 3,
+14
+      "seller_withdrawal_date": null,
+15
+      "seller_personal_details": {
+16
+        "seller_first_name": "First",
+17
+        "seller_last_name": "Last",
+18
+        "seller_social_id": "999999999",
+19
+        "seller_birthdate": "2016-01-01 15:15:15",
+20
+        "seller_gender": "1",
+21
+        "seller_email": "example@domain.com",
+22
+        "seller_phone": "+972509999999"
+23
+      },
+24
+      "seller_business_details": {
+25
+        "seller_inc": {
+26
+          "Available Values": 0
+27
+        },
+28
+        "seller_inc_code": "123456",
+29
+        "seller_merchant_name": "Merchant name ",
+30
+        "seller_site_url": "https://www.example.com",
+31
+        "seller_description": "Business brief explanation",
+32
+        "seller_retail_type": "1",
+33
+        "seller_contact_email": "example@domain.com",
+34
+        "seller_contact_phone": "+9720509999999",
+35
+        "seller_bank_account_code": "10",
+36
+        "seller_bank_account_branch": "881",
+37
+        "seller_bank_account_number": "9999999"
+38
+      },
+39
+      "seller_address": {
+40
+        "seller_address_city": "Tel Aviv",
+41
+        "seller_address_street": "Rothchild",
+42
+        "seller_address_street_number": "150",
+43
+        "seller_address_country": "IL"
+44
+      },
+45
+      "seller_fees": {
+46
+        "fee_market_fee": "0.00",
+47
+        "fee_default_processing_fee": "0.00",
+48
+        "fee_default_processing_charge": "0.000000000000000000",
+49
+        "fee_default_discount_fee": "0.00",
+50
+        "fee_foreign_processing_fee": "0.00",
+51
+        "fee_foreign_processing_charge": "0.000000000000000000",
+52
+        "fee_forcurr_processing_charge": "0.000000000000000000"
+53
+      },
+54
+      "seller_currencies": [
+55
+        {}
+56
+      ],
+57
+      "seller_wallets": {
+58
+        "ILS": {
+59
+          "wallet_currency": "ILS",
+60
+          "wallet_total": "1234",
+61
+          "wallet_releasable": "1234"
+62
+        },
+63
+        "USD": {
+64
+          "wallet_currency": "USD",
+65
+          "wallet_total": "1234",
+66
+          "wallet_releasable": "1234"
+67
+        }
+68
+      },
+69
+      "seller_monthly_invoices": {
+70
+        "1234": {
+71
+          "invoice_reference": "2015-12",
+72
+          "invoice_created": "2016-01-01",
+73
+          "invoice_doc_number": "1234",
+74
+          "invoice_url": "PDF_FILE_URL.pdf",
+75
+          "invoice_details_url": "https://sandbox.paymeservice.com/system/invoice-details-viewer/XXXXXXX"
+76
+        },
+77
+        "2134": {
+78
+          "invoice_reference": "1234",
+79
+          "invoice_created": "2016-01-01",
+80
+          "invoice_doc_number": "2134",
+81
+          "invoice_url": "PDF_FILE_URL.pdf",
+82
+          "invoice_details_url": "https://sandbox.paymeservice.com/system/invoice-details-viewer/XXXXXXX"
+83
+        }
+84
+      }
+85
+    }
+86
+  ],
+87
+  "status_code": 0
+88
+}

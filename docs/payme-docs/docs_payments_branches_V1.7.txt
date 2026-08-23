@@ -1,0 +1,24 @@
+# https://payme.stoplight.io/docs/payments/branches/V1.7
+
+Getting Started
+
+Our API is designed to allow platforms to offer a full payment solution as part of their product.
+
+Using the API you can:
+
+Create and manage Merchant on your platform
+Allow merchants to accept credit card paymentsCreate standard transactions
+Create recurring payments
+Use our secured payment pages
+Use Tokenization for delayed & future payments
+Charge a platform fee from every transactionQuery data regarding sellers, transactions, subscriptions, withdrawals and more
+
+PCI compliant and want to use the direct credit card API? Let us know!
+
+By using the API you will be able to handle all transactions on your website without dealing with sensitive credit card details, processing difficulties or PCI compliancy.The basics are simple. You POST required information to our target URL's using JSON format and get replies structured in JSON format. You are free to use whatever programming language you prefer.
+
+Note:
+
+Do not forget to add the header Content-Type: application/json to your requests!Callbacks - We have an option to send out a server to server notifications, also known as "IPN".
+
+For example: a customer successfully paying using the IFRAME; a successful subscription iteration. The format and details are described throughout this document. The callback is a POST request of type x-www-form-urlencoded to your provided target URL.

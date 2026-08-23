@@ -1,0 +1,71 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/u8vyyrknn5jn8-contracts
+
+Contracts
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io
+Production:
+https://live.payme.io
+Mock Server:
+https://stoplight.io/mocks/payme/4-b2b-payments---api-reference/64470183
+Getting Started
+
+In order to get started, we need to have an initiator's MPL, to use for the payment contract creation. If there is no MPL yet, we need to create one via api/create-seller endpoint.
+
+The flow steps: Create new seller => Add new Payment method => attach payment method to seller => create the contract using the buyer_key for the specific payment method. If the buyer_key isn't provided, we will select the newest added card according to the chosen method.
+
+Tokenization
+
+Currently, it is possible to pay a "payment contract" using 3 payment methods -
+
+Funds transfer (balance payment)
+Credit Card
+IL Direct Debit
+
+In order to add credit card or IL Direct debit payment methods to a seller's account, we need to use the following endpoint -
+
+Request example -
+
+POST https://sandbox.payme.io/api/generate-sale
+{
+"seller_payme_id": "MPL16662-47087AEM-6GHBJ0YG-XXXXXXX",
+"sale_price": "1000", // Irelevnat
+"currency": "ILS", 
+"product_name": "Test",
+"sale_payment_method": "credit-card", // "il-direct-debit" is also optional here.
+"sale_type": "token",
+"sale_callback_url": "https://webhook.site/75a6257f-df51-46e2-8631-ec4568823854",
+"sale_return_url":"https://www.google.co.il"
+}
+
+**For the next step, we will use the buyer_key we received from the callback after the token is created! In addition, that buyer is the unique identifier of the payment method, so we need to save it for payment purposes.
+
+To enter prefilled data in the tokenization iFrame, we can inject URL params according to the user's input. For example - https://sandbox.payme.io/sale/generate/SALE1674-406879C9-1T47MMXD-WLGIW0CD?first_name=first&last_name=last&phone=0545555555&email=test@email.com&social_id=66555
+
+Attaching the token to the seller's account
+
+Credit card flow -
+In order to use credit card to pay a contract it needs to be attached to a seller account. We need to use the following endpoint in order to attach the created token (buyer_key) to the seller -
+
+POST https://sandbox.payme.io/api/add-card-to-seller
+{
+    "seller_payme_id": "MPL16662-47087AEM-6GHBJ0YG-XXXXXXXX", // The seller's MPL
+    "buyer_key": "BUYER166-2643306B-RK7K1H00-CTIHUSIY" // The buyer_key we         
+     received from the callback
+}
+
+*To view the buyer_key of the attached credit cards, it is also possible via the api/get-sellers, in the sellers_credit_cards array.
+
+IL Direct Debit flow -
+
+The token will be attached to the company automatically once the authorization is created, mainly after a few days, after receiving the bank's indication. It is not possible to use the ‘buyer_key’ of the IL direct debit to pay a contract until it’s validated by the bank.
+
+Once validated by the bank you will be able to get the ‘buyer_key’ from the get-sellers end point, in the seller_bank_debits array.
+
+Create new payment contract
+
+After the wanted payment methods are attached to the relevant seller, we are now able to use the buyer_key and create a new contract using the following endpoint - POST /api/payment-contracts. We are able to provide the buyer_key we received in order to pay with it and select a specific payment method to pay with. We will use the most recently added payment method if none is specified.
+
+The buyer_key is relevant only for credit-cards & IL Direct Debit payment flows!

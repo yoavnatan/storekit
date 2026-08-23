@@ -1,0 +1,255 @@
+# https://docs.payme.io/docs/payments/l8p06mo41tezl-activate-service
+
+Activate Service
+POST
+https://sandbox.payme.io/api/vas-enable
+Overview
+Google Pay VAS-Enable
+
+In order to be able to use Google Pay in our platform, you will need to set up the service via API, using our VAS Enable request.
+
+The request works as in the following form:
+
+{
+  "payme_client_key": "payme_partner_key",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+  "language": "en"
+}
+
+A successful response will be 200 and includes a payload in the form of:
+
+{
+    "status_code": 0,
+    "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+    "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+    "vas_description": "Payments Account",
+    "vas_type": "AlternativePaymentMethod",
+    "vas_api_key": "",
+    "vas_is_active": true,
+    "vas_payer_type": 2,
+    "vas_price_currency": "ILS",
+    "vas_price_setup_fixed": 0,
+    "vas_price_periodic_fixed": 0,
+    "vas_price_periodic_variable": "0.00",
+    "vas_price_usage_fixed": 0,
+    "vas_price_usage_variable": "0.00",
+    "vas_market_fee": null,
+    "vas_period": 1
+}
+
+A failed response will be 500 and includes a payload in the form of:
+
+{
+    "status_code": 1,
+    "status_error_details": "The service was not activated",
+    "status_additional_info": null,
+    "status_error_code": 720
+}
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+Your PayMe API Partner Key.
+
+Example:
+payme_partnerkey
+seller_payme_id
+string
+required
+
+The unique seller ID the service is activated for.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+vas_payme_id
+string
+required
+
+The service activation unique partner ID.
+
+Example:
+VASLDEMO-VASLDEMO-VASLDEMO-1234567
+language
+string
+required
+Allowed values:
+he
+en
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+number
+
+0 - Success 1 - Failure
+
+Example:
+0
+seller_payme_id
+string
+
+Our unique seller ID.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+vas_payme_id
+string
+
+The partner unique service API key.
+
+Example:
+VASLDEMO-VASLDEMO-VASLDEMO-1234567
+vas_description
+string
+
+The description of the service that was activated.
+
+Example:
+"Payments Account"
+vas_type
+string
+
+The type of the service that was activated.
+You can find all the VAS types here.
+
+Example:
+"AlternativePaymentMethod"
+vas_api_key
+string
+
+Empty by default.
+
+vas_is_active
+boolean
+
+Was the service activated successfully
+
+vas_payer_type
+number
+
+Internal payer identity.
+1 = Partner 2 = Seller 3 = Reseller
+
+Example:
+2
+vas_price_currency
+string
+
+The currency that the service is charged in.
+
+Example:
+ILS
+vas_price_setup_fixed
+number
+
+Partner account configuration of the setup costs.
+
+Example:
+0
+vas_price_periodic_fixed
+number
+
+Partner account configuration of the periodical costs.
+
+Example:
+0
+vas_price_periodic_variable
+string
+
+Partner account configuration of the periodical costs.
+
+Example:
+"0.00"
+vas_price_usage_fixed
+number
+
+Partner account configuration of the fixed costs.
+
+Example:
+0
+vas_price_usage_variable
+string
+
+Partner account configuration of the usage costs.
+
+Example:
+"0.00"
+vas_period
+number
+Example:
+1
+Body
+1
+{
+2
+  "payme_client_key": "payme_partnerkey",
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+4
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+5
+  "language": "he"
+6
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/vas-enable \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "payme_partnerkey",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+  "language": "he"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+4
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+5
+  "vas_description": "\"Payments Account\"",
+6
+  "vas_type": "\"AlternativePaymentMethod\"",
+7
+  "vas_api_key": "string",
+8
+  "vas_is_active": true,
+9
+  "vas_payer_type": 2,
+10
+  "vas_price_currency": "ILS",
+11
+  "vas_price_setup_fixed": 0,
+12
+  "vas_price_periodic_fixed": 0,
+13
+  "vas_price_periodic_variable": "\"0.00\"",
+14
+  "vas_price_usage_fixed": 0,
+15
+  "vas_price_usage_variable": "\"0.00\"",
+16
+  "vas_period": 1
+17
+}

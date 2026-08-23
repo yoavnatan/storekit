@@ -1,0 +1,154 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/9a9366d7753ab-upload-contract-related-files
+
+Upload Contract Related Files
+POST
+https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/
+
+Upload a contract related file
+
+Request
+Path Parameters
+GUID
+string
+required
+
+Doc ID
+
+Headers
+PayMe-Merchant-Key
+string
+
+PayMe seller ID
+
+Body
+application/json
+application/json
+
+There is an option to upload bulk files. Optional file types -
+
+Invoice Receipt Invoice Transaction Invoice Receipt
+
+invoices
+array[object]
+required
+>= 1 items
+name
+string
+required
+>= 1 characters
+type
+string
+required
+
+Optional file types -Show all...
+
+>= 1 characters
+base64
+string
+required
+>= 1 characters
+mime_type
+string
+required
+>= 1 characters
+Responses
+200
+Body
+application/json
+application/json
+status_code
+number
+required
+Invoices
+array[object]
+required
+>= 1 items
+name
+string
+required
+>= 1 characters
+mime_type
+string
+required
+>= 1 characters
+type
+string
+required
+>= 1 characters
+url
+string
+required
+>= 1 characters
+id
+string
+required
+>= 1 characters
+Parameters
+GUID*
+:
+PayMe-Merchant-Key
+:
+Body
+1
+{
+2
+  "invoices": [
+3
+    {
+4
+      "name": "test2.png",
+5
+      "type": "Invoice Receipt",
+6
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAARdQTFRFAAAAAAAAAAAAAAAAAQEBDAwMHBwcHx8fCwsLAwMDGRkZHh4eBAQEICAgtra2vb29pKSksLCwODg4FBQUh4eHtLS0m5ubISEh3NzciIiIERERwsLCnp6eAgICjIyMwMDAJycnDg4OBQUFEBAQ0NDQe3t7ycnJeXl5KCgo3d3daWlpCQkJDw8PzMzMmpqarKysyMjIOjo6kZGR9/f3sbGxnZ2dPDw8z8/Pfn5+FxcXjo6OsrKybm5u5ubmExMTBgYG1NTUiYmJCgoKTk5O39/fbGxs7OzsVFRUGhoa2tra9PT00dHRMTExzs7OhoaGhYWFLCwsIyMjuLi4xcXFUlJSRUVFvr6+2dnZoaGhFhYWBwcHFRUV////p5PkYgAAAAN0Uk5Tnvn4e+Nx/gAAAAFiS0dEXOrYAJcAAAAJcEhZcwAAAEgAAABIAEbJaz4AAACnSURBVBjTY2BgZEYCjAwMTMwogImBGQ0ABVhY2dg5gExOLm4esAAvH7+AoBCzsIiomDhYgEtCUkpaRlZOXkFRCSygrKIqrqauoamlqA0xQ0dXT9/A0MjYxNQMIqBsbmFpZW1ja2hnDxGwc3B0cnZxdXNnZmEBC3h4esmJefv4uvj5B4AFAoP0zINDmEPDwiMiwQJR0UrROkDFHNFREDPQnI7hOXTvAwCtbBUc7QjTawAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAxOS0wMS0yMFQwNjo1NTozNiswMDowMA0Ih5IAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMTktMDEtMjBUMDY6NTU6MzYrMDA6MDB8VT8uAAAARnRFWHRzb2Z0d2FyZQBJbWFnZU1hZ2ljayA2LjcuOC05IDIwMTQtMDUtMTIgUTE2IGh0dHA6Ly93d3cuaW1hZ2VtYWdpY2sub3Jn3IbtAAAAABh0RVh0VGh1bWI6OkRvY3VtZW50OjpQYWdlcwAxp/+7LwAAABh0RVh0VGh1bWI6OkltYWdlOjpoZWlnaHQAMTkyDwByhQAAABd0RVh0VGh1bWI6OkltYWdlOjpXaWR0aAAxOTLTrCEIAAAAGXRFWHRUaHVtYjo6TWltZXR5cGUAaW1hZ2UvcG5nP7JWTgAAABd0RVh0VGh1bWI6Ok1UaW1lADE1NDc5NjczMzaP/6esAAAAD3RFWHRUaHVtYjo6U2l6ZQAwQkKUoj7sAAAAVnRFWHRUaHVtYjo6VVJJAGZpbGU6Ly8vbW50bG9nL2Zhdmljb25zLzIwMTktMDEtMjAvMTVjOGNmYTk5NjBmYmJjOWUyY2NjNGI4MTY2YTI3NTQuaWNvLnBuZ0jyrXwAAAAASUVORK5CYII=",
+7
+      "mime_type": "image/png"
+8
+    }
+9
+  ]
+10
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/ \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'PayMe-Merchant-Key: ' \
+  --data '{
+  "invoices": [
+    {
+      "name": "test2.png",
+      "type": "Invoice Receipt",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAARdQTFRFAAAAAAAAAAAAAAAAAQEBDAwMHBwcHx8fCwsLAwMDGRkZHh4eBAQEICAgtra2vb29pKSksLCwODg4FBQUh4eHtLS0m5ubISEh3NzciIiIERERwsLCnp6eAgICjIyMwMDAJycnDg4OBQUFEBAQ0NDQe3t7ycnJeXl5KCgo3d3daWlpCQkJDw8PzMzMmpqarKysyMjIOjo6kZGR9/f3sbGxnZ2dPDw8z8/Pfn5+FxcXjo6OsrKybm5u5ubmExMTBgYG1NTUiYmJCgoKTk5O39/fbGxs7OzsVFRUGhoa2tra9PT00dHRMTExzs7OhoaGhYWFLCwsIyMjuLi4xcXFUlJSRUVFvr6+2dnZoaGhFhYWBwcHFRUV////p5PkYgAAAAN0Uk5Tnvn4e+Nx/gAAAAFiS0dEXOrYAJcAAAAJcEhZcwAAAEgAAABIAEbJaz4AAACnSURBVBjTY2BgZEYCjAwMTMwogImBGQ0ABVhY2dg5gExOLm4esAAvH7+AoBCzsIiomDhYgEtCUkpaRlZOXkFRCSygrKIqrqauoamlqA0xQ0dXT9/A0MjYxNQMIqBsbmFpZW1ja2hnDxGwc3B0cnZxdXNnZmEBC3h4esmJefv4uvj5B4AFAoP0zINDmEPDwiMiwQJR0UrROkDFHNFREDPQnI7hOXTvAwCtbBUc7QjTawAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAxOS0wMS0yMFQwNjo1NTozNiswMDowMA0Ih5IAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMTktMDEtMjBUMDY6NTU6MzYrMDA6MDB8VT8uAAAARnRFWHRzb2Z0d2FyZQBJbWFnZU1hZ2ljayA2LjcuOC05IDIwMTQtMDUtMTIgUTE2IGh0dHA6Ly93d3cuaW1hZ2VtYWdpY2sub3Jn3IbtAAAAABh0RVh0VGh1bWI6OkRvY3VtZW50OjpQYWdlcwAxp/+7LwAAABh0RVh0VGh1bWI6OkltYWdlOjpoZWlnaHQAMTkyDwByhQAAABd0RVh0VGh1bWI6OkltYWdlOjpXaWR0aAAxOTLTrCEIAAAAGXRFWHRUaHVtYjo6TWltZXR5cGUAaW1hZ2UvcG5nP7JWTgAAABd0RVh0VGh1bWI6Ok1UaW1lADE1NDc5NjczMzaP/6esAAAAD3RFWHRUaHVtYjo6U2l6ZQAwQkKUoj7sAAAAVnRFWHRUaHVtYjo6VVJJAGZpbGU6Ly8vbW50bG9nL2Zhdmljb25zLzIwMTktMDEtMjAvMTVjOGNmYTk5NjBmYmJjOWUyY2NjNGI4MTY2YTI3NTQuaWNvLnBuZ0jyrXwAAAAASUVORK5CYII=",
+      "mime_type": "image/png"
+    }
+  ]
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "Invoices": [
+4
+    {
+5
+      "name": "string",
+6
+      "mime_type": "string",
+7
+      "type": "string",
+8
+      "url": "string",
+9
+      "id": "string"
+10
+    }
+11
+  ]
+12
+}

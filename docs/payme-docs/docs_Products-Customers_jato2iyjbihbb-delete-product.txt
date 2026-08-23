@@ -1,0 +1,70 @@
+# https://payme.stoplight.io/docs/Products-Customers/jato2iyjbihbb-delete-product
+
+Delete Product
+DELETE
+https://sandbox.payme.io/api/products/{guid}
+
+The delete-product endpoint is a critical component of the product management system. It allows clients to remove products from the available products list based on specific identifiers. This operation is essential for maintaining an up-to-date and accurate product catalog, ensuring that obsolete or discontinued items are no longer available in the inventory.
+
+Request
+Path Parameters
+guid
+string
+required
+Headers
+Authorization
+string
+required
+
+Bearer <ACCESS_TOKEN>
+
+Body
+application/json
+application/json
+Responses
+200
+400
+401
+500
+
+OK
+
+Body
+application/json
+application/json
+message
+string
+
+The text indicator of the action requested to delete the product.
+
+guid
+string
+
+The unique PayMe Product identifier.
+
+Parameters
+guid*
+:
+Authorization*
+:
+Body
+1
+{}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request DELETE \
+  --url https://sandbox.payme.io/api/products/{guid} \
+  --header 'Accept: application/json' \
+  --header 'Authorization: ' \
+  --header 'Content-Type: application/json' \
+  --data '{}'
+Response Example
+1
+{
+2
+  "message": "string",
+3
+  "guid": "string"
+4
+}

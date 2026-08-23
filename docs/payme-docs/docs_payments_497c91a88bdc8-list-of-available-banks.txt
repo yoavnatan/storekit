@@ -1,0 +1,123 @@
+# https://payme.stoplight.io/docs/payments/497c91a88bdc8-list-of-available-banks
+
+List of available banks
+GET
+https://sandbox.payme.io/api/banks/{country_iso_code}
+Overview
+
+This API Endpoint will allow you retreive a list of available banks by filtering your request per country.
+
+Request
+Path Parameters
+country_iso_code
+string
+required
+Headers
+PayMe-Partner-Key
+string
+
+Your PayMe's Partner Secret Key
+
+Example:
+asf124415
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+status_code = 0 (success) status_code = 1 (failure)
+
+Example:
+0
+items_count
+integer
+
+The total items count in your response
+
+Default:
+10
+items_per_page
+integer
+
+The total items count per page in your response
+
+Example:
+10
+country_code
+string
+
+Find the iso codes here
+
+Example:
+376
+items
+array[object]
+
+The items object - presenting the list of banks
+
+code
+string
+
+Bank code
+
+Example:
+010
+local_name
+string
+
+Local bank name
+
+Example:
+Bank Hapoalim
+international_name
+string
+
+Internal bank name
+
+Example:
+Bank Hapoalim
+Parameters
+country_iso_code*
+:
+PayMe-Partner-Key
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/banks/{country_iso_code} \
+  --header 'Accept: application/json' \
+  --header 'PayMe-Partner-Key: '
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "items_count": 0,
+4
+  "items_per_page": 0,
+5
+  "country_code": "string",
+6
+  "items": [
+7
+    {
+8
+      "code": "string",
+9
+      "local_name": "string",
+10
+      "international_name": "string"
+11
+    }
+12
+  ]
+13
+}

@@ -1,0 +1,204 @@
+# https://payme.stoplight.io/docs/payments/85c316808c4c3-list-past-withdrawals
+
+List Past Withdrawals
+POST
+https://sandbox.payme.io/api/get-withdrawals
+Overview
+
+You can retreive data on withdrawals requested by your sellers using this endpoint.
+
+Query pagination (more than 500 results)
+
+If you are sending a query and expect to receive more than 500 results, make sure you use this function of Query Pagination.
+
+{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  ...
+  "page_size": 100, // Max allowed page size is 500
+  "page": 1
+}
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+PayMe Partner Key
+
+Match pattern:
+XXXXXXXX
+seller_payme_id
+string
+
+Our unique seller ID (MPL). If you are a partner, you can use multiple seller_payme_id attributes to retreive data for these specific sellers
+
+Match pattern:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us
+
+Match pattern:
+12345``
+withdrawal_created
+string
+
+Exact creation date and time for which to retrieve withdrawals. ISO-8601 formatted
+
+Match pattern:
+2016-01-01 15:15:15
+withdrawal_created_min
+string
+
+Earliest creation date and time for which to retrieve withdrawals. ISO-8601 formatted
+
+Match pattern:
+2016-01-01 00:00:00
+withdrawal_created_max
+string
+
+Latest date and time for which to retrieve withdrawals. ISO-8601 formatted
+
+Match pattern:
+2016-01-02 00:00:00
+withdrawal_total
+string
+
+Withdrawal total amount. For example, if the amount is 50.75 (max 2 decimal points) the value that recieved is 5075
+
+Match pattern:
+10000
+withdrawal_currency
+string
+
+Withdrawal currency. 3-letter ISO 4217 name
+
+Match pattern:
+USD
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+items_count
+number
+items
+array[object]
+>= 1 items
+seller_payme_id
+string
+
+Our unique seller ID
+
+Match pattern:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+withdrawal_payme_code
+number
+
+Unique withdrawl PayMe code
+
+withdrawal_created
+string
+
+Withdrwal creation date
+
+Match pattern:
+2016-01-01 00:00:00
+withdrawal_currency
+string
+
+Withdrawal currency. 3-letter ISO 4217 name
+
+Match pattern:
+ILS
+withdrawal_total
+number
+
+Withdrawl total amount
+
+withdrawal_description
+string
+
+Withdrawl description
+
+Match pattern:
+משיכה לבנק
+status_code
+number
+Body
+1
+{
+2
+  "payme_client_key": "partner-key",
+3
+  "items_order_by_column": "withdrawal_created",
+4
+  "items_order_by_direction": "desc",
+5
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+6
+  "page_size": 500,
+7
+  "page": 1,
+8
+  "withdrawal_created_min": "2021-06-01 00:00:00",
+9
+  "withdrawal_created_max": "2021-06-29 23:59:59",
+10
+  "language": "en"
+11
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-withdrawals \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "partner-key",
+  "items_order_by_column": "withdrawal_created",
+  "items_order_by_direction": "desc",
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "page_size": 500,
+  "page": 1,
+  "withdrawal_created_min": "2021-06-01 00:00:00",
+  "withdrawal_created_max": "2021-06-29 23:59:59",
+  "language": "en"
+}'
+Response Example
+1
+{
+2
+  "items_count": 0,
+3
+  "items": [
+4
+    {
+5
+      "seller_payme_id": "string",
+6
+      "withdrawal_payme_code": 0,
+7
+      "withdrawal_created": "string",
+8
+      "withdrawal_currency": "string",
+9
+      "withdrawal_total": 0,
+10
+      "withdrawal_description": "string"
+11
+    }
+12
+  ],
+13
+  "status_code": 0
+14
+}

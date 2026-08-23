@@ -1,0 +1,17 @@
+# https://payme.stoplight.io/docs/guides/okab0oj46ivn7-sale-types
+
+Sale Types
+SALE TYPE NUMBER	SALE TYPE
+1	sale (J4)
+5	authorize (J5)
+2	token
+3	saleFromSubscription
+4	saleFromTemplate
+5	multiCapture
+6	customerDeposit
+7	credit
+10	template
+11	saleFromPaymentContract
+12	sellerToken
+
+Others |(Depends on the sale_type)

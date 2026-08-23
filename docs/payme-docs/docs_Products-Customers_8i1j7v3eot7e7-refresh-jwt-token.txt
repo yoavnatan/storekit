@@ -1,0 +1,65 @@
+# https://payme.stoplight.io/docs/Products-Customers/8i1j7v3eot7e7-refresh-jwt-token
+
+Refresh JWT Token
+POST
+https://sandbox.payme.io/api/auth/refresh
+
+Refreshes an existing JWT token using the refresh token.
+
+Request
+Body
+application/json
+application/json
+refresh_token
+string
+required
+
+The refresh token.
+
+Responses
+200
+400
+401
+500
+
+Token refreshed successfully.
+
+Body
+application/json
+application/json
+access_token
+string
+
+The new JWT token.
+
+expires_in
+integer
+
+The expiration time of the token in seconds.
+
+Body
+1
+{
+2
+  "refresh_token": "string"
+3
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/auth/refresh \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "refresh_token": "string"
+}'
+Response Example
+1
+{
+2
+  "access_token": "string",
+3
+  "expires_in": 0
+4
+}

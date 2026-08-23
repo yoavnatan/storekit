@@ -1,0 +1,26 @@
+# https://payme.stoplight.io/docs/guides/branches/main
+
+3D Secure as a Service
+What is the standalone 3D Secure service?
+
+The standalone 3D Secure service enables you to leverage the 3D Secure capabilities of PayMe in an independent API request, without executing the usual purchase or authorization transaction that triggers 3D Secure authentication.
+
+By using the standalone 3D Secure service, you can request the user to undergo 3D Secure verification as a distinct process, allowing you to authenticate the user's card without taking any further action.
+
+If desired, you can rely on the authentication achieved during this step to perform an authorize or purchase transaction at a later time.
+
+When should I use the standalone 3D Secure service?
+
+There are various use cases for merchants where you may want to ensure that your customer's payment card undergoes 3D Secure authentication at a specific point in the transaction workflow.
+
+For instance, you might want to process 3D Secure verification during customer sign-up without immediately charging the customer's payment card. This ensures that you can apply charges at a later time with confidence, without interrupting the transaction flow as you wait for the customer to pass 3D Secure.
+
+This situation may arise when you wish to charge the customer only after shipping the purchased items, or when the customer enrolls in a service they will start using at a later date.
+
+Standalone 3D Secure in two steps
+
+It's important to note that the standalone 3D Secure service involves a two-step process, and both steps must be completed to finalize 3D Secure verification:
+
+Enrollment check: In the first step, PayMe verifies whether the customer's card is enrolled in 3D Secure. If the payment card is enrolled, the customer undergoes the 3DS authentication process and encounters a 3D Secure page. On this page, the customer enters the 3D Secure OTP received from their issuing bank. Once the customer submits the OTP, PayMe receives and records the encrypted 3DS payload.
+
+Authentication: In the second step, PayMe decrypts the 3DS payload. Using the merchant ID value, we confirm whether the 3DS secure enrollment response successfully authenticates a transaction using the customer's card.

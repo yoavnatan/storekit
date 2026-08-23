@@ -1,0 +1,127 @@
+# https://payme.stoplight.io/docs/payments/d040b7de40c48-get-seller-public-key
+
+Get Seller Public Key
+GET
+https://sandbox.payme.io/api/sellers/{seller_payme_id}/public-keys
+Overview
+
+This API endpoint will allow you as a partner to get the unique public keys used for various services in our system.
+
+Request
+Path Parameters
+seller_payme_id
+string
+required
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+Headers
+PayMe-Partner-Key
+string
+required
+
+The PayMe unique partner key.
+
+Example:
+XXXXXXXX
+Responses
+200
+
+OK
+
+Body
+application/json
+application/xml
+application/json
+status_code
+integer
+
+Status code 0 - Success Status code 1 - Failure
+
+Example:
+0
+page
+integer
+
+Page presented
+
+Example:
+1
+items_total
+integer
+
+Total count of items
+
+Example:
+10
+items_per_page
+integer
+
+Items per page count
+
+Example:
+10
+seller_payme_id
+string
+
+The unique seller ID
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+items
+array[object]
+uuid
+string
+
+The unique public key
+
+Example:
+BUYERKEY-XXXXXXXX-XXXXXXXX-XXXXXXXX
+description
+string
+
+The public key title
+
+Example:
+public-key-title
+Parameters
+seller_payme_id*
+:
+PayMe-Partner-Key*
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/sellers/{seller_payme_id}/public-keys \
+  --header 'Accept: application/json, application/xml' \
+  --header 'PayMe-Partner-Key: '
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "page": 1,
+4
+  "items_total": 1,
+5
+  "items_per_page": 1,
+6
+  "seller_payme_id": "MPL151111-1111111-SAUCJ4KX-TVEDZCIN",
+7
+  "items": [
+8
+    {
+9
+      "uuid": "12345678-7c83-46fc-ac97-12345678",
+10
+      "description": "PayMe-Public-Key"
+11
+    }
+12
+  ]
+13
+}

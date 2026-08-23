@@ -1,0 +1,275 @@
+# https://docs.payme.io/docs/payments/c95c216b910ab-new-pos-payment
+
+New POS Payment
+POST
+https://sandbox.payme.io/api/sales
+Overview
+
+Calling this method will "push" a payment request to the POS, synchronously awaiting the payment result.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+PayMe's unqiue seller ID
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+product_name
+string
+required
+
+Product's description
+
+Example:
+Product Name
+sale_price
+number
+required
+
+Sale Price
+
+Example:
+100
+sale_type
+string
+
+You can find all the sale types here.
+
+Example:
+1
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+transaction_id
+string
+required
+
+Transaction ID
+
+Example:
+12345
+sale_callback_url
+string
+required
+
+Sale Callback URL
+
+Example:
+https://www.example.com/callback_payment
+payment
+object
+required
+method
+string
+required
+
+Payment method
+
+Example:
+pos
+pos_id
+string
+required
+
+The ID you must choose for your POS. Must be a string of digits, between "001" and "999"
+
+Example:
+001
+customer
+object
+
+The customer object is not mandatory.
+If this object is added to the request, it should include its required fields: name, email and phone.
+
+name
+string
+
+Customer name
+
+Example:
+John Doe
+email
+string
+
+Customer email
+
+Example:
+example@test.com
+zip_code
+string
+
+Customer address zip code
+
+Example:
+837592
+phone
+string
+
+Customer mobile phone number
+
+Example:
++498963648018
+social_id
+string
+
+Customer social ID / national ID for additional verification
+
+Example:
+123456782
+language
+string
+
+Customer language
+
+Example:
+he
+Responses
+200
+500
+Body
+application/json
+application/json
+responses
+/
+status_code
+number
+
+Status of the request (0 - success, 1 - error)Show all...
+
+sale_url
+string
+
+The URL of the IFRAME secured payment form to display to the buyerShow all...
+
+Match pattern:
+https://preprod.paymeservice.com/sale/generate/XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_id
+string
+
+Our unique sale IDShow all...
+
+Match pattern:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_code
+number
+
+Our unique sale code (for display purposes only)Show all...
+
+price
+number
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075Show all...
+
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with usShow all...
+
+Match pattern:
+12345
+currency
+string
+
+Sale currency. 3-letter ISO 4217 nameShow all...
+
+Allowed values:
+USD
+ILS
+EUR
+GBP
+Body
+1
+{
+2
+  "seller_payme_id": "string",
+3
+  "product_name": "string",
+4
+  "sale_price": 0,
+5
+  "currency": "USD",
+6
+  "transaction_id": "string",
+7
+  "sale_callback_url": "string",
+8
+  "payment": {
+9
+    "method": "pos",
+10
+    "pos_id": "string"
+11
+  },
+12
+  "customer": {
+13
+    "name": "string",
+14
+    "email": "string",
+15
+    "phone": "string",
+16
+    "zip_code": "string",
+17
+    "social_id": "string"
+18
+  },
+19
+  "language": "he"
+20
+}
+Send API Request
+Server 1
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/sales \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "string",
+  "product_name": "string",
+  "sale_price": 0,
+  "currency": "USD",
+  "transaction_id": "string",
+  "sale_callback_url": "string",
+  "payment": {
+    "method": "pos",
+    "pos_id": "string"
+  },
+  "customer": {
+    "name": "string",
+    "email": "string",
+    "phone": "string",
+    "zip_code": "string",
+    "social_id": "string"
+  },
+  "language": "he"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "sale_url": "string",
+4
+  "payme_sale_id": "string",
+5
+  "payme_sale_code": 0,
+6
+  "price": 0,
+7
+  "transaction_id": "string",
+8
+  "currency": "USD"
+9
+}

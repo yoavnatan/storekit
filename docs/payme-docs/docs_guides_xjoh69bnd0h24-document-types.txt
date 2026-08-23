@@ -1,0 +1,16 @@
+# https://payme.stoplight.io/docs/guides/xjoh69bnd0h24-document-types
+
+Document Types
+
+The documents you can generate are:
+
+DOC_TYPE CODE	DESCRIPTION	DOCUMENT NAME
+100	Order	order
+200	Delivery	delcert
+300	Transaction Invoice	deal invoice
+305	Invoice	invoice
+320	Invoice Receipt	inverc
+330	Invoice Refund	refund
+400	Receipet	receipt
+405	Donation Receipt	trec
+600	Offer	offer

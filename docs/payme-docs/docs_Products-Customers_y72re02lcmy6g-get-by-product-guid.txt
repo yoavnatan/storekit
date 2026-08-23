@@ -1,0 +1,144 @@
+# https://payme.stoplight.io/docs/Products-Customers/y72re02lcmy6g-get-by-product-guid
+
+Get by Product Guid
+GET
+https://sandbox.payme.io/api/products/{guid}
+
+The GET /products/guid endpoint provides access to product data, enabling clients to filter and sort through available products. Clients can specify parameters such as product status, creation date range, currency, description, order columns, and directions. Additionally, the endpoint allows for pagination and setting price ranges.
+
+The response will include a list of products that match the specified query parameters, along with metadata such as the total number of products available and pagination details. This endpoint is essential for applications that require dynamic and flexible product searches.
+
+Request
+Path Parameters
+guid
+string
+required
+Responses
+200
+400
+401
+500
+
+OK
+
+Body
+application/json
+application/json
+guid
+string
+
+The Product unique identifier.
+
+product_remote_id
+string
+name
+string
+
+The product name.
+
+status
+integer
+
+The status of the product. Options: 1 = Available, 0 = Not Available
+
+description
+string
+
+The product description.
+
+store_configuration
+object
+currency
+string
+
+The product store currency. 3 Letter ISO Format
+
+vat_free
+boolean
+
+The VAT Indicator of the product.
+
+price_without_vat
+number<float>
+
+The price of the product, excluding VAT.
+
+price_include_vat
+number<float>
+
+The price of the product, including VAT.
+
+costs_details
+object
+currency
+string
+
+The product store currency. 3 Letter ISO Format
+
+vat_free
+boolean
+
+The VAT Indicator of the product.
+
+price_without_vat
+number<float>
+
+The price of the product, excluding VAT.
+
+price_include_vat
+number<float>
+
+The price of the product, including VAT.
+
+Parameters
+guid*
+:
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/products/{guid} \
+  --header 'Accept: application/json'
+Response Example
+1
+{
+2
+  "guid": "string",
+3
+  "product_code": "string",
+4
+  "name": "string",
+5
+  "status": 0,
+6
+  "category": 0,
+7
+  "description": "string",
+8
+  "store_configuration": {
+9
+    "currency": "string",
+10
+    "vat_free": true,
+11
+    "Price_without_vat": 0,
+12
+    "Price_include_vat": 0
+13
+  },
+14
+  "costs_details": {
+15
+    "currency": "string",
+16
+    "vat_free": true,
+17
+    "Price_without_vat": 0,
+18
+    "Price_include_vat": 0
+19
+  },
+20
+  "": "string"
+21
+}

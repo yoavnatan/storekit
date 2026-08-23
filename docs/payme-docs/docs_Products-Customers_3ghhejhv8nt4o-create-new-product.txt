@@ -1,0 +1,233 @@
+# https://payme.stoplight.io/docs/Products-Customers/3ghhejhv8nt4o-create-new-product
+
+Create New Product
+POST
+https://sandbox.payme.io/api/products
+
+This endpoint is an essential part of the product management system.
+
+The endpoint allows clients to add new products to the system by sending the necessary information in the request.
+
+Request
+Headers
+Authorization
+string
+required
+
+Bearer <ACCESS_TOKEN>
+
+Body
+application/json
+application/xml
+application/json
+
+Post the necessary fields for the API to create a new user.
+
+product_remote_id
+string
+
+The extneral product identifier.
+
+>= 2 characters
+<= 100 characters
+name
+string
+required
+
+The name of the product.
+
+>= 2 characters
+<= 100 characters
+status
+integer
+required
+
+The status of the product. Options: 1 = Available, 0 = Not Available
+
+Example:
+1
+description
+string
+required
+
+The product description.Show all...
+
+>= 2 characters
+<= 100 characters
+store_prices
+object
+
+The item store configuration.
+
+currency
+string
+
+3 Letter ISO.
+
+>= 3 characters
+<= 3 characters
+Example:
+ILS
+is_vat_free
+boolean
+
+The VAT indicator.
+
+price_without_vat
+number<float>
+
+Price without VAT.
+
+>= 2
+<= 18
+Example:
+22.2
+price_include_vat
+number<float>
+
+Price with VAT.
+
+>= 2
+<= 18
+Example:
+33.3
+costs
+object
+
+The item costs object.
+
+currency
+string
+
+3 Letter ISO.
+
+>= 3 characters
+<= 3 characters
+Example:
+ILS
+is_vat_free
+boolean
+
+The VAT indicator.
+
+price_without_vat
+number<float>
+
+The price without VAT.
+
+>= 2
+<= 18
+Example:
+44.4
+price_include_vat
+number<float>
+
+The price including VAT.
+
+>= 2
+<= 18
+Example:
+47.7
+Responses
+200
+400
+401
+500
+
+Product created successfully.
+
+Body
+application/json
+application/json
+responses
+/
+200
+created_at
+string<date-time>
+
+The timestamp of the creation.
+
+guid
+integer
+
+The unique PayMe product identifier.
+
+Parameters
+Authorization*
+:
+Body
+Examples
+1
+{
+2
+  "product_code": "PROD001",
+3
+  "name": "Example Product",
+4
+  "status": 1,
+5
+  "category": 3,
+6
+  "description": "This is a description of the example product.",
+7
+  "store_configuration": {
+8
+    "currency": "USD",
+9
+    "vat_free": false,
+10
+    "Price_without_vat": 99.99,
+11
+    "Price_include_vat": 117.99
+12
+  },
+13
+  "costs_details": {
+14
+    "currency": "USD",
+15
+    "vat_free": false,
+16
+    "Price_without_vat": 50,
+17
+    "Price_include_vat": 58.5
+18
+  }
+19
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/products \
+  --header 'Accept: application/json' \
+  --header 'Authorization: ' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "product_code": "PROD001",
+  "name": "Example Product",
+  "status": 1,
+  "category": 3,
+  "description": "This is a description of the example product.",
+  "store_configuration": {
+    "currency": "USD",
+    "vat_free": false,
+    "Price_without_vat": 99.99,
+    "Price_include_vat": 117.99
+  },
+  "costs_details": {
+    "currency": "USD",
+    "vat_free": false,
+    "Price_without_vat": 50,
+    "Price_include_vat": 58.5
+  }
+}'
+Response Example
+1
+{
+2
+  "created_at": "2019-08-24T14:15:22Z",
+3
+  "guid": 0
+4
+}

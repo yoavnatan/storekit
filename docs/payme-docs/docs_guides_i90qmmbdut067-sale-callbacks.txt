@@ -1,0 +1,42 @@
+# https://payme.stoplight.io/docs/guides/i90qmmbdut067-sale-callbacks
+
+Sale Callbacks
+
+Once the sale is paid successfully, we will notify the marketplace with the sale details with a POST of type x-www-form-urlencoded request to the marketplace Callback URL.
+
+Sale Callback Notification Types
+NOTIFICATION	DESCRIPTION
+sale-complete	The sale was paid successfully
+sale-authorized	The sale was authorized successfully
+refund	The sale was refunded
+sale-failure	There was an error with the sale
+sale-chargeback	The sale was chargebacked
+sale-chargeback-refund	The chargeback was reverted
+ATTRIBUTE	DESCRIPTION
+status_code	0 Status of the request (0 - success, 1 - error)
+status_error_code	In case of an error, our unique error code
+status_error_details	In case of an error, the error message
+notify_type	sale-complete Sale notification types
+sale_created	2016-01-01 15:15:15
+transaction_id	12345 Merchant's unique sale ID for correlation with us
+payme_sale_id	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Our unique sale ID
+payme_sale_code	12345678 Our unique sale code (for display purposes only)
+payme_transaction_id	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Our unique transaction ID
+price	1000 Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+currency	USD Sale currency. 3-letter ISO 4217 name
+sale_status	completed Sale statuses
+payme_transaction_card_brand	Visa
+payme_transaction_auth_number	01A2B3C Sale authorization number from the credit company
+buyer_card_mask	458045******4580 Buyer's credit card mask
+buyer_card_exp	0118 Buyer's credit card expiry date
+buyer_name	First Last Buyer's full name
+buyer_email	buyer@example.com Buyer's eMail address
+buyer_phone	0540000000 Buyer's phone number
+buyer_social_id	000000001 Buyer's social id
+buyer_key	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Buyer key for future token payments. This key is returned only if capture_buyer attribute was set in the request (Using Tokens)
+installments	1 Amount of installments for the sale
+sale_paid_date	2016-01-01 15:16:15
+sale_release_date	2016-01-08 15:15:15
+is_token_sale	0 (0 - false, 1 - true)
+payme_signature	75e99dbcb25cdfbe1c62f0b9376f4144
+sale_invoice_url	https://www.example.com/XXXXXX.pdf Sale invoice URL, if the seller has enabled the invoices

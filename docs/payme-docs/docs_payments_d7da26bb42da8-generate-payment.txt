@@ -1,0 +1,535 @@
+# https://docs.payme.io/docs/payments/d7da26bb42da8-generate-payment
+
+Generate Payment
+POST
+https://sandbox.payme.io/api/generate-sale
+Overview
+
+This endpoint can be used for the following actions:
+
+ACTION	DESCRIPTION
+Basic Sale (J4)	Allows you to create a sale.
+Authorization (J5)	The requested amount gets reserved (blocked) on the credit card of the buyer for up to 168 hours.
+You can find more information in our Capture Sale Guide.
+Template Payment Page	Enables many payments on a single sale link, by different buyers.
+You can find more information in our Template Payment Page Guide.
+Create Payment With Buyer Key (Token)	Enables to capture token once the buyer pays (enter the payment details).
+You can find more information in our Create Payment With Buyer Key (Token) Guide.
+
+You can find examples of the request body in the top-right corner under "Examples".
+
+For all the sale types click here.
+For all the payment methods click here.
+Callbacks
+
+Once the sale is paid successfully, we will notify the marketplace with the sale details with a POST of type x-www-form-urlencoded request to the marketplace Callback URL.
+You can find the sale callback attributes here.
+
+Issuing an Invoice for a Business
+
+In the case where you are connected to our invoices services, you can send the following parameters as a part of your generate-sale API request to us when paying using a Token (saved card) in our platform.
+
+Please add the following parameters to your request:
+
+PARAMETER NAME	PARAMETER TYPE	EXAMPLE & LIMITATIONS
+buyer_business_name	string	The name of the business the invoice should be issued for.
+buyer_business_code	integer	The business code (VAT identifier) of the company the invoice is issued for.
+Multi Payment Methods Checkout Page
+
+To allow the buyer to select the payment method by himself, use sale_payment_method="multi".
+It will show your available payment methods (based on the added services in your account) in one payment page: Credit card, bit, ApplePay and GooglePay.
+
+Request
+Body
+application/json
+application/xml
+multipart/form-data
+application/json
+seller_payme_id
+string
+required
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sale_price
+number
+required
+
+Sale final price.
+For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075.
+Note that the minimum value is 500.
+
+Default:
+0
+Example:
+100
+currency
+string
+required
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+product_name
+string
+required
+
+Short name and description of the product/service.
+This text will be shown in the invoice as well, if the seller has enabled the invoices module in his account panel.
+Limited to 500 characters
+
+Example:
+Phone
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+<= 50 characters
+Example:
+12345
+installments
+string
+
+Amount of installments for the sale. We allow you to manually set the number of installments or to specify a top limit of installments for the buyer to choose from while paying.
+Setting a fixed number of installments is simply entering a number between 1 and 12.
+The sale will be initiated with this number of installments and the buyer will not be able to change it.
+To set a range for the buyer to choose from, enter the following:
+103 - allow up to 3 installments
+106 - allow up to 6 installments
+109 - allow up to 9 installments
+112 - allow up to 12 installments
+
+Example:
+1
+market_fee
+number
+
+A decimal representing the percent of the sale price that is collected for the marketplace (includes VAT).
+This fee is added on top of our fees and transferred to the marketplace once a month.
+Default value is the market fee of the Seller, as set upon Seller creation.
+
+>= 0
+<= 60
+Example:
+0.5
+sale_send_notification
+boolean
+
+Flag to send email and/or SMS notifications
+
+sale_callback_url
+string
+
+Callback response to your page regarding call to our API. Default value is taken from the Merchant's settings. Note that you may not send a "localhost" URL as value
+
+Example:
+https://www.example.com/payment/callback
+sale_email
+string
+
+In case sale send notification is true provide the address to send email notification
+
+Example:
+test@testmail.com
+sale_return_url
+string
+
+We will redirect the IFRAME and the buyer to this URL upon payment success. Default value is taken from the Merchant's settings
+
+Example:
+https://www.example.com/payment/success
+sale_mobile
+string
+
+In case sale send notification is true, provide the phone number to send SMS notification, if the seller has enabled the SMS module in his account panel
+
+Example:
++972525888888
+sale_name
+string
+
+The name that will be displayed when sending a notification
+
+Example:
+John Doe
+capture_buyer
+string
+
+Flag for requesting the buyer's token for this payment (0 - do not capture token, 1 - capture token). For additional information see Tokens explanation below
+
+Example:
+0
+buyer_perform_validation
+string
+
+Flag for performing an online validation of the card with the Issuer.
+
+sale_type
+string
+
+You can find all the sale types here.
+
+Example:
+sale
+sale_payment_method
+string
+
+the Payment method used to pay the sale.
+For all the payment methods click here.
+To display multi payment methods use multi.
+
+Example:
+credit-card
+layout
+string
+
+IFRAME payment page layout. Optional attribute which may be used with "bit" sale_payment_method. Avai lable layouts are:dynamic, qr-sms or dynamic-loose dynamic loose removes the validation for the social ID and CVV.
+
+Example:
+dynamic
+language
+string
+
+Changes the language of the payment IFRAME to English, as well as the error messages. Default value is Hebrew (he)
+
+Example:
+he
+order_number
+string
+
+Purchase Order Number. Mandatory for level 2 / 3 card data. Maximum length: 15 digits
+
+Example:
+6545584
+items
+array[object]
+
+This is an object that should include multiple arrays. An array for each product (item) that is a part of this sale. All parameters that are numeric or integer must be equal or more than 0.
+
+name
+string
+
+Name of the Item Minimum length: 1 Character Maximum length: 50 Characters
+
+Example:
+shirt
+quantity
+integer
+
+Number of items, Minimum length: 0 digits, Maximum length: 6 digits
+
+Example:
+1
+unit_price
+integer
+
+Price of single unit in pennies, No length limitations
+
+Example:
+500
+unit_measurement
+string
+
+Unit of measurment, Minimum length: 0 characters (nullable), Maximum length: 12 characters
+
+Example:
+"pounds"
+total
+integer
+
+Total Price After Discount, Minimum length: 0 digits, Maximum length: 10 digits
+
+Example:
+100
+discount_total
+number
+
+In negative pennies amount, Minimum length: 0 digits (nullable), Maximum length: 12 digits
+
+Example:
+50
+description
+string
+
+The item description, Minimum length: 0 characters (nullable, Maximum length: 150 characters
+
+Example:
+"free text"
+product_code
+string
+
+The item catalog code. Minimum length: 0 characters (nullable), Maximum length: 100 characters
+
+Example:
+"ab123"
+commodity_code
+number
+
+The item's commodity code, Minimum length: 0 digits (nullable), Maximum length: unlimited
+
+Example:
+123456789101
+fees
+object
+
+Amount of tax in pennies No length
+
+tax
+number
+
+The tax collected as a part of the payment - In pennies, Minimum length: 0, Maximum Length: 12 Digits
+
+Example:
+5200
+duty
+number
+
+The international fees collected as a part of the payment - In pennies, Minimum lenth: 0, Maximum Length: 12 Digits
+
+Example:
+6000
+discount
+number
+
+The total discount given for the payment - In pennies, Minimum length: 0, Maximum Length: 12 Digits
+
+Example:
+8000
+shipping
+number
+
+The shipping cost charged as a part of the payment - In pennies, Minimum lenth: 0, Maximum Length: 12 Digits
+
+Example:
+10000
+shipping_details
+object
+name
+string
+
+Individual's full name/Company's name, Maximum Length: 50 Characters
+
+Example:
+John Doe
+email
+string
+
+Email address of the addressee, Maximum Length: 100 Characters
+
+Example:
+test@payme.io
+phone
+string
+
+Phone number of the addressee, Maximum Length: 50 Characters
+
+Example:
++111174448863
+address
+object
+
+Address Object
+
+billing_details
+object
+name
+string
+
+Individual's full name/Company's name, No Limits.
+
+Example:
+PayMe
+email
+string
+
+Email address of the payer, No Limits.
+
+Example:
+payer@payme.io
+phone
+string
+
+Phone number of the payer, No Limits.
+
+Example:
++111174448863
+address
+object
+buyer_name
+string
+
+Buyer's name
+
+Example:
+John Doe
+buyer_email
+string
+
+Buyer's email
+
+Example:
+buyer@email.com
+buyer_phone
+string
+
+Buyer's phone
+
+Example:
+0501234567
+Responses
+200
+500
+
+Sale Created Successfully
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+integer
+
+Status of the request (0 - success, 1 - error)
+
+Allowed values:
+0
+1
+sale_url
+string
+
+The URL of the IFRAME secured payment form to display to the buyer
+
+Example:
+https://sandbox.paymeservice.com/sale/generate/XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_id
+string
+
+Our unique sale ID
+
+Match pattern:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_code
+number
+
+Our unique sale code (for display purposes only)
+
+Example:
+12345678
+price
+number
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+10000
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+Body
+Examples
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sale_price": 1000,
+4
+  "currency": "ILS",
+5
+  "product_name": "Smartphone",
+6
+  "transaction_id": "12345",
+7
+  "installments": "1",
+8
+  "market_fee": 0.5,
+9
+  "sale_send_notification": true,
+10
+  "sale_callback_url": "https://www.payme.io",
+11
+  "sale_email": "test@payme.io",
+12
+  "sale_return_url": "https://www.payme.io",
+13
+  "sale_mobile": "+9725254448888",
+14
+  "sale_name": "Test User",
+15
+  "capture_buyer": false,
+16
+  "buyer_perform_validation": false,
+17
+  "sale_type": "sale",
+18
+  "sale_payment_method": "credit-card",
+19
+  "layout": "string",
+20
+  "language": "he"
+21
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/generate-sale \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sale_price": 1000,
+  "currency": "ILS",
+  "product_name": "Smartphone",
+  "transaction_id": "12345",
+  "installments": "1",
+  "market_fee": 0.5,
+  "sale_send_notification": true,
+  "sale_callback_url": "https://www.payme.io",
+  "sale_email": "test@payme.io",
+  "sale_return_url": "https://www.payme.io",
+  "sale_mobile": "+9725254448888",
+  "sale_name": "Test User",
+  "capture_buyer": false,
+  "buyer_perform_validation": false,
+  "sale_type": "sale",
+  "sale_payment_method": "credit-card",
+  "layout": "string",
+  "language": "he"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "sale_url": "string",
+4
+  "payme_sale_id": "string",
+5
+  "payme_sale_code": 12345678,
+6
+  "price": 10000,
+7
+  "transaction_id": "12345",
+8
+  "currency": "string"
+9
+}

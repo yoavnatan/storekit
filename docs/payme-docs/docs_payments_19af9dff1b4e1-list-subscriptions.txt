@@ -1,0 +1,404 @@
+# https://payme.stoplight.io/docs/payments/19af9dff1b4e1-list-subscriptions
+
+List Subscriptions
+POST
+https://sandbox.payme.io/api/get-subscriptions
+Overview
+
+You can retreive data on subscriptions processed by your sellers using this endpoint.
+
+To understand the different use-cases for this API, See Get Subscriptions API guide here.
+
+Subscription Iteration Types
+
+You can find them in the following guide - Subscription Iteration Types.
+
+Subscription Statuses
+
+You can find them in the following guide - Subscription Statuses.
+
+Query pagination (more than 500 results)
+
+If you are sending a query and expect to receive more than 500 results, make sure you use this function of Query Pagination.
+
+{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  ...
+  "page_size": 100, // Max allowed page size is 500
+  "page": 1
+}
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+PayMe Partner Key
+
+Example:
+abc123-fdsv5846
+seller_payme_id
+string
+
+Our unique seller ID (MPL).
+If you are a partner, you can use multiple seller_payme_id attributes to retreive data for these specific sellers
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us
+
+Example:
+12345
+sub_payme_code
+string
+
+Our unique subscription code
+
+Match pattern:
+1234
+sub_payme_id
+string
+
+Our unique sub ID
+
+Example:
+SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sub_created
+string
+
+Exact creation date and time for which to retrieve subscriptions. ISO-8601 formatted
+
+Example:
+2016-01-01 15:15:15
+sub_created_min
+string
+
+Earliest creation date and time for which to retrieve subscriptions. ISO-8601 formatted
+
+Example:
+2016-01-01 00:00:00
+sub_created_max
+string
+
+Latest date and time for which to retrieve subscriptions. ISO-8601 formatted
+
+Example:
+2016-01-02 00:00:00
+sub_status
+string
+
+Subscription status.
+You can find them in the following guide - Subscription Statuses.
+
+Example:
+1
+sub_iteration_type
+number
+
+Subscription type ID.
+You can find them in the following guide - Subscription Iteration Types.
+
+Example:
+1
+sub_price
+number
+
+Subscription final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+sub_currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+USD
+sub_iterations
+number
+
+Subscription amount of iterations
+
+Example:
+1
+sub_start_date
+string
+
+Exact start date and time for which to retrieve subscriptions. ISO-8601 formatted
+
+Example:
+2016-01-01 00:00:00
+sub_paid
+boolean
+
+Was the subscription paid or not
+
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+items_count
+number
+
+Number of subscription
+
+items
+array[object]
+seller_payme_id
+string
+
+Our unique seller ID
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us
+
+Example:
+12345
+sub_payme_id
+string
+
+Our unique sub ID
+
+Example:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sub_code
+number
+
+Our unique subscription code
+
+Example:
+1
+sub_created
+string
+
+Exact creation date and time for which to retrieve subscriptions. ISO-8601 formatted
+
+Example:
+2016-01-01 15:15:15
+sub_start_date
+string
+
+Exact state date and time for which the subscription will be initiated
+
+Example:
+2016-01-01 15:15:15
+sub_status
+string
+
+Subscription status (for more info about the statuses, see table below)
+
+Match pattern:
+1
+sub_iteration_type
+number
+
+Subscription type ID (for more info about the types, see table here)
+
+sub_price
+number
+
+Subscription final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+5000
+sub_description
+string
+
+Brief description about the subscription
+
+Example:
+30 days Subscription for X service
+sub_iterations
+string
+
+Subscription amount of iterations
+
+Example:
+4
+sub_iterations_completed
+string
+
+Number of iterations completed
+
+Example:
+3
+sub_iterations_left
+string
+
+Number of iterations left for the subscription
+
+Example:
+2
+sub_payment_date
+string
+
+The date the payment is completed for each iteration
+
+Example:
+2016-01-01 15:15:15
+sub_error_text
+string
+
+If an error occured, it'll be mentioned in this parameter
+
+Example:
+Failed, pending automatic retry
+sub_currency
+string
+
+Currency of subscription
+
+Example:
+1
+sub_paid
+boolean
+
+Was the subscription paid
+
+sub_buyer_details
+object
+status_code
+number
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+Body
+1
+{
+2
+  "payme_client_key": "abc123-fdsv5846",
+3
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+4
+  "seller_id": "12345",
+5
+  "sub_payme_code": "string",
+6
+  "sub_payme_id": "SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+7
+  "sub_created": "2016-01-01 15:15:15",
+8
+  "sub_created_min": "2016-01-01 00:00:00",
+9
+  "sub_created_max": "2016-01-02 00:00:00",
+10
+  "sub_status": "1",
+11
+  "sub_iteration_type": 1,
+12
+  "sub_price": 0,
+13
+  "sub_currency": "USD",
+14
+  "sub_iterations": 1,
+15
+  "sub_start_date": "2016-01-01 00:00:00",
+16
+  "sub_paid": true
+17
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-subscriptions \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "abc123-fdsv5846",
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "seller_id": "12345",
+  "sub_payme_code": "string",
+  "sub_payme_id": "SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "sub_created": "2016-01-01 15:15:15",
+  "sub_created_min": "2016-01-01 00:00:00",
+  "sub_created_max": "2016-01-02 00:00:00",
+  "sub_status": "1",
+  "sub_iteration_type": 1,
+  "sub_price": 0,
+  "sub_currency": "USD",
+  "sub_iterations": 1,
+  "sub_start_date": "2016-01-01 00:00:00",
+  "sub_paid": true
+}'
+Response Example
+1
+{
+2
+  "items_count": 0,
+3
+  "items": [
+4
+    {
+5
+      "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+6
+      "seller_id": "12345",
+7
+      "sub_payme_id": "XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+8
+      "payme_sub_code": 1,
+9
+      "sub_created": "2016-01-01 15:15:15",
+10
+      "sub_start_date": "2016-01-01 15:15:15",
+11
+      "sub_status": "string",
+12
+      "sub_iteration_type": 0,
+13
+      "sub_price": 5000,
+14
+      "sub_description": "30 days Subscription for X service",
+15
+      "sub_iterations": "4",
+16
+      "sub_iterations_completed": "3",
+17
+      "sub_iterations_left": "2",
+18
+      "sub_payment_date": "2016-01-01 15:15:15",
+19
+      "sub_error_text": "Failed, pending automatic retry",
+20
+      "sub_currency": "1",
+21
+      "sub_paid": true,
+22
+      "sub_buyer_details": {
+23
+        "buyer_card_mask": "458045******4580",
+24
+        "buyer_name": "John James",
+25
+        "buyer_email": "Paymeservice@payme.com",
+26
+        "buyer_phone": "+972 05XXXXXXX",
+27
+        "buyer_social_id": "999999999"
+28
+      }
+29
+    }
+30
+  ],
+31
+  "status_code": 0
+32
+}

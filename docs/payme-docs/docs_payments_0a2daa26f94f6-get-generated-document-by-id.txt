@@ -1,0 +1,36 @@
+# https://payme.stoplight.io/docs/payments/0a2daa26f94f6-get-generated-document-by-id
+
+Get Generated Document By ID
+Deprecated
+GET
+https://sandbox.payme.io/api/documents/document_id
+Overview
+
+In order to query for existing documents, you will need to use the following endpoint and parameters:
+
+ENVIRONMENT	URL
+Staging	https://sandbox.payme.io/api/documents?page=0&limit=5&field=createdAt&sort=desc
+Production	https://live.payme.io/api/documents?page=0&limit=5&field=createdAt&sort=desc
+Header
+PARAMETER	DESCRIPTION
+PayMe-Merchant-Key	Seller's MPL DEMOMPL-DEMOMPL-DEMOMPL-DEMOMPL-
+Request Example:
+ITEM	DESCRIPTION	EXAMPLE
+URL	https://sandbox.payme.io/api/documents/{document_ID}	INV12321*****
+Header	seller_payme_id	MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+Request
+Headers
+PayMe-Merchant-Key
+string
+required
+Example:
+DEMOMPL-DEMOMPL-DEMOMPL-DEMOMPL
+Parameters
+PayMe-Merchant-Key*
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/documents/document_id \
+  --header 'PayMe-Merchant-Key: '

@@ -1,0 +1,23 @@
+# https://docs.payme.io/docs/payments/0a76d2a3e52c3-documents
+
+Documents
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api/
+Production :
+https://live.payme.io/api/
+Mock Server:
+https://stoplight.io/mocks/payme/payments/26313126
+
+⚠️ This page is deprecated
+
+This API has been deprecated and is no longer recommended for use.
+For questions please contact partners@payme.io
+
+You can use our Invoices API to generate different documents to serve your business needs.
+
+Document types
+
+The documents you can generate can be found in the following guide - Document Types.

@@ -1,0 +1,66 @@
+# https://payme.stoplight.io/docs/Products-Customers/pd2vzglgehlye-generate-jwt-token
+
+Generate JWT Token
+POST
+https://sandbox.payme.io/api/auth/token
+
+Generates a new JWT token using the client key and seller key.
+
+Request
+Body
+application/json
+application/json
+mpl
+string
+key
+string
+Responses
+200
+400
+401
+500
+
+Token generated successfully.
+
+Body
+application/json
+application/json
+access_token
+string
+
+The generated JWT token.
+
+refresh_token
+string
+
+The type of the token, typically 'Bearer'.
+
+Body
+1
+{
+2
+  "mpl": "string",
+3
+  "key": "string"
+4
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/auth/token \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "mpl": "string",
+  "key": "string"
+}'
+Response Example
+1
+{
+2
+  "access_token": "string",
+3
+  "refresh_token": "string"
+4
+}

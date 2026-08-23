@@ -1,0 +1,15 @@
+# https://payme.stoplight.io/docs/guides/jwbd2ca1avo63-transaction-statuses
+
+Transaction Statuses
+TRANSACTION STATUS	STATUS DESCRIPTION
+1	pending
+2	validated
+3	refunded
+4	partial refund
+5	failed
+6	chargeback
+7	chargeback-refund
+8	voided
+9	partial-void
+10	partial-chargeback
+11	partial-chargeback-refund

@@ -1,0 +1,189 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/8f54eda635dab-get-all-seller-contracts
+
+Get All Seller Contracts
+GET
+https://sandbox.payme.io/api/payment-contracts/
+
+Receive all the contract related to a specific seller. An MPL is required in the Headers params of the request. To Get a specific contract data, use the following request for example - /api/payment-contracts/CONT1670-1686408R-GF2QVAYS-xxxxxxxx/
+
+Possible contract statuses - 1 - Initial 3 - Recipient Confirmed & Pending Due Date 4 - Completed 5 - Failed
+
+Request
+Query Parameters
+due_date_max
+string
+Example:
+2021-05-30 23:59:59
+due_date_min
+string
+Example:
+2021-08-18 00:00:00
+items_order_by_column
+string
+
+The day the contract was created
+
+Example:
+created_at
+items_order_by_direction
+any
+Allowed values:
+asc
+dsc
+page
+number
+>= 1
+payment_type
+any
+
+Will filter between send payments (type=1), and request payments (type=2)
+
+Allowed values:
+1
+2
+per_page
+number
+>= 1
+Example:
+15
+status
+any
+
+Get by the contract status
+
+Allowed values:
+1
+3
+4
+5
+Headers
+PayMe-Merchant-Key
+string
+
+[{"key":"PayMe-Merchant-Key","type":"text","value":"MPL15942-05581GIS-IRXHOFYL-PIKFJEAY"}]
+
+Responses
+200
+400
+
+OK
+
+Headers
+PayMe-Merchant-Key
+string
+
+MPL
+
+Body
+application/json
+application/xml
+application/json
+items
+array[object]
+id
+integer
+guid
+string
+description
+string
+seller_payme_id
+string
+remote_id
+string or null
+created_date
+string
+confirmed_by_recipient_date
+null
+confirmed_by_initiator_date
+null
+resolution_date
+null
+status
+integer
+
+Contract statuses - 1 - Initial 3 - Confirmed & Pending Due Date 4 - Completed 5 - Failed
+
+amount
+integer
+currency
+string
+payme_signature
+string
+error_code
+integer
+error_note
+string
+error_text
+string
+recipient
+object
+payment
+object
+links
+object
+first
+string
+last
+string
+prev
+null
+next
+null
+meta
+object
+current_page
+integer
+from
+integer
+last_page
+integer
+links
+array[object]
+path
+string
+per_page
+integer
+to
+integer
+total
+integer
+Parameters
+due_date_max
+:
+due_date_min
+:
+items_order_by_column
+:
+items_order_by_direction
+:
+Not Set
+asc
+dsc
+select an option
+page
+:
+payment_type
+:
+Not Set
+1
+2
+select an option
+per_page
+:
+status
+:
+Not Set
+1
+3
+4
+5
+select an option
+PayMe-Merchant-Key
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/payment-contracts/ \
+  --header 'Accept: application/json, application/xml' \
+  --header 'PayMe-Merchant-Key: '

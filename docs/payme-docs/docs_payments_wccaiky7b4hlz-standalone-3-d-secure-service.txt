@@ -1,0 +1,34 @@
+# https://docs.payme.io/docs/payments/wccaiky7b4hlz-standalone-3-d-secure-service
+
+Standalone 3D Secure service
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api/
+Production:
+https://live.payme.io/api/
+Mock Server:
+https://stoplight.io/mocks/payme/payments/200337227
+
+You can utilize the standalone 3D Secure service provided by PayMe to perform 3D Secure authentication at a specific stage within your transaction workflow.
+
+Typically, when a customer makes a purchase and you attempt to charge their payment card, they are prompted to complete 3D Secure authentication. However, there may be instances where you prefer to process 3D Secure as a separate step.
+
+For more information, go to the 3D Secure as a Service Guide.
+
+Process flow
+
+1 - Please follow the instructions that can be found here.
+
+2 - In order to use the 3DS service, you'll need to implement our library (as described in step 1 above) in your checkout page and collect the user data.
+
+3 - Generate sale in order to get a payme_sale_id.
+
+4 - Send the meta data to us as a part of the sales/{payme_sale_id}/3ds request.
+
+5 - The 3DS service may prompt the cardholder to provide additional information or perform an action to validate their identity (a challenge).
+5.a. - In case of a frictionless process (without a challenge) - You will receive a hash in the response.
+5.b. - In case of a challenge - You will receive a callback with a link to the issuer website, with the result of the authentication process.
+
+6 - Send the hash you received in the response/callback (in case there was a challange) as part of the Resolve Secured Hash API request to get the 3DS parameters (xid, eci, cavv).

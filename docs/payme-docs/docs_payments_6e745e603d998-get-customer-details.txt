@@ -1,0 +1,198 @@
+# https://payme.stoplight.io/docs/payments/6e745e603d998-get-customer-details
+
+Get Customer Details
+GET
+https://sandbox.payme.io/api/buyers/{buyer_guid}
+Overview
+
+You can access and fetch your buyer's details using this API endpoint.
+
+Your API request structure should look as follows:
+
+https://<env>.payme.io/api/buyers/{buyer_guid}
+
+The buyer guid is the unique ID fetched from either:
+
+Capture Buyer Token API endpoint.
+Tokens API endpoint.
+Authentication
+
+You'll need to authenticate your request using the unique seller ID.
+
+Data
+
+You'll be able to get the following data:
+
+Card mask
+Card brand
+Card expiry date
+Customer details
+Limitations
+If you are sending a token (uuid) and not a buyer key you won't get the parameter buyer_key in your response.
+Request
+Path Parameters
+buyer_guid
+string
+required
+Headers
+PayMe-Merchant-Key
+string
+required
+
+Your unique seller UUID.
+
+Example:
+BUYERDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+uuid
+string
+
+Buyer uuid
+
+Example:
+2378d4c8-****-****-****-5f6abd091f1c
+customer
+object
+
+Customer's details
+
+name
+string
+
+Customer's name
+
+Example:
+John Doe
+email
+string
+
+Customer's email
+
+Example:
+test@payme.io
+phone
+string
+
+Customer's phone
+
+Example:
++9720500000000
+social_id
+string
+
+Customer's ID
+
+Example:
+999999999
+payment
+object
+display
+string
+
+The payment method number
+
+Example:
+123456******1111
+expiry
+string
+
+Buyer's card exp (MMYY).
+
+Example:
+0324
+brand
+string
+
+Buyer's card brand.
+
+Example:
+AMEX
+club
+string
+
+The credit card club
+
+type
+string
+
+Type of credit card
+
+Example:
+Debit
+organization
+string
+
+The credit card organization
+
+origin_country
+string
+
+The credit card country
+
+Example:
+US
+buyer_key
+string
+
+Buyer key
+
+Example:
+BUYERTEST-XXXXXXXX-XXXXXXXX-XXXXXXXX
+Parameters
+buyer_guid*
+:
+PayMe-Merchant-Key*
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/buyers/{buyer_guid} \
+  --header 'Accept: application/json' \
+  --header 'PayMe-Merchant-Key: '
+Response Example
+1
+{
+2
+  "uuid": "2378d4c8-****-****-****-5f6abd091f1c",
+3
+  "customer": {
+4
+    "name": "John Doe",
+5
+    "email": "test@payme.io",
+6
+    "phone": "+9720500000000",
+7
+    "social_id": "999999999"
+8
+  },
+9
+  "payment": {
+10
+    "display": "123456******1111",
+11
+    "expiry": "0324",
+12
+    "brand": "AMEX",
+13
+    "club": "string",
+14
+    "type": "Debit",
+15
+    "organization": "string",
+16
+    "origin_country": "US"
+17
+  },
+18
+  "buyer_key": "BUYERTEST-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+19
+}

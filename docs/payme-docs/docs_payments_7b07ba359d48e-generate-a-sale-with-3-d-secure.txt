@@ -1,0 +1,24 @@
+# https://docs.payme.io/docs/payments/7b07ba359d48e-generate-a-sale-with-3-d-secure
+
+Generate a Sale with 3D Secure
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api/
+Production:
+https://live.payme.io/api/
+Mock Server:
+https://stoplight.io/mocks/payme/payments/200333309
+
+This endpoints enable using our frictionless 3D Secure authentication (version 2.2.0) on each sale.
+
+Our 3DS service provides you the following advantages:
+
+Enhanced Security - 3DS adds an extra layer of security, reducing fraud risk.
+Reduced Chargebacks - Liability for fraudulent transactions shifts to the card issuer, minimizing losses for merchants.
+Increased Customer Confidence: 3DS provides a secure payment experience, boosting customer trust.
+Better Fraud Detection - 3DS systems employ advanced mechanisms to detect and prevent fraud.
+Seamless Integration - 3DS service is integrated into existing payment systems and processes.
+
+You can also get from us 3DS as a service, follow the link for more information - Standalone 3D Secure service.

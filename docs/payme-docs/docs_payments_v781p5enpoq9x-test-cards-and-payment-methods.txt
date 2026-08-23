@@ -1,0 +1,64 @@
+# https://payme.stoplight.io/docs/payments/v781p5enpoq9x-test-cards-and-payment-methods
+
+Test Cards and Payment Methods
+
+Please use the following credit card when integrating only in the Staging environment.
+
+Main credit card numbers for testing
+
+EMV supported credit cards:
+
+CREDIT CARD	DETAILS
+Card Number: 4557430402053431 Expiration: 12/30 CVV:200 Social ID:008336174	Limitations: Acts as an international non-Israeli card. Accepts sales with only one installment. Accepts sales in ILS, USD, EUR.
+Card Number: 375516193000090 Expiration: 12/30 CVV: 0957 Social ID:008336174	Limitations: Acts as an international Israeli card. Accepts sales with multiple installments. Accepts sales in ILS, USD, EUR.
+Card Number: 5326105300985846 Expiration: 12/30 CVV: 658 Social ID:008336174	Limitations: Acts as a local Israeli card. Accepts sales with multiple installments. Accepts sales in ILS only.
+Secondary credit card numbers for testing
+CREDIT CARD TYPE	CREDIT CARD NUMBER
+Visa	4111111111111111 4200000000000000
+Mastercard	5555555555554444 5454545454545454
+AmericanExpress	378282246310005 377777777777770
+Diners	38520000023237
+Discover	6011000990139424
+JCB	3530111333300000
+Isracard	12312312
+Credit card numbers for testing specific responses and errors
+CARD NUMBER	DESCRIPTION
+4000000000000002	Payment is declined with a card declined error
+4000000000000051	Payment is declined with a card blocked error
+4000000000000085	Payment is declined with a card stolen error
+4000000000000069	Payment is declined with a card expired error
+4000000000000101	Payment is declined with a required CVV error
+4000000000000127	Payment is declined with an incorrect CVV
+4000000000000135	Payment is declined with a credit limit reached error
+4242424242424241	Payment is declined with an incorrect card number error
+4000000000000036	Token capture succeeds, but payment with the buyer created with that token is declined with a card declined error
+Apple Pay Testing Information
+CARD BRAND	CARD NUMBER	CARD EXPIRY DATE	CARD CVV
+Visa	4051 0693 0220 0121	12/27	340
+Mastercard	5204 2452 5052 2095	12/30	111
+American Express	37272 79248 51007	12/28	1111
+Discvoer	FPAN: 6011 0009 9475 4889	12/30	111
+Israeli Direct Debit Testing Information
+BANK ACCOUNT INFROMATION (BANK, BRANCH, ACCOUNT NUMBER)	DESCRIPTION
+54, 112, 2222111	Bank Authorization is approved after 60 seconds
+54, 113, 4444333	Bank Authorization is declined after 60 seconds
+SEPA Payment Method Testing Information
+ACCOUNT NUMBER	DESCRIPTION
+DE89370400440532013000	The Payment status transitions from initial to completed immidiately.
+DE08370400440532013003	The Payment status transitions from initial to completed after 3 minutes.
+DE62370400440532013001	The Payment status transitions from initial to failed immidiately.
+DE78370400440532013004	The Payment status transitions from initial to failed after 3 minutes.
+DE35370400440532013002	The Payment status transitions from initial to completed and then immidiately to chargeback.
+BACS Payment Method Testing Information
+SORT CODE	ACCOUNT NUMBER	DESCRIPTION
+108800	00012345	The Payment status transitions from initial to completed immidiately.
+108800	90012345	The Payment status transitions from initial to completed after 3 minutes.
+108800	33333335	The Payment status transitions from initial to completed and than immidiately changed to Failed.
+Test Cards and Payment Methods
+Main credit card numbers for testing
+Secondary credit card numbers for testing
+Credit card numbers for testing specific responses and errors
+Apple Pay Testing Information
+Israeli Direct Debit Testing Information
+SEPA Payment Method Testing Information
+BACS Payment Method Testing Information

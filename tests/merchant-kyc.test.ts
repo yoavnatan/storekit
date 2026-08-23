@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeMerchantKyc, missingMerchantKyc, isCompleteMerchantKyc, paymeDate, paymeIncorporation,
-  MERCHANT_KYC_FIELDS, MERCHANT_CATEGORY_FALLBACK,
+  MERCHANT_KYC_FIELDS,
 } from '../src/lib/merchant-kyc.js';
 
 const COMPLETE = {
@@ -18,7 +18,7 @@ const COMPLETE = {
   ownerGender: 0,
   ownerPhone: '0540123456',
   businessRegisteredOn: '2020-05-06',
-  businessCategory: '5999',
+  businessCategory: '10200',   // הלבשה כללית — a real row from PayMe's own Israeli list
   businessCity: 'תל אביב',
   businessStreet: 'רוטשילד',
   businessStreetNumber: '45',
@@ -93,15 +93,21 @@ describe('normalising a submission', () => {
     expect(normalizeMerchantKyc({ ...COMPLETE, ownerSocialId: '12345678' }).ownerSocialId).toBeUndefined();
   });
 
-  it('falls back to a real MCC rather than leaving a seller blocked over a code he never saw', () => {
-    expect(normalizeMerchantKyc({ ...COMPLETE, businessCategory: '' }).businessCategory).toBe(MERCHANT_CATEGORY_FALLBACK);
-    expect(missingMerchantKyc(normalizeMerchantKyc({ ...COMPLETE, businessCategory: '' }))).toEqual([]);
+  it('has NO default category, and refuses an ISO-width code', () => {
+    // It used to fall back to ISO 18245's `5999`. PayMe do not use ISO 18245: their Israeli list is
+    // their own numbering from 10000 up, enumerated by trade, and `5999` is not in it — so every
+    // seller onboarded with that fallback would have carried a code their system cannot underwrite.
+    // Absent is now absent, which the onboarding already handles.
+    expect(normalizeMerchantKyc({ ...COMPLETE, businessCategory: '' }).businessCategory).toBeUndefined();
+    expect(missingMerchantKyc(normalizeMerchantKyc({ ...COMPLETE, businessCategory: '' }))).toEqual(['businessCategory']);
+    expect(normalizeMerchantKyc({ ...COMPLETE, businessCategory: '5999' }).businessCategory).toBeUndefined();
+    expect(normalizeMerchantKyc({ ...COMPLETE, businessCategory: '10200' }).businessCategory).toBe('10200');
   });
 
   it('reads nothing at all out of junk', () => {
     for (const junk of [null, undefined, 'string', 42, []]) {
       expect(missingMerchantKyc(normalizeMerchantKyc(junk)).length, String(junk))
-        .toBe(MERCHANT_KYC_FIELDS.length - 1);   // the category falls back; nothing else can
+        .toBe(MERCHANT_KYC_FIELDS.length);
     }
   });
 });
@@ -118,17 +124,20 @@ describe('missing fields', () => {
 });
 
 describe('incorporation type', () => {
-  it('maps our three business types onto PayMe\'s enum', () => {
-    expect(paymeIncorporation('company')).toBe(2);   // Licensed Company
-    expect(paymeIncorporation('exempt')).toBe(5);    // Exempt Company
-    expect(paymeIncorporation('licensed')).toBe(1);  // Sole proprietorship
+  it('maps our three business types onto PayMe\'s REAL list', () => {
+    // Read from their documentation 2026-08-23: 1 פרטי · 2 עוסק מורשה · 3 חברה בע"מ · 5 עוסק פטור.
+    // Two of these three were wrong before, taken from their old raw spec which describes a
+    // different enum entirely.
+    expect(paymeIncorporation('company')).toBe(3);    // חברה בע"מ — was 2
+    expect(paymeIncorporation('licensed')).toBe(2);   // עוסק מורשה — was 1
+    expect(paymeIncorporation('exempt')).toBe(5);     // עוסק פטור — the only one that was right
   });
 
-  it('never falls back to `0` — a private individual is not a seller this platform has', () => {
-    // Sellers are registered businesses only (AI_INSTRUCTIONS → Business model), and PayMe's `0` is
-    // the one category we have contractually excluded. An unknown value is a sole trader, the
-    // commonest case, not a category we do not accept.
-    expect(paymeIncorporation(undefined)).toBe(1);
-    expect(paymeIncorporation('something-else')).toBe(1);
+  it('refuses to guess, because the old guess was a PRIVATE INDIVIDUAL', () => {
+    // The previous fallback returned 1, which in their real list is פרטי — exactly the category the
+    // platform excludes (registered businesses only) and one PayMe underwrite differently. A type we
+    // cannot map is now a seller we do not onboard, rather than one we mis-declare.
+    expect(paymeIncorporation(undefined)).toBeNull();
+    expect(paymeIncorporation('something-else')).toBeNull();
   });
 });

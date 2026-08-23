@@ -1,0 +1,82 @@
+# https://payme.stoplight.io/docs/payments/utb3zjam4xnh1-update-price
+
+Update Price
+PATCH
+https://sandbox.payme.io/api/subscriptions/{sub_id}/set-price
+Overview
+
+This endpoint is used to update a subscription price. This will apply subscriptions in status "active" or subscription template in status "initial".
+
+You can find more information in our guide - Subscriptions .
+
+Request
+Path Parameters
+sub_id
+string
+required
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sub_price
+string
+required
+
+A single iteration final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075. Note that the minimum value is 500
+
+Example:
+5075
+Responses
+200
+400
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+Status of the request (0 - success, 1 - error)>
+Allowed values 0 1
+
+Example:
+0
+Parameters
+sub_id*
+:
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sub_price": 5075
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request PATCH \
+  --url https://sandbox.payme.io/api/subscriptions/{sub_id}/set-price \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sub_price": 5075
+}'
+Response Example
+1
+{
+2
+  "status_code": 0
+3
+}

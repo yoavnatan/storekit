@@ -1,0 +1,570 @@
+# https://payme.stoplight.io/docs/guides/u62g6pktpkr2t-israeli-mcc-list
+
+Israeli MCC List
+PAYME MCC CODE	DESCRIPTION IN HEBREW	DESCRIPTION IN ENGLISH
+10000	משתלות	Nurseries
+10001	משתלות רגילות	Ordinary nurseries
+10002	משתלות יצרניות	Manufacturers' nurseries
+10003	משתלות מעורבות	Multi-Purpose nurseries
+10004	קונדיטוריה	Confectionery
+10005	קונדיטוריה-קונדיטוריות לייצור עצמי ומכירה במקום	Confectionery-confectionery for self-production and sale instead
+10006	קונדיטוריה-קונדיטוריות לייצור עצמי ומכירה במספר מוקדים	Confectionery-confectionery for self-production and selling in several focal points
+10007	קונדיטוריה לייצור עצמי בתוספת בית קפה	Self -production confectionery plus a cafe
+10008	קונדיטוריה בייצור סיטונאי	Confectionery in wholesale production
+10009	מאפיה	bakery
+10010	מאפיות קטנות	Small bakery
+10011	מאפיות בינוניות	Medium bakeries
+10012	מאפיות גדולות	Large bakery
+10013	מאפיות פיתות	Pites bakery
+10014	ייצור ופלים ועוגיות	Waffles and Cookies Manufacturing
+10015	פאות	Wigs
+10016	פאות-חנויות לאוכלוסייה החרדית\דתית	Wigs-shops for the ultra-Orthodox / religious population
+10017	פאות-חנויות לכלל האוכלוסיה	Wigs-stores for the general population
+10018	מסגריות	Locksmiths
+10019	מסגריות מכניות-עיבוד שבבי	Mechanical cargo-chip processing
+10020	מוסכים	Garages
+10021	אביזרי רכב	car accessories
+10022	אביזרי רכב-מוצרי מדף כללים	Automotive accessories-products
+10023	אביזרי רכב-מצברים	Car accessories
+10024	אביזרי רכב-נורות	Car-Lamp accessories
+10025	אביזרי רכב-התקנת מערכות: רדיו דיסק, מולטימדיה	Car Accessories-Systems Installation: Disk Radio, Multimedia
+10026	אביזרי רכב: דיבורית B.T	Car Accessories: B.T Handle
+10027	אביזרי רכב: חיישני נסיעה לאחור	Automotive Accessories: Rehole
+10028	אביזרי רכב: קודן	Car Accessories: Coden
+10029	אביזרי רכב: כספת	Car Accessories: Safe
+10030	אביזרי רכב: מצלמת דרך	Car Accessories: Camera
+10031	מעדניה	deli
+10032	ספרים	Books
+10033	ספרים-חנויות לספרי קריאה ועיון	Books-stores for reading and reference books
+10034	ספרים-חנויות לספרי לימוד בלבד	Books-stores for textbooks only
+10035	ספרים-חנויות לספקי קריאה ועיון ולספרי לימוד	Books-stores for reading and seminar and textbooks
+10036	הלבשת גברים - חנויות אופנה	Men's Clothing- fashion shops
+10037	הלבשת גברים - חנויות הלבשה	Men's Clothing - dressing shops
+10038	הלבשת גברים - חנויות בזאר	Men's Clothing - Bazaar shops
+10039	הלבשת גברים - יבואנים	Men's Clothing - Importing
+10040	הלבשת גברים - בתי אופנה יוקרתיים	Men's Clothin - luxury fashion houses
+10041	הלבשת ילדים ונוער- חנויות הלבשה	Dressing Children and Youth- Clothing stores
+10042	הלבשת ילדים ונוער - חנויות באזר	Children and Youth Clothing - Baza Stores
+10043	הלבשת ילדים ונוער - יבואנים	Children and Youth Clothing - Importing
+10044	הלבשת ילדים ונוער - בתי אופנה יוקרתיים	Children and Youth - Luxury Fashion Homes
+10045	הלבשת נשים - בתי אופנה יוקרתיים	Women's Clothing- Luxury Fashion Homes
+10046	הלבשת נשים - חנויות אופנה	Women's Clothing - Fashion Stores
+10047	הלבשת נשים - חנויות הלבשה	Women's Clothing - Clothing stores
+10048	הלבשת נשים - חנויות בזאר	Women's Clothing - Bazaar shops
+10049	הלבשת נשים - יבואנים	Dressing Women - Importers
+10050	חנויות הלבשת נשים עליונה	Supreme Women's Clothing stores
+10051	כובעים - חנויות בערי הפריפריה	Hats - shops in peripheral cities
+10052	כובעים - חנויות בערים הגדולות והבינוניות וחנויות האופנה	Hats - shops in the big and medium cities and fashion stores
+10053	כובעים - פריטים נלווים	Hats - related items
+10054	הלבשה תחתונה	Lingerie
+10055	גלריות	Galleries
+10056	תערוכות	Exhibitions
+10057	מסגרות לתמונות	picture frames
+10058	עתיקות ותשמישי קדושה	Antiquities and Saint Grace
+10059	עתיקות ותשמישי קדושה-חנות עממית	Antiquities and Popular Saint-Store
+10060	עתיקות ותשמישי קדושה-חנות עממית המתמחה בשיווק טליתות	Antiquities and Holy Holocaust-Popular Store specializing in Talit Marketing
+10061	עתיקות ותשמישי קדושה-חנות יוקרתית	Antiques and prestigious holy-stores
+10062	אופטיקה	optics
+10063	אופטיקה-עדשות	Optics-lenses
+10064	אופטיקה-מסגרות	Optics-frames
+10065	אופטיקה-זוג משקפיים (מסגרת+עדשות)	Optics-Corporate Glasses (Frame+Lens)
+10066	אופטיקה-עדשות מגע	Optics-Touch Lens
+10067	ואופטומטריסט	And optometrist
+10068	מצלמות וצרכי צילום	Cameras and photography needs
+10069	צלמים	Photographers
+10070	צילום-חנויות עם "מעבדה זעירה" לפיתוח סרטי צילום והדפסת תמונות	Store photography with "Tiny Laboratory" for developing photo films and printing photos
+10071	צילום-חנויות עם שירותי מעבדה חיצונית לפיתוח סרטי צילום והדפסת תמונות	Photo-store with external laboratory services for developing photo films and printing photos
+10072	צילום-שכפול מסמכים וצילומי פספורט	Photo-Duplicate Documents and Passport Photography
+10073	חיות	Animals
+10074	שירותי פנסיון ואילוף לחיות מחמד	Petal and pet training services
+10075	חיות בית-טיפול וסיוע	Home-the-handle and assistance
+10076	חיות בית-טיפול וסיוע-חנויות המתמחות במכירת מזון בלבד	Home-handling and assistance-stores specializing in food sale only
+10077	חיות בית-טיפול וסיוע-חנויות באזורים יוקרתיים	Home-handling and shop assistance in prestigious areas
+10078	חיות בית-טיפול וסיוע-חנויות שכיחות	Home-handed and store assistance is common
+10079	מגרשי מכוניות משומשות	Used car fields
+10080	סוכני רכב למשומשות	Car agents for used
+10081	מסחר בכלי רכב משומשים-יבואנים וסוכנויות למכירת רכב חדש	Used vehicles-imported vehicles and new car sales agencies
+10082	מסחר בכלי רכב משומשים-קבלני משנה של היבואנים	Trade in used-to-contract vehicles of importers
+10083	מסחר בכלי רכב משומשים-חברות הליסינג התפעולי וההשכרה	Trade in used vehicles-operating leasing companies and rental
+10084	מסחר בכלי רכב משומשים-סוחרי רכב פרטיים בעלי מגרש	Trade in used vehicles-traded car dealers with plot
+10085	מסחר בכלי רכב משומשים-סוחרי רכב פרטיים ללא מגרש	Trading in used-traded vehicles without a lot
+10086	חניוני רכב	Car parking lots
+10087	חניונים	Parking lots
+10088	פיצריות	Pizzas
+10089	מסעדות מזון מהיר	Fast food restaurants
+10090	בתי קפה	Coffee shops
+10091	בניית אתרי אינטרנט	Building websites
+10092	עו"ד	More
+10093	אדריכלים	Architects
+10094	מעצבי פנים	interior designers
+10095	וטרינר	veterinarian
+10096	השכרת רכב	Car Rental
+10097	סלון לכלות	A bridal salon
+10098	גננים-עבודות הקמה של גנים	Gardens-Labor Establishment of Gardens
+10099	גננים-עבודת אחזקה של גנים	Gardens-Gardens Maintenance Labor
+10100	גני ילדים וצהרונים	Kindergartens and Haruns
+10101	בית ספר לנהיגה	Driving school
+10102	רופאי שיניים	Dentists
+10103	רופאי שיניים אורתודנטיים	Orthodontic dentists
+10104	רפואת שיניים	dentistry
+10105	בתי אבות	Retirement homes
+10106	שירותי סיעוד	Nursing services
+10107	לשכות פרטיות להבאה, לתיווך ולטיפול בעובדים זרים בענף הסיעוד	Private bureaus to bring, mediation and handling foreign workers in the nursing industry
+10108	מכוני כושר	Gyms
+10109	מכבסות וניקוי יבש	Laundry and dry cleaning
+10110	מכוני יופי	Beauty Institutes
+10111	מספרות	Hairdressers
+10112	מספרות גברים	Men's hairdressers
+10113	ספא	spa
+10114	אביזרי אופנה	fashion accessories
+10115	אהילים ונברשות	Lampshades and chandeliers
+10116	חנויות כלי בית ומתנות	Housewives and Gifts
+10117	חנויות כלי בית ומתנות-חנויות פשוטות	Housewives and simple gifts
+10118	חנויות כלי בית ומתנות-חנויות בינוניות	Housewives and Medium Gifts
+10119	חנויות כלי בית ומתנות-חנויות יוקרה ורשתות לכלי בית	Housewares and Gifts-Luxury Stores and Networks for Home Tools
+10120	מסחר קמעוני במתנות לגבר	Retail trading in men's gifts
+10121	אולמי שמחות	A happy hall
+10122	אופטומטריסט	Optometrist
+10123	אופניים	Bicycle
+10124	מכירה ותיקון אופניים	Bicycle Sales and repair
+10125	מכירה ותיקון אופניים-חנויות המתמקצעות באופניים חשמליים בלבד	Sales and repair-stores that specialize in electric bicycles only
+10126	מכירה ותיקון אופניים-חנויות מעורבות לאופניים חשמליים ורגילים	Sales and repair bicycle-stores mixed to electric and normal bicycles
+10127	מכירה ותיקון אופניים-חנויות המתמקדות באופניים רגילים בלבד	Sales and repair-store-focusing on ordinary bicycles only
+10128	מסחר קמעוני במוצרי ספורט ובמוצרי מחנאות	Retail trading in sports and camping products
+10129	מסחר קמעוני במוצרי ספורט ובמוצרי מחנאות-חנויות יוקרתיות	Retail trade in sports products and in prestigious stores
+10130	מסחר קמעוני במוצרי ספורט ובמוצרי מחנאות-חנויות בינוניות	Retail trade in sports products and in medium stores
+10131	מסחר קמעוני במוצרי ספורט ובמוצרי מחנאות-חנויות קטנות	Retail trade in sports products and in small stores
+10132	טיולים	Tours
+10133	אכסניות וכפרי נופש	Hostels and resorts
+10134	בתי"ס שדה	SUPS CBS
+10135	צימרים, דירות ובתי הארחה	Zimmer, apartments and guest houses
+10136	בתי הבראה ומרגוע	Houses of recovery and relaxation
+10137	בתי מלון	Hotels
+10138	ארנק אלקטרוני	Electronic wallet
+10139	נש"מים	UAV
+10140	ארנקים ותיקים	Veteran wallets
+10141	מזודות	baggage
+10142	בדים וטכסטיל	Fabric
+10143	מסחר בבדים	Trade in fabrics
+10144	מסחר בבדים-בדי ריפוד	Trading in padding fabrics
+10145	מסחר בבדים-יבואני בדי אופנה (לביגוד)	Fabric trade-in fashion fabrics (to clothing)
+10146	מסחר בבדים-קמעונאים: חנויות בדים	Trade in Fabrics: Fabric Stores
+10147	מסחר בבדים-חנויות במרכז הארץ שממקומות במרכז העיר	Trade in shop fabrics in the center of the country that are located in the city center
+10148	מסחר בבדים-חנויות במרכז הארץ שממקומות ברחובות צדדיים או בסמיכות לשווקים	Trade in shop fabrics in the center of the country that are located on side streets or close proximity to markets
+10149	מסחר בבדים-חנויות בפריפריות (מרוחקות ממרכז הארץ)	Trade in stores in peripherals (distant from the center of the country)
+10150	ביטוח לאומי	Social Security
+10151	ביטוח מוצרי חשמל	Electrical Insurance
+10152	סוכני ביטוח	Insurance Agents
+10153	תיכנות	Play
+10154	תוכנות מחשבים	Computer software
+10155	דגים	Fish
+10156	מסחר קמעונאי בדגים-חנויות הממוקמות בשווקים\בערי המרכז ובפריפריה באזורים עם תחרות גדולה	Retail-in-store retail trade located in the markets / cities of the center and periphery in areas with large competition
+10157	מסחר קמעונאי בדגים-חנויות בעלות מוניטין הממוקמות ביישוב פריפרי, לרוב חנויות גדולות	Retail trade in reputable fish-stores located in a peripheral settlement, usually large stores
+10158	מסחר קמעונאי בדגים-חנויות הממוקמות בערי המרכז וקיימת חנות אחת או שתיים מסוג זה באזור	Retail-in-store retail trading located in the cities of the center and there is one or two stores of this type in the area
+10159	מעדני בשר	Meat delicacies
+10160	בשר חזיר-גידול החזירים	Pork-growing pigs
+10161	בשר חזיר-מסחר סיטוני בגופות חזירים וטבחות בקר (מפורקים)	Sights pork pork in pig bodies and beef (disassembled)
+10162	בשר חזיר-ייצור מוצרי בשר: נקניקים, מעושנים, בשרים מוכנים ובשרים מעובדים	Pork-Manufacturing Meat Products: Senannics, Smokers, Ready Meat and Processed Meats
+10163	אטליזים	Alas
+10164	בתי דפוס	Print houses
+10165	פירסום	Advertising
+10166	הוצאה לאור ספרים	Publishing Books
+10166	הוצאה לאור ספרים	Publishing Books
+10168	הוצאה לאור עיתונים	Publishing newspapers
+10169	בתי מרקחת	Pharmacies
+10170	בתי מרקחת חו"ל	Overseas pharmacies
+10171	בתי ספר יסודי ותיכון	Elementary and high school schools
+10172	גלידריות	Ice creams
+10173	יצרני גלידות	Ice cream manufacturers
+10174	גמ"ח הלוואות	Loans
+10175	דיסקוטק	discotheque
+10176	פאבים	Pubs
+10177	דלק לחימום ביתי	Fuel for home heating
+10178	התקנת מערכות סולריות	Installation of solar systems
+10179	דלק שרות עצמי	Fuel self -service
+10180	דרגאסטורים	Dargalstors
+10181	חנויות טבע-קבוצה 1-חנויות גדולות	Nature-Group stores 1-stores are large
+10182	חנויות טבע-קבוצה 2-חנויות בינוניות	Nature-Group-Group 2-Medium Stores
+10183	חנויות טבע-קבוצה 3-חנויות קטנות	Nature-Group stores 3-stores
+10184	רשתות פארמה-רשתות גדולות	Large Pharma-Networks
+10185	דשנים וכימיקלים	Fertilizers and chemicals
+10186	הובלות	Moving
+10187	מערבלי בטון	Concrete western
+10188	משאבות בטון	Concrete pumps
+10189	הובלת מטענים במשאיות	Transporting cargoes in trucks
+10190	הסעות	Shuttles
+10191	הסעות באוטובוסים	Buses shuttle
+10192	הסעות באוטובוסים ציבוריים זעירים	Shuttles on tiny public buses
+10190	הסעות	Shuttles
+10194	מוניות בקווי שירות-בין עירוני ועירוני	Taxis in Urban and Urban Service lines
+10190	הסעות	Shuttles
+10190	הסעות	Shuttles
+10197	מוניות בשירות מיוחד	Taxis in a special service
+10198	שליחיות	Curses
+10199	היכרויות ושדוכים	Dating and taps
+10200	הלבשה כללית	General dressing
+10201	הלוואות פקדונות חסכו	Deposit loans have saved
+10202	העברת כספים לכרטיס	Transfer of funds to card
+10203	בעלי אירוע	Event owners
+10204	הפקות אירועים	Productions
+10205	מוצרים לארועים	Products for events
+10206	מיזם חתונות-אולמות	Weddings Initiative
+10207	הרבלייף	Herbalife
+10208	השכרת דירות	apartments rental
+10209	השכרת משרדים	Office rental
+10210	וידאו אוטומט	Automatic video
+10211	וילונות ודקורטיבים	Curtains and decorative
+10212	חברות ניהול ואחזקה	Management and maintenance companies
+10213	חברות כוח אדם והשמה	Personnel companies and placement
+10214	ועדי בתים	And witnesses
+10215	עבודות עפר	Earthworks
+10216	עבודות עפר- עבודות קטנות היקף ובינוניות	Earthworks- small and medium-sized jobs
+10217	עבודות עפר ופיתוח רחבות היקף	Earthworks and wide -ranging development
+10218	בנייה ושיפוצים	Construction and renovations
+10219	מסחר מעורב בחומרי בניין	Commerce involved in building materials
+10220	מסחר מעורב בחומרי בניין-מסחר קמעונאי-חנות	Commerce involved in retail-shop building materials
+10221	מסחר מעורב בחומרי בניין-מגרש לחומרי בניין	Commerce involved in building-building materials for building materials
+10222	מסחר קמעונאי במוצרי פרזול	Retail trading in forging products
+10223	מסחר קמעונאי במוצרי פרזול-חנויות כלליות	Retail trading in General Shopping Products
+10224	מסחר קמעונאי במוצרי פרזול-חנויות מקצועיות: מכירה לפרטיים	Retail trade in Professional Professional Store Products: Private Sales
+10225	מסחר קמעונאי במוצרי פרזול-חנויות מקצועיות: מכירה לנגרים	Retail trade in Professional Professional Store Products: Sales for Density
+10226	מסחרי בצרכי גינון	Commercial in gardening needs
+10227	חברות בניה	Construction girlfriends
+10228	קבלני גגות	Roofing contractors
+10229	קבלני גגות גדולים	Large roof contractors
+10230	קבלני גגות קטנים	Small roofs
+10231	סוככים ופרגולות	Awnings and pergolas
+10232	סוככים ופרגולות-עסקים גדולים	Large awnings and pergolas
+10233	סוככים ופרגולות-עסקים קטנים	Small awnings and pergolas
+10234	איטום גגות	roof sealing
+10235	איטום גגות-2 שכבות זפת+פיברגלס או אינטרלס	Sealing Roofs 2 Tarboxs+Fiberglass or Interlis
+10236	איטום גגות-יריעות ביטומנית	Sealing roofs-bituminous sheets
+10237	איטום גגות-סיוד גגות	Sealing roof-roofs
+10238	קבלני שלד	Skeletal contractors
+10239	קבלני שלד-בניין גבוה ונמוך בשיטה הקונבנציונלית	High and low building skeletal contractors in the conventional method
+10240	קבלני שלד-בית צמוד קרקע בשיטה הקונבנציונלית	Land-linked skeleton contractors using the conventional method
+10241	קבלני משנה לאינסטלציה חשמלית	Subcontractors for electrical plumbing
+10242	קבלני משנה לאינסטלציה סניטרית	Subcontractors to Sanitarian plumbing
+10243	קבלני משנה לאינסטלציה סניטרית-קבלני אינסטלציה לבתים פרטיים	Subcontractors for Senternity-contractor plumbing for private homes
+10244	קבלני משנה לאינסטלציה סניטרית-קבלני אינסטלציה לבנייני מגורים נמוכים עד גבוהים	Subcontractors for Senternity-contractor plumbing plumbing for low to high residential buildings
+10245	קבלני משנה לאינסטלציה סניטרית-קבלני אינסטלציה לבנייני מגורים רבי קומות	Subcontractors for Senternity-contractor plumbing plumbing for high-rise residential buildings
+10246	מוצרי אינסטלציה	Plumbing products
+10247	מסחר בקרמיקה וכלים סניטריים	Ceramic trading and sanitary ware
+10248	מסחר בקרמיקה וכלים סניטריים-יבואנים גדולים	Trading in ceramics and a great sanitary-importer
+10249	מסחר בקרמיקה וכלים סניטריים-יבואנים קטנים	Trading in ceramics and small sanitary-imported tools
+10250	מסחר בקרמיקה וכלים סניטריים-יצרנים מקומיים ליבואנים, לקמעונאים ולקבלנים	Commerce in ceramics and sanitary-manufacturers to local importers, retailers and contractors
+10251	מסחר בקרמיקה וכלים סניטריים-יצרנים מקומיים לצרכן הפרטי	Ceramic trading and sanitary-manufacturers to private consumer
+10252	חברות עירוניות	Urban companies
+10253	קיבוצים	Kibbutzim
+10254	חברות תעופה	Airlines
+10255	חברת דלק מקשר	A fuel company connects
+10256	חברת דלק צי רכב	Delek Company Vehicle fleet
+10257	חברת חשמל	IEC
+10258	חומרי ניקוי	Cleaners
+10259	פרפומריות	Poptimism
+10260	חלקי חלוף לרכב	Parts of pass to car
+10261	מסחר סיטונאי בחלקי חילוף לרכב	Wholesale trading in car spare parts
+10262	מסחר קמעונאי בחלקי חילוף לרכב	Retail trading in car spare parts
+10260	חלקי חלוף לרכב	Parts of pass to car
+10260	חלקי חלוף לרכב	Parts of pass to car
+10265	טבק וצרכי עישון	Tobacco and smoking needs
+10266	טובין דיגיטלי	Digital goods
+10267	טלפונים סלולריים	cellphones
+10268	טפטים	Wallpapers
+10269	טרקלין שדה תעופה	Airport lounge
+10270	יהלומים/אבנים יקרות	Diamonds/Dear Stones
+10271	חריטת אופנים לליטוש יהלומים	Engraving bike to polishing diamonds
+10272	החזרי מס	Tax refunds
+10273	ייעוץ משכנתאות/החזרי מס	Mortgage counseling/tax refunds
+10274	ייעוץ פיננסי	financial advice
+10275	דלתות פלדה	Steel doors
+10276	כלי בית ומטבח	Houseware and kitchen
+10277	מטבחים	Kitchens
+10278	קבלני טיח	Plaster contractors
+10279	קבלני טיח-קבלן משנה לטיח בנייה רוויה, טיח גבס	Plaster-contractor contractors for saturated construction, plaster plaster
+10280	קבלני טיח-קבלן משנה לטיח בבנייה רוויה, טיח שחור	Plaster-contractor contractors for plaster with saturated construction, black plaster
+10281	קבלני טיח-קבלן טיח בבנייה פרטית	Plaster-contractor contractors with private construction
+10282	מקלחונים	Showers
+10283	קרמיקה וכלים סניטרים	Ceramic and sanitary ware
+10284	קבלני מצבות	Tombstones
+10285	הרכבת שיש במטבחים ואמבטיות	The train has in kitchens and baths
+10286	מפעלי הבטון	Concrete factories
+10287	ייצור בלוקים	Production of blocks
+10288	כלי מיטה	Bedding
+10289	מזרונים וחדרי שינה	Mattresses and bedrooms
+10290	כלי נגינה	Musical Instruments
+10291	בנין צבע	A color building
+10292	קבלני משנה לצבע	Subcontractors to color
+10293	קבלני משנה לצבע-צביעת פנים הדירה	Subcontractors to the color of the interior of the apartment
+10294	קבלני משנה לצבע-צביעת הבניין מבחוץ	Subcontractors to the color of the building from the outside
+10295	כלי עבודה	Tools
+10296	יבואני רכב	Car importers
+10297	כלי רכב	Vehicles
+10298	לוטו טוטו	Lotto Toto
+10299	ליסינג	Leasing
+10300	מוניות	Taxis
+10301	תחבורה ציבורית	Public Transport
+10302	מועדוני ספורט	Sports Clubs
+10303	מחנאות	camping
+10304	מועצות ועיריות	Councils and municipalities
+10305	מיסי עיריות/רשויות	Municipal taxes/authorities
+10306	מוזיאונים	Museums
+10307	מרכז אומניות ועבודות יד	Arts and Handmade Center
+10308	תאטרון תרבות ופנאי	Culture and leisure theater
+10309	מוצרי גומי ופלסטיק	Rubber and plastic products
+10310	צמיגים	Tires
+10311	מסחר קמעונאי ותיקון צמיגים (פנצ'ריות)	Retail trading and tire repair (punctures)
+10312	מסחר קמעונאי ותיקון צמיגים (פנצ'ריות)-מכירת צמיגים חדשים בכלי רכב פרטיים	Retail trade and tire repair (punctures)-Selling new tires in private vehicles
+10313	מסחר קמעונאי ותיקון צמיגים (פנצ'ריות)-מכירת צמיגים חדשים ברכבי משא	Retail trade and tire repair (punctures)-Selling new tires in freight vehicles
+10314	מסחר קמעונאי ותיקון צמיגים (פנצ'ריות)-מכירת צמיגים משומשים	Retail trade and tire repair (punctures)-Selling used tires
+10315	מסחר קמעונאי ותיקון צמיגים (פנצ'ריות)-תיקון תקרים	Retail trading and tire repair (punctures)-repairing ceilings
+10310	צמיגים	Tires
+10317	חברות גז	Gas companies
+10318	מוצרי גז	Gas products
+10319	אביזרי חשמל	Electrical accessories
+10320	מוצרי חשמל גדולים	Large electrical products
+10321	מוצרי חשמל גדולים-מזגנים	Large-air-conditioned electrical products
+10321	מוצרי חשמל גדולים-מזגנים	Large-air-conditioned electrical products
+10323	מזגנים-קטנים עד 1.5 כ"ס	Air conditioners up to 1.5 kW
+10324	מזגנים-בינוניים 2.5-3.5 כ"ס	Medium-medium-to-mediums 2.5-3.5 kW
+10325	מגזנים-גדולים 4 כ"ס ומעלה ומיני מרכזיים	Magazines-large 4 kW and centers and mini
+10326	דודי שמש ואנרגיה סולארית	Solar boilers and solar energy
+10326	דודי שמש ואנרגיה סולארית	Solar boilers and solar energy
+10328	חשמל ואלקטרוניקה	electricity and electronics
+10329	רדיו ומערכות למכוניות	Radio and systems for cars
+10330	מוסכים לחשמלאות רכב	Garages for car pumps
+10331	מכוני רחיצה למכוניות	Watchs for cars
+10332	תיקון והתקנת מוצרי חשמל	Repair and installation of electrical appliances
+10333	פירסום ודפוס	Advertising and pattern
+10334	מוצרי תוכן דיגיטלי	Digital content products
+10335	בתי טבע	Natural homes
+10336	מוצ.דיאטה	Moada diet
+10337	מזכרות מתנות חפצי חן	Souvenirs of grace gifts
+10338	אטרקציות	attractions
+10339	ברכות שחיה/קאנטרי קלאב	Congratulations/Country Club
+10340	מאמני כושר	Fitness trainers
+10341	ספורט ומחנאות	Sports and flattens
+10342	מחשבים	Computers
+10343	חנויות סלולר	Cellular shops
+10344	מטהרי מים-מכירת ציוד	Water Pure-Sale Equipment
+10345	מטהרי מים-שירות	Service-water purifiers
+10346	מכלת ומינימרקט	Intelligence and Minimarket
+10347	מיסטיקה	Mysticism
+10348	מתפרות	Sewn
+10349	בית חולים פרטי/מרכז שיקום/מכון רפואי	Private Hospital/Rehabilitation Center/Medical Institute
+10350	מכונות כתיבה/תפירה	Writing/sewing machines
+10351	מכונות לתעשיה חקלאות	Agricultural Industries Machines
+10352	חוגים וקורסים	Classes and courses
+10353	מכוני לימוד והדרכה	Learning and Training Institutes
+10354	מכללות ואוניברסיטאות	Colleges and universities
+10355	מכוני קוסמטיקה	Cosmetics institutes
+10356	יבואני אופנועים	Motorcycles importers
+10357	סוכנות אופנועים	Motorcycle agency
+10358	מוסכי קטנועים ואופנועים	Scooters and motorcycles garages
+10359	תיווך נדל"ן	Real Estate
+10360	מכירת כלי רכב	Selling vehicles
+10360	מכירת כלי רכב	Selling vehicles
+10362	מכירת מכשירי גז	Selling Gas Devices
+10363	מכשירי בריאות	Health devices
+10364	בית חב"ד	Chabad House
+10365	בית כנסת	Synagogue
+10366	סופרי סת"ם	Catholic writers
+10367	עמותה לרווחת חיילים	Association for the Welfare of Soldiers
+10368	עמותות בריאות	Health associations
+10369	עמותות לקהילה	Community associations
+10370	עמותות מחקר	Research associations
+10371	מנויי לוטו טוטו	Lotto Toto subscribers
+10372	אלומיניום מסגריות	Aluminum Fragments
+10373	חדר עסקאות - פורקסים	Transaction Room - Forxies
+10374	מסחר במט"ח	Forex Trading
+10375	מסעדות	Restaurants
+10376	מסעדות פועלים	Restaurant Works
+10377	מסעדות סיניות	Chinese restaurants
+10378	מסעדות מזרחיות	Eastern restaurants
+10379	מסעדות דגים	Fish restaurants
+10380	מסעדות איטלקיות	Italian restaurants
+10015	פאות	Wigs
+10382	טכנאות שיניים	Tooth techniques
+10383	מעבדת שניים	Two lab
+10384	מערכות אזעקה	Alarm systems
+10385	מערכות בטחון	Security systems
+10386	מפעל הפיס - זכיינים	Lottery - franchisees
+10387	מפעל הפיס	Lottery
+10388	משחקים און ליין	Games online
+10389	יקב	winery
+10390	משקאות חריפים וקלים	Acute and soft drinks
+10391	משרד התחבורה-רישוי	The Ministry of Transport-Licensing
+10392	משרדי ממשלה	Government Offices
+10393	משרדי פרסום	Advertising agencies
+10394	הדברת מזיקים	Pest control
+10395	מתן אשרות שהיה	Giving visas that was
+10396	מרכז קהילתי	community Center
+10397	מתנס	community Center
+10398	נגריות/רפדיות	Carpentry/paddies
+10399	בדי רפוד	Rapped Fabrics
+10400	מסחר בחומרי נגרות	Trading in carpentry materials
+10401	מסחר בחומרי נגרות-מכירות מסיביות-הפצה	Trading in massive carpentry materials-distributing
+10402	מסחר בחומרי נגרות-מכירה סיטונאית	Trading in carpentry-wholesale materials
+10403	מסחר בחומרי נגרות-מכירה קמעונאית ("לפרטיים")	Trade in retail carpentry materials (“to private”)
+10404	מסחר בחומרי נגרות-מכירות חומרי עץ מעובדים	Trade in carpentry materials-wooden materials processed
+10405	מסחר בחומרי נגרות-מכירת פרזולים וחומרים שונים	Trading in carpentry-selling materials and various materials
+10406	נותני שרותי מטבע (חלפני כספים)	Currency service providers (Financial Almighty)
+10407	הנעלה	footwear
+10408	הנעלה-חנויות סוג 1	Type-Type 1 store
+10409	הנעלה-חנויות סוג 2	Type 2 stores
+10410	הנעלה-חנויות סוג 3	The trace-store type 3
+10411	הנעלה-חנויות סוג 4	The Type 4 stores
+10412	נשק ותחמושת	Weapons and ammunition
+10412	נשק ותחמושת	Weapons and ammunition
+10414	סדקית ומוצרי תפירה	Crack and sewing products
+10415	סוכני דלק	Fuel agents
+10416	מסחר בדלק	Fuel commerce
+10417	מסחר בדלק-תחנות של חברות הדלק היצרניות: בנזין 95	Fuel trading of the manufacturer's fuel companies: gasoline 95
+10418	מסחר בדלק-תחנות של חברות הדלק היצרניות: סולר לתחבורה	Fuel trading of the manufacturer's fuel companies: Due to Transportation
+10419	מסחר בדלק-תחנות של חברות הדלק היצרניות: סולר להסקה	Fuel trading of the manufacturer's fuel companies: diesel fuel
+10420	מסחר בדלק-תחנות של חברות הדלק היצרניות: נפט	Fuel trading of the manufacturer's fuel companies: oil
+10421	מסחר בדלק-תחנות מוזלות של חברות הדלק היצרניות: בנזין 95 מוזל	Fuel Trade-Discounted Fuel Companies Station
+10422	מסחר בדלק-תחנות מוזלות של חברות הדלק היצרניות: סולר לתחבורה מוזל	Discounted Fuel Fuel Commerce of Manufacturer Fuel Companies: Dyer For Disposable Transportation
+10423	מסחר בדלק-מכירה סיטונאית של בנזין 95	Fuel trading-wholesale of petrol 95
+10424	מסחר בדלק-מכירה סיטונאית של סולר לתחבורה	Fuel trading-wholesale of diesel fuel for transportation
+10425	מסחר בדלק-סוכנים ומפיצים קמעונאים של בנזין 95	Fuel-agent trading and retail distributors of gasoline 95
+10426	מסחר בדלק-סוכנים ומפיצים קמעונאים של סולר לתחבורה בתחנה	Fuel-agent trading and retail distributors of transport to transportation at the station
+10427	מסחר בדלק-סוכנים ומפיצים קמעונאים של סולר לתחבורה והסקה במיכליות	Fuel-agent trading and retail distributors of diesel and heating in tankers
+10428	סופרמרקטים	Supermarkets
+10429	סטקיות ומזנונים	Steaks and buffets
+10430	דוכני פלאפל	Falafel booths
+10431	פיצוחים	Nuts
+10432	סיטונאי - מוצרים לא עמידים	Wholesale - non -resistant products
+10433	מסחר סיטוני בפירות ובירקות	Wholesale trading in fruits and vegetables
+10432	סיטונאי - מוצרים לא עמידים	Wholesale - non -resistant products
+10435	סיטונאי - מוצרים לא עמידים: משחטות-מסחר בעופות והודים	Wholesale - non -durable products: poultry trading and Indian trading
+10436	סוחרי בקר וצאן	Beef and flock traders
+10437	סיטונאי-מוצרים עמידים	Wholesale-products resistant
+10437	סיטונאי-מוצרים עמידים	Wholesale-products resistant
+10143	מסחר בבדים	Trade in fabrics
+10437	סיטונאי-מוצרים עמידים	Wholesale-products resistant
+10441	בתי קולנוע	Theaters
+10442	סניטציה	Sanitation
+10443	ספק תוכן אינטרנט	Internet content provider
+10444	ספריות וידיאו	Video libraries
+10445	דיסקים	Discs
+10446	דמי חברות מועדון	Club Companion Fee
+10447	עמותות ואגודות	Associations and associations
+10448	עמותות חינוך	Education associations
+10449	מפלגות, בחירות	Parties, elections
+10369	עמותות לקהילה	Community associations
+10451	עמותות דת	Religious associations
+10452	עמותות מוסלמיות	Muslim associations
+10453	עמותות נוצריות	Christian associations
+10454	עמותות תרומות	Donations of donations
+10455	פירות וירקות	Fruits and Vegetables
+10456	מסחר קמעונאי בפירות וירקות	Retail trading in fruits and vegetables
+10457	מסחר קמעונאי בפירות וירקות-חנויות שכונתיות עממיות	Retail trade in fruits and vegetables-mummous neighborhood stores
+10458	מסחר קמעונאי בפירות וירקות-חנויות שכונתיות יוקרתיות	Retail trading in prestigious neighborhoods and vegetables
+10459	מסחר קמעונאי בפירות וירקות-חנויות ברחובות ראשיים בערים	Retail trading in fruits and vegetables on main streets in cities
+10460	בגדי עור	Leather clothes
+10461	מסחר קמעוני בתיקים ומזוודות-חנויות סוג 1	Retail trading in bags and luggage-type 1
+10462	מסחר קמעוני בתיקים ומזוודות-חנויות סוג 2	Retail trading in bags and luggage-type 2
+10463	מסחר קמעוני בתיקים ומזוודות-חנויות סוג 3	Retail trading in bags and luggage-store type 3
+10464	פרוות	Fur
+10465	פרחים ועציצים	Flowers and flower pots
+10466	מסחר קמעונאי בפרחים	Retail trading in flowers
+10467	ציוד לתינוק	Baby equipment
+10468	מכש.כתיבה	P.S. Writing
+10469	מסחר קמעוני במכשירי כתיבה	Retail trading on writing devices
+10470	מסחר קמעוני במכשירי כתיבה-חנויות מכשירי כתיבה וציוד משרדי שעיקר מכירותיהן לחברות ומוסדרות	Retail trading on writing devices-writing devices and office equipment whose main sales for companies and regulations
+10471	מסחר קמעוני במכשירי כתיבה-חנויות למכשירי כתיבה וציוד משרדי שעיקר מכירותיהן ללקוחות פרטיים	Retail trading on writing-stores for writing devices and office equipment whose main sales are private customers
+10472	מסחר קמעוני במכשירי כתיבה-חנויות למכשירי כתיבה (כולל מכשירי כתיבה בחנויות מעורבות)	Retail Trade on Writing Store Writing devices (including writing appliances in mixed stores)
+10473	ציוד משרדי	Office Supplies
+10474	מיכשור רפואי	Medical devices
+10475	צמר וסריגה	Wool and knitting
+10476	ציוד לגנים	Garden equipment
+10477	צעצועים	Toys
+10478	מסחר בצעצועים ומשחקים	Trade in toys and games
+10479	מסחר בצעצועים ומשחקים-חנויות ברמה א'	Trade in toys and Games-stores at level 1
+10480	מסחר בצעצועים ומשחקים-חנויות ברמה ב'	Trade in toys and Games-Stores B
+10481	מסחר בצעצועים ומשחקים-חנויות ברמה ג'	Trade in toys and Games-Games Level C.
+10482	חנויות נוחות ופיצוציות	Convenient and explosive shops
+10483	קייטנה	Summer Camp
+10484	קייטרינג	Catering
+10485	קפה ותבלינים	Coffee and spices
+10486	מסחר קמעונאי בתבלינים, קטניות, פיצוחים ופירות יבשים	Retail trading in spices, legumes, crackers and dried fruits
+10487	מסחר קמעונאי בתבלינים, קטניות, פיצוחים ופירות יבשים-קניון	Retail trading in spices, legumes, crackers and dried fruits-malls
+10488	מסחר קמעונאי בתבלינים, קטניות, פיצוחים ופירות יבשים-רחוב ראשי	Retail trading in spices, legumes, crackers and dried fruits-main street
+10489	מסחר קמעונאי בתבלינים, קטניות, פיצוחים ופירות יבשים-שוק	Retail trade in spices, legumes, crackers and dried fruits-market
+10490	רהיטים	furniture
+10491	רהיטים-חנויות המוכרות מוצרים פשוטים	Furniture-stores selling simple products
+10492	רהיטים-חנויות המוכרות מוצרים ברמה בינונית	Furniture-stores familiar with medium-level products
+10493	רהיטים-חנויות המוכרות מוצרים ברמה גבוהה	Furniture-stores selling high-level products
+10494	רהיטים-חנויות יוקרתיות (מחיר לפריט)	Luxury store furniture (item for item)
+10495	חנויות ריהוט וציוד לתינוקות	Furniture and baby equipment
+10496	חנויות ריהוט וציוד לתינוקות-חנויות קטנות עממיות	Furniture stores and equipment for small popular stores
+10497	חנויות ריהוט וציוד לתינוקות-חנויות בינוניות	Furniture and Baby Equipment-Medium Stores
+10498	חנויות ריהוט וציוד לתינוקות-חנויות גדולות	Furniture and Big Baby-store equipment
+10499	חנויות ריהוט וציוד לתינוקות-חנויות רשת	Furniture stores and baby-store equipment
+10500	ייבוא רהיטים	Import furniture
+10501	ייבוא מטבחים	Import kitchens
+10502	ייבוא מטבחים-מטבחים פשוטים	Import Kitchens-Simple kitchens
+10503	ייבוא מטבחים-מטבחי יוקרה	Import kitchens-kitchens luxury
+10504	רהיטים-ייצור רהיטים מעץ מלא	Furniture-Manufacture of solid wood furniture
+10505	נגרות פלטות	Passover carpentry
+10506	מהנדסים	engineers
+10507	רו"ח	Breeze
+10508	רכישת ניירות ערך	Purchase securities
+10509	טיפולי בריאות לגוף	Health treatments to the body
+10510	רפואה אלטרנטיבית	Alternative Medicine
+10511	רשות השידור	IBA
+10512	רשתות מזון ארציות	Nursing food chains
+10513	תעשיית מזון קפוא מוכן	Frozen food industry ready
+10514	פרקטים	Parquets
+10515	קבלני ריצוף	Flooring contractors
+10516	שטיחים	Rugs
+10516	שטיחים	Rugs
+10518	שיווק ישיר	direct marketing
+10519	שירותי ייעוץ	consulting services
+10520	שירותי מלאכה לבית	Home Craft Services
+10521	שירותי רכב	Automotive Services
+10522	מוסכי פחחות וצביעת רכב	Bins and Car Determination
+10523	מוסכי פחחות וצביעת רכב-מוסך מורשה או מומחה	Tinted garages and a licensed vehicle-garage or expert
+10524	מוסכי פחחות וצביעת רכב-מוסך כללי	Tin Garages and General Vehicle Determination
+10521	שירותי רכב	Automotive Services
+10526	מינהל ציבורי כללי	General public administration
+10527	פיקוח על מתן שירותי בריאות, חינוך, תרבות ושירותים חברתיים אחרים, פרט ל	Supervision for providing health, education, culture and other social services, except
+10528	מינהל ציבורי לנמ"א	Public Administration for the NMA
+10529	ניהול ענייני החוץ	Foreign Affairs Management
+10530	פעילויות צבא והגנה	Army and Protection Activities
+10531	שמירה על הסדר הציבורי ועל ביטחון הציבור	Maintaining public order and public security
+10532	שירותים ממשלתיים	Government Services
+10533	שלטים	Signs
+10534	שמאים	Appraisers
+10535	שמאי ביטוח	Insurance Appraiser
+10536	בתי חולים ממשלתים	Government Hospitals
+10537	פסיכולוגים	Psychologists
+10538	רופאים	Doctors
+10539	שרותי אמבולנס	Ambulance services
+10540	מכשירי כתיבה וציוד משרדי	Writing and Office Equipment
+10541	תחנות דלק	gas stations
+10542	תיווך	Mediation
+10543	תיירות למרפא	Tourism to Medicine
+10544	תכשיטים ושעונים	Jewelry and watches
+10545	תכשיטים ושעונים-חנויות יוקרתיות מאוד	Very prestigious jewelry and watches
+10546	תכשיטים ושעונים-חנויות יוקרתיות	Luxury jewelry and watches
+10547	תכשיטים ושעונים-חנויות איכות טובה	Jewelry and watches-good quality stores
+10548	תכשיטים ושעונים-חנויות בינוניות	Jewelry jewelry and watches
+10549	תכשיטים ושעונים-חנויות קטנות	Jewelry jewelry and watches
+10544	תכשיטים ושעונים	Jewelry and watches
+10551	יוצקים בענף התכשיטים	Pour in the jewelry industry
+10552	תמרוקיות	Cosmetics
+10553	נופש ותיור	Vacation and tour
+10554	סוכני נסיעות	Travel Agents
+10555	כנסים	Conferences
+10056	תערוכות	Exhibitions
+10557	תקליטים	Records
+10558	ציוד טלפוני	Telephone equipment
+10559	תקשורת	communication
+10560	טלויזיה בכבלים	Cable TV
+10561	עיתונות	journalism
+10562	תרומות	Donations
+10563	אלומניום	Aluminum
+10564	אלומניום-ייצור והתקנה	Aluminum-production and installation
+10565	תריסים	Shutters

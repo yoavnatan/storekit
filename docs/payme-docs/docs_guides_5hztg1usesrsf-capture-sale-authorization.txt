@@ -1,0 +1,34 @@
+# https://payme.stoplight.io/docs/guides/5hztg1usesrsf-capture-sale-authorization
+
+Capture Sale (Authorization)
+
+Also known as “Pre-Authorization”. The requested amount gets reserved (blocked) on the credit card of the buyer for up to 168 hours. A following Capture request will trigger the actual settlement of the funds. Please note that attempting to Capture after the allowed period of time (168 hours) will result in an error.
+
+Importante Notes
+
+Authorization can be fully executed or partially executed only once.
+
+In order to authorize a payment, the sale should be generated with the sale_type="authorize" parameter, and the returned IFRAME displayed to the buyer for credit card information filling.
+
+ATTRIBUTE	DESCRIPTION
+sale_type	= authorize, creates a new sale as authorization.
+The authorization is reserved for up to 168 hours
+payme_sale_id	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Our unique sale ID
+sale_price	10000 Capturing sale final price. It can be lower or equal to the original price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+installments	1 (required, number) - Amount of installments for the sale.
+Process Flow
+Create a sale with generate-sale according to the special attributes in the table above.
+Once the sale is created, you will get a sale_url for the payment page and a unique payme_sale_code.
+After the buyer insert the payment details and pay for the sale, you will receive a callback to the dedicated callback URL you entered in the generate-sale request.
+To execute the sale, use the capture-sale request, with the amount you charge.
+
+If you want to cancele the authorization, you need to void the sale using refund-sale.
+
+Payment Capabilities
+
+You can find all the payment capabilities here.
+
+Capture Sale (Authorization)
+Importante Notes
+Process Flow
+Payment Capabilities

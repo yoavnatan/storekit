@@ -1,0 +1,157 @@
+# https://payme.stoplight.io/docs/payments/7385649559e6d-upload-seller-files
+
+Upload Seller Files
+POST
+https://sandbox.payme.io/api/upload-seller-files
+Overview
+
+This endpoint is used to upload files of a seller.
+
+You can find here the file types you can upload.
+
+Uploading files can be done using one or both of the following formats:
+
+URL of the file
+ATTRIBUTE	DESCRIPTION
+name	social_id.pdf File name with extension
+type	1 The document type code
+url	https://www.mysite.com/files/social_id.pdf The URL of the file
+mime_type	application/pdf The mime type of the file
+base64 encoded file
+ATTRIBUTE	DESCRIPTION
+name	social_id.pdf File name with extension
+type	1 The document type code
+base64	The base64 encoded file
+mime_type	application/pdf The mime type of the file
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+Your private key provided by us for authentication
+
+Example:
+XXXXXXXX
+seller_payme_id
+string
+required
+
+Our unique seller ID
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+seller_files
+array[object]
+required
+
+Array of files according to the format described below
+
+name
+string
+required
+
+File name with extension. Allowed file extensions: pdf, jpg, jpeg, png, bmp, tiff, doc, docx.
+
+Example:
+jpg
+type
+number
+required
+
+You can find here the file types you can upload.
+
+Example:
+1
+url
+string
+
+File URL
+
+Example:
+https://example.com/file2
+base64
+string
+
+The base64 encoded file
+
+Example:
+iVBORw0KGgoAAAANSUhEUgAABQsAAAFTCAYAAACeUVpKAAAABHNCSVQICAgIfAhkiAAAIABJREFUeJzs3Xd8FVX
+mime_type
+string
+required
+
+The mime type of the file. Most common mime types are supported, such as application/pdf, application/msword, image/png, image/jpg, image/jpeg, image/tiff, jfif.
+
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+number
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+Body
+1
+{
+2
+  "payme_client_key": "XXXXXXXX",
+3
+  "seller_payme_id": "XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+4
+  "seller_files": [
+5
+    {
+6
+      "name": "document",
+7
+      "type": 0,
+8
+      "url": "string",
+9
+      "mime_type": "string"
+10
+    }
+11
+  ]
+12
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/upload-seller-files \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "XXXXXXXX",
+  "seller_payme_id": "XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "seller_files": [
+    {
+      "name": "document",
+      "type": 0,
+      "url": "string",
+      "mime_type": "string"
+    }
+  ]
+}'
+Response Example
+1
+{
+2
+  "status_code": 0
+3
+}

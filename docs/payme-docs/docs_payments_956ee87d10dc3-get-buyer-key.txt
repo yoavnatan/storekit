@@ -1,0 +1,116 @@
+# https://payme.stoplight.io/docs/payments/956ee87d10dc3-get-buyer-key
+
+Get Buyer Key
+POST
+https://sandbox.payme.io/api/get-buyer-key
+Overview
+
+This API endpoint will allow you to get the buyer-key created and used to pay for a certain payment request in our system.
+
+Use Case for Israeli Direct Debit
+
+Once a new authorization request is created and the buyer is approved, a new buyer key is generated behind the scenes and can be obtained using this API endpoint.
+
+Request
+Body
+application/json
+application/json
+payme_sale_id
+string
+required
+
+Our unique sale ID.
+
+Example:
+SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_payme_id
+string
+required
+
+Our unique seller ID.
+
+Example:
+MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+Responses
+200
+600
+
+OK
+
+Body
+application/json
+application/json
+payme_sale_id
+string
+
+Our unique sale ID.
+
+Example:
+SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+buyer_key
+string
+
+Buyer's unique token.
+
+Example:
+BUYER154-XXXXXXXX-XXXXXXXX-XXXXXXXX
+buyer_card_mask
+string
+
+Buyer's card mask.
+
+Example:
+411111******1111
+buyer_card_expiry
+string
+
+Buyer's card exp (MMYY).
+
+Example:
+0324
+buyer_card_brand
+string
+
+Buyer's card brand.
+
+Example:
+AMEX
+status_code
+null
+Body
+1
+{
+2
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-buyer-key \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+}'
+Response Example
+1
+{
+2
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "buyer_key": "BUYER154-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+4
+  "buyer_card_mask": "411111******1111",
+5
+  "buyer_card_expiry": "0324",
+6
+  "buyer_card_brand": "AMEX",
+7
+  "status_code": null
+8
+}

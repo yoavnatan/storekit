@@ -1,0 +1,41 @@
+# https://payme.stoplight.io/docs/guides/weyrhayg8zs8n-pre-fill-payment-page-iframe
+
+Pre-Fill payment page (IFRAME)
+
+You can pass your buyer's details to our payment page, to pre-fill the form. Simply concatenate the optional parameters to the end of the received sale_url. These are the supported fields:
+
+PARAMETER	DESCRIPTION
+first_name	Card holder's first name
+last_name	Card holder's last name
+phone	Card holder's phone number
+email	Card holder's email address
+social_id	Card holder's social ID - used for cards issued in Israel
+zip_code	Card holder's zip code - used for cards issued in USA, Canada and United Kingdom
+
+Here is an example of a pre-filled payment page:
+
+urlWithParameters = sale_url + "?first_name=First&last_name=Last&phone=0501234567&email=test@example.com
+
+Note 1:
+
+For security reasons, credit card information related fields cannot be pre-filled.
+
+Note 2:
+
+Passed values which will be found invalid, won't be displayed on the form.
+
+Success Redirect (IFRAME)
+
+Once the sale is paid successfully, the buyer will be redirected to the provided sale_return_url, with the sale details as GET parameters.
+
+Example redirect URL: https://www.example.com/payment/success?payme_status=success&payme_signature=75e99dbcb25cdfbe1c62f0b9376f4144&payme_sale_id=XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX&payme_transaction_id=XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX&price=10000&currency=USD&transaction_id=12345&is_token_sale=0
+
+PARAMETER	DESCRIPTION
+payme_status	success Status of the request (success, error)
+payme_signature	75e99dbcb25cdfbe1c62f0b9376f4144 MD5 Signature
+payme_sale_id	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Our unique sale ID
+payme_transaction_id	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Our unique transaction ID
+price	10000 Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+currency	USD Sale currency. 3-letter ISO 4217 name
+transaction_id	12345 Merchant's unique sale ID for correlation with us
+is_token_sale	0

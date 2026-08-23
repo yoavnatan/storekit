@@ -1,0 +1,248 @@
+# https://docs.payme.io/docs/payments/5u880m8f2q7ii-refund-sale
+
+Refund Sale
+POST
+https://sandbox.payme.io/api/refund-sale
+Overview
+
+Refund request enable you to reimburse a charge that was previously generated but remains unreimbursed. The funds will be returned to the initial payment method used for the charge.
+
+Callback
+
+Once the sale is refunded successfully, we will update the marketplace with the sale details with a POST request of type x-www-form-urlencoded to the marketplace Callback URL.
+
+Note:
+
+You can refund multiple times per sale as long as you do not exceed the total amount of the sale. If you do not send the `sale_refund_amount' parameter, the sale will be fully refunded.
+
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+PayMe Partner Key.
+
+Example:
+XXXXXXXX
+seller_payme_id
+string
+required
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+payme_sale_id
+string
+required
+
+Our unique sale ID.
+
+Example:
+SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sale_refund_amount
+integer
+
+Used only for partial refunds, for a full refund exclude this attribute.
+For example:
+if the amount is 50.75 (max 2 decimal points) the value that recieved is 5075.
+Note that the minimum value is 500.
+
+Example:
+500
+language
+string
+
+Changes the error message language to English.
+
+Example:
+he
+Responses
+200
+
+OK
+
+Body
+application/json
+application/xml
+multipart/form-data
+application/json
+status_code
+integer
+
+Status of the request (0 - success, 1 - error).
+
+Example:
+0
+status_error_code
+integer
+
+Our unique error code.
+
+Example:
+500
+payme_status
+string
+
+Status of the request (success, error)
+
+Example:
+success
+refunded_from_creditcard
+boolean
+
+Return true if seller has not enough money for refund and we complete the refund from the seller credit card.
+
+sale_invoice_number
+integer or null
+
+Sale invoice Number.
+
+Example:
+123456
+sale_invoice_url
+string or null
+
+Sale invoice URL, if the seller has enabled the invoices module in his account panel.
+
+Example:
+https://www.example.com/XXXXXX.pdf
+sale_refund_buffer
+integer
+
+The refund buffer of this sale.
+
+Example:
+8000
+sale_status
+string
+
+Refund status.
+
+Example:
+refunded
+payme_transaction_total
+integer
+
+The refund amount that the buyer will get.
+
+Example:
+8000
+payme_transaction_total_aft_deduction
+integer
+
+The amount that the seller will be charge on.
+
+Example:
+8000
+payme_transaction_id
+string
+
+The transaction unique id.
+
+Example:
+TRANDEMO-XXXXXX-XXXXXX-XXXXXX
+payme_transaction_card_brand
+string
+
+Card brand.
+
+Example:
+XXXXXXXX
+payme_transaction_auth_number
+string
+
+Authorization number from credit company.
+
+Example:
+123456
+payme_transaction_voucher
+string
+
+Transaction voucher
+
+Example:
+123456
+payme_signature
+string
+
+MD5 Signature
+
+Example:
+75e99dbcb25cdfbe1c62f0b9376f4144
+payme_transaction_acquirer
+string
+
+Transaction acquirer
+
+Example:
+Isracard
+Body
+1
+{
+2
+  "payme_client_key": "XXXXXXXX",
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+4
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+5
+  "sale_refund_amount": 500,
+6
+  "language": "he"
+7
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/refund-sale \
+  --header 'Accept: application/json, application/xml, multipart/form-data' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "XXXXXXXX",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "sale_refund_amount": 500,
+  "language": "he"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "status_error_code": 500,
+4
+  "payme_status": "success",
+5
+  "refunded_from_creditcard": true,
+6
+  "sale_invoice_number": 123456,
+7
+  "sale_invoice_url": "https://www.example.com/XXXXXX.pdf",
+8
+  "sale_refund_buffer": 8000,
+9
+  "sale_status": "refunded",
+10
+  "payme_transaction_total": 8000,
+11
+  "payme_transaction_total_aft_deduction": 8000,
+12
+  "payme_transaction_id": "TRANDEMO-XXXXXX-XXXXXX-XXXXXX",
+13
+  "payme_transaction_card_brand": "XXXXXXXX",
+14
+  "payme_transaction_auth_number": "123456",
+15
+  "payme_transaction_voucher": "123456",
+16
+  "payme_signature": "75e99dbcb25cdfbe1c62f0b9376f4144 ",
+17
+  "payme_transaction_acquirer": "Isracard"
+18
+}

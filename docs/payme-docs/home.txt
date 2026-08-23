@@ -1,0 +1,35 @@
+# https://payme.stoplight.io/
+
+Docs & API Reference
+🌺 Welcome
+
+In our documentation you will be able to learn about our products and how to integrate to our APIs.
+
+PAYMENTS	B2B PAYMENTS	BOOKKEEPING & INVOICING	VALUE ADDED SERVICES	RESROURCES
+Online Payments	Smart Contracts	Creating Documents	3DSecure	Getting Started
+Marketplace Payments	Closed Loop Payments	Retrieving Documents	Tokenization Service	Help Center
+Recurring Payments				Reporting API & Dashboard
+POS Payments				
+
+You can find two sectionsin our docs:
+
+Guides - Product and integration overview
+API Reference - Technical integration information
+
+Those sections provide you with full package on how you integrate our proudcts.
+
+We strognly recommend you to go over the guides before completing the technical integration.
+
+Have a particular problem you're looking to solve? Explore these use cases. Learn more
+
+🏁 Getting Started
+
+Learn the basics - Explore our solutions either by following the "Getting Started" article or by navigating through the side panel.
+
+💡 FAQ and Help Center
+
+In case of any questions or doubts, be sure to check our help center or contact our support - Click here to our help center.
+
+⚙️ Status Page
+
+Our Status Page is available 24/7, you can now subscribe and receive notifications regarding maintenance, issues or general updates to your inbox.

@@ -1,0 +1,215 @@
+# https://docs.payme.io/docs/payments/f3c308c136c00-generate-new-payment
+
+Generate New Payment
+POST
+https://sandbox.payme.io/api/generate-sale - copy
+Overview
+
+The Israeli Direct Debit alternative payment method works in a two-phase setup:
+
+Setting up the bank authorization
+Completing the payment using the bank authorization <- You are here
+Generate a new payment using Israeli Direct Debit
+
+In order to setup a new payment using the Israeli Direct Debit alternative payment method, you will need to use our generate-sale endpoint, using a few specific parameters.
+
+sale_type = sale
+sale_payment_method = il-direct-debit
+include a buyer-key parameter as a part of your generate-sale request in order to initiate the payment flow
+Callbacks
+STATUS	DESCRIPTION
+Success	In case the payment was successful, you won't get any callback. Please note that the payment process can take up to 8 days.
+Failure	In case that payment failed, you will get a callback indicates on failure.
+Testing
+
+Information for testing can be found here - Israeli Direct Debit Testing Information.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+The MPL the authorization will be given for
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+sale_price
+string
+required
+
+Must be included, won't be charged as a part of the authorization setup
+
+Example:
+1000
+currency
+string
+required
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+product_name
+string
+required
+
+Use a generic value here (will not affect the authorization setup process)
+
+Example:
+test
+language
+string
+
+The language the page will be presented in
+
+Example:
+he
+sale_type
+any
+required
+
+The sale type. For authorization setup, use token by default
+
+Allowed value:
+sale
+sale_payment_method
+any
+required
+
+The sale payment method. Must be il-direct-debit for the authorization setup process
+
+Allowed value:
+il-direct-debit
+sale_return_url
+string
+
+The URL the user will be redirected to after completing the authorization setup process
+
+Example:
+https://payme.io
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+string
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+sale_url
+string
+
+The URL of the IFRAME secured payment form to display to the buyer
+
+Example:
+https://preprod.paymeservice.com/sale/generate/XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_id
+string
+
+Our unique sale ID
+
+Match pattern:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_code
+integer
+
+Our unique sale code (for display purposes only)
+
+Example:
+12345
+price
+integer
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+10000
+transaction_id
+string
+
+Transaction ID
+
+Example:
+123456
+currency
+string
+Example:
+ILS
+sale_payment_method
+string
+
+The sale payment method. Must be il-direct-debit for the authorization setup process
+
+Example:
+il-direct-debit
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+3
+  "sale_price": "1000",
+4
+  "currency": "ILS",
+5
+  "product_name": "test",
+6
+  "language": "he",
+7
+  "sale_type": "sale",
+8
+  "sale_payment_method": "il-direct-debit",
+9
+  "sale_return_url": "https://payme.io"
+10
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/generate-sale%20-%20copy \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+  "sale_price": "1000",
+  "currency": "ILS",
+  "product_name": "test",
+  "language": "he",
+  "sale_type": "sale",
+  "sale_payment_method": "il-direct-debit",
+  "sale_return_url": "https://payme.io"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "sale_url": "https://sandbox.payme.io/sale/generate/SALETEST-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+4
+  "payme_sale_id": "SALE1687-957072WX-0MEX63QM-GMHDMGNU",
+5
+  "payme_sale_code": 1234567,
+6
+  "price": 1000,
+7
+  "transaction_id": "12345",
+8
+  "currency": "ILS",
+9
+  "sale_payment_method": "il-direct-debit"
+10
+}

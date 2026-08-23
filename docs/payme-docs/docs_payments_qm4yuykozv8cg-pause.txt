@@ -1,0 +1,182 @@
+# https://payme.stoplight.io/docs/payments/qm4yuykozv8cg-pause
+
+Pause
+POST
+https://sandbox.payme.io/api/pause-subscription
+Overview
+
+Relevant only for Direct API Integration
+
+This endpoint is used to pause subscriptions. You can find more information in our guide - How to create a subscription .
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sub_payme_id
+string
+
+PayMe's unique subscription ID
+
+Example:
+SUBDEMO-SUBDEMO-SUBDEMO-SUBDEMO
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+payme_status
+string
+status_error_code
+integer
+seller_payme_id
+string
+seller_id
+null
+sub_payme_id
+string
+sub_payme_code
+integer
+subscription_id
+null
+sub_created
+string
+sub_start_date
+string
+sub_prev_date
+null
+sub_next_date
+string
+sub_status
+integer
+sub_iteration_type
+integer
+sub_currency
+string
+sub_price
+integer
+sub_description
+string
+sub_iterations
+integer
+sub_iterations_completed
+integer
+sub_iterations_skipped
+integer
+sub_iterations_left
+integer
+sub_paid
+boolean
+sub_error_text
+string
+sub_payment_date
+string
+buyer_card_mask
+string
+buyer_card_exp
+string
+buyer_name
+string
+buyer_email
+string
+buyer_phone
+string
+buyer_social_id
+string
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sub_payme_id": "SUBDEMO-SUBDEMO-SUBDEMO-SUBDEMO"
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/pause-subscription \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sub_payme_id": "SUBDEMO-SUBDEMO-SUBDEMO-SUBDEMO"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "payme_status": "string",
+4
+  "status_error_code": 0,
+5
+  "seller_payme_id": "string",
+6
+  "seller_id": null,
+7
+  "sub_payme_id": "string",
+8
+  "sub_payme_code": 0,
+9
+  "subscription_id": null,
+10
+  "sub_created": "string",
+11
+  "sub_start_date": "string",
+12
+  "sub_prev_date": null,
+13
+  "sub_next_date": "string",
+14
+  "sub_status": 0,
+15
+  "sub_iteration_type": 0,
+16
+  "sub_currency": "string",
+17
+  "sub_price": 0,
+18
+  "sub_description": "string",
+19
+  "sub_iterations": 0,
+20
+  "sub_iterations_completed": 0,
+21
+  "sub_iterations_skipped": 0,
+22
+  "sub_iterations_left": 0,
+23
+  "sub_paid": true,
+24
+  "sub_error_text": "string",
+25
+  "sub_payment_date": "string",
+26
+  "buyer_card_mask": "string",
+27
+  "buyer_card_exp": "string",
+28
+  "buyer_name": "string",
+29
+  "buyer_email": "string",
+30
+  "buyer_phone": "string",
+31
+  "buyer_social_id": "string"
+32
+}

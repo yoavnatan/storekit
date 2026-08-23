@@ -1,0 +1,14 @@
+# https://docs.payme.io/docs/payments/n86n0hs7c681o-hosted-fields-jsapi
+
+Hosted Fields - JSAPI
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api
+Production :
+https://live.payme.io/api
+Mock Server:
+https://stoplight.io/mocks/payme/payments/27034259
+
+You can find a guide in the following article - Hosted Fields JSAPI Guide .

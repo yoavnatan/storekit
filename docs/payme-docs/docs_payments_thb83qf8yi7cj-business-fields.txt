@@ -1,0 +1,130 @@
+# https://payme.stoplight.io/docs/payments/thb83qf8yi7cj-business-fields
+
+Business Fields
+GET
+https://sandbox.payme.io/api/business-fields
+Overview
+
+This API endpoint retrieves a list of business fields, allowing users to sort and filter the data based on specific criteria.
+
+Endpoint
+
+GET /api/business-fields
+
+Description
+
+This endpoint provides access to a collection of business fields. It supports sorting by local name in either ascending or descending order.
+
+Request Parameters
+sort_by: Specifies the field by which the results should be sorted. In this case, it can be set to name_local for sorting by the local name of the business fields.
+sort_direction: Determines the order of sorting. It accepts two values:
+asc for ascending order.
+desc for descending order.
+Headers
+PayMe-Partner-Key: This should be set to payme to authenticate the request.
+Query Example
+GET /api/business-fields?sort_by=name_local&sort_direction=desc HTTP/1.1
+Host: test11.payme.io
+PayMe-Partner-Key: payme
+Response Structure
+status_code: Indicates the status of the request. A value of 0 typically means success.
+page: The current page number of the results.
+items_per_page: The number of items per page.
+items_total: The total number of items available.
+language: The language of the returned data, indicated here as "he" (Hebrew).
+items: A collection of business fields, where each field is represented as an object with the following properties:
+code: A unique identifier for the business field.
+name_intl: The international name of the business field.
+name_local: The local name of the business field.
+Response Example
+{
+    "status_code": 0,
+    "page": 1,
+    "items_per_page": 245,
+    "items_total": 245,
+    "language": "he",
+    "items": {
+        "244": {
+            "code": 10565,
+            "name_intl": "Shutters",
+            "name_local": "תריסים"
+        }
+    }
+}
+Error Handling
+
+In case of an error, the response will include a non-zero status_code and may include additional fields describing the error.
+
+Notes
+Ensure that the PayMe-Partner-Key header is included in each request for successful authentication.
+The sort and filter capabilities of this endpoint can help in organizing and retrieving specific business field information efficiently.
+Request
+Body
+application/json
+application/json
+GET /api/business-fields?sort_by=name_local&sort_direction=desc HTTP/1.1
+Host: test11.payme.io
+PayMe-Partner-Key: payme
+Responses
+default
+
+Default
+
+Body
+application/json
+application/json
+responses
+/
+default
+status_code
+integer
+page
+integer
+items_per_page
+integer
+items_total
+integer
+language
+string
+items
+object
+244
+object
+Body
+1
+{}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/business-fields \
+  --header 'Accept: application/json'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "page": 0,
+4
+  "items_per_page": 0,
+5
+  "items_total": 0,
+6
+  "language": "string",
+7
+  "items": {
+8
+    "244": {
+9
+      "code": 0,
+10
+      "name_intl": "string",
+11
+      "name_local": "string"
+12
+    }
+13
+  }
+14
+}

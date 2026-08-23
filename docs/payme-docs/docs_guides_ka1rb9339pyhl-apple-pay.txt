@@ -1,0 +1,1078 @@
+# https://payme.stoplight.io/docs/guides/ka1rb9339pyhl-apple-pay
+
+Apple Pay
+
+The payment method is limited to be used in the following devices manufactured by Apple:
+
+IOS DEVICES	MAC OS DEVICES
+Safari browser , on an Apple Pay-enabled iOS device	Safari browser on a Macbook Pro with Touch ID or a Mac model 2012 or later paired to a compatible iOS/Apple Watch with handoff enabled.
+
+In order to be able to accept Apple Pay payments on your website, first contact PayMe Partners partners@payme.io to start integration process. Then you will need to complete the following steps:
+
+Adding the file to your website, under the proper folder (Explained in Step 1).
+Signing up your website to Apple Pay via /api/vas-enable request.
+Logging in to a Testing iCloud account. (The account credentials will be provided by PayMe)
+Use our API to generate a new payment using Apple Pay.
+Test your integration (Explained in step 5)
+Devices supported for Sandbox Testing
+
+You can use the following devices for testing in sandbox:
+
+iPhone 6 or later
+iPad mini 3 or later
+iPad Air 2
+iPad Pro
+Apple Watch
+
+Please note that you can not use Mac device for testing.
+
+Step 1: Domain Verification
+
+The first step in the process of accepting Apple Pay on your webiste will be to register your domains. You will need to register both top-level domains and sub-domains serperately.
+
+Top-level domain example: www.payme.io
+
+Sub-domain example: www.marketplace.payme.io
+
+Hosting the Apple Pay's domain verification file on your server
+
+Host the file at /.well-known/apple-developer-merchantid-domain-association on your domain(s) that will display the Apple Pay button.
+
+Apple Pay can be tested in Production environment only.
+
+File to Host
+
+Create a text file with the following text, then add it to the .well-known folder under the name apple-developer-merchantid-domain-association.
+Make sure the folder is public, save the file without .txt ending.
+
+7B227073704964223A2230384641324636393342433744413942333336423031373431303038333532374133413243354339343039354142463539333535363042443944434639333032222C2276657273696F6E223A312C22637265617465644F6E223A313632383030303737393730352C227369676E6174757265223A223330383030363039326138363438383666373064303130373032613038303330383030323031303133313066333030643036303936303836343830313635303330343032303130353030333038303036303932613836343838366637306430313037303130303030613038303330383230336533333038323033383861303033303230313032303230383463333034313439353139643534333633303061303630383261383634386365336430343033303233303761333132653330326330363033353530343033306332353431373037303663363532303431373037303663363936333631373436393666366532303439366537343635363737323631373436393666366532303433343132303264323034373333333132363330323430363033353530343062306331643431373037303663363532303433363537323734363936363639363336313734363936663665323034313735373436383666373236393734373933313133333031313036303335353034306130633061343137303730366336353230343936653633326533313062333030393036303335353034303631333032353535333330316531373064333133393330333533313338333033313333333233353337356131373064333233343330333533313336333033313333333233353337356133303566333132353330323330363033353530343033306331633635363336333264373336643730326436323732366636623635373232643733363936373665356635353433333432643530353234663434333131343330313230363033353530343062306330623639346635333230353337393733373436353664373333313133333031313036303335353034306130633061343137303730366336353230343936653633326533313062333030393036303335353034303631333032353535333330353933303133303630373261383634386365336430323031303630383261383634386365336430333031303730333432303030346332313537376564656264366337623232313866363864643730393061313231386463376230626436663263323833643834363039356439346166346135343131623833343230656438313166333430376538333333316631633534633366376562333232306436626164356434656666343932383938393365376330663133613338323032313133303832303230643330306330363033353531643133303130316666303430323330303033303166303630333535316432333034313833303136383031343233663234396334346639336534656632376536633466363238366333666132626266643265346233303435303630383262303630313035303530373031303130343339333033373330333530363038326230363031303530353037333030313836323936383734373437303361326632663666363337333730326536313730373036633635326536333666366432663666363337333730333033343264363137303730366336353631363936333631333333303332333038323031316430363033353531643230303438323031313433303832303131303330383230313063303630393261383634383836663736333634303530313330383166653330383163333036303832623036303130353035303730323032333038316236306338316233353236353663363936313665363336353230366636653230373436383639373332303633363537323734363936363639363336313734363532303632373932303631366537393230373036313732373437393230363137333733373536643635373332303631363336333635373037343631366536333635323036663636323037343638363532303734363836353665323036313730373036633639363336313632366336353230373337343631366536343631373236343230373436353732366437333230363136653634323036333666366536343639373436393666366537333230366636363230373537333635326332303633363537323734363936363639363336313734363532303730366636633639363337393230363136653634323036333635373237343639363636393633363137343639366636653230373037323631363337343639363336353230373337343631373436353664363536653734373332653330333630363038326230363031303530353037303230313136326136383734373437303361326632663737373737373265363137303730366336353265363336663664326636333635373237343639363636393633363137343635363137353734363836663732363937343739326633303334303630333535316431663034326433303262333032396130323761303235383632333638373437343730336132663266363337323663326536313730373036633635326536333666366432663631373037303663363536313639363336313333326536333732366333303164303630333535316430653034313630343134393435376462366664353734383138363839383937363266376535373835303765373962353832343330306530363033353531643066303130316666303430343033303230373830333030663036303932613836343838366637363336343036316430343032303530303330306130363038326138363438636533643034303330323033343930303330343630323231303062653039353731666537316531653733356235356535616661636234633732666562343435663330313835323232633732353130303262363165626436663535303232313030643138623335306135646436646436656231373436303335623131656232636538376366613365366166366362643833383038393064633832636464616136333330383230326565333038323032373561303033303230313032303230383439366432666266336139386461393733303061303630383261383634386365336430343033303233303637333131623330313930363033353530343033306331323431373037303663363532303532366636663734323034333431323032643230343733333331323633303234303630333535303430623063316434313730373036633635323034333635373237343639363636393633363137343639366636653230343137353734363836663732363937343739333131333330313130363033353530343061306330613431373037303663363532303439366536333265333130623330303930363033353530343036313330323535353333303165313730643331333433303335333033363332333333343336333333303561313730643332333933303335333033363332333333343336333333303561333037613331326533303263303630333535303430333063323534313730373036633635323034313730373036633639363336313734363936663665323034393665373436353637373236313734363936663665323034333431323032643230343733333331323633303234303630333535303430623063316434313730373036633635323034333635373237343639363636393633363137343639366636653230343137353734363836663732363937343739333131333330313130363033353530343061306330613431373037303663363532303439366536333265333130623330303930363033353530343036313330323535353333303539333031333036303732613836343863653364303230313036303832613836343863653364303330313037303334323030303466303137313138343139643736343835643531613565323538313037373665383830613265666465376261653464653038646663346239336531333335366435363635623335616532326430393737363064323234653762626130386664373631376365383863623736626236363730626563386538323938346666353434356133383166373330383166343330343630363038326230363031303530353037303130313034336133303338333033363036303832623036303130353035303733303031383632613638373437343730336132663266366636333733373032653631373037303663363532653633366636643266366636333733373033303334326436313730373036633635373236663666373436333631363733333330316430363033353531643065303431363034313432336632343963343466393365346566323765366334663632383663336661326262666432653462333030663036303335353164313330313031666630343035333030333031303166663330316630363033353531643233303431383330313638303134626262306465613135383333383839616134386139396465626562646562616664616362323461623330333730363033353531643166303433303330326533303263613032616130323838363236363837343734373033613266326636333732366332653631373037303663363532653633366636643266363137303730366336353732366636663734363336313637333332653633373236633330306530363033353531643066303130316666303430343033303230313036333031303036306132613836343838366637363336343036303230653034303230353030333030613036303832613836343863653364303430333032303336373030333036343032333033616366373238333531313639396231383666623335633335366361363262666634313765646439306637353464613238656265663139633831356534326237383966383938663739623539396639386435343130643866396465396332666530323330333232646435343432316230613330353737366335646633333833623930363766643137376332633231366439363466633637323639383231323666353466383761376431623939636239623039383932313631303639393066303939323164303030303331383230313863333038323031383830323031303133303831383633303761333132653330326330363033353530343033306332353431373037303663363532303431373037303663363936333631373436393666366532303439366537343635363737323631373436393666366532303433343132303264323034373333333132363330323430363033353530343062306331643431373037303663363532303433363537323734363936363639363336313734363936663665323034313735373436383666373236393734373933313133333031313036303335353034306130633061343137303730366336353230343936653633326533313062333030393036303335353034303631333032353535333032303834633330343134393531396435343336333030643036303936303836343830313635303330343032303130353030613038313935333031383036303932613836343838366637306430313039303333313062303630393261383634383836663730643031303730313330316330363039326138363438383666373064303130393035333130663137306433323331333033383330333333313334333233363331333935613330326130363039326138363438383666373064303130393334333131643330316233303064303630393630383634383031363530333034303230313035303061313061303630383261383634386365336430343033303233303266303630393261383634383836663730643031303930343331323230343230343532666263656430373962393232386666393763353931643362326432323364633239376139383561376338376235613337393836653438653736626133373330306130363038326138363438636533643034303330323034343733303435303232303165336531373939663330343731633339366166626635316463346637643035333239303139393734326163373836383634353133646462383464343835383030323231303065656463653563356138313661623366666263323664613830623637383064646261313933313538323261393839656330396264306665386136623766326134303030303030303030303030227D
+
+When completing your testing process, you will need to exchange the sandbox file with the production file.
+
+Step 2: Enabling the Apple Pay Payment Method
+
+By using the VAS-Enable API request, you will need to register your websites to PayMe's system.
+
+{
+  "payme_client_key": "payme_partner_key",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+  "vas_data": {
+      "websites": [
+      "payme.io", "marketplace.payme.io"
+      ]
+  },
+  "language": "en"
+}
+
+A successful response will be 200 and includes a payload in the form of:
+
+{
+    "status_code": 0,
+    "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+    "vas_payme_id": "VASLDEMO-VASLDEMO-VASLDEMO-1234567",
+    "vas_description": "Payments Account",
+    "vas_type": "AlternativePaymentMethod",
+    "vas_api_key": "",
+    "vas_is_active": true,
+    "vas_payer_type": 2,
+    "vas_price_currency": "ILS",
+    "vas_price_setup_fixed": 0,
+    "vas_price_periodic_fixed": 0,
+    "vas_price_periodic_variable": "0.00",
+    "vas_price_usage_fixed": 0,
+    "vas_price_usage_variable": "0.00",
+    "vas_market_fee": null,
+    "vas_period": 1,
+    "vas_data": {
+        "websites": [
+            "test5.paymeservice.com"
+        ]
+    }
+}
+
+A failed response will be 500 and includes a payload in the form of:
+
+{
+    "status_code": 1,
+    "status_error_details": "The service was not activated",
+    "status_additional_info": null,
+    "status_error_code": 720
+}
+Step 3: Add Apple iCloud account and Testing Cards
+
+Testing iCloud account will be provided by PayMe.
+
+You can find credit cards for testing purposes here.
+
+Step 4: Add and Present the Apple Pay Button
+
+Before you can start Apple Payment you have to create an Apple Sale, which will be paid by your customer.
+
+Apple sale - You will need to generate a new sale using the API generate-sale method presented in our documentation here and briefly below.
+
+Request
+
+raw
+json
+POST https://<env>.payme.io/api/generate-sale
+Content-Type: application/json
+PayMe-Public-Key: 9ec*****-****-****-****-*********881
+
+{
+  "seller_payme_id":"MPL14950-********-********-HMWATSBQ",
+  "sale_price":"1000",
+  "currency":"ILS",
+  "product_name": "Test",
+  "installments":"1",
+  "sale_payment_method": "apple-pay",
+  "language": "en"
+}
+
+Response
+
+{
+    "status_code": 0,
+    "sale_url": "https://<env>.payme.io/sale/generate/SALE1645-********-********-F2DUVUQI",
+    "payme_sale_id": "SALE1645-********-********-F2DUVUQI",
+    "payme_sale_code": 1027305,
+    "price": 1000,
+    "transaction_id": "",
+    "currency": "ILS",
+    "sale_payment_method": "apple-pay"
+}
+
+After a successful sale creation, please save the payme_sale_id value from the response you receive for future usage.
+
+Add libraries
+
+For security reasons Apple allows to use Apple Pay only with their hosted library. It means you should add it before PayMe integration library.
+
+1
+<!doctype html>
+2
+<html lang="en">
+3
+<head>
+4
+  <meta charset="UTF-8">
+5
+  
+6
+  <!-- Add official Apple Pay JS API -->
+7
+  <script src="https://applepay.cdn-apple.com/jsapi/v1/apple-pay-sdk.js"></script>
+8
+  <!-- Add PayMe JS API -->
+9
+  <script src="https://cdn.paymeservice.com/hf/v1/hostedfields.js"></script>
+10
+  
+11
+</head>
+12
+<body>
+13
+...
+14
+</body>
+
+This will allow you to use PayMe global object later
+
+Check if the client's system supports Apple Pay
+
+Rule of thumb
+
+You must check Apple Payment availability for your client!
+
+In order check if a payment thorough Apple Pay is available for your client we provide two helper methods:
+
+PayMe.isApplePayAvailable()
+PayMe.isSupportsApplePayVersion()
+
+Also you can check what version of Apple Payment API you are using in PayMe.applePayApiVersion
+
+If the client's environment has no support for Apple Payments, please do not show Apple Pay button (described in the following step).
+
+Integrator must check availability before start
+1
+if(PayMe.isApplePayAvailable()){
+2
+  console.log('ApplePay available');
+3
+} else {
+4
+  console.log('ApplePay unavailable');
+5
+}
+6
+
+7
+if(PayMe.isSupportsApplePayVersion()) {
+8
+  console.log('ApplePay version ' + PayMe.applePayApiVersion + ' supported');
+9
+} else {
+10
+  console.log('This ApplePay version is not supported');
+11
+}
+“Fast and Simple”: Pay with Apple button
+
+Please follow the Buttons and Marks article in the Apple official website.
+
+1
+<!doctype html>
+2
+<html lang="en">
+3
+<head>
+4
+  <meta charset="UTF-8">
+5
+
+6
+  <!-- Add official Apple Pay JS API -->
+7
+  <script src="https://applepay.cdn-apple.com/jsapi/v1/apple-pay-sdk.js"></script>
+8
+  <!-- Add PayMe JS API -->
+9
+  <script src="https://cdn.paymeservice.com/hf/v1/hostedfields.js"></script>
+10
+
+11
+</head>
+12
+<body>
+13
+    <!-- Pay with Apple button STARTS HERE -->
+14
+    <apple-pay-button
+15
+      id="pay-with-apple-pay"
+16
+      buttonstyle="black"
+17
+      type="buy"
+18
+      locale="he-IL"></apple-pay-button>
+19
+    <!-- Pay with Apple button ENDS HERE -->
+20
+
+21
+    <!-- My Integration -->
+22
+    <script>
+23
+      var isApplePayAvailable;
+24
+    
+25
+      if(PayMe.isApplePayAvailable() && PayMe.isSupportsApplePayVersion()) {
+26
+        isApplePayAvailable = true;
+27
+      } else {
+28
+        isApplePayAvailable = false;
+29
+      }
+30
+      
+31
+      const applePayButton = document.getElementById('pay-with-apple-pay');
+32
+      if(!isApplePayAvailable) {
+33
+        applePayButton.classList.add('hidden');
+34
+      }
+35
+    </script>
+36
+</body>
+
+Please pay attention on the id and locale attribute. You will need id or class or other CSS selector to tell integration library how to find Pay Button. The locale is a custom attribute, one of many which let you customize Apple Pay Button appearance. If your use case is not meet this type of implementation you can provide any CSS selector (even for non existing DOM element) and follow “Manual”: Initiate Payment manually approach
+
+Initialization
+
+After implementing the certificate file, update PayMe Partners partners@payme.io to verify your domain was approved by apple, and to provide your Merchant API key.
+
+...
+// This is the Merchant API key (Test API key in this case)
+var apiKey = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+...
+
+Second, you must obtain integration instance for the merchant
+
+1
+var apiKey = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+2
+
+3
+// There is optional configuration object with testMode: true
+4
+// because we are using the API key from the test server
+5
+PayMe.create(apiKey, { testMode: true })
+6
+    .then(function (instance) {
+7
+    
+8
+      // Here we can work with successfully initialized
+9
+      // integration instance - Integration Manager
+10
+       ...
+11
+    })
+12
+    .catch(function(error) {
+13
+      // Here you can handle instantiation error
+14
+      ...
+15
+    });
+16
+    
+17
+...
+Initialization settings
+PROPERTY	DEFAULT VALUE	AVAILABLE VALUES	DESCRIPTION
+testMode	false	true / false	Test mode - used to control in which environment payment will be processed
+
+Next step - to initialize integration type and get corresponding manager
+
+Note
+
+Integration Manager instance also can be used for Hosted Fields integration
+
+ApplePay sale
+
+Using initialized integration manager you need to use earlier created Sale to create Apple Sale. Just call .appleSale(...) method and get back AppleSale. We will use it to initiate Payment Flow and be notified on progress.
+
+1
+<html lang="en">
+2
+    <head>
+3
+        <!-- Include Client API Library into your page -->
+4
+        ...
+5
+    </head>
+6
+    <body>
+7
+        <!-- Pay with Apple button STARTS HERE -->
+8
+        ...
+9
+        <!-- Pay with Apple button ENDS HERE -->
+10
+
+11
+        <!-- My Integration -->
+12
+        <script>
+13
+            
+14
+            var apiKey = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'; // Merchant API key from Settings page in the dashboard
+15
+            
+16
+            PayMe.create(apiKey, { testMode: true }).then(function (instance) {
+17
+           
+18
+              var sale = instance.appleSale({
+19
+                
+20
+                // Optional. In case you want to debug Apple Sale internal transitions
+21
+                debugFn: function (message){
+22
+                  console.log(message);
+23
+                },
+24
+                
+25
+                
+26
+                merchantId: , // Will be provided by your PayMe integration manager
+27
+                saleGuid: <payme_sale_id> // See Prerequisites. Create a Sale
+28
+              });
+29
+              
+30
+              ...
+31
+              
+32
+            }).catch(function(error) {
+33
+                // Instantiation error occurs 
+34
+            })
+35
+        
+36
+        </script>
+37
+    </body>
+38
+</html>
+Allow user to Start payment
+
+Because of security reasons you can't just start Apple Payment flow, only user action (click or tap Apple Pay Button) can trigger this flow. Because of that you must initiate this for your user with .letsRock(...) method with Apple Pay Button selector. Or you should check “Manual”: Initiate Payment manually section for additional options.
+
+1
+<html lang="en">
+2
+    <head>
+3
+        <!-- Include Client API Library into your page -->
+4
+        ...
+5
+    </head>
+6
+    <body>
+7
+        <!-- Pay with Apple button STARTS HERE -->
+8
+        ...
+9
+        <!-- Pay with Apple button ENDS HERE -->
+10
+
+11
+        <!-- My Integration -->
+12
+        <script>
+13
+            
+14
+            var apiKey = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'; // Merchant API key from Settings page in the dashboard
+15
+            
+16
+            PayMe.create(apiKey, { testMode: true }).then(function(instance) {
+17
+           
+18
+              var saleConfig = {...};
+19
+              var sale = instance.appleSale(saleConfig);
+20
+              
+21
+              sale.letsRock('#pay-with-apple-pay')
+22
+                .then(function(){
+23
+                  console.log('Sale verified and wait for user action');
+24
+                })
+25
+                .catch(function(err) {
+26
+                  console.error('Apple Pay Initialization error'+ err.message);
+27
+                });
+28
+              
+29
+            }).catch(function(error) {
+30
+                // Instantiation error occurs 
+31
+            })
+32
+        
+33
+        </script>
+34
+    </body>
+35
+</html>
+Interaction Facade
+
+Highly likely, you will need to receive information of the status of your payment to build your own user experience, Apple Sale provides this option by defining plain configuration object for .letsRock(...) method.
+
+1
+var config = {
+2
+  
+3
+  // Required
+4
+  payButtonSelector: '#pay-with-apple-pay',
+5
+  
+6
+  // Optional
+7
+  canceled: function(){
+8
+    console.log('AppleSale cancelled');
+9
+  },
+10
+  
+11
+  // Optional
+12
+  validated: function(err) {
+13
+    if(!!err){
+14
+      console.error('AppleSale validation error '+err.message);
+15
+    } else {
+16
+      console.log('AppleSale validated successfully');
+17
+    }
+18
+  },
+19
+  
+20
+  // Optional
+21
+  paymentCompleted: function (err, sale) {
+22
+    if(!!err){
+23
+      console.error('AppleSale failed ' + err.message);
+24
+    } else {
+25
+      console.log('Sale Payed' + JSON.stringify(sale, null, 2));
+26
+    }
+27
+  },
+28
+};
+Interaction Facade
+PROPERTY	DEFAULT VALUE	AVAILABLE VALUES	DESCRIPTION
+payButtonSelector	none	any valid CSS selector	Selector to find Apple Pay Button on the page
+canceled	() => {}	callback function	This function will be called on Apple Sale cancellation
+validated	() => {}	callback function	This function will be called after Apple Sale validated by the user
+paymentCompleted	() => {}	callback function	This function will on Apple Sale completion with the result
+
+This facade will allow you to register your callbacks and handle changes in your application.
+
+“Manual”: Initiate Payment manually
+
+Sometimes you will need to use our integration library to solve some tricky edge case and you can not provide Pay Button on your page to be picked by the library. This require to provide alternative way to kick-off Apple payment flow programmatically. We are letting you todo that by calling startPayment() function for the prepared ApplePay sale.
+
+Lets review a technical meaning by adapting example from Allow user to Start payment
+
+<html lang="en">
+    <head>
+        <!-- Include Client API Library into your page -->
+        ...
+    </head>
+    <body>
+        ...
+        <!-- My Integration -->
+        <script>
+            var apiKey = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'; // Merchant API key from Settings page in the dashboard
+
+            PayMe.create(apiKey, { testMode: true }).then(function(instance) {
+           
+              var saleConfig = {...};
+              var sale = instance.appleSale(saleConfig);
+              sale
+                // !!! THE CHANGES STARTS HERE !!!
+                .letsRock('.i-dont-have-pay-button')
+                .then(function(startPaymentFn){
+                  // In case you want to query ApplePay button yourself
+                  document.getElementById('my-custom-button').addEventListener('click', startPaymentFn);
+                  
+                  // Or even you want to react on Window message
+                  window.addEventListener('message', () => {
+                    // Do important preparations and ...
+                    startPaymentFn();
+                  });
+                });
+                // !!! THE CHANGES ENDS HERE !!!
+    
+            });
+        </script>
+    </body>
+</html>
+
+Only user action can initiate Apple Payment flow!
+
+As a reminder we would like to repeat the limitation from Apple:
+
+You can not just start Apple Payment flow with startPayment() function, only user action (click or tap on the DOM node) can trigger this flow.
+
+It means even if you will try to postMessage from iFrame using setTimeout() in hope to catch it on the host page, this case will be detected by Apple and will end up with error "Must create a new ApplePaySession from a user gesture handler" (Creating an Apple Pay Session | Apple Developer Documentation)
+
+As code listing shows, we just defined argument for the letsRock.then(...) callback with name startPaymentFn (you can give it any name). This argument is a synchronous function, you can use it as an event handler for your implementation., like we did in our example.
+
+Step 5: Test your integration
+
+To verify the ingeration works as expected:
+
+Add our test page under your domain. For example: {your domain}/apple-pay-test.html see page below.
+Fill merchant.paymeproduction under merchantIdentifier
+Enter your apiKey under publickKey
+Generate sale as described in step 4 and enter the sale id received
+Start interaction - will initiate the payment flow with apple pay
+
+Test Page:
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+  <title>Example Bootstrap implementation</title>
+
+  <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
+  <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+
+  <script src="https://applepay.cdn-apple.com/jsapi/v1/apple-pay-sdk.js"></script>
+  <script src="https://cdn.paymeservice.com/hf/v1/hostedfields.js"></script>
+</head>
+<body>
+<div>&nbsp;</div>
+<div class="container">
+  <div class="row">
+    <div class="col-xs-12 col-sm-8 col-sm-offset-2">
+      <div class="panel panel-default credit-card-box">
+        <div class="panel-body">
+          <form id="init-payment-form">
+            <div class="row">
+              <div class="col-xs-12">
+                <div class="form-group">
+                  <label for="merchantIdentifier" class="control-label">merchantIdentifier</label>
+                  <input
+                    id="merchantIdentifier"
+                    class="form-control input-lg"
+                    value="merchant.paymeproduction">
+
+                </div>
+              </div>
+              <div class="col-xs-12">
+                <div class="form-group">
+                  <label for="publicKey" class="control-label">publicKey</label>
+                  <input
+                    id="publicKey"
+                    class="form-control input-lg"
+                    value="e780113a-9ac8-4ece-8c64-66b2b8308cb3">
+
+                </div>
+              </div>
+              <div class="col-xs-12">
+                <div class="form-group">
+                  <label for="saleId" class="control-label">saleId</label>
+                  <input
+                    id="saleId"
+                    class="form-control input-lg"
+                    value="SALE1737-563287XL-NCQMEHY9-KLO4ZJFJ">
+
+                </div>
+              </div>
+              <div class="col-xs-12">
+                <div class="form-group">
+                  <button class="btn" id="start-interaction">Start interaction</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row hidden" id="applepay-button-wrapper">
+    <div class="col-xs-12 col-sm-8 col-sm-offset-2">
+      <div class="text-center">
+        <div>Pay button below</div>
+        <apple-pay-button
+          id="pay-with-apple-pay"
+          buttonstyle="black" type="buy" locale="he-IL"></apple-pay-button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<pre id="console-pre"></pre>
+
+<script>
+  const consolePre = document.getElementById('console-pre');
+
+  function log(txt) {
+    consolePre.innerText += txt + '\n';
+  }
+
+  function clear() {
+    consolePre.innerText = '----- log cleared -----\n\n';
+  }
+</script>
+<script>
+  let _currentSale;
+  const PayMe = window.PayMe;
+
+  function startApplePayStuff({merchantIdentifier, publicKey, saleId}) {
+    const options = {
+      testMode: false,
+      language: 'he',
+      // Extended
+      // tokenIsPermanent: false, // default true
+      // buyerIsPrivate: true    // default false,
+      // buyerPerformValidation: // default true,
+    };
+
+    return PayMe.create(publicKey, options).then((instance) => {
+      try {
+        const currentSale = instance.appleSale({
+          debugFn: log,
+          merchantId: merchantIdentifier,
+          saleGuid: saleId
+        });
+
+        // Config can de String
+        const config = {
+          // Required
+          payButtonSelector: '#pay-with-apple-pay',
+          // Optional
+          canceled: () => {
+            log('\nCancelled\n----------------------------------');
+          },
+          // Optional
+          validated: (err) => {
+            if(!!err){
+              log('\nValidated error\n'+ err.message +'\n----------------------------------');
+              console.error(err);
+            } else {
+              log('\nValidated\n----------------------------------');
+            }
+          },
+          // Optional
+          paymentCompleted: (err, sale) => {
+            if(!!err){
+              log('\nCompleted error\n'+ err.message +'\n----------------------------------');
+              console.error(err);
+            } else {
+              log('\nCompleted\n'+ JSON.stringify(sale, null, 2) +'\n----------------------------------');
+            }
+          },
+        };
+
+        currentSale.letsRock(config)
+          .then(() => {
+            log('\nSale initialized\n----------------------------------');
+          })
+          .catch(err => {
+            log('\nsale initialization error\n'+ err.message +'\n----------------------------------');
+            console.error(err);
+          });
+
+        return currentSale;
+
+      } catch (e) {
+        log(e.message);
+      }
+    });
+  }
+
+  const paramsForm = document.getElementById('init-payment-form');
+  const applePayButtonWrapper = document.getElementById('applepay-button-wrapper');
+
+  function hideButton() {
+    if(!applePayButtonWrapper.classList.contains('hidden')){
+      applePayButtonWrapper.classList.add('hidden');
+    }
+  }
+
+  function displayButton() {
+    applePayButtonWrapper.classList.remove('hidden');
+  }
+
+  //
+  // Integrator must check availability before start
+  if(PayMe.isApplePayAvailable()){
+    log('ApplePay available');
+  } else {
+    log('ApplePay unavailable');
+  }
+
+  if(PayMe.isSupportsApplePayVersion()) {
+    log(`ApplePay version "${PayMe.applePayApiVersion}" supported`);
+  } else {
+    log('This ApplePay version is not supported');
+  }
+
+  paramsForm.addEventListener('submit', event => {
+    event.preventDefault();
+
+    clear();
+
+    if(_currentSale) {
+      _currentSale.destroy();
+      hideButton();
+    }
+
+    const merchantIdentifier = document.getElementById('merchantIdentifier');
+    const publicKey = document.getElementById('publicKey');
+    const saleId = document.getElementById('saleId');
+
+    const values = {
+      merchantIdentifier: merchantIdentifier.value,
+      publicKey: publicKey.value,
+      saleId: saleId.value,
+    };
+
+    startApplePayStuff(values)
+      .then(appleSale => {
+        _currentSale = appleSale;
+        displayButton();
+      })
+      .catch(err => {
+        hideButton();
+        log(err.message);
+      });
+  });
+</script>
+
+</body>
+</html>
+Errors and Reasons
+
+Your responsibility is to handle possible errors related to the Apple Pay. We provide a limited list of logical errors to help you easily identify and handle mistakes or show localized descriptions for your users. Below, you will be ale to find detailed information and hints for you to help your end-users.
+
+1. NOT_SUPPORTED_DEVICE (no-supported:apple-pay-not-available-for-device) and NO_APPLE_PAY (no-supported:apple-pay-jsapi-not-available)
+
+A context
+
+Apple Payment can work only in Safari Browsers on Apple Devices.
+
+Before you can offer your clients this payment method, you have to check is it possible to execute Apple Payment on the client device. To do this check we are providing special helper-methods (PayMe.isApplePayAvailable() and PayMe.isSupportsApplePayVersion()). But there is possible situation when you ignored this check and tried to create AppleSale. In case of unsupported environment you will receive this error
+
+Reason
+
+Attempt to create AppleSale on unsupported environment (not an Apple Browser, not an Apple Device)
+
+Possible Solutions
+
+You must use PayMe.isApplePayAvailable() and PayMe.isSupportsApplePayVersion() before Apple Sale creation and fallback to the alternative logic in case of negative result.
+2. NOT_SUPPORTED_VERSION (no-supported:apple-pay-version-not-supported)
+
+A context
+
+Our integration library is based on the official Apple Pay JSAPI. The official library offers different integration versions. We use v4 to cover as many devices as possible.
+
+Reason
+
+Attempt to create AppleSale on environment which is not supported by the current version of Apple Payment
+
+Possible Solutions
+
+Unfortunately, we have no solution for this situation (TODO - discuss this);
+3. VALIDATION_NO_NETWORKS (validation-error:no-supported-networks)
+
+A context
+
+Each of our merchants has limited set of supported Credit Card Brands aka Networks. These networks will be checked before start of Apple Payment.
+
+Reason
+
+Current merchant has no Networks supported by Apple
+
+Possible Solutions
+
+Please reach our support service to solve this issue.
+4. VALIDATION_NO_NETWORKS (validation-error:no-supported-networks)
+
+A context
+
+Each of our merchants has limited set of supported Credit Card Brands aka Networks. These networks will be checked before the Apple Pay flow starts.
+
+Reason
+
+Current merchant has no Networks supported by Apple
+
+Possible Solutions
+
+Please reach our support service to solve this issue.
+5. INVALID_CFG_PARAM (validation:unknown-configuration-parameter)
+
+A context
+
+To start Apple Payment Flow you must provide simple config data.
+
+Reason
+
+Invalid configuration provided for letsRock(...) method
+
+Possible Solutions
+
+Please check what was provided as config data
+6. INVALID_VALIDATED_CB (validation:invalid-type-for-validated-callback) and INVALID_CANCELLED_CB (validation:invalid-type-for-cancelled-callback) end INVALID_COMPLETED_CB (validation:invalid-type-for-payment-completed-callback)
+
+A context
+
+To let your code know about status of Apple Sale we let you provide callback functions. These functions will be called by the integration on status change.
+
+Reason
+
+Invalid configuration provided for letsRock(...) method
+
+Possible Solutions
+
+Please check what is callback provided as part of config data
+7. NOT_A_FUNCTION (validation:argument-is-not-a-function)
+
+A context
+
+According to previous sections you must provide a callback functions if you interested to be notified on Apple Sale state change
+
+Reason
+
+Provided not function but something else as a callback(s)
+
+Possible Solutions
+
+Please check what provided as part of config data
+Error messages localization
+
+To keep the integration in place, we are not providing any translation possibilities in favor of mnemonic messages. It means our error messages will look to user too technical. To make them human-readable you have to transform it to messages you want
+
+1
+var translatedMessages = {
+2
+  'not-found:apple-pay-button-not-found': 'Unable to find Pay button on your page',
+3
+  'no-supported:apple-pay-not-available-for-device': 'This device does not support Apple Pay',
+4
+  'no-supported:apple-pay-jsapi-not-available': 'This device does not support Apple Pay',
+5
+  'no-supported:apple-pay-version-not-supported': 'This device does not support current Apple Pay API version',
+6
+  // Other errors ...
+7
+};
+8
+
+9
+// Other code...
+10
+
+11
+// Run Apple Payment
+12
+sale.letsRock(config).catch(function (err) {
+13
+  // Getting translated human-readable error message
+14
+  const hriMessage = translatedMessages[err.message];
+15
+  alert(hriMessage);
+16
+});
+17
+
+18
+// Other code...
+
+For your convenience, we gathered all of the possible error-messages in to the Hash inside PayMe global object, it means instead of doing the following:
+
+1
+var translatedMessages = {
+2
+  'not-found:apple-pay-button-not-found': 'Unable to find Pay button on your page',
+3
+  'no-supported:apple-pay-not-available-for-device': 'This device does not support Apple Pay',
+4
+  'no-supported:apple-pay-jsapi-not-available': 'This device does not support Apple Pay',
+5
+  'no-supported:apple-pay-version-not-supported': 'This device does not support current Apple Pay API version',
+6
+  // Other errors ...
+7
+};
+
+A better option would be to do the following:
+
+1
+// Doing shortcut, for convenience
+2
+var messages = PayMe.ERR_MESSAGES;
+3
+
+4
+// Defining hri messages
+5
+var translatedMessages = {
+6
+  // Errors related to the client environment
+7
+  [messages.NO_PAY_BUTTON]: 'Unable to find Pay button on your page',
+8
+  [messages.NOT_SUPPORTED_DEVICE]: 'This device does not support Apple Pay',
+9
+  [messages.NO_APPLE_PAY]: 'This device does not support Apple Pay',
+10
+  [messages.NOT_SUPPORTED_VERSION]: 'This device does not support current Apple Pay API version',
+11
+
+12
+  // Technical errors (ideally should not occur on production)
+13
+  [messages.VALIDATION_NO_NETWORKS]: 'There are no supported Credit Card networks for this seller',
+14
+  [messages.INVALID_VALIDATED_CB]: 'There is incorrect sale Validatied callback provided by the implementer',
+15
+  [messages.INVALID_CANCELLED_CB]: 'There is incorrect sale Cancelled callback provided by the implementer',
+16
+  [messages.INVALID_COMPLETED_CB]: 'There is incorrect sale Completed callback provided by the implementer',
+17
+  [messages.INVALID_CFG_PARAM]: 'Implementer provided invaid configuration paramener',
+18
+  [messages.NOT_A_FUNCTION]: 'This is not a function!'
+19
+};
+Apple Pay Impelementation using iFrame
+
+If you are willing to implement the apple pay button using an iframe, please get in touch with our integration team for further information.
+
+Apple Pay
+Devices supported for Sandbox Testing
+Step 1: Domain Verification
+Hosting the Apple Pay's domain verification file on your server
+File to Host
+Step 2: Enabling the Apple Pay Payment Method
+Step 3: Add Apple iCloud account and Testing Cards
+Step 4: Add and Present the Apple Pay Button
+Add libraries
+Check if the client's system supports Apple Pay
+“Fast and Simple”: Pay with Apple button
+Initialization
+ApplePay sale
+Allow user to Start payment
+“Manual”: Initiate Payment manually
+Step 5: Test your integration
+Errors and Reasons
+Apple Pay Impelementation using iFrame

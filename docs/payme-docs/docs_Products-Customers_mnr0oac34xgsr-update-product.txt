@@ -1,0 +1,205 @@
+# https://payme.stoplight.io/docs/Products-Customers/mnr0oac34xgsr-update-product
+
+Update Product
+PATCH
+https://sandbox.payme.io/api/products/{guid}
+
+The patch-product endpoint allows for partial updates to an existing product's details using guid as the identifier. Below is an example JSON payload for a PATCH request to update various fields of a product.
+
+Request
+Path Parameters
+guid
+string
+required
+Headers
+Authorization
+string
+required
+
+Bearer <ACCESS_TOKEN>
+
+Body
+application/json
+application/json
+name
+string
+
+The name of the product.
+
+>= 2 characters
+<= 100 characters
+status
+integer
+
+The status of the product. Options: 1 = Available, 0 = Not Available
+
+Example:
+1
+description
+string
+
+The description of the product.
+
+>= 2 characters
+<= 100 characters
+store_configuration
+object
+
+The item store configurations object.
+
+currency
+string
+
+The currency of the item in the store. 3 Letter ISO
+
+>= 3 characters
+<= 3 characters
+is_vat_free
+boolean
+
+The item VAT indicator.
+
+price_without_vat
+number<float>
+
+The price without VAT.
+
+Example:
+22.22
+price_include_vat
+number<float>
+
+The price including VAT.
+
+Example:
+22.22
+costs_details
+object
+
+The item costs object.
+
+currency
+string
+
+The currency of the item in the store. 3 Letter ISO
+
+>= 3 characters
+<= 3 characters
+is_vat_free
+boolean
+
+The item VAT indicator.
+
+price_without_vat
+number<float>
+
+The price without VAT.
+
+Example:
+30.33
+price_include_vat
+number<float>
+
+The price including VAT.
+
+Example:
+33.44
+Responses
+200
+400
+401
+500
+
+OK
+
+Body
+application/json
+application/json
+guid
+string
+Example:
+PRODUCT123-123-1231
+created_at
+string<date-time>
+Example:
+04-20-2024 13:00:00
+updated_at
+string
+Example:
+04-20-2024 14:00:00
+Parameters
+guid*
+:
+Authorization*
+:
+Body
+1
+{
+2
+  "name": "string",
+3
+  "status": 1,
+4
+  "description": "string",
+5
+  "store_configuration": {
+6
+    "currency": "str",
+7
+    "is_vat_free": true,
+8
+    "price_without_vat": 22.22,
+9
+    "price_include_vat": 22.22
+10
+  },
+11
+  "costs_details": {
+12
+    "currency": "str",
+13
+    "is_vat_free": true,
+14
+    "price_without_vat": 30.33,
+15
+    "price_include_vat": 33.44
+16
+  }
+17
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request PATCH \
+  --url https://sandbox.payme.io/api/products/{guid} \
+  --header 'Accept: application/json' \
+  --header 'Authorization: ' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "name": "string",
+  "status": 1,
+  "description": "string",
+  "store_configuration": {
+    "currency": "str",
+    "is_vat_free": true,
+    "price_without_vat": 22.22,
+    "price_include_vat": 22.22
+  },
+  "costs_details": {
+    "currency": "str",
+    "is_vat_free": true,
+    "price_without_vat": 30.33,
+    "price_include_vat": 33.44
+  }
+}'
+Response Example
+1
+{
+2
+  "guid": "PRODUCT123-123-1231",
+3
+  "created_at": "04-20-2024 13:00:00",
+4
+  "updated_at": "04-20-2024 14:00:00"
+5
+}

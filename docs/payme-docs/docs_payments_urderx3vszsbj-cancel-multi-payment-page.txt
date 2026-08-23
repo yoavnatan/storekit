@@ -1,0 +1,78 @@
+# https://payme.stoplight.io/docs/payments/urderx3vszsbj-cancel-multi-payment-page
+
+Cancel Multi Payment Page
+POST
+https://sandbox.payme.io/api/cancel-template
+Overview
+
+This endpoint enable you to cancle a Multi Payment Page.
+
+Multi Payment Page enables payments on a single sale link, by multiple buyers.
+You can find more information in our Multi Payment Page Guide.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+payme_sale_id
+string
+required
+
+Our unique sale ID.
+
+Example:
+SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+Responses
+200
+251
+305
+
+OK
+
+Body
+application/json
+application/xml
+multipart/form-data
+application/json
+status_code
+integer
+
+Status of the request (0 - success, 1 - error).
+
+Example:
+0
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/cancel-template \
+  --header 'Accept: application/json, application/xml, multipart/form-data' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0
+3
+}

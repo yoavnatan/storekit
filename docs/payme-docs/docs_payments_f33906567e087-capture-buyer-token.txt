@@ -1,0 +1,231 @@
+# https://payme.stoplight.io/docs/payments/f33906567e087-capture-buyer-token
+
+Capture Buyer Token
+POST
+https://sandbox.payme.io/api/capture-buyer-token
+Overview
+
+This endpoint can be used only if you are PCI compliant and are able to handle raw credit card infromation.
+
+This end-point is used to create a new token, by sending a request with the full credit card data and getting a response with the token. This token can be used later on to perform sales and other payment actions.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_social_id
+string
+
+Buyer's social ID number
+
+Example:
+123456789
+buyer_email
+string
+
+Buyer's email address
+
+Example:
+test@example.com
+buyer_phone
+string
+
+Buyer's phone number
+
+Example:
++9720520000000
+buyer_zip_code
+string
+
+Buyer's address zip code
+
+Example:
+ab123
+credit_card_number
+integer
+required
+
+Card number
+
+Example:
+411111******1111
+credit_card_exp
+string
+required
+
+Buyer's card exp (MMYY)
+
+Example:
+0324
+credit_card_cvv
+integer
+required
+Example:
+123
+buyer_perform_validation
+boolean
+
+Flag for performing an online validation of the card with the Issuer.
+
+Responses
+200
+356
+500
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+Action status code (0 - Success, 1 - Failure)
+
+Example:
+0
+buyer_key
+string
+
+Buyer's unique token
+
+Example:
+BUYER154-6871560P-JTIYXZZ5-5AYG0LQX
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_email
+string
+
+Buyer's email address
+
+Example:
+test@example.com
+buyer_phone
+string
+
+Buyer's phone number
+
+Example:
++9720520000000
+buyer_card_mask
+string
+
+Buyer's card mask
+
+Example:
+411111******1111
+buyer_card_exp
+string
+
+Buyer's card exp (MMYY)
+
+Example:
+0324
+buyer_social_id
+string
+
+Buyer's social ID number
+
+Example:
+999999999
+buyer_is_permanent
+boolean
+
+Is the token temporary or permanant
+
+buyer_status
+integer or null
+
+The status's buyer
+
+Example:
+0 = Unused, 1 = Active, 10 = Inactive
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "buyer_name": "John Doe",
+4
+  "buyer_social_id": "123456789",
+5
+  "buyer_email": "test@example.com",
+6
+  "buyer_phone": "+9720520000000",
+7
+  "buyer_zip_code": "ab123",
+8
+  "credit_card_number": "411111******1111",
+9
+  "credit_card_exp": "0324",
+10
+  "credit_card_cvv": 123,
+11
+  "buyer_perform_validation": true
+12
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/capture-buyer-token \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "buyer_name": "John Doe",
+  "buyer_social_id": "123456789",
+  "buyer_email": "test@example.com",
+  "buyer_phone": "+9720520000000",
+  "buyer_zip_code": "ab123",
+  "credit_card_number": "411111******1111",
+  "credit_card_exp": "0324",
+  "credit_card_cvv": 123,
+  "buyer_perform_validation": true
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "buyer_key": "BUYER154-6871560P-JTIYXZZ5-5AYG0LQX",
+4
+  "buyer_name": "John Doe",
+5
+  "buyer_email": "test@example.com",
+6
+  "buyer_phone": "+9720520000000",
+7
+  "buyer_card_mask": "411111******1111",
+8
+  "buyer_card_exp": "0324",
+9
+  "buyer_social_id": "999999999",
+10
+  "buyer_is_permanent": true,
+11
+  "buyer_status": "0 = Unused, 1 = Active, 10 = Inactive"
+12
+}

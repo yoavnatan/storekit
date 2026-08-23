@@ -1,0 +1,230 @@
+# https://payme.stoplight.io/docs/payments/948e1ac3dce9f-retrieve-seller-s-additional-services-data
+
+Retrieve Seller's Additional Services Data
+POST
+https://sandbox.payme.io/api/get-vas-seller
+Overview
+
+This endpoint is used to retrieve seller's additional services data.
+
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+The PayMe client key
+
+Example:
+abc123-fdsv5846
+seller_payme_id
+string
+required
+
+The MPL of the seller
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+0 success 1 failrue
+
+Example:
+0
+seller_payme_id
+string
+
+The MPL of the seller
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+vas_payme_id
+null
+
+The VAS guid
+
+items_count
+integer
+
+VASes count
+
+Example:
+10
+items
+array[object]
+vas_description
+string
+
+The VAS description
+
+Example:
+Processing fee
+vas_type
+string
+
+The VAS type
+
+Example:
+Settlements
+vas_api_key
+null
+
+The VAS Guid
+
+vas_is_active
+boolean
+
+Is the VAS active or not
+
+vas_payer_type
+integer
+
+The payer type
+
+Example:
+2
+vas_price_currency
+string
+
+VAS fee currency
+
+Example:
+ILS
+vas_price_setup_fixed
+integer
+
+VAS setup price (fixed)
+
+Example:
+0
+vas_price_periodic_fixed
+integer
+
+VAS periodic price (fixed)
+
+Example:
+0
+vas_price_periodic_variable
+string
+
+VAS periodic price (fixed)
+
+Example:
+"0.00"
+vas_price_usage_fixed
+integer
+
+VAS usage price (fixed)
+
+Example:
+0
+vas_price_usage_variable
+string
+
+VAS usage price (fixed)
+
+Example:
+"0.00"
+vas_market_fee
+null
+
+VAS market fee
+
+vas_period
+integer
+VAS PERIOD	CODE
+Instant	1
+Daily	2
+Monthly	3
+Yearly	4
+Example:
+1
+vas_data
+array[object]
+
+Data that saved under the VAS
+
+Body
+1
+{
+2
+  "payme_client_key": "abc123-fdsv5846",
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO"
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-vas-seller \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "abc123-fdsv5846",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+4
+  "vas_payme_id": null,
+5
+  "items_count": 10,
+6
+  "items": [
+7
+    {
+8
+      "vas_description": "Processing fee",
+9
+      "vas_type": "Settlements",
+10
+      "vas_api_key": null,
+11
+      "vas_is_active": true,
+12
+      "vas_payer_type": 2,
+13
+      "vas_price_currency": "ILS",
+14
+      "vas_price_setup_fixed": 0,
+15
+      "vas_price_periodic_fixed": 0,
+16
+      "vas_price_periodic_variable": "\"0.00\"",
+17
+      "vas_price_usage_fixed": 0,
+18
+      "vas_price_usage_variable": "\"0.00\"",
+19
+      "vas_market_fee": null,
+20
+      "vas_period": 1,
+21
+      "vas_data": [
+22
+        {}
+23
+      ]
+24
+    }
+25
+  ]
+26
+}

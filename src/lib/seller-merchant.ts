@@ -197,8 +197,18 @@ export async function ensureMerchantAccount(
   // `isCompleteMerchantKyc` is a type guard as well as a check — it is what lets the call below
   // read `kyc.ownerSocialId` without a `!` on every field, so the "is it complete" question is
   // asked once by the compiler rather than ten times by hand.
-  if (missingBank.length || !isCompleteMerchantKyc(kyc)) {
-    return { status: 'needs-details', missing: [...missing, ...missingBank] as MerchantKycField[] };
+  //
+  // The incorporation type is checked here for the same reason and with the same consequence: it
+  // returns null for a business type we cannot map, and the old code turned that into `1` — a
+  // PRIVATE INDIVIDUAL in PayMe's real list, the one category this platform excludes
+  // (`merchant-kyc.ts#paymeIncorporation`). Declaring a business as something it is not is not a
+  // fallback; it is a KYC misstatement, so it becomes a missing field like any other.
+  const incorporation = paymeIncorporation(seller.businessType);
+  if (missingBank.length || incorporation === null || !isCompleteMerchantKyc(kyc)) {
+    return {
+      status: 'needs-details',
+      missing: [...missing, ...missingBank, ...(incorporation === null ? ['businessType'] : [])] as MerchantKycField[],
+    };
   }
 
   try {
@@ -216,7 +226,7 @@ export async function ensureMerchantAccount(
       description: context.storeDescription || context.storeName,
       siteUrl: context.storeUrl,
       businessType: kyc.businessCategory,
-      incorporation: paymeIncorporation(seller.businessType),
+      incorporation,
       ...(seller.businessId ? { businessId: seller.businessId } : {}),
       merchantName: seller.bankAccountHolder || context.storeName,
       registrationDate: paymeDate(kyc.businessRegisteredOn),

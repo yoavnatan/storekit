@@ -1,0 +1,115 @@
+# https://docs.payme.io/docs/payments/2df4679eec5a8-generate-sale-with-apple-pay
+
+Generate Sale with Apple Pay
+POST
+https://sandbox.payme.io/api/generate-sale
+Overview
+
+In order to initiate the process of paying using Apple Pay APM, you will first need to initiate a generate-sale request to our API.
+
+The request shall include "apple-pay" as the sale_payment_method.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID (MPL).
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sale_price
+string
+required
+
+The sale price.
+
+Example:
+1000
+currency
+string
+required
+
+The sale currency (ISO 4217 Code).
+
+Example:
+ILS
+product_name
+string
+required
+
+What is the payment for.
+
+Example:
+T-Shirt
+language
+string
+
+The language of the user interface.
+
+Example:
+he
+sale_payment_method
+any
+required
+
+The payment method used for the transaction.
+
+Allowed value:
+apple-pay
+sale_type
+string
+required
+
+The required sale type.
+
+Example:
+sale
+Responses
+200
+500
+Body
+application/json
+application/json
+string
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sale_price": "1000",
+4
+  "currency": "ILS",
+5
+  "product_name": "T-Shirt",
+6
+  "language": "he",
+7
+  "sale_payment_method": "apple-pay",
+8
+  "sale_type": "sale"
+9
+}
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/generate-sale \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sale_price": "1000",
+  "currency": "ILS",
+  "product_name": "T-Shirt",
+  "language": "he",
+  "sale_payment_method": "apple-pay",
+  "sale_type": "sale"
+}'
+Response Example
+1
+{}

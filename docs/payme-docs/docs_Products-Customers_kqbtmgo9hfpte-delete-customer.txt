@@ -1,0 +1,66 @@
+# https://payme.stoplight.io/docs/Products-Customers/kqbtmgo9hfpte-delete-customer
+
+Delete Customer
+DELETE
+https://sandbox.payme.io/api/customers/
+
+Delete a customer by their unique PayMe identifier.
+
+Request
+Path Parameters
+guid
+string
+required
+
+The unique PayMe customer identifier.
+
+Headers
+Authorization
+string
+required
+
+Bearer <ACCESS_TOKEN>
+
+Responses
+200
+400
+401
+500
+
+Customer deleted successfully.
+
+Body
+application/json
+application/json
+message
+string
+
+The success message.
+
+payme_guid
+string
+
+The unique customer identifier.
+
+Parameters
+guid*
+:
+Authorization*
+:
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request DELETE \
+  --url https://sandbox.payme.io/api/customers/ \
+  --header 'Accept: application/json' \
+  --header 'Authorization: ' \
+  --header 'Content-Type: application/json'
+Response Example
+1
+{
+2
+  "message": "string",
+3
+  "payme_guid": "string"
+4
+}

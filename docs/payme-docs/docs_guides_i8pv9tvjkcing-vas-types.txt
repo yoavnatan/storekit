@@ -1,0 +1,32 @@
+# https://payme.stoplight.io/docs/guides/i8pv9tvjkcing-vas-types
+
+VAS Types
+VAS TYPE	DESCRIPTION
+1	Integration
+2	Payments
+3	Discount
+4	Merchandise
+5	Invoice
+6	Sms
+7	CreditMatch
+8	Antifraud
+9	Insurance
+10	Delivery
+11	Marketplace
+12	Development
+13	CreationPlans
+14	VaultsExternal
+15	AlternativePaymentMethod
+16	Loan
+17	MIDs
+18	MIDSwitcher
+19	ReleaseDate
+20	Settlements
+21	Email
+22	Catalog
+23	Customers
+24	MerchantRules
+25	InvoicingService
+26	KeepAdditionalService
+27	Pos
+vc_type	vc_type

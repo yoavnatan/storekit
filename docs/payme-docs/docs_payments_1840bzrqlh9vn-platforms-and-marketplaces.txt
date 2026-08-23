@@ -1,0 +1,15 @@
+# https://docs.payme.io/docs/payments/1840bzrqlh9vn-platforms-and-marketplaces
+
+Platforms and Marketplaces
+
+We allow platforms and marketplaces to manage merchants. In order to accomplish this goal, we require the marketplace to collect certain details during a merchant's registration. Once the merchant is registered, the marketplace is required to convey the required information to us through a dedicated API. Upon completion, the API will return the new merchant information within the our system.
+
+Default URLs
+
+Upon creating your Merchant account with us, you will be required to provide a few default URLs for various calls. More examples can be found further in the documentation.
+
+ENVIRONMENT	URL
+Callback URL	Used for server-to-server responses regarding calls made to our API. These will be x-www-form-urlencoded formatted POST requests to the URL.
+Return URL	IFRAME users only - We will redirect the customer to this URL after the sale is paid successfully. This is usually the success page. Those will be GET requests with parameters.
+Platforms and Marketplaces
+Default URLs

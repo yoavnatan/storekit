@@ -1,0 +1,25 @@
+# https://docs.payme.io/docs/payments/43pue1xepws28-reporting
+
+Reporting
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api
+Production:
+https://live.payme.io/api
+Mock Server:
+https://stoplight.io/mocks/payme/payments/25813549
+
+You can query our systems using your unique payme_client_key.
+
+Query pagination (more than 500 results)
+
+If you are sending a query and expect to receive more than 500 results, make sure you use this function of Query Pagination.
+
+{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  ...
+  "page_size": 100, // Max allowed page size is 500
+  "page": 1
+}

@@ -1,0 +1,67 @@
+# https://docs.payme.io/docs/payments/567ad7df11de2-subscriptions
+
+Subscriptions
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api
+Production:
+https://live.payme.io/api
+Mock Server:
+https://stoplight.io/mocks/payme/payments/194096425
+
+Based on our payments infrastructure, you can initiate recurring payments in a few different flows.
+
+Subscriptions
+Template Subscription
+
+Also known as “Multilink-Subscription”. Enables payments on a single subscription link, by multiple buyers. For example, you will be able to generate a single subscription and share its payment link on any social network site to allow multiple customers to pay on their own.Note: Every payment will create a new subscription with a different ID.Creation of a template subscription should be done by adding the sub_type="template" attribute to the request:
+
+ATTRIBUTE	DESCRIPTION
+sub_type	template Creates a new subscription as a template. The template subscription link does not expire.
+Callbacks
+
+We provide the option to notify of any status or action updates regarding the subscription. To use the feature it is required to provide a sub_callback_url parameter to the generate-subscription call. This URL will receive all callbacks using a POST request of type x-www-form-urlencoded.
+
+Subscription Iteration Types
+ID	DESCRIPTION
+1	Daily
+2	Weekly
+3	Monthly
+4	Yearly
+Subscription Statuses
+ID	DESCRIPTION
+1	Initial (not yet paid)
+2	Active (paid successfully)
+4	Failed
+5	Canceled
+6	Completed
+7	Failed, pending automatic retry
+Subscription Callback Notification Types
+NOTIFICATION	DESCRIPTION
+sub-create	The subscription was created
+sub-active	The subscription was paid
+sub-iteration-success	Subscription iteretion passed successfully
+sub-complete	The subscription's iteretations have reached its predetermined max and finished
+sub-cancel	The subscription was canceled
+sub-failure	An error happened and the subscription payment was failed
+Generating tokens for recurring card payments
+
+Please note that you can receive a token representing the buyer (including credit card information) as part of the generate-sale API call. This token can be used to generate future server-to-server sales without requiring the buyer to re-enter his credit card information. The token will be returned only as part of the callback.
+
+Getting Tokens
+
+There are two ways of getting a token:
+
+In order to receive a token in addition to charging the credit card use the capture_buyer attribute. In order to receive a token without charging the credit card use the dedicated sale_type attribute and set the value to token.
+
+ATTRIBUTE	DESCRIPTION
+capture_buyer	1 Flag for requesting the buyer's token in addition to charging the credit card (0 - do not capture token, 1 - capture token)
+sale_type	token Flag for requesting the buyer's token without charging the credit card
+Charging Tokens
+
+After generating a token you may charge the buyer at any point by using the buyer_key attribute when generating a new sale.
+
+ATTRIBUTE	DESCRIPTION
+buyer_key	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Buyer key for an instant-payment with the token

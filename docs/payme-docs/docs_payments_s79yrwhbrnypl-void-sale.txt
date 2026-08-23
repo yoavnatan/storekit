@@ -1,0 +1,212 @@
+# https://payme.stoplight.io/docs/payments/s79yrwhbrnypl-void-sale
+
+Void Sale
+POST
+https://sandbox.payme.io/api/refund-sale - copy
+Overview
+
+In order to initiatea void for an authorization, you will be able to do so using the same API call for a refund.
+
+In order to be eligible for a void, the request must be initiated for:
+
+Sale type must be authorization
+The amount required to be voided must be the equal to amount requested and authorized initially.
+Sale Types
+
+You can find all the sale statuses here.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+MPL. Your private key in PayMe system.
+
+Match pattern:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+payme_sale_id
+string
+required
+
+Our unique sale ID.
+
+Match pattern:
+SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sale_currency
+string
+
+Sale currency.
+
+Example:
+USD
+language
+string
+
+Changes the error message language to English.
+
+Default:
+he
+Responses
+200
+
+OK
+
+Body
+application/json
+application/xml
+multipart/form-data
+application/json
+status_code
+integer
+
+Status of the request (0 - success, 1 - error).
+
+status_error_code
+integer
+
+Our unique error code.
+
+payme_status
+string
+refunded_from_creditcard
+boolean
+
+Return true if seller has not enough money for refund and we complete the refund from the seller credit card.
+
+sale_invoice_number
+integer or null
+
+Sale invoice Number.
+
+Example:
+123456
+sale_invoice_url
+string or null
+
+Sale invoice URL, if the seller has enabled the invoices module in his account panel.
+
+Example:
+https://www.example.com/XXXXXX.pdf
+sale_refund_buffer
+integer
+
+The refund buffer of this sale.
+
+Example:
+8000
+sale_status
+string
+
+Refund status.
+
+Example:
+refunded
+payme_transaction_total
+integer
+
+The refund amount that the buyer will get.
+
+payme_transaction_total_aft_deduction
+integer
+
+The amount that the seller will be charge on.
+
+payme_transaction_id
+string
+
+The transaction unique id.
+
+Example:
+TRANDEMO-XXXXXX-XXXXXX-XXXXXX
+payme_transaction_card_brand
+string
+
+Card brand.
+
+Example:
+XXXXXXXX
+payme_transaction_auth_number
+string
+
+Authorization number from credit company.
+
+Example:
+123456
+payme_transaction_voucher
+string
+
+Transaction voucher
+
+Example:
+123456
+payme_signature
+string
+
+MD5 Signature
+
+Example:
+75e99dbcb25cdfbe1c62f0b9376f4144
+Body
+1
+{
+2
+  "seller_payme_id": "string",
+3
+  "payme_sale_id": "string",
+4
+  "sale_currency": "USD",
+5
+  "language": "he"
+6
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/refund-sale%20-%20copy \
+  --header 'Accept: application/json, application/xml, multipart/form-data' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "string",
+  "payme_sale_id": "string",
+  "sale_currency": "USD",
+  "language": "he"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "status_error_code": 0,
+4
+  "payme_status": "string",
+5
+  "refunded_from_creditcard": true,
+6
+  "sale_invoice_number": 123456,
+7
+  "sale_invoice_url": "https://www.example.com/XXXXXX.pdf",
+8
+  "sale_refund_buffer": 8000,
+9
+  "sale_status": "refunded",
+10
+  "payme_transaction_total": 0,
+11
+  "payme_transaction_total_aft_deduction": 0,
+12
+  "payme_transaction_id": "TRANDEMO-XXXXXX-XXXXXX-XXXXXX",
+13
+  "payme_transaction_card_brand": "XXXXXXXX",
+14
+  "payme_transaction_auth_number": "123456",
+15
+  "payme_transaction_voucher": "123456",
+16
+  "payme_signature": "75e99dbcb25cdfbe1c62f0b9376f4144"
+17
+}

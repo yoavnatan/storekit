@@ -1,0 +1,73 @@
+# https://docs.payme.io/docs/payments/cdc3d4cf41590-pos
+
+POS
+Export
+v1.0
+API Base URL
+Server 1:
+https://sandbox.payme.io/api
+Server 2:
+https://live.payme.io/api
+Mock Server:
+https://stoplight.io/mocks/payme/payments/27467713
+PayMe POS Module
+Introduction
+
+The POS Module is part of our Payments API, designed to allow platforms, merchants and PSPs to process card-present EMV transactions.
+
+Supported Payment Methods
+Cards - Visa, Mastercard, American Express, Diners Club
+Apple Pay
+Google Pay
+Samsung Pay
+PayPal
+Sodexo Cibus
+10bis
+Pepper Pay
+bit
+WeChat
+Alipay
+Monyx Wallet
+Integration Prerequisite
+
+Before beginning the integration, make sure you have the following:
+
+ITEM	DESCRIPTION
+payme_client_key	Your private key provided by us for authentication
+seller_payme_id	Your Merchant's unique ID in our system
+Active POS service	The Merchant must have an active POS value-added-service in his account
+POS/ECR device	A supported physical device
+POS Setup
+
+Since the payment terminal is not directly connected to the client application a pairing process needs to be done between the POS/ECR and the terminal, this process is described in the pair and authenticate methods.
+
+Pair
+
+(See endpoint) This method is used to pair a stand-alone terminal to a POS/ECR. Each stand-alone terminal has a unique ID that is used in the paring process, this method is called first and then the pairing process is finalized by calling the authenticate method.Target URLs
+
+ENVIRONMENT	URL
+Staging	https://preprod.paymeservice.com/api/vas/pos/pair
+Production	https://ng.paymeservice.com/api/vas/pos/pair
+Authenticate
+
+(See endpoint) This method completes the pairing process started with the pair method.Target URLs
+
+ENVIRONMENT	URL
+Staging	https://preprod.paymeservice.com/api/vas/pos/authenticate
+Production	https://ng.paymeservice.com/api/vas/pos/authenticate
+POS Payment
+
+The payment flow is synchronous, which means that the payment result will be returned in the response. There is no need to poll the status.
+
+Please go over the full details of the generate-sale method in our PayMe Marketplace API documentation.The main change you should make to the request, is setting the sale_payment_method parameter to emv.Target URLs
+
+ENVIRONMENT	URL
+Staging	https://preprod.paymeservice.com/api/generate-sale
+Production	https://ng.paymeservice.com/api/generate-sale
+Payment
+
+Calling this method will "push" a payment request to the POS, synchronously awaiting the payment result. You should use the sale_payme_id value received from the generate-sale method.Target URLs
+
+ENVIRONMENT	URL
+Staging	https://preprod.paymeservice.com/api/sales/{payme_sale_id}
+Production	https://ng.paymeservice.com/api/sales/{payme_sale_id}

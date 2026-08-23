@@ -1,0 +1,428 @@
+# https://docs.payme.io/docs/payments/3ba5c66edf4ba-generate
+
+Generate
+POST
+https://sandbox.payme.io/api/generate-subscription
+Overview
+
+This endpoint is used to generate new subscriptions. You can find more information in our guide - How to create a subscription .
+
+Request
+Body
+application/json
+json
+application/xml
+multipart/form-data
+application/json
+payme_client_key
+string
+required
+
+PayMe Partner Key.
+
+Example:
+payme_key
+seller_payme_id
+string
+required
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sub_currency
+string
+required
+
+Subscription currency. 3-letter ISO 4217 name.
+
+Example:
+USD
+sub_price
+string
+required
+
+A single iteration final price.
+For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075. Note that the minimum value is 500
+
+sub_description
+string
+required
+
+The description of the service/product
+
+Example:
+Description
+sub_iteration_type
+integer
+required
+
+1 - Daily, 2 - Weekly, 3 - Monthly, 4 - Yearly
+
+Allowed values:
+1
+2
+3
+4
+language
+string
+
+Changes the language of the payment IFRAME to English, as well as the error messages. Default value is Hebrew (he)
+
+sub_start_date
+string
+
+Subscription initiation date.
+For iteration type = 3 (monthly) the day value should be between 1 to 28
+
+Default:
+current date
+Example:
+18/08/2021 15:15
+sub_payment_method
+string
+
+Sale Payment Method (for the list see Payment Methods)
+
+Example:
+credit-card
+sub_type
+number
+
+subscription type: 1-regular, 10-template
+
+Example:
+1
+buyer_key
+string
+
+Buyer key for subscription payment with the token. Relevant only for sub_type = regular.
+This key is received through the use of capture_buyer.
+Note that with this attribute no need to activate pay-subscription.
+
+Example:
+BUYER168-XXXXXXXX-XXXXXXXX-WQIWVVLB
+subscription_id
+string
+
+Merchant's unique subscription ID for correlation with us
+
+Example:
+12345
+sub_iterations
+number
+
+The iterations count set for the subscription.
+Default value is set to unlimited by -1 value.
+
+Default:
+-1
+Example:
+4
+sub_callback_url
+string
+
+Callback response to your page regarding updates on subscription events.
+
+Example:
+https://www.example.com/payment/callback
+sub_return_url
+string
+
+Once the subscription was paid successfully, the user will be redirected to this URL
+Relevant to the first subscription iteration, if it is paid through our iframe.
+
+Example:
+https://www.example.com/payment/callback
+sub_indicative_name
+string
+
+Indicative name for the subscribition
+
+sub_email_address
+string
+
+Email address of the subscription payer
+
+Example:
+name@gmail.com
+sub_indicative_mobile
+string
+
+Phone number to send receipt
+
+sub_send_notification
+boolean
+
+Indication if to send notifications on subscription events.
+
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+sub_url
+string
+
+Subscription Unique URL
+
+Example:
+https://sandbox.paymeservice.com/subscription/generate/XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+status_code
+string
+
+Status code (0 - sucess, 1 - failed)
+
+Example:
+0
+payme_status
+string
+
+PayMe updated status`
+
+Example:
+success
+seller_payme_id
+string
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+seller_id
+string
+
+Our unique seller ID
+
+Example:
+12345
+sub_payme_id
+string
+
+PayMe's unique subscription ID
+
+Example:
+XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sub_payme_code
+string
+
+PayMe's subscription code
+
+Example:
+1
+subscription_id
+string
+
+Subscription unique ID
+
+Example:
+12345
+sub_created
+string<string>
+
+The date the subscription was created
+
+Example:
+18/08/2021 15:15
+sub_start_date
+string
+
+Subscription initiation date
+
+Example:
+18/08/2021 15:15
+sub_prev_date
+string
+
+Previous subscription payment date
+
+Example:
+2016-11-05 15:04:23
+sub_next_date
+string
+
+Subscription next payment due date
+
+Example:
+2016-11-05 15:04:23
+sub_status
+string
+
+Subscription status (0 - active, 1 - inactive)
+
+Allowed values:
+1
+0
+sub_iteration_type
+string
+
+1 - Daily, 2 - Weekly, 3 - Monthly, 4 - Yearly
+
+Allowed values:
+1
+2
+3
+4
+sub_currency
+string
+
+Subscription currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+sub_price
+string
+
+A single iteration final price.
+For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075. Note that the minimum value is 500
+
+Example:
+10000
+sub_description
+string
+
+Subscription description - What is the subscription for?
+
+Example:
+3 Months - SaaS services
+sub_iterations
+string
+
+The iterations count set for the subscription according to the request command
+
+Example:
+4
+sub_iterations_completed
+number
+
+The number of iterations completed for the specific subscription
+
+Example:
+3
+sub_iterations_left
+string
+
+Count of iteration left for the specific subscription
+
+Example:
+1
+sub_paid
+boolean
+
+Was the subscription fully paid or not
+
+status_error_code
+number
+
+Error code in case of an error
+
+Example:
+0
+sub_error_text
+string
+
+Error description in case of an error
+
+Body
+Examples
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sub_price": 500,
+4
+  "sub_currency": "ILS",
+5
+  "sub_description": "Annual plan",
+6
+  "sub_iteration_type": "3",
+7
+  "sub_iterations": 1,
+8
+  "sub_start_date": "24/08/2022",
+9
+  "sub_callback_url": "https://www.payme.io",
+10
+  "sub_return_url": "https://www.payme.io",
+11
+  "language": "he",
+12
+  "test": 1
+13
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/generate-subscription \
+  --header 'Accept: application/json, application/xml, multipart/form-data, text/html, text/plain, application/EDI-X12, application/EDIFACT' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sub_price": 500,
+  "sub_currency": "ILS",
+  "sub_description": "Annual plan",
+  "sub_iteration_type": "3",
+  "sub_iterations": 1,
+  "sub_start_date": "24/08/2022",
+  "sub_callback_url": "https://www.payme.io",
+  "sub_return_url": "https://www.payme.io",
+  "language": "he",
+  "test": 1
+}'
+Response Example
+1
+{
+2
+  "sub_url": "https://sandbox.paymeservice.com/subscription/generate/XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "status_code": "0",
+4
+  "payme_status": "success",
+5
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+6
+  "seller_id": "12345",
+7
+  "sub_payme_id": "XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+8
+  "sub_payme_code": "1",
+9
+  "subscription_id": "12345",
+10
+  "sub_created": "18/08/2021 15:15",
+11
+  "sub_start_date": "18/08/2021 15:15",
+12
+  "sub_prev_date": "2016-11-05 15:04:23",
+13
+  "sub_next_date": "2016-11-05 15:04:23",
+14
+  "sub_status": "1",
+15
+  "sub_iteration_type": "1",
+16
+  "sub_currency": "ILS",
+17
+  "sub_price": "10000",
+18
+  "sub_description": "3 Months - SaaS services",
+19
+  "sub_iterations": "4",
+20
+  "sub_iterations_completed": 3,
+21
+  "sub_iterations_left": "1",
+22
+  "sub_paid": true,
+23
+  "status_error_code": 0,
+24
+  "sub_error_text": "string"
+25
+}

@@ -1,0 +1,20 @@
+# https://payme.stoplight.io/docs/guides/dpm16r1dqtjs0-create-payment-with-buyer-key-token
+
+Create Payment With Buyer Key (Token)
+
+Allows for token capture upon the buyer's payment (submission of payment details).
+
+ATTRIBUTE	DESCRIPTION
+sale_type	= token, once the buyer completes the payment, you will receive a callback containing a token known as the "buyer_key."
+sale_callback_url	URL address for receiving the callback.
+Process Flow
+Create a sale with generate-sale according to the special attributes in the table above.
+Once the sale is created, you will get a sale_url for the payment page and a unique payme_sale_code.
+After the buyer insert the payment details and pay for the sale, you will receive a callback to the dedicated callback URL you entered in the generate-sale request. The callback contains the buyer_key, which is the token.
+Payment Capabilities
+
+You can find all the payment capabilities here.
+
+Create Payment With Buyer Key (Token)
+Process Flow
+Payment Capabilities

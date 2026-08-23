@@ -1,0 +1,79 @@
+# https://docs.payme.io/docs/payments/cf9da17d9ae09-cancel
+
+Cancel
+POST
+https://sandbox.payme.io/api/cancel-subscription
+Overview
+
+This endpoint is used to cancel existing subscriptions.
+
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sub_payme_id
+string
+required
+
+Our unique subscription ID
+
+Example:
+SUBXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+language
+string
+
+Changes the error message language to English. Default value is Hebrew (he)
+
+Example:
+en
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+status_code
+string
+
+Cancellation status code ( 0 - Success, 1 - Failure)
+
+Example:
+0
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sub_payme_id": "Fetch from generate-subscription request"
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/cancel-subscription \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sub_payme_id": "Fetch from generate-subscription request"
+}'
+Response Example
+1
+{
+2
+  "status_code": "0"
+3
+}

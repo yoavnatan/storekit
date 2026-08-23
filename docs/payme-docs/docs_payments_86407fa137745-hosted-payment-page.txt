@@ -1,0 +1,14 @@
+# https://docs.payme.io/docs/payments/86407fa137745-hosted-payment-page
+
+Hosted Payment Page
+Export
+v1.0
+API Base URL
+Staging:
+https://sandbox.payme.io/api
+Production :
+https://live.payme.io/api
+Mock Server:
+https://stoplight.io/mocks/payme/payments/27034264
+
+Our Hosted Payment Page is an exhaustive solution for sellers that are not PCI DSS compliant and cannot hold card details. It allows you to receive payments in various ways (card payments, bank payments and alternative payment methods) as the payment/checkout page is fully hosted by PayMe.

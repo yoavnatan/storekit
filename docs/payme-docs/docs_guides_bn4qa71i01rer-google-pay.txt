@@ -1,0 +1,243 @@
+# https://payme.stoplight.io/docs/guides/bn4qa71i01rer-google-pay
+
+Google Pay
+
+Google Pay™ allows your customers to pay quickly and securely using payment methods saved in their Google Account.
+Google Pay is fully compatible with PayMe’s products and features: You can use it for traditional payments and multi payments page.
+
+In order to be able to accept Google Pay payments on your website, first contact PayMe Partners partners@payme.io to start the integration process.
+
+We support VISA, Mastercard, American Express, Discover and JCB card networks with the Google Pay API. If you're missing one of these in your PayMe account, you can reach out our team to add the missing network at support@payme.io.
+
+PayMe handles all the technical complexity - you just need to create a sale and redirect customers to our payment page.
+
+Prerequisites
+Active PayMe merchant account
+Google Pay VAS (Value Added Service) enabled in your account
+HTTPS-enabled website (required for Google Pay)
+Google Pay terms
+
+By integrating Google Pay, you must adhere to the Google Pay and Wallet API's Acceptable Use Policy and accept Google’s terms of service
+
+How it works
+Register with Google: Create your integration in the Google Pay & Wallet Console
+Create a Sale: Generate a Google Pay sale using PayMe API
+Redirect Customer: Send customer to PayMe payment page
+Customer Pays: Customer completes payment using Google Pay
+Get Results: Receive payment confirmation via webhook or redirect
+Step 1: Register in the Google Pay Business Console
+
+When integrating using Hosted Fields, before enabling Google Pay on your PayMe account, you must register your domain directly with Google.
+
+1.Go to the Google Pay & Wallet Console: https://pay.google.com/business/console
+2.Enter your business name in English, and check the first checkbox option.
+
+3.Select the Google Pay API option, then click Create an integration.
+
+4.Choose Web integration.
+
+5.Under Your website, enter your website's URL. Under Your Google Pay API Integration Type, select Gateway.
+
+6.Upload the requested screenshots in the Screenshots of your buyflow section. Go to your website/app and capture screenshots as described for each required step.
+
+Note: For the screenshot requested under Google Pay API Payment Screen, upload the screenshot of the following error:
+
+7.For Nonprofit organization, need to complete Steps 1 through 3 of the Google for Nonprofits validation process
+
+8.Once complete, email us at partners@payme.io to confirm your registration is finished. We will continue the integration process on our end from there.
+
+Step 2: Enable Google Pay Payment Method
+
+By using the VAS-Enable API request, you will need to register to PayMe's Google Pay service.
+
+API call payload:
+
+{
+  "payme_client_key": "payme_partner_key",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "vas_payme_id": "VASLDEMO-GOOGLEPAY-VASLDEMO-1234567",
+  "language": "en"
+}
+
+A successful response will be 200 and includes a payload in the form of:
+
+{
+    "status_code": 0,
+    "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+    "vas_payme_id": "VASLDEMO-GOOGLEPAY-VASLDEMO-1234567",
+    "vas_description": "Payments Account",
+    "vas_type": "AlternativePaymentMethod",
+    "vas_api_key": "",
+    "vas_is_active": true,
+    "vas_payer_type": 2,
+    "vas_price_currency": "ILS",
+    "vas_price_setup_fixed": 0,
+    "vas_price_periodic_fixed": 0,
+    "vas_price_periodic_variable": "0.00",
+    "vas_price_usage_fixed": 0,
+    "vas_price_usage_variable": "0.00",
+    "vas_market_fee": null,
+    "vas_period": 1,
+}
+
+A failed response will be 500 and includes a payload in the form of:
+
+{
+    "status_code": 1,
+    "status_error_details": "The service was not activated",
+    "status_additional_info": null,
+    "status_error_code": 720
+}
+Step 3: Create a Google Pay Sale
+
+Before you can start Google Pay Payment you have to create a Google Pay Sale, which will be paid by your customer.
+Use the PayMe API to create a sale with sale_payment_method: google-pay:
+POST https://<env>.payme.io/api/generate-sale
+
+POST /api/generate-sale
+Content-Type: application/json
+
+{
+  "seller_payme_id": "MPL14950-XXXXXXXX-XXXXXXXX-HMWATSBQ",
+  "sale_price": "1000",
+  "currency": "ILS",
+  "product_name": "Test Product",
+  "installments": "1",
+  "sale_payment_method": "google-pay",
+  "sale_type": "sale",
+  "language": "en"
+}
+
+Response:
+
+{
+    "status_code": 0,
+    "sale_url": "https://<env>.payme.io/sale/generate/SALE1645-********-********-F2DUVUQI",
+    "payme_sale_id": "SALE1645-********-********-F2DUVUQI",
+    "payme_sale_code": 1027305,
+    "price": 1000,
+    "transaction_id": "",
+    "currency": "ILS",
+    "sale_payment_method": "google-pay"
+}
+
+After a successful sale creation, please save the payme_sale_id value from the response you received for future usage.
+
+Step 4: Add and Present the Google Pay Button
+
+The button should be shown only after availability checks pass.
+
+You must use the official Google Pay logo and button assets in compliance with Google Pay Android brand guidelines and Google Pay web brand guidelines, without modifications to the Google Pay asset colors, proportions, or appearance.
+
+4.1 Add PayMe SDK Library
+
+<script src="https://cdn.paymeservice.com/hf/v1/hostedfields.js"></script>
+The SDK URL can switch between production and staging: https://cdn.paymeservice.com/hf/v1/hostedfields.js or https://cdn.payme.io/hf/v1/hostedfields-staging.js.
+
+4.2 Add Google Pay Mount Point
+
+<div id="pay-with-google-pay"></div>
+
+4.3 Check Availability Before Showing the Button
+const isGooglePayAvailable = await PayMe.isGooglePayAvailable(testMode);
+if (!isGooglePayAvailable) {
+  // hide payment section or show fallback
+  return;
+}
+4.4 Initialize PayMe and Create Google Sale Manager
+const instance = await PayMe.create(apiKey, { testMode: testMode });
+
+const googleSale = instance.googleSale({
+  saleGuid: paymeSaleId,
+  debugFn: function(message) {
+    console.log('[PayMe Debug]', message);
+  }
+});
+4.5 Bind the Button and Start Interaction
+const interactionConfig = {
+  payButtonSelector: '#pay-with-google-pay',
+  buttonType: 'buy',
+  buttonColor: 'default',
+
+  canceled: function() {
+    console.log('Payment cancelled by user');
+  },
+
+  paymentCompleted: function(err, sale) {
+    if (err) {
+      console.error('Payment failed:', err.message);
+    } else {
+      console.log('Payment completed:', sale);
+    }
+  }
+};
+
+await googleSale.letsRock(interactionConfig);
+
+Important: do not expose Google Pay UI when isGooglePayAvailable is false. Always provide fallback payment options.
+
+Step 5: Payment Processing
+
+The payment will be done by the buyer's card saved in his Google Pay wallet.
+
+3D secure service will not be required in the payment flow on mobile web or native apps due to Google card encryption. In other scenarios we will initiate a 3D Secure service to authenticate the buyer.
+
+Follow these instructions to implement the 3DS flow when required.
+
+PayMe will redirect the customer back to your success_url or error_url based on the payment result.
+
+Step 6: Test Your Integration
+Configure defaults: server URL, partner key, seller PayMe ID, and public key.
+Optionally enable test_mode and staging SDK URL.
+Generate a Google Pay sale from /generate-sale-form using the Google Pay button.
+Confirm availability check passes and Google Pay button appears.
+Complete payment and verify paymentCompleted callback returns sale details.
+Validate error and cancel flows using the wrapper log panel.
+Troubleshooting
+ISSUE	LIKELY CAUSE	ACTION
+Google Pay button does not appear	PayMe.isGooglePayAvailable(testMode) returned false	Check browser/device support and keep fallback payment methods enabled.
+Initialization fails	Invalid or missing public API key	Verify public_key in defaults and use the key for the selected environment.
+Sale errors on backend	Invalid payload or seller configuration	Verify MPL, sale fields, and that Google Pay VAS is activated for the seller.
+Complete Reference Snippet (Client Side)
+<script src="{{paymeSdkUrl}}"></script>
+<div id="pay-with-google-pay"></div>
+<script>
+(async function initGooglePay() {
+  const apiKey = '{{apiKey}}';
+  const saleGuid = '{{payme_sale_id}}';
+  const testMode = true;
+
+  if (!window.PayMe) throw new Error('PayMe SDK not loaded');
+
+  const available = await PayMe.isGooglePayAvailable(testMode);
+  if (!available) return;
+
+  const instance = await PayMe.create(apiKey, { testMode: testMode });
+  const googleSale = instance.googleSale({ saleGuid: saleGuid });
+
+  await googleSale.letsRock({
+    payButtonSelector: '#pay-with-google-pay',
+    buttonType: 'buy',
+    buttonColor: 'default',
+    canceled: function() {},
+    paymentCompleted: function(err, sale) {}
+  });
+})();
+</script>
+Google Pay
+Prerequisites
+Google Pay terms
+How it works
+Step 1: Register in the Google Pay Business Console
+Step 2: Enable Google Pay Payment Method
+Step 3: Create a Google Pay Sale
+Step 4: Add and Present the Google Pay Button
+4.1 Add PayMe SDK Library
+4.2 Add Google Pay Mount Point
+4.3 Check Availability Before Showing the Button
+4.4 Initialize PayMe and Create Google Sale Manager
+4.5 Bind the Button and Start Interaction
+Step 5: Payment Processing
+Step 6: Test Your Integration
+Troubleshooting
+Complete Reference Snippet (Client Side)

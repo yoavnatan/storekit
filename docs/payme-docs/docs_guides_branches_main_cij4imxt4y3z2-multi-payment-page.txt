@@ -1,0 +1,16 @@
+# https://payme.stoplight.io/docs/guides/branches/main/cij4imxt4y3z2-multi-payment-page
+
+Template Payment Page
+
+Also known as “Template Sale”. Enables payments on a single sale link, by multiple buyers.
+For example, you will be able to generate a single sale and share its payment link on any social network site to allow multiple customers to pay on their own.
+Every payment will create a new sale with a different ID. Creation of a template sale should be done by adding the sale_type="template" attribute to the request:
+
+ATTRIBUTE	DESCRIPTION
+sale_type	= template, creates a new sale as a template. The template sale link does not expire.
+Payment Capabilities
+
+You can find all the payment capabilities here.
+
+Template Payment Page
+Payment Capabilities

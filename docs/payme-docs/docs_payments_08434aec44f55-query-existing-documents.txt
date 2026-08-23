@@ -1,0 +1,71 @@
+# https://payme.stoplight.io/docs/payments/08434aec44f55-query-existing-documents
+
+Query Existing Documents
+Deprecated
+GET
+https://sandbox.payme.io/api/documents?page=0&limit=5&field=createdAt&sort=descs
+Overview
+
+In order to query for existing documents, you will need to use the following endpoint and parameters:
+
+ENVIRONMENT	URL
+Staging	https://sandbox.payme.io/api/documents?page=0&limit=5&field=createdAt&sort=desc
+Production	https://live.payme.io/api/documents?page=0&limit=5&field=createdAt&sort=desc
+Header
+PARAMETER	DESCRIPTION
+PayMe-Merchant-Key	Seller's MPL MPL15991-38967CJU-GSBK5E1G-XSZ1GZXU
+Request
+Query Parameters
+field
+any
+
+The dates the query is for
+
+Allowed value:
+createdAt
+limit
+number
+
+How many documents per extraction
+
+page
+number
+
+How many pages should be included in the query
+
+sort
+string
+
+The order of documents
+
+Allowed values:
+desc
+asc
+Headers
+PayMe-Merchant-Key
+string
+Example:
+MPL15991-38967CJU-GSBK5E1G-XSZ1GZXU
+Match pattern:
+MPL15991-38967CJU-GSBK5E1G-XSZ1GZXU
+Parameters
+field
+:
+limit
+:
+page
+:
+sort
+:
+Not Set
+desc
+asc
+select an option
+PayMe-Merchant-Key
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url 'https://sandbox.payme.io/api/documents?page=0&limit=5&field=createdAt&sort=descs' \
+  --header 'PayMe-Merchant-Key: '

@@ -1,0 +1,9 @@
+# https://docs.payme.io/docs/payments/s5v5chw9si9dj-recurring-payments
+
+Recurring Payments
+
+Recurring payments help you to oversee regular payments for subscriptions, providing convenience to customers and predictable revenue streams for your business.
+
+PayMe's subscriptions are a common use case for recurring payments, allowing customers to easily manage and pay for services on a regular basis.
+
+PayMe's tokenization secures recurring payments by replacing sensitive data with unique tokens, simplifies compliance by reducing the scope of PCI DSS requirements for your business.

@@ -1,0 +1,109 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/4a9bda29334cf-get-contract-related-files
+
+Get Contract Related Files
+GET
+https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/
+
+Allows receiving all files that are stored connected to a specific contract. We can use it to receive all files connected to a contract or just a specific file. To filter by various file types, we will use the following URL to receive the relevant file type - /CONT{GUID}/invoices?=Invoice Receipt
+
+Request
+Path Parameters
+GUID
+string
+required
+
+Doc ID
+
+Headers
+PayMe-Merchant-Key
+string
+
+PayMe seller ID
+
+Body
+application/json
+application/json
+
+No Body
+
+Responses
+200
+
+Will return the URL of the file.
+
+Body
+application/json
+application/json
+status_code
+number
+required
+invoices
+array[object]
+required
+>= 1 items
+name
+string
+required
+>= 1 characters
+mime_type
+string
+required
+>= 1 characters
+type
+string
+required
+>= 1 characters
+url
+string
+required
+
+A URL that will redirect to the file adderess
+
+>= 1 characters
+id
+string
+required
+
+File ID
+
+>= 1 characters
+Parameters
+GUID*
+:
+PayMe-Merchant-Key
+:
+Body
+1
+{}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/ \
+  --header 'Accept: application/json' \
+  --header 'PayMe-Merchant-Key: '
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "invoices": [
+4
+    {
+5
+      "name": "string",
+6
+      "mime_type": "string",
+7
+      "type": "string",
+8
+      "url": "string",
+9
+      "id": "string"
+10
+    }
+11
+  ]
+12
+}

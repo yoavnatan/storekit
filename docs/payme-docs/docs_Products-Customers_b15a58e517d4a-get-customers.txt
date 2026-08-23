@@ -1,0 +1,238 @@
+# https://payme.stoplight.io/docs/Products-Customers/b15a58e517d4a-get-customers
+
+Get Customers
+GET
+https://sandbox.payme.io/api/customers
+
+The GET /customers endpoint provides access to customer data, enabling clients to filter and sort through available customers.
+
+Request
+Query Parameters
+created_at
+string<date>
+
+Common date range. Use [min] / [max] on query parameters.
+
+description
+string
+
+The customer description.
+
+due_date
+string<date>
+
+Common date range. Use [min] / [max] on query parameters.
+
+email
+string
+
+The customer's email.
+
+first_name
+string
+
+The customer's first name.
+
+items_per_page
+integer
+
+The number of items per page.
+
+last_name
+string
+
+The customer's last name.
+
+page
+integer
+
+The page number.
+
+phone_number
+string
+
+The customer's phone number.
+
+sort_by
+string
+
+The column name for ordering results.
+
+sort_direction
+string
+
+The direction for ordering results.
+
+status
+boolean
+
+The customer status - indicates if the customer is available or not. 0 - Deacativated, 1 - Active, 2 - Draft
+
+Headers
+Authorization
+string
+required
+
+Bearer <ACCESS_TOKEN>
+
+Responses
+200
+400
+401
+500
+
+User Found
+
+Body
+application/json
+application/json
+items_count
+integer
+items
+array[object]
+guid
+string
+first_name
+string
+last_name
+string
+email
+string
+phone_number
+string
+additional_phone_number
+string
+country
+string
+city
+string
+street
+string
+building_number
+string
+floor
+string
+zip
+string
+middle_name
+string
+company_name
+string
+gender
+string
+description
+string
+birthday
+string<date>
+created_at
+string<date>
+updated_at
+string<date>
+status
+integer
+
+The status of the product. Options: 1 = Available, 0 = Not Available
+
+payment_tokens
+object
+Parameters
+created_at
+:
+description
+:
+due_date
+:
+email
+:
+first_name
+:
+items_per_page
+:
+last_name
+:
+page
+:
+phone_number
+:
+sort_by
+:
+sort_direction
+:
+status
+:
+Not Set
+False
+True
+select an option
+Authorization*
+:
+Send API Request
+Sandbox
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/customers \
+  --header 'Accept: application/json' \
+  --header 'Authorization: '
+Response Example
+1
+{
+2
+  "items_count": 1,
+3
+  "items": [
+4
+    {
+5
+      "guid": "string",
+6
+      "first_name": "string",
+7
+      "last_name": "string",
+8
+      "email": "string",
+9
+      "phone_number": "string",
+10
+      "additional_phone_number": "string",
+11
+      "country": "string",
+12
+      "city": "string",
+13
+      "street": "string",
+14
+      "building_number": "string",
+15
+      "floor": "string",
+16
+      "zip": "string",
+17
+      "middle_name": "string",
+18
+      "company_name": "string",
+19
+      "gender": "string",
+20
+      "description": "string",
+21
+      "birthday": "2019-08-24",
+22
+      "created_date": "2019-08-24",
+23
+      "update_date": "2019-08-24",
+24
+      "status": 0,
+25
+      "payment_tokens": {
+26
+        "payment_method": "string",
+27
+        "token_guid": "string"
+28
+      }
+29
+    }
+30
+  ]
+31
+}

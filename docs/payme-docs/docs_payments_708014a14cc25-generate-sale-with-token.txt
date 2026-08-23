@@ -1,0 +1,306 @@
+# https://payme.stoplight.io/docs/payments/708014a14cc25-generate-sale-with-token
+
+Generate Sale with Token
+POST
+https://sandbox.payme.io/api/generate-sale
+Overview
+Generating tokens
+
+Please note that you can receive a token representing the buyer (including credit card information) as part of the generate-sale API call. This token can be used to generate future server-to-server sales without requiring the buyer to re-enter his credit card information. The token will be returned only as part of the callback.
+
+Obtaining Tokens
+
+There are two ways of obtaining a token:
+
+In order to receive a token in addition to charging the credit card use the capture_buyer attribute. In order to receive a token without charging the credit card use the dedicated sale_type attribute and set the value to token.
+
+ATTRIBUTE	DESCRIPTION
+capture_buyer	1 Flag for requesting the buyer's token in addition to charging the credit card (0 - do not capture token, 1 - capture token)
+sale_type	token Flag for requesting the buyer's token without charging the credit card
+Charging Tokens
+
+After generating a token you may charge the buyer at any point by using the buyer_key attribute when generating a new sale.
+
+ATTRIBUTE	DESCRIPTION
+buyer_key	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX Buyer key for an instant-payment with the token
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+sale_price
+integer
+
+For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075. Note that the minimum value is 500.
+
+Example:
+100
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+product_name
+string
+
+Short name and description of the product/service. This text will be shown in the invoice as well, if the seller has enabled the invoices module in his account panel. Limited to 500 characters
+
+Example:
+Phone
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+installments
+string
+
+Amount of installments for the sale. We allow you to manually set the number of installments or to specify a top limit of installments for the buyer to choose from while paying. Setting a fixed number of installments is simply entering a number between 1 and 12. The sale will be initiated with this number of installments and the buyer will not be able to change it. To set a range for the buyer to choose from, enter the following:
+103 - allow up to 3 installments
+106 - allow up to 6 installments
+109 - allow up to 9 installments
+112 - allow up to 12 installments
+
+Example:
+1
+market_fee
+number
+
+A decimal representing the percent of the sale price that is collected for the marketplace (includes VAT). This fee is added on top of our fees and transferred to the marketplace once a month. Default value is the market fee of the Seller, as set upon Seller creation.
+
+Example:
+0.5
+sale_send_notification
+boolean
+
+Flag to send email and/or SMS notifications
+
+sale_callback_url
+string
+
+Callback response to your page regarding call to our API. Default value is taken from the Merchant's settings. Note that you may not send a "localhost" URL as value
+
+Example:
+https://www.example.com/payment/callback
+sale_email
+string
+
+In case sale send notification is true provide the address to send email notification
+
+Example:
+test@testmail.com
+sale_return_url
+string
+
+We will redirect the IFRAME and the buyer to this URL upon payment success. Default value is taken from the Merchant's settings
+
+Example:
+https://www.example.com/payment/success
+sale_mobile
+string
+
+In case sale send notification is true, provide the phone number to send SMS notification, if the seller has enabled the SMS module in his account panel
+
+Example:
++972525888888
+sale_name
+string
+
+The name that will be displayed when sending a notification
+
+Example:
+John Doe
+capture_buyer
+boolean
+
+Flag for requesting the buyer's token for this payment (0 - do not capture token, 1 - capture token). For additional information see Tokens explanation below
+
+buyer_perform_validation
+boolean
+
+Flag for performing an online validation of the card with the Issuer.
+
+sale_type
+string
+
+You can find all the sale types here.
+
+sale_payment_method
+string
+
+the Payment method used to pay the sale. For all the payment methods click here.
+
+layout
+string
+
+IFRAME payment page layout. Optional attribute which may be used with "bit" sale_payment_method. Avai lable layouts are:dynamic, qr-sms or dynamic-loose dynamic loose removes the validation for the social ID and CVV.
+
+Example:
+dynamic
+language
+string
+
+Changes the language of the payment IFRAME to English, as well as the error messages. Default value is Hebrew (he)
+
+Example:
+he
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+integer
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+sale_url
+string
+
+The URL of the IFRAME secured payment form to display to the buyer
+
+Example:
+https://sandbox.paymeservice.com/sale/generate/XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_id
+string
+
+Our unique sale ID
+
+Example:
+SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_code
+integer
+
+Our unique sale code (for display purposes only)
+
+Example:
+12345678
+price
+integer
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+10000
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+Body
+1
+{
+2
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+3
+  "sale_price": 100,
+4
+  "currency": "ILS",
+5
+  "product_name": "Phone",
+6
+  "transaction_id": "12345",
+7
+  "installments": " 1",
+8
+  "market_fee": 0.5,
+9
+  "sale_send_notification": true,
+10
+  "sale_callback_url": "https://www.example.com/payment/callback",
+11
+  "sale_email": "test@testmail.com",
+12
+  "sale_return_url": "https://www.example.com/payment/success",
+13
+  "sale_mobile": "+972525888888",
+14
+  "sale_name": "John Doe",
+15
+  "capture_buyer": true,
+16
+  "buyer_perform_validation": true,
+17
+  "sale_type": "string",
+18
+  "sale_payment_method": "string",
+19
+  "layout": "dynamic",
+20
+  "language": "he"
+21
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/generate-sale \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-1234567",
+  "sale_price": 100,
+  "currency": "ILS",
+  "product_name": "Phone",
+  "transaction_id": "12345",
+  "installments": " 1",
+  "market_fee": 0.5,
+  "sale_send_notification": true,
+  "sale_callback_url": "https://www.example.com/payment/callback",
+  "sale_email": "test@testmail.com",
+  "sale_return_url": "https://www.example.com/payment/success",
+  "sale_mobile": "+972525888888",
+  "sale_name": "John Doe",
+  "capture_buyer": true,
+  "buyer_perform_validation": true,
+  "sale_type": "string",
+  "sale_payment_method": "string",
+  "layout": "dynamic",
+  "language": "he"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "sale_url": "string",
+4
+  "payme_sale_id": "string",
+5
+  "payme_sale_code": 12345678,
+6
+  "price": 10000,
+7
+  "transaction_id": "12345",
+8
+  "currency": "string"
+9
+}

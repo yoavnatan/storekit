@@ -1,0 +1,186 @@
+# https://payme.stoplight.io/docs/payments/41d08b9126a48-list-future-withdrawals
+
+List Future Withdrawals
+POST
+https://sandbox.payme.io/api/get-future-withdrawals
+
+You can retreive data on expected future withdrawals of your sellers using this endpoint.
+
+Query pagination (more than 500 results)
+
+If you are sending a query and expect to receive more than 500 results, make sure you use this function of Query Pagination.
+
+{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  ...
+  "page_size": 100, // Max allowed page size is 500
+  "page": 1
+}
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID (MPL).
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+items_count
+integer
+
+Number of withdrawals
+
+items
+array[object]
+start_time
+integer
+
+Date of the previous withdrawal (epoch)
+
+Example:
+1687774500
+end_time
+integer
+
+Date of the end of the period of the withdrawal (epoch)
+
+Default:
+-1
+created_at
+string
+
+Timestamp of the withdrawal creation
+
+Example:
+2023-06-20 14:00:20
+withdrawable
+integer
+
+Indicates if the fund is withdrawable
+
+Example:
+1
+source
+integer
+
+Source of the withdrawal
+
+Example:
+1
+source_text
+string
+
+Source of the withdrawal
+
+Example:
+PayMe
+card_brand
+integer
+
+Card brand
+
+Example:
+1
+card_brand_text
+string
+
+Card brand
+
+Example:
+Visa
+total
+string
+
+Withdrawal total amount
+
+Example:
+156390
+withdrawal_payme_code
+string
+
+Withdrawal code
+
+Example:
+withdrawal-code
+status_code
+integer
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+Body
+1
+{
+2
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "currency": "ILS"
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-future-withdrawals \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "currency": "ILS"
+}'
+Response Example
+1
+{
+2
+  "items_count": 1,
+3
+  "items": [
+4
+    {
+5
+      "start_time": 1687774500,
+6
+      "end_time": -1,
+7
+      "created_at": "2023-06-20 14:00:20",
+8
+      "withdrawable": 1,
+9
+      "source": 1,
+10
+      "source_text": "פאיימי",
+11
+      "card_brand": 1,
+12
+      "card_brand_text": "אחר",
+13
+      "total": "156390",
+14
+      "withdrawal_payme_code": "withdrawal-code"
+15
+    }
+16
+  ],
+17
+  "status_code": 0
+18
+}

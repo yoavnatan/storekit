@@ -1,0 +1,30 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/c2ebb271f3600-delete-contract-related-files
+
+Delete Contract Related Files
+DELETE
+https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/
+
+Add /INV{GUID} to the end of the URL to delete a document. Delete a contract related file.
+
+Request
+Path Parameters
+GUID
+string
+required
+
+Doc ID
+
+Responses
+200
+
+OK
+
+Parameters
+GUID*
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request DELETE \
+  --url https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/ \
+  --header 'Content-Type: application/json'

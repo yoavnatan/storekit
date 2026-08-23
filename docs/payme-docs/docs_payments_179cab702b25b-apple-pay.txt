@@ -1,0 +1,16 @@
+# https://docs.payme.io/docs/payments/179cab702b25b-apple-pay
+
+Apple Pay
+Export
+v1.0
+API Base URL
+Sandbox:
+https://sandbox.payme.io
+Production:
+https://live.payme.io
+Mock Server:
+https://stoplight.io/mocks/payme/payments/40807219
+
+Our Apple pay JSAPI integration will allow you to accept Payments via the Apple Pay payment method.
+
+You can find more information in the following guide - Apple Pay.

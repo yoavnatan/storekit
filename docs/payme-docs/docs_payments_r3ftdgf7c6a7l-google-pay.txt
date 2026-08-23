@@ -1,0 +1,16 @@
+# https://docs.payme.io/docs/payments/r3ftdgf7c6a7l-google-pay
+
+Google Pay
+Export
+v1.0
+API Base URL
+Sandbox:
+https://sandbox.payme.io
+Production:
+https://live.payme.io
+Mock Server:
+https://stoplight.io/mocks/payme/payments/1607265110
+
+Our Google Pay integration will allow you to accept Payments via the Google Pay payment method.
+
+You can find more information in the following guide for our JSAPI integration - Google Pay.

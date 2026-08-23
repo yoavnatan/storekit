@@ -1,0 +1,14 @@
+# https://docs.payme.io/docs/payments/ijvs87vy7psy1-reporting-and-data
+
+Reporting and Data
+
+Access preconfigured reports to gain insight into essential activities, such as sales, transactions, subscriptions, and balance adjustments.
+
+Our queries APIs enable you to perform various actions related to obtaining data on:
+
+API	DESCRIPTION
+get-sellers	Extract data about your sellers
+get-sales	Extract data on different sales your sellers completed
+get-transactions	Extract data on transactions your sellers completed
+get-subscriptions	Extract data on different subscriptions that are currently active/inactive
+get-withdrawals	Extract data on specific withdrawals yoursellers requested.

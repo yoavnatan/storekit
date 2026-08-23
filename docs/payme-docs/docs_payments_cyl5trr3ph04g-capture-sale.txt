@@ -1,0 +1,328 @@
+# https://docs.payme.io/docs/payments/cyl5trr3ph04g-capture-sale
+
+Capture Sale
+POST
+https://sandbox.payme.io/api/capture-sale
+Overview
+
+This endpoint enable you to execute the sale after authorization (generate-sale with sale_type = "authorize").
+
+For more information, go to the Capture Sale (Authorization) Guide.
+
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+
+PayMe Partner Key.
+
+Match pattern:
+XXXXXXXX
+seller_payme_id
+string
+
+MPL. Your private key in PayMe system.
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-1234567
+payme_sale_id
+string
+
+Our unique sale ID
+
+Match pattern:
+SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+Responses
+200
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+payme_status
+string
+
+Status of the request (success, error)
+
+Example:
+success
+payme_sale_id
+string
+
+Our unique sale ID.
+
+Example:
+SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_code
+integer
+
+Sale code
+
+Example:
+123456
+sale_created
+string
+
+The date the sale was created (timestamp)
+
+Example:
+2021-11-02 16:36:13
+payme_sale_status
+string
+
+Sale status. You can find all the sale statuses here.
+
+Example:
+completed
+sale_status
+string
+
+Sale status. You can find all the sale statuses here.
+
+Example:
+completed
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+transaction_id
+string
+
+The transaction ID.
+
+Example:
+12345
+is_token_sale
+boolean
+
+Indicates if the sale paid with token.
+
+price
+integer
+
+The sale price.
+
+Example:
+100
+payme_signature
+string
+
+PayMe's signature for the payment
+
+Example:
+0efd912d7dc26c658f841e577afa2b79
+sale_description
+string
+
+Sale description
+
+Example:
+Description
+payme_transaction_id
+string
+
+PayMe transaction ID
+
+Example:
+TRAN1635-8638707F-FDCJJP3T-0IJMAP8K
+payme_transaction_total
+string
+
+Transaction total amount
+
+Example:
+1000
+payme_transaction_card_brand
+string
+
+The card brand
+
+Example:
+Visa
+payme_transaction_auth_number
+string
+
+Transaction authorization number
+
+Example:
+5973894
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_email
+string
+
+Buyer's email address
+
+Example:
+Test@example.com
+buyer_phone
+string
+
+Buyer's phone number
+
+Example:
++972520000000
+buyer_card_mask
+string
+
+Card mask
+
+Example:
+458045******4580
+buyer_card_exp
+string
+
+Buyer's card expiration date
+
+Example:
+10/26
+buyer_card_is_foreign
+boolean
+
+Is the card foreign or domestic? (For IL Sellers only)
+
+buyer_social_id
+string
+
+Buyer's social ID number
+
+Example:
+999999999
+installments
+integer
+
+Number of installments used for the payment
+
+Example:
+12
+sale_paid_date
+string
+
+Sale paid date
+
+Example:
+2021-11-02 16:36:13
+Body
+1
+{
+2
+  "payme_client_key": "XXXXXXXX",
+3
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+4
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+5
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/capture-sale \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "XXXXXXXX",
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "payme_status": "success",
+4
+  "status_error_code": 0,
+5
+  "payme_sale_id": "SALEDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+6
+  "payme_sale_code": 1111111,
+7
+  "sale_created": "2023-06-22 14:01:47",
+8
+  "payme_sale_status": "completed",
+9
+  "sale_status": "completed",
+10
+  "currency": "ILS",
+11
+  "transaction_id": "12345",
+12
+  "is_token_sale": false,
+13
+  "price": 150000,
+14
+  "payme_signature": "93a1ca34ed43bc00c62b9f467c40be8e",
+15
+  "sale_description": "Computer",
+16
+  "sale_deferred_months": null,
+17
+  "payme_transaction_id": "TRANDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+18
+  "payme_transaction_total": "150000",
+19
+  "payme_transaction_card_brand": "Mastercard",
+20
+  "payme_transaction_auth_number": "8906759",
+21
+  "payme_transaction_voucher": "111111",
+22
+  "payme_transaction_emv_uid": null,
+23
+  "payme_transaction_acquirer": "PayMe",
+24
+  "payme_transaction_auth_source": "VoiceMail",
+25
+  "payme_transaction_card_issuer": "Isracard",
+26
+  "payme_transaction_credit_type": "RegularCredit",
+27
+  "buyer_name": "Test User",
+28
+  "buyer_email": "test@payme.io",
+29
+  "buyer_phone": "9725254448888",
+30
+  "buyer_card_mask": "532610******5846",
+31
+  "buyer_card_exp": "0426",
+32
+  "buyer_card_is_foreign": false,
+33
+  "buyer_social_id": "123456789",
+34
+  "installments": 1,
+35
+  "transaction_first_payment": 150000,
+36
+  "transaction_periodical_payment": 0,
+37
+  "transaction_arn": null,
+38
+  "sale_paid_date": "2023-06-22 14:04:28",
+39
+  "sale_release_date": null,
+40
+  "sale_3ds": false
+41
+}

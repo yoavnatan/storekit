@@ -1,0 +1,84 @@
+# https://payme.stoplight.io/docs/keep/5097659b3cd8e-authorization-overview
+
+Authorization Overview
+
+This document provides a high-level overview of the Keep API authentication system.
+
+Introduction
+
+The PayMe API uses OAuth 2.0 for secure authentication. API integrators authenticate using the Client Credentials flow, which is designed for server-to-server communication where no user interaction is required.
+
+How It Works
+
+Authentication Flow
+
+Your server requests an access token using your client credentials
+The API returns an access token and refresh token
+Use the access token to make authorized API requests
+When the access token expires, use the refresh token to obtain a new one
+When the refresh token expires, repeat from step 1
+Authentication Methods
+Client Credentials
+
+This is the primary authentication method for API integrators. Your server authenticates directly with the PayMe API using a client ID and client secret provided during onboarding.
+
+When to use: Server-to-server integrations, backend services, automated processes
+
+Refresh Token
+
+Used to obtain a new access token without re-authenticating with credentials. This ensures continuous API access without storing sensitive credentials for repeated use.
+
+When to use: When your current access token has expired or is about to expire
+
+Tokens
+Access Token
+Used to authenticate API requests
+Short-lived (typically 1 hour)
+Must be included in the Authorization header of every API request
+Format: Bearer <token>
+Refresh Token
+Used to obtain new access tokens
+Long-lived (typically 30 days)
+Should be stored securely
+Cannot be used to make API requests directly
+Scopes
+
+Scopes define what resources and actions your integration can access.
+
+SCOPE	DESCRIPTION
+partner-api	Access to partner-level endpoints and resources
+seller-api	Access to seller-level endpoints and resources
+
+Request only the scopes your integration needs to follow the principle of least privilege.
+
+Security Considerations
+
+Important Security Practices
+
+Never expose your client secret in client-side code
+Always use HTTPS for all API communications
+Store tokens securely using encryption
+Implement token refresh before expiration
+Rotate credentials periodically
+Getting Started
+Obtain Credentials - Contact Keep to receive your client_id and client_secret
+Request Access Token - Use the Client Credentials flow to obtain tokens
+Make API Requests - Include the access token in your API calls
+Handle Token Refresh - Implement logic to refresh tokens before they expire
+Next Steps
+
+For detailed implementation instructions including request/response formats and code examples, see the Authorization Flow documentation.
+
+Authorization Overview
+Introduction
+How It Works
+Authentication Methods
+Client Credentials
+Refresh Token
+Tokens
+Access Token
+Refresh Token
+Scopes
+Security Considerations
+Getting Started
+Next Steps

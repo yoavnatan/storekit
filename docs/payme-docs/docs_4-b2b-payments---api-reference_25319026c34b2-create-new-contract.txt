@@ -1,0 +1,380 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/25319026c34b2-create-new-contract
+
+Create New Contract
+POST
+https://sandbox.payme.io/api/payment-contracts
+
+This endpoint enables to create a new contract. There is an option to send payment (payment.type = 1), and to send a payment request (payment.type = 2)
+
+Request
+Headers
+PayMe-Merchant-Key
+string
+
+MPL
+
+Body
+application/json
+application/json
+
+fkdsf
+
+description
+string
+required
+
+Describes the reason of the payment
+
+Example:
+Test
+Match pattern:
+December Payment
+amount
+number
+required
+
+The amount of the payment. The provided amount should be with pennies. For example, 1000 = 10.00
+
+Example:
+1000
+currency
+string
+required
+
+The currency that will be used for the payment
+
+Match pattern:
+ILS, USD, EUR
+remote_id
+string
+
+A unique Key that could be used as an identifier
+
+Match pattern:
+User12345
+callback_url
+string
+
+The URL to receive callbacks for every change in status
+
+Match pattern:
+http://www.example.com/callback
+recipient
+object
+required
+
+The recipient's details
+
+language
+any
+
+The language of the notifications that will be sent to the recipient.
+
+Allowed values:
+en
+he
+business_code
+number
+
+Business number of the recipient
+
+Example:
+515123123
+email
+string
+
+Recipient's phone number
+
+Match pattern:
+test@test.com
+phone
+string
+
+The phone number of the recipie
+
+Example:
+05461234567
+payme_id
+string
+
+Optional. MPL can be used in order to attach the payment contract directly to a specific use in the syste m.Show all...
+
+Example:
+MPLxxxxx-xxxxxxx-xxxxxxx-xxxxxx
+payment
+object
+required
+
+The payment details
+
+type
+number
+required
+
+Type of action 1 - Send Payment 2 - Payment Request
+
+Allowed values:
+1 - Send Payment
+2 - Payment Request
+method
+any
+required
+
+Supported payment methods values -
+
+funds-transfer
+credit-card
+il-direct-debit
+Allowed values:
+funds-transfer
+credit-card
+il-direct-debit
+Default:
+funds-transfer
+buyer_key
+string
+
+Required in case the payment method isn't funds transfer
+
+due_date
+string<date-time>
+required
+
+The date when the payment will take place Has to be a future date
+
+Match pattern:
+"2024-11-25 15:30:00"
+recurring
+object
+
+That object should be sent if the payment is recurring
+
+Responses
+201
+400
+
+Contract Created Successfully
+
+Body
+application/json
+application/json
+responses
+/
+201
+data
+object
+id
+number
+required
+
+The ID of the payment
+
+Example:
+150
+guid
+string
+required
+
+The payment GUID after being created successfully
+
+Match pattern:
+CONT1637-684843YV-TTH7IOTH-XXXXXX
+description
+string
+>= 1 characters
+seller_payme_id
+string
+>= 1 characters
+remote_id
+string
+>= 1 characters
+created_date
+string
+>= 1 characters
+confirmed_by_recipient_date
+any
+confirmed_by_initiator_date
+any
+resolution_date
+any
+status
+number
+amount
+number
+currency
+string
+>= 1 characters
+payme_signature
+string
+>= 1 characters
+error_code
+any
+error_note
+any
+error_text
+any
+recipient
+object
+payment
+object
+status_code
+number
+Parameters
+PayMe-Merchant-Key
+:
+Body
+1
+{
+2
+  "description": "Test",
+3
+  "amount": 1000,
+4
+  "currency": "string",
+5
+  "remote_id": "string",
+6
+  "callback_url": "string",
+7
+  "recipient": {
+8
+    "language": "en",
+9
+    "business_code": 515123123,
+10
+    "email": "string",
+11
+    "phone": "05461234567",
+12
+    "payme_id": "MPLxxxxx-xxxxxxx-xxxxxxx-xxxxxx"
+13
+  },
+14
+  "payment": {
+15
+    "type": "1 - Send Payment",
+16
+    "method": "funds-transfer",
+17
+    "buyer_key": "string",
+18
+    "due_date": "2019-08-24T14:15:22Z",
+19
+    "recurring": {
+20
+      "iterations": 4,
+21
+      "frequency_type": "1 - Day"
+22
+    }
+23
+  }
+24
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/payment-contracts \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'PayMe-Merchant-Key: ' \
+  --data '{
+  "description": "Test",
+  "amount": 1000,
+  "currency": "string",
+  "remote_id": "string",
+  "callback_url": "string",
+  "recipient": {
+    "language": "en",
+    "business_code": 515123123,
+    "email": "string",
+    "phone": "05461234567",
+    "payme_id": "MPLxxxxx-xxxxxxx-xxxxxxx-xxxxxx"
+  },
+  "payment": {
+    "type": "1 - Send Payment",
+    "method": "funds-transfer",
+    "buyer_key": "string",
+    "due_date": "2019-08-24T14:15:22Z",
+    "recurring": {
+      "iterations": 4,
+      "frequency_type": "1 - Day"
+    }
+  }
+}'
+Response Example
+1
+{
+2
+  "data": {
+3
+    "id": 150,
+4
+    "guid": "string",
+5
+    "description": "string",
+6
+    "seller_payme_id": "string",
+7
+    "remote_id": "string",
+8
+    "created_date": "string",
+9
+    "confirmed_by_recipient_date": null,
+10
+    "confirmed_by_initiator_date": null,
+11
+    "resolution_date": null,
+12
+    "status": 0,
+13
+    "amount": 0,
+14
+    "currency": "string",
+15
+    "payme_signature": "string",
+16
+    "error_code": null,
+17
+    "error_note": null,
+18
+    "error_text": null,
+19
+    "recipient": {
+20
+      "language": "string",
+21
+      "business_code": 0,
+22
+      "email": "string",
+23
+      "phone": "string"
+24
+    },
+25
+    "payment": {
+26
+      "type": "string",
+27
+      "method": "string",
+28
+      "guarantee_type": 0,
+29
+      "due_date": "string",
+30
+      "recurring": {
+31
+        "frequency_type": 0,
+32
+        "iterations": 0
+33
+      }
+34
+    }
+35
+  },
+36
+  "status_code": 0
+37
+}

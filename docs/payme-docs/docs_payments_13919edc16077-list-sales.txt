@@ -1,0 +1,468 @@
+# https://payme.stoplight.io/docs/payments/13919edc16077-list-sales
+
+List Sales
+POST
+https://sandbox.payme.io/api/get-sales
+Overview
+
+You can retreive data on different sales processed by your sellers using this endpoint.
+
+Query pagination (more than 500 results)
+
+If you are sending a query and expect to receive more than 500 results, make sure you use this function of Query Pagination.
+
+{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  ...
+  "page_size": 100, // Max allowed page size is 500
+  "page": 1
+}
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+PayMe Partner Key
+
+Example:
+XXXXXXXX
+seller_payme_id
+string
+
+Our unique seller ID (MPL).
+If you are a partner, you can use multiple seller_payme_id attributes to retreive data for these specific sellers
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us
+
+Example:
+12345
+sale_payme_code
+string
+
+Our unique sale code
+
+Example:
+12345678
+sale_payme_id
+string
+
+Our unique sale ID
+
+Example:
+SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sale_created
+string
+
+Exact creation date and time for which to retrieve sales. ISO-8601 formatted
+
+Example:
+2016-01-01 15:15:15
+sale_created_min
+string
+
+Earliest creation date and time for which to retrieve sales. ISO-8601 formatted
+
+Example:
+2016-01-01 00:00:00
+sale_created_max
+string
+
+Latest date and time for which to retrieve sales. ISO-8601 formatted
+
+Example:
+2016-01-02 00:00:00
+sale_status
+string
+
+Sale status. All statuses are available here.
+For multiple statuses use array format like ["initial","validated"]
+
+Example:
+completed
+sale_price
+number
+
+Sale final price.
+For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+100
+sale_currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+USD
+sale_auth_number
+string
+
+Sale authorization number from the credit company
+
+Example:
+01A2B3C
+buyer_card_mask
+string
+
+Buyer's credit card mask
+
+Example:
+458045******4580
+buyer_card_last_four_digits
+string
+
+Buyer's credit card last four digits
+
+Example:
+4580
+buyer_email
+string
+
+Buyer's eMail address
+
+Example:
+buyer@example.com
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+First Last
+buyer_phone
+string
+
+Buyer's phone number
+
+Example:
+0540000000
+buyer_social_id
+string
+
+Buyer's social id (For Israeli sellers only)
+
+Example:
+000000001
+buyer_card_is_foreign
+boolean
+
+Is the buyer's credit card foreign
+
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+items_count
+number
+
+Number of items
+
+Default:
+10
+items
+array[object]
+>= 1 items
+seller_payme_id
+string
+
+Our unique seller ID
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_id
+string
+
+Merchant's unique seller ID for correlation with us
+
+Example:
+12345
+sale_payme_id
+string
+
+Our unique sale ID
+
+Example:
+SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sale_payme_code
+string
+
+Our unique sale code
+
+Example:
+12345678
+transaction_id
+string
+
+PayMe's unique transaction ID
+
+Example:
+TRANXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sale_created
+string
+
+Exact creation date and time for which to retrieve sales. ISO-8601 formatted
+
+Example:
+2016-01-01 15:15:15
+sale_status
+string
+
+Sale status. All available Sale statuses
+
+Example:
+completed
+sale_currency
+string
+
+Currency the transaction was processed in
+
+Example:
+ILS
+sale_price
+number
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+100
+sale_price_after_fees
+number
+
+Sale amount including fees
+
+Example:
+100
+sale_description
+string
+
+What was the goods/services the buyer paid for
+
+Example:
+SaaS service
+sale_installments
+number
+
+Number of installments used for the purchase`
+
+Example:
+1
+sale_vat
+string
+
+VAT added to the sale
+
+Example:
+0.17
+sale_paid_date
+string
+
+The date the sale was paid
+
+Example:
+2016-01-01 15:15:15
+sale_auth_number
+string
+
+Sale authorization number from the credit company
+
+Example:
+01A2B3C
+sale_release_date
+string
+
+The expected date the funds will be available in the seller's balance
+
+Example:
+2016-01-01 15:15:15
+sale_fees
+object
+sale_buyer_details
+object
+sale_invoices
+array[object]
+
+Invoice generated unique ID
+
+status_code
+number
+
+0 for Sucessful requests, 1 for Failed requests
+
+Example:
+0
+Body
+1
+{
+2
+  "payme_client_key": "XXXXXXXX",
+3
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+4
+  "seller_id": "12345",
+5
+  "sale_payme_code": "12345678",
+6
+  "sale_payme_id": "SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+7
+  "sale_created": "2016-01-01 15:15:15",
+8
+  "sale_created_min": "2016-01-01 00:00:00",
+9
+  "sale_created_max": "2016-01-02 00:00:00",
+10
+  "sale_status": "completed",
+11
+  "sale_price": 100,
+12
+  "sale_currency": "USD",
+13
+  "sale_auth_number": "01A2B3C",
+14
+  "buyer_card_mask": "458045******4580",
+15
+  "buyer_card_last_four_digits": "4580",
+16
+  "buyer_email": "buyer@example.com",
+17
+  "buyer_name": "First Last",
+18
+  "buyer_phone": "0540000000",
+19
+  "buyer_social_id": "000000001",
+20
+  "buyer_card_is_foreign": true
+21
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-sales \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "XXXXXXXX",
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "seller_id": "12345",
+  "sale_payme_code": "12345678",
+  "sale_payme_id": "SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "sale_created": "2016-01-01 15:15:15",
+  "sale_created_min": "2016-01-01 00:00:00",
+  "sale_created_max": "2016-01-02 00:00:00",
+  "sale_status": "completed",
+  "sale_price": 100,
+  "sale_currency": "USD",
+  "sale_auth_number": "01A2B3C",
+  "buyer_card_mask": "458045******4580",
+  "buyer_card_last_four_digits": "4580",
+  "buyer_email": "buyer@example.com",
+  "buyer_name": "First Last",
+  "buyer_phone": "0540000000",
+  "buyer_social_id": "000000001",
+  "buyer_card_is_foreign": true
+}'
+Response Example
+1
+{
+2
+  "items_count": 10,
+3
+  "items": [
+4
+    {
+5
+      "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+6
+      "seller_id": "12345",
+7
+      "sale_payme_id": "SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+8
+      "sale_payme_code": "12345678",
+9
+      "transaction_id": "TRANXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+10
+      "sale_created": "2016-01-01 15:15:15",
+11
+      "sale_status": "completed",
+12
+      "sale_currency": "ILS",
+13
+      "sale_price": 100,
+14
+      "sale_price_after_fees": 100,
+15
+      "sale_description": "SaaS service",
+16
+      "sale_installments": 1,
+17
+      "sale_vat": "0.17",
+18
+      "sale_paid_date": "2016-01-01 15:15:15",
+19
+      "sale_auth_number": "01A2B3C",
+20
+      "sale_release_date": "2016-01-01 15:15:15",
+21
+      "sale_fees": {
+22
+        "sale_processing_fee": "2.05",
+23
+        "sale_processing_charge": "2.05",
+24
+        "sale_discount_fee": "0.05",
+25
+        "sale_rapid_settlement_fee": "0.06",
+26
+        "sale_market_fee": "0.5"
+27
+      },
+28
+      "sale_buyer_details": {
+29
+        "buyer_card_mask": "458045******4580",
+30
+        "buyer_card_expiry": "06/25",
+31
+        "buyer_card_brand": "Visa",
+32
+        "buyer_card_is_foreign": true,
+33
+        "buyer_name": "John James",
+34
+        "buyer_email": "buyer@buyers.com",
+35
+        "buyer_phone": "+972 05XXXXXXX",
+36
+        "buyer_social_id": "999999999"
+37
+      },
+38
+      "sale_invoices": [
+39
+        {}
+40
+      ]
+41
+    }
+42
+  ],
+43
+  "status_code": 0
+44
+}

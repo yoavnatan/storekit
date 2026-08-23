@@ -1,0 +1,92 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/f530d79ed19d4-get-recipient
+
+Get Recipient
+GET
+https://sandbox.payme.io/api/payment-contracts/recipients
+
+That endpoint will return recipients that were already paid by the payment contract initiator.
+
+**Only recipients that received the payment will return in the response. If the recipient doesn't approve the payment, his data won't return.
+
+Request
+Headers
+PayMe-Merchant-Key
+string
+
+Seller's MPL
+
+Example:
+MPL16024-08002EBM-IDV0S0SU-VXSW5VFL
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+status_code
+integer
+page
+integer
+items_per_page
+integer
+items_total
+integer
+items
+array[object]
+name
+string or null
+phone
+string or null
+business_code
+integer
+email
+string or null
+seller_payme_id_checksum
+string
+
+Use that value when creating a new contract. Use it in the recipient.payme_id
+
+Parameters
+PayMe-Merchant-Key
+:
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request GET \
+  --url https://sandbox.payme.io/api/payment-contracts/recipients \
+  --header 'Accept: application/json, application/xml' \
+  --header 'PayMe-Merchant-Key: '
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "page": 0,
+4
+  "items_per_page": 0,
+5
+  "items_total": 0,
+6
+  "items": [
+7
+    {
+8
+      "name": "string",
+9
+      "phone": "string",
+10
+      "business_code": 0,
+11
+      "email": "string",
+12
+      "seller_payme_id_checksum": "string"
+13
+    }
+14
+  ]
+15
+}

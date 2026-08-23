@@ -1,0 +1,356 @@
+# https://payme.stoplight.io/docs/payments/5cf5e33e66c5b-generate-sale-with-3-d-secure
+
+Generate Sale with 3D Secure
+POST
+https://sandbox.payme.io/api/generate-sale
+Overview
+
+In order to process sales with the 3D secure activated, please follow the next steps:
+
+Make sure the service is enabeled for your partner account on PayMe's system.
+Use generate-sale to send the request.
+If you want to set specific rules for 3D secure initiation process, make sure you reach out to your onboarding manager and have them in place before inititating the transaction.
+Create a sale with Dynamic 3DS
+
+This option requires signup in advanced to the 3DS service. As part of generate-sale command, you can add the following object to the request:
+
+"services": [
+      {
+    "name": "3DSecure",
+    "settings": {
+        "active": false
+    }
+      }
+    ]
+Redirecting When the Authentication Failed
+
+If the user has failed on the authentication step (When a challenge is presented - 6 digit OTP that is sent to the card holder), a redirect will be initiated sending the user to PayMe's Hosted Payment Page for an additional try to input another credit card.
+
+If you would like to avoid such cases and redirect the card-holder back to your own payment page, please include an additional parameter in your sale generating request (generate-sale) which is cancel_url.
+
+PARAMETER NAME	TYPE	EXAMPLE
+cancel_url	URL	https://payme.io
+Validating 3DS status
+
+To verify the 3DS authentication was succesfull, you can query the transaction using get transactions endpoint and check parameter sale_is_3ds
+
+Request
+Body
+application/json
+application/xml
+multipart/form-data
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sale_price
+number
+required
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075. Note that the minimum value is 500
+
+Example:
+10000
+currency
+string
+required
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+USD
+product_name
+string
+required
+
+Short name and description of the product/service. This text will be shown in the invoice as well, if the seller has enabled the invoices module in his account panel. Limited to 500 characters
+
+Example:
+Smartphone
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+installments
+string
+required
+
+Amount of installments for the sale. For additional information see Note 1 below
+
+Example:
+1
+market_fee
+number
+
+A decimal between 0.00 and 60.00 representing the percent of the sale price that is collected for the marketplace (includes VAT). This fee is added on top of our fees and transferred to the marketplace once a month. Default value is the market fee of the Seller, as set upon Seller creation
+
+Example:
+2.5
+sale_send_notifcation
+boolean
+
+Flag to send email and/or SMS notifications
+
+sale_callback_url
+string
+
+Callback response to your page regarding call to our API. Default value is taken from the Merchant's settings. Note that you may not send a "localhost" URL as value
+
+Example:
+https://www.example.com/payment/callback
+sale_email
+string
+
+In case sale send notification is true provide the address to send email notification
+
+Example:
+duckshop@example.com
+sale_return_url
+string
+
+We will redirect the IFRAME and the buyer to this URL upon payment success. Default value is taken from the Merchant's settings
+
+Example:
+https://www.example.com/payment/success
+sale_mobile
+string
+
+In case sale send notification is true, provide the phone number to send SMS notification, if the seller has enabled the SMS module in his account panel
+
+Example:
+123456789
+sale_name
+string
+
+The name that will be displayed when sending a notification
+
+Example:
+John
+capture_buyer
+string
+
+Flag for requesting the buyer's token for this payment (0 - do not capture token, 1 - capture token). For additional information see Tokens explanation below
+
+Example:
+0
+buyer_key
+string
+
+Buyer key for an instant-payment with the token. This key is received through the use of capture_buyer. Note that this attribute cannot co-exist with the capture_buyer parameter in the same request
+
+Example:
+BUYERXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+buyer_perform_validation
+boolean
+
+Flag for performing an online validation of the card with the Issuer. Default value is true
+
+sale_payment_method
+string
+
+Flag for performing an online validation of the card with the Issuer. Default value is true
+
+Example:
+credit-card
+layout
+string
+
+IFRAME payment page layout. Optional attribute which may be used with "bit" sale_payment_method. Available layouts are: dynamic, qr-sms. Default value is dynamic
+
+Example:
+dynamic
+language
+string
+
+Changes the language of the payment IFRAME to English, as well as the error messages. Default value is Hebrew (he)
+
+Example:
+En
+services
+object
+name
+string
+
+Add 3D Secure
+
+Example:
+3D Secure
+settings
+object
+Responses
+200
+500
+
+Sale Created Successfully
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+number
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+sale_url
+string
+
+The URL of the IFRAME secured payment form to display to the buyer
+
+Example:
+https://preprod.paymeservice.com/sale/generate/XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_id
+string
+
+Our unique sale ID
+
+Match pattern:
+SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+payme_sale_code
+number
+
+Our unique sale code (for display purposes only)
+
+Example:
+12345678
+price
+number
+
+Sale final price. For example, if the price is 50.75 (max 2 decimal points) the value that needs to be sent is 5075
+
+Example:
+1000
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+Body
+1
+{
+2
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "sale_price": 10000,
+4
+  "currency": "USD",
+5
+  "product_name": "Smartphone",
+6
+  "transaction_id": "12345",
+7
+  "installments": "1",
+8
+  "market_fee": 2.5,
+9
+  "sale_send_notifcation": true,
+10
+  "sale_callback_url": "https://www.example.com/payment/callback",
+11
+  "sale_email": "duckshop@example.com",
+12
+  "sale_return_url": "https://www.example.com/payment/success",
+13
+  "sale_mobile": "123456789",
+14
+  "sale_name": "John",
+15
+  "capture_buyer": "0",
+16
+  "buyer_key": "BUYERXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+17
+  "buyer_perform_validation": true,
+18
+  "sale_payment_method": "credit-card",
+19
+  "layout": "dynamic",
+20
+  "language": "En",
+21
+  "services": {
+22
+    "name": "3D Secure",
+23
+    "settings": {
+24
+      "active": true
+25
+    }
+26
+  }
+27
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/generate-sale \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "sale_price": 10000,
+  "currency": "USD",
+  "product_name": "Smartphone",
+  "transaction_id": "12345",
+  "installments": "1",
+  "market_fee": 2.5,
+  "sale_send_notifcation": true,
+  "sale_callback_url": "https://www.example.com/payment/callback",
+  "sale_email": "duckshop@example.com",
+  "sale_return_url": "https://www.example.com/payment/success",
+  "sale_mobile": "123456789",
+  "sale_name": "John",
+  "capture_buyer": "0",
+  "buyer_key": "BUYERXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "buyer_perform_validation": true,
+  "sale_payment_method": "credit-card",
+  "layout": "dynamic",
+  "language": "En",
+  "services": {
+    "name": "3D Secure",
+    "settings": {
+      "active": true
+    }
+  }
+}'
+Response Example
+1
+{
+2
+  "id": 12,
+3
+  "firstName": "Bob",
+4
+  "lastName": "Fellow",
+5
+  "email": "bob.fellow@gmail.com",
+6
+  "dateOfBirth": "1996-08-24",
+7
+  "emailVerified": false,
+8
+  "createDate": "2020-11-18"
+9
+}

@@ -1,0 +1,190 @@
+# https://docs.payme.io/docs/payments/d3898ffef6962-i-os-sdk
+
+iOS SDK
+Export
+v1.0
+API Base URL
+Mock Server:
+https://stoplight.io/mocks/payme/payments/27034489
+Getting Started
+
+You can use our iOS SDK to implement our solution for iOS devices.
+
+Click here to see the Project repository
+Get Isracard Global Package:
+
+How to build Framework from sources:
+
+Open the the Isracard Global project.
+Build project.
+The new FRAMEWORK will be generated automatically in the Products directory of PMLib.xcodeproj : PMLib.framework
+Right Click -> Show in finder to get path of framework.
+How to import the Isracard Global SDK Framework:
+Open project need import framework.
+Select Targets project -> General -> Embedded Binaries (or Build Phase -> Embedded Frameworks).
+Press Add (+) and go to path of PMLib.framework.
+Build project.
+Initialize the SDK:
+
+Extend your Application and initialize the SDK:
+
+header file:
+
+#import <Foundation/Foundation.h>
+#import <PMLib/PayMe.h>
+#define SELLERKEY      @"/* Your seller_payme_id */"
+
+#define WEBSERVICE      [PayMe sharedInstant:SELLERKEY stage:STAGING]
+#define CONTANTS        [Contants sharedInstant]
+
+@interface Contants : NSObject
+
++ (id)sharedInstant;
+- (void)showHub:(BOOL)isShow;
+- (void)showMessage:(NSString *)message;
+
+source file:
+
+#import "Contants.h"
+#import <UIKit/UIKit.h>
+#import "MBProgressHUD.h"
+#import "AppDelegate.h"
+
+static Contants *_contants;
+
+@implementation Contants
+
++ (id)sharedInstant{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _contants = [[Contants alloc]init];
+    });
+    return _contants;
+}
+
+- (void)showHub:(BOOL)isShow{
+    if (isShow) {
+        [MBProgressHUD showHUDAddedTo:APPDELEGATE.window animated:YES];
+    }else{
+        [MBProgressHUD hideAllHUDsForView:APPDELEGATE.window animated:YES];
+    }
+}
+
+- (void)showMessage:(NSString *)message{
+    UIAlertView *alertView = [[UIAlertView alloc]initWithTitle:@"" message:message delegate:nil cancelButtonTitle:@"Ok" otherButtonTitles:nil, nil];
+    [alertView show];
+}
+Integrate with Isracard Global API
+
+Each API request required appropriate PayMeRequest and TransactionListener instances.
+
+Pay Sale:
+
+First, you should generate sale on your server side (for more details see our documentation, generate-sale API) and send the payme_sale_id to your application, then you can create PaySaleRequest and fire it:
+
+PaySaleRequest *request = [[PaySaleRequest alloc] init];
+//payme_sale_id - Required - From your server
+request.paymeSaleId = /* payme_sale_id */;
+//Installments - Required
+request.installments = installments;
+//ID - Required Only for israeli cards
+request.buyerSocialID = buyerSocialID;
+//Email - Required
+request.buyerEmail = buyerEmail;
+//Name - Required
+request.buyerName = buyerName;
+
+//Credit Card Number - Required
+request.creditCardNumber = creditCardNumber;
+//CreditCard CVV - Required
+request.creditCardCVV = creditCardCVV;
+//Credit Card Expiration - Required
+request.creditCardExp = creditCardExp;
+
+[CONTANTS showHub:YES];
+[WEBSERVICE paySale:request success:^(PaySaleResponse *responseObject) {
+    [CONTANTS showHub:NO];
+    if(responseObject != nil)
+    {
+        //Handle success request
+    }
+} failure:^(PayMeError *error) {
+    [CONTANTS showHub:NO];
+    if(error != nil)
+    {
+        //Handle failed request
+    }
+
+}];
+Pay Subscription:
+
+First, you should generate a subscription on your server (for more details see our documentation, generate-subscription API) and send the sub_payme_id to your application, then you can create PaySubscriptionRequest and fire it:
+
+PaySubscriptionRequest *request = [[PaySubscriptionRequest alloc] init];
+//Name - Required
+request.buyerName = buyerName;
+//ID - Required Only for israeli cards
+request.buyerSocialId = buyerSocialId;
+//Phone
+request.buyerPhone = buyerPhone;
+//Email - Required
+request.buyerEmail = buyerEmail;
+//sub_payme_id - Required - From your server
+request.subPaymeId = /* sub_payme_id */;
+//Credit Card Number - Required
+request.creditCardNumber = creditCardNumber;
+//CreditCard CVV - Required
+request.creditCardCVV = creditCardCVV;
+//Credit Card Expiration - Required
+request.creditCardExp = creditCardExp;
+
+[CONTANTS showHub:YES];
+[WEBSERVICE paySubscription:request success:^(PaySubscriptionResponse *responseObject) {
+    [CONTANTS showHub:NO];
+    if(responseObject != nil)
+    {
+        //Handle success request
+    }
+} failure:^(PayMeError *error) {
+    [CONTANTS showHub:NO];
+    if(error != nil)
+    {
+        //Handle failed request
+    }
+}];
+Capture Buyer
+CaptureBuyerRequest *request = [[CaptureBuyerRequest alloc] init];
+//Name - Required
+request.buyerName = buyerName;
+//Phone - Required
+request.buyerPhone = buyerPhone;
+//Email - Required
+request.buyerEmail = buyerEmail;
+//ID - Required Only for israeli cards
+request.buyerSocialId = buyerSocialId;
+//SellerID - Required
+request.sellerPaymeId = /* Your seller_payme_id */;
+//Permanent
+request.buyerIsPermanent = buyerIsPermanent;
+//Credit Card Number - Required
+request.creditCardNumber = creditCardNumber;
+//CreditCard CVV - Required
+request.creditCardCvv = creditCardCVV;
+//Credit Card Expiration - Required
+request.creditCardExp = creditCardExp;
+
+[CONTANTS showHub:YES];
+[WEBSERVICE captureBuyer:request success:^(CaptureBuyerResponse *responseObject) {
+   [CONTANTS showHub:NO];
+   if(responseObject != nil)
+   {
+       //Handle success request
+   }
+} failure:^(PayMeError *error) {
+   //do something
+   [CONTANTS showHub:NO];
+   if(error != nil)
+   {
+       //Handle failed request
+   }
+}];

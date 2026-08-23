@@ -1,0 +1,18 @@
+# https://docs.payme.io/docs/payments/0b8bd7b8e82ea-direct-api
+
+Direct API
+Export
+v1.2
+API Base URL
+Staging:
+https://sandbox.payme.io/api/
+Production :
+https://live.payme.io/api/
+Mock Server:
+https://stoplight.io/mocks/payme/payments/26301978
+
+Our Direct API allows partners who are PCI Compliant (PCI-DSS level 1) and can handle credit card/debit card information to send direct commands via API to capture payments, whether it is a new card using the pay-sale command or a token using capture-buyer-token command.
+
+You can find more information in the following guide - Direct API - How to create and pay sale.
+
+If you have further questions, please reach out to our Customer support team.

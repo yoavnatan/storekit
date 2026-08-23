@@ -1,0 +1,16 @@
+# https://payme.stoplight.io/docs/guides/s7t2zmnz2642i-seller-incorporation-type-il
+
+Seller Incorporation Type (IL)
+CODE	TYPE IN HEBREW	TYPE IN ENGLISH
+1	פרטי	Individual
+2	עוסק מורשה	Sole Proprietorship
+3	חברה בע"מ	Incorporated Company
+4	שותפות	Partnership
+5	עוסק פטור	Exempt Company
+6	עמותה	Charity (Non Profit)
+7	שותפות מוגבלת	Limited Partnership
+8	חברה ציבורית	Publicly Traded Company
+9	אגודה שיתופית	Shared Cooperative
+10	חברה לתועלת הציבור (חל"צ)	Public Benefit Company
+295	ועד בית	House Committee
+296	עיריות ומועצות	Municipalities and councils

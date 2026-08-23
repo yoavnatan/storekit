@@ -1,0 +1,714 @@
+# https://payme.stoplight.io/docs/payments/9842efb09c33d-list-transactions
+
+List Transactions
+POST
+https://sandbox.payme.io/api/get-transactions
+Overview
+
+You can retreive data on different transactions processed by your sellers using this endpoint.
+
+Filtering
+
+In order to filter by transaction type, use the following method:
+
+PARAMETER NAME	DESCRIPTION
+transaction_status	The applicable transaction statuses.
+
+You can find the transaction statuses in the following guide - Transaction Statuses.
+
+Query pagination (more than 500 results)
+
+If you are sending a query and expect to receive more than 500 results, make sure you use this function of Query Pagination.
+
+{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  ...
+  "page_size": 100, // Max allowed page size is 500
+  "page": 1
+}
+Request
+Body
+application/json
+application/json
+seller_payme_id
+string
+required
+
+Our unique seller ID (MPL).
+If you are a partner, you can use multiple seller_payme_id attributes to retreive data for these specific sellers.
+In this case you need to send also payme_client_key.
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+transaction_type
+number
+
+Transaction type can be found here
+
+Example:
+1
+transaction_status
+string
+
+All transaction statuses can be found here
+
+Example:
+pending
+sale_status
+string
+
+Sale Status can be found here
+Example: completed
+
+sale_currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+Example: ILS
+
+sale_payment_method
+string
+
+Sale Payment Method (for the list see Payment Methods)
+Example: credit-card
+
+transaction_created_min
+string
+
+Earliest creation date and time for which to retrieve transactions. ISO-8601 formatted
+
+Example:
+2019-01-01 00:00:00
+transaction_created_max
+string
+
+Latest date and time for which to retrieve transactions. ISO-8601 formatted
+
+Example:
+2019-01-01 00:00:00
+transaction_created_at
+string
+
+Transaction creation date and time for which to retrieve transactions. ISO-8601 formatted
+
+Example:
+2019-01-01 00:00:00
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+payme_transaction_id
+string
+
+PayMe's unique transaction ID
+
+Example:
+TRANXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+transaction_price
+number
+
+The transaction price amount in cents
+
+Example:
+100
+sale_price
+number
+
+The sale price amount in cents
+
+Example:
+100
+sale_auth_number
+string
+
+Sale authorization number from the credit company
+
+Example:
+01A2B3C
+buyer_card_mask
+string
+
+Buyer's credit card mask
+
+Example:
+458045******4580
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_phone
+string
+
+Buyer's phone
+
+Example:
++972 05XXXXXXX
+buyer_social_id
+string
+
+Buyer's social ID
+
+Example:
+999999999
+buyer_card_is_foreign
+boolean
+
+Indicates if the card is foreign
+
+buyer_card_last_four_digits
+string
+
+Buyer's credit card last four digits
+
+Example:
+4580
+sale_is_3ds
+boolean
+
+In case the sale is with 3DS
+
+transaction_is_matched
+boolean
+
+Indicates if the transaction is correlated.
+
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+seller_payme_id
+string
+
+Our unique seller ID
+
+Example:
+MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+seller_id
+integer
+
+Merchant's unique seller ID for correlation with us
+
+Example:
+12345
+sale_payme_id
+string
+
+Our unique sale ID
+
+Example:
+SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+sale_payme_code
+number
+
+Our unique sale code
+
+Example:
+12345678
+transaction_id
+string
+
+Merchant's unique sale ID for correlation with us
+
+Example:
+12345
+payme_transaction_id
+string
+
+PayMe's unique transaction ID
+
+Example:
+TRANXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+transaction_created_at
+string
+
+Exact creation date and time for which to retrieve transaction. ISO-8601 formatted
+
+Example:
+2016-01-01 15:15:15
+sale_type
+number
+
+Sale type. All available Sale types can be found here
+
+Example:
+1
+sale_status
+string
+
+Sale status. All available Sale statuses can be found here
+
+Example:
+completed
+transaction_status
+string
+
+Transaction status. All available transaction statuses can be found here
+
+Example:
+pending
+transaction_type
+number
+
+Transaction type. All available transaction types can be found here
+
+Example:
+1
+sale_currency
+string
+
+Currency the transaction was processed in
+
+Example:
+ILS
+sale_description
+string
+
+What was the goods/services the buyer paid for
+
+Example:
+SaaS service
+sale_installments
+number
+
+Number of installments used for the purchase`
+
+Example:
+1
+sale_payment_method
+string
+
+The Payment method used to pay the sale.
+For all the payment methods click here.
+
+Example:
+credit-card
+transaction_price
+number
+
+The price amount
+
+Example:
+100
+transaction_price_after_fees
+string
+
+Transaction amount including fees
+
+Example:
+100
+sale_vat
+string
+
+VAT added to the sale
+
+Example:
+0.17
+sale_auth_number
+string
+
+Sale authorization number from the credit company
+
+Example:
+01A2B3C
+transaction_release_date
+string
+
+The expected date the funds will be available in the seller's balance
+
+Example:
+2016-01-01 15:15:15
+transaction_voucher
+string
+
+PayMe's transaction voucher
+
+Example:
+116790
+transaction_reference_number
+string
+
+Transaction reference number received from gateway.
+
+Example:
+123456
+transaction_action
+string
+
+The action that was taken on the transaction.
+Possible values: Authorize, Tokenize, Detokenize, Debit, Capture, Refund, PartialRefund, Chargeback, ChargebackRefund, Void, PartialVoid, PartialChargeback, PartialChargebackRefund
+
+Example:
+Debit
+transaction_first_payment
+number
+
+Transaction first payment amount, or total amount if there are no installements.
+
+Example:
+100
+transaction_periodical_payment
+number
+
+Transaction periodical payment amount in case of installements.
+
+Example:
+0
+transaction_arn
+string
+
+Acquirer Reference Numbers
+
+Example:
+12345678912345678912345
+transaction_acquirer
+string
+
+Transaction acquirer
+
+Example:
+Isracard
+transaction_discounter
+string
+
+Transaction discounter entity
+
+Example:
+PayMe
+transaction_error_code
+number
+
+In case of failure, the transaction error code.
+If transaction was successful error code will be 20000.
+
+Example:
+20000
+transaction_error_text
+string
+
+The error code description.
+
+Example:
+Permitted transaction
+transaction_is_matched
+boolean
+
+Indicates if the transaction is correlated.
+
+transaction_match_statuses
+array[string]
+
+If transaction is matched, indicates the relevant matched statuses.
+
+transaction_is_canceled
+boolean
+
+Indicates if the transaction was canceled before transmitted.
+
+sale_is_3ds
+boolean
+
+In case the sale is with 3DS
+
+sale_fees
+object
+sale_processing_fee
+string
+
+Processing fee
+
+Example:
+1.5
+sale_processing_fee_total
+number
+
+Total processing fee
+
+Example:
+3
+sale_processing_charge
+string
+
+Processing charge
+
+Example:
+1.5
+sale_discount_fee
+string
+
+Discount fee
+
+Example:
+1.5
+sale_discount_fee_total
+number
+
+Total Discount fee
+
+Example:
+3
+sale_rapid_settlement_fee
+string
+
+Rapid settlement fee
+
+Example:
+1.5
+sale_rapid_settlement_fee_total
+number
+
+Total Rapid settlement fee
+
+Example:
+3
+sale_annual_interest_rate
+string
+
+The annual interest rate (precentage) of the rapid and discount settlements
+
+Example:
+4.5
+sale_market_fee
+string
+
+Sale's market fee
+
+Example:
+30.00
+sale_market_fee_total
+number
+
+Total sale's market fee
+
+Example:
+30.00
+sale_buyer_details
+object
+buyer_card_mask
+string
+
+Buyer's credit card mask
+
+Example:
+458045******4580
+buyer_card_expiry
+string
+
+Expiration date
+
+>= 1 characters
+Example:
+06/25
+buyer_card_brand
+string
+
+Card brand
+
+Example:
+Visa
+buyer_card_is_foreign
+boolean
+
+Indicates if the card is foreign
+
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+buyer_email
+string
+
+Buyer's email
+
+Example:
+buyer@buyers.com
+buyer_phone
+string
+
+Buyer's phone
+
+Example:
++972 05XXXXXXX
+buyer_social_id
+string
+
+Buyer's social ID
+
+Example:
+999999999
+transaction_invoice_url
+string
+
+Link to the invoice
+
+Example:
+https://payme.io/invoice
+transaction_invoice_doc_number
+string
+
+The invoice number.
+
+Example:
+12345
+Body
+Examples
+1
+{
+2
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "buyer_email": "test@mail.com"
+4
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/get-transactions \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "seller_payme_id": "MPL1DEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+  "buyer_email": "test@mail.com"
+}'
+Response Example
+1
+{
+2
+  "seller_payme_id": "MPLXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+3
+  "seller_id": 12345,
+4
+  "sale_payme_id": "SALEXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+5
+  "sale_payme_code": 12345678,
+6
+  "transaction_id": "12345",
+7
+  "payme_transaction_id": "TRANXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX",
+8
+  "transaction_created_at": "2016-01-01 15:15:15",
+9
+  "sale_type": 1,
+10
+  "sale_status": "completed",
+11
+  "transaction_status": "pending",
+12
+  "transaction_type": 1,
+13
+  "sale_currency": "ILS",
+14
+  "sale_description": "SaaS service",
+15
+  "sale_installments": 1,
+16
+  "sale_payment_method": "credit-card",
+17
+  "transaction_price": 100,
+18
+  "transaction_price_after_fees": "100",
+19
+  "sale_vat": "0.17",
+20
+  "sale_auth_number": "01A2B3C",
+21
+  "transaction_release_date": "2016-01-01 15:15:15",
+22
+  "transaction_voucher": "116790",
+23
+  "transaction_reference_number": "123456",
+24
+  "transaction_action": "Debit",
+25
+  "transaction_first_payment": 100,
+26
+  "transaction_periodical_payment": 0,
+27
+  "transaction_arn": "12345678912345678912345",
+28
+  "transaction_acquirer": "Isracard",
+29
+  "transaction_discounter": "PayMe",
+30
+  "transaction_error_code": 20000,
+31
+  "transaction_error_text": "Permitted transaction",
+32
+  "transaction_is_matched": true,
+33
+  "transaction_match_statuses": [
+34
+    "string"
+35
+  ],
+36
+  "transaction_is_canceled": true,
+37
+  "sale_is_3ds": true,
+38
+  "sale_fees": {
+39
+    "sale_processing_fee": "1.5",
+40
+    "sale_processing_fee_total": 3,
+41
+    "sale_processing_charge": "1.5",
+42
+    "sale_discount_fee": "1.5",
+43
+    "sale_discount_fee_total": 3,
+44
+    "sale_rapid_settlement_fee": "1.5",
+45
+    "sale_rapid_settlement_fee_total": 3,
+46
+    "sale_annual_interest_rate": "4.5",
+47
+    "sale_market_fee": "30.00",
+48
+    "sale_market_fee_total": "30.00"
+49
+  },
+50
+  "sale_buyer_details": {
+51
+    "buyer_card_mask": "458045******4580",
+52
+    "buyer_card_expiry": "06/25",
+53
+    "buyer_card_brand": "Visa",
+54
+    "buyer_card_is_foreign": true,
+55
+    "buyer_name": "John Doe",
+56
+    "buyer_email": "buyer@buyers.com",
+57
+    "buyer_phone": "+972 05XXXXXXX",
+58
+    "buyer_social_id": "999999999"
+59
+  },
+60
+  "transaction_invoice_url": "https://payme.io/invoice",
+61
+  "transaction_invoice_doc_number": 12345
+62
+}

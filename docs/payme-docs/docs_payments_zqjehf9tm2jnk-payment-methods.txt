@@ -1,0 +1,23 @@
+# https://docs.payme.io/docs/payments/zqjehf9tm2jnk-payment-methods
+
+Payment Methods
+
+As PayMe offers different payment methods, you can use the sale_payment_method parameter in generate-sale to set your desired payment method.
+
+PAYMENT METHOD	PAYMENT METHOD TYPE	PAYME PAYMENT_METHOD CODE	API VALUE
+Credit Card	Card Payment	1	credit-card
+Bank Transfer	Bank Transfer Payment	2	bank-transfer
+PayPal	Card/Wallet Payment	3	paypal
+Alipay QR	Wallet Payment	4	alipay-qr
+Alipay Online	Wallet Payment	5	alipay-online
+Funds Transfer	Bank Transfer Payment	6	funds-transfer
+Cash	Cash Payment	7	cash
+Cheque	Cheque Payment	8	cheque
+eCheck	Online Bank Transfer	9	echeck
+Bit	Wallet	10	bit
+BACS	Online Bank Transfer	11	bacs
+SEPA	Online Bank Transfer	12	sepa
+ApplePay	Wallet	14	apple-pay
+IL Direct Debit	Online Bank Transfer	15	il-direct-debit
+Verifone Prepaid	Prepaid card	16	verifone-prepaid
+GooglePay	Wallet	18	google-pay

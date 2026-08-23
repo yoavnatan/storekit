@@ -1,0 +1,132 @@
+# https://payme.stoplight.io/docs/payments/feaeb3b1a34c8-withdraw-balance
+
+Withdraw Balance
+POST
+https://sandbox.payme.io/api/withdraw-balance
+Overview
+
+This endpoint is used to generate a new request to withdraw balance.
+
+Notes
+Until we obtain and verify the 3 mandatory documents (Social Id, Bank, Corporate Certificate), funds will not be available for withdrawal to the Seller's bank account.
+Partial-withdrawal - In order to create a partial-withdrawal, you will need to add another parameter to your request which states which transactions you are willing to get the balance for to your bank account.
+PARAMETER	DESCRIPTION
+transaction_ids	The transaction GUIDs that will be included as a part of your withdrawal request.
+Withdrawal Callback Notification Types
+NOTIFICATION	DESCRIPTION
+withdrawal-complete	A withdrawal was completed successfully
+ATTRIBUTE	DESCRIPTION
+status_code	0 Status of the request (0 - success, 1 - error)
+notify_type	withdrawal-complete
+seller_payme_id	XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+tran_payme_code	123456 Our unique Withdrawal code
+tran_created	2016-01-01 15:15:15
+tran_type	40 Financial Transaction type Bank Withdrawal
+tran_currency	USD
+tran_total	10000
+tran_description	`משיכה לבנק
+Request
+Body
+application/json
+application/json
+payme_client_key
+string
+required
+
+Your private key provided by us for authentication
+
+Example:
+XXXXXXXX
+seller_payme_id
+string
+required
+
+Our unique seller ID
+
+Example:
+MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO
+withdrawal_currency
+string
+required
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+Match pattern:
+USD
+language
+string
+
+Changes the error message language to English. Default value is Hebrew (he)
+
+Example:
+he
+transaction_ids
+array[string]
+
+The transaction IDs that will be used for the partial withdrawal request. Transaction guids can be fetched using our get-transcations API endpoint.
+Example: TRANDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX
+
+Responses
+200
+500
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+number
+required
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+Body
+1
+{
+2
+  "payme_client_key": "XXXXXXXX",
+3
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+4
+  "withdrawal_currency": "ILS",
+5
+  "language": "he",
+6
+  "transaction_ids": [
+7
+    "TRANDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+8
+  ]
+9
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/withdraw-balance \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "payme_client_key": "XXXXXXXX",
+  "seller_payme_id": "MPLDEMO-MPLDEMO-MPLDEMO-MPLDEMO",
+  "withdrawal_currency": "ILS",
+  "language": "he",
+  "transaction_ids": [
+    "TRANDEMO-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+  ]
+}'
+Response Example
+1
+{
+2
+  "status_code": 0
+3
+}

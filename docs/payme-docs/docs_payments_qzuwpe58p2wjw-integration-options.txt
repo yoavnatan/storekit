@@ -1,0 +1,27 @@
+# https://docs.payme.io/docs/payments/qzuwpe58p2wjw-integration-options
+
+Integration Options
+
+We have three integration options:
+
+Hosted Payment Page
+Hosted Fields - JSAPI
+Direct API
+INTEGRATION	DESCRIPTION	ADVANTAGES ✔️	DISADVANTAGES ❌
+Hosted Payment Page	With this approach, the payment process is redirected to our secure payment gateway's website, where customers enter their payment details. We handle the transaction and send the result back to the merchant's website.	Security: Since the payment process occurs on our payment gateway's secure server, the merchant's website doesn't handle sensitive payment information directly, reducing the risk of data breaches.
+
+Simplicity: Implementing a hosted payment page is relatively straightforward, as PayMe handles most of the complex payment processing tasks for you.
+
+Compliance: The responsibility for meeting payment industry security standards, such as PCI DSS (Payment Card Industry Data Security Standard), lies with PayMe, relieving the merchant of some compliance burdens.	Customization limitations: Our hosted payment pages can't be customed designed, which may not seamlessly integrate with the merchant's website design.
+
+Limited control: As the payment process is handled by PayMe, the merchant has less control over the overall checkout experience and may be restricted in customizing certain features or functionalities.
+Hosted Fields - JSAPI	JSAPI (JavaScript API) payment integration allows you to embed payment forms directly into your website using JavaScript. This method enables a seamless payment experience for customers, without the need for redirection to an external page.	Seamless user experience: Customers can complete the entire payment process without leaving the merchant's website, enhancing convenience and reducing the risk of customer drop-off during checkout.
+
+Design flexibility: By integrating payment forms using JavaScript, merchants have more control over the appearance and customization of the payment interface, enabling a consistent brand experience.
+
+Real-time response: With JSAPI, payment responses can be processed in real-time, allowing for immediate feedback on the payment status and reducing the risk of potential payment errors or delays.	Security considerations: Handling sensitive data on the merchant's servers requires robust security measures.
+Development complexity: Requires advanced programming skills and maintenance of the payment system.
+Direct API	PayMe's API is integrated directly into your website or application.	Customization and control: Allows full control and customization of the payment process.
+
+Enhanced security: You can implement robust encryption and security measures according to your requirements.
+Scalability and efficiency: Facilitates real-time transaction updates and integrations with other systems.	Development complexity: Requires advanced programming skills and understanding of PayMe's API.<br / >Compliance responsibility: Merchant must meet security standards and ensure ongoing maintenance and updates (PCI-DSS level 1).

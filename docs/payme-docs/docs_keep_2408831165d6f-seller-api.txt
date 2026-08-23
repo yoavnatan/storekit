@@ -1,0 +1,46 @@
+# https://payme.stoplight.io/docs/keep/2408831165d6f-seller-api
+
+Seller API
+Export
+v1.0.0
+API Base URL
+Staging:
+https://<partner_domain>.keep.co.il
+Production:
+https://<partner_domain>.keep.co.il
+Mock Server:
+https://stoplight.io/mocks/payme/keep/1565039512
+Security
+OAuth 2.0
+
+Client Credentials OAuth Flow
+
+Token URL: /oauth2/token
+
+Refresh URL: /oauth2/token
+
+Scopes:
+
+seller-api - Seller API access
+
+PayMe Seller API for income document creation using the new invoicing service.
+
+Overview
+
+This API allows sellers to create and manage income documents (invoices, receipts, etc.) using the new invoicing service.
+
+Document Types
+TYPE	DESCRIPTION
+invoice	Invoice document
+receipt	Receipt document
+invrec	Invoice + Receipt combined
+deal	Deal invoice
+refund	Refund/Credit note
+offer	Price quote/Offer
+Supported Currencies
+
+Currently only ILS (Israeli Shekel) is supported.
+
+Document Languages
+he - Hebrew
+en - English

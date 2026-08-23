@@ -1,0 +1,1091 @@
+# https://payme.stoplight.io/docs/payments/0bfed756bfbe1-create-document
+
+Create Document
+Deprecated
+POST
+https://sandbox.payme.io/api/documents
+Overview
+
+You can use our Invoices API to generate different documents to serve your business needs.
+
+Document types
+
+The documents you can generate can be found in the following guide - Document Types.
+
+Request
+Body
+application/json
+application/json
+doc_type
+number
+required
+
+The documents you can generate can be found in the following guide - Document Types.
+
+Example:
+100
+buyer_name
+string
+required
+
+Buyer's full name
+
+Example:
+John Doe
+due_date
+string
+
+Payment due date
+
+Example:
+2021-08-16T 00:00:00.000Z
+pay_date
+string
+
+The date the payment was completed (relevant for doc_type
+
+Example:
+2021-08-16T 00:00:00.000Z
+doc_date
+string
+
+Document creation date
+
+Example:
+2021-05-25 00:00:00
+currency
+string
+required
+
+The currency of the document
+
+Example:
+ILS
+doc_title
+string
+
+The title of the document (header)
+
+Example:
+Invoice for John Doe
+doc_comments
+string
+
+Document description
+
+Example:
+Document description example
+exchange_rate
+number
+
+Currency exchange rate
+
+Example:
+3.45
+vat_rate
+number
+
+The VAT (Value Added Tax) rate applied
+
+Example:
+0.17
+total_excluding_vat
+number
+
+Total amount before VAT applied
+
+Example:
+123
+discount
+number
+
+The discount rate (percentage) applied to the document
+
+Example:
+0.5
+total_sum_after_discount
+number
+
+Total amount with discount rate included
+
+Example:
+100
+total_sum_after_discount - copy
+number
+
+Total amount with discount rate included
+
+Example:
+100
+total_sum_including_vat
+number
+
+Total amount including VAT
+
+Example:
+100
+total_paid
+number
+
+Total amount paid in this document
+
+Example:
+100
+total_vat
+number
+
+Total VAT paid
+
+Example:
+100
+language
+string
+
+Document language
+
+Example:
+he
+items
+array[object]
+description
+string
+required
+
+Description for item #1
+
+Example:
+Professional Services
+unit_price
+number
+required
+
+The price per unit (1 item)
+unit_price or unit_price_with_vat is required.
+
+Example:
+100
+vat_exempt
+boolean
+
+VAT exempt for the document
+
+quantity
+number
+
+Item #1 quantity
+
+Example:
+3
+unit_price_with_vat
+number
+
+Unit (item) price including VAT
+
+Example:
+100
+currency
+string
+
+Currency for item #1
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+exchange_rate
+number
+
+Exchange rate for the document
+
+Example:
+3.45
+total_paid_including_vat
+number
+
+Total amount paid including VAT
+
+Example:
+100
+cheques
+array[object]
+
+The amount paid using a Cheque
+
+sum
+number
+required
+
+The amount paid using Cheque
+
+Example:
+10
+date
+string
+
+Cheque deposit date
+
+Match pattern:
+2021-05-16T00:00:00.000Z
+bank
+number
+
+The bank number - You can check the list of banks for your convenience.
+
+Example:
+12
+branch
+number
+
+The bank branch number
+
+Example:
+123
+account
+string
+
+The bank account number
+
+Example:
+1234567
+number
+string
+
+The Cheque number
+
+Example:
+0014555
+cash
+object
+required
+
+The cash method object
+
+sum
+number
+required
+
+The total amount paid using Cash
+
+Example:
+100
+bank_transfer
+object
+required
+
+The bank transfer object
+
+sum
+number
+required
+
+Total amount paid using a bank transfer
+
+Example:
+100
+date
+string
+
+The date the bank transfer was received
+
+Match pattern:
+2021-05-16T00:00:00.000Z
+account
+string
+
+The bank account number
+
+Match pattern:
+123456
+paypal
+object
+
+The PayPal method object
+
+sum
+number
+required
+
+Total amount paid using Paypal
+
+Example:
+100
+date
+string
+required
+
+The date of when the payment was completed
+
+Match pattern:
+021-05-16T00:00:00.000Z
+transaction_id
+string
+
+The external transaction ID (received from Paypal)
+
+Match pattern:
+021-05-16T00:00:00.000Z
+buyer_name
+string
+
+The buyer's name
+
+Match pattern:
+John Doe
+credit_card
+object
+
+The credit card object
+
+sum
+number
+required
+
+Total amount paid using a credit card
+
+Example:
+100
+installments
+number
+
+The number of installments for the payment (1 min, 36 max)
+
+Example:
+1
+first_payment
+number
+
+The amount paid in the 1st installment
+
+Example:
+25
+buyer_key
+string
+
+If the invoice is paid using a token, buyer key is required
+
+Example:
+123456789
+number
+string
+
+If paid without a token, card number is required
+
+Example:
+123456******12345
+type
+string
+
+Card brand
+
+Example:
+Visa
+cvv
+string
+
+Card's CVV (3-number code at the back of the card)
+
+Example:
+123
+expiry
+string
+
+Expiry date of the card (MMYY)
+
+Example:
+0225
+buyer_social_id
+string
+
+Buyer's social ID number
+
+Example:
+999999999
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+auth_number
+string
+
+Authorization number of the payment
+
+Example:
+123123123
+Responses
+200
+400
+
+OK
+
+Body
+application/json
+application/json
+responses
+/
+200
+status_code
+number
+
+Status of the request (0 - success, 1 - error)
+
+Example:
+0
+doc_type
+string
+
+The documents you can generate can be found in the following guide - Document Types.
+
+Example:
+100
+language
+string
+
+Changes the language of the payment IFRAME to English, as well as the error messages. Default value is Hebrew (he)
+
+Example:
+he
+due_date
+string
+
+The date on which a seller expects to receive payment from a buyer
+
+Example:
+04/25/2025
+pay_date
+string
+
+Payment date
+
+Example:
+04/25/2025
+doc_date
+string
+
+The date of document creation
+
+Example:
+04/25/2025
+currency
+string
+
+Sale currency. 3-letter ISO 4217 name.
+
+Example:
+ILS
+vat_rate
+number
+
+The VAT (Value Added Tax) rate applied.
+
+Example:
+0.17
+discount
+number
+
+The discount rate (percentage) applied to the document
+
+Example:
+0.5
+total_vat
+number
+
+Total VAT paid
+
+Example:
+100
+doc_title
+string
+
+The title of the document (header)
+
+Example:
+Invoice for John Doe
+buyer_name
+string
+
+The buyer's name
+
+Example:
+John Doe
+total_paid
+number
+
+Total amount paid in this document
+
+Example:
+100
+doc_comments
+string
+
+Document description
+
+Example:
+Document comments example
+exchange_rate
+number
+
+Currency exchange rate
+
+Example:
+3.45
+total_excluding_vat
+number
+
+Total amount before VAT applied
+
+Example:
+87
+total_sum_including_vat
+number
+
+Total amount including VAT
+
+Example:
+100
+total_sum_after_discount
+number
+
+Total amount with discount rate included
+
+Example:
+100
+total_paid_including_vat
+number
+
+Total amount paid including VAT
+
+Example:
+100
+cash
+object
+
+The cash method object
+
+sum
+number
+
+The total amount paid using Cash
+
+Example:
+100
+cheques
+array[object]
+
+The amount paid using a Cheque
+
+sum
+number
+
+The amount paid using Cheque
+
+Example:
+10
+date
+string
+
+Cheque deposit date
+
+Example:
+2021-05-16T00:00:00.000Z
+bank
+number
+
+The bank number - You can check the list of banks for your convenience.
+
+branch
+number
+
+The bank branch number
+
+Example:
+123
+account
+string
+
+The bank account number
+
+Example:
+1234567
+number
+string
+
+The Cheque number
+
+Example:
+0014555
+bank_transfer
+object
+
+The bank transfer object
+
+sum
+number
+
+Total amount paid using a bank transfer
+
+Example:
+100
+date
+string
+
+The date the bank transfer was received
+
+Example:
+2021-05-16T00:00:00.000Z
+account
+string
+
+The bank account number
+
+Example:
+123456
+credit_card
+object
+
+The credit card object
+
+sum
+number
+
+Total amount paid using a credit card
+
+Example:
+100
+installments
+number
+
+The number of installments for the payment (1 min, 36 max)
+
+Example:
+1
+first_payment
+number
+
+The amount paid in the 1st installment
+
+Example:
+25
+number
+string
+
+If paid without a token, card number is required
+
+Example:
+123456******12345
+type
+string
+
+Card brand
+
+Example:
+Visa
+cvv
+string
+
+Card's CVV (3-number code at the back of the card)
+
+Example:
+123
+buyer_social_id
+string
+
+Buyer's social ID number
+
+Example:
+999999999
+buyer_name
+string
+
+Buyer's full name
+
+Example:
+John Doe
+auth_number
+string
+
+Authorization number of the payment
+
+Example:
+123123123
+expiry
+string
+
+Expiry date of the card (MMYY)
+
+Example:
+0225
+paypal
+object
+
+The PayPal method object
+
+sum
+number
+
+Total amount paid using Paypal
+
+Example:
+100
+date
+string
+
+The date of when the payment was completed
+
+Example:
+021-05-16T00:00:00.000Z
+transaction_id
+string
+
+The external transaction ID (received from Paypal)
+
+Example:
+021-05-16T00:00:00.000Z
+buyer_name
+string
+
+The buyer's name
+
+Example:
+John Doe
+items
+array[object]
+quantity
+number
+
+Item #1 quantity
+
+Example:
+3
+description
+string
+
+Description for item #1
+
+Example:
+Professional Services
+unit_price
+number
+
+The price per unit (1 item)
+
+Example:
+100
+vat_exempt
+boolean
+
+VAT exempt for the document
+
+currency
+string
+
+Currency for item #1
+Sale currency. 3-letter ISO 4217 name.
+
+unit_price_with_vat
+number
+
+Unit (item) price including VAT
+
+Example:
+100
+exchange_rate
+number
+
+Exchange rate for the document
+
+Example:
+3.45
+doc_id
+string
+
+Document ID number
+
+Match pattern:
+XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+doc_url
+string
+
+Document URL
+
+Match pattern:
+https://document.url.com/documents/ID
+Body
+1
+{
+2
+  "doc_type": 400,
+3
+  "doc_title": "document-title",
+4
+  "doc_comments": "document-comment",
+5
+  "buyer_name": "buyer's-name",
+6
+  "due_date": "2023-06-20T00:00:00.000Z",
+7
+  "pay_date": "2023-06-20T00:00:00.000Z",
+8
+  "doc_date": "2023-06-20T00:00:00.000Z",
+9
+  "items": [
+10
+    {
+11
+      "description": "product/service-description",
+12
+      "unit_price": 33,
+13
+      "vat_exempt": false,
+14
+      "quantity": 1,
+15
+      "unit_price_with_vat": 33,
+16
+      "currency": "ILS",
+17
+      "exchange_rate": 1
+18
+    }
+19
+  ],
+20
+  "currency": "ILS",
+21
+  "exchange_rate": 1,
+22
+  "vat_rate": 0,
+23
+  "total_excluding_vat": 33,
+24
+  "discount": 0,
+25
+  "total_sum_after_discount": 33,
+26
+  "total_sum_including_vat": 33,
+27
+  "total_paid": 33,
+28
+  "total_vat": 0,
+29
+  "total_paid_including_vat": 33,
+30
+  "language": "he",
+31
+  "credit_card": {
+32
+    "sum": 33,
+33
+    "installments": 1,
+34
+    "first_payment": 33,
+35
+    "number": "45************80",
+36
+    "type": "Visa",
+37
+    "exp_year": "2**4",
+38
+    "exp_month": "07",
+39
+    "buyer_social_id": "20*****6",
+40
+    "buyer_name": "buyer's-name",
+41
+    "auth_number": "0*****3"
+42
+  }
+43
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request POST \
+  --url https://sandbox.payme.io/api/documents \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "doc_type": 400,
+  "doc_title": "document-title",
+  "doc_comments": "document-comment",
+  "buyer_name": "buyer'\''s-name",
+  "due_date": "2023-06-20T00:00:00.000Z",
+  "pay_date": "2023-06-20T00:00:00.000Z",
+  "doc_date": "2023-06-20T00:00:00.000Z",
+  "items": [
+    {
+      "description": "product/service-description",
+      "unit_price": 33,
+      "vat_exempt": false,
+      "quantity": 1,
+      "unit_price_with_vat": 33,
+      "currency": "ILS",
+      "exchange_rate": 1
+    }
+  ],
+  "currency": "ILS",
+  "exchange_rate": 1,
+  "vat_rate": 0,
+  "total_excluding_vat": 33,
+  "discount": 0,
+  "total_sum_after_discount": 33,
+  "total_sum_including_vat": 33,
+  "total_paid": 33,
+  "total_vat": 0,
+  "total_paid_including_vat": 33,
+  "language": "he",
+  "credit_card": {
+    "sum": 33,
+    "installments": 1,
+    "first_payment": 33,
+    "number": "45************80",
+    "type": "Visa",
+    "exp_year": "2**4",
+    "exp_month": "07",
+    "buyer_social_id": "20*****6",
+    "buyer_name": "buyer'\''s-name",
+    "auth_number": "0*****3"
+  }
+}'
+Response Example
+1
+{
+2
+  "status_code": 0,
+3
+  "doc_type": "string",
+4
+  "language": "string",
+5
+  "due_date": "string",
+6
+  "pay_date": "string",
+7
+  "doc_date": "string",
+8
+  "currency": "string",
+9
+  "vat_rate": 0,
+10
+  "discount": 0,
+11
+  "total_vat": 0,
+12
+  "doc_title": "string",
+13
+  "buyer_name": "string",
+14
+  "total_paid": 0,
+15
+  "doc_comments": "string",
+16
+  "exchange_rate": 0,
+17
+  "total_excluding_vat": 0,
+18
+  "total_sum_including_vat": 0,
+19
+  "total_sum_after_discount": 0,
+20
+  "total_paid_including_vat": 0,
+21
+  "cash": {
+22
+    "sum": 0
+23
+  },
+24
+  "cheques": [
+25
+    {
+26
+      "sum": 0,
+27
+      "date": "string",
+28
+      "bank": 0,
+29
+      "branch": 0,
+30
+      "account": "string",
+31
+      "number": "string"
+32
+    }
+33
+  ],
+34
+  "bank_transfer": {
+35
+    "sum": 0,
+36
+    "date": "string",
+37
+    "account": "string"
+38
+  },
+39
+  "credit_card": {
+40
+    "sum": 0,
+41
+    "installments": 0,
+42
+    "first_payment": 0,
+43
+    "number": "string",
+44
+    "type": "string",
+45
+    "cvv": "string",
+46
+    "buyer_social_id": "string",
+47
+    "buyer_name": "string",
+48
+    "auth_number": "string",
+49
+    "expiry": "string"
+50
+  },
+51
+  "paypal": {
+52
+    "sum": 0,
+53
+    "date": "string",
+54
+    "transaction_id": "string",
+55
+    "buyer_name": "string"
+56
+  },
+57
+  "items": [
+58
+    {
+59
+      "quantity": 0,
+60
+      "description": "string",
+61
+      "unit_price": 0,
+62
+      "vat_exempt": true,
+63
+      "currency": "string",
+64
+      "unit_price_with_vat": 0,
+65
+      "exchange_rate": 0
+66
+    }
+67
+  ],
+68
+  "doc_id": "https://document.url.com/documents/ID",
+69
+  "doc_url": "string"
+70
+}

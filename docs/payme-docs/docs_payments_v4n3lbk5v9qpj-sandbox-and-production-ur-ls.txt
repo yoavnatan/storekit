@@ -1,0 +1,9 @@
+# https://docs.payme.io/docs/payments/v4n3lbk5v9qpj-sandbox-and-production-ur-ls
+
+Sandbox and Production URLs
+
+In order to work with the API, you should use the service URLs according to the required environments, Staging or Production.When interacting with the API, make sure you point to the correct environment, with the correct credentials. Both URLs will be stated next to each function.
+
+ENVIRONMENT	URL
+Staging	https://sandbox.payme.io/api/
+Production	https://live.payme.io/api/

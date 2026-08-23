@@ -1,0 +1,68 @@
+# https://payme.stoplight.io/docs/4-b2b-payments---api-reference/4c8409538a75d-update-contract-related-files
+
+Update Contract Related Files
+PUT
+https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/
+
+Add /INV{GUID} to the end of the URL to edit a document. Upadte a contract related file. It is possible to upload one file for another, should be the same type.
+
+Request
+Path Parameters
+GUID
+string
+required
+
+Doc ID
+
+Body
+application/json
+application/json
+name
+string
+required
+>= 1 characters
+type
+string
+required
+>= 1 characters
+base64
+string
+required
+>= 1 characters
+mime_type
+string
+required
+>= 1 characters
+Responses
+200
+
+OK
+
+Parameters
+GUID*
+:
+Body
+1
+{
+2
+  "name": "test3.png",
+3
+  "type": "Invoice Receipt",
+4
+  "base64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAG8AWcDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD6n034JeJtF1mbxTcXEjXUgB2lOQRWvPcfEu9ZIL22uZ7dTh4yBgivR5JLq53R3F6ysRjJrkfEGo+JdM1FbLTpZZQ7YyK8tzQ3ApanqS6tZJotz4UdSqbef/11wXh/wJ468E6lPqqPNNA8pZbYLjANepW0NwcSXblZSMknqDVm",
+5
+  "mime_type": "image/png"
+6
+}
+Send API Request
+Staging
+Request Sample: Shell / cURL
+curl --request PUT \
+  --url https://sandbox.payme.io/api/payment-contracts/CONT{GUID}/invoices/ \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "name": "test3.png",
+  "type": "Invoice Receipt",
+  "base64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYFBgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCAG8AWcDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD6n034JeJtF1mbxTcXEjXUgB2lOQRWvPcfEu9ZIL22uZ7dTh4yBgivR5JLq53R3F6ysRjJrkfEGo+JdM1FbLTpZZQ7YyK8tzQ3ApanqS6tZJotz4UdSqbef/11wXh/wJ468E6lPqqPNNA8pZbYLjANepW0NwcSXblZSMknqDVm",
+  "mime_type": "image/png"
+}'

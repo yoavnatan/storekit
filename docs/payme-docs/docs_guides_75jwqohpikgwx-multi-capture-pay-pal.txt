@@ -1,0 +1,179 @@
+# https://payme.stoplight.io/docs/guides/75jwqohpikgwx-multi-capture-pay-pal
+
+Multi-Capture - PayPal
+
+The guide will be a run-through the process of using our Multi-Capture logic for Paypal payments.
+
+In order to initiate the process, you'll need to make sure the following prerequists:
+
+Paypal enabled MPL in our platform.
+Paypal account in hand for the authorization flow.
+1st Step - Authorization
+
+In the 1st step, you will need to create a new payment intent using our APIs:
+
+generate-sale
+sales (Combination of both generate + pay sale actions)
+Requests Examples
+
+generate-sale - https://<env>.payme.io/api/generate-sale
+
+{
+"seller_payme_id": "MPL15130-83274SO0-DEMOTEST-DEMOTEST",
+"sale_price": "100",
+"currency": "ILS",
+"product_name": "Shirt",
+"language": "en",
+"sale_type": "authorize"
+"sale_payment_method": "paypal"
+}
+
+sales / generate-sale with buyer_key - https://<env>.payme.io/api/sales
+
+{
+"seller_payme_id": "680DABCB-TESTMPL-384516B5-16B55EBE",
+"product_name": "Verfication test",
+"sale_price": 500,
+"currency": "ILS",
+"payment": {
+"method": "paypal",
+"card_number": "1234567891011121",
+"card_expiry": "1224",
+"card_cvv": "123"
+},
+"customer": {
+"name": "First Name",
+"email": "test@example.com",
+"phone": "+15417543010",
+"social_id": "123456782",
+"zip_code": "1234567"
+}
+}
+Expected Response
+
+generate-sale response example:
+
+{
+"status_code": 0,
+"sale_url": "https://<env>.payme.io/sale/generate/SALEGUID",
+"payme_sale_id": "SALEGUID",
+"payme_sale_code": sale_id,
+"price": 100,
+"transaction_id": "",
+"currency": "ILS",
+"sale_payment_method": "paypal"
+}
+
+sales callback example:
+
+{
+"status_code": 0,
+"payme_status": "success",
+"status_error_code": 0,
+"payme_sale_id": "SALEGUID",
+"payme_sale_code": 1185468,
+"sale_created": "2022-11-27 18:29:06",
+"payme_sale_status": "completed",
+"sale_status": "completed",
+"currency": "USD",
+"transaction_id": "",
+"is_token_sale": false,
+"price": 500,
+"payme_signature": "SIGNATUREID",
+"sale_description": "Shirt",
+"sale_deferred_months": null,
+"payme_transaction_id": "TRANGUID",
+"payme_transaction_total": "500",
+"payme_transaction_card_brand": "Visa",
+"payme_transaction_auth_number": "AUTHNO.",
+"payme_transaction_voucher": "VOUCHERNO.",
+"payme_transaction_emv_uid": null,
+"payme_transaction_acquirer": "PayMe",
+"payme_transaction_auth_source": "paypal",
+"payme_transaction_card_issuer": "Visa",
+"payme_transaction_credit_type": "RegularCredit",
+"buyer_name": "First Name",
+"buyer_email": "test@example.com",
+"buyer_phone": "+15417543010",
+"buyer_card_mask": "458045******4580",
+"buyer_card_exp": "1224",
+"buyer_card_is_foreign": false,
+"buyer_social_id": "123456782",
+"installments": 1,
+"transaction_first_payment": "500",
+"transaction_periodical_payment": 0,
+"transaction_arn": null,
+"sale_paid_date": "2022-11-27 18:29:06",
+"sale_release_date": null,
+"sale_3ds": false,
+"redirect_url": null
+}
+2nd Step - Multi Capturing
+
+In order to use our multi-capture feature, you'll need to create new payment intents using either of the methods described in step 1, with an additonal unique parameters:
+
+PARAMETER NAME	PARAMETER TYPE	PARAMETER DESCRIPTION
+sale_type	string	The new sale type for capturing the authorize - multi-capture.
+origin_sale_id	string	The original sale GUID (ID) that was received when completing the authorization action.
+
+You can use the following methods:
+
+generate-sale request example:
+
+{
+"seller_payme_id": "MPL15130-TESTMPL-DEMOTEST-DEMOTEST",
+"sale_price": "100",
+"currency": "ILS",
+"product_name": "Shirt",
+"language": "en",
+"sale_type": "multi-capture",
+"origin_sale_id": "SALEGUID",
+"sale_payment_method": "paypal"
+}
+
+sales request example:
+
+{
+"seller_payme_id": "680DABCB-TESTMPL-384516B5-16B55EBE",
+"product_name": "Verfication test",
+"sale_price": 500,
+"currency": "ILS",
+"origin_sale_id": "SALEGUID",
+"sale_type": "multi-capture"
+"payment": {
+"method": "paypal"
+},
+"customer": {
+"name": "First Name",
+"email": "test@example.com",
+"phone": "+15417543010",
+"social_id": "123456782",
+"zip_code": "1234567"
+}
+}
+Callback Example
+{
+"status_code": 0,
+"payme_sale_id": "SALE1669-DEMODEMO-DEMODEMO-D4XZCQSV",
+"payme_sale_code": 123456,
+"price": 10000,
+"transaction_id": "",
+"currency": "ILS",
+"sale_payment_method": "credit-card",
+"redirect_url": null,
+"transaction_cc_auth_number": "123456",
+"payme_transaction_auth_number": "123456",
+"sale_status": "completed",
+"payme_status": "success",
+"status_error_code": 0,
+"sale_created": "2022-11-30 09:58:26",
+"payme_sale_status": "completed",
+"is_token_sale": false,
+"payme_signature": null,
+"sale_description": "Shirt",
+"sale_deferred_months": null
+}
+Multi-Capture - PayPal
+1st Step - Authorization
+2nd Step - Multi Capturing
+Callback Example
