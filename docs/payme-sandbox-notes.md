@@ -295,11 +295,28 @@ no account of our own to charge, the delivery fee has to ride on the seller's sa
 `market_fee_fixed` — and then a cheap item breaches the 60% cap exactly as they said (₪10 goods +
 ₪30 delivery ≈ 87%). Their answer 3 was correct and complete; the disagreement was ours.
 
-**Two ways out, and the first needs nothing from them:**
+**⚠️ Before choosing between the two routes below, ask whether 174 is a SETTING.** Today's lesson is
+exactly this shape: multi-capture read as "not enabled on our key" and turned out to be the wrong
+endpoint plus a switch PayMe control. `174 · אפשרות זו אינה נתמכת במשתמשים מסוג זה` is the same
+vocabulary — "not supported for users of this type" describes a TYPE, and a type is a setting on
+their side. **If they can enable card acceptance on the partner account, both routes below become
+unnecessary.** Nobody has asked.
+
+**The owner's objection to route 1 is a fair one and worth answering rather than waving through**
+(*"למה שאני אפתח חשבון בית עסק? אני השותף!"*): partner and merchant are two different roles and this
+platform performs both. As PARTNER we onboard sellers and collect a distribution fee, monthly, on the
+20th. As a MERCHANT we would be taking a card payment from a buyer for something we sell him
+directly — delivery, which is ours: our contract with the courier, our cost to cover
+(AI_INSTRUCTIONS → *Shipping is ours*). Being the partner does not exempt us from needing a merchant
+account to accept a card, any more than it exempts us from having a company. It costs ₪65/month plus
+a ₪99 setup, per appendix ב׳.
+
+**The two routes, if 174 turns out not to be a setting:**
 1. **Give ourselves a real merchant account** via `create-seller`, like any seller, and charge
    delivery to that. Capturing to a different seller is measured working (item 14). No ceiling
-   involved, money arrives as an ordinary sale.
-2. Ask PayMe to raise the market-fee ceiling and fold delivery into the seller's capture.
+   involved, and the money arrives as an ordinary sale rather than as a monthly fee.
+2. Ask PayMe to raise the **60%** market-fee ceiling (see §6 — NOT the 100% they offered) and fold
+   delivery into the seller's capture as `market_fee_fixed`.
 
 ---
 

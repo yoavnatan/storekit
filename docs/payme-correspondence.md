@@ -56,6 +56,25 @@ message in one place.
 
 ---
 
+## ⚠️ Still to ask them — three questions, and each one may remove work rather than add it
+
+Written here rather than in a task list because the pattern this file exists to record is that
+**PayMe's apparent limitations keep turning out to be settings.** Multi-capture read as "not enabled"
+and was a switch plus a wrong endpoint. Do not design around any of these before asking.
+
+1. **Can the PARTNER account accept card payments?** `174 · אפשרות זו אינה נתמכת במשתמשים מסוג זה`
+   describes a *type*, which is a setting. If yes, the delivery fee has somewhere to land and both
+   workarounds in `payme-sandbox-notes.md` §15 disappear.
+2. **Which ceiling is the 110% offer about?** Their sentence uses capture vocabulary, but the one
+   that blocks delivery is the 60% market-fee cap, error `308`. Ask in those words — "the ceiling
+   that blocks us is the 60% on `market_fee` + `market_fee_fixed`, error 308; is that the one you
+   are raising?" — because accepting the offer as phrased may buy nothing (§6).
+3. **Enable multi-capture on the sandbox key**, if it is not already: it worked when called
+   correctly, but whether that was because it is on for us or because the sandbox is permissive is
+   not established.
+
+---
+
 ## What this settles, and what it opens
 
 ### 1. ⚠️ Their answer to "several sellers in one purchase" is **multi-capture** — which is NOT what we built
