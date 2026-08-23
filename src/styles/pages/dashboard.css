@@ -270,6 +270,36 @@ textarea.input { resize: none; }
    like `msgpanel`, so a future nested container cannot capture them by accident. */
 .prod-cq { container-type: inline-size; container-name: prodtable; }
 
+/* ══ A COLUMN LEAVES ONCE AND DOES NOT COME BACK ══
+   Owner, 2026-08-23: *"אין בעיה שתהיה קפיצה פשוט שלא ילך ויחזור ילך ויחזור"* — a jump is
+   fine, a column that disappears and reappears is not.
+
+   The blocks below decide what fits from the TABLE's width, which is right on its own terms
+   and is what makes the rail's own collapse re-flow the columns correctly. But the table's
+   width is NOT monotonic in the window's: the rail hands back its column at 1180, so
+   narrowing the WINDOW can make the TABLE wider. Measured before this rule existed, dragging
+   1440 → 660 took the serial number away at 1320, gave it back at 1170 and took it again at
+   1140; the SKU did the same at 1290 / 1170 / 1100. Three transitions each, and from the
+   seller's side the interface is simply flickering as he resizes.
+
+   So the rule is: a column may hide for either reason, and once the WINDOW has passed the
+   width where it went, it stays gone. Both conditions only ever say `display: none`, so
+   their union can add hiding and never take it away — and the window only gets narrower, so
+   the result is monotonic by construction. The thresholds are the widths at which each
+   column actually first disappeared, read off the sweep rather than chosen.
+
+   The cost, stated plainly: between 1180 and 900 the rail is icons and the table is wide
+   enough for both columns, and they stay hidden anyway. That is the price of never going
+   backwards, and it is the one he asked to pay. */
+@media (max-width: 1329.98px) {
+  .products-table .row-num { display: none; }
+}
+@media (max-width: 1289.98px) {
+  .products-table .sku-col { display: none; }
+  /* The value follows, in the same condition that takes its column — see .product-sku-inline. */
+  .products-table .product-sku-inline { display: block; }
+}
+
 @media (max-width: 999px) {
   /* Toolbar stays ONE line across the whole table range (tablet + small desktop),
      the zone where the buttons' text would otherwise wrap to a 2nd line: it scrolls
@@ -2270,7 +2300,7 @@ html:has(#dash-main-card.dash-nav-side) {
    the thing `.dash-section--bleed > .card` already refuses to do against the site header. Measured
    at 834px: card edge at 66.39, bar edge at 67.39. Below 641px there is no sheet border at all and
    nothing to double. */
-@media (max-width: 1179.98px) {
+@media (max-width: 899.98px) {
   #dash-main-card.dash-nav-side .dash-panel-head,
   #dash-main-card.dash-nav-side .products-header { border-top-width: 0; }
 }
@@ -2481,7 +2511,7 @@ html:has(#dash-main-card.dash-nav-side) {
 }
 
 /* ── Desktop: a real column beside the panel ── */
-@media (min-width: 1180px) {
+@media (min-width: 900px) {
   /* ══ THE SHELL: a sidebar and a main, and nothing wrapped around both ══
      Owner, 2026-08-23: *"כלומר להפריד לגמרי בין הסייד בר לבין המיין"* — and then, when asked what
      it should look like: *"קח דוגמא מפייסבוק"*. So this is that shape, which is also the shape of
@@ -2731,7 +2761,7 @@ html:has(#dash-main-card.dash-nav-side) {
    `visibility` handoff that keeps a closed drawer out of the Tab order, the 0.4 black scrim and
    the z-index pair are `components/cart-drawer.css`'s, value for value. It opens from the START
    side (the right, in Hebrew), which is where its own trigger is. */
-@media (max-width: 1179.98px) {
+@media (max-width: 899.98px) {
   #dash-main-card.dash-nav-side > .dash-rail {
     position: fixed;
     top: 0;
@@ -2798,7 +2828,7 @@ html:has(#dash-main-card.dash-nav-side) {
    it started before the rail existed.
    Only the dot and the breakpoint are this file's business. */
 .dash-nav-trigger { display: none; }
-@media (max-width: 1179.98px) {
+@media (max-width: 899.98px) {
   .dash-nav-trigger { display: inline-flex; }
 }
 /* ── The marker a closed drawer has to show from the outside ──
@@ -2894,6 +2924,28 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
    is 3.75rem wide is a drawer with nothing in it. Written as a max-width override next to the base
    rule rather than as a min-width rule in the desktop block, because that block sits EARLIER in
    this file and a same-specificity rule later in the source wins whatever the viewport says. */
+/* ── THE RAIL SHRINKS INSTEAD OF VANISHING (owner, 2026-08-23) ──
+   It used to stop being a column at 1180 and become a hidden drawer, which is a laptop
+   width: at 1100px the whole navigation disappeared behind a hamburger while there was
+   still room for it. Now the shell runs down to 900 and the band between is the ICON rail
+   — the same `dash-nav-mini` presentation the toggle has always produced, so all 23 rules
+   that draw it are untouched; only WHEN it applies changed. `DashRailToggle.astro` sets the
+   class by width in that band and restores his own choice above it.
+
+   **What this does NOT fix, and the honest version is worth writing down:** the table still
+   reflows when the rail collapses. Any rail that narrows hands its width back to the panel,
+   so the jump shrinks from 228px to 188px and does not disappear. What made that jump a BUG
+   rather than a reflow was the SKU vanishing inside it, and that is fixed at the source —
+   the value moves under the product name instead of leaving with its column.
+
+   THE TOGGLE GOES BELOW 1180, NOT BELOW 900 — and the difference is the whole reason this
+   is written out. Between 900 and 1180 the rail IS a column, so a width control looks like
+   it belongs; but the WIDTH decides there, so pressing it would store a preference and
+   change nothing on screen. A control that does not move what it points at is worse than
+   an absent one (`feedback_noop_interactions_invisible`), so it is absent exactly where it
+   would be inert — which is also every width where the rail is a drawer and there is no
+   column to size. One rule covers both cases because they are the same case: the seller
+   only gets the control where his answer is the one that wins. */
 @media (max-width: 1179.98px) {
   .dash-rail-toggle { display: none; }
 }
@@ -2985,7 +3037,7 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
 }
 /* In the drawer the foot is the last thing in a scrollable sheet, and a link 2px off the bottom
    edge reads as clipped. */
-@media (max-width: 1179.98px) {
+@media (max-width: 899.98px) {
   /* The drawer scrolls and ends where its own padding does, so it needs less than the column that
      ends at the window's edge — but not nothing. */
   .dash-rail-foot { padding-bottom: 0.75rem; }

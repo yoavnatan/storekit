@@ -35,15 +35,40 @@ const d = t.dashboard;
 ---
 
 <script is:inline>
+  /**
+   * The rail's width state, before first paint.
+   *
+   * TWO THINGS DECIDE IT, and the order matters: his own choice, and the room there is.
+   * Below 1180 the rail is the icon rail no matter what he picked — that band used to hide
+   * the navigation behind a hamburger entirely (owner, 2026-08-23, chose "shrink rather than
+   * vanish"), and an expanded 15.5rem column in a 1000px window is the reason it was hidden
+   * in the first place. Above 1180 his choice is restored, unchanged and untouched: the
+   * width band forces the class on, it never writes to storage, so narrowing the window and
+   * widening it again returns exactly the rail he left.
+   *
+   * Inline and before paint on purpose. `--dash-rail-w` sizes a grid COLUMN, so a class
+   * applied after first paint is a rail that visibly jumps from 15.5rem to 3.75rem on load —
+   * the same reason the stored preference is read here rather than in the bundle.
+   */
   (function () {
+    var root = document.documentElement;
+    var AUTO_MINI_MAX = 1179.98;
+    var chose = false;
     try {
-      if (localStorage.getItem('dash-nav-mini') === '1') {
-        document.documentElement.classList.add('dash-nav-mini');
-      }
+      chose = localStorage.getItem('dash-nav-mini') === '1';
     } catch (e) {
       /* Private mode, or storage blocked. The rail simply opens expanded, which is the state a
          seller who has never chosen gets anyway — there is nothing to fall back FROM. */
     }
+    var narrow = window.matchMedia('(max-width: ' + AUTO_MINI_MAX + 'px)');
+    function apply() {
+      root.classList.toggle('dash-nav-mini', chose || narrow.matches);
+    }
+    apply();
+    narrow.addEventListener('change', apply);
+    // The click handler below writes the preference; this keeps the two in step without it
+    // having to know about the width band at all.
+    root.addEventListener('dash:rail-pref', function (e) { chose = !!e.detail; apply(); });
   })();
 </script>
 
@@ -92,8 +117,11 @@ const d = t.dashboard;
 
     btn.addEventListener('click', function () {
       var mini = !root.classList.contains(MINI);
-      root.classList.toggle(MINI, mini);
       try { localStorage.setItem('dash-nav-mini', mini ? '1' : '0'); } catch (e) { /* see above */ }
+      // The boot script owns the class, because below 1180 the WIDTH decides and a click must
+      // not be able to expand a rail into a window that has no room for it. Telling it the new
+      // preference and letting it re-apply keeps one place deciding instead of two.
+      root.dispatchEvent(new CustomEvent('dash:rail-pref', { detail: mini }));
       sync();
     });
 
