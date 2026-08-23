@@ -357,11 +357,35 @@ textarea.input { resize: none; }
      code nobody scans DOWN a column. It is not lost: the row's own edit form carries it, and below
      640px the card layout labels it outright. Ranked against the alternative — a table where you
      cannot tell which column is stock — this is the cheaper thing to drop. */
-  @container prodtable (max-width: 780px) {
+  /* 960px of table, not 780 — measured. Above it the SKU column is affordable: at a 918px table
+     with the SKU present nothing is cut at all. Below it there is a band (a ~800px table) where
+     keeping the column put "נרכשו" back to 31 visible pixels of 36 and "נוסף בתאריך" to 60 of 74,
+     which is the same complaint one breakpoint lower down. The threshold is where the trade
+     actually flips, rather than a round number. */
+  @container prodtable (max-width: 960px) {
     .products-table .sku-col { display: none; }
+    /* **And the name takes the width the SKU let go of** (owner, 2026-08-23: *"ה-SEO רחוק מדי
+       מהשלוש נקודות וזה בא על חשבון הקריאות של כותרות חשובות"*). Under `table-layout: fixed` any
+       width the declared columns do not claim is handed back to ALL of them in proportion — so
+       dropping a 117px column quietly widened the gauge and the kebab along with everything else,
+       and the two columns that need the least grew by the same percentage as the ones starving.
+       Claiming it explicitly leaves no spare to distribute — and it goes to the four columns whose
+       HEADINGS were the complaint, not to the name, which was tried first and made every one of
+       them worse (measured at 660px: stock fell from 19 visible pixels back to 12). The name is
+       the column that ellipsises by design; these four are the ones you have to be able to read
+       the top of. */
+    .products-table .cat-col       { width: 16%; }
+    .products-table .stock-col     { width: 12%; }
+    .products-table .purchased-col { width: 8%; }
+    .products-table .date-col      { width: 15%; }
   }
-  .prod-cq .products-table .seo-col     { width: 1.8rem; padding-inline: 0.1rem; }
-  .prod-cq .products-table .actions-col { width: 2.3rem; padding-inline: 0.15rem; }
+  /* Declared a little over their glyphs on purpose: with the percentages above claiming more than
+     100% of a narrow table, `table-layout: fixed` shrinks EVERY column in proportion — these two
+     included — so a width that is exactly the gauge becomes a width that is not. 2.1rem and 2.6rem
+     survive the worst shrink in this range with the gauge and the kebab's hover circle intact
+     (measured at 660px: 29.6 and 36.6 against a 21px gauge and a 28px button). */
+  .prod-cq .products-table .seo-col     { width: 2.1rem; padding-inline: 0.1rem; }
+  .prod-cq .products-table .actions-col { width: 2.6rem; padding-inline: 0.15rem; }
   .products-table .name-col .product-name {
     white-space: nowrap;
     overflow: hidden;
@@ -2168,17 +2192,24 @@ html:has(#dash-main-card.dash-nav-side) {
   background: var(--color-bg);
   pointer-events: none;
 }
+/* **`left`/`right`, not `inset-inline-*` — and that was the bug this had first** (owner,
+   2026-08-23: *"תראה את הקצוות החדים למעלה, זה נראה כאילו אין למה שמאחורה בורדר רדיוס"*). The
+   placement was logical and the mask is PHYSICAL: `circle at 10px 10px` measures from the box's
+   left edge whatever the writing direction, so in RTL each wedge carved the side it was not
+   sitting on — grey where the white should be, and a corner that read as square. Both halves are
+   physical now and cannot disagree; a corner is a corner in any language. The centre is a
+   percentage so it follows the box instead of repeating the radius. */
 #dash-main-card.dash-nav-side .dash-panel-head::before,
 #dash-main-card.dash-nav-side .products-header::before {
-  inset-inline-start: 0;
-  -webkit-mask: radial-gradient(circle at var(--radius) var(--radius), transparent var(--radius), #000 0);
-  mask: radial-gradient(circle at var(--radius) var(--radius), transparent var(--radius), #000 0);
+  left: 0;
+  -webkit-mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
+  mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
 }
 #dash-main-card.dash-nav-side .dash-panel-head::after,
 #dash-main-card.dash-nav-side .products-header::after {
-  inset-inline-end: 0;
-  -webkit-mask: radial-gradient(circle at 0 var(--radius), transparent var(--radius), #000 0);
-  mask: radial-gradient(circle at 0 var(--radius), transparent var(--radius), #000 0);
+  right: 0;
+  -webkit-mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
+  mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
 }
 /* Nothing to round at the width where the sheet is full-bleed, and a page-coloured square in each
    corner of an edge-to-edge bar would be two visible notches rather than none. */
