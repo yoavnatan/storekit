@@ -67,13 +67,26 @@ describe('when cards can be taken', () => {
 });
 
 describe('when they cannot — every case is `active: false`, never an error', () => {
-  it('an unapproved seller', async () => {
-    // His checkout is refused by `merchantBlockFor` anyway. Drawing card fields would collect a
-    // card for a purchase that cannot complete.
+  it('an unapproved seller IN PRODUCTION', async () => {
+    // Live, his checkout is refused by `merchantBlockFor` anyway, so drawing card fields would
+    // collect a card for a purchase that cannot complete.
+    state.sandbox = false;
     state.account = { publicKey: 'pk_live_abc', approved: false };
     const { body, res } = await ask('known');
     expect(body).toEqual({ active: false });
     expect(res.status).toBe(200);
+  });
+
+  it('but an unapproved seller in the SANDBOX still gets fields — that is what makes the flow testable', async () => {
+    // PayMe's sandbox does not model approval: both of our test merchants are `seller_approved:
+    // false` and a sale against them completed anyway (measured). Gating the sandbox on approval
+    // would block the one thing it exists for — proving the whole flow before launch — while
+    // blocking nothing real, since no money moves there. The two halves must agree, so this mirrors
+    // `merchantBlockFor` exactly; a card form that appears when the checkout refuses (or the
+    // reverse) is a disagreement nobody can see until a buyer hits it.
+    state.sandbox = true;
+    state.account = { publicKey: 'pk_live_abc', approved: false };
+    expect((await ask('known')).body).toEqual({ active: true, publicKey: 'pk_live_abc', testMode: true });
   });
 
   it('a seller with no merchant account at all', async () => {

@@ -100,9 +100,30 @@ case that breaches it. **This is why shipping is charged as its own sale on our 
 account instead** — that route touches no ceiling at all, and was measured working: a ₪30 sale under
 a second account with `market_fee: 0`, paid with the same token, completed.
 
-*(PayMe offered to raise the ceiling — "to 110% for example". That the 60% cap is the same setting
-they meant is a READING of their sentence, not something measured. The design above does not depend
-on it either way.)*
+**⚠️ There are TWO different ceilings here and a previous note ran them together. Corrected
+2026-08-23, after the owner asked why he had only ever heard about 100% and 110%.**
+
+They are not the same setting and they are not about the same thing:
+
+| | what it limits | value | how we know |
+|---|---|---|---|
+| **Capture ceiling** | how much of an AUTHORIZATION may be captured | 100% | measured — ₪11 against a ₪10 authorization was refused, `352 · Invalid price, out of min-max bounds` (item 4 above) |
+| **`market_fee` ceiling** | how much of a SALE may be OUR cut | 60% | measured — `Market fee exceed allowed maximum of 60%`, a refusal in their own words |
+
+**What PayMe's representative discussed — 100%, and raising it "to 110% for example" — was the
+CAPTURE ceiling**, i.e. capturing slightly more than was authorized. That is a normal thing for a
+gateway to offer (a tip, a weight-based delivery adjustment) and it has nothing to do with our
+commission. He never mentioned 60%.
+
+**The 60% is not something anybody told us. It is an error string the API returned**, so it is true
+whether or not it was ever discussed — and it is the one that shapes the design. An earlier session
+guessed the two were one setting and wrote that his "110%" offer applied to the market fee. That
+guess was flagged as a reading at the time and is now recorded as almost certainly WRONG: raising a
+capture ceiling would not move a market-fee cap.
+
+**Consequence, and it is the useful part: asking to raise the 60% is a NEW request, not the
+acceptance of an offer already made.** It is also not urgent — the design above sidesteps the cap
+entirely by charging delivery on our own account, and nothing depends on the answer.
 
 ### 7. `create-seller` returns more than an id
 `seller_payme_id`, `seller_payme_secret` (the per-seller callback signing key),

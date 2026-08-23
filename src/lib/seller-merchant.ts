@@ -13,6 +13,18 @@
  * arithmetic; `ensureMerchantAccount` is where it is enforced, by returning the existing row
  * rather than opening a second.
  *
+ * ── ⚠️ THREE COLUMNS HERE CANNOT BE RECOVERED IF THEY ARE LOST ──
+ * `public_key`, `callback_secret` and `signup_link` come back exactly once, from `create-seller`,
+ * and from nowhere else — measured 2026-08-23: neither `get-sellers` nor `update-seller` returns
+ * any of them. Lose the row and this seller can never take a card, none of his callbacks can ever
+ * be verified, and he can never finish his own KYC. The only repair is opening a SECOND merchant
+ * account, which costs ₪65 a month forever and cannot be deleted, because PayMe's API has no
+ * delete. `tests/unrecoverable-columns.test.ts` holds the class, what protects it, and the list of
+ * values that were checked and found recoverable — read it before renaming any of these.
+ *
+ * This warning lives here and not in the migration because that file is applied history: its
+ * checksum is verified on every run, so a comment added afterwards fails the whole tree.
+ *
  * ── Why the secret is fetched by exactly one function ──
  * `callback_secret` proves a payment callback really came from PayMe. It is deliberately NOT part
  * of `MerchantAccount`, the shape every caller reads: a secret on an object that dashboards render
@@ -26,7 +38,7 @@ import {
   type MerchantKyc, type MerchantKycField,
 } from './merchant-kyc.js';
 import { commissionPercentForTier } from './pricing.js';
-import { activePaymeCredentials, createSeller, PaymeError, type PaymeCredentials } from './payment-payme.js';
+import { activePaymeCredentials, createSeller, isSandbox, PaymeError, type PaymeCredentials } from './payment-payme.js';
 import { logError } from './error-log.js';
 
 /** What a caller may see. **No secret** — see the module header. */
@@ -302,7 +314,17 @@ export async function merchantBlockFor(sellerId: string, creds: PaymeCredentials
   if (!creds) return null;
   const account = await merchantAccountFor(sellerId);
   if (!account) return 'no-account';
-  if (!account.approved) return 'not-approved';
+  // **Approval is enforced in PRODUCTION only, and that is a measurement rather than a leniency.**
+  // PayMe's sandbox does not model it: both of our test merchants sit `seller_approved: false` and
+  // a `generate-sale` against them completed anyway (`docs/payme-sandbox-notes.md` §2, re-confirmed
+  // 2026-08-23). So gating the sandbox on approval blocks the one thing the sandbox is for —
+  // proving the whole flow works BEFORE launch — while blocking nothing real, since the sandbox
+  // moves no money.
+  //
+  // Live, it stays a hard gate: PayMe examine every business and may refuse one at their sole
+  // discretion (agreement §11), and a `Restricted` merchant's charge is refused in front of a
+  // buyer mid-checkout. Refusing earlier, with a sentence the seller can act on, is the whole point.
+  if (!account.approved && !isSandbox(creds)) return 'not-approved';
   return null;
 }
 
@@ -329,7 +351,10 @@ export async function clearingStatusFor(
     // and `lib/safe-redirect.ts` apply for the same reason: a `javascript:` string in an href is
     // script execution, and "the value came from our provider" is an assumption, not a check.
     const link = safeMerchantLink(account.signupLink);
-    return account.approved
+    // The SAME rule as `merchantBlockFor`, and it has to be: this sentence is what a seller reads
+    // to find out whether his shop can sell, so a screen saying "waiting for approval" while the
+    // checkout happily takes orders would be the worse half of a disagreement nobody could see.
+    return (account.approved || isSandbox(creds))
       ? { state: 'ready' }
       : { state: 'awaiting-approval', ...(link ? { signupLink: link } : {}) };
   }

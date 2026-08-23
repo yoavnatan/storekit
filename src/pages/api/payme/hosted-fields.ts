@@ -48,9 +48,13 @@ export async function GET({ url }: APIContext): Promise<Response> {
   if (!store) return json({ active: false });
 
   const account = await merchantAccountFor(store.sellerId);
-  // Not approved means the checkout will refuse this cart anyway (`merchantBlockFor`), so drawing
-  // card fields for it would collect a card for a purchase that cannot complete.
-  if (!account?.approved || !account.publicKey) return json({ active: false });
+  // The card form must appear exactly when the checkout will accept the cart, so this asks
+  // `merchantBlockFor`'s question rather than re-deriving it — including its sandbox rule, where
+  // PayMe do not model approval and gating on it would make the whole flow untestable before
+  // launch. Drawing fields the checkout would refuse means collecting a card for a purchase that
+  // cannot complete; hiding them where it would accept means a buyer who cannot pay at all.
+  if (!account?.publicKey) return json({ active: false });
+  if (!account.approved && !isSandbox(creds)) return json({ active: false });
 
   return json({
     active: true,
