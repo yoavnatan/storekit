@@ -26,6 +26,26 @@ interface SaveResponse {
   published?: string[];
 }
 
+/**
+ * What SHAPE a rejected field was expected to have.
+ *
+ * "הערך לא התקבל" was true and useless (owner, 2026-08-24: *"מה זה? ערך שגוי?"*) — it told a seller
+ * something was wrong with a value he could see nothing wrong with. These say what was expected
+ * instead, per field, for the four that have a format worth naming.
+ *
+ * **A HINT, never the rule.** `normalizeMerchantKyc` still decides, and it is the only thing that
+ * does: nothing here validates, refuses or gates, so it cannot disagree with the server about
+ * whether a value is acceptable — only about how to describe what was wanted. A field with no entry
+ * here falls back to the generic line.
+ */
+const REJECTED_KEY: Record<string, string> = {
+  ownerSocialId: 'mkErrSocialId',
+  ownerPhone: 'mkErrPhone',
+  ownerBirthdate: 'mkErrDate',
+  ownerSocialIdIssued: 'mkErrDate',
+  businessRegisteredOn: 'mkErrDate',
+};
+
 function i18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
   catch { return {}; }
@@ -140,7 +160,7 @@ export function initMerchantKycForm(): void {
         clearFieldError(field);
         if (!missingNames.has(field.name)) continue;
         showFieldError(field, field.value.trim()
-          ? (t['mkFieldRejected'] ?? 'This value was not accepted.')
+          ? (t[REJECTED_KEY[field.name] ?? ''] ?? t['mkFieldRejected'] ?? 'This value was not accepted.')
           : (t['mkFieldRequired'] ?? 'This field is required.'));
       }
       // Straight to the first one, because on a ten-field form the rejected value is usually below
