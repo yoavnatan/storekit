@@ -70,10 +70,26 @@ describe('the admin tab carries the admin’s own numbers', () => {
     expect(ADMIN).toMatch(/title=\{badgeTotal > 0 \? `\(\$\{badgeTotal\}\) Admin Dashboard` : 'Admin Dashboard'\}/);
   });
 
+  it('the strip badge is the seller’s pill, so it has a collapsed form', () => {
+    // Owner, 2026-08-24: the admin tabs used to carry "(3)" in the label's own type — a count with
+    // no marker treatment and, worse, nothing to become when the rail collapses to icons. Taking
+    // `.dash-tab-badge` is what buys the `html.dash-nav-mini` rule in dashboard.css that squeezes it
+    // to the 8px dot on the icon's corner. Pinned because the class is the ONLY thing connecting
+    // this markup to that rule: rename it here and the collapsed rail silently shows bare digits
+    // again, with no test and no type error to say so.
+    expect(ADMIN).toMatch(/id=\{`tab-count-\$\{tab\.id\}`\} class="dash-tab-badge"/);
+    expect(ADMIN).not.toMatch(/tab-count-\$\{tab\.id\}[^\n]*`\(\$\{count\}\)`/);
+    // And the number has to survive that squeeze somewhere a screen reader can still reach it.
+    expect(ADMIN).toMatch(/id=\{`tab-count-\$\{tab\.id\}`\}[^\n]*aria-label=/);
+  });
+
   function strip(counts: (number | null)[]): void {
     document.title = 'Admin Dashboard | Dezabin';
     document.body.innerHTML = counts
-      .map((n) => `<span class="dash-tab__count"${n === null ? ' hidden' : ''}>${n === null ? '' : `(${n})`}</span>`)
+      // `.dash-tab-badge` and a bare number since 2026-08-24 — the admin strip took the seller's
+      // pill so it would have a collapsed form. The title still sums DIGITS off the strip, which is
+      // why this reads back correctly either way; the class it queries is the part that moved.
+      .map((n) => `<span class="dash-tab-badge"${n === null ? ' hidden' : ''}>${n === null ? '' : String(n)}</span>`)
       .join('');
   }
 

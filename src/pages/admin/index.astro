@@ -639,7 +639,12 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
   {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
       one, so this nested a second <main> carrying the SAME id, and the skip link then
       resolves to whichever one comes first rather than to this page content. */}
-  <div class="section container dash-section">
+  {/* `--bleed`: on a phone this shell runs edge to edge, exactly as the seller's does (owner,
+      2026-08-24). It was the seller's alone only because nobody had asked for the admin's — the
+      modifier's whole job is dropping the outer gutter so the panel's own padding is the single one,
+      and the reasoning in dashboard.css (a sheet, not a card) is about the width of a phone, not
+      about who is logged in. */}
+  <div class="section container dash-section dash-section--bleed">
     <div id="dash-main-card" class={`card admin-dash${navSide ? ' dash-nav-side' : ''}`}>
       {/* The rail is ONE element — head and list together — because on a phone the whole thing is
           the drawer. Same shape as the seller's, and the same reason. */}
@@ -669,12 +674,25 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
             >
               <AdminTabIcon id={tab.id} />
               <span class="dash-tab__label">{tab.label}</span>
-              {/* data-tab-alert: read by scripts/dashboard/tab-alert-edges.ts, which puts a dot of
+              {/* The seller's badge class, not a parenthesised number (owner, 2026-08-24). "(3)" is
+                  set in the label's own type, so it reads as part of the tab's NAME rather than as a
+                  marker on it — and it has no collapsed form at all: the rail at 3.75rem was showing
+                  bare digits beside an icon with nothing to tie them to. `.dash-tab-badge` is a red
+                  pill in the open rail and, under `html.dash-nav-mini`, the same 8px dot on the
+                  icon's corner the seller's tabs get (styles/pages/dashboard.css — the rule that
+                  hides the digits is already written against this class).
+
+                  The count survives that collapse in `aria-label`, which is where a screen reader
+                  reads it from either way — so every writer of the number (tab-badges.ts's poll,
+                  admin-messages.ts's live unread count, tab-nav.ts's clear-on-leave) has to move the
+                  label with the text node, not just the text node.
+
+                  data-tab-alert: read by scripts/dashboard/tab-alert-edges.ts, which puts a dot of
                   this colour on the strip's edge while the tab is scrolled out of view, and by
                   `DashNavDrawer`, which carries the loudest one out onto the phone's menu button.
                   "danger" for all of them — every count here means "rows you have not seen", which
                   is the same thing the site already paints red everywhere else. */}
-              <span id={`tab-count-${tab.id}`} class="dash-tab__count" data-tab-alert="danger" style="margin-inline-start:0.25rem" hidden={count === 0}>{count > 0 ? `(${count})` : ''}</span>
+              <span id={`tab-count-${tab.id}`} class="dash-tab-badge" data-tab-alert="danger" aria-label={`${count} חדשים`} hidden={count === 0}>{count > 0 ? String(count) : ''}</span>
             </button>
           );
         })}

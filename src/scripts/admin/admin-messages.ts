@@ -7,7 +7,7 @@ import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
 import { wireReviewTakedown } from '../../lib/review-takedown.js';
 import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../dashboard/select-dropdown.js';
-import { syncAdminTitleBadge } from './tab-badges.js';
+import { setAdminTabBadge, syncAdminTitleBadge } from './tab-badges.js';
 
 const PANEL_ID = 'dash-panel-messages';
 const messagesPortal = createFloatingPortal('admin-messages-toolbar-portal');
@@ -59,8 +59,7 @@ function refreshTabDot(known: Map<string, KnownThread>): void {
 function setTabMessagesCount(count: number): void {
   const span = document.getElementById('tab-count-messages');
   if (!span) return;
-  span.hidden = count === 0;
-  span.textContent = count > 0 ? `(${count})` : '';
+  setAdminTabBadge(span, count);
   // The tab title sums the strip, so the one badge that moves without a poll has to say so.
   syncAdminTitleBadge();
 }

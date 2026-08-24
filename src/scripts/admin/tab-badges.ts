@@ -42,7 +42,7 @@ const clearedLocally = new Set<string>();
  * so a re-entry cannot stack "(2) (1) Admin Dashboard".
  */
 export function syncAdminTitleBadge(): void {
-  const spans = document.querySelectorAll<HTMLElement>('.dash-tab__count');
+  const spans = document.querySelectorAll<HTMLElement>('.dash-tab-badge');
   if (spans.length === 0) return;
   let total = 0;
   spans.forEach((span) => {
@@ -53,14 +53,29 @@ export function syncAdminTitleBadge(): void {
   document.title = total > 0 ? `(${total}) ${base}` : base;
 }
 
+/**
+ * The ONE writer of a tab badge, because since 2026-08-24 a badge is two things that have to agree.
+ *
+ * The pill shows the digits; `aria-label` carries the same number for the collapsed rail, where the
+ * pill is squeezed to an 8px dot with `font-size: 0` and the digits are gone from the screen
+ * entirely (styles/pages/dashboard.css, `html.dash-nav-mini`). Three call sites write this badge —
+ * the 45s poll below, the live unread count in admin-messages.ts, and the clear-on-leave in
+ * tab-nav.ts — and a label left behind by any one of them is a screen reader announcing a count
+ * that is no longer on the tab, in the one state where nothing on screen contradicts it.
+ */
+export function setAdminTabBadge(span: HTMLElement, count: number): void {
+  const n = Number(count) || 0;
+  span.textContent = n > 0 ? String(n) : '';
+  span.setAttribute('aria-label', `${n} חדשים`);
+  span.hidden = n === 0;
+}
+
 function paint(counts: Record<string, number>): void {
   for (const [tab, count] of Object.entries(counts)) {
     if (clearedLocally.has(tab)) continue;
     const span = document.getElementById(`tab-count-${tab}`);
     if (!span) continue;
-    const n = Number(count) || 0;
-    span.textContent = n > 0 ? `(${n})` : '';
-    span.hidden = n === 0;
+    setAdminTabBadge(span, Number(count) || 0);
   }
   syncAdminTitleBadge();
 }

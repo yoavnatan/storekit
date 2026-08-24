@@ -1217,8 +1217,12 @@ textarea.input { resize: none; }
      the site header (banner) and the store details block (CURRENT_TASK 2). */
   .dash-section { padding-inline: 0.75rem; padding-top: 0.6rem; }
 
-  /* Full-bleed (seller dashboard only, via the --bleed modifier — the admin
-     pages share .dash-section but not this shell). A phone screen was paying
+  /* Full-bleed, via the --bleed modifier: the seller dashboard and, since
+     2026-08-24, the three admin shells too (admin/index + the two per-store
+     pages). The modifier stays a modifier rather than folding into
+     `.dash-section` because that class is also on pages with no dash shell at
+     all under it — a bare `.dash-section` there would lose its gutter and have
+     nothing to put one back. A phone screen was paying
      for the gutter TWICE: 0.75rem of section padding outside the card plus
      0.65rem of panel padding inside it, so ~22px per side was chrome before
      any content started. Drop the outer one entirely and let the card run
@@ -3113,6 +3117,35 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
   /* The drawer scrolls and ends where its own padding does, so it needs less than the column that
      ends at the window's edge — but not nothing. */
   .dash-rail-foot { padding-bottom: 0.75rem; }
+}
+
+/* ── The count pill on a tab ──
+   Lived in seller/dashboard.astro's `<style is:global>` until 2026-08-24, which meant it shipped
+   on that page only. The admin strip therefore could not use it and painted "(3)" in the label's
+   own type instead — a count that reads as part of the tab's name rather than as a marker on it,
+   and one that has no collapsed form at all (owner: *"למה זה מספר בתוך סוגריים ולא נקודות אדומות"*).
+   It is shared CSS now, so both strips get the same pill AND the same `dash-nav-mini` treatment
+   further up, where it shrinks to the 8px dot on the icon's corner.
+
+   `#ef4444`, not `--color-danger` (#dc2626): this is the value the seller's badge has always been,
+   and lightening a token to match it would repaint every destructive control on the site. The dot
+   beside it takes the token — a 7px dot and a filled pill do not have to be the same red, and
+   these two have never been. */
+.dash-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 20px;
+  padding: 0 4px;
+  margin-inline-start: 4px;
+  vertical-align: middle;
 }
 
 /* ── The alert dots the tab strip already had, as a class ──

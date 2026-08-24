@@ -3426,22 +3426,8 @@ const orderStatusColors: Record<string, string> = {
   .product-menu__item--visibility[data-hidden="1"] .menu-icon-hide { display: none; }
   .product-menu__item--visibility[data-hidden="1"] .menu-icon-show { display: inline; }
 
-  .dash-tab-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: #ef4444;
-    color: #fff;
-    font-size: 0.65rem;
-    font-weight: 700;
-    line-height: 1;
-    min-width: 16px;
-    height: 16px;
-    border-radius: 20px;
-    padding: 0 4px;
-    margin-inline-start: 4px;
-    vertical-align: middle;
-  }
+  /* `.dash-tab-badge` moved to styles/pages/dashboard.css (2026-08-24) — the admin strip needed the
+     same pill, and a page-local `is:global` rule ships only on the page that declares it. */
 
   /* ── Store-switcher alert dots ──
      `data-level` is the same vocabulary the tab strip's markers use (`data-tab-alert`), set from
