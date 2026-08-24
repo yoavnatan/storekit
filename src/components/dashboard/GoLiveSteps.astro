@@ -1,82 +1,160 @@
 ---
 /**
- * Everything between a built shop and a shop on the site, on ONE screen, in order.
+ * Where this shop stands on the way to being on the site — one screen, one answer.
  *
- * ── Why it replaced three cards ──
- * The same errand was spread across a "not live yet" card on the overview, a clearing-status line,
- * a details form and a subscription card — four boxes, two tabs, and a seller left to work out
- * which one he was supposed to touch first (owner, 2026-08-24: *"יש פה גם סירבול של כפתורים ומידע
- * למוכר. צריך משהו מרוכז וברור"*). One screen, three numbered steps, and exactly one of them is
- * ever the current one.
+ * ── Why it replaced three cards, and then got a picture ──
+ * The same errand was spread across a "not live yet" card on the overview, a clearing-status line, a
+ * details form and a subscription card — four boxes, two tabs, and a seller left to work out which
+ * one he was supposed to touch first (owner, 2026-08-24: *"יש פה גם סירבול של כפתורים ומידע למוכר.
+ * צריך משהו מרוכז וברור"*). One screen fixed the scatter; it still made him READ three steps to
+ * find out whether he was nearly there. So the screen now opens with the answer as a picture —
+ * *"אני רוצה שיהיה ברור ליוזר באופן גרפי, איפה הוא עומד... אם האתר יכול או לא יכול להעלות לאוויר"*:
+ * a state line, "step N of 3", and a three-segment bar. Everything under it is detail for the one
+ * step that is his.
+ *
+ * **A segmented bar, not a percentage.** Three steps is three segments, and a segment maps to a row
+ * below it — a continuous 66% bar would be inventing a precision the flow does not have (the middle
+ * step is a wait of unknown length). The bar is in normal flow, so it is a border and a fill and no
+ * shadow (Hard rules → elevation).
+ *
+ * ── The order changed on 2026-08-24, and the order is the point ──
+ * It was details → PAY → wait for approval. So a seller paid, and then sat up to seven business days
+ * with a shop that was not on the site — through exactly the week he is most likely to change his
+ * mind in (owner: *"אני לא רוצה ליפול בין הכיסאות ושהמוכר יתחרט"*). Now paying is LAST: everything
+ * before it is free, and the shop goes up in the same minute the card is charged.
  *
  * ── The middle step is nobody's to act on ──
  * PayMe examine every business and it takes up to seven business days (agreement §11). It is a step
  * because it is real time the seller will spend, and it is the one step with no control at all —
- * drawing a button there would be inviting him to do something that does not exist. Saying "we will
+ * drawing a button there would invite him to do something that does not exist. Saying "we will
  * email you" is the whole of its job.
  *
- * ── One current step, and the rest are quiet ──
- * A done step collapses to its title and a tick. A step that is not reachable yet is dimmed and
- * carries no control. Only the current one is open, which is what makes the screen answer "what do
- * I do now" without the seller comparing four boxes.
+ * ── The plan is chosen HERE, and that is the answer to "when does that screen even arrive" ──
+ * `/pricing` is the public comparison, read before anybody has an account. The seller meets his own
+ * plan at the moment it starts costing him, which is this step (owner, 2026-08-24). Four pills, the
+ * current one marked, a link to the full comparison beside them — deliberately not a fifth decision
+ * to agonise over: the difference between plans at a starting shop's revenue is a few shekels, it
+ * can be changed in one click afterwards, and the whole goal is *"מינימום של התלבטות אם להירשם
+ * למסלול או לא"*.
  *
- * The controls themselves are unchanged — the clearing form and the subscription action are the
- * SAME components, now rendered inside the step that owns them rather than beside each other.
+ * ── Per SHOP, since the plan moved to the store ──
+ * This screen is about the store the dashboard is currently on. Steps 1 and 2 are the seller's
+ * ACCOUNT (one clearing account per registered business, however many shops); step 3 is this shop's
+ * own plan and its own line on the monthly charge (`lib/store-plan.ts`).
  */
 import type { PublishHold } from '../../lib/store-publication.js';
 import type { MerchantKyc } from '../../lib/merchant-kyc.js';
-import type { SellerTierId } from '../../lib/pricing.js';
+import { SELLER_TIERS, type SellerTierId } from '../../lib/pricing.js';
 import type { getT } from '../../i18n/index.js';
 import ClearingDetailsForm from './ClearingDetailsForm.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
 
 interface Props {
-  /** Empty means the shop is live (or nothing is gating it) — the whole screen renders nothing. */
+  /** Empty means nothing is gating the ACCOUNT. This screen can still render, because a second shop
+   *  of a paying seller has a hold of its own that no account-level check can see. */
   holds: PublishHold[];
+  /** The shop this screen is about — the one the dashboard is currently on. */
+  store: { id: string; name: string; tier?: string; publishedAt?: string };
+  /** Whether THIS shop's fee is in the standing order. A paying seller who opened a second shop has
+   *  cleared every account-level hold and still owes for this one (`lib/store-plan.ts`). */
+  storeInPlan: boolean;
   kyc: Partial<MerchantKyc>;
   derivedCategory: string | null;
   kycComplete: boolean;
-  tier: SellerTierId | undefined;
   planName: string;
-  subscription: { status: number; nextCharge?: string } | null;
+  /** Every plan's display name, for the picker. Lives in the pricing copy rather than the
+   *  dashboard's, so it is handed in rather than looked up — no component below this one reaches
+   *  into another screen's translations. */
+  planNames: Record<SellerTierId, string>;
+  subscription: { status: number; nextCharge?: string; endsAt?: string; priceAgorot?: number } | null;
   subscriptionPaying: boolean;
   /** PayMe's own onboarding page for this seller, when there is one. */
   signupLink?: string;
   d: ReturnType<typeof getT>['dashboard'];
 }
 const {
-  holds, kyc, derivedCategory, kycComplete, tier, planName, subscription, subscriptionPaying,
-  signupLink, d,
+  holds, store, storeInPlan, kyc, derivedCategory, kycComplete, planName, planNames,
+  subscription, subscriptionPaying, signupLink, d,
 } = Astro.props;
 
 /** A step is done when its hold is gone. `details` is also done once the account exists, which is
  *  what `clearing-details` disappearing means. */
 const detailsDone = !holds.includes('clearing-details');
 const approvalDone = detailsDone && !holds.includes('clearing-approval');
-const subscriptionDone = !holds.includes('subscription');
+/** **This shop's** step, not the account's: paid for AND on the site. A seller can be paying and
+ *  still owe for the shop he is looking at. */
+const liveDone = !!store.publishedAt && storeInPlan;
 
 /** The first step that is not done — the only one that opens. `approval` can be current without
  *  being actionable, which is the point of it being a step at all. */
-const current: 'details' | 'approval' | 'subscription' | null =
+const current: 'details' | 'approval' | 'live' | null =
   !detailsDone ? 'details'
-  : !subscriptionDone ? 'subscription'
   : !approvalDone ? 'approval'
+  : !liveDone ? 'live'
   : null;
 
 const STEPS = [
-  { id: 'details', n: 1, title: d.glStepDetails, done: detailsDone, note: d.glStepDetailsNote },
-  { id: 'approval', n: 2, title: d.glStepApproval, done: approvalDone, note: d.glStepApprovalNote },
-  { id: 'subscription', n: 3, title: d.glStepSubscription, done: subscriptionDone, note: d.glStepSubscriptionNote },
+  { id: 'details', title: d.glStepDetails, done: detailsDone, note: d.glStepDetailsNote },
+  { id: 'approval', title: d.glStepApproval, done: approvalDone, note: d.glStepApprovalNote },
+  { id: 'live', title: d.glStepSubscription, done: liveDone, note: d.glStepSubscriptionNote },
 ] as const;
+
+/**
+ * Which step he is ON — the POSITION of the open one, not a count of finished ones.
+ *
+ * Those are not the same number, and the difference is visible: the steps run in order but they can
+ * finish out of order. A seller whose first shop is already live and who has just opened a second
+ * has the LAST step done and the first outstanding, and counting ticks reported "step 2 of 3" over
+ * a screen whose only open step was the first. Caught by driving the real dashboard, 2026-08-24 —
+ * reasoning about it had produced the count.
+ */
+const stepNumber = current ? STEPS.findIndex((s) => s.id === current) + 1 : STEPS.length;
+
+/** The one sentence at the top, and it answers the question the owner asked for: can this shop go
+ *  on the site or not. Each state names WHO is holding it, because "not live" alone is what sends a
+ *  seller looking through four boxes for the reason. */
+const stateLine =
+  current === 'details' ? d.glStateDetails
+  : current === 'approval' ? d.glStateApproval
+  : current === 'live' ? d.glStateLive
+  : d.glStateReady;
+
+const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) as SellerTierId | null;
 ---
 
-{holds.length > 0 && (
-  <section class="card card--flat p-4 md:p-5" id="go-live" data-holds={holds.join(',')}>
-    <h3 class="text-[1.05rem] font-bold m-0">{d.glTitle}</h3>
-    <p class="muted m-0 mt-1 text-[0.86rem]">{d.glSubtitle}</p>
+{current !== null && (
+  <section class="card card--flat p-4 md:p-5" id="go-live" data-holds={holds.join(',')} data-store={store.id}>
+
+    {/* ── The answer, before any of the detail ──────────────────────────────────────────────
+        State, position, picture. Nothing here is clickable and nothing here is a step: it is the
+        summary a seller reads in one second and then either acts on or closes the tab reassured. */}
+    <div class="flex items-baseline justify-between gap-3 flex-wrap">
+      <h3 class="text-[1.05rem] font-bold m-0">{d.glTitle.replace('{store}', store.name)}</h3>
+      <p class="muted m-0 text-[0.8rem] tabular-nums">{d.glStepOf.replace('{n}', String(stepNumber)).replace('{total}', String(STEPS.length))}</p>
+    </div>
+    <p class="m-0 mt-1 text-[0.88rem] font-semibold">{stateLine}</p>
+
+    {/* One segment per step, in the same order as the rows below — a done step is filled, the
+        current one is outlined, a later one is empty. `aria-hidden` because the three rows under it
+        say the same thing in words, and a screen reader reading a bar of empty divs learns
+        nothing. */}
+    <div class="flex gap-1.5 mt-3" aria-hidden="true">
+      {STEPS.map((step) => (
+        <div
+          class:list={[
+            'h-[0.3rem] flex-1 rounded-[var(--radius-sm)] border',
+            step.done
+              ? '[background:var(--color-success)] [border-color:var(--color-success)]'
+              : step.id === current
+                ? '[background:color-mix(in_srgb,var(--color-accent)_22%,transparent)] [border-color:var(--color-accent)]'
+                : '[background:var(--color-bg)] [border-color:var(--color-border)]',
+          ]}
+        ></div>
+      ))}
+    </div>
 
     <ol class="list-none p-0 m-0 mt-4 flex flex-col">
-      {STEPS.map((step) => (
+      {STEPS.map((step, i) => (
         <li
           class="border-t [border-color:var(--color-border)] pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0"
           data-step={step.id}
@@ -88,7 +166,7 @@ const STEPS = [
             {step.done ? (
               <svg class="shrink-0 translate-y-[0.15rem] [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
             ) : (
-              <span class={`shrink-0 text-[0.78rem] font-bold tabular-nums ${step.id === current ? '' : '[color:var(--color-muted)]'}`}>{step.n}.</span>
+              <span class={`shrink-0 text-[0.78rem] font-bold tabular-nums ${step.id === current ? '' : '[color:var(--color-muted)]'}`}>{i + 1}.</span>
             )}
             <p class={`m-0 text-[0.92rem] font-semibold ${step.done || step.id !== current ? '[color:var(--color-muted)]' : ''}`}>{step.title}</p>
           </div>
@@ -113,9 +191,45 @@ const STEPS = [
             </a>
           )}
 
-          {step.id === 'subscription' && current === 'subscription' && (
+          {step.id === 'live' && current === 'live' && (
             <div class="mt-3 ms-[1.4rem]">
-              <SubscriptionCard tier={tier} planName={planName} subscription={subscription} paying={subscriptionPaying} bare d={d} />
+              {/* ── The plan, as four pills ──
+                  Named here rather than on a screen of its own, because this is the moment it starts
+                  costing him. The marked one is what this shop is on; pressing another moves it,
+                  and — for a seller already paying — moves the standing order with it, from the next
+                  charge (`/api/seller/tier`). */}
+              <p class="m-0 text-[0.84rem] font-semibold">{d.glPlanTitle}</p>
+              <div class="flex flex-wrap gap-2 mt-2" id="go-live-plans" data-store={store.id}>
+                {SELLER_TIERS.map((tier) => (
+                  <button
+                    type="button"
+                    class:list={[
+                      'btn btn--sm',
+                      tier.id === (activeTier ?? SELLER_TIERS[0]!.id) ? 'btn--accent' : 'btn--ghost',
+                    ]}
+                    data-role="plan"
+                    data-tier={tier.id}
+                  >
+                    {planNames[tier.id as SellerTierId]} · ₪{tier.monthlyFee}
+                  </button>
+                ))}
+              </div>
+              <p class="muted m-0 mt-2 text-[0.78rem]">
+                {d.glPlanSwitchable} <a href="/pricing">{d.glPlanCompare}</a>
+              </p>
+
+              <div class="mt-4">
+                <SubscriptionCard
+                  storeId={store.id}
+                  planName={planName}
+                  tier={store.tier as SellerTierId | undefined}
+                  subscription={subscription}
+                  paying={subscriptionPaying}
+                  storeInPlan={storeInPlan}
+                  bare
+                  d={d}
+                />
+              </div>
             </div>
           )}
         </li>

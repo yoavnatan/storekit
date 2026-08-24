@@ -137,6 +137,11 @@ if (Astro.request.method === 'POST') {
       </form>
     </div>
 
+    {/* Two lines, not three. The third was "עברית ו-RTL באופן מלא", and the owner cut it on
+        2026-08-24 for the reason that applies to every line on this page: *"מה זה איכפת למוכר? וגם
+        אם הוא כבר הגיע לשם הוא כבר רוצה לפתוח חנות"*. A reader on a Hebrew page pressing "open a
+        store" is not weighing up RTL support; naming it spends his attention on a non-question and
+        makes the two lines that ARE reasons look like a feature list. */}
     <ul class="auth-benefits">
       <li>
         <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
@@ -145,10 +150,6 @@ if (Astro.request.method === 'POST') {
       <li>
         <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
         {t.auth.benefitBuiltIn}
-      </li>
-      <li>
-        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        {t.auth.benefitHebrew}
       </li>
     </ul>
 

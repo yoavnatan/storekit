@@ -106,7 +106,7 @@ import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.
 import { storeBaselineStatus } from '../../lib/ad-baseline.js';
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
 import { getStoreIdsWithStalledCampaigns } from '../../lib/ad-campaigns.js';
-import { boostFeePercent, resolveTier } from '../../lib/pricing.js';
+import { boostFeePercent, resolveTier, type SellerTierId } from '../../lib/pricing.js';
 import { commissionPercentForStore } from '../../lib/store-plan.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote } from '../../lib/ad-scope-label.js';
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
@@ -440,6 +440,12 @@ const derivedMerchantCategory = clearingStatus ? paymeCategoryForStore(allStores
 // the status is PayMe's integer and `payment-payme.ts` is the only place it is interpreted, so a
 // screen and the publication gate cannot disagree about whether this seller is paying.
 const subscription = clearingStatus ? await subscriptionFor(sellerId) : null;
+/** Plan id → its display name. Built once here because the names live in the PRICING copy and the
+ *  go-live screen renders them, and a component reaching sideways into another screen's
+ *  translations is the coupling this hand-off exists to avoid. */
+const planNames = Object.fromEntries(
+  (Object.keys(t.pricing.tiers) as SellerTierId[]).map((id) => [id, t.pricing.tiers[id].name]),
+) as Record<SellerTierId, string>;
 const merchantKycComplete = !!clearingStatus
   && missingMerchantKyc(derivedMerchantCategory ? { ...merchantKyc, businessCategory: derivedMerchantCategory } : merchantKyc).length === 0;
 // Why this seller's shops are not on the site — computed once, read by the overview card. Asked
@@ -2981,8 +2987,9 @@ const orderStatusColors: Record<string, string> = {
             derivedCategory={derivedMerchantCategory}
             kycComplete={merchantKycComplete}
             holds={publishHolds}
-            tier={seller.tier}
-            planName={t.pricing.tiers[resolveTier(seller.tier).id].name}
+            store={store ?? null}
+            planNames={planNames}
+            planName={t.pricing.tiers[resolveTier(store?.tier).id].name}
             subscription={subscription}
             subscriptionPaying={!!subscription && subscriptionIsPaying(subscription.status)}
             d={d}

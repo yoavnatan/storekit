@@ -1,15 +1,18 @@
 ---
 /**
- * The monthly subscription — the button that puts a shop on the site.
+ * The monthly charge — the button that puts a shop on the site, and the one that stops paying for it.
  *
  * ── Why it is on the Payments tab and not in a wizard ──
  * It is the second half of the same errand as the two blocks above it: the bank account says where
  * the seller's money lands, the business details are what the processor examines, and this is what
  * he pays us. One screen owns money (owner, 2026-08-23).
  *
- * ── What it does NOT do ──
- * It does not choose a plan. `Seller.tier` is written by `/api/seller/tier` — the public pricing
- * page — and read here, so this card states which plan is in force rather than offering four.
+ * ── One charge, several shops ──
+ * Since 2026-08-24 a plan is bought per shop and the seller has ONE standing order whose amount is
+ * the sum of the shops he has on the site (`lib/store-plan.ts`). So this card has to answer two
+ * different questions without mixing them: *what does THIS shop cost*, and *what is being charged to
+ * my card in total*. The breakdown is rendered only when there is more than one line — with one
+ * shop the total IS the plan, and printing it twice is how a screen starts looking complicated.
  *
  * ── The button leads OFF-SITE, and the copy says so ──
  * PayMe return their own payment page unless we hand them a card token, and we cannot: Hosted Fields
@@ -18,16 +21,26 @@
  * did not expect — is how a payment gets abandoned halfway. So the sentence under the button names
  * where it goes.
  *
- * ── Three states, one card ──
- * Nothing yet · created and waiting to be paid · paying. The middle one is the state a seller lands
- * in by closing the processor's tab, and it is the reason "continue to payment" exists at all: the
- * subscription really was created, so starting a second one would be a second thing billing him.
+ * ── Cancelling is a two-step, and the middle step is not a dark pattern ──
+ * The owner asked for retention (*"כמובן צריך לנסות לשמר את הלקוח"*). What is offered is the two
+ * things that are actually cheaper than leaving and that he may not know exist: a lower plan, and —
+ * with more than one shop — taking one shop off the site instead of all of them. Both are real
+ * alternatives to the thing he pressed. There is no "are you sure" loop and no offer he has to
+ * decline twice: the cancel button is right there, in the same panel, at the same size.
+ *
+ * The sentence that does most of the work is the one about WHEN: he keeps everything to the end of
+ * the month he already paid for (owner, 2026-08-24). A seller who knows that is a seller who is not
+ * cancelling in a hurry to avoid being charged again.
  */
 import { resolveTier, SELLER_SETUP_FEE, type SellerTierId } from '../../lib/pricing.js';
+import { formatAgorot } from '../../lib/money.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
-  /** The seller's plan. Absent falls back to the default, exactly as `resolveTier` does everywhere
+  /** The shop this card is about — every action it takes names it, because the plan and the line on
+   *  the monthly charge belong to the shop rather than to the account. */
+  storeId: string;
+  /** This shop's plan. Absent falls back to the default, exactly as `resolveTier` does everywhere
    *  else — a bad stored value must never break this render. */
   tier: SellerTierId | undefined;
   /** What the plan is CALLED. It lives in the pricing copy rather than the dashboard's, so it is
@@ -38,22 +51,38 @@ interface Props {
    *  "125 ₪ לחודש" and left him to recognise his plan by its price (owner, 2026-08-24: *"מה קורה
    *  אחרי שעושים בחירת מסלול? איפה זה מופיע?"*). */
   planName: string;
-  /** What is on file: `null` = none yet, `paying` = billing is running, otherwise it was created
-   *  and nobody has paid it. `payUrl` is present only in that middle state. */
-  subscription: { status: number; nextCharge?: string } | null;
+  /** What is on file: `null` = none yet, `paying` = billing is running, otherwise it was created and
+   *  nobody has paid it. `endsAt` is present only on a cancelled one still inside its paid period. */
+  subscription: {
+    status: number;
+    nextCharge?: string;
+    endsAt?: string;
+    priceAgorot?: number;
+    storeFees?: { storeId: string; storeName: string; tier: string; feeAgorot: number }[];
+  } | null;
   paying: boolean;
+  /** Whether THIS shop is one of the lines in the standing order. A paying seller who has just
+   *  opened a second shop is `paying: true` and `storeInPlan: false` — the case where the card must
+   *  offer to ADD a shop rather than to start a subscription. */
+  storeInPlan?: boolean;
   /** Rendered INSIDE a go-live step, which already carries the title and the one-line reason. Drops
    *  its own heading and its own frame, so the step is one thing rather than a box in a box saying
    *  "מנוי חודשי" twice (owner, 2026-08-24). */
   bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { tier, planName, subscription, paying, bare = false, d } = Astro.props;
+const { storeId, tier, planName, subscription, paying, storeInPlan = false, bare = false, d } = Astro.props;
 const plan = resolveTier(tier);
 const created = !!subscription;
+/** A cancelled subscription still inside the period he paid for. Not the same as "not paying": he
+ *  is, until this date, and the card must say so rather than offering him to start again. */
+const endingOn = subscription?.endsAt;
+const lines = subscription?.storeFees ?? [];
+/** Only worth showing when the total is not simply this shop's plan. */
+const showBreakdown = paying && lines.length > 1;
 ---
 
-<section class={bare ? '' : 'card card--flat p-4 md:p-5 mt-4'} id="sub-card" data-paying={String(paying)}>
+<section class={bare ? '' : 'card card--flat p-4 md:p-5 mt-4'} id="sub-card" data-paying={String(paying)} data-store={storeId}>
   {!bare && (
     <>
       <h3 class="text-[1.05rem] font-bold m-0">{d.subTitle}</h3>
@@ -65,11 +94,40 @@ const created = !!subscription;
       (`feedback_labelled_grid_over_prose`), rather than a sentence a seller has to parse to find
       his own commission rate in. */}
   <dl class={`grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.86rem] m-0 ${bare ? '' : 'mt-4'}`}>
-    <dt class="muted">{d.subPlan}</dt>
-    <dd class="m-0 font-semibold">{d.subPlanValue.replace('{name}', planName).replace('{fee}', String(plan.monthlyFee)).replace('{per}', d.subPerMonth)}</dd>
+    {/* Dropped in `bare`, where the four plan pills sit directly above this grid and the marked one
+        already carries the name and the price — repeating them a line later is the same fact twice
+        in two shapes, which is what made the go-live step read as two cards. On the standalone card
+        there are no pills, so the row is the only place the plan is named. */}
+    {!bare && (
+      <>
+        <dt class="muted">{d.subPlan}</dt>
+        <dd class="m-0 font-semibold">{d.subPlanValue.replace('{name}', planName).replace('{fee}', String(plan.monthlyFee)).replace('{per}', d.subPerMonth)}</dd>
+      </>
+    )}
     <dt class="muted">{d.subCommission}</dt>
     <dd class="m-0 font-semibold">{plan.commissionPercent}%</dd>
-    {paying && subscription?.nextCharge && (
+    {showBreakdown && (
+      <>
+        {/* **The answer to "why am I charged ₪224".** One standing order, several shops — without
+            this the seller reads a plan of ₪99 and a charge of ₪224 and has to guess at the
+            arithmetic. Read from what the standing order was actually SET from, never re-derived,
+            so this cannot disagree with his card statement. */}
+        <dt class="muted">{d.subTotal}</dt>
+        <dd class="m-0 font-semibold">{formatAgorot(subscription?.priceAgorot ?? 0)}</dd>
+        <dt class="muted">{d.subTotalOf}</dt>
+        <dd class="m-0">
+          <ul role="list" class="list-none p-0 m-0 flex flex-col gap-0.5">
+            {lines.map((line) => (
+              <li class="flex items-baseline justify-between gap-3">
+                <span class={line.storeId === storeId ? 'font-semibold' : ''}>{line.storeName}</span>
+                <span class="tabular-nums shrink-0">{formatAgorot(line.feeAgorot)}</span>
+              </li>
+            ))}
+          </ul>
+        </dd>
+      </>
+    )}
+    {paying && !endingOn && subscription?.nextCharge && (
       <>
         <dt class="muted">{d.subNextCharge}</dt>
         {/* PayMe's own string, passed through unparsed — it is theirs, and re-formatting it is how
@@ -85,33 +143,57 @@ const created = !!subscription;
 
   <p class="hidden text-sm [color:var(--color-danger)] mt-3 mb-0" id="sub-error" role="alert"></p>
 
-  {paying ? (
-    <div class="flex items-center justify-between gap-3 flex-wrap mt-4">
-      <p class="m-0 text-[0.86rem] font-semibold">{d.subActive}</p>
-      <div class="flex items-center gap-3 flex-wrap">
-        {/* A link and not a button, to the page that already owns this choice — the comparison, the
-            calculator and the write are all there (`/pricing`), and a second chooser in a column
-            beside a bank form would be the same decision asked twice.
-            It carries the timing with it: the switch patches the standing order at PayMe and
-            applies from the next charge (`seller-subscription.ts#propagateTierToSubscription`), and
-            a seller pressing this needs to know that before he presses, not after. */}
-        <a href="/pricing" class="text-[0.84rem]">{d.subChangePlan}</a>
+  {endingOn ? (
+    /* Cancelled, and still his until the date. The one thing he must not be left guessing at, so it
+       is the whole of what this state says — plus the way back, which is the same button that
+       started it. */
+    <div class="mt-4">
+      <p class="m-0 text-[0.86rem] font-semibold">{d.subEnding.replace('{date}', endingOn.slice(0, 10))}</p>
+      <p class="muted m-0 mt-1 text-[0.8rem]">{d.subEndingNote}</p>
+      <button type="button" class="btn btn--accent btn--sm mt-3" id="sub-start" data-store={storeId}>{d.subResume}</button>
+    </div>
+  ) : paying && storeInPlan ? (
+    <div class="mt-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <p class="m-0 text-[0.86rem] font-semibold">{d.subActive}</p>
         <button type="button" class="btn btn--ghost btn--sm" id="sub-cancel">{d.subCancel}</button>
       </div>
+
+      {/* ── The retention step ──
+          Hidden until he presses cancel, and it is not a wall: the cancel button below is the same
+          size as the alternatives beside it. What is offered is the two things that are genuinely
+          cheaper than leaving and that he may not know are possible. */}
+      <div class="!hidden mt-3 rounded-[var(--radius)] border [border-color:var(--color-border)] p-3" id="sub-cancel-panel">
+        <p class="m-0 text-[0.86rem] font-semibold">{d.subCancelTitle}</p>
+        <p class="muted m-0 mt-1 text-[0.82rem]">{d.subCancelWhen}</p>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <a class="btn btn--ghost btn--sm" href="/pricing">{d.subCancelCheaper}</a>
+          {lines.length > 1 && <span class="muted text-[0.8rem]">{d.subCancelOneStore}</span>}
+          <button type="button" class="btn btn--sm" id="sub-cancel-confirm">{d.subCancelConfirm}</button>
+        </div>
+      </div>
     </div>
-    <p class="muted m-0 mt-2 text-[0.78rem]">{d.subChangePlanNote}</p>
   ) : (
     <div class="mt-4">
-      {created && <p class="m-0 mb-2 text-[0.84rem]">{d.subAwaitingPayment}</p>}
-      <button type="button" class="btn btn--accent btn--sm" id="sub-start">
-        {created ? d.subResume : d.subStart}
+      {created && !paying && <p class="m-0 mb-2 text-[0.84rem]">{d.subAwaitingPayment}</p>}
+      {/* A paying seller opening a SECOND shop is not starting a subscription — he is adding a line
+          to one that is already running, and the button has to say that or it reads as a second
+          monthly charge appearing from nowhere. */}
+      <button type="button" class="btn btn--accent btn--sm" id="sub-start" data-store={storeId}>
+        {paying && !storeInPlan ? d.subAddStore : created ? d.subResume : d.subStart}
       </button>
-      {/* Said BEFORE the click, not after it. A redirect nobody was expecting is where a payment
-          gets abandoned — and so is a fee nobody mentioned. The account-opening charge is the
-          payment provider's, it is the seller's to pay (owner, 2026-08-24), and this is the last
-          screen before he meets it. */}
-      <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
-      <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+      {paying && !storeInPlan ? (
+        <p class="muted m-0 mt-2 text-[0.78rem]">{d.subAddStoreNote.replace('{fee}', String(plan.monthlyFee))}</p>
+      ) : (
+        <>
+          {/* Said BEFORE the click, not after it. A redirect nobody was expecting is where a payment
+              gets abandoned — and so is a fee nobody mentioned. The account-opening charge is the
+              payment provider's, it is the seller's to pay (owner, 2026-08-24), and this is the last
+              screen before he meets it. */}
+          <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
+          <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+        </>
+      )}
     </div>
   )}
 </section>
