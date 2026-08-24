@@ -1191,6 +1191,18 @@ export const translations = {
       // nothing else: the seller has to know WHAT is missing, WHO can fix it and WHEN — a paragraph
       // about the model is not any of the three. `pubWaitingNote` is the whole point of the
       // approval line: he is a week into a wait he cannot shorten and has done nothing wrong.
+      // The go-live screen (components/dashboard/GoLiveSteps.astro) — one place, three steps, one
+      // of them current. It replaced four boxes across two tabs (owner, 2026-08-24: *"סירבול של
+      // כפתורים ומידע למוכר. צריך משהו מרוכז וברור"*).
+      glTitle: 'העלאת החנות לאוויר',
+      glSubtitle: 'שלושה שלבים. אחרי האחרון החנות עולה מעצמה.',
+      glStepDetails: 'פרטי העסק לחברת הסליקה',
+      glStepDetailsNote: 'פעם אחת, וזה מה שמתחיל את הבדיקה שלהם.',
+      glStepApproval: 'אישור חברת הסליקה',
+      glStepApprovalNote: 'הם בודקים כל בית עסק, עד שבעה ימי עסקים. אין מה לעשות בינתיים — נשלח התראה ברגע שזה מאושר.',
+      glStepSubscription: 'מנוי חודשי',
+      glStepSubscriptionNote: 'זה מה שפותח את החנות לקהל. אפשר לבטל בכל רגע.',
+      glAutomatic: 'אין כפתור פרסום — ברגע ששני השלבים נסגרים החנות עולה לבד, ותקבלו על כך התראה.',
       pubTitle: 'החנות עדיין לא באוויר',
       pubBuildOn: 'אפשר להמשיך לבנות הכל — מוצרים, עיצוב, קטגוריות ומבצעים. רק המכירה והפרסום ממתינים.',
       pubHoldSubscription: 'מנוי חודשי לא הופעל',
@@ -3325,6 +3337,15 @@ export const translations = {
       payDetailsSave: 'Save details',
       payDetailsSaved: 'Details saved',
       payDetailsFailed: 'Could not save. Check your connection and try again.',
+      glTitle: 'Putting your store live',
+      glSubtitle: 'Three steps. After the last one the store goes live by itself.',
+      glStepDetails: 'Business details for the processor',
+      glStepDetailsNote: 'Once, and it is what starts their review.',
+      glStepApproval: 'Processor approval',
+      glStepApprovalNote: 'They review every business, up to seven business days. Nothing to do meanwhile — we will notify you the moment it is approved.',
+      glStepSubscription: 'Monthly subscription',
+      glStepSubscriptionNote: 'This is what opens the store to shoppers. Cancel any time.',
+      glAutomatic: 'There is no publish button — once both steps are done the store goes live by itself, and you will be notified.',
       pubTitle: 'This store is not live yet',
       pubBuildOn: 'You can keep building everything — products, design, categories and sales. Only selling and advertising are waiting.',
       pubHoldSubscription: 'No monthly subscription yet',

@@ -2973,6 +2973,7 @@ const orderStatusColors: Record<string, string> = {
             kyc={merchantKyc}
             derivedCategory={derivedMerchantCategory}
             kycComplete={merchantKycComplete}
+            holds={publishHolds}
             tier={seller.tier}
             planName={t.pricing.tiers[resolveTier(seller.tier).id].name}
             subscription={subscription}

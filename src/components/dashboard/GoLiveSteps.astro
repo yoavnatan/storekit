@@ -1,0 +1,127 @@
+---
+/**
+ * Everything between a built shop and a shop on the site, on ONE screen, in order.
+ *
+ * ── Why it replaced three cards ──
+ * The same errand was spread across a "not live yet" card on the overview, a clearing-status line,
+ * a details form and a subscription card — four boxes, two tabs, and a seller left to work out
+ * which one he was supposed to touch first (owner, 2026-08-24: *"יש פה גם סירבול של כפתורים ומידע
+ * למוכר. צריך משהו מרוכז וברור"*). One screen, three numbered steps, and exactly one of them is
+ * ever the current one.
+ *
+ * ── The middle step is nobody's to act on ──
+ * PayMe examine every business and it takes up to seven business days (agreement §11). It is a step
+ * because it is real time the seller will spend, and it is the one step with no control at all —
+ * drawing a button there would be inviting him to do something that does not exist. Saying "we will
+ * email you" is the whole of its job.
+ *
+ * ── One current step, and the rest are quiet ──
+ * A done step collapses to its title and a tick. A step that is not reachable yet is dimmed and
+ * carries no control. Only the current one is open, which is what makes the screen answer "what do
+ * I do now" without the seller comparing four boxes.
+ *
+ * The controls themselves are unchanged — the clearing form and the subscription action are the
+ * SAME components, now rendered inside the step that owns them rather than beside each other.
+ */
+import type { PublishHold } from '../../lib/store-publication.js';
+import type { MerchantKyc } from '../../lib/merchant-kyc.js';
+import type { SellerTierId } from '../../lib/pricing.js';
+import type { getT } from '../../i18n/index.js';
+import ClearingDetailsForm from './ClearingDetailsForm.astro';
+import SubscriptionCard from './SubscriptionCard.astro';
+
+interface Props {
+  /** Empty means the shop is live (or nothing is gating it) — the whole screen renders nothing. */
+  holds: PublishHold[];
+  kyc: Partial<MerchantKyc>;
+  derivedCategory: string | null;
+  kycComplete: boolean;
+  tier: SellerTierId | undefined;
+  planName: string;
+  subscription: { status: number; nextCharge?: string } | null;
+  subscriptionPaying: boolean;
+  /** PayMe's own onboarding page for this seller, when there is one. */
+  signupLink?: string;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const {
+  holds, kyc, derivedCategory, kycComplete, tier, planName, subscription, subscriptionPaying,
+  signupLink, d,
+} = Astro.props;
+
+/** A step is done when its hold is gone. `details` is also done once the account exists, which is
+ *  what `clearing-details` disappearing means. */
+const detailsDone = !holds.includes('clearing-details');
+const approvalDone = detailsDone && !holds.includes('clearing-approval');
+const subscriptionDone = !holds.includes('subscription');
+
+/** The first step that is not done — the only one that opens. `approval` can be current without
+ *  being actionable, which is the point of it being a step at all. */
+const current: 'details' | 'approval' | 'subscription' | null =
+  !detailsDone ? 'details'
+  : !subscriptionDone ? 'subscription'
+  : !approvalDone ? 'approval'
+  : null;
+
+const STEPS = [
+  { id: 'details', n: 1, title: d.glStepDetails, done: detailsDone, note: d.glStepDetailsNote },
+  { id: 'approval', n: 2, title: d.glStepApproval, done: approvalDone, note: d.glStepApprovalNote },
+  { id: 'subscription', n: 3, title: d.glStepSubscription, done: subscriptionDone, note: d.glStepSubscriptionNote },
+] as const;
+---
+
+{holds.length > 0 && (
+  <section class="card card--flat p-4 md:p-5" id="go-live" data-holds={holds.join(',')}>
+    <h3 class="text-[1.05rem] font-bold m-0">{d.glTitle}</h3>
+    <p class="muted m-0 mt-1 text-[0.86rem]">{d.glSubtitle}</p>
+
+    <ol class="list-none p-0 m-0 mt-4 flex flex-col">
+      {STEPS.map((step) => (
+        <li
+          class="border-t [border-color:var(--color-border)] pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0"
+          data-step={step.id}
+          data-state={step.done ? 'done' : step.id === current ? 'current' : 'waiting'}
+        >
+          <div class="flex items-baseline gap-2">
+            {/* The number is the ordering, and the tick replaces it rather than sitting beside it —
+                a step that is finished has no position left to argue about. */}
+            {step.done ? (
+              <svg class="shrink-0 translate-y-[0.15rem] [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            ) : (
+              <span class={`shrink-0 text-[0.78rem] font-bold tabular-nums ${step.id === current ? '' : '[color:var(--color-muted)]'}`}>{step.n}.</span>
+            )}
+            <p class={`m-0 text-[0.92rem] font-semibold ${step.done || step.id !== current ? '[color:var(--color-muted)]' : ''}`}>{step.title}</p>
+          </div>
+
+          {/* Only the current step explains itself. A done one is a tick, and a later one is a word
+              — anything more and the screen is four boxes again in a different shape. */}
+          {step.id === current && (
+            <p class="muted m-0 mt-1 ms-[1.4rem] text-[0.84rem]">{step.note}</p>
+          )}
+
+          {step.id === 'details' && current === 'details' && (
+            <div class="mt-3">
+              <ClearingDetailsForm kyc={kyc} derivedCategory={derivedCategory} complete={kycComplete} d={d} />
+            </div>
+          )}
+
+          {/* PayMe's own page, and the only thing there is to offer on a step nobody can act on:
+              a seller they have questions about finishes his details there rather than here. */}
+          {step.id === 'approval' && current === 'approval' && signupLink && (
+            <a class="btn btn--ghost btn--sm mt-3 ms-[1.4rem]" href={signupLink} target="_blank" rel="noopener noreferrer">
+              {d.payClearingLink}
+            </a>
+          )}
+
+          {step.id === 'subscription' && current === 'subscription' && (
+            <div class="mt-3 ms-[1.4rem]">
+              <SubscriptionCard tier={tier} planName={planName} subscription={subscription} paying={subscriptionPaying} bare d={d} />
+            </div>
+          )}
+        </li>
+      ))}
+    </ol>
+
+    <p class="muted m-0 mt-4 text-[0.8rem]">{d.glAutomatic}</p>
+  </section>
+)}

@@ -506,6 +506,28 @@ subscription is refused with `305` (*"סטטוס מכירה לא מתאים"*), 
 The seller is told "from the next charge", which is what the price field and the untouched
 `sub_next_date` support.
 
+### 24. ✅ OUR OWN MERCHANT, RE-OPENED — this time keeping what it hands back
+The §18 account works and its keys were never stored, which cost the one thing the key is for: with
+no `seller_public_key` we cannot draw Hosted Fields on our own account, so a SELLER's card cannot be
+typed on our page and the subscription has to hand him to PayMe's payment page. That handoff is a
+week-long gap between a seller deciding and a seller paying — the owner named it exactly
+(2026-08-24) — and closing it means holding his CARD from the moment he decides.
+
+So a second one was opened, 2026-08-24, through `scripts/payme-open-own-merchant.mjs`, whose whole
+purpose is printing the three values that come back once:
+
+    MPL17875-81054MRK-DPR36FXB-UT2ALXWW      → PAYME_DELIVERY_MERCHANT_ID
+    0d0d7b34-a538-48d2-bbce-f4e5b4fdd4ad     → PAYME_OWN_PUBLIC_KEY
+    (callback secret + signup link printed alongside; nothing reads them for our own account yet)
+
+Re-measured immediately: `payme-probe.mjs flow` captures the ₪30 delivery leg into it, so it is a
+working merchant and not merely a row. `seller_inc: 3` (חברה בע"מ) rather than 2, which would carry
+§19's rule that the business number must equal the owner's ת.ז.
+
+⚠️ **The old account is abandoned, not deleted** — there is no delete. It costs ₪65/month in
+production, which is exactly why the production account is opened once, by a person, and why the
+script dry-runs by default and refuses any base URL but the sandbox.
+
 ## Still unmeasured — do not guess these
 
 - The exact per-transaction fee actually deducted from a seller's balance (the tariff was READ, not

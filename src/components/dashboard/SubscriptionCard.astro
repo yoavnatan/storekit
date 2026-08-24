@@ -42,21 +42,29 @@ interface Props {
    *  and nobody has paid it. `payUrl` is present only in that middle state. */
   subscription: { status: number; nextCharge?: string } | null;
   paying: boolean;
+  /** Rendered INSIDE a go-live step, which already carries the title and the one-line reason. Drops
+   *  its own heading and its own frame, so the step is one thing rather than a box in a box saying
+   *  "מנוי חודשי" twice (owner, 2026-08-24). */
+  bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { tier, planName, subscription, paying, d } = Astro.props;
+const { tier, planName, subscription, paying, bare = false, d } = Astro.props;
 const plan = resolveTier(tier);
 const created = !!subscription;
 ---
 
-<section class="card card--flat p-4 md:p-5 mt-4" id="sub-card" data-paying={String(paying)}>
-  <h3 class="text-[1.05rem] font-bold m-0">{d.subTitle}</h3>
-  <p class="muted m-0 mt-1 text-[0.84rem]">{d.subWhy}</p>
+<section class={bare ? '' : 'card card--flat p-4 md:p-5 mt-4'} id="sub-card" data-paying={String(paying)}>
+  {!bare && (
+    <>
+      <h3 class="text-[1.05rem] font-bold m-0">{d.subTitle}</h3>
+      <p class="muted m-0 mt-1 text-[0.84rem]">{d.subWhy}</p>
+    </>
+  )}
 
   {/* Label, colon, value, one per row — the shape facts take on this dashboard
       (`feedback_labelled_grid_over_prose`), rather than a sentence a seller has to parse to find
       his own commission rate in. */}
-  <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mt-4 text-[0.86rem] m-0">
+  <dl class={`grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.86rem] m-0 ${bare ? '' : 'mt-4'}`}>
     <dt class="muted">{d.subPlan}</dt>
     <dd class="m-0 font-semibold">{d.subPlanValue.replace('{name}', planName).replace('{fee}', String(plan.monthlyFee)).replace('{per}', d.subPerMonth)}</dd>
     <dt class="muted">{d.subCommission}</dt>

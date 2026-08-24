@@ -93,6 +93,19 @@ export interface PaymeCredentials {
    * value, which is the only reason the mistake cost nothing.
    */
   ownMerchantId?: string;
+  /**
+   * Our own merchant's Hosted Fields public key — `PAYME_OWN_PUBLIC_KEY`.
+   *
+   * Meant to reach a browser, like a Stripe publishable key, and it is what lets a SELLER's card be
+   * typed on our page instead of on PayMe's. **It comes back exactly once, from `create-seller`**
+   * (`scripts/payme-open-own-merchant.mjs` is the only thing that opens the account, and printing
+   * these is its whole purpose): neither `get-sellers` nor `update-seller` returns it, measured
+   * twice, so an account opened without storing it can never draw a card field again.
+   *
+   * Absent is a real state and not a failure — it is every deployment that has not opened the
+   * account yet, and the subscription falls back to PayMe's own payment page.
+   */
+  ownPublicKey?: string;
   /** `https://sandbox.payme.io/api/` or `https://live.payme.io/api/`. Trailing slash included. */
   baseUrl: string;
 }
@@ -108,9 +121,11 @@ export function paymeCredentials(): PaymeCredentials | null {
   const clientKey = serverEnv('PAYME_CLIENT_KEY');
   if (!clientKey) return null;
   const ownMerchantId = serverEnv('PAYME_DELIVERY_MERCHANT_ID');
+  const ownPublicKey = serverEnv('PAYME_OWN_PUBLIC_KEY');
   return {
     clientKey,
     ...(ownMerchantId ? { ownMerchantId } : {}),
+    ...(ownPublicKey ? { ownPublicKey } : {}),
     baseUrl: serverEnv('PAYME_BASE_URL') || 'https://sandbox.payme.io/api/',
   };
 }

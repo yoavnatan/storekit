@@ -31,8 +31,8 @@
  * account; `DB_MIGRATION_PLAN.md` §10 records why, and it is closed rather than pending.
  */
 import { BUSINESS_TYPES, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
-import ClearingDetailsForm from './ClearingDetailsForm.astro';
-import SubscriptionCard from './SubscriptionCard.astro';
+import GoLiveSteps from './GoLiveSteps.astro';
+import type { PublishHold } from '../../lib/store-publication.js';
 import type { SellerTierId } from '../../lib/pricing.js';
 import type { MerchantKyc } from '../../lib/merchant-kyc.js';
 import type { getT } from '../../i18n/index.js';
@@ -56,6 +56,9 @@ interface Props {
   derivedCategory: string | null;
   /** True once nothing is outstanding — the fields collapse into one line with an edit button. */
   kycComplete: boolean;
+  /** What is still holding the shop off the site. Empty means it is live, and the go-live screen
+   *  does not render at all. */
+  holds: PublishHold[];
   /** The seller's plan, read from his account. This panel STATES it; `/pricing` is where it is
    *  chosen (`/api/seller/tier`). */
   tier: SellerTierId | undefined;
@@ -69,7 +72,7 @@ interface Props {
   subscriptionPaying: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, tier, planName, subscription, subscriptionPaying, d } = Astro.props;
+const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, holds, tier, planName, subscription, subscriptionPaying, d } = Astro.props;
 
 /** One sentence per state, chosen here rather than in the markup so the three are visibly a set and
  *  a fourth state cannot be added without picking its words. */
@@ -228,12 +231,24 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       money goes and this says who the business is, and PayMe need both before they will open an
       account at all. Rendered only when a clearing provider is configured — with none, nothing is
       blocked and a form about being blocked would be a form about a rule that is not in force. */}
-  {clearing && <ClearingDetailsForm kyc={kyc} derivedCategory={derivedCategory} complete={kycComplete} d={d} />}
+  {/* ONE screen for the whole errand, directly under the bank block — the details form and the
+      subscription action live inside it now, as the steps that own them, rather than as two more
+      cards beside it (owner, 2026-08-24). It renders nothing once the shop is live. */}
+  {clearing && (
+    <GoLiveSteps
+      holds={holds}
+      kyc={kyc}
+      derivedCategory={derivedCategory}
+      kycComplete={kycComplete}
+      tier={tier}
+      planName={planName}
+      subscription={subscription}
+      subscriptionPaying={subscriptionPaying}
+      {...(clearing.signupLink ? { signupLink: clearing.signupLink } : {})}
+      d={d}
+    />
+  )}
 
-  {/* Last of the three, because it is the last thing that happens: bank account, then the business
-      the processor examines, then the subscription that puts the shop live. The order on the screen
-      is the order of the errand. */}
-  {clearing && <SubscriptionCard tier={tier} planName={planName} subscription={subscription} paying={subscriptionPaying} d={d} />}
 
   {/* ── The rules, once, at the end ──────────────────────────────────────────────────────────
       Three questions in the order a seller asks them, each with one short answer. There is no
