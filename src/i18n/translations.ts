@@ -1173,7 +1173,9 @@ export const translations = {
       pubBuildOn: 'אפשר להמשיך לבנות הכל — מוצרים, עיצוב, קטגוריות ומבצעים. רק המכירה והפרסום ממתינים.',
       pubHoldSubscription: 'מנוי חודשי לא הופעל',
       pubHoldSubscriptionNote: 'ברגע שהמנוי מתחיל, החנות עולה לאוויר.',
-      pubHoldSubscriptionCta: 'להתחלת המנוי',
+      // Names what he GETS, not what he starts (owner, 2026-08-24: the flow had no moment where a
+      // person stops playing with the site and becomes a seller). This button is that moment.
+      pubHoldSubscriptionCta: 'העלה את החנות לאוויר',
       pubHoldDetails: 'חסרים פרטים לפתיחת חשבון סליקה',
       pubHoldDetailsNote: 'בלי חשבון סליקה אין לאן שהכסף של הקונה ייכנס.',
       pubHoldDetailsCta: 'להשלמת הפרטים',
@@ -1208,6 +1210,10 @@ export const translations = {
       mkSave: 'שלח לחברת הסליקה',
       mkSaved: 'הפרטים נשלחו. הבדיקה התחילה.',
       mkFailed: 'השמירה נכשלה, נסה שוב.',
+      // Marked on the field itself, from the server's own list of what it did not accept. It says
+      // "not accepted" rather than naming a rule, because the rule lives in one place and a second
+      // wording of it here is the copy that goes stale (`merchant-kyc.ts`).
+      mkFieldRejected: 'הערך הזה לא התקבל — בדקו אותו שוב.',
       mkStillMissing: 'נשמר. עדיין חסרים {n} שדות — אפשר להשלים בכל רגע.',
       mkOnFile: 'הפרטים נשלחו לחברת הסליקה.',
       mkEdit: 'ערוך',
@@ -3279,7 +3285,7 @@ export const translations = {
       pubBuildOn: 'You can keep building everything — products, design, categories and sales. Only selling and advertising are waiting.',
       pubHoldSubscription: 'No monthly subscription yet',
       pubHoldSubscriptionNote: 'The store goes live as soon as the subscription starts.',
-      pubHoldSubscriptionCta: 'Start the subscription',
+      pubHoldSubscriptionCta: 'Put my store live',
       pubHoldDetails: 'Details are missing to open a clearing account',
       pubHoldDetailsNote: 'Without a clearing account there is nowhere for a buyer\'s money to go.',
       pubHoldDetailsCta: 'Complete the details',
@@ -3308,6 +3314,7 @@ export const translations = {
       mkSave: 'Send to the processor',
       mkSaved: 'Sent. The review has started.',
       mkFailed: 'Saving failed, try again.',
+      mkFieldRejected: 'This value was not accepted — please check it.',
       mkStillMissing: 'Saved. {n} fields are still missing — you can finish any time.',
       mkOnFile: 'The details were sent to the processor.',
       mkEdit: 'Edit',

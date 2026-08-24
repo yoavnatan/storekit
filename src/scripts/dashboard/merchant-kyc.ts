@@ -15,6 +15,7 @@ import { showToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
 import { announceValueChange } from './unsaved-guard.js';
 import { initSelectDropdown } from './select-dropdown.js';
+import { showFieldError, clearFieldError, type ValidatableField } from '../../lib/field-validity.js';
 
 interface SaveResponse {
   ok?: boolean;
@@ -114,6 +115,32 @@ export function initMerchantKycForm(): void {
         error.classList.remove('hidden');
         return;
       }
+
+      /**
+       * **Mark the fields the server did not accept — from the SERVER's own list.**
+       *
+       * There is no client-side validation here and there must not be: `normalizeMerchantKyc` is
+       * the single definition of what PayMe will take, and a second copy in the browser is a copy
+       * that drifts — and would produce the failure `payout-details.ts` warns about at length, a
+       * false rejection the seller cannot argue with. So the answer comes back from the same
+       * function that decides whether an account may be opened, and this only draws it.
+       *
+       * **Only fields that HAVE a value are marked.** A field the seller has not filled in yet is
+       * not a mistake, it is an unfinished form — the count in the toast already says how many are
+       * left, and a wall of red on a half-typed form is the nagging this form is not allowed to do.
+       * A field with a value that still comes back missing is the interesting case: he typed
+       * something and it was dropped, which until now he had no way at all to discover.
+       */
+      const missingNames = new Set(data.missing ?? []);
+      for (const field of form.querySelectorAll<ValidatableField>('[name]')) {
+        clearFieldError(field);
+        if (field.value.trim() && missingNames.has(field.name)) {
+          showFieldError(field, t['mkFieldRejected'] ?? 'This value was not accepted.');
+        }
+      }
+      // Straight to the first one, because on a ten-field form the rejected value is usually below
+      // the fold by the time he presses send.
+      form.querySelector<ValidatableField>('[aria-invalid="true"]')?.focus();
 
       // What is still outstanding is the SERVER's count, so the sentence can never disagree with the
       // thing that decides whether an account may be opened. Nothing was refused either way — the

@@ -20,7 +20,7 @@ import { isUuid, query, rows, type Queryable } from './db.js';
  * entry it does not recognise is worse than one that shows it plainly.
  */
 
-export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update' | 'return_update' | 'low_stock' | 'out_of_stock' | 'admin_message' | 'domain_status' | 'feed_status' | 'payout_status';
+export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update' | 'return_update' | 'low_stock' | 'out_of_stock' | 'admin_message' | 'domain_status' | 'feed_status' | 'payout_status' | 'store_live';
 export type NotificationRole = 'buyer' | 'seller';
 
 export interface Notification {

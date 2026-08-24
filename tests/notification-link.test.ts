@@ -9,7 +9,7 @@ import type { NotificationType } from '../src/lib/notifications.js';
 // root — which is how 'feed_status' ended up sending sellers to the buyer dashboard.
 const SELLER_TYPES: NotificationType[] = [
   'new_message', 'new_order', 'order_update', 'return_update', 'low_stock', 'out_of_stock',
-  'admin_message', 'domain_status', 'feed_status', 'payout_status',
+  'admin_message', 'domain_status', 'feed_status', 'payout_status', 'store_live',
 ];
 const BUYER_TYPES: NotificationType[] = ['seller_reply', 'new_message', 'order_update'];
 
@@ -55,6 +55,10 @@ describe('notificationHref', () => {
       out_of_stock: '/seller/dashboard?panel=products',
       feed_status: '/seller/dashboard?panel=products',
       domain_status: '/seller/dashboard?panel=settings',
+      // The overview, and it is the one entry here with no `?panel=` on purpose: the seller last
+      // saw that screen telling him what was still missing, and this is the same screen with
+      // nothing left on it.
+      store_live: '/seller/dashboard',
     };
     for (const type of SELLER_TYPES) {
       expect(notificationHref({ role: 'seller', type })).toBe(expected[type]);

@@ -39,6 +39,7 @@ import { rows } from './db.js';
 import { getStoresBySellerId, updateStore } from './stores.js';
 import { storeLifecycle, type StoreLifecycleFlags } from './store-status.js';
 import { merchantBlockFor } from './seller-merchant.js';
+import { createNotification } from './notifications.js';
 import { sellerIsSubscribed } from './seller-subscription.js';
 import { activePaymeCredentials, type PaymeCredentials } from './payment-payme.js';
 
@@ -111,7 +112,32 @@ export async function syncStorePublication(
   const now = new Date().toISOString();
   // Sequential rather than a `Promise.all`: this runs on a callback or a sweep, never on a page a
   // person is waiting on, and a seller has at most `MAX_STORES_PER_SELLER` of them.
-  for (const store of pending) await updateStore(store.id, { publishedAt: now });
+  for (const store of pending) {
+    await updateStore(store.id, { publishedAt: now });
+    /**
+     * **And TELL him**, which is the half that was missing (owner, 2026-08-24: *"מתי המוכר בכלל
+     * מבין שהוא עלה לאוויר?"*).
+     *
+     * Publication is derived and nobody presses a button — which is right, because the alternative
+     * is a seller who paid, closed the tab, and never came back to press it. But it means the
+     * moment of arrival can be DAYS after the last thing he did: PayMe take up to seven business
+     * days, and this usually fires from a sweep with nobody looking at a screen. Without a
+     * notification he finds out by wondering, checking, and finding his shop up — or by not
+     * wondering, which is the abandonment the whole flow is trying to avoid.
+     *
+     * Caught: a shop is live either way, and a failed notification must not leave `published_at`
+     * unwritten on the next run's re-read.
+     */
+    await createNotification({
+      userId: sellerId,
+      role: 'seller',
+      type: 'store_live',
+      title: 'החנות שלך באוויר',
+      body: `${store.name} מופיעה עכשיו במתחם, בחיפוש ובגוגל, ואפשר לקנות בה.`,
+      storeSlug: store.slug,
+      storeName: store.name,
+    }).catch(() => { /* the shop is live; a missing badge is not worth undoing that */ });
+  }
   return pending.map((s) => s.slug);
 }
 

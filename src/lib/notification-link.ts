@@ -79,6 +79,10 @@ export function notificationHref(n: Linkable): string {
         : '/seller/dashboard?panel=products';
     case 'domain_status':
       return '/seller/dashboard?panel=settings';
+    // The overview, because that is where the "not live yet" card was: the seller last saw a screen
+    // telling him what was missing, and this is the same screen with nothing left on it.
+    case 'store_live':
+      return '/seller/dashboard';
     default:
       return '/seller/dashboard';
   }
