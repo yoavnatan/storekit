@@ -163,7 +163,9 @@ export async function merchantKycFor(sellerId: string): Promise<Partial<Merchant
  * we cannot name (`כלבו`, no cross-trade row exists) is asked, once, and his answer must not be
  * overwritten by a derivation that would return null anyway.
  */
-export async function resolveMerchantKyc(sellerId: string, storeCategories?: readonly string[]): Promise<Partial<MerchantKyc>> {
+/** Not exported: the account-opening path below is its only caller, and a second entry point would
+ *  be a second answer to "what does PayMe actually have on this seller". */
+async function resolveMerchantKyc(sellerId: string, storeCategories?: readonly string[]): Promise<Partial<MerchantKyc>> {
   const kyc = await merchantKycFor(sellerId);
   if (kyc.businessCategory) return kyc;
   const categories = storeCategories ?? (await getStoresBySellerId(sellerId)).flatMap((s) => s.categories ?? []);

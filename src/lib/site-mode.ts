@@ -90,8 +90,10 @@ export function paymentsAreMock(): boolean {
 }
 
 /** Is the configured PayMe environment their TEST one? False when nothing is configured, because
- *  then there is no environment to be wrong about — that case is the mock provider's. */
-export function paymeIsSandbox(): boolean {
+ *  then there is no environment to be wrong about — that case is the mock provider's.
+ *  Not exported: `paymentsAreMock` is the question the rest of the app asks, and a second public
+ *  name for half of it is a second place the rule could be re-derived. */
+function paymeIsSandbox(): boolean {
   const creds = paymeCredentials();
   return !!creds && isSandbox(creds);
 }
