@@ -125,18 +125,23 @@ export function initMerchantKycForm(): void {
        * false rejection the seller cannot argue with. So the answer comes back from the same
        * function that decides whether an account may be opened, and this only draws it.
        *
-       * **Only fields that HAVE a value are marked.** A field the seller has not filled in yet is
-       * not a mistake, it is an unfinished form — the count in the toast already says how many are
-       * left, and a wall of red on a half-typed form is the nagging this form is not allowed to do.
-       * A field with a value that still comes back missing is the interesting case: he typed
-       * something and it was dropped, which until now he had no way at all to discover.
+       * **Every missing field is marked, empty ones included** (owner, 2026-08-24: *"אם השדה לא
+       * סומן והוא חובה, זה טעות"*). All ten are required before PayMe will open an account, and he
+       * pressed SEND — at that moment an empty one is not an unfinished form, it is the reason the
+       * thing he asked for did not happen. The first version marked only fields with a value, which
+       * left him a count in a toast and nothing on screen to act on.
+       *
+       * Two messages, because they are two different mistakes: a field he has not filled in, and a
+       * field he filled in with something the server dropped. The second is the one that was
+       * previously undiscoverable at all.
        */
       const missingNames = new Set(data.missing ?? []);
       for (const field of form.querySelectorAll<ValidatableField>('[name]')) {
         clearFieldError(field);
-        if (field.value.trim() && missingNames.has(field.name)) {
-          showFieldError(field, t['mkFieldRejected'] ?? 'This value was not accepted.');
-        }
+        if (!missingNames.has(field.name)) continue;
+        showFieldError(field, field.value.trim()
+          ? (t['mkFieldRejected'] ?? 'This value was not accepted.')
+          : (t['mkFieldRequired'] ?? 'This field is required.'));
       }
       // Straight to the first one, because on a ten-field form the rejected value is usually below
       // the fold by the time he presses send.

@@ -83,6 +83,10 @@ export function notificationHref(n: Linkable): string {
     // telling him what was missing, and this is the same screen with nothing left on it.
     case 'store_live':
       return '/seller/dashboard';
+    // The same screen, for the same reason: half the wait is over and the card there says what the
+    // other half is.
+    case 'merchant_approved':
+      return '/seller/dashboard';
     default:
       return '/seller/dashboard';
   }

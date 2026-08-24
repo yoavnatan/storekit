@@ -43,6 +43,7 @@ import { paymeCategoryForStore } from './merchant-category.js';
 import { getStoresBySellerId } from './stores.js';
 import { activePaymeCredentials, createSeller, isSandbox, PaymeError, type PaymeCredentials } from './payment-payme.js';
 import { logError } from './error-log.js';
+import { createNotification } from './notifications.js';
 
 /** What a caller may see. **No secret** — see the module header. */
 export interface MerchantAccount {
@@ -421,11 +422,36 @@ export function safeMerchantLink(raw: string | undefined | null): string | null 
   }
 }
 
-/** Record PayMe's verdict on a business. Written by the seller callback, which is the only thing
- *  that knows — approval happens at their end, on their timetable, with nothing to poll. */
+/**
+ * Record PayMe's verdict on a business.
+ *
+ * Approval happens at their end, on their timetable, and takes up to seven business days
+ * (agreement §11) — so the seller has been waiting on a decision he cannot influence, and **this is
+ * the moment it lands**. It is told to him here rather than left to the publication that may follow
+ * it (owner, 2026-08-24: *"האם הוא מקבל הודעה או התראה על כך שחברת הסליקה אישרה את העסק?"*): the
+ * two are different events and only one of them is guaranteed. A seller who has not started a
+ * subscription gets approved and his shop stays private, and without this nothing would ever say
+ * that the week-long half of the wait was over.
+ *
+ * The write is conditional on the value CHANGING, so a callback PayMe deliver twice — and the sweep
+ * that runs beside it — cannot announce the same approval again. The affected-row count is the
+ * answer, the way it is for `decrementStock`: a read-then-write here would announce twice under
+ * exactly the concurrency it is meant to survive.
+ */
 export async function setMerchantApproval(providerRef: string, approved: boolean): Promise<void> {
-  await query(
-    'UPDATE seller_merchant_accounts SET approved = $2, updated_at = now() WHERE provider_ref = $1',
+  const changed = await rows<{ seller_id: string }>(
+    `UPDATE seller_merchant_accounts SET approved = $2, updated_at = now()
+      WHERE provider_ref = $1 AND approved IS DISTINCT FROM $2
+      RETURNING seller_id`,
     [providerRef, approved],
   );
+  const sellerId = changed[0]?.seller_id;
+  if (!sellerId || !approved) return;
+  await createNotification({
+    userId: sellerId,
+    role: 'seller',
+    type: 'merchant_approved',
+    title: 'חברת הסליקה אישרה את העסק',
+    body: 'מה שנשאר כדי שהחנות תעלה לאוויר מופיע בסקירה הכללית.',
+  }).catch(() => { /* the approval is recorded either way */ });
 }

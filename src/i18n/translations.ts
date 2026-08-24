@@ -1209,8 +1209,12 @@ export const translations = {
       mkPhone: 'טלפון נייד',
       mkPhoneHint: 'נייד בלבד — חברת הסליקה דוחה קו נייח.',
       mkRegisteredOn: 'תאריך רישום העסק',
-      mkCategory: 'תחום העסק',
-      mkCategoryHint: 'חברת הסליקה צריכה לדעת באיזה תחום העסק. בדרך כלל זה נקבע לבד מהקטגוריות של החנות — כאן זה לא הסתדר, אז בחרו את הקרוב ביותר.',
+      mkCategory: 'תחום העסק (לחברת הסליקה)',
+      // **Says what it is NOT** (owner, 2026-08-24: he read the field as choosing his store's
+      // category and asked whether the shop would then be listed under it). It is a code for the
+      // processor, stored on the SELLER, and `stores.categories` — the thing that actually shows
+      // on the site — is a different field this form never touches.
+      mkCategoryHint: 'רק לצורך חברת הסליקה — לא מופיע באתר ולא משנה את הקטגוריות של החנות. בדרך כלל זה נקבע לבד מהקטגוריות שבחרתם; כאן זה לא הסתדר, אז בחרו את הקרוב ביותר.',
       mkCategoryNone: 'בחרו תחום',
       mkCity: 'עיר',
       mkStreet: 'רחוב',
@@ -1222,6 +1226,10 @@ export const translations = {
       // "not accepted" rather than naming a rule, because the rule lives in one place and a second
       // wording of it here is the copy that goes stale (`merchant-kyc.ts`).
       mkFieldRejected: 'הערך הזה לא התקבל — בדקו אותו שוב.',
+      // Not `required` in the markup: the browser would then refuse the submit, and a partial
+      // save is the one thing this form must always allow. It is marked AFTER the save instead,
+      // from the server's own list of what is still outstanding.
+      mkFieldRequired: 'שדה חובה לפתיחת חשבון סליקה.',
       mkStillMissing: 'נשמר. עדיין חסרים {n} שדות — אפשר להשלים בכל רגע.',
       mkOnFile: 'הפרטים נשלחו לחברת הסליקה.',
       mkEdit: 'ערוך',
@@ -3315,8 +3323,8 @@ export const translations = {
       mkPhone: 'Mobile',
       mkPhoneHint: 'Mobile only — the processor rejects a landline.',
       mkRegisteredOn: 'Business registration date',
-      mkCategory: 'Business field',
-      mkCategoryHint: 'The processor needs to know the trade. Usually it comes from your store categories — that did not resolve here, so pick the closest one.',
+      mkCategory: 'Business field (for the processor)',
+      mkCategoryHint: "For the processor only — it does not appear on the site and does not change your store's categories. It usually comes from the categories you picked; that did not resolve here, so choose the closest one.",
       mkCategoryNone: 'Pick a trade',
       mkCity: 'City',
       mkStreet: 'Street',
@@ -3325,6 +3333,7 @@ export const translations = {
       mkSaved: 'Sent. The review has started.',
       mkFailed: 'Saving failed, try again.',
       mkFieldRejected: 'This value was not accepted — please check it.',
+      mkFieldRequired: 'Required to open a clearing account.',
       mkStillMissing: 'Saved. {n} fields are still missing — you can finish any time.',
       mkOnFile: 'The details were sent to the processor.',
       mkEdit: 'Edit',
