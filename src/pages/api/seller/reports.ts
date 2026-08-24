@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getSellerById, getSellerSession } from '../../../lib/seller-auth.js';
-import { commissionPercentForTier } from '../../../lib/pricing.js';
+import { getSellerSession } from '../../../lib/seller-auth.js';
+import { commissionPercentForStore } from '../../../lib/store-plan.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlugInRange } from '../../../lib/orders.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
@@ -91,7 +91,9 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return wantsCsv ? csv(productSalesReportCsv(rows, lang)) : json({ ok: true, rows, totals });
   }
 
-  const [orders, seller] = await Promise.all([getOrdersByStoreSlugInRange(storeSlug, from, to), getSellerById(sellerId)]);
-  const { rows, totals } = buildSalesReport(orders, storeSlug, from, to, commissionPercentForTier(seller?.tier));
+  // The commission rate comes off the STORE now (`lib/store-plan.ts`), so the seller row this used
+  // to fetch alongside the orders is no longer read at all — one fewer round trip on a report page.
+  const orders = await getOrdersByStoreSlugInRange(storeSlug, from, to);
+  const { rows, totals } = buildSalesReport(orders, storeSlug, from, to, commissionPercentForStore(store));
   return wantsCsv ? csv(salesReportCsv(rows, lang)) : json({ ok: true, rows, totals });
 }

@@ -40,23 +40,37 @@ import { getStoresBySellerId, updateStore } from './stores.js';
 import { storeLifecycle, type StoreLifecycleFlags } from './store-status.js';
 import { merchantBlockFor } from './seller-merchant.js';
 import { createNotification } from './notifications.js';
-import { sellerIsSubscribed } from './seller-subscription.js';
+import { sellerIsSubscribed, subscriptionFor } from './seller-subscription.js';
 import { activePaymeCredentials, type PaymeCredentials } from './payment-payme.js';
 
 /**
- * Why a shop is not public yet. Ordered by who can act on it — the seller's own step first, so a
- * UI showing "the next thing to do" shows the one he can actually do.
+ * Why a shop is not public yet.
+ *
+ * **The order of this union is the order of the flow**, and it is a decision rather than a listing:
+ * clearing first, paying last. A UI showing "the next thing to do" walks it top to bottom, and
+ * `GoLiveSteps.astro` is that UI.
  */
 export type PublishHold =
-  /** He has not started paying. His to fix, in a minute. */
-  | 'subscription'
   /** We do not hold everything PayMe require, so no clearing account could be opened. His to fix —
    *  `merchant-kyc.ts#missingMerchantKyc` says exactly which fields. */
   | 'clearing-details'
   /** The account exists and PayMe have not approved the business yet. **Nobody can do anything**,
    *  which is the whole reason this is a separate value from the one above: the same screen must
    *  not tell a waiting seller to go and fill something in. */
-  | 'clearing-approval';
+  | 'clearing-approval'
+  /**
+   * He has not started paying. His to fix, in a minute — and it is deliberately **LAST**.
+   *
+   * It used to be first, and that was the bug the owner named on 2026-08-24: *"אני לא רוצה ליפול
+   * בין הכיסאות ושהמוכר יתחרט"*. A seller filled in his details, paid, and then waited up to seven
+   * business days for PayMe to approve the business — paying for a shop that was not on the site,
+   * for the whole of the one week he is most likely to change his mind in.
+   *
+   * Ordered last, paying is the final act and the shop goes live in the same minute. Everything
+   * before it is free, which is the platform's whole acquisition bet, and nothing is charged for a
+   * wait nobody can shorten.
+   */
+  | 'subscription';
 
 /**
  * Everything standing between this seller and a public shop.
@@ -77,10 +91,13 @@ export async function publishHoldsFor(
     sellerIsSubscribed(sellerId, creds),
     merchantBlockFor(sellerId, creds),
   ]);
+  // The order IS the flow the seller is walked through — see `PublishHold`. Clearing first because
+  // it is the part with a wait nobody can shorten; paying last because it is the act that puts the
+  // shop on the site, and it should be the last thing between him and that.
   const holds: PublishHold[] = [];
-  if (!subscribed) holds.push('subscription');
   if (merchantBlock === 'no-account') holds.push('clearing-details');
   if (merchantBlock === 'not-approved') holds.push('clearing-approval');
+  if (!subscribed) holds.push('subscription');
   return holds;
 }
 
@@ -90,10 +107,11 @@ export async function publishHoldsFor(
  * Returns the slugs that went live in this run, so a caller can say something true about what just
  * happened rather than "saved".
  *
- * **Only ever publishes.** A store that is already live stays live even if a hold comes back — a
- * lapsed subscription takes a shop off the site through `store-lifecycle.ts`, with the seller
- * notified and open orders honoured, and none of that belongs on a path that runs inside a payment
- * callback. `published_at` is a fact about the past and is never cleared (see its column comment).
+ * **Only ever publishes.** A store that is already live stays live even if a hold comes back. Taking
+ * one down is `lib/subscription-lapse.ts` — it happens at the end of the period already paid for
+ * rather than the moment a hold returns, it notifies the seller, and it runs on a timer. None of
+ * that belongs on a path that runs inside a payment callback, which is why the two directions are
+ * two modules.
  *
  * Idempotent, and it has to be: it runs from a callback PayMe may deliver twice, from a sweep, and
  * from the seller's own click, all of which can land at once.
@@ -103,11 +121,30 @@ export async function syncStorePublication(
   creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<string[]> {
   const stores = await getStoresBySellerId(sellerId);
-  const pending = stores.filter((s) => storeLifecycle(s) === 'unpublished');
-  if (!pending.length) return [];
+  const allPending = stores.filter((s) => storeLifecycle(s) === 'unpublished');
+  if (!allPending.length) return [];
 
   const holds = await publishHoldsFor(sellerId, creds);
   if (holds.length) return [];
+
+  /**
+   * ── Only the shops the standing order actually pays for ──
+   *
+   * Since 2026-08-24 each store is billed separately (`store-plan.ts`), so "this seller is paying"
+   * stopped being the whole answer. A seller paying ₪99 for one shop must not have a second one go
+   * live for nothing simply because the account-level hold is clear — which is exactly what this
+   * function did before the fee became per-store, and it would have been a silent hole rather than
+   * a visible bug.
+   *
+   * `store_fees` is the list the standing order was last set from, so it is the same source the
+   * charge came from — not a second derivation that could disagree with it. With PayMe unconfigured
+   * there is no subscription at all and no fee to check, and the whole gate already answers "nothing
+   * is blocked" for that window; keeping the filter off there is what stops development going dark.
+   */
+  const sub = creds ? await subscriptionFor(sellerId) : null;
+  const paidFor = new Set((sub?.storeFees ?? []).map((f) => f.storeId));
+  const pending = creds && sub ? allPending.filter((s) => paidFor.has(s.id)) : allPending;
+  if (!pending.length) return [];
 
   const now = new Date().toISOString();
   // Sequential rather than a `Promise.all`: this runs on a callback or a sweep, never on a page a

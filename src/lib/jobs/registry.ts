@@ -37,6 +37,7 @@ import { runReturnsSweep } from '../returns-run.js';
 import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { runInboxDigest } from '../inbox-digest.js';
 import { runStorePublicationSweep } from '../store-publication-run.js';
+import { runSubscriptionLapseSweep } from '../subscription-lapse.js';
 
 export interface Job {
   /** Primary key in `job_runs`. Never rename one — the row is the schedule's memory, and a renamed
@@ -502,4 +503,25 @@ const storePublication: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication];
+/**
+ * Take a shop off the site when the month it was paid for has run out.
+ *
+ * *What it fixes:* the other end of `store-publication`. Cancelling a subscription used to change
+ * nothing a shopper could see — the shop stayed up for ever, selling, with our commission still
+ * coming off it (owner, 2026-08-24). Cancellation takes effect at the END of the paid period, so
+ * something has to act on a date rather than on a click, and this is it (`subscription-lapse.ts`).
+ *
+ * *Hourly:* the deadline is a date, not a moment anyone is watching, and an hour of a shop staying
+ * up past its paid month costs nothing and is the forgiving direction to err in. The steady-state
+ * cost is one indexed statement that almost always answers with no rows.
+ */
+const subscriptionLapse: Job = {
+  name: 'subscription-lapse',
+  intervalSec: 60 * MINUTE,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    return runSubscriptionLapseSweep();
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse];

@@ -229,34 +229,52 @@ export async function getAllSellers(): Promise<Seller[]> {
 export interface TierAccrual {
   /** `undefined` = the default tier (lib/pricing.ts reads it that way). */
   tier?: string;
-  /** Sellers on this tier whose account existed during any part of the range. */
+  /** **STORES on this plan** that were on the site during any part of the range — not sellers. The
+   *  plan is bought per shop since 2026-08-24 (`lib/store-plan.ts`), so a seller with three live
+   *  shops is three of these, which is exactly what he is charged for. */
   subscribers: number;
-  /** Their billable days, SUMMED — a seller who registered mid-range accrues only from signup. */
+  /** Their billable days, SUMMED — a shop that went live mid-range accrues only from the day it
+   *  went on the site, and one that closed stops on the day it closed. */
   billableDays: number;
 }
 
 /**
- * Subscription accrual over [fromISO, toISO], grouped by tier (§3, 2026-08-03).
+ * Subscription accrual over [fromISO, toISO], grouped by plan (§3, 2026-08-03).
  *
  * `platform-revenue.ts` used to take the whole seller roster and loop it in JS to reach three
- * numbers. Grouping by tier is the same arithmetic with the loop where it belongs: the fee is a
- * property of the TIER, and the only per-seller input is how many days of the range their account
- * existed for — which is a `SUM`.
+ * numbers. Grouping is the same arithmetic with the loop where it belongs: the fee is a property of
+ * the PLAN, and the only per-row input is how many days of the range it was being paid for — which
+ * is a `SUM`.
  *
- * **The day boundary here is UTC, and that is deliberate rather than an oversight.** The JS it
- * replaces read `seller.createdAt.slice(0, 10)`, i.e. the UTC date of a stored ISO instant.
- * Reporting buckets money on the BUSINESS calendar (business-day.ts) and this does not, so the two
- * disagree for an account opened between local midnight and 02:00 on a range boundary — worth
- * one day of one seller's fee. Moving it is a change to a money figure the owner reads, so it is
- * recorded here and in DB_MIGRATION_PLAN.md §3 rather than slipped in beside a refactor.
+ * ── It counts STORES, and it counts them from the day they went LIVE (2026-08-24) ──
+ * Two corrections in one, and they were both making this figure wrong in the same direction:
+ *   · The plan moved from the account to the store (`lib/store-plan.ts`), so a seller with three
+ *     shops is billed three times and used to be accrued once.
+ *   · Billing starts when a shop goes on the site, never at signup (`lib/pricing.ts` — the
+ *     first-sale rule was withdrawn on 2026-08-24 and no trial ever existed). Accruing from
+ *     `sellers.created_at` booked revenue for every account that registered and never published,
+ *     which is most of them at cold start.
+ * A closed shop stops accruing on the day it closed, for the same reason it leaves the standing
+ * order: it is not on the site.
+ *
+ * **The day boundary here is UTC, and that is deliberate rather than an oversight.** Reporting
+ * buckets money on the BUSINESS calendar (business-day.ts) and this does not, so the two disagree
+ * for a shop published between local midnight and 02:00 on a range boundary — worth one day of one
+ * fee. Moving it is a change to a money figure the owner reads, so it is recorded here and in
+ * DB_MIGRATION_PLAN.md §3 rather than slipped in beside a refactor.
  */
 export async function getSubscriptionAccrual(fromISO: string, toISO: string): Promise<TierAccrual[]> {
   const found = await rows<{ tier: string | null; subscribers: string | number; billable_days: string | number }>(
     `SELECT tier,
             COUNT(*) AS subscribers,
-            SUM($2::date - GREATEST((created_at AT TIME ZONE 'UTC')::date, $1::date) + 1) AS billable_days
-       FROM sellers
-      WHERE (created_at AT TIME ZONE 'UTC')::date <= $2::date
+            SUM(GREATEST(
+                  LEAST($2::date, COALESCE((closed_at AT TIME ZONE 'UTC')::date, $2::date))
+                  - GREATEST((published_at AT TIME ZONE 'UTC')::date, $1::date) + 1,
+                0)) AS billable_days
+       FROM stores
+      WHERE deleted_at IS NULL
+        AND published_at IS NOT NULL
+        AND (published_at AT TIME ZONE 'UTC')::date <= $2::date
       GROUP BY tier`,
     [fromISO, toISO],
   );

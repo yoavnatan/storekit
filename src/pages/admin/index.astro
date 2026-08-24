@@ -338,7 +338,7 @@ const orderSellers = sortSellerOptions(orderSellersRaw);
 // `oseller` names accounts; both engines filter by store slug. This is the ONE place the two are
 // joined up (admin-orders-filter.ts#resolveOrderQuery), and what wave 2's page query is given.
 const resolvedOrderQuery = resolveOrderQuery(orderQuery, orderSellers);
-const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
+const perfStoreInputs = buildPlatformStoreInputs(stores);
 const newOnly: Record<TrackedAdminTab, boolean> = {
   sellers: sp.get('snew') === '1',
   stores: sp.get('stnew') === '1',

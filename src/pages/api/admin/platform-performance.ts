@@ -9,7 +9,7 @@ import { getPlatformViewStats, getStoreViewStats } from '../../../lib/store-page
 import { isDayISO } from '../../../lib/business-day.js';
 import { buildPlatformRevenue } from '../../../lib/platform-revenue.js';
 import { getCampaignsInRange } from '../../../lib/ad-campaigns.js';
-import { getAllSellers, getSubscriptionAccrual } from '../../../lib/seller-auth.js';
+import { getSubscriptionAccrual } from '../../../lib/seller-auth.js';
 
 // Platform-wide (app-wide) twin of /api/admin/performance: same admin guard and
 // validation, but aggregates EVERY store instead of one by slug. Returns the
@@ -56,8 +56,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // the whole platform, and each shown product still reports its share of the whole period.
   const productQ = url.searchParams.get('productQ') ?? '';
 
-  const sellers = await getAllSellers();
-  const stores = buildPlatformStoreInputs(await getAllStores(), sellers);
+  const stores = buildPlatformStoreInputs(await getAllStores());
   // Traffic AND sales in one query each, for every store at once. Both used to be per-store passes
   // inside the aggregation loop — views as a file read, sales as a filter over every order on the
   // platform (DB_MIGRATION_PLAN.md §3/§5).

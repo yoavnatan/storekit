@@ -241,10 +241,15 @@ describe('the registry itself', () => {
     // never cleared, so a second pass finds the same shops already live and its query does not
     // return them at all. What it must never do is the reverse — un-publish on a hold that came
     // back — and it cannot, because it only ever writes a timestamp.
+    // And `subscription-lapse` (2026-08-24) — the only job that makes something PRIVATE again, and
+    // therefore the mirror of the one above. Its idempotency is the same shape: it acts on stores
+    // that are currently live, and a store it has already taken down is not in that list, so a
+    // second pass over the same seller does nothing. What gates it is a DATE — the end of the
+    // period already paid for — never the moment a seller pressed cancel.
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact', 'store-publication'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact', 'store-publication', 'subscription-lapse'],
     );
   });
 });

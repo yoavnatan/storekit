@@ -3,8 +3,7 @@ import { createConsoleInvoicingAdapter } from './console-adapter.js';
 import { planDocument, type InvoiceDocument } from './documents.js';
 import { vatWithinAgorot, chargesVat } from '../vat.js';
 import { orderNetForStore } from '../admin-stats.js';
-import { commissionOnAgorot, commissionPercentForTier, monthlyFeeForTier } from '../pricing.js';
-import { toAgorot } from '../money.js';
+import { commissionOnAgorot } from '../pricing.js';
 import type { Order } from '../orders.js';
 import type { Seller } from '../seller-auth.js';
 
@@ -94,28 +93,36 @@ export async function planBuyerInvoice(
 /**
  * The platform's monthly invoice to a seller — the three things we charge them for.
  *
- * `commissionAgorot` comes from the caller because it is the sum over that month's orders at that
- * seller's tier, and computing it here would be a second definition of a figure `seller-account.ts`
- * and `payouts.ts` already agree on. The subscription is read from the tier table; the ad margin is
- * passed in because it depends on real ad spend, which is still mock data until an ad account is
- * connected (GO_LIVE §2).
+ * **Every figure is passed IN, and that is the design.** `commissionAgorot` is the sum over that
+ * month's orders at each store's own rate, and computing it here would be a second definition of a
+ * number `seller-account.ts` and `payouts.ts` already agree on. Since 2026-08-24 the subscription is
+ * the same kind of figure: a seller has one standing order whose price is the sum of his live
+ * shops' plans (`store-plan.ts`), so there is no tier to look up here either — what was charged is
+ * what `seller_subscriptions.price_agorot` says, and re-deriving it from a plan table is exactly
+ * how an invoice starts disagreeing with a card statement.
+ *
+ * The ad margin is passed in for the third version of the same reason: it depends on real ad spend,
+ * which is still mock data until an ad account is connected (GO_LIVE §2).
  *
  * VAT here is OUR VAT — the platform is a company and charges it — so it does not depend on the
  * seller's business type at all. That asymmetry is the whole point of two separate functions.
  */
 export async function planPlatformInvoice(input: {
-  seller: Pick<Seller, 'id' | 'tier'>;
+  seller: Pick<Seller, 'id'>;
   periodKey: string;
   commissionAgorot: number;
+  /** What the standing order actually charged this month — `seller_subscriptions.price_agorot`.
+   *  Absent or 0 is a seller who was not being billed for the period, which is a real state: he had
+   *  no shop on the site (`store-plan.ts`). */
+  subscriptionAgorot?: number;
   /** The platform's margin on advertising spend for the period. 0 until ads are connected. */
   adMarginAgorot?: number;
-  /** Skip the subscription line — a seller whose billing has not started yet (the first-sale rule
-   *  in `pricing.ts`). Passed in rather than decided here, because that rule is about the seller's
-   *  whole history and this function sees one month. */
-  includeSubscription?: boolean;
+  /** The rate the commission above was actually taken at, for the human-readable line. Blended
+   *  across his shops when they are on different plans (`seller-balance.ts`), because with a plan
+   *  per shop no single percent is his. */
+  commissionRate?: number;
 }): Promise<InvoiceDocument | null> {
-  const { seller, periodKey, commissionAgorot, adMarginAgorot = 0, includeSubscription = true } = input;
-  const subscriptionAgorot = includeSubscription ? toAgorot(monthlyFeeForTier(seller.tier)) : 0;
+  const { seller, periodKey, commissionAgorot, adMarginAgorot = 0, subscriptionAgorot = 0, commissionRate = 0 } = input;
   const grossAgorot = commissionAgorot + subscriptionAgorot + adMarginAgorot;
   if (grossAgorot <= 0) return null;
 
@@ -128,7 +135,7 @@ export async function planPlatformInvoice(input: {
     vatAgorot: vatWithinAgorot(grossAgorot),
     // The three streams named individually. A seller reconciling their books needs to see which
     // figure is which — and the commission is the only one already deducted from their payout.
-    detail: `commission ${commissionAgorot} (deducted at source) + subscription ${subscriptionAgorot} + ad margin ${adMarginAgorot}, at ${commissionPercentForTier(seller.tier)}%`,
+    detail: `commission ${commissionAgorot} (deducted at source) + subscription ${subscriptionAgorot} + ad margin ${adMarginAgorot}, at ${commissionRate}%`,
   });
 }
 

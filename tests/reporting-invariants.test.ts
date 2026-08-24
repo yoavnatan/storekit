@@ -33,7 +33,7 @@ const platformTotals = (bs: readonly SellerBalance[]) => ({
   commissionAgorot: bs.reduce((a, b) => a + b.commissionAgorot, 0),
   totalEarnedAgorot: bs.reduce((a, b) => a + b.totalEarnedAgorot, 0),
 });
-import { commissionPercentForTier } from '../src/lib/pricing.js';
+import { commissionOnAgorot, commissionPercentForTier } from '../src/lib/pricing.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
 import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
@@ -542,10 +542,13 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     { id: 'sel-b', name: 'B', email: 'b@x.com', passwordHash: '', tier: 'enterprise' as const, createdAt: '2026-01-01T00:00:00.000Z' },
     { id: 'sel-none', name: 'N', email: 'n@x.com', passwordHash: '', createdAt: '2026-01-01T00:00:00.000Z' },
   ];
+  // The plan sits on the STORE since 2026-08-24 (`lib/store-plan.ts`), and `sel-a`'s two shops are
+  // deliberately on two different ones — a seller with a mixed set is the case an account-wide rate
+  // gets wrong, and it is now the ordinary case rather than an impossible one.
   const STORES = [
-    { id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a' },
-    { id: 'st-2', slug: OTHER, name: 'S2', sellerId: 'sel-a' },
-    { id: 'st-3', slug: 'inv-third', name: 'S3', sellerId: 'sel-b' },
+    { id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a', tier: 'starter' },
+    { id: 'st-2', slug: OTHER, name: 'S2', sellerId: 'sel-a', tier: 'enterprise' },
+    { id: 'st-3', slug: 'inv-third', name: 'S3', sellerId: 'sel-b', tier: 'enterprise' },
   ];
   const REVENUE = new Map([
     [STORE, { totalRevenueAgorot: 123_457, monthRevenueAgorot: 1_000 }],
@@ -594,15 +597,29 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     );
   });
 
-  it('applies the seller\'s OWN tier, not one rate for everybody', () => {
-    // Two sellers on different tiers is the case a single platform-wide percent gets wrong the
-    // moment the second tier is sold — and it gets it wrong silently, in the platform's favour.
+  it('applies each STORE\'s own plan, not one rate for everybody', () => {
+    // A single platform-wide percent gets this wrong the moment a second plan is sold — and it gets
+    // it wrong silently, in the platform's favour.
     const byId = new Map(buildSellerBalances(SELLERS, STORES, REVENUE).map((b) => [b.sellerId, b]));
-    expect(byId.get('sel-a')!.commissionRate).toBe(commissionPercentForTier('starter'));
-    expect(byId.get('sel-b')!.commissionRate).toBe(commissionPercentForTier('enterprise'));
-    // An account with no tier recorded is the default tier, never zero commission.
-    expect(byId.get('sel-none')!.commissionRate).toBe(commissionPercentForTier(undefined));
-    expect(byId.get('sel-none')!.commissionRate).toBeGreaterThan(0);
+    const starter = commissionPercentForTier('starter');
+    const enterprise = commissionPercentForTier('enterprise');
+
+    // Per store, which is where the charge actually happens.
+    const aStores = new Map(byId.get('sel-a')!.stores.map((st) => [st.storeSlug, st]));
+    expect(aStores.get(STORE)!.commissionAgorot).toBe(commissionOnAgorot(123_457, starter));
+    expect(aStores.get(OTHER)!.commissionAgorot).toBe(commissionOnAgorot(8_999, enterprise));
+
+    // And the seller HEADLINE is the blend his own money produced — between the two rates, equal to
+    // neither, because he is on both. A single plan's percent here would be a number he could hold
+    // us to and we would not be charging.
+    const aRate = byId.get('sel-a')!.commissionRate;
+    expect(aRate).toBeLessThan(starter);
+    expect(aRate).toBeGreaterThan(enterprise);
+
+    // One shop, one plan: the blend is that plan exactly.
+    expect(byId.get('sel-b')!.commissionRate).toBe(enterprise);
+    // A shop with no plan recorded is the default plan, never zero commission.
+    expect(commissionPercentForTier(undefined)).toBeGreaterThan(0);
   });
 
   it('is the same number the seller\'s own performance tab shows', () => {
@@ -957,10 +974,7 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
   it('the platform summary reports the de-duped count, and falls back to the sum without it', async () => {
     const from = '2026-01-01';
     const to = '2026-12-31';
-    const inputs = buildPlatformStoreInputs(
-      (await getAllStores()).map((s) => ({ ...s, sellerId: s.sellerId })),
-      await getAllSellers(),
-    );
+    const inputs = buildPlatformStoreInputs(await getAllStores());
     const [views, platformViews, sales] = await Promise.all([
       getStoreViewStats(inputs.map((s) => s.id), from, to, 'month'),
       getPlatformViewStats(inputs.map((s) => s.id), from, to, 'month'),
@@ -1135,22 +1149,33 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     }
   });
 
-  it('subscription accrual: the GROUP BY bills what the per-seller arithmetic billed', async () => {
-    // The tier rollup replaced a loop over every seller. Same money: the fee is a property of the
-    // tier and the only per-seller input is how many days of the range the account existed for.
+  it('subscription accrual: the GROUP BY bills what the per-STORE arithmetic bills', async () => {
+    /**
+     * The rollup replaced a loop, and on 2026-08-24 it changed what it loops over. Two corrections
+     * in one, both of which had been booking revenue we do not charge:
+     *   · the plan is per STORE, so a seller with three shops is three fees and used to be one;
+     *   · billing starts when a shop goes ON THE SITE, never at signup — so an account that
+     *     registered and never published accrues nothing, which at cold start is most of them.
+     * This asserts the query against the same arithmetic spelled out in JS, so the SQL and the rule
+     * cannot drift apart.
+     */
     const from = '2026-07-01';
     const to = '2026-07-30';
     const tiers = await getSubscriptionAccrual(from, to);
-    const sellers = await getAllSellers();
-    const billable = (createdAt: string): number => {
-      const signup = createdAt.slice(0, 10);
-      if (signup > to) return 0;
-      return daysInRangeInclusive(signup > from ? signup : from, to);
+    const stores = await getAllStores();
+    const day = (iso?: string): string | undefined => (iso ? iso.slice(0, 10) : undefined);
+    const billable = (store: { publishedAt?: string; closedAt?: string }): number => {
+      const live = day(store.publishedAt);
+      if (!live || live > to) return 0;
+      const end = day(store.closedAt);
+      const last = end && end < to ? end : to;
+      const first = live > from ? live : from;
+      return first > last ? 0 : daysInRangeInclusive(first, last);
     };
-    expect(tiers.reduce((a, t) => a + t.subscribers, 0), 'subscriber count')
-      .toBe(sellers.filter((s) => billable(s.createdAt) > 0).length);
+    expect(tiers.reduce((a, t) => a + t.subscribers, 0), 'billed store count')
+      .toBe(stores.filter((s) => s.publishedAt && day(s.publishedAt)! <= to).length);
     expect(tiers.reduce((a, t) => a + t.billableDays, 0), 'billable days')
-      .toBe(sellers.reduce((a, s) => a + billable(s.createdAt), 0));
+      .toBe(stores.reduce((a, s) => a + billable(s), 0));
   });
 });
 

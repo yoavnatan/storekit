@@ -1,6 +1,7 @@
 import type { Seller } from './seller-auth.js';
 import type { StoreRevenue } from './order-reporting.js';
-import { commissionOnAgorot, commissionPercentForTier } from './pricing.js';
+import { blendedCommissionRate, commissionOnAgorot } from './pricing.js';
+import { commissionPercentForStore } from './store-plan.js';
 
 /**
  * What each seller has EARNED — the reporting view named in AI_INSTRUCTIONS.md's data models and in
@@ -46,8 +47,10 @@ export interface SellerStoreBalance {
 /** One seller's accrual across every store they own. */
 export interface SellerBalance {
   sellerId: string;
-  /** The rate applied — carried so a surface can label the commission line without re-reading the
-   *  tier table, and so the number and its explanation cannot come from different places. */
+  /** The rate his own revenue actually produced, revenue-weighted across his stores' plans — see
+   *  where it is computed. Carried so a surface can label the commission line without re-deriving
+   *  it, and so the number and its explanation cannot come from different places. It is NOT any one
+   *  plan's percent: a seller with shops on two plans has no single rate. */
   commissionRate: number;
   grossRevenueAgorot: number;
   commissionAgorot: number;
@@ -71,10 +74,10 @@ export interface SellerBalance {
  */
 export function buildSellerBalances(
   sellers: readonly Seller[],
-  stores: ReadonlyArray<{ id: string; slug: string; name: string; sellerId: string }>,
+  stores: ReadonlyArray<{ id: string; slug: string; name: string; sellerId: string; tier?: string }>,
   revenueBySlug: ReadonlyMap<string, StoreRevenue>,
 ): SellerBalance[] {
-  const storesBySeller = new Map<string, Array<{ id: string; slug: string; name: string }>>();
+  const storesBySeller = new Map<string, Array<{ id: string; slug: string; name: string; tier?: string }>>();
   for (const store of stores) {
     const list = storesBySeller.get(store.sellerId) ?? [];
     list.push(store);
@@ -82,10 +85,12 @@ export function buildSellerBalances(
   }
 
   return sellers.map((seller) => {
-    const commissionRate = commissionPercentForTier(seller.tier);
     const storeBalances = (storesBySeller.get(seller.id) ?? []).map((store): SellerStoreBalance => {
       const grossRevenueAgorot = revenueBySlug.get(store.slug)?.totalRevenueAgorot ?? 0;
-      const commissionAgorot = commissionOnAgorot(grossRevenueAgorot, commissionRate);
+      // The rate of the STORE's own plan, not the account's — a seller may hold two shops on two
+      // plans since 2026-08-24 (`store-plan.ts`), and a single rate applied across them would
+      // report one of the two wrong in every figure derived from here.
+      const commissionAgorot = commissionOnAgorot(grossRevenueAgorot, commissionPercentForStore(store));
       return {
         storeId: store.id,
         storeSlug: store.slug,
@@ -96,11 +101,18 @@ export function buildSellerBalances(
       };
     });
 
+    const grossRevenueAgorot = storeBalances.reduce((sum, s) => sum + s.grossRevenueAgorot, 0);
+    const commissionAgorot = storeBalances.reduce((sum, s) => sum + s.commissionAgorot, 0);
     return {
       sellerId: seller.id,
-      commissionRate,
-      grossRevenueAgorot: storeBalances.reduce((sum, s) => sum + s.grossRevenueAgorot, 0),
-      commissionAgorot: storeBalances.reduce((sum, s) => sum + s.commissionAgorot, 0),
+      // **Revenue-weighted actual, not one plan's rate.** A seller may hold two shops on two plans
+      // since 2026-08-24, so there is no single percent that is his — the only honest headline is
+      // the one his own money produced. The same function the platform total uses for the same
+      // reason (`pricing.ts#blendedCommissionRate`), so the two can never disagree about what a
+      // mixed set of plans averages to.
+      commissionRate: blendedCommissionRate(grossRevenueAgorot, commissionAgorot),
+      grossRevenueAgorot,
+      commissionAgorot,
       totalEarnedAgorot: storeBalances.reduce((sum, s) => sum + s.totalEarnedAgorot, 0),
       stores: storeBalances,
     };

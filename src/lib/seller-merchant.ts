@@ -38,7 +38,7 @@ import {
   paymeIncorporation,
   type MerchantKyc, type MerchantKycField,
 } from './merchant-kyc.js';
-import { commissionPercentForTier } from './pricing.js';
+import { DEFAULT_TIER, commissionPercentForTier } from './pricing.js';
 import { paymeCategoryForStore } from './merchant-category.js';
 import { getStoresBySellerId } from './stores.js';
 import { activePaymeCredentials, createSeller, isSandbox, PaymeError, type PaymeCredentials } from './payment-payme.js';
@@ -268,11 +268,13 @@ export async function ensureMerchantAccount(
       addressCity: kyc.businessCity,
       addressStreet: kyc.businessStreet,
       addressStreetNumber: kyc.businessStreetNumber,
-      // His tier's commission becomes the merchant's DEFAULT distribution fee. Every sale also
-      // passes it explicitly (`payment-split.ts`), so a tier change takes effect on the next sale
-      // rather than needing a round trip to PayMe — this only decides what happens if one ever
-      // does not.
-      marketFeePercent: commissionPercentForTier(seller.tier),
+      // The merchant's DEFAULT distribution fee, and it is deliberately the DEFAULT PLAN's rate
+      // rather than any particular shop's. One merchant account serves all of this seller's shops
+      // (it is per legal entity), and since 2026-08-24 those shops can be on different plans — so
+      // there is no single rate here that would be true. It costs nothing to be conservative:
+      // every sale passes its own store's percent explicitly (`payment-split.ts`), and this only
+      // decides what happens if one ever does not.
+      marketFeePercent: commissionPercentForTier(DEFAULT_TIER),
     }, creds);
 
     const row = await firstRow<AccountRow>(

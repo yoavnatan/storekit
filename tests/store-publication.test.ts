@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   subscribed: true,
   merchantBlock: null as 'no-account' | 'not-approved' | null,
   stores: [] as { id: string; slug: string; sellerId: string; publishedAt?: string; closedAt?: string }[],
+  /** Store ids named in the standing order's breakdown. `null` = no subscription row at all. */
+  paidStoreIds: null as string[] | null,
   updates: [] as { id: string; patch: Record<string, unknown> }[],
 }));
 
@@ -29,6 +31,10 @@ const state = vi.hoisted(() => ({
 // test of the stub.
 vi.mock('../src/lib/seller-subscription.js', () => ({
   sellerIsSubscribed: async (_id: string, creds: unknown) => (creds ? state.subscribed : true),
+  // What the standing order is actually paying for. Since 2026-08-24 each shop is billed
+  // separately, so "this seller is paying" stopped being the whole answer — a second shop must not
+  // ride on the first one's fee (`lib/store-plan.ts`).
+  subscriptionFor: async () => (state.paidStoreIds === null ? null : { storeFees: state.paidStoreIds.map((id) => ({ storeId: id })) }),
 }));
 vi.mock('../src/lib/seller-merchant.js', () => ({
   merchantBlockFor: async (_id: string, creds: unknown) => (creds ? state.merchantBlock : null),
@@ -54,6 +60,7 @@ beforeEach(() => {
   state.subscribed = true;
   state.merchantBlock = null;
   state.stores = [{ id: 's1', slug: 'shop', sellerId: 'seller-1' }];
+  state.paidStoreIds = ['s1'];
   state.updates = [];
 });
 
@@ -72,10 +79,18 @@ describe('publishHoldsFor — what is standing in the way', () => {
   // The whole reason the two are ONE state with two sentences: told separately, a screen could
   // show "waiting for approval" while the seller has not started paying, and he would sit through
   // a week of a wait that was never the thing blocking him.
-  it('reports both holds at once, his own step first', async () => {
+  /**
+   * **The order is the flow, and it was reversed on 2026-08-24.** Paying used to come first, so a
+   * seller filled in his details, paid, and then waited up to seven business days for PayMe to
+   * approve the business — paying for a shop that was not on the site, through the one week he is
+   * most likely to change his mind in (owner: *"אני לא רוצה ליפול בין הכיסאות ושהמוכר יתחרט"*).
+   * Clearing first, paying last: the payment is the act that puts the shop up, and it is the last
+   * thing between him and that.
+   */
+  it('reports both holds at once, clearing first and paying last', async () => {
     state.subscribed = false;
     state.merchantBlock = 'not-approved';
-    expect(await publishHoldsFor('seller-1', CREDS)).toEqual(['subscription', 'clearing-approval']);
+    expect(await publishHoldsFor('seller-1', CREDS)).toEqual(['clearing-approval', 'subscription']);
   });
 });
 
@@ -100,6 +115,22 @@ describe('syncStorePublication', () => {
     expect(state.updates).toEqual([]);
   });
 
+  /**
+   * **A second shop must not ride on the first one's fee** (owner, 2026-08-24: *"כל חנות צריכה
+   * לעלות כסף בנפרד"*). This is the failure mode that would have been silent rather than visible:
+   * the account-level hold is clear because he IS paying, so a shop he never added to the standing
+   * order would have gone live for nothing and no screen would have said anything.
+   */
+  it('publishes only the shops the standing order actually pays for', async () => {
+    state.stores = [
+      { id: 's1', slug: 'paid-for', sellerId: 'seller-1' },
+      { id: 's2', slug: 'not-paid-for', sellerId: 'seller-1' },
+    ];
+    state.paidStoreIds = ['s1'];
+    expect(await syncStorePublication('seller-1', CREDS)).toEqual(['paid-for']);
+    expect(state.updates.map((u) => u.id)).toEqual(['s1']);
+  });
+
   // PayMe may deliver the same notification twice, and the sweep runs on a timer beside it. A
   // second publication would move the date a store went live, which is a fact about the past.
   it('is idempotent — a second run publishes nothing and touches no row', async () => {
@@ -120,12 +151,13 @@ describe('syncStorePublication', () => {
     expect(state.stores[0]!.publishedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 
-  it("publishes every one of the seller's waiting shops, not just the first", async () => {
+  it("publishes every one of the seller's waiting shops that the standing order pays for", async () => {
     state.stores = [
       { id: 's1', slug: 'one', sellerId: 'seller-1' },
       { id: 's2', slug: 'two', sellerId: 'seller-1' },
       { id: 's3', slug: 'other', sellerId: 'seller-9' },
     ];
+    state.paidStoreIds = ['s1', 's2'];
     expect(await syncStorePublication('seller-1', CREDS)).toEqual(['one', 'two']);
     expect(state.updates.map((u) => u.id)).toEqual(['s1', 's2']);
   });

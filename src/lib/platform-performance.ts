@@ -11,7 +11,8 @@ import {
 } from './seller-performance.js';
 import { EMPTY_STORE_SALES, PRODUCT_QUERY_MAX, type PlatformSales, type StoreSales } from './order-reporting.js';
 import { EMPTY_VIEW_STATS, type StoreViewStats } from './store-pageviews.js';
-import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
+import { blendedCommissionRate } from './pricing.js';
+import { commissionPercentForStore } from './store-plan.js';
 
 // Platform-wide ("app-wide") twin of seller-performance.ts's per-store summary,
 // for the ADMIN performance tab. It does NOT re-implement any of the bucketing/
@@ -49,17 +50,19 @@ export interface PlatformStoreInput {
  *  the store→seller→tier hop is written, so both admin call sites (the dashboard render and the
  *  AJAX endpoint) can never disagree. Pure: the caller supplies both already-read lists. */
 export function buildPlatformStoreInputs(
-  stores: Array<{ id: string; slug: string; name: string; sellerId: string } & StoreLifecycleFlags>,
-  sellers: Array<{ id: string; tier?: string }>,
+  stores: Array<{ id: string; slug: string; name: string; sellerId: string; tier?: string } & StoreLifecycleFlags>,
 ): PlatformStoreInput[] {
-  const tierBySellerId = new Map(sellers.map((s) => [s.id, s.tier]));
   return stores.map((s) => ({
     id: s.id,
     slug: s.slug,
     name: s.name,
     blocked: s.blocked,
     state: storeLifecycle(s),
-    commissionPercent: commissionPercentForTier(tierBySellerId.get(s.sellerId)),
+    // The STORE's own plan since 2026-08-24 (`store-plan.ts`). It used to be looked up through the
+    // owning seller, which is why this function needed the whole seller roster passed in and no
+    // longer does — two shops of one seller can sit on two plans, and the breakdown-by-store table
+    // is precisely where a single account-wide rate would be visibly wrong.
+    commissionPercent: commissionPercentForStore(s),
   }));
 }
 

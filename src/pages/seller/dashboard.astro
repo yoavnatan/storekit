@@ -106,7 +106,8 @@ import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.
 import { storeBaselineStatus } from '../../lib/ad-baseline.js';
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
 import { getStoreIdsWithStalledCampaigns } from '../../lib/ad-campaigns.js';
-import { boostFeePercent, commissionPercentForTier, resolveTier } from '../../lib/pricing.js';
+import { boostFeePercent, resolveTier } from '../../lib/pricing.js';
+import { commissionPercentForStore } from '../../lib/store-plan.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote } from '../../lib/ad-scope-label.js';
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
 import { shortDate } from '../../lib/date-range.js';
@@ -707,7 +708,7 @@ const [perfViews, perfOrders] = (store && perfIsInitial)
       getOrdersByStoreSlugInRange(store.slug, perfFromISO, perfToISO),
     ])
   : [EMPTY_VIEW_STATS, [] as Order[]];
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(seller?.tier)) : undefined;
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForStore(store)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).

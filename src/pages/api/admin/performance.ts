@@ -8,8 +8,7 @@ import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type
 import { getViewStatsForStore } from '../../../lib/store-pageviews.js';
 import { getProductViewStats } from '../../../lib/product-pageviews.js';
 import { isDayISO } from '../../../lib/business-day.js';
-import { commissionPercentForTier } from '../../../lib/pricing.js';
-import { getSellerById } from '../../../lib/seller-auth.js';
+import { commissionPercentForStore } from '../../../lib/store-plan.js';
 
 // Admin-facing twin of /api/seller/performance: identical validation and
 // PerformanceSummary shape, but gated by the admin cookie (requireAdmin) and
@@ -71,11 +70,12 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return json({ ok: true, product: productSummary, productName: product.name });
   }
 
-  const [orders, views, seller] = await Promise.all([
+  // The commission rate is the STORE's own now (`lib/store-plan.ts`), read off a row already in
+  // hand — so the seller lookup that used to ride along in this Promise.all is gone with it.
+  const [orders, views] = await Promise.all([
     getOrdersByStoreSlugInRange(storeSlug, from, to),
     getViewStatsForStore(store.id, from, to, granularity),
-    getSellerById(store.sellerId),
   ]);
-  const summary = buildPerformanceSummary(orders, views, storeSlug, from, to, granularity, commissionPercentForTier(seller?.tier), topLimit);
+  const summary = buildPerformanceSummary(orders, views, storeSlug, from, to, granularity, commissionPercentForStore(store), topLimit);
   return json({ ok: true, summary });
 }

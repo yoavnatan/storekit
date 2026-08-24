@@ -35,7 +35,8 @@ import { getSellerById } from '../../lib/seller-auth.js';
 import { merchantAccountsFor } from '../../lib/seller-merchant.js';
 import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
 import { planSplit, authorizeCart, captureSlices, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
-import { commissionPercentForTier, commissionOnAgorot } from '../../lib/pricing.js';
+import { commissionOnAgorot } from '../../lib/pricing.js';
+import { commissionPercentForStore } from '../../lib/store-plan.js';
 import { store as platform } from '../../config/store.config.js';
 import { serverEnv } from '../../lib/runtime-env.js';
 
@@ -485,6 +486,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const storeSubtotals: Record<string, StoreSubtotal> = {};
   /** Store slug → the seller whose merchant account its share is charged to. */
   const storeSellers = new Map<string, string>();
+  /** Store slug → the commission percent THIS store's plan carries (`lib/store-plan.ts`). Per
+   *  store since 2026-08-24: a plan is bought per shop, so the rate belongs to the shop and not to
+   *  the account that happens to own it. A cart holding two shops of the same seller on two plans
+   *  is charged two different rates, which is the point of selling them separately. */
+  const storeCommission = new Map<string, number>();
   const decremented: { productId: string; qty: number; selectedVariants?: Record<string, string> }[] = [];
   // Coupon uses consumed by THIS request. A claim is a reservation exactly like a stock decrement,
   // and it has to be undone on every path that undoes the stock — otherwise a declined card burns
@@ -638,6 +644,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // to a DIFFERENT account, so "which seller owns this slug" stops being a reporting detail and
     // becomes the routing of real money.
     storeSellers.set(store.slug, store.sellerId);
+    // Off the store row this loop already holds. It used to be a `getSellerById` per seller further
+    // down, which was both a second source for the rate and a serial round trip on the one request
+    // a buyer is watching a spinner through.
+    storeCommission.set(store.slug, commissionPercentForStore(store));
   }
 
   // Delivery method + shipping price per store — server-authoritative. The buyer's chosen
@@ -741,14 +751,6 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     if (!isString(buyerKey) || buyerKey.trim().length > 200) return abort({ error: 'missing-card' }, 400);
 
     const accounts = await merchantAccountsFor([...storeSellers.values()]);
-    // Each seller's own tier commission (`lib/pricing.ts`), per sale rather than off the merchant's
-    // stored default — so a tier change takes effect on the next sale instead of needing a round
-    // trip to PayMe. Sequential, but bounded by the number of STORES in one cart, not items.
-    const tiers = new Map<string, number>();
-    for (const sellerId of new Set(storeSellers.values())) {
-      const seller = await getSellerById(sellerId);
-      tiers.set(sellerId, commissionPercentForTier(seller?.tier));
-    }
 
     splitInput = {
       buyerKey: buyerKey.trim(),
@@ -771,7 +773,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           // This store's delivery. Summed with the others into ONE capture to our own merchant
           // account, which is what keeps it out of the seller's 60% ceiling.
           shippingAgorot: sub.shippingAgorot,
-          marketFeePercent: tiers.get(sellerId) ?? 0,
+          // The STORE's plan (`lib/store-plan.ts`), read off the row the item loop already had —
+          // sent per sale rather than left to the merchant's stored default, so a plan change takes
+          // effect on the next sale instead of needing a round trip to PayMe.
+          marketFeePercent: storeCommission.get(storeSlug) ?? 0,
           productName: `${sub.storeName} · ${checkoutRef}`,
         };
       }),

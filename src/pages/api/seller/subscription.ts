@@ -39,18 +39,33 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
-  const read = await readJsonBody<{ action?: string }>(request, BODY_LIMIT.form);
+  const read = await readJsonBody<{ action?: string; storeId?: unknown }>(request, BODY_LIMIT.form);
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
 
   if (read.value.action === 'cancel') {
-    // Deliberately does NOT take the shop down — `endSubscription`'s header says why: un-publishing
-    // a live shop is a decision with a shopper mid-cart on the other side of it, and it belongs to
-    // the module that owns the whole lifecycle.
+    // Does NOT take the shop down, and not because nobody got round to it: cancellation takes
+    // effect at the END of the period already paid for (owner, 2026-08-24), so what this records is
+    // a date. `lib/subscription-lapse.ts` acts on it, on a timer, through the lifecycle module —
+    // un-publishing a live shop has a shopper mid-cart on the other side of it.
     const stopped = await endSubscription(sellerId);
-    return json({ ok: stopped, subscription: await subscriptionFor(sellerId) });
+    const subscription = await subscriptionFor(sellerId);
+    return json({
+      ok: stopped,
+      subscription,
+      // The one thing he has to be told back, and the reason the button is not frightening: he
+      // keeps everything until this moment, and nothing will be charged again.
+      ...(subscription?.endsAt ? { endsAt: subscription.endsAt } : {}),
+    });
   }
 
+  /** Which shop he is putting on the site with this payment. It cannot be derived — the shop is not
+   *  published yet, and being published is exactly what is being paid for (`store-plan.ts`). Not
+   *  trusted as an id either: `startSubscription` prices only stores this seller owns, because
+   *  `billedStoresFor` filters by `seller_id` in SQL rather than by what arrived in a body. */
+  const including = typeof read.value.storeId === 'string' ? read.value.storeId : undefined;
+
   const started = await startSubscription(sellerId, {
+    ...(including ? { including } : {}),
     // Named per subscription rather than left to a setting in a panel nobody in this repo can see —
     // the same rule the checkout follows for its sale callback.
     callbackUrl: `${platform.url}/api/payme/callback`,
@@ -62,6 +77,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   if (started.status === 'failed') return json({ ok: false, error: started.error }, 502);
   if (started.status === 'not-configured') return json({ ok: false, error: 'not-configured' }, 503);
   if (started.status === 'no-collection-account') return json({ ok: false, error: 'no-collection-account' }, 503);
+  // Nothing to charge for: he has no shop ready to go on the site, so there is no fee to sum
+  // (`store-plan.ts`). A 400 and not a 500 — the request was well formed and the answer is a fact
+  // about his account, which the page turns into a sentence rather than an error.
+  if (started.status === 'no-store-to-bill') return json({ ok: false, error: 'no-store-to-bill' }, 400);
 
   // Only meaningful on the token route, where the first charge already went through. On the hosted
   // page it publishes nothing — correctly, because nobody has paid yet.

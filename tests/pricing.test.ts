@@ -74,31 +74,34 @@ describe('blendedCommissionRate', () => {
 describe('buildPlatformStoreInputs', () => {
   // `id` is carried through because page-view statistics are gathered under it, not under the
   // slug — a store that renames its URL must not lose its traffic history.
+  // The plan is the STORE's own since 2026-08-24 (`lib/store-plan.ts`), so a and b belong to the
+  // SAME seller on purpose: two shops of one account on two plans is the case that used to be
+  // impossible to express and is now the ordinary one.
   const stores = [
-    { id: 'id-a', slug: 'a', name: 'A', sellerId: 's1' },
-    { id: 'id-b', slug: 'b', name: 'B', sellerId: 's2', blocked: true },
-    { id: 'id-c', slug: 'c', name: 'C', sellerId: 'ghost' },
+    { id: 'id-a', slug: 'a', name: 'A', sellerId: 's1', tier: 'enterprise' },
+    { id: 'id-b', slug: 'b', name: 'B', sellerId: 's1', blocked: true },
+    { id: 'id-c', slug: 'c', name: 'C', sellerId: 'ghost', tier: 'nonsense-plan' },
   ];
-  const sellers = [{ id: 's1', tier: 'enterprise' }, { id: 's2' }];
 
-  it('gives each store its OWN seller tier rate', () => {
-    const out = buildPlatformStoreInputs(stores, sellers);
+  it('gives each store its OWN plan rate', () => {
+    const out = buildPlatformStoreInputs(stores);
     expect(out[0]!.commissionPercent).toBe(commissionPercentForTier('enterprise'));
     expect(out[1]!.commissionPercent).toBe(commissionPercentForTier(DEFAULT_TIER));
   });
 
-  it('falls back to the default tier for a store whose seller record is missing', () => {
-    expect(buildPlatformStoreInputs(stores, sellers)[2]!.commissionPercent)
+  it('falls back to the default plan for a store whose stored plan is not a real one', () => {
+    expect(buildPlatformStoreInputs(stores)[2]!.commissionPercent)
       .toBe(commissionPercentForTier(DEFAULT_TIER));
   });
 
   it('carries slug/name/blocked through untouched', () => {
-    const out = buildPlatformStoreInputs(stores, sellers);
+    const out = buildPlatformStoreInputs(stores);
     expect(out[1]).toMatchObject({ slug: 'b', name: 'B', blocked: true });
   });
 
-  it('two sellers on different tiers produce different rates — the whole point', () => {
-    const out = buildPlatformStoreInputs(stores, sellers);
+  it('TWO SHOPS OF ONE SELLER on different plans produce different rates — the whole point', () => {
+    const out = buildPlatformStoreInputs(stores);
+    expect(stores[0]!.sellerId).toBe(stores[1]!.sellerId);
     expect(out[0]!.commissionPercent).not.toBe(out[1]!.commissionPercent);
   });
 });

@@ -44,7 +44,9 @@ export interface PlatformRevenue {
   commissionRate: number;
   /** Subscription fees accrued in range, pro-rated by day. */
   subscriptionsAgorot: number;
-  /** Sellers who accrued any subscription fee in range (i.e. existed during it). */
+  /** **Paying STORES** in range — shops that were on the site during any part of it. Not sellers:
+   *  a plan is bought per shop since 2026-08-24 (`store-plan.ts`), so one seller with three live
+   *  shops is three here, and three fees. */
   subscribers: number;
   /** Real ad spend billed onward to sellers in range — pass-through, not income. */
   adSpendAgorot: number;
@@ -60,17 +62,19 @@ export interface PlatformRevenue {
  *  Using the real calendar month length instead would make an identical 7-day window
  *  worth a different amount in February than in March — noise in a range-comparison view.
  *
- *  Note: the free trial (14–30d, AI_INSTRUCTIONS.md → Business model) is NOT modelled —
- *  no trial-end date is stored on Seller yet, so a brand-new account accrues from day one.
- *  That makes this figure an upper bound until the trial field exists. */
+ *  There is no trial and no free window to model (`pricing.ts` — the idea was rejected in 2026-07
+ *  and the first-sale rule withdrawn on 2026-08-24). A shop accrues from the day it went on the
+ *  site and stops on the day it closed, which is exactly what the standing order charges for, so
+ *  this is no longer an upper bound — it is the figure. */
 const BILLING_DAYS_PER_MONTH = 30;
 
 export function buildPlatformRevenue(
   /** Already agorot — it comes straight off `PerformanceSummary.platformCommissionAgorot`. */
   commissionAgorot: number,
   commissionRate: number,
-  /** Per TIER, not per seller: the fee is a property of the tier and the only per-seller input is
-   *  how many days of the range the account existed for, which the query already summed
+  /** Per PLAN, one row per plan and counting STORES — the fee is a property of the plan and is
+   *  bought per shop (`store-plan.ts`), and the only other input is how many days of the range each
+   *  shop was on the site, which the query already summed
    *  (`seller-auth.ts#getSubscriptionAccrual`). This used to be the whole roster, looped here. */
   tiers: RevenueTierInput[],
   campaigns: AdCampaign[],

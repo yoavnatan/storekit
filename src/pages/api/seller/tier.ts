@@ -1,41 +1,40 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
+import { getSellerSession } from '../../../lib/seller-auth.js';
+import { ownedStore } from '../../../lib/store-ownership.js';
+import { getStoresBySellerId } from '../../../lib/stores.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { parseTierId, setSellerTier } from '../../../lib/seller-tier.js';
-import { propagateTierToSubscription } from '../../../lib/seller-subscription.js';
-import { DEFAULT_TIER } from '../../../lib/pricing.js';
+import { parseTierId } from '../../../lib/seller-tier.js';
+import { setStoreTier, storeTier } from '../../../lib/store-plan.js';
+import { syncSubscriptionPrice } from '../../../lib/seller-subscription.js';
 
 /**
- * The seller's plan — read it, choose it.
+ * A STORE's plan — read it, choose it.
+ *
+ * ── It moved from the account to the store on 2026-08-24 ──
+ * The owner's ruling: *"כל חנות צריכה לעלות כסף בנפרד"*. Until then this endpoint wrote
+ * `sellers.tier`, one plan for a whole account, and a seller with five shops paid for one. The
+ * price and the commission now belong to the shop (`lib/store-plan.ts`), so this route takes a
+ * store id — and the shape of the answer changed with it: a signed-in seller gets the plan of
+ * EVERY shop he owns, because the pricing page has to be able to say which one it is about.
  *
  * ── Why the pricing PAGE talks to an endpoint instead of rendering the answer ──
- * `/pricing` is static, and deliberately: it is the page a seller reads before he has an account,
- * so it has to be in the sitemap and to render with no server work. That makes "which plan am I on"
- * a question the page can only ask afterwards, which is what this GET is for. A visitor who is not
- * signed in gets `signedIn: false` and no error — being logged out is the normal state of that
- * page, not a failure of it.
+ * `/pricing` is the page a seller reads before he has an account, so it renders identically for
+ * everyone and can be cached and crawled as one document. "Which plan am I on" is therefore asked
+ * afterwards. A visitor who is not signed in gets `signedIn: false` and no error — being logged out
+ * is the normal state of that page, not a failure of it.
  *
- * ── Scope ──
- * The session proves an ACCOUNT and the tier belongs to the account, not to a store (`pricing.ts`:
- * per-seller, never per-store). So the id written is `getSellerSession`'s and no id is read from
- * the body — the "an id is not a permission" rule that `lib/store-ownership.ts` exists for does not
- * even get a chance to apply here, because there is nothing to pass.
+ * ── Scope: an id is not a permission ──
+ * The session proves an ACCOUNT. The store id in the body proves nothing at all, so it goes through
+ * `ownedStore` before a single byte is written — otherwise anyone with a session could move another
+ * seller's shop onto the cheapest plan, or the dearest.
  *
- * ── For a seller who is not paying yet, this route moves no money ──
- * It records which fee a LATER charge will read (`seller-subscription.ts` → `monthlyFeeForTier`).
- * No idempotency key and no journal entry: choosing the same plan twice is one state, and nothing
- * has been charged at the moment it is called.
- *
- * ── For a seller who IS paying, it moves the standing order, and the order matters ──
- * Until 2026-08-24 it did not, and that was a money bug: the row changed, every report and
- * commission line followed the new tier, and PayMe went on charging the old amount with neither
- * side reporting the gap. `seller-tier.ts` had documented the danger and exported
- * `sellerMayChangeTier`; nothing called it.
- * The fix is not a refusal (owner: *"למה לבטל את המנוי? זה רק להחליף את ההוראת קבע שלו"*) — the
- * subscription's price is patched at PayMe FIRST, and the tier is written only if they accepted.
- * A gateway refusal therefore leaves the seller on the plan he is actually being charged for,
- * which is the one state that is never a lie.
+ * ── For a seller who is already paying, the standing order moves FIRST ──
+ * `syncSubscriptionPrice` patches PayMe and only then is the tier written. A gateway refusal
+ * therefore leaves the shop on the plan he is actually being charged for, which is the one state
+ * that is never a lie. Written the other way round — the row first — every report would follow the
+ * new plan while the card kept paying the old amount, with neither side reporting the gap. That was
+ * a real bug, found on 2026-08-24, and the order here is what closes it.
  */
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -51,42 +50,70 @@ function json(data: Record<string, unknown>, status = 200): Response {
 export async function GET({ cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ signedIn: false });
-  const seller = await getSellerById(sellerId);
-  if (!seller) return json({ signedIn: false });
-  // The EFFECTIVE tier, not the raw column. An account that has never chosen is on Starter
-  // everywhere the platform reasons about money (`pricing.ts#DEFAULT_TIER`), so the page must show
-  // the same thing rather than an empty state that suggests no plan is in force.
-  return json({ signedIn: true, tier: seller.tier ?? DEFAULT_TIER, chosen: !!seller.tier });
+  const stores = await getStoresBySellerId(sellerId);
+  // The EFFECTIVE plan per shop, not the raw column: a shop that has never chosen is on the default
+  // everywhere the platform reasons about money (`pricing.ts#DEFAULT_TIER`), so the page shows the
+  // same thing rather than an empty state suggesting no plan is in force. `chosen` is what lets the
+  // page tell "he picked Starter" from "nobody has picked yet".
+  return json({
+    signedIn: true,
+    stores: stores.map((s) => ({
+      id: s.id,
+      slug: s.slug,
+      name: s.name,
+      tier: storeTier(s),
+      chosen: !!s.tier,
+      live: !!s.publishedAt,
+    })),
+  });
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
-  const read = await readJsonBody<{ tier?: unknown }>(request, BODY_LIMIT.form);
+  const read = await readJsonBody<{ tier?: unknown; storeId?: unknown }>(request, BODY_LIMIT.form);
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
 
-  // Narrowed, never defaulted. An unrecognised tier is a tampered or stale form, and recording
-  // Starter for it would charge a plan nobody clicked (`seller-tier.ts#parseTierId`).
+  // Narrowed, never defaulted. An unrecognised tier is a tampered or stale form, and recording the
+  // default for it would charge a plan nobody clicked (`seller-tier.ts#parseTierId`).
   const tier = parseTierId(read.value?.tier);
   if (!tier) return json({ error: 'Unknown tier' }, 400);
 
-  // PayMe first — see the header. A `failed` here means nothing was written and nothing diverged.
-  const moved = await propagateTierToSubscription(sellerId, tier);
+  const storeId = typeof read.value?.storeId === 'string' ? read.value.storeId : '';
+  if (!storeId) return json({ error: 'Missing store' }, 400);
+  const store = await ownedStore(sellerId, storeId);
+  if (!store) return json({ error: 'Not found' }, 404);
+
+  // Nothing to do, and saying so is not the same as doing it: re-patching a standing order that
+  // already carries this amount is a request that cannot change anything and can still fail.
+  if (storeTier(store) === tier && store.tier) return json({ ok: true, tier, fromNextCharge: false });
+
+  /**
+   * ── The write is provisional until PayMe agree ──
+   * The tier has to be in the row for `billedStoresFor` to price the new arrangement, and the sum
+   * has to be accepted before the row is allowed to stand. So it is written, priced, and rolled
+   * back on a refusal — the shop ends up on the plan the card is actually paying for either way.
+   */
+  const before = store.tier;
+  const saved = await setStoreTier(storeId, tier);
+  if (!saved) return json({ error: 'Store not found' }, 404);
+
+  const moved = await syncSubscriptionPrice(sellerId);
   if (moved.status === 'failed') {
-    // 502 and not 400: the request was fine, the gateway refused. The seller is told his plan was
-    // not changed, which is true of both sides at once.
+    // Back to where it was, including back to "never chosen" if that is what it was: leaving the
+    // default written would silently record a choice the seller did not make and did not pay for.
+    if (before) await setStoreTier(storeId, storeTier({ tier: before }));
     return json({ error: 'Subscription not updated', gateway: true }, 502);
   }
 
-  const saved = await setSellerTier(sellerId, tier);
-  if (!saved) return json({ error: 'Seller not found' }, 404);
-  // `fromNextCharge` is what the page has to SAY, not a detail: a seller who is already billed has
-  // just changed what he pays, and the one thing he needs to know is when.
   return json({
     ok: true,
     tier: saved,
+    // What the page has to SAY, not a detail: a seller who is already billed has just changed what
+    // he pays, and the one thing he needs to know is when.
     fromNextCharge: moved.status === 'updated',
+    ...(moved.status === 'updated' ? { priceAgorot: moved.priceAgorot, storeFees: moved.storeFees } : {}),
     ...(moved.status === 'updated' && moved.nextCharge ? { nextCharge: moved.nextCharge } : {}),
   });
 }

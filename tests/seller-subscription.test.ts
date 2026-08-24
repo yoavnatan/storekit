@@ -16,6 +16,10 @@ const rig = vi.hoisted(() => ({
   seller: { id: 'seller-1', name: 'חנות הבדיקה', email: 's@example.com', tier: 'growth' } as Record<string, unknown> | null,
   /** The row currently in `seller_subscriptions`, or null. */
   row: null as Record<string, unknown> | null,
+  /** What `store-plan.ts` says this seller has on the site — one shop on `growth` by default. The
+   *  price of a standing order is the SUM of these since 2026-08-24, so this rig field is what a
+   *  "he opened a second shop" case changes. */
+  stores: [] as { storeId: string; storeName: string; tier: string; feeAgorot: number }[],
   generated: [] as Record<string, unknown>[],
   cancelled: [] as string[],
   events: [] as Record<string, unknown>[],
@@ -38,9 +42,9 @@ vi.mock('../src/lib/db.js', () => ({
     rig.queries.push({ sql, params });
     if (sql.includes('INSERT INTO seller_subscriptions')) {
       rig.row = {
-        seller_id: params[0], provider: 'payme', provider_ref: params[1], tier: params[2],
+        seller_id: params[0], provider: 'payme', provider_ref: params[1], store_fees: params[2],
         price_agorot: params[3], status: params[4], started_at: '2026-08-23T00:00:00.000Z',
-        next_charge: params[6], canceled_at: null,
+        next_charge: params[6], canceled_at: null, ends_at: null,
       };
       return rig.row;
     }
@@ -54,12 +58,25 @@ vi.mock('../src/lib/db.js', () => ({
       // assertion below would be about this stub rather than about the module: `endSubscription`
       // sets it outright, `refreshSubscription` sets it only when PayMe report the cancelled status.
       if (sql.includes('canceled_at = now()')) rig.row.canceled_at = '2026-08-24T00:00:00.000Z';
-      if (sql.includes('COALESCE(canceled_at, now())') && params[1] === 5) rig.row.canceled_at = '2026-08-24T00:00:00.000Z';
-      if (params.length > 2) rig.row.next_charge = params[2];
+      // `endSubscription` stamps both the press and the end of the paid month; the two are
+      // different dates on purpose, and the second is what keeps his shops up until it passes.
+      if (sql.includes('ends_at = $3')) {
+        rig.row.canceled_at = '2026-08-24T00:00:00.000Z';
+        rig.row.ends_at = params[2];
+      } else if (sql.includes('COALESCE(canceled_at, now())') && params[1] === 5) {
+        rig.row.canceled_at = '2026-08-24T00:00:00.000Z';
+      }
+      if (sql.includes('SET status = $2, next_charge = $3') && params.length > 2) rig.row.next_charge = params[2];
     }
   },
 }));
 vi.mock('../src/lib/seller-auth.js', () => ({ getSellerById: async () => rig.seller }));
+// Only the database read is stubbed; the arithmetic that turns shops into a price is the real one,
+// so a test can never agree with a sum this module would not actually charge.
+vi.mock('../src/lib/store-plan.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/lib/store-plan.js')>('../src/lib/store-plan.js');
+  return { ...actual, billedStoresFor: async () => rig.stores };
+});
 vi.mock('../src/lib/money-events.js', () => ({
   recordMoneyEvent: async (e: Record<string, unknown>) => { rig.events.push(e); return e; },
 }));
@@ -92,11 +109,12 @@ vi.mock('../src/lib/payment-payme.js', async () => {
 
 const CREDS = { clientKey: 'k', ownMerchantId: 'MPL-OURS', baseUrl: 'https://sandbox.payme.io/api/' };
 
-const { startSubscription, endSubscription, refreshSubscription, sellerIsSubscribed, subscriptionFor, propagateTierToSubscription } =
+const { startSubscription, endSubscription, refreshSubscription, sellerIsSubscribed, subscriptionFor, syncSubscriptionPrice } =
   await import('../src/lib/seller-subscription.js');
 
 beforeEach(() => {
-  rig.seller = { id: 'seller-1', name: 'חנות הבדיקה', email: 's@example.com', tier: 'growth' };
+  rig.seller = { id: 'seller-1', name: 'חנות הבדיקה', email: 's@example.com' };
+  rig.stores = [{ storeId: 'store-1', storeName: 'חנות הבדיקה', tier: 'growth', feeAgorot: 12500 }];
   rig.row = null;
   rig.generated = [];
   rig.cancelled = [];
@@ -112,12 +130,33 @@ beforeEach(() => {
 });
 
 describe('starting one', () => {
-  it("bills OUR merchant account at the seller's own tier price", async () => {
+  it("bills OUR merchant account at the price of the shops he is putting on the site", async () => {
     const res = await startSubscription('seller-1', {}, CREDS);
     expect(res.status).toBe('ok');
-    // `growth` is 125₪ — read from the account, never from the caller. A plan id arriving in a
-    // request would be a client-sent price by another name.
+    // One shop on `growth` — 125₪, read from the store row, never from the caller. A plan id
+    // arriving in a request would be a client-sent price by another name.
     expect(rig.generated[0]).toMatchObject({ ownMerchantId: 'MPL-OURS', priceAgorot: 12500, correlationId: 'seller-1' });
+  });
+
+  // **The ruling of 2026-08-24, as arithmetic**: *"כל חנות צריכה לעלות כסף בנפרד"*. Before it, a
+  // seller with three shops paid for one — and it would have been invisible, because every screen
+  // showed the plan he had chosen and every screen was right.
+  it('charges the SUM of his shops, each on its own plan', async () => {
+    rig.stores = [
+      { storeId: 'store-1', storeName: 'א', tier: 'growth', feeAgorot: 12500 },
+      { storeId: 'store-2', storeName: 'ב', tier: 'starter', feeAgorot: 9900 },
+    ];
+    await startSubscription('seller-1', {}, CREDS);
+    expect(rig.generated[0]).toMatchObject({ priceAgorot: 22400 });
+  });
+
+  // A ₪0 standing order is not a thing PayMe would accept, and it would mean nothing if they did.
+  // The seller has built a shop and has not asked for it to go on the site.
+  it('refuses to open a subscription for a seller with nothing on the site', async () => {
+    rig.stores = [];
+    const res = await startSubscription('seller-1', {}, CREDS);
+    expect(res.status).toBe('no-store-to-bill');
+    expect(rig.generated).toEqual([]);
   });
 
   // Two subscriptions on one card is a seller billed twice with PayMe unaware of the first, and it
@@ -207,6 +246,26 @@ describe('stopping one', () => {
     await startSubscription('seller-1', {}, CREDS);
     expect(await endSubscription('seller-1', CREDS)).toBe(true);
     expect(rig.cancelled).toEqual(['SUB1']);
+  });
+
+  /**
+   * **The two dates, which are the whole ruling of 2026-08-24** — cancellation takes effect
+   * *"בסוף התקופה ששולמה"*. The charging stops now, because there is no way to tell PayMe "one more
+   * month then stop"; what he BOUGHT runs to the end of the month he paid for. Reading the
+   * cancellation as the end would take back days he paid for, from the seller most worth keeping.
+   */
+  it('keeps him subscribed until the end of the month he already paid for', async () => {
+    await startSubscription('seller-1', {}, CREDS);  // next charge 2026-09-23, per the PayMe stub
+    await endSubscription('seller-1', CREDS);
+    expect(await sellerIsSubscribed('seller-1', CREDS)).toBe(true);
+    expect((await subscriptionFor('seller-1'))?.endsAt).toContain('2026-09-23');
+  });
+
+  it('stops being subscribed once that date has passed', async () => {
+    await startSubscription('seller-1', {}, CREDS);
+    await endSubscription('seller-1', CREDS);
+    // The one thing the sweep keys off (`lib/subscription-lapse.ts`): the date, not the click.
+    rig.row!.ends_at = '2020-01-01T00:00:00.000Z';
     expect(await sellerIsSubscribed('seller-1', CREDS)).toBe(false);
   });
 
@@ -217,7 +276,7 @@ describe('stopping one', () => {
     await startSubscription('seller-1', {}, CREDS);
     rig.cancelThrows = true;
     expect(await endSubscription('seller-1', CREDS)).toBe(true);
-    expect(await sellerIsSubscribed('seller-1', CREDS)).toBe(false);
+    expect((await subscriptionFor('seller-1'))?.canceledAt).toBeTruthy();
     expect(rig.errors).toHaveLength(1);
   });
 
@@ -289,7 +348,7 @@ describe('the card token never reaches a caller', () => {
  * are as much about what must NOT happen — no cancellation, no second subscription — as about the
  * new call.
  */
-describe('moving a paying seller to another plan', () => {
+describe('changing what a paying seller is charged', () => {
   async function startPaying(): Promise<void> {
     await startSubscription('seller-1', {}, CREDS);
     // The setup call is not the subject: only what the PROPAGATION does afterwards is.
@@ -298,9 +357,11 @@ describe('moving a paying seller to another plan', () => {
     rig.generated = [];
   }
 
-  it("patches the standing order to the new plan's price, and never cancels it", async () => {
+  it("patches the standing order to the new price, and never cancels it", async () => {
     await startPaying();                                  // growth, 12,500 agorot
-    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+    // The shop moved to `enterprise`; the price is re-derived from the shops, never passed in.
+    rig.stores = [{ storeId: 'store-1', storeName: 'חנות הבדיקה', tier: 'enterprise', feeAgorot: 19900 }];
+    const res = await syncSubscriptionPrice('seller-1', {}, CREDS);
 
     expect(res.status).toBe('updated');
     // 199₪ — read from `pricing.ts` through the tier, exactly as `startSubscription` reads it.
@@ -313,10 +374,13 @@ describe('moving a paying seller to another plan', () => {
 
   it('brings our own row level with what PayMe now charge', async () => {
     await startPaying();
-    await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+    rig.stores = [{ storeId: 'store-1', storeName: 'חנות הבדיקה', tier: 'enterprise', feeAgorot: 19900 }];
+    await syncSubscriptionPrice('seller-1', {}, CREDS);
 
     const update = rig.queries.find((q) => q.sql.includes('UPDATE seller_subscriptions'));
-    expect(update?.params).toEqual(['seller-1', 'enterprise', 19900]);
+    // The breakdown travels with the figure: a price with no explanation is what made "why am I
+    // charged ₪224" unanswerable on the seller's own screen.
+    expect(update?.params).toEqual(['seller-1', JSON.stringify(rig.stores), 19900]);
     // And the journal carries it, because a monthly charge that changed size is exactly what
     // reconciliation is later asked to explain.
     expect(rig.events).toHaveLength(1);
@@ -325,9 +389,10 @@ describe('moving a paying seller to another plan', () => {
 
   it('reports failure and writes NOTHING when PayMe refuse', async () => {
     await startPaying();
+    rig.stores = [{ storeId: 'store-1', storeName: 'חנות הבדיקה', tier: 'enterprise', feeAgorot: 19900 }];
     rig.priceThrows = true;
 
-    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+    const res = await syncSubscriptionPrice('seller-1', {}, CREDS);
 
     expect(res.status).toBe('failed');
     // The whole point of the order the route uses: a refusal leaves the seller on the plan he is
@@ -345,8 +410,9 @@ describe('moving a paying seller to another plan', () => {
     await startSubscription('seller-1', {}, CREDS);
     rig.queries = [];
     rig.generated = [];
+    rig.stores = [{ storeId: 'store-1', storeName: 'חנות הבדיקה', tier: 'enterprise', feeAgorot: 19900 }];
 
-    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+    const res = await syncSubscriptionPrice('seller-1', {}, CREDS);
 
     expect(res.status).toBe('reset');
     // Not patched: measured 2026-08-24, `set-price` on a subscription in `initial` is refused.
@@ -364,7 +430,7 @@ describe('moving a paying seller to another plan', () => {
     rig.queries = [];
     rig.cancelThrows = true;
 
-    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+    const res = await syncSubscriptionPrice('seller-1', {}, CREDS);
 
     // Their payment page is still live and still charges the old plan. Saying the change succeeded
     // would put the divergence one door along instead of removing it.
@@ -372,17 +438,18 @@ describe('moving a paying seller to another plan', () => {
     expect(rig.queries.some((q) => q.sql.includes('UPDATE seller_subscriptions'))).toBe(false);
   });
 
-  it('calls nobody when the seller is not paying — the tier row IS the change then', async () => {
-    // No subscription at all: `startSubscription` reads `seller.tier` when one is created, so the
-    // choice reaches PayMe the first time the seller pays.
-    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+  it('calls nobody when the seller is not paying — the store rows ARE the change then', async () => {
+    // No subscription at all: `startSubscription` re-reads his shops when one is created, so the
+    // choice reaches PayMe the first time he pays.
+    const res = await syncSubscriptionPrice('seller-1', {}, CREDS);
     expect(res.status).toBe('not-paying');
     expect(rig.priced).toEqual([]);
   });
 
   it('does not re-send a price PayMe are already charging', async () => {
     await startPaying();
-    const res = await propagateTierToSubscription('seller-1', 'growth', CREDS);
+    // The shops did not move — same plan, same sum.
+    const res = await syncSubscriptionPrice('seller-1', {}, CREDS);
     expect(res.status).toBe('updated');
     // Same money. A request that cannot change anything can still fail, and a failure here would be
     // reported to a seller who changed nothing.

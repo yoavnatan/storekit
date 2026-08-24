@@ -83,6 +83,11 @@ export function notificationHref(n: Linkable): string {
     // telling him what was missing, and this is the same screen with nothing left on it.
     case 'store_live':
       return '/seller/dashboard';
+    // The PAYMENTS screen, not the overview — this is the one notification whose news is "your shop
+    // came off the site because the subscription ended", and the single thing that undoes it is on
+    // that tab. Sending him to the overview would make him hunt for it (`subscription-lapse.ts`).
+    case 'store_unpublished':
+      return '/seller/dashboard?panel=payouts';
     // The same screen, for the same reason: half the wait is over and the card there says what the
     // other half is.
     case 'merchant_approved':

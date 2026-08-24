@@ -167,6 +167,13 @@ export interface Store {
    *  the public gets a 404 and no platform surface lists it (lib/store-status.ts, `unpublished`).
    *  Written only by lib/store-publication.ts. */
   publishedAt?: string;
+  /** The plan THIS store is billed on — monthly fee + per-sale commission (lib/pricing.ts).
+   *  Absent = the default tier, the same convention `resolveTier` applies everywhere. The plan
+   *  moved from the account to the store on 2026-08-24 (owner: *"כל חנות צריכה לעלות כסף
+   *  בנפרד"*); what the seller's one monthly charge is made of, and who may write this, are in
+   *  lib/store-plan.ts. **Never in the seller store-update whitelist** — a field that decides what
+   *  someone is charged must not be settable by a form post. */
+  tier?: string;
   createdAt: string;
 }
 
@@ -214,7 +221,7 @@ const COLUMNS = `s.id, s.seller_id, s.slug, s.name, s.tagline, s.description, s.
     s.address_visible, s.hours, s.hours_visible, s.blocked, s.demo, s.promo_weight, s.bg_colors,
     s.feed_sync, s.feed_export_token, s.custom_domain_hostname, s.custom_domain_status,
     s.custom_domain_added_at, s.custom_domain_checked_at,
-    s.paused_at, s.close_pending_at, s.closed_at, s.published_at, s.created_at,
+    s.paused_at, s.close_pending_at, s.closed_at, s.published_at, s.tier, s.created_at,
     (SELECT array_agg(p.slug::text ORDER BY p.replaced_at, p.slug)
        FROM store_previous_slugs p WHERE p.store_id = s.id) AS previous_slugs`;
 
@@ -271,6 +278,7 @@ interface StoreRow {
   close_pending_at: Date | string | null;
   closed_at: Date | string | null;
   published_at: Date | string | null;
+  tier: string | null;
   created_at: Date | string | null;
   previous_slugs: string[] | null;
 }
@@ -341,6 +349,7 @@ function toStore(row: StoreRow): Store {
   if (closedAt) store.closedAt = closedAt;
   const publishedAt = iso(row.published_at);
   if (publishedAt) store.publishedAt = publishedAt;
+  if (row.tier) store.tier = row.tier;
   return store;
 }
 

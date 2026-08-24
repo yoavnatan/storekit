@@ -145,14 +145,18 @@ describe("the buyer's invoice, owed by the seller", () => {
 describe("the platform's invoice to the seller", () => {
   it('is the three streams together, and says which is which', async () => {
     const sellerId = await makeSeller('company');
+    // What the standing order charged — one shop on the entry plan. Passed in, because since
+    // 2026-08-24 a seller's monthly fee is the sum of his live shops' plans and the invoice quotes
+    // what was charged rather than re-deriving it (`lib/store-plan.ts`).
+    const subscription = toAgorot(monthlyFeeForTier('starter'));
     const doc = await planPlatformInvoice({
-      seller: { id: sellerId, tier: 'starter' },
+      seller: { id: sellerId },
       periodKey: '2026-08',
       commissionAgorot: 12_000,
+      subscriptionAgorot: subscription,
       adMarginAgorot: 500,
     });
 
-    const subscription = toAgorot(monthlyFeeForTier('starter'));
     expect(doc!.amountAgorot).toBe(12_000 + subscription + 500);
     expect(doc!.direction).toBe('platform_to_seller');
     expect(doc!.periodKey).toBe('2026-08');
@@ -167,26 +171,28 @@ describe("the platform's invoice to the seller", () => {
     // The asymmetry that justifies two functions: on this document the platform is the issuer, so
     // an exempt seller's status is irrelevant.
     const sellerId = await makeSeller('exempt');
-    const doc = await planPlatformInvoice({ seller: { id: sellerId, tier: 'starter' }, periodKey: '2026-08', commissionAgorot: 10_000 });
+    const doc = await planPlatformInvoice({ seller: { id: sellerId }, periodKey: '2026-08', commissionAgorot: 10_000 });
     expect(doc!.vatAgorot).toBe(vatWithinAgorot(doc!.amountAgorot));
     expect(doc!.vatAgorot).toBeGreaterThan(0);
   });
 
   it('plans ONE document per seller per month', async () => {
     const sellerId = await makeSeller('company');
-    const first = await planPlatformInvoice({ seller: { id: sellerId, tier: 'starter' }, periodKey: '2026-08', commissionAgorot: 10_000 });
-    const second = await planPlatformInvoice({ seller: { id: sellerId, tier: 'starter' }, periodKey: '2026-08', commissionAgorot: 10_000 });
+    const first = await planPlatformInvoice({ seller: { id: sellerId }, periodKey: '2026-08', commissionAgorot: 10_000 });
+    const second = await planPlatformInvoice({ seller: { id: sellerId }, periodKey: '2026-08', commissionAgorot: 10_000 });
     expect(first).not.toBeNull();
     expect(second).toBeNull();
   });
 
-  it('omits the subscription line when billing has not started', async () => {
+  it('omits the subscription line when nothing was being billed', async () => {
+    // A real state, not an edge case: a seller with no shop on the site has no standing order at
+    // all (`lib/store-plan.ts` — the price is the sum of his live shops, and an empty sum is not a
+    // ₪0 charge but no charge). His commission-only month still gets an invoice.
     const sellerId = await makeSeller('company');
     const doc = await planPlatformInvoice({
-      seller: { id: sellerId, tier: 'starter' },
+      seller: { id: sellerId },
       periodKey: '2026-09',
       commissionAgorot: 7_000,
-      includeSubscription: false,
     });
     expect(doc!.amountAgorot).toBe(7_000);
   });

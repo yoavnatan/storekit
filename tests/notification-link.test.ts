@@ -9,7 +9,8 @@ import type { NotificationType } from '../src/lib/notifications.js';
 // root — which is how 'feed_status' ended up sending sellers to the buyer dashboard.
 const SELLER_TYPES: NotificationType[] = [
   'new_message', 'new_order', 'order_update', 'return_update', 'low_stock', 'out_of_stock',
-  'admin_message', 'domain_status', 'feed_status', 'payout_status', 'store_live', 'merchant_approved',
+  'admin_message', 'domain_status', 'feed_status', 'payout_status', 'store_live', 'store_unpublished',
+  'merchant_approved',
 ];
 const BUYER_TYPES: NotificationType[] = ['seller_reply', 'new_message', 'order_update'];
 
@@ -59,6 +60,9 @@ describe('notificationHref', () => {
       // saw that screen telling him what was still missing, and this is the same screen with
       // nothing left on it.
       store_live: '/seller/dashboard',
+      // The one place the single thing that undoes it lives — not the overview, which would make
+      // him hunt for it.
+      store_unpublished: '/seller/dashboard?panel=payouts',
       merchant_approved: '/seller/dashboard',
     };
     for (const type of SELLER_TYPES) {
