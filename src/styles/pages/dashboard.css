@@ -2978,7 +2978,13 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
     inset-inline-start: 0;
     width: 15.5rem;
     z-index: 100;
-    box-shadow: var(--shadow-sheet);
+    /* **No shadow, and the reason is what a shadow DOES at this top edge** (owner, 2026-08-24:
+       *"לא רואה סיבה להילה או לצל שיש עכשיו מתחת ללוגו בהדר כשפותחים את הסיידבר"*). `--shadow-sheet`
+       is the drawer's, and the drawer covers the header — its top edge is off-screen and casts on
+       nothing. Here the rail starts AT the header's bottom line, on the same side as the wordmark,
+       so the blur spread upwards and put a halo under the logo. A shadow is still earned by
+       anything that floats; what this one has instead is the seam it already owns — the rail's own
+       `border-inline-end`, plus the scrim, which is a stronger separation than a shadow anyway. */
   }
   /* No slide. The rail is already on screen at 3.75rem — it widens in place, and a panel sliding
      in from off-screen would be a second rail arriving over the one the seller can see. The scrim
