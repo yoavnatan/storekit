@@ -5,7 +5,7 @@ import { ownedStore } from '../../../lib/store-ownership.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { parseTierId } from '../../../lib/seller-tier.js';
-import { setStoreTier, storeTier } from '../../../lib/store-plan.js';
+import { restoreStoreTier, setStoreTier, storeTier } from '../../../lib/store-plan.js';
 import { syncSubscriptionPrice } from '../../../lib/seller-subscription.js';
 
 /**
@@ -101,9 +101,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   const moved = await syncSubscriptionPrice(sellerId);
   if (moved.status === 'failed') {
-    // Back to where it was, including back to "never chosen" if that is what it was: leaving the
-    // default written would silently record a choice the seller did not make and did not pay for.
-    if (before) await setStoreTier(storeId, storeTier({ tier: before }));
+    // Back to where it was, **including back to "never chosen"** — which `setStoreTier` cannot
+    // express, and which is why `restoreStoreTier` exists. Written the obvious way (`if (before)`)
+    // a store that had never chosen kept the refused plan, and our row would say Enterprise while
+    // the card went on paying the old amount: the divergence this whole write order prevents,
+    // restored one branch along.
+    await restoreStoreTier(storeId, before);
     return json({ error: 'Subscription not updated', gateway: true }, 502);
   }
 

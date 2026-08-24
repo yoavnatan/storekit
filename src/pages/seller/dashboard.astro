@@ -1409,7 +1409,7 @@ const orderStatusColors: Record<string, string> = {
         </div>
         {/* Above the checklist, because it outranks it: a seller whose shop cannot go live is not
             helped by being told to upload a banner first. */}
-        <PublishStatusCard holds={publishHolds} d={d} />
+        <PublishStatusCard holds={publishHolds} storeIsLive={!!store && storeLifecycle(store) !== 'unpublished'} d={d} />
         <OnboardingChecklist steps={onboardingSteps} published={!!store && storeLifecycle(store) !== 'unpublished'} />
         {/* Each card jumps to its tab (data-goto-panel, initGotoPanelLinks() in ui.ts) — same pattern as AdminOverviewPanel.astro. favoritedBy has no dedicated tab of its own, so it stays a plain (non-button) stat. Box style matches the performance tab's KPI cards (perf-kpis below) for visual consistency between the two stat grids. */}
         <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

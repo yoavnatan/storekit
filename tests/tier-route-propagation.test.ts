@@ -27,8 +27,9 @@ const rig = vi.hoisted(() => ({
   /** Every plan actually written to the store, in order. A refusal must leave `['enterprise',
    *  'starter']` — written, then put back — and never a bare `['enterprise']`. */
   written: [] as string[],
-  /** Whether the store belongs to this seller. `false` is the "an id is not a permission" case. */
-  owned: true,
+  /** Whether the store belongs to this seller, and what plan it is on. `false` is the "an id is not
+   *  a permission" case; `'unchosen'` is a store whose plan column is still NULL. */
+  owned: true as boolean | 'unchosen',
   sync: { status: 'not-paying' } as
     | { status: 'not-paying' }
     | { status: 'updated'; priceAgorot: number; storeFees: unknown[]; nextCharge?: string }
@@ -41,7 +42,11 @@ vi.mock('../src/lib/seller-auth.js', () => ({
   getSellerById: async () => ({ id: 'seller-1' }),
 }));
 vi.mock('../src/lib/store-ownership.js', () => ({
-  ownedStore: async () => (rig.owned ? { id: 'store-1', sellerId: 'seller-1', tier: 'starter' } : null),
+  ownedStore: async () => {
+    if (!rig.owned) return null;
+    const base = { id: 'store-1', sellerId: 'seller-1' };
+    return rig.owned === 'unchosen' ? base : { ...base, tier: 'starter' };
+  },
 }));
 vi.mock('../src/lib/stores.js', () => ({ getStoresBySellerId: async () => [] }));
 vi.mock('../src/lib/store-plan.js', async () => {
@@ -49,6 +54,10 @@ vi.mock('../src/lib/store-plan.js', async () => {
   return {
     ...actual,
     setStoreTier: async (_id: string, tier: string) => { rig.written.push(tier); return tier; },
+    // The rollback is a SEPARATE function on purpose — `setStoreTier` cannot express "back to never
+    // chosen", and writing the restore through it was the bug. `undefined` is recorded as such so
+    // the assertion below can tell the two undos apart.
+    restoreStoreTier: async (_id: string, tier: string | undefined) => { rig.written.push(tier ?? '(none)'); },
   };
 });
 vi.mock('../src/lib/seller-subscription.js', () => ({
@@ -84,6 +93,19 @@ describe('a plan change that PayMe refused', () => {
     // the original defect, restored. It is written provisionally — the price has to be derived from
     // the row — and the last word must be the plan he had.
     expect(rig.written).toEqual(['enterprise', 'starter']);
+  });
+
+  /**
+   * **The store that had never chosen**, which is the case the obvious rollback silently skipped:
+   * `if (before)` is false for a NULL column, so the refused plan stayed written and our row said
+   * Enterprise while the card went on paying the old amount. The undo has to be able to say
+   * "nothing", which is why it is its own function.
+   */
+  it('rolls a never-chosen store back to never-chosen, not to a default', async () => {
+    rig.owned = 'unchosen';
+    rig.sync = { status: 'failed', error: 'subscription not active' };
+    await post('enterprise');
+    expect(rig.written).toEqual(['enterprise', '(none)']);
   });
 
   it('answers 502 rather than 400 — the request was fine, the gateway was not', async () => {

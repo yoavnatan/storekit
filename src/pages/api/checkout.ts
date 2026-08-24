@@ -35,7 +35,7 @@ import { getSellerById } from '../../lib/seller-auth.js';
 import { merchantAccountsFor } from '../../lib/seller-merchant.js';
 import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
 import { planSplit, authorizeCart, captureSlices, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
-import { commissionOnAgorot } from '../../lib/pricing.js';
+import { commissionOnAgorot, commissionPercentForTier, DEFAULT_TIER } from '../../lib/pricing.js';
 import { commissionPercentForStore } from '../../lib/store-plan.js';
 import { store as platform } from '../../config/store.config.js';
 import { serverEnv } from '../../lib/runtime-env.js';
@@ -776,7 +776,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           // The STORE's plan (`lib/store-plan.ts`), read off the row the item loop already had —
           // sent per sale rather than left to the merchant's stored default, so a plan change takes
           // effect on the next sale instead of needing a round trip to PayMe.
-          marketFeePercent: storeCommission.get(storeSlug) ?? 0,
+          // The DEFAULT plan's rate on a miss, never `0`. The two maps are filled in the same
+          // loop from the same `store.slug`, so a miss cannot happen — but the fallback still has
+          // to name a direction, and `?? 0` names "take no commission at all", silently, on a real
+          // sale. Falling back to the entry plan is the same convention `resolveTier` applies to
+          // every other unreadable plan value.
+          marketFeePercent: storeCommission.get(storeSlug) ?? commissionPercentForTier(DEFAULT_TIER),
           productName: `${sub.storeName} · ${checkoutRef}`,
         };
       }),

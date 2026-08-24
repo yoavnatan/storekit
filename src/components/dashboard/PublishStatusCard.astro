@@ -20,12 +20,22 @@ import type { getT } from '../../i18n/index.js';
 
 interface Props {
   holds: PublishHold[];
+  /**
+   * Is the shop the seller is LOOKING AT on the site?
+   *
+   * The card used to key off `holds` alone, and since 2026-08-24 that is no longer the whole
+   * question: the holds are the ACCOUNT's, and a paying seller who has just opened a second shop
+   * has none of them while that shop is still not up (`lib/store-plan.ts` — its fee is not on the
+   * standing order yet). Keyed off holds alone the overview would have said nothing at all about a
+   * shop that is not on the site, which is the most important thing true about it.
+   */
+  storeIsLive: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { holds, d } = Astro.props;
+const { holds, storeIsLive, d } = Astro.props;
 ---
 
-{holds.length > 0 && (
+{!storeIsLive && (
   <section class="card card--flat p-4 md:p-5 mb-4" id="publish-status" data-publish-holds={holds.join(',')}>
     <h3 class="text-[1.05rem] font-bold m-0">{d.pubTitle}</h3>
     <p class="muted m-0 mt-1 text-[0.86rem]">{d.pubBuildOn}</p>

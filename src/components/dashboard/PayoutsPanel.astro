@@ -34,6 +34,7 @@
  */
 import { BUSINESS_TYPES, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
 import GoLiveSteps from './GoLiveSteps.astro';
+import SubscriptionCard from './SubscriptionCard.astro';
 import type { PublishHold } from '../../lib/store-publication.js';
 import type { SellerTierId } from '../../lib/pricing.js';
 import type { StoreFeeLine } from '../../lib/store-plan.js';
@@ -86,6 +87,13 @@ const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, holds, 
  *  opened a second shop clears every account-level hold and still owes for this one — the case that
  *  would otherwise put a shop on the site for free (`lib/store-plan.ts`). */
 const storeInPlan = !!store && (subscription?.storeFees ?? []).some((f) => f.storeId === store.id);
+
+/** Whether the go-live screen has anything left to say about THIS shop — the same condition it
+ *  computes for itself, so the two can never both render or both vanish. A cancelled subscription
+ *  inside its paid period counts as done: the shop is up, and what the seller needs is the manage
+ *  card (which is where the renew button is), not a three-step wizard. */
+const goLiveDone = !!store && !!store.publishedAt && storeInPlan
+  && !holds.includes('clearing-details') && !holds.includes('clearing-approval');
 
 /** One sentence per state, chosen here rather than in the markup so the three are visibly a set and
  *  a fourth state cannot be added without picking its words. */
@@ -247,6 +255,25 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
   {/* ONE screen for the whole errand, directly under the bank block — the details form and the
       subscription action live inside it now, as the steps that own them, rather than as two more
       cards beside it (owner, 2026-08-24). It renders nothing once the shop is live. */}
+  {/* ── Once the shop is UP, the subscription is a thing to manage rather than a step ──
+      The go-live screen renders only while something is still holding the shop off the site, and
+      the subscription card lived inside it — so from the moment a seller succeeded, the card
+      vanished and with it the next-charge date, the breakdown and **the cancel button**. He was
+      paying us monthly with no screen that admitted it. Found in the review of 2026-08-24, in code
+      that had been written the same day: the two states are complementary and exactly one of them
+      renders, which is also why this is not a second copy of the same card on any screen. */}
+  {clearing && store && goLiveDone && (
+    <SubscriptionCard
+      storeId={store.id}
+      tier={store.tier as SellerTierId | undefined}
+      planName={planName}
+      subscription={subscription}
+      paying={subscriptionPaying}
+      storeInPlan={storeInPlan}
+      d={d}
+    />
+  )}
+
   {clearing && store && (
     <GoLiveSteps
       holds={holds}

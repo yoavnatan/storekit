@@ -26,7 +26,7 @@
  * Pure except for the two functions that name a database; the arithmetic is separated so
  * `tests/store-plan.test.ts` can drive it with no database at all.
  */
-import { firstRow, isUuid, rows } from './db.js';
+import { firstRow, isUuid, query, rows } from './db.js';
 import { monthlyFeeForTier, resolveTier, type SellerTierId } from './pricing.js';
 import { toAgorot } from './money.js';
 
@@ -106,4 +106,20 @@ export async function setStoreTier(storeId: string, tier: SellerTierId): Promise
   );
   if (!row) return null;
   return resolveTier(row.tier).id;
+}
+
+/**
+ * Put a store's plan back exactly as it was, **including back to never-chosen**.
+ *
+ * The undo half of `setStoreTier`, and it exists because `setStoreTier` cannot express the state a
+ * store starts in. `/api/seller/tier` writes the new plan provisionally — the price has to be
+ * derived from the row — and rolls it back if PayMe refuse. Rolling back with `setStoreTier` was
+ * impossible for a store that had never chosen: the column was NULL, there is no tier id for that,
+ * and the refused plan simply stayed written. Our row would then say Enterprise while the card went
+ * on paying the old amount — which is the exact divergence the write order exists to prevent, one
+ * branch along.
+ */
+export async function restoreStoreTier(storeId: string, tier: string | undefined): Promise<void> {
+  if (!isUuid(storeId)) return;
+  await query('UPDATE stores SET tier = $2 WHERE id = $1 AND deleted_at IS NULL', [storeId, tier ?? null]);
 }
