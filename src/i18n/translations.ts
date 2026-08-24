@@ -272,7 +272,10 @@ export const translations = {
       title: 'מסלולים ומחירים',
       metaDesc: 'דמי מנוי חודשיים ועמלה על כל מכירה. בונים חנות שלמה בלי כרטיס אשראי, ומשלמים כשרוצים שהיא תעלה לאוויר.',
       heading: 'מסלולים',
-      lede: 'מנוי חודשי ועמלה על כל מכירה, ללא דמי הקמה וללא התחייבות.',
+      // "ללא דמי הקמה" stood here until 2026-08-24 and came off with the ruling that PayMe's ₪99
+      // account-opening fee is the seller's (`lib/pricing.ts#SELLER_SETUP_FEE`). Promising no setup
+      // fee beside a flow that charges one is the VAT mistake in another costume.
+      lede: 'מנוי חודשי ועמלה על כל מכירה, ללא התחייבות.',
       // ── The three sentences that say this is not another shop builder ──
       // Owner, 2026-08-24: *"הדף הזה גם נראה כאילו זה מערכת לחנויות רגילה"*, and then *"הכל הרי
       // במקום אחד, גם הפרסום, המשלוחים, אפשרות לחשבוניות, סליקה, הכל כבר מחובר... זה לא חנות
@@ -306,6 +309,10 @@ export const translations = {
       // feature difference to make a table look fuller would be inventing a product.
       sameEverything: 'כל המסלולים כוללים את אותם דברים. ההבדל היחיד הוא היחס בין המנוי לעמלה.',
       vatNote: 'כל המחירים אינם כוללים מע״מ.',
+      // Named wherever paying is discussed, and never in the small print alone: it is the one
+      // charge a seller meets that is not on this table, and it is not ours — PayMe take it to open
+      // his clearing account (`lib/pricing.ts#SELLER_SETUP_FEE`).
+      setupFee: 'בנוסף, חברת הסליקה גובה דמי הקמה חד-פעמיים של {amount} ₪ בפתיחת חשבון הסליקה שלכם.',
       perMonth: 'לחודש',
       commissionLabel: 'עמלה על כל מכירה',
       // The calculator. One question, one number — a seller who has to answer a rubric to find out
@@ -1258,6 +1265,7 @@ export const translations = {
       // a bank form is the shape `/pricing` exists to avoid.
       subChangePlan: 'החלפת מסלול',
       subChangePlanNote: 'שינוי מסלול נכנס לתוקף מהחיוב החודשי הקרוב.',
+      subSetupFee: 'בפתיחת חשבון הסליקה נגבים דמי הקמה חד-פעמיים של {amount} ₪ על ידי חברת הסליקה.',
       subPerMonth: 'לחודש',
       subCommission: 'עמלה למכירה',
       subVat: 'המחירים אינם כוללים מע״מ',
@@ -2673,7 +2681,7 @@ export const translations = {
       title: 'Plans and pricing',
       metaDesc: 'A monthly subscription and a commission on each sale. Build the whole shop with no card, and pay when you want it live.',
       heading: 'Plans',
-      lede: 'A monthly subscription and a commission on each sale, with no setup fee and no commitment.',
+      lede: 'A monthly subscription and a commission on each sale, with no commitment.',
       pillar1Title: 'It is all connected already',
       pillar1Body: 'Payments, delivery, advertising and order management in one system. Nothing to connect and nothing to install.',
       pillar2Title: 'Exposure inside the marketplace',
@@ -2684,6 +2692,7 @@ export const translations = {
       pillar4Body: 'Every improvement reaches every shop the same day — no version upgrade, no plugin to buy.',
       sameEverything: 'Every plan includes the same things. The only difference is the ratio between the subscription and the commission.',
       vatNote: 'All prices exclude VAT.',
+      setupFee: 'In addition, the payment provider charges a one-off account-opening fee of ₪{amount} when your clearing account is opened.',
       perMonth: 'per month',
       commissionLabel: 'commission per sale',
       calcTitle: 'Which plan works out cheapest',
@@ -3363,6 +3372,7 @@ export const translations = {
       subPlanValue: '{name} — ₪{fee} {per}',
       subChangePlan: 'Change plan',
       subChangePlanNote: 'A plan change takes effect from your next monthly charge.',
+      subSetupFee: 'Opening your clearing account carries a one-off ₪{amount} fee, charged by the payment provider.',
       subPerMonth: 'per month',
       subCommission: 'Commission per sale',
       subVat: 'Prices exclude VAT',

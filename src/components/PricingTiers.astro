@@ -31,7 +31,7 @@
  * honest answer is "these plans are within twenty-odd shekels of each other" — which is what the
  * page says there, rather than dressing a 24₪ gap as a saving (owner: *"המחשבון מגוחך"*).
  */
-import { SELLER_TIERS } from '../lib/pricing.js';
+import { SELLER_TIERS, SELLER_SETUP_FEE } from '../lib/pricing.js';
 import type { getT } from '../i18n/index.js';
 import type { SellerTierId } from '../lib/pricing.js';
 
@@ -180,9 +180,11 @@ const summary = isClose
   })}
 </ul>
 
-{/* Two facts on one line under the prices, where the two sections they used to have would have
-    been: when we start charging, and that these are pre-VAT figures. */}
+{/* The three facts that belong under a price table and nowhere else on the page: when we start
+    charging, that these are pre-VAT figures, and the one charge a seller meets that is NOT in the
+    table — PayMe's account-opening fee, which is his and used to be absorbed by us. */}
 <p class="muted m-0 mt-3 text-[0.82rem]">{p.whenBody} {p.vatNote}</p>
+<p class="muted m-0 mt-1 text-[0.82rem]">{p.setupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
 
 {isLoggedIn && (
   <p class="!hidden m-0 mt-3 text-[0.88rem]" id="tier-saved-where">

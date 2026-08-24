@@ -73,6 +73,28 @@ export interface SellerTier {
  *  field can stay optional on the Seller record and nothing needs backfilling. */
 export const DEFAULT_TIER: SellerTierId = 'starter';
 
+/**
+ * What the SELLER pays PayMe once, to open his clearing account — ₪99, before VAT
+ * (`GO_LIVE_CHECKLIST.md` §3.1.0, appendix ב׳).
+ *
+ * ── It is his, and we stopped covering it (owner, 2026-08-24) ──
+ * A ruling on 2026-08-21 had the platform absorb it out of his first subscription payments, so he
+ * *"לא ירגיש"* it. The owner reversed that on the arithmetic: month one on Starter was ₪99 in
+ * against ₪65 terminal plus ₪99 setup, a ₪65 loss on a seller who has not sold anything yet, and
+ * *"אני לא מוכן שזה יתגלגל אליי"* — a supplier's fee is not ours to carry.
+ *
+ * **The ₪65/month terminal is NOT the same kind of number and stays ours.** PayMe bill it to the
+ * partner wallet, so it cannot be passed to a seller at all; it is priced into the subscription,
+ * which is why Starter leaves ₪34 before commission.
+ *
+ * ── Which is why the page no longer says "אין דמי הקמה" ──
+ * It said exactly that until today, and with this fee in the flow it would be the VAT mistake in a
+ * second costume: a seller who reads "no setup fee" and is then charged ₪99 has been surprised by
+ * us on the screen where trust is established. Every surface that mentions starting to pay names
+ * it instead — the plans page, the help centre and the subscription card all read this constant.
+ */
+export const SELLER_SETUP_FEE = 99;
+
 /** Ordered cheapest-first. Higher tier = higher fixed fee, lower commission.
  *
  *  The commission ladder is deliberately SHALLOW (2026-07-27). The monthly fees only span 99→199₪,

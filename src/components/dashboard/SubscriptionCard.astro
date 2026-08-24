@@ -23,7 +23,7 @@
  * in by closing the processor's tab, and it is the reason "continue to payment" exists at all: the
  * subscription really was created, so starting a second one would be a second thing billing him.
  */
-import { resolveTier, type SellerTierId } from '../../lib/pricing.js';
+import { resolveTier, SELLER_SETUP_FEE, type SellerTierId } from '../../lib/pricing.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -99,8 +99,11 @@ const created = !!subscription;
         {created ? d.subResume : d.subStart}
       </button>
       {/* Said BEFORE the click, not after it. A redirect nobody was expecting is where a payment
-          gets abandoned. */}
+          gets abandoned — and so is a fee nobody mentioned. The account-opening charge is the
+          payment provider's, it is the seller's to pay (owner, 2026-08-24), and this is the last
+          screen before he meets it. */}
       <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
+      <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
     </div>
   )}
 </section>
