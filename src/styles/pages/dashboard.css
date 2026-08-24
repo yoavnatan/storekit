@@ -2156,6 +2156,8 @@ html:has(#dash-main-card.dash-nav-side) {
      pinned title has to cancel it exactly (see the full-bleed rule below), and two values that must
      agree are one value. */
   --dash-panel-pad: 1.5rem;
+  /* The tab-hint band's own height — see the rule that reads it. */
+  --dash-hint-h: 2.45rem;
   /* What the sheet leaves at each side of the window, so the strip above it can be its width
      without measuring it. 2rem is the desktop card's own gutter; below 1180px the sheet is the
      container, whose padding is the same 1rem a side — and on a phone it is full-bleed, which is
@@ -2274,27 +2276,32 @@ html:has(#dash-main-card.dash-nav-side) {
 .dash-tab-hint { color: var(--color-muted); }
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) { padding-top: 0; }
 #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child {
-  /* **Cancels the panel's PADDING and stops there** — not its border, which is the difference
-     between a hat and a lid. The first version broke out past the 1px side border and took the
-     sheet's own top corners for itself, which left the corner squares showing the white behind
-     them: a band that reads as square-cornered with two white bites out of it, which is exactly
-     what the owner then described. Now the sheet keeps its top edge and the band fills the inside
-     of it, so the only rounded corner in play is the one that was always there. */
-  margin-inline: calc(-1 * var(--dash-panel-pad));
-  /* Zero on BOTH sides: a hat touches the thing it sits on. The 1rem underneath was the white strip
-     between the band and the title. */
+  /* **The band IS the sheet's top edge, and it does not scroll away** (owner, 2026-08-24: *"לא אני
+     לא מקבל את זה שלכותרת הנעוצה אין כובע, הכובע אמור להיות גם וגם"*).
+     Two earlier attempts failed on the same question — who owns the edge. Breaking out without
+     staying put gave the band the corners and then took them away on the first scroll; nesting it
+     inside the sheet's own border kept the edge but left the band looking inset. It is sticky now,
+     pinned at the same offset the title uses and one layer above it, so the hat is simply always
+     there: the title pins directly beneath it and never needs one of its own, and the side borders
+     run unbroken from the band down through the title into the content. */
+  position: sticky;
+  top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
+  z-index: 7;
+  /* Past the panel's padding AND its 1px side border, so the band is the sheet's full width and
+     carries those borders for its own height — the same three declarations `.dash-panel-head` uses
+     for the same reason. */
+  margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
   margin-block: 0;
+  border-top: var(--dash-sheet-edge, 0px) solid var(--color-border);
+  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-border);
   padding: 0.6rem var(--dash-panel-pad);
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--color-invite-olive) 14%, var(--color-surface)) 0%,
     color-mix(in srgb, var(--color-invite-olive) 6%, var(--color-surface)) 100%
   );
-  /* The INNER radius of the sheet's corner: outer minus the border it sits inside. At
-     `--dash-sheet-edge: 0px` the two are the same number, which is correct — with no border there
-     is no inside. */
-  border-start-start-radius: calc(var(--radius) - var(--dash-sheet-edge, 0px));
-  border-start-end-radius: calc(var(--radius) - var(--dash-sheet-edge, 0px));
+  border-start-start-radius: var(--radius);
+  border-start-end-radius: var(--radius);
 }
 /* The title under it is no longer an edge, so it gives back the top border and the two corners the
    rule above hands it. **Scoped by the PANEL and not by adjacency**, which is what the first
@@ -2306,6 +2313,12 @@ html:has(#dash-main-card.dash-nav-side) {
   border-top-width: 0;
   border-start-start-radius: 0;
   border-start-end-radius: 0;
+  /* Pinned BELOW the band rather than under it. `--dash-hint-h` is the band's own height as a
+     constant because that is what it is: one line of 0.82rem text at 1.5 and 0.6rem of padding,
+     on a sheet ~1120px wide where none of the seven hints comes close to wrapping. If one ever
+     does, this is the number to re-measure — and the failure is visible immediately, which is the
+     kind a constant is allowed to have. */
+  top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem) + var(--dash-hint-h));
 }
 
 /* **The title's top border is the DESKTOP's alone**, because that is the only width where the
@@ -2334,7 +2347,9 @@ html:has(#dash-main-card.dash-nav-side) {
 #dash-main-card.dash-nav-side .dash-panel-head::before,
 #dash-main-card.dash-nav-side .dash-panel-head::after,
 #dash-main-card.dash-nav-side .products-header::before,
-#dash-main-card.dash-nav-side .products-header::after {
+#dash-main-card.dash-nav-side .products-header::after,
+#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::before,
+#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::after {
   content: "";
   position: absolute;
   /* **Against the BORDER box, not the padding box** (owner, 2026-08-23: *"במצב של 0 גלילה יש קצת
@@ -2357,13 +2372,15 @@ html:has(#dash-main-card.dash-nav-side) {
    physical now and cannot disagree; a corner is a corner in any language. The centre is a
    percentage so it follows the box instead of repeating the radius. */
 #dash-main-card.dash-nav-side .dash-panel-head::before,
-#dash-main-card.dash-nav-side .products-header::before {
+#dash-main-card.dash-nav-side .products-header::before,
+#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::before {
   left: calc(-1 * var(--dash-sheet-edge, 0px));
   -webkit-mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
   mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
 }
 #dash-main-card.dash-nav-side .dash-panel-head::after,
-#dash-main-card.dash-nav-side .products-header::after {
+#dash-main-card.dash-nav-side .products-header::after,
+#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::after {
   right: calc(-1 * var(--dash-sheet-edge, 0px));
   -webkit-mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
   mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
@@ -2374,7 +2391,9 @@ html:has(#dash-main-card.dash-nav-side) {
   #dash-main-card.dash-nav-side .dash-panel-head::before,
   #dash-main-card.dash-nav-side .dash-panel-head::after,
   #dash-main-card.dash-nav-side .products-header::before,
-  #dash-main-card.dash-nav-side .products-header::after { display: none; }
+  #dash-main-card.dash-nav-side .products-header::after,
+  #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::before,
+  #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::after { display: none; }
 }
 /* …and the sheet gives them up, but only where a title actually took them. The four panels that
    pin nothing (Overview, Reports, Payouts, Settings) keep their own top edge, because there is
@@ -2398,9 +2417,9 @@ html:has(#dash-main-card.dash-nav-side) {
    onboarding checklist is incomplete (`TabHint.astro`), so the pinned-edge design comes back on its
    own the moment he finishes setting up. */
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) {
-  border-top-width: var(--dash-sheet-edge, 0px);
-  border-start-start-radius: var(--radius);
-  border-start-end-radius: var(--radius);
+  border-top-width: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
 }
 
 /* ── The grey between the header and that top edge, which also does not scroll ──
