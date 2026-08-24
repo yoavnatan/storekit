@@ -2274,31 +2274,38 @@ html:has(#dash-main-card.dash-nav-side) {
 .dash-tab-hint { color: var(--color-muted); }
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) { padding-top: 0; }
 #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child {
-  margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
-  margin-block: 0 1rem;
+  /* **Cancels the panel's PADDING and stops there** — not its border, which is the difference
+     between a hat and a lid. The first version broke out past the 1px side border and took the
+     sheet's own top corners for itself, which left the corner squares showing the white behind
+     them: a band that reads as square-cornered with two white bites out of it, which is exactly
+     what the owner then described. Now the sheet keeps its top edge and the band fills the inside
+     of it, so the only rounded corner in play is the one that was always there. */
+  margin-inline: calc(-1 * var(--dash-panel-pad));
+  /* Zero on BOTH sides: a hat touches the thing it sits on. The 1rem underneath was the white strip
+     between the band and the title. */
+  margin-block: 0;
   padding: 0.6rem var(--dash-panel-pad);
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--color-invite-olive) 14%, var(--color-surface)) 0%,
     color-mix(in srgb, var(--color-invite-olive) 6%, var(--color-surface)) 100%
   );
-  border-top: var(--dash-sheet-edge, 0px) solid var(--color-border);
-  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-border);
-  border-start-start-radius: var(--radius);
-  border-start-end-radius: var(--radius);
+  /* The INNER radius of the sheet's corner: outer minus the border it sits inside. At
+     `--dash-sheet-edge: 0px` the two are the same number, which is correct — with no border there
+     is no inside. */
+  border-start-start-radius: calc(var(--radius) - var(--dash-sheet-edge, 0px));
+  border-start-end-radius: calc(var(--radius) - var(--dash-sheet-edge, 0px));
 }
-/* The head under it is no longer an edge, so it gives the corners and the top border back — two
-   rounded bars stacked is the smudge the rule below already refuses for a different pair. */
-#dash-main-card.dash-nav-side .dash-tab-hint + .dash-panel-head,
-#dash-main-card.dash-nav-side .dash-tab-hint + .products-header {
+/* The title under it is no longer an edge, so it gives back the top border and the two corners the
+   rule above hands it. **Scoped by the PANEL and not by adjacency**, which is what the first
+   version got wrong: `.products-header` is nested one div deeper than the hint, so a `+` selector
+   never matched it and the header went on drawing its own rounded top under the band — the second
+   box, and the white between them, that the owner was pointing at. */
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .dash-panel-head,
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .products-header {
   border-top-width: 0;
   border-start-start-radius: 0;
   border-start-end-radius: 0;
-}
-/* Same doubling rule the title's own border follows: below 1180px the sheet is `#dash-main-card`
-   and keeps its top border, so a second one here would stack two 1px lines into a 2px smudge. */
-@media (max-width: 899.98px) {
-  #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child { border-top-width: 0; }
 }
 
 /* **The title's top border is the DESKTOP's alone**, because that is the only width where the
@@ -2377,6 +2384,23 @@ html:has(#dash-main-card.dash-nav-side) {
   border-top-width: 0;
   border-start-start-radius: 0;
   border-start-end-radius: 0;
+}
+/* **Unless a tab hint is sitting on top of it**, in which case the sheet keeps its own edge and the
+   band fills the inside of it (see `.dash-tab-hint:first-child` above). Last, because this and the
+   rule directly above are the same specificity and disagree on purpose — the pinned title takes the
+   edge when it is the first thing in the panel, and it is not, when a hint is.
+
+   ⚠️ **What this gives up, knowingly:** the pinned title carries the top edge precisely so that the
+   edge does not scroll away, and here it does — the band is ordinary flow and leaves with the
+   content, so a hint panel scrolled down has a pinned title with no line above it. That is the
+   trade the owner chose when he asked for the band to be a hat on the container rather than the
+   container's edge itself, and it costs nothing for long: the hint is shown only while a seller's
+   onboarding checklist is incomplete (`TabHint.astro`), so the pinned-edge design comes back on its
+   own the moment he finishes setting up. */
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) {
+  border-top-width: var(--dash-sheet-edge, 0px);
+  border-start-start-radius: var(--radius);
+  border-start-end-radius: var(--radius);
 }
 
 /* ── The grey between the header and that top edge, which also does not scroll ──
