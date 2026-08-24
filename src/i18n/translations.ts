@@ -287,7 +287,11 @@ export const translations = {
       pillar2Title: 'חשיפה בתוך המתחם',
       pillar2Body: 'קונים מגיעים לחנות שלכם מדף הבית, מהחיפוש, ומקנייה בחנות אחרת במתחם.',
       pillar3Title: 'כבר יש לכם חנות?',
-      pillar3Body: 'אפשר לחבר את המלאי הקיים בקובץ אחד, והוא מתעדכן כאן אוטומטית מדי שעה.',
+      // The answer to that question is an OFFER, not a migration (owner, 2026-08-24: *"לגבי ה'יש
+      // לכם כבר חנות?' התשובה צריכה להיות: צרו ערוץ חשיפה נוסף"*). A seller who already sells
+      // somewhere is not looking to move — he is looking for another place buyers find him, and the
+      // stock connection is what makes that cost him nothing to run.
+      pillar3Body: 'צרו ערוץ חשיפה נוסף בלי לנהל אותו פעמיים: המלאי הקיים מתחבר בקובץ אחד ומתעדכן כאן אוטומטית מדי שעה.',
       // The fourth claim, and the one the owner could not find words for (2026-08-24: *"זה שכל מוכר
       // נהנה בעצם מהפיתוח של כל המערכת... המערכת משתפרת וכל חנות נהנית מזה"*). What he is describing
       // is the difference between a platform and a product you bought a copy of, so the line says it
@@ -325,7 +329,7 @@ export const translations = {
       // seller from registering, and it is buried if it sits as a footnote under a price.
       whenBody: 'המנוי מתחיל להיגבות במכירה הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה.',
       includedTitle: 'מה כלול בכל מסלול',
-      included1: 'חנות משלכם עם כתובת משלכם, וקידום אורגני בגוגל',
+      included1: 'חנות עצמאית ומתקדמת עם כתובת משלכם, וקידום אורגני בגוגל',
       included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש, הקטגוריות וקונים של חנויות אחרות',
       included3: 'פרסום בסיסי בגוגל ובמטא, בלי לגעת בשום הגדרה',
       included4: 'משלוחים עם שליח, מדבקות ומעקב',
@@ -2638,7 +2642,7 @@ export const translations = {
       pillar2Title: 'Exposure inside the marketplace',
       pillar2Body: 'Buyers reach your shop from the home page, from search, and from a purchase in another shop here.',
       pillar3Title: 'Already have a shop?',
-      pillar3Body: 'Connect your existing stock with one file, and it updates here automatically every hour.',
+      pillar3Body: 'Add another channel without running it twice: your existing stock connects with one file and updates here automatically every hour.',
       pillar4Title: 'The platform keeps improving',
       pillar4Body: 'Every improvement reaches every shop the same day — no version upgrade, no plugin to buy.',
       sameEverything: 'Every plan includes the same things. The only difference is the ratio between the subscription and the commission.',
@@ -2655,7 +2659,7 @@ export const translations = {
       calcExample: 'For example, a turnover of {amount} a month:',
       whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up.',
       includedTitle: 'In every plan',
-      included1: 'Your own shop at your own address, and organic ranking on Google',
+      included1: 'An independent, fully-featured shop at your own address, and organic ranking on Google',
       included2: 'Exposure inside the marketplace — home, search and categories',
       included3: 'Baseline advertising on Google and Meta, with no setting to touch',
       included4: 'Courier delivery, labels and tracking',
