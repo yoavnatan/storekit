@@ -12,7 +12,6 @@ import TopProductsList from '../../components/dashboard/TopProductsList.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
 import PublishStatusCard from '../../components/dashboard/PublishStatusCard.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
-import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
 import ReportsPanel from '../../components/dashboard/ReportsPanel.astro';
@@ -50,7 +49,7 @@ import { productSeoPanelHtml, productSeoLabels, productSeoRowGaugeHtml } from '.
 // product on first paint (products.ts#buildDisplayRow renders the same thing for AJAX pages).
 import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
-import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
+import { buildOnboardingSteps } from '../../lib/seller-onboarding.js';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 import { ensureMerchantAccount, clearingStatusFor, merchantKycFor } from '../../lib/seller-merchant.js';
@@ -78,7 +77,6 @@ import {
 import { formatPrice, cdnSrc, cdnThumb, store as platformConfig } from '../../config/store.config.js';
 import { jsonForScript } from '../../lib/json-script.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
-import { storeMark, storeMarkGradient } from '../../lib/store-mark.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getWishlistCountsForStore, countFavoriteStores } from '../../lib/user-carts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
@@ -531,12 +529,12 @@ const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1
 //     mutating /api/product action also returns, so the badge stays live after an inline stock edit
 //     without a full reload; a deliberately hidden product is excluded so it never nags.
 //   · `productCounts` and `storeCategoryList` — the two counted inputs to the "first steps"
-//     checklist, which decides `showTabHints` and therefore renders on SEVEN tabs. The product one
-//     is a GROUP BY (`getProductCountsByStore`) rather than the catalogue it used to be counted
-//     from; the category one is the tree itself, because a store's categories are a handful of rows
-//     the seller types by hand and three panels want the list anyway — a COUNT beside it would be a
-//     second read to save nothing. Gating either would quietly drop the hints for a new seller on
-//     every tab but two.
+//     checklist. The product one is a GROUP BY (`getProductCountsByStore`) rather than the
+//     catalogue it used to be counted from; the category one is the tree itself, because a store's
+//     categories are a handful of rows the seller types by hand and three panels want the list
+//     anyway — a COUNT beside it would be a second read to save nothing. They stay ungated even
+//     though the checklist renders on the Overview tab only: a `Promise.all` member that is
+//     sometimes absent is how the two counts drift apart.
 //
 // `wishlistCounts` is scoped to this store, not the whole platform: it used to be every wishlist
 // count that existed, read in order to label the products of one shop.
@@ -591,9 +589,8 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 // "First steps" checklist (Overview tab) — derived live from the store's own data, never
 // stored (see lib/seller-onboarding.ts). Renders nothing once every step is satisfied.
 //
-// Its two counted inputs come from the ungated reads above rather than from the catalogue, because
-// what it decides (`showTabHints`) is rendered on tabs that do not load the catalogue at all. The
-// category one is `storeCategoryList` where that IS loaded and the checklist's own tab is one of
+// Its two counted inputs come from the ungated reads above rather than from the catalogue: the
+// category one is `storeCategoryList` where that IS loaded and this checklist's own tab is one of
 // the three that load it, so no second read exists for it.
 const onboardingSteps = store
   ? buildOnboardingSteps({
@@ -608,12 +605,14 @@ const onboardingSteps = store
       address: store.address ?? '',
     })
   : [];
-// The per-tab "what this tab does" explainers are for a seller meeting this dashboard for the
-// FIRST time, so they need both: an unfinished store AND no second store. Opening another store
-// is itself proof the seller already knows the tabs — the checklist still shows there (the new
-// store really is empty), but re-explaining the UI would be nagging. Nothing stored either way.
-const showTabHints =
-  allStores.length === 1 && onboardingSteps.length > 0 && !onboardingProgress(onboardingSteps).complete;
+// The per-tab "what this tab does" explainers are GONE (owner, 2026-08-24: *"בכלל צריך את כל
+// ההסברים האלו? נראה לי מיותר! יש כבר תיאור של מה שהן עושות (בכותרת משנה)… זה צריך להיות רק במקום
+// שאין בו תיאור ברור"*). They were a floating line inside `.dash-panel` and three sessions failed
+// to place it, which was the tell: a panel that needs a sentence needs it in its own HEAD, under
+// the title, the way Performance and Advertising already had one. So the two panels that really
+// said something the screen does not — Overview (every stat card is a jump) and Orders (this is
+// where shipping status and tracking are set) — carry a subtitle now, permanently and for every
+// seller rather than only for a new one; the other five said what their heading already said.
 // Products tab pagination — mirrors the admin dashboard's server-paginated
 // list tabs (src/lib/pagination.ts) so /api/seller/products (AJAX page/sort/
 // filter/search) and this initial SSR render never drift. `products` above
@@ -1395,12 +1394,16 @@ const orderStatusColors: Record<string, string> = {
             here. */}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2>{d.tabOverview}</h2>
+          {/* The one thing this screen does not say for itself: every stat below is a BUTTON that
+              opens the tab that handles it. Under the title, in the head, like Performance's and
+              Advertising's — which is where the old floating `TabHint` line should have been all
+              along, and why that component is gone. */}
+          <p class="muted text-[0.82rem] m-0 mt-1">{d.ovSubtitle}</p>
         </div>
         {/* Above the checklist, because it outranks it: a seller whose shop cannot go live is not
             helped by being told to upload a banner first. */}
         <PublishStatusCard holds={publishHolds} d={d} />
         <OnboardingChecklist steps={onboardingSteps} published={!!store && storeLifecycle(store) !== 'unpublished'} />
-        {showTabHints && <TabHint text={d.tabHintOverview} />}
         {/* Each card jumps to its tab (data-goto-panel, initGotoPanelLinks() in ui.ts) — same pattern as AdminOverviewPanel.astro. favoritedBy has no dedicated tab of its own, so it stays a plain (non-button) stat. Box style matches the performance tab's KPI cards (perf-kpis below) for visual consistency between the two stat grids. */}
         <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Orders group first (total → new → not-yet-shipped): the total, then its
@@ -1450,7 +1453,6 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Products ── -->
       <SellerPanelShell panel="products" active={shows('products')} title={d.productsTitle}>
-        {showTabHints && <TabHint text={d.tabHintProducts} />}
 
         {/* The unattended pull has stopped working. A bell notification is read once and dismissed
             while the sync stays broken for days, so the state is also stated here, on the tab whose
@@ -2217,9 +2219,16 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Orders ── -->
       <SellerPanelShell panel="orders" active={shows('orders')} title={d.tabOrders}>
-        {showTabHints && <TabHint text={d.tabHintOrders} />}
         <div class="dash-panel-head flex flex-col items-start mb-4 gap-[0.6rem] py-[0.6rem] border-b [border-color:var(--color-border)]">
-          <h2 class="m-0">{d.ordersTitle}</h2>
+          <div>
+            <h2 class="m-0">{d.ordersTitle}</h2>
+            {/* Owner, 2026-08-24, correcting the line this replaces: *"זה לא נכון כי לא כאן
+                מתכתבים עם הקונה, זה פשוט ניהול ומעקב אחר הזמנות"*. A buyer conversation is a
+                thread in the Messages tab; what happens HERE is the shipping status and the
+                tracking number, which is the part a heading reading "הזמנות" does not say.
+                The column gap above is what spaces this from the toolbar, so no margin here. */}
+            <p class="muted text-[0.82rem] m-0 mt-1">{d.ordersSubtitle}</p>
+          </div>
           {/* Orders is cards-only at every screen size (no table/header to fall
               back to), so this toolbar is always visible — unlike
               .table-toolbar (products/messages), it's not display:none above
@@ -2518,7 +2527,6 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Performance ── -->
       <SellerPanelShell panel="performance" active={shows('performance')} title={d.tabPerformance}>
-        {showTabHints && <TabHint text={d.tabHintPerformance} />}
         <div class="dash-panel-head mb-5 py-[0.6rem] border-b [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 class="m-0 text-base font-semibold">{d.perfTitle}</h2>
@@ -2663,7 +2671,6 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Advertising ── -->
       <SellerPanelShell panel="advertising" active={shows('advertising')} title={d.tabAdvertising}>
-        {showTabHints && <TabHint text={d.tabHintAdvertising} />}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
           <p class="muted text-[0.82rem] m-0 mt-1">{d.adSubtitle}</p>
@@ -2816,7 +2823,6 @@ const orderStatusColors: Record<string, string> = {
       <!-- ── Panel: Messages ── -->
       <!-- msg-cq: the table below collapses to cards by THIS element's width, not the viewport's (see utils.css) -->
       <SellerPanelShell panel="messages" active={shows('messages')} title={t.dashboard.tabMessages} class="msg-cq">
-        {showTabHints && <TabHint text={d.tabHintMessages} />}
         {/* Sticky header carrying the search + sort/filter, matching Orders
             (CURRENT_TASK 2 — Messages previously had neither a sticky head nor
             a one-row toolbar on mobile). */}
@@ -2985,7 +2991,6 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Settings ── -->
       <SellerPanelShell panel="settings" active={shows('settings')} title={d.tabSettings}>
-        {showTabHints && <TabHint text={d.tabHintSettings} />}
         {/* Head stays INSIDE the form on purpose: its sticky scope is the form, so the
             "save changes" bar rides only over the fields it actually saves and releases
             at the form's end — the categories tree + custom-domain below save live per
@@ -3009,16 +3014,27 @@ const orderStatusColors: Record<string, string> = {
           <div class="field">
             <span>{d.storeBanner}</span>
             <p class="muted" style="margin:0.15rem 0 0.6rem;font-size:0.8rem">{d.storeBannerHint}</p>
-            <div
+            {/* **The frame IS the control** (owner, 2026-08-24: *"צריך שאפשר יהיה ללחוץ ממש על
+                הקונטיינר של הבאנר או של התמונת פרופיל כדי להוסיף תמונה"*). An empty box beside a
+                button that fills it is two things to understand where there is one; every other
+                uploader a seller has met is the box itself.
+                A real `<button>`, not a div with a click handler: it is in the Tab order, answers
+                Enter and Space, and takes the site's own focus ring for free. `type="button"` is
+                load-bearing — this sits inside `#settings-form`, where a bare button submits.
+                `p-0` and `block` because the reset gives a button neither. The click is wired in
+                store-image.ts beside the upload button's, so the two cannot drift. */}
+            <button
+              type="button"
               id="banner-frame"
-              class="dash-img-skel w-full max-w-[420px] overflow-hidden rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+              aria-label={store.bannerImage ? d.storeImageChange : d.uploadImage}
+              class="dash-img-skel block w-full max-w-[420px] p-0 overflow-hidden rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] cursor-pointer"
               style="aspect-ratio:3/1"
               data-skeleton={store.bannerImage ? '' : undefined}
             >
               {store.bannerImage && (
                 <img src={cdnSrc(store.bannerImage, 900)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
               )}
-            </div>
+            </button>
             <div class="flex gap-2" style="margin-top:1.1rem">
               <button type="button" class="btn btn--sm btn--ghost" id="banner-upload-btn">{store.bannerImage ? d.storeImageChange : d.uploadImage}</button>
               <button type="button" class="btn btn--sm btn--ghost" id="banner-adjust-btn" hidden={!store.bannerImage}><ImageActionIcon name="adjust" />{d.adjustImage}</button>
@@ -3032,26 +3048,31 @@ const orderStatusColors: Record<string, string> = {
           <div class="field">
             <span>{d.storeProfileImage}</span>
             <p class="muted" style="margin:0.15rem 0 0.6rem;font-size:0.8rem">{d.storeProfileImageHint}</p>
-            <!-- The store's generated mark sits UNDER the frame as a background, not as a
-                 child: the upload widget owns this element's innerHTML (store-image.ts), so
-                 the seller sees exactly the colour buyers and ad platforms get while the
-                 slot is empty — including right after "remove image". -->
+            <!-- **The empty slot is EMPTY** (owner, 2026-08-24: *"אם עדיין אין תמונת פרופיל,
+                 שהקונטיינר יהיה ריק ולא יכיל את הצבע ביניים שניתן לחנות באופן דיפולטיבי"*). It used
+                 to carry the store's generated mark as a background, on the argument that the
+                 seller should see what buyers get while the slot is empty. He does — on his own
+                 store page, which is one click away. Here it made a full box read as "there is
+                 already an image", and the frame is now the upload target itself, where a filled
+                 box is the wrong invitation. `--color-surface`, like every other image container
+                 on this site (memory `project_transparent_image_bg`). -->
             <!-- Round and cover-cropped, because that is exactly what StoreAvatar
                  renders on every card and on the storefront. A preview that
                  disagrees with the site is worse than no preview and it fails
                  silently — the seller crops, saves, and finds something else on
                  their own store page. Briefly a rounded-square plate on
                  2026-08-05, reverted with the render it was mirroring. -->
-            <div
+            <button
+              type="button"
               id="avatar-frame"
-              class="dash-img-skel h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)]"
-              style={`background:${storeMarkGradient(storeMark(store.slug, store.name))}`}
+              aria-label={store.profileImage ? d.storeImageChange : d.uploadImage}
+              class="dash-img-skel block h-20 w-20 p-0 overflow-hidden rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] cursor-pointer"
               data-skeleton={store.profileImage ? '' : undefined}
             >
               {store.profileImage && (
                 <img src={cdnSrc(store.profileImage, 200)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
               )}
-            </div>
+            </button>
             {/* Wraps, unlike the banner's row above it: this one carries four buttons since
                 "remove background" was added, and four ghost buttons do not fit a 375px column. */}
             <div class="flex flex-wrap gap-2" style="margin-top:1.1rem">

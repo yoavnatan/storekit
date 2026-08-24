@@ -859,7 +859,11 @@ const jsonLd = {
             {t.home.startSellingDesc}
           </p>
           <ul class="flex flex-wrap justify-center gap-x-5 gap-y-2 text-[0.85rem] font-medium [color:var(--color-text)]" role="list">
-            {[t.home.builtInAds, t.home.builtInSeo, t.home.builtInShipping].map((feature) => (
+            {/* Payments last and not first, though it is the one that gates selling: this row is
+                read left of the button as a list of what comes WITH the shop, and the item a seller
+                is looking for is the one worth landing on last. `flex-wrap`, so a fourth chip
+                simply takes the next line at 375px rather than squeezing the other three. */}
+            {[t.home.builtInAds, t.home.builtInSeo, t.home.builtInShipping, t.home.builtInPayments].map((feature) => (
               <li class="flex items-center gap-1.5">
                 <svg class="[color:var(--color-accent)]" width="13" height="13" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>

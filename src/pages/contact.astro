@@ -38,7 +38,12 @@ const dir = lang === 'he' ? 'rtl' : 'ltr';
 //   or hanging a query string off one that every crawler follows.
 // Both are request-supplied values this page RENDERS, so both go through the shared validators
 // (Hard rules → Security review gate); a referrer from another origin degrades to nothing.
-const reportKind = Astro.url.searchParams.get('report') ?? 'fault';
+// **The default is a QUESTION, not a fault** (owner, 2026-08-24: *"מתוך מרכז העזרה מגיעים לצור
+// קשר ואז פתוח שם טופס של 'דווח על תקלה', למה?"* — and there was no answer). The help centre's
+// "כתיבה אלינו" and the footer's "צור קשר" are general doors; landing on them with "תקלה באתר"
+// already chosen tells the visitor what they came to say. A fault report still arrives here
+// preselected, but only from a link that ASKS for it (`?report=fault`, the dashboard rail's).
+const reportKind = Astro.url.searchParams.get('report') ?? 'question';
 /**
  * "פנייה בנוגע להזמנה" arriving from a mailed link (`order-token.ts#orderHelpUrl`).
  *

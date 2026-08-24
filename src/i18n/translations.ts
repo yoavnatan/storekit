@@ -103,7 +103,12 @@ export const translations = {
       // "זירת מסחר", a different word doing a legal job, and "marketplace" is
       // its correct twin.
       startSelling: 'מתחם חנויות דיגיטלי',
-      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה. ממשק פרסום, SEO ומשלוחים מובנים — הכל במקום אחד.',
+      // **It no longer lists what the chips under it list** (owner, 2026-08-24: *"גם בעמוד הראשי
+      // חסר לי שם ב-CTA למטה — להגיד שהסליקה גם מובנית… ללא תוספים חיצוניים"*). Adding a fourth
+      // item would have made this sentence the list a second time, one line above the list; so the
+      // enumeration is the chips' job and this line says the thing none of them can say on its own
+      // — that there is nothing else to go and connect. Same claim `pricing.pillar1Body` makes.
+      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה — הכל במקום אחד, ללא תוספים חיצוניים.',
       // "ממשק פרסום מובנה", never "פרסום מובנה" (owner, 2026-08-14). What is
       // built in is the SYSTEM that runs the campaigns — the ad SPEND is billed
       // separately, per actual spend, and is never inside the monthly fee (see
@@ -115,6 +120,12 @@ export const translations = {
       builtInAds: 'ממשק פרסום מובנה',
       builtInSeo: 'SEO מובנה',
       builtInShipping: 'משלוחים מובנים',
+      // The one thing a seller cannot open a shop without, and the only item on this list that was
+      // missing from it. "מובנית" is the same claim the other three make and no more: the platform
+      // carries the integration, the checkout and the split — the processor's own clearing fee is
+      // still the processor's (lib/pricing.ts, memory `project_never_quote_a_monthly_total`), the
+      // way ad SPEND sits outside `builtInAds` above.
+      builtInPayments: 'סליקה מובנית',
     },
     // Placeholder store cards (StorePlaceholderCard.astro).
     //
@@ -1457,13 +1468,9 @@ export const translations = {
       bulkDiscountDone: 'המבצע הוחל',
       bulkDiscountCleared: 'ההנחה הוסרה',
       bulkDiscountError: 'לא הצלחנו להחיל את המבצע',
-      tabHintOverview: 'מבט מהיר על מה שקורה בחנות עכשיו. כל כרטיס לחיץ ופותח את לשונית הטיפול בו.',
-      tabHintProducts: 'הקטלוג שלך — הוספה, עריכה, מחירים, מלאי ותמונות. ניתן גם להעלות הרבה מוצרים יחד מקובץ.',
-      tabHintOrders: 'כל הזמנה שנכנסה. כאן מסמנים "נשלח", מזינים מספר מעקב ומתכתבים עם הקונה.',
-      tabHintPerformance: 'כמה נכנסו לחנות, כמה קנו ומה הכי נמכר — בטווח תאריכים נבחר.',
-      tabHintAdvertising: 'המוצרים שלך כבר מפורסמים על חשבון הפלטפורמה. כאן ניתן להוסיף תקציב לקידום ממוקד ולראות מה הוא החזיר.',
-      tabHintMessages: 'הודעות מקונים והודעות מערכת מהפלטפורמה.',
-      tabHintSettings: 'שם החנות, כתובת האתר, תמונות, קטגוריות, שעות פתיחה ואיסוף עצמי.',
+      // The subtitle under the Overview head. Replaced the floating `TabHint` line: the one fact
+      // the screen does not state is that every stat below is a button.
+      ovSubtitle: 'מבט מהיר על מה שקורה בחנות עכשיו. כל כרטיס לחיץ ופותח את הלשונית שמטפלת בו.',
       onbTitle: 'שלבים ראשונים',
       onbSubtitle: 'מה שיביא את החנות למצב פעיל ומוכר. ניתן לבצע בכל סדר, והרשימה מתעדכנת לבד.',
       onbStepProduct: 'להוסיף מוצר ראשון',
@@ -1480,15 +1487,17 @@ export const translations = {
       onbStepAddressHint: 'נדרש כדי להציע איסוף עצמי מהחנות.',
       onbGo: 'לביצוע',
       onbRequired: 'חובה',
-      // Two sentences for two different stores, because one of them stopped being true (owner,
-      // 2026-08-24). This one is for a shop that IS live and simply has nothing visible in it: its
-      // direct link really does work, which is what `store-readiness.ts` deliberately preserves.
-      onbNotLive: 'החנות עדיין לא מופיעה בעמוד הבית, בחיפוש ובגוגל — כי אין בה מוצר אחד גלוי לקונים. הקישור הישיר עובד, אז אפשר להציץ ולשתף, אבל אף אחד לא ימצא אותה לבד עד שיהיה מוצר.',
-      // And this one is for a shop that has not gone live at all, where the sentence above was
-      // simply false: an unpublished store answers 404 to everyone but its owner
-      // (`store-status.ts`), so there is nothing to share yet. The card above this one already
-      // says what is holding it back, so this says only the part that is the checklist's own.
-      onbNotLiveUnpublished: 'בלי מוצר אחד גלוי לקונים החנות לא תופיע בעמוד הבית, בחיפוש ובגוגל — גם אחרי שתעלה לאוויר.',
+      // **One fact, and nothing else** (owner, 2026-08-24: *"לא מדויק, ולא ברור… מה זה יתן שהוא
+      // ישתף או יציץ?"*). The sentence used to end by inviting the seller to preview and share the
+      // shop — an empty shop, with nothing in it to look at — and it also read as the whole story
+      // of why the store is not on the site, which it never was: going live is held by the
+      // subscription and by clearing approval (`store-publication.ts`), and that is `PublishStatusCard`'s
+      // sentence, one card above this one. So this says only the part that is the checklist's own.
+      onbNotLive: 'כל עוד אין בחנות מוצר אחד גלוי לקונים, היא לא תופיע בעמוד הבית, בחיפוש ובגוגל.',
+      // The same fact for a shop that has not gone live at all, where the sentence above would read
+      // as the only thing standing in the way. An unpublished store answers 404 to everyone but its
+      // owner (`store-status.ts`); the card above says what is holding THAT back.
+      onbNotLiveUnpublished: 'כל עוד אין בחנות מוצר אחד גלוי לקונים, היא לא תופיע בעמוד הבית, בחיפוש ובגוגל — גם אחרי שהחנות תעלה לאוויר.',
       storeLimitReached: 'הגעת למקסימום החנויות לחשבון (5). כל החנויות שלך מנוהלות תחת אותו עסק רשום.',
       onbStepsDone: 'הושלמו',
       addStore: 'פתיחת חנות נוספת',
@@ -1598,7 +1607,9 @@ export const translations = {
       // window can raise ("why is this zero?") at the place it gets asked, instead of in a document.
       perfRetentionNote: 'מבקרים ייחודיים נשמרים {days} יום אחורה. בטווח ישן יותר הצפיות מלאות, הייחודיים 0, ושיעור ההמרה מחושב לפי צפיות במקום לפי אנשים — כלומר נמוך יותר. מספרי הצפיות עצמם נשמרים לתמיד.',
       adTitle: 'פרסום ושיווק',
-      adSubtitle: 'שליטה בתקציב הפרסום שלך ומעקב אחר יעילותו',
+      // His wording, verbatim (2026-08-24) — it says what the seller GETS for free before it says
+      // what he can buy, which the old "control your budget" line never did.
+      adSubtitle: 'המוצרים שלך מפורסמים על חשבון הפלטפורמה. כאן ניתן להקים קמפיין ממוקד ולעקוב אחר ביצועיו.',
       adBaselineTitle: 'קידום בסיס',
       adBaselineActive: 'פעיל',
       adBaselineLead: 'המוצרים שלך מקודמים כחלק מהקמפיין הכללי של הפלטפורמה ב-Google וב-Meta, והתשתית מותאמת להגברת הסיכוי להופעת האתר והמוצר גם במנועי ה-AI הפופולריים (ChatGPT, Perplexity, Gemini). הקידום הבסיסי כלול בדמי המנוי ואינו מבטיח עדיפות או הופעה למוצר או לחנות מסוימים.',
@@ -1732,6 +1743,9 @@ export const translations = {
       adConfirmPauseOk: 'השהה',
       adPausing: 'משהה…',
       ordersTitle: 'הזמנות',
+      // Owner, 2026-08-24 — the old line claimed the seller messages the buyer here, and he does
+      // not: that is a thread in the Messages tab. What is here is the status and the tracking.
+      ordersSubtitle: 'ניהול ומעקב אחר ההזמנות — סימון "נשלח" והזנת מספר מעקב.',
       noOrders: 'עדיין לא נכנסו הזמנות.',
       // Shown when orders exist but none match the toolbar's search/filter — distinct from
       // noOrders above, which means the store has never had one.
@@ -2502,9 +2516,13 @@ export const translations = {
       otherStores: 'מחנויות אחרות',
     },
     report: {
-      title: 'דיווח על תקלה או תוכן',
+      // **Not "דיווח על תקלה"** (owner, 2026-08-24). The form takes five kinds and a fault is one
+      // of them; naming the section after that one is what made an ordinary question from the help
+      // centre look like it had landed on a bug tracker. The kind picker is the first field, so the
+      // heading does not have to name a kind at all.
+      title: 'שליחת פנייה בטופס',
       // Says what happens to it, because the alternative a visitor assumes is "nothing".
-      lede: 'הדיווח מגיע ישירות לצוות הפלטפורמה. אין צורך בחשבון.',
+      lede: 'הפנייה מגיעה ישירות לצוות הפלטפורמה. אין צורך בחשבון.',
       kind: 'סוג הפנייה',
       kindFault: 'תקלה באתר — משהו לא עובד',
       kindContent: 'תוכן פוגעני או לא ראוי',
@@ -2514,15 +2532,21 @@ export const translations = {
       kindOrder: 'פנייה בנוגע להזמנה',
       kindOther: 'אחר',
       message: 'מה קרה?',
-      messagePlaceholder: 'תארו מה ראיתם ומה ציפיתם שיקרה. אם זו תקלה — מה עשיתם רגע לפני.',
+      // **"מה עשיתם רגע לפני" is gone** (owner, 2026-08-24: *"לא ברור, נשמע לא טוב"*). It was asking
+      // for reproduction steps in words that do not say so. Two concrete things instead — the page
+      // and the button — which is the same information a visitor can actually answer.
+      messagePlaceholder: 'תארו מה קרה ומה ציפיתם שיקרה. אם זו תקלה — גם באיזה עמוד ומה לחצתם.',
+      // The live character counter under the message box, capped at MAX_REPORT_LEN. `{n}` is what
+      // is written and `{max}` the ceiling; both are digits, so the line is rendered LTR.
+      messageCount: '{n}/{max} תווים',
       email: 'אימייל לחזרה (לא חובה)',
       // The honest version: without an address there is no way back to them, and a promise to
       // "get back to you" on a form that collects nothing is the thing not to write.
       emailHint: 'בלי כתובת לא נוכל לחזור אליכם, רק לטפל בדיווח.',
       pageContext: 'מצורף לדיווח: העמוד שממנו נשלח',
-      submit: 'שליחת דיווח',
+      submit: 'שליחת הפנייה',
       sending: 'שולח…',
-      sent: 'הדיווח נשלח — תודה',
+      sent: 'הפנייה נשלחה — תודה',
       sentBody: 'קיבלנו את הפנייה. אם השארתם אימייל, נחזור אליכם.',
       // A FAULT is a report about the software, not the opening of a conversation — so it does not
       // promise an answer, and for a signed-in seller it deliberately opens no thread in his
@@ -2635,12 +2659,13 @@ export const translations = {
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
       startSelling: 'A home for independent stores',
-      startSellingDesc: 'A store of your own, alongside every other store on the platform. A built-in ads manager, SEO and shipping — all in one place.',
+      startSellingDesc: 'A store of your own, alongside every other store on the platform — all in one place, with no third-party add-ons.',
       // "ads manager", never bare "ads" — see the Hebrew twin above: the manager
       // is included, the ad spend is billed separately.
       builtInAds: 'Built-in ads manager',
       builtInSeo: 'Built-in SEO',
       builtInShipping: 'Built-in shipping',
+      builtInPayments: 'Built-in payments',
     },
     launch: {
       inviteLabels: [
@@ -3539,13 +3564,7 @@ export const translations = {
       bulkDiscountDone: 'Discount applied',
       bulkDiscountCleared: 'Discount removed',
       bulkDiscountError: "Couldn't apply the discount",
-      tabHintOverview: 'A quick read on what your store is doing right now. Every card is clickable and opens the tab that handles it.',
-      tabHintProducts: 'Your catalog — add, edit, price, stock and photos. You can also upload many products at once from a file.',
-      tabHintOrders: 'Every order that came in. Mark "shipped", enter a tracking number and message the buyer here.',
-      tabHintPerformance: 'How many visited, how many bought and what sold best — over a selected date range.',
-      tabHintAdvertising: 'Your products are already advertised on the platform\'s budget. Here you can add budget for a targeted boost and see what it returned.',
-      tabHintMessages: 'Buyer messages and system messages from the platform.',
-      tabHintSettings: 'Store name, address, images, categories, opening hours and self-pickup.',
+      ovSubtitle: 'A quick read on what your store is doing right now. Every card is a button that opens the tab handling it.',
       onbTitle: 'First steps',
       onbSubtitle: 'What gets your store live and sale-ready. Do them in any order — the list updates itself.',
       onbStepProduct: 'Add your first product',
@@ -3562,8 +3581,8 @@ export const translations = {
       onbStepAddressHint: 'Required in order to offer self-pickup from the store.',
       onbGo: 'Go',
       onbRequired: 'required',
-      onbNotLive: 'Your store does not appear on the homepage, in search or on Google yet — it has no product a shopper can see. The direct link works, so you can preview and share it, but nobody will find it on their own until there is a product.',
-      onbNotLiveUnpublished: 'With no product a shopper can see, the store will not appear on the homepage, in search or on Google — not even once it is live.',
+      onbNotLive: 'While the store has no product a shopper can see, it will not appear on the homepage, in search or on Google.',
+      onbNotLiveUnpublished: 'While the store has no product a shopper can see, it will not appear on the homepage, in search or on Google — not even once it is live.',
       storeLimitReached: 'You have reached the maximum number of stores per account (5). All your stores are managed under the same registered business.',
       onbStepsDone: 'done',
       addStore: 'Open another store',
@@ -3662,7 +3681,7 @@ export const translations = {
       perfIncomeTotal: 'Total income',
       perfRetentionNote: 'Unique visitors are kept for {days} days. An older range shows full view counts, 0 unique, and a conversion rate computed over views instead of people — so it reads lower. The view counts themselves are kept forever.',
       adTitle: 'Advertising & marketing',
-      adSubtitle: 'Control your ad budget and track its impact',
+      adSubtitle: 'Your products are advertised on the platform\'s budget. Here you can run a targeted campaign and track how it performs.',
       adBaselineTitle: 'Baseline promotion',
       adBaselineActive: 'Active',
       adBaselineLead: 'Your products are promoted as part of the platform\'s general campaign on Google and Meta, and the infrastructure is tuned to increase the chances of your site and products also appearing in the popular AI engines (ChatGPT, Perplexity, Gemini). This baseline promotion is included in the subscription fee and does not guarantee priority or appearance for any specific product or store.',
@@ -3785,6 +3804,7 @@ export const translations = {
       adConfirmPauseOk: 'Pause',
       adPausing: 'Pausing…',
       ordersTitle: 'Orders',
+      ordersSubtitle: 'Manage and track your orders — mark "shipped" and enter a tracking number.',
       noOrders: 'No orders yet.',
       ordersFilterEmpty: 'No orders match your search or filters.',
       messagesFilterEmpty: 'No messages match your search or filters.',
@@ -4421,8 +4441,8 @@ export const translations = {
       otherStores: 'From other stores',
     },
     report: {
-      title: 'Report a fault or content',
-      lede: 'Your report goes straight to the platform team. No account needed.',
+      title: 'Send us a message',
+      lede: 'It goes straight to the platform team. No account needed.',
       kind: 'What is this about',
       kindFault: 'A fault on the site — something does not work',
       kindContent: 'Offensive or improper content',
@@ -4431,13 +4451,14 @@ export const translations = {
       kindOrder: 'About an order',
       kindOther: 'Something else',
       message: 'What happened?',
-      messagePlaceholder: 'Describe what you saw and what you expected. If it is a fault — what you did just before.',
+      messagePlaceholder: 'Describe what happened and what you expected. If it is a fault — which page, and what you clicked.',
+      messageCount: '{n}/{max} characters',
       email: 'Email for a reply (optional)',
       emailHint: 'Without an address we can act on the report but cannot come back to you.',
       pageContext: 'Attached to the report: the page you sent it from',
-      submit: 'Send report',
+      submit: 'Send',
       sending: 'Sending…',
-      sent: 'Report sent — thank you',
+      sent: 'Sent — thank you',
       sentBody: 'We have it. If you left an email, we will get back to you.',
       faultSentBody: 'The fault is logged and will be looked at. No need to wait for a reply — we will get in touch if we need more detail.',
       hintFault: 'A fault report is logged and looked at. It opens no conversation and needs no reply.',

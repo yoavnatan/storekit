@@ -7,7 +7,7 @@
  *
  * Four constraints, and the last one decides the architecture. **"לא מפוזר" — not scattered.** Help
  * on this platform already existed in three unconnected forms: `InfoTip` tooltips beside individual
- * fields, `TabHint` lines inside panels, and the onboarding checklist. Each answers one question at
+ * fields, per-panel explainer lines (since deleted), and the onboarding checklist. Each answers one question at
  * one spot and none of them can answer "how does this work". Adding a fourth scattered surface
  * would have been the obvious move and the wrong one. So there is exactly ONE place — `/help` —
  * every article lives in it, and everything else LINKS there rather than repeating it.

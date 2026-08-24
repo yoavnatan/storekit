@@ -1,5 +1,10 @@
 ---
-/** "דווח על תקלה" — the form itself, rendered on `/contact`.
+/** "שליחת פנייה בטופס" — the form itself, rendered on `/contact`.
+ *
+ * It takes FIVE kinds and a fault is one of them, which is why it stopped being named after that
+ * one (owner, 2026-08-24: *"מתוך מרכז העזרה מגיעים לצור קשר ואז פתוח שם טופס של 'דווח על תקלה',
+ * למה?"*). A general door — the help centre's "כתיבה אלינו", the footer's "צור קשר" — now opens on
+ * "שאלה לפלטפורמה"; only a link that ASKS for a fault (`?report=fault`) preselects one.
  *
  * **Why a form and not a subject line on a `mailto:`** (which is what the contact page offered, and
  * the shape the question came in as): the three facts that make a report actionable are the three
@@ -22,7 +27,9 @@ import { MAX_REPORT_LEN, REPORT_KINDS, type ReportKind } from '../lib/platform-i
 import { RETURN_NOTE_MAX } from '../lib/returns.js';
 
 interface Props {
-  /** Preselected `kind`, so an in-context "report this" link arrives on the right option. */
+  /** Preselected `kind`, so an in-context "report this" link arrives on the right option.
+   *  **The default is a question, not a fault** — see `/contact`'s note; a general door must not
+   *  open on the one kind that promises no reply. */
   kind?: string;
   /** The sender holds a store, so a thread opened here lands in their dashboard's Messages tab —
    *  which is true of every kind EXCEPT a fault (`platform-inquiries.ts`). Decides which of the two
@@ -37,7 +44,7 @@ interface Props {
   orderId?: string;
   orderToken?: string;
 }
-const { kind = 'fault', page = '', orderId = '', orderToken = '', sellerInbox = false } = Astro.props;
+const { kind = 'question', page = '', orderId = '', orderToken = '', sellerInbox = false } = Astro.props;
 const identified = !!(orderId && orderToken);
 
 const lang = getLang(Astro.cookies);
@@ -68,7 +75,9 @@ const ORDER_KIND = 'order';
 const QUESTION_REASON = 'question';
 const selected = identified || kind === ORDER_KIND
   ? ORDER_KIND
-  : ((REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'fault');
+  // An unrecognised `?report=` value falls back to the same kind an absent one gets, or the page's
+  // default and its "I don't know" would be two different answers to one question.
+  : ((REPORT_KINDS as readonly string[]).includes(kind) ? kind : 'question');
 
 /** The closed list from the returns decisions doc §1, in the order it is written there. Values are
  *  `ReturnReason`; labels are the buyer's words. */
@@ -160,6 +169,17 @@ const REASONS = [
     <label class="field">
       <span>{r.orderNote}</span>
       <textarea id="order-note" class="input" rows="3" maxlength={RETURN_NOTE_MAX} style="resize:none"></textarea>
+      {/* The same counter, on the other free-text box of the same form. One with it and one
+          without would read as a bug in whichever box lacked it. */}
+      <span
+        id="order-note-count"
+        class="muted"
+        dir="ltr"
+        aria-live="off"
+        data-max={RETURN_NOTE_MAX}
+        data-str-count={r.messageCount}
+        style="display:block;margin-top:0.35rem;font-size:0.78rem;text-align:start"
+      ></span>
     </label>
   </div>
 
@@ -175,6 +195,26 @@ const REASONS = [
       placeholder={r.messagePlaceholder}
       style="resize:none"
     ></textarea>
+    {/* **The ceiling, said out loud** (owner, 2026-08-24: *"צריך שם הגבלה על תווים! שלא כל אחד
+        יוכל לשלוח לי תקלה עם 100000 תווים. וצריך שיהיה שם מד תווים"*). The cap itself was already
+        there and enforced twice — `maxlength` here, and `platform-inquiries.ts` clamps the body
+        again because nothing believes a form — but it was invisible, so a long message simply
+        stopped accepting characters with no explanation. This is the missing half.
+        `aria-live="off"`: it updates on every keystroke, and a screen reader announcing the count
+        after each letter would make the field unusable. The remaining-characters figure is
+        announced instead when it gets close (the script raises `aria-live` at the last 10%), which
+        is the only moment it is news.
+        `dir="ltr"` — the line is two numbers and a slash, and in an RTL paragraph the slash lands
+        on the wrong side of them. */}
+    <span
+      id="report-count"
+      class="muted"
+      dir="ltr"
+      aria-live="off"
+      data-max={MAX_REPORT_LEN}
+      data-str-count={r.messageCount}
+      style="display:block;margin-top:0.35rem;font-size:0.78rem;text-align:start"
+    ></span>
   </label>
 
   <label class="field" id="report-email-field">
@@ -269,6 +309,38 @@ const REASONS = [
     };
     kindEl.addEventListener('change', syncKind);
     syncKind();
+
+    /** The live character counter under a capped textarea.
+     *
+     * Reads its ceiling and its sentence off the `<span>` — the string is server-rendered like
+     * every other one on this form (this component's own rule), and the max is the same constant
+     * the `maxlength` attribute got, so the two cannot disagree.
+     *
+     * `aria-live` starts at `off` and is raised only inside the last tenth: a counter that speaks
+     * on every keystroke is noise, and one that never speaks lets a screen-reader user reach the
+     * cap and find the field silently ignoring them. The colour change is the sighted half of the
+     * same warning, and it is a colour ON TOP of a number that is already there — never the only
+     * signal (AI_INSTRUCTIONS → Accessibility: never color-only state).
+     */
+    const wireCounter = (areaId: string, outId: string) => {
+      const area = document.getElementById(areaId) as HTMLTextAreaElement | null;
+      const out = document.getElementById(outId);
+      if (!area || !out) return;
+      const max = Number(out.dataset.max ?? area.maxLength ?? 0);
+      const tpl = out.dataset.strCount ?? '{n}/{max}';
+      if (!max) return;
+      const paint = () => {
+        const n = area.value.length;
+        out.textContent = tpl.replace('{n}', String(n)).replace('{max}', String(max));
+        const near = n >= max * 0.9;
+        out.style.color = near ? 'var(--color-warning)' : '';
+        out.setAttribute('aria-live', near ? 'polite' : 'off');
+      };
+      area.addEventListener('input', paint);
+      paint();
+    };
+    wireCounter('report-message', 'report-count');
+    wireCounter('order-note', 'order-note-count');
 
     const say = (text: string, bad: boolean) => {
       if (!status) return;
