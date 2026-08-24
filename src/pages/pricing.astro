@@ -64,39 +64,39 @@ const pillars = [
   showSearch={true}
 >
   <div class="container py-8 max-w-[64rem] pricing-page">
-    {/* ── One opening block, not three (2026-08-24) ──
-        Owner: *"יש יותר מדי אינפורמציה למוכר שם וזה דף שנהיה ונראה מסובך... צריך לפשט, להשאיר מינימום
-        חיכוך"*. The page used to open with a heading, a lede, a paragraph about the plans being
-        identical, and then — after the prices — two more cards saying "build before you pay" and
-        "when billing starts", and a third at the very bottom asking him to register. Five places
-        making one argument.
-        They are one block now, at the top, ending in the action: what it costs, that he builds
-        before he pays, and the button. Tinted, because this is the one thing on the page that is
-        asking for a decision, and a page of white cards is what read as dead. */}
-    <section class="pricing-hero">
-      {/* **Sized down twice on 2026-08-24** (owner: *"שים לב לא להגזים עם הגדלים של הכותרות, זה
-          צריך להיות חביב ונחמד לא דף נחיתה זול... שיהיה מקצועי"*). A 2.1rem heading over a tinted
-          band is the landing-page shape, and this page is read by somebody deciding where to put
-          his business. The site's own page headings are this size. */}
-      <h1 class="text-[1.3rem] md:text-[1.6rem] font-bold m-0">{p.heading}</h1>
-      <p class="m-0 mt-2 text-[0.95rem] max-w-[42rem]">{p.lede}</p>
-      <p class="m-0 mt-1 text-[0.95rem] font-semibold max-w-[42rem]">{p.buildBody}</p>
-      {!isLoggedIn && (
-        <a href="/seller/register" class="btn btn--accent mt-4 self-start">{p.ctaButton}</a>
-      )}
-    </section>
+    {/* ── The page head, and nothing else in it (2026-08-24) ──
+        It was a tinted band holding the heading, the lede, a line about building before you pay and
+        the register button. Two things were wrong with it. The band was the loosest element on a
+        page the owner then read as *"פחות מוצלח ממה שהיה, קודם היה יותר מסודר"*; and the line it
+        carried told a seller he does not have to pay yet, on the one screen whose whole job is to
+        get him to press a plan — *"צריך לגרום למוכר כן ללחוץ על מסלול, לא להדגיש לו שהוא לא צריך
+        לשלם כרגע"*. Building before paying is still true and still the model
+        (`lib/store-publication.ts`); it belongs where a seller meets it, not above the prices.
+        The heading is "מסלולים" and not "מה זה עולה" for the same reason: the page offers something,
+        it does not apologise for a price. */}
+    <header class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h1 class="font-bold m-0">{p.heading}</h1>
+        <p class="m-0 mt-2 text-[0.95rem] max-w-[42rem]">{p.lede}</p>
+      </div>
+      {!isLoggedIn && <a href="/seller/register" class="btn btn--accent">{p.ctaButton}</a>}
+    </header>
 
-    {/* ── What this is, in three sentences (2026-08-24) ──
+    {/* ── What this is, in four cards ──
         Owner: *"הדף הזה גם נראה כאילו זה מערכת לחנויות רגילה"* — everything already connected, the
-        exposure a marketplace gives, the offer to a seller who already has a shop, and the one he
-        could not phrase: that the system keeps improving and every shop gets that. Four lines
-        rather than a feature list, because a feature list is what a shop builder publishes and this
-        page's whole job is to not read like one.
-        Plain columns, no cards: bordered boxes under a tinted band would be five rectangles in the
-        first screen, which is the "cheap landing page" the owner named. */}
-    <section class="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4 mt-6" aria-label={p.includedTitle}>
+        exposure of sitting inside a marketplace, the offer to a seller who already has a shop, and
+        the one he could not phrase: that the system keeps improving and every shop gets that. Four
+        sentences rather than a feature list, because a feature list is what a shop builder
+        publishes and this page's job is to not read like one.
+        **In cards, because bare columns were read as loose** (*"יש יותר מדי אינפורמציה פזורה בלי
+        שום בורדר"*). The site's own answer to a group of facts is a bordered surface each — the
+        border rule was tested against a borderless version and kept for exactly this
+        (memory `project_border_rule_tested_kept`). Each line names only what works today, which is
+        why invoicing is absent and the stock connection is described as the hourly pull it is,
+        never as two-way. */}
+    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mt-6" aria-label={p.pillar1Title}>
       {pillars.map(({ title, body }) => (
-        <div class="pricing-pillar">
+        <div class="card card--flat p-4 pricing-pillar">
           <h2 class="font-semibold m-0">{title}</h2>
           <p class="muted m-0 mt-1 text-[0.88rem]">{body}</p>
         </div>

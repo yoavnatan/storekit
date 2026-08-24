@@ -54,29 +54,24 @@
 /* The pillar headings are labels on a paragraph, not sections of the page. */
 .pricing-page .pricing-pillar h2 { font-size: 0.95rem; }
 
-/* ── The pricing page's two tinted blocks ──
-   The opening block that ends in the register button, and the advertising panel. Both are the same
-   wash the site puts behind a row that wants attention (`utils.css` unread rows, `store.css` active
-   chip), and they are the answer to a page that was read as *"לא מספיק צבעוני ומזמין לפעולה"*
-   (owner, 2026-08-24) — four white cards on a white page, with the only colour in a tick.
-   Not `.card`: a card is a surface for an OBJECT, and these two are the page speaking. They take no
-   shadow for the same reason `.card--flat` does not — nothing here floats. */
-.pricing-hero,
+/* ── The pricing page's tinted panel ──
+   The calculator and the advertising block: the two things on the page that are not a list of
+   facts. Same wash the site puts behind a row that wants attention (`utils.css` unread rows,
+   `store.css` active chip), and the answer to a page read as *"לא מספיק צבעוני ומזמין לפעולה"*
+   (owner, 2026-08-24) — white cards on a white page with the only colour in a tick.
+   **The page HEAD is not one of these any more.** It was, for an afternoon, and a tinted band
+   holding a heading and a button was the loosest thing on the page: *"העיצוב עכשיו פחות מוצלח ממה
+   שהיה, קודם היה יותר מסודר"*. A page head is a heading and a sentence; what it needed was less,
+   not a surface.
+   Not `.card`: a card is a surface for an OBJECT, and this is the page speaking. No shadow, for the
+   same reason `.card--flat` has none — nothing here floats. */
 .pricing-panel {
   border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
   background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface));
   border-radius: var(--radius);
+  padding: 1rem;
 }
-.pricing-hero {
-  /* A column, so `self-start` on the button inside means "as wide as its own words" rather than
-     the full width of the block — the same trick the CTA card it replaces needed. */
-  display: flex;
-  flex-direction: column;
-  padding: 1.5rem 1.25rem;
-}
-.pricing-panel { padding: 1rem; }
 @media (min-width: 768px) {
-  .pricing-hero { padding: 2rem 1.75rem; }
   .pricing-panel { padding: 1.25rem 1.5rem; }
 }
 

@@ -57,12 +57,13 @@ const costs = SELLER_TIERS.map((tier) => ({
 const cheapest = costs.reduce((a, b) => (b.cost < a.cost ? b : a));
 const dearest = costs.reduce((a, b) => (b.cost > a.cost ? b : a));
 const spread = dearest.cost - cheapest.cost;
-/** "Near enough identical" is relative to the BILL, not an absolute shekel figure: 24₪ off 699₪ is
- *  noise, 24₪ off 220₪ is not. Five percent is the line, and `scripts/pricing-tiers.ts` holds the
- *  same one — it is the same sentence, recomputed. */
+/** Whether the gap is worth naming — relative to the BILL, not an absolute shekel figure: 24₪ off
+ *  699₪ is noise, 24₪ off 220₪ is not. Below the line the sentence still names the marked plan and
+ *  simply says nothing about the gap; it never argues with the badge. Five percent, and
+ *  `scripts/pricing-tiers.ts` holds the same line — it is the same sentence, recomputed. */
 const isClose = spread < cheapest.cost * 0.05;
 const summary = isClose
-  ? p.calcClose.replace('{amount}', ils(spread))
+  ? p.calcClose.replace('{tier}', p.tiers[cheapest.tier.id as SellerTierId].name)
   : p.calcGap
       .replace('{tier}', p.tiers[cheapest.tier.id as SellerTierId].name)
       .replace('{amount}', ils(spread))

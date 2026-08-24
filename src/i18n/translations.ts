@@ -266,10 +266,10 @@ export const translations = {
     // "התחילו בחינם", which enters the Shopify comparison this platform loses) and the `+ מע״מ`
     // that must appear beside every fee, because these are B2B prices the seller reclaims.
     pricing: {
-      title: 'מחירים',
+      title: 'מסלולים ומחירים',
       metaDesc: 'דמי מנוי חודשיים ועמלה על כל מכירה. בונים חנות שלמה בלי כרטיס אשראי, ומשלמים כשרוצים שהיא תעלה לאוויר.',
-      heading: 'מה זה עולה',
-      lede: 'מנוי חודשי ועמלה על כל מכירה. אין דמי הקמה ואין התחייבות.',
+      heading: 'מסלולים',
+      lede: 'מנוי חודשי ועמלה על כל מכירה, ללא דמי הקמה וללא התחייבות.',
       // ── The three sentences that say this is not another shop builder ──
       // Owner, 2026-08-24: *"הדף הזה גם נראה כאילו זה מערכת לחנויות רגילה"*, and then *"הכל הרי
       // במקום אחד, גם הפרסום, המשלוחים, אפשרות לחשבוניות, סליקה, הכל כבר מחובר... זה לא חנות
@@ -308,17 +308,22 @@ export const translations = {
       calcPlaceholder: 'למשל 8,000',
       calcBest: 'הכי משתלם לכם',
       calcSaves: 'חוסך {amount} בחודש',
-      // What the calculator says when the honest answer is "it barely matters". The fee ladder is
-      // deliberately shallow (pricing.ts), so under roughly 7,000₪ a month the plans land within a
-      // few shekels of each other — and boasting of a 24₪ saving on a 699₪ bill reads as a trick
-      // (owner, same day: *"המחשבון מגוחך... יש שם שקלים בודדים של חיסכון וזה מוזר"*).
-      calcClose: 'בסכום הזה כל המסלולים כמעט זהים — ההפרש בין הזול ליקר הוא {amount} בחודש. התחילו בבסיס, ואפשר לעבור בכל רגע.',
-      calcGap: '{tier} חוסך לכם {amount} בחודש לעומת {other}.',
+      // ── The two sentences, and neither may argue with the mark above it ──
+      // The first version boasted of a 24₪ saving on a 699₪ bill, which reads as a trick (owner:
+      // *"המחשבון מגוחך"*). The second said "כל המסלולים כמעט זהים, התחילו בבסיס" — while the badge
+      // on the card beside it said צמיחה. One screen telling a seller two different things, and the
+      // quieter of them was also the least saleable thing the page could say (owner, 2026-08-24:
+      // *"אתה מציע ב-3000 צמיחה, ואז ב-5000 אתה רושם במחיר הזה כמעט אין הפרש... ועוד אומר התחילו
+      // בבסיס אבל מסמן את צמיחה"*).
+      // So the sentence always names the plan that is marked. When the gap is worth acting on it
+      // says what that plan saves; when it is a few shekels it says nothing about the gap at all —
+      // a number nobody would switch for is not an argument, in either direction.
+      calcClose: 'מסלול {tier} הוא המשתלם ביותר במחזור כזה.',
+      calcGap: 'מסלול {tier} חוסך לכם {amount} בחודש לעומת {other}.',
       calcExample: 'לדוגמה, מחזור של {amount} בחודש:',
       // When billing starts. Its own section because it is the answer to the question that stops a
       // seller from registering, and it is buried if it sits as a footnote under a price.
       whenBody: 'המנוי מתחיל להיגבות במכירה הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה.',
-      buildBody: 'בונים חנות שלמה בלי כרטיס אשראי. בוחרים מסלול רק כשרוצים שהיא תעלה לאוויר.',
       includedTitle: 'מה כלול בכל מסלול',
       included1: 'חנות משלכם עם כתובת משלכם, וקידום אורגני בגוגל',
       included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש, הקטגוריות וקונים של חנויות אחרות',
@@ -2624,10 +2629,10 @@ export const translations = {
       help: 'Help',
     },
     pricing: {
-      title: 'Pricing',
+      title: 'Plans and pricing',
       metaDesc: 'A monthly subscription and a commission on each sale. Build the whole shop with no card, and pay when you want it live.',
-      heading: 'What it costs',
-      lede: 'A monthly subscription and a commission on each sale. No setup fee and no commitment.',
+      heading: 'Plans',
+      lede: 'A monthly subscription and a commission on each sale, with no setup fee and no commitment.',
       pillar1Title: 'It is all connected already',
       pillar1Body: 'Payments, delivery, advertising and order management in one system. Nothing to connect and nothing to install.',
       pillar2Title: 'Exposure inside the marketplace',
@@ -2645,11 +2650,10 @@ export const translations = {
       calcPlaceholder: 'e.g. 8,000',
       calcBest: 'Cheapest for you',
       calcSaves: 'saves {amount} a month',
-      calcClose: 'At this level the plans are near enough identical — {amount} a month between the cheapest and the dearest. Start on the entry plan; you can move at any time.',
+      calcClose: '{tier} is the best value at this level of turnover.',
       calcGap: '{tier} saves you {amount} a month over {other}.',
       calcExample: 'For example, a turnover of {amount} a month:',
       whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up.',
-      buildBody: 'Build the whole shop with no card. You pick a plan only when you want it to go live.',
       includedTitle: 'In every plan',
       included1: 'Your own shop at your own address, and organic ranking on Google',
       included2: 'Exposure inside the marketplace — home, search and categories',

@@ -53,15 +53,15 @@ export function initPricingTiers(): void {
    * **The line that says whether any of this matters.**
    *
    * The fee ladder is deliberately shallow (`lib/pricing.ts`), so under roughly 7,000₪ a month all
-   * four plans land within a few shekels of each other. Naming the winner and its "saving" there
-   * was the page boasting of 24₪ off a 699₪ bill — which reads as a trick and is the opposite of
-   * what a seller comparing platforms wants to hear (owner, 2026-08-24: *"המחשבון מגוחך"*). So
-   * below five percent of the bill the page says so in words instead, and points at the entry
-   * plan. The same threshold is in `PricingTiers.astro`, which renders this sentence for the
-   * worked example before any script runs.
+   * four plans land within a few shekels of each other. Boasting of 24₪ off a 699₪ bill reads as a
+   * trick; saying "the plans are nearly identical, start on the entry plan" while the badge beside
+   * it marks Growth is the page contradicting itself, which is what the owner read on 2026-08-24.
+   * So both branches name the MARKED plan, and the only thing that varies is whether the gap is
+   * worth quoting. The same threshold is in `PricingTiers.astro`, which renders this sentence for
+   * the worked example before any script runs.
    */
   function summarise(cheapestName: string, dearestName: string, cheapestCost: number, spread: number): string {
-    if (spread < cheapestCost * 0.05) return label('labelClose').replace('{amount}', ils(spread));
+    if (spread < cheapestCost * 0.05) return label('labelClose').replace('{tier}', cheapestName);
     return label('labelGap')
       .replace('{tier}', cheapestName)
       .replace('{amount}', ils(spread))
