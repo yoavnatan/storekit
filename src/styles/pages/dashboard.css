@@ -2651,18 +2651,28 @@ html:has(#dash-main-card.dash-nav-side) {
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab__label,
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-foot { display: none; }
   /* Centred rather than tucked into a corner: at 3.75rem the rail has no corner to speak of, and
-     an end-aligned chevron would sit off the axis every icon below it stands on.
-
-     `margin-bottom` overridden because the base rule's is NEGATIVE (-0.25rem), and it is negative
-     for the open rail, where it pulls the chevron up into `.dash-head`'s top padding — a head that
-     is 88.6px tall and full of text, so nothing is anywhere near it. Collapsed, that head measures
-     0 and the -0.25rem lands on the icon column instead: measured, the button's bottom sat at 89.6
-     and the first tab's top at 85.6, so the control was four pixels INSIDE the list it acts on
-     (owner, 2026-08-24: *"צריך להרחיק קצת את החץ של הסגירה ופתיחה מהאייקונים"*). 0.6rem puts a
-     clear 9.6px under it — a control separated from its list, not the first item of one. */
+     an end-aligned chevron would sit off the axis every icon below it stands on. */
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-toggle {
     align-self: center;
     margin-inline: 0;
+  }
+  /* ── The chevron's bottom margin, and why ONLY the admin's ──
+     The base rule's `margin-bottom` is NEGATIVE (-0.25rem). That is right for the open rail, where
+     it pulls the chevron up into `.dash-head`'s top padding and the head is 88.6px of text, so
+     nothing is near it. What differs collapsed is what the head still HAS.
+
+     The seller keeps the store avatar — the head is the switcher's own button and survives the
+     collapse deliberately, so there is a real block between the chevron and the first icon and the
+     -0.25rem is simply absorbed by it. The admin's head is a title and a logout link, both hidden
+     at this width, so it measures 0 and the negative margin lands on the icon column instead:
+     measured, the button's bottom at 89.6 against the first tab's top at 85.6 — the control sat
+     four pixels INSIDE the list it acts on (owner, 2026-08-24: *"צריך להרחיק קצת את החץ של הסגירה
+     ופתיחה מהאייקונים"*).
+
+     So `.admin-dash`, not `.dash-nav-side`. Written unscoped first, which pushed the seller's
+     chevron away from icons it was never near (owner, same day: *"אני רציתי רק באדמין"*) — the
+     shared class is the shell, and the thing that differs here is what one shell's head contains. */
+  html.dash-nav-mini #dash-main-card.admin-dash.dash-nav-side .dash-rail-toggle {
     margin-bottom: 0.6rem;
   }
   /* ── A collapsed row shows THAT something is waiting, not how many ──
