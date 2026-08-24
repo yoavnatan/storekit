@@ -375,7 +375,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // The guard below used to ask only "is the signed-in user this store's owner", which left the
   // likeliest version of the problem wide open: a seller checking that his own checkout works
   // does it from his phone or a private window, i.e. signed OUT, and that is precisely the person
-  // for whom an accidental first sale is expensive (it starts his monthly fee). The address he
+  // for whom an accidental sale is expensive — stock, commission and mail all move. The address he
   // types is the same identity the session would have proved.
   //
   // One lookup, before the loop rather than per item, so a ten-store cart still costs one query;
@@ -402,9 +402,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // refused.
     if (isDemoStore(preStore)) return json({ error: 'demo-store' }, 403);
     // A seller may not buy from a store he owns. Such an order is real in every way
-    // that matters — stock, commission, mail, the units that drive the `popular`/
-    // `bestseller` label in the Google/Meta feed, and the first sale that starts his
-    // monthly fee — so a curious click around his own storefront must not create one.
+    // that matters — stock, commission, mail, and the units that drive the `popular`/
+    // `bestseller` label in the Google/Meta feed — so a curious click around his own
+    // storefront must not create one.
     // The storefront also refuses this client-side (lib/own-store-guard.ts), but a
     // hidden button is not a rule: the cart is client state and this endpoint is
     // directly callable. This is the guarantee; that is only the explanation.

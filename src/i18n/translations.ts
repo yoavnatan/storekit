@@ -261,10 +261,13 @@ export const translations = {
     // What lives here is only the words around them.
     //
     // The register is the one the owner set for seller copy: name the ACTION, never the claim, and
-    // say "אצלנו" only where it means him. Two wordings are load-bearing and are quoted from
-    // decisions rather than invented — "קודם מוכרים. אחר כך משלמים." (pricing.ts: never
-    // "התחילו בחינם", which enters the Shopify comparison this platform loses) and the `+ מע״מ`
-    // that must appear beside every fee, because these are B2B prices the seller reclaims.
+    // say "אצלנו" only where it means him. One wording is load-bearing and quoted from a decision
+    // rather than invented: the `+ מע״מ` that must appear beside every fee, because these are B2B
+    // prices the seller reclaims. Never "התחילו בחינם" either — that is the Shopify script and
+    // enters a comparison this platform loses.
+    // ("קודם מוכרים. אחר כך משלמים." stood here until 2026-08-24 and is withdrawn with the rule it
+    //  described: selling is blocked until the subscription starts, so nobody sells first —
+    //  `lib/pricing.ts` has the whole account.)
     pricing: {
       title: 'מסלולים ומחירים',
       metaDesc: 'דמי מנוי חודשיים ועמלה על כל מכירה. בונים חנות שלמה בלי כרטיס אשראי, ומשלמים כשרוצים שהיא תעלה לאוויר.',
@@ -325,7 +328,11 @@ export const translations = {
       calcGap: 'מסלול {tier} חוסך לכם {amount} בחודש לעומת {other}.',
       // When billing starts. Its own section because it is the answer to the question that stops a
       // seller from registering, and it is buried if it sits as a footnote under a price.
-      whenBody: 'המנוי מתחיל להיגבות במכירה הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה.',
+      // What is actually true, and the line it replaces was not: "המנוי מתחיל להיגבות במכירה
+      // הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה" was decided in July and made impossible in
+      // August, when selling became one of the things blocked until the subscription starts — there
+      // is no first sale before the first charge (`lib/pricing.ts` argues it at length).
+      whenBody: 'המנוי נגבה מהרגע שהחנות עולה לאוויר, ומתחדש כל חודש.',
       includedTitle: 'מה כלול בכל מסלול',
       included1: 'חנות עצמאית ומתקדמת עם כתובת משלכם, וקידום אורגני בגוגל (SEO)',
       included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש, הקטגוריות וקונים של חנויות אחרות',
@@ -2685,7 +2692,7 @@ export const translations = {
       calcBest: 'Cheapest for you',
       calcClose: '{tier} is the best value at this level of turnover.',
       calcGap: '{tier} saves you {amount} a month over {other}.',
-      whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up.',
+      whenBody: 'The subscription is charged from the moment your shop goes live, and renews monthly.',
       includedTitle: 'In every plan',
       included1: 'An independent, fully-featured shop at your own address, and organic ranking on Google (SEO)',
       included2: 'Exposure inside the marketplace — home, search and categories',

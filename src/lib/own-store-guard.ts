@@ -3,9 +3,12 @@
 // Why at all: a seller browsing his own store is looking at the real storefront, so
 // every buy control is live. Completing that purchase would be a real order — stock
 // decremented, commission charged, buyer+seller mail sent, units counted toward the
-// `popular`/`bestseller` performance label that feeds the Google/Meta product feed —
-// and, under the pricing model, the "first sale" that starts his monthly fee. None of
-// that is what someone clicking around his own shop meant to do.
+// `popular`/`bestseller` performance label that feeds the Google/Meta product feed, and
+// a commission he would be paying himself. None of that is what someone clicking around
+// his own shop meant to do.
+// (It used to say the sale would also START his monthly fee. That rule was withdrawn on
+// 2026-08-24 — `lib/pricing.ts` — because selling is blocked until the subscription is
+// running, so no sale can precede the first charge.)
 //
 // Why here and not per-button: the storefront adds to the cart from four places (server
 // -rendered card, JS-rendered card, quick-view modal, product page + its mobile sticky

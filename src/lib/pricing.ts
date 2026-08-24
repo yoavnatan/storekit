@@ -13,17 +13,25 @@
  *  net profit" lines in the seller + admin performance views. When the processor is wired,
  *  commissionPercentForTier() is what tells it how to split — same function, real consequence.
  *
- *  WHEN the monthly fee starts (decided 2026-07-29, and the reasoning is the decision — moved here
- *  from AI_INSTRUCTIONS.md 2026-07-31 to keep it next to the numbers it governs): **no time-boxed
- *  trial. The fee starts at the seller's FIRST SALE, capped at 2 months from signup.** A card is
- *  taken at signup either way, because the ads Authorize/Capture flow needs one on file.
- *  A 14–30 day trial sat in the spec from 2026-07-21 and was rejected on review: a trial promises
- *  the value lands inside its window, and at launch — few stores, little traffic — it cannot, so
- *  day 14 becomes a scheduled cancellation AND sends the seller away concluding "this doesn't
- *  work". Charging only once the mall has actually sold something for him removes the decision
- *  moment entirely; the 2-month cap is what stops a dead store sitting free forever.
- *  Seller-facing wording is "קודם מוכרים. אחר כך משלמים." — never "התחילו בחינם", which is the
- *  Shopify script and enters a comparison this platform loses (AI_INSTRUCTIONS → Positioning).
+ *  WHEN the monthly fee starts: **when the seller starts the subscription, which is the same act as
+ *  putting his shop on the site.** Nothing before that, and no free window at all
+ *  (`lib/store-publication.ts`, `lib/seller-subscription.ts`).
+ *
+ *  ⚠️ **The old answer — "the fee starts at the seller's FIRST SALE, capped at 2 months from
+ *  signup" — is WITHDRAWN, and it must not come back.** It was decided on 2026-07-29 against a
+ *  14–30 day trial, for reasons that were sound at the time: a trial promises value inside a fixed
+ *  window, and at cold start there are no sales by day 14, so it manufactures a scheduled
+ *  cancellation. What killed it is not a change of mind but the decision of 2026-08-23 — a seller
+ *  builds a whole shop with no card, and **selling is one of the things blocked until he pays**.
+ *  A rule that starts billing at the first sale can therefore never fire: there is no sale before
+ *  the first charge, by construction. It survived only as prose, here and in one line of the
+ *  pricing page, and it promised a seller something this platform cannot do (owner, 2026-08-24:
+ *  *"ובטח שלא מתחילים לגבות ממכירה ראשונה כי זה לא נכון"*).
+ *
+ *  A card is still taken when a campaign is created, because the ads Authorize/Capture flow needs
+ *  one on file — that is a different card and a different moment from the subscription.
+ *  Seller-facing wording never says "התחילו בחינם": that is the Shopify script and enters a
+ *  comparison this platform loses (AI_INSTRUCTIONS → Positioning).
  *
  *  Pure/isomorphic: no I/O, no config beyond this file, so it is trivially testable and safe to
  *  import from anywhere (client bundles included).
