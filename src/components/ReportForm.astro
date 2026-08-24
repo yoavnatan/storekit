@@ -176,6 +176,7 @@ const REASONS = [
         class="muted"
         dir="ltr"
         aria-live="off"
+        hidden
         data-max={RETURN_NOTE_MAX}
         data-str-count={r.messageCount}
         style="display:block;margin-top:0.35rem;font-size:0.78rem;text-align:start"
@@ -211,6 +212,7 @@ const REASONS = [
       class="muted"
       dir="ltr"
       aria-live="off"
+      hidden
       data-max={MAX_REPORT_LEN}
       data-str-count={r.messageCount}
       style="display:block;margin-top:0.35rem;font-size:0.78rem;text-align:start"
@@ -316,11 +318,18 @@ const REASONS = [
      * every other one on this form (this component's own rule), and the max is the same constant
      * the `maxlength` attribute got, so the two cannot disagree.
      *
-     * `aria-live` starts at `off` and is raised only inside the last tenth: a counter that speaks
-     * on every keystroke is noise, and one that never speaks lets a screen-reader user reach the
-     * cap and find the field silently ignoring them. The colour change is the sighted half of the
-     * same warning, and it is a colour ON TOP of a number that is already there — never the only
-     * signal (AI_INSTRUCTIONS → Accessibility: never color-only state).
+     * **It is not on screen until the last tenth** (owner, 2026-08-24: *"רעיון טוב, רק בעשירית
+     * האחרונה"*). A count standing under an empty box is furniture — it tells everyone who writes
+     * two normal sentences that they are being measured, against a number they were never going to
+     * reach. It appears when it becomes news, and that is also the moment it turns amber, so the
+     * arrival and the colour are one signal rather than a permanent line that occasionally
+     * recolours.
+     *
+     * `aria-live` follows the same instant: silent while the line is absent, `polite` from the
+     * moment it appears, so a screen-reader user hears the warning once instead of a number after
+     * every keystroke — and never reaches the cap to find the field quietly ignoring them. The
+     * colour is never the only signal (AI_INSTRUCTIONS → Accessibility): the line's arrival and
+     * its words carry it.
      */
     const wireCounter = (areaId: string, outId: string) => {
       const area = document.getElementById(areaId) as HTMLTextAreaElement | null;
@@ -331,8 +340,10 @@ const REASONS = [
       if (!max) return;
       const paint = () => {
         const n = area.value.length;
-        out.textContent = tpl.replace('{n}', String(n)).replace('{max}', String(max));
         const near = n >= max * 0.9;
+        // Written before it is revealed, so the line is never blank for a frame.
+        out.textContent = near ? tpl.replace('{n}', String(n)).replace('{max}', String(max)) : '';
+        out.hidden = !near;
         out.style.color = near ? 'var(--color-warning)' : '';
         out.setAttribute('aria-live', near ? 'polite' : 'off');
       };
