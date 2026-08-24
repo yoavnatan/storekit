@@ -2244,6 +2244,34 @@ html:has(#dash-main-card.dash-nav-side) {
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }
+/* ══ THE TAB HINT — its own container, above the section ══
+   Owner, 2026-08-24: *"קונטיינר נפרד עם גבולות משלו וזהו."*
+
+   It is a CHILD of `.dash-panel`, whose side borders would otherwise frame it and make it a box
+   inside a box. So it breaks out over them and draws them itself for its own height — and the
+   panel's top corners are rounded to match, which is the part every earlier attempt missed: with
+   the panel's border running straight to its top while the hint's corner curves away from it, a 1px
+   stub of side border sticks up past each corner. That hook is what the owner photographed. Two
+   arcs on the same centre leave nothing to stick out. */
+.dash-tab-hint { color: var(--color-muted); }
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) {
+  padding-top: 0;
+  border-start-start-radius: var(--radius);
+  border-start-end-radius: var(--radius);
+}
+#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child {
+  margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
+  margin-block: 0 0.9rem;
+  padding: 0.6rem var(--dash-panel-pad);
+  border: var(--dash-sheet-edge, 0px) solid var(--color-border);
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-invite-olive) 14%, var(--color-surface)) 0%,
+    color-mix(in srgb, var(--color-invite-olive) 6%, var(--color-surface)) 100%
+  );
+}
+
 /* **The title's top border is the DESKTOP's alone**, because that is the only width where the
    panel IS the sheet. Below 1180px the sheet is `#dash-main-card` and it keeps its own top border,
    so a second one on the bar directly under it stacks two 1px rules into one smudged 2px line —
