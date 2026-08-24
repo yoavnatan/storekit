@@ -24,6 +24,31 @@
    way first and `tests/unlayered-css-beats-utility.test.ts` refused it, which is the whole point of
    that guard.
 
-   Colour is never the only signal: the card also says so in words on its own calc line (WCAG 2.1
-   AA), and this border is the redundant half. */
-.card[data-best] { border-color: var(--color-accent); }
+   Colour is never the only signal: the card carries a worded badge and the filled button (WCAG 2.1
+   AA), and this border and wash are the redundant half. The wash is 5% — the same strength the
+   site's unread rows and active chips use, which is enough to pick the card out of a row of four
+   and not enough to make its text sit on a colour. */
+.card[data-best] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface));
+}
+
+/* The badge that says it in words. Rendered on every pricing card and shown on the one the
+   calculator picked, because a badge the script has to CREATE arrives a frame after the border
+   does — two signals of one fact, landing at two different times.
+   Small caps-height text on a filled accent pill: the same shape `admin.css` gives a status badge,
+   at the one size that does not compete with the plan's own name beside it. */
+.pricing-best-badge { display: none; }
+.card[data-best] .pricing-best-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}

@@ -282,10 +282,22 @@ export const translations = {
       calcTitle: 'איזה מסלול משתלם לכם',
       calcQuestion: 'כמה אתם צפויים למכור בחודש?',
       calcPlaceholder: 'למשל 8,000',
-      calcHint: 'הזינו סכום ונסמן את הזול ביותר עבורכם.',
-      calcTotal: 'סה״כ לחודש',
-      calcBest: 'המשתלם עבורכם',
+      calcHint: 'שנו את הסכום למחזור שלכם, ונסמן מה הכי משתלם.',
+      calcTotal: '{amount} לחודש',
+      // The number beside the shekels, and the reason the shekels are worth showing at all: a
+      // seller comparing platforms compares a percentage of turnover, and 675₪ on its own tells
+      // him nothing about whether that is a lot (owner, 2026-08-24: *"לא ברור מה זה, מחיר לתשלום
+      // סופי בחודש? זה לא מושך מוכר לראות את המחיר הזה"*).
+      calcShare: '{percent}% מהמחזור',
+      calcBest: 'הכי משתלם לכם',
       calcSaves: 'חוסך {amount} בחודש',
+      // What the calculator says when the honest answer is "it barely matters". The fee ladder is
+      // deliberately shallow (pricing.ts), so under roughly 7,000₪ a month the plans land within a
+      // few shekels of each other — and boasting of a 24₪ saving on a 699₪ bill reads as a trick
+      // (owner, same day: *"המחשבון מגוחך... יש שם שקלים בודדים של חיסכון וזה מוזר"*).
+      calcClose: 'בסכום הזה כל המסלולים כמעט זהים — ההפרש בין הזול ליקר הוא {amount} בחודש. התחילו בבסיס, ואפשר לעבור בכל רגע.',
+      calcGap: '{tier} חוסך לכם {amount} בחודש לעומת {other}.',
+      calcExample: 'לדוגמה, מחזור של {amount} בחודש:',
       // When billing starts. Its own section because it is the answer to the question that stops a
       // seller from registering, and it is buried if it sits as a footnote under a price.
       whenTitle: 'מתי מתחילים לחייב',
@@ -299,8 +311,17 @@ export const translations = {
       included3: 'פרסום בסיסי בגוגל ובמטא, בלי לגעת בשום הגדרה',
       included4: 'משלוחים עם שליח, מדבקות ומעקב',
       included5: 'מוצרים, תמונות, וריאציות ומבצעים — בלי הגבלה',
-      adsTitle: 'פרסום ממומן',
-      adsBody: 'קמפיין בתשלום נגבה בנפרד לפי ההוצאה בפועל בגוגל ובמטא, בתוספת דמי ניהול של {percent}. תקציב שלא נוצל לא נגבה.',
+      // ── The advertising section says what the seller GETS, not what we take ──
+      // It used to open on "דמי ניהול של X%", which is our side of the deal on the one page where
+      // he is deciding whether to sell here at all (owner, 2026-08-24: *"חסר שם מידע על זה שיש כלי
+      // פרסום... פשוט צריך להגיד ליוזר שהוא יכול לנהל קמפיינים מול גוגל ומטא בתשלום נוסף ישירות
+      // דרך המערכת. בלי להזכיר שם עוד דמי ניהול"*). The exact percentage is still disclosed — on
+      // the boost screen, beside the budget field, which is where it is a number he can act on.
+      adsTitle: 'קמפיינים בגוגל ובמטא, מתוך המערכת',
+      adsLead: 'רוצים יותר תנועה מהפרסום הבסיסי? אפשר להריץ קמפיין ממומן בגוגל ובמטא ישירות מהדשבורד, בתשלום נוסף.',
+      adsPoint1: 'אתם קובעים תקציב חודשי, ואנחנו בונים ומנהלים את הקמפיין',
+      adsPoint2: 'התקציב הוא תקרה — מה שלא נוצל לא נגבה',
+      adsPoint3: 'אין צורך בחשבון מודעות משלכם ובלי הגדרות',
       choose: 'בחירת המסלול',
       current: 'המסלול שלכם',
       saving: 'שומר…',
@@ -2588,10 +2609,14 @@ export const translations = {
       calcTitle: 'Which plan works out cheapest',
       calcQuestion: 'How much do you expect to sell in a month?',
       calcPlaceholder: 'e.g. 8,000',
-      calcHint: 'Enter an amount and we will mark the cheapest one for you.',
-      calcTotal: 'Total per month',
+      calcHint: 'Change the amount to your own turnover and we will mark the cheapest plan.',
+      calcTotal: '{amount} a month',
+      calcShare: '{percent}% of turnover',
       calcBest: 'Cheapest for you',
       calcSaves: 'saves {amount} a month',
+      calcClose: 'At this level the plans are near enough identical — {amount} a month between the cheapest and the dearest. Start on the entry plan; you can move at any time.',
+      calcGap: '{tier} saves you {amount} a month over {other}.',
+      calcExample: 'For example, a turnover of {amount} a month:',
       whenTitle: 'When billing starts',
       whenLead: 'Sell first. Pay after.',
       whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up. Nothing is charged until then.',
@@ -2603,8 +2628,11 @@ export const translations = {
       included3: 'Baseline advertising on Google and Meta, with no setting to touch',
       included4: 'Courier delivery, labels and tracking',
       included5: 'Products, images, variants and sales — with no cap',
-      adsTitle: 'Paid advertising',
-      adsBody: 'A paid campaign is billed separately on what Google and Meta actually spent, plus a {percent} management fee. Budget you did not spend is never charged.',
+      adsTitle: 'Google and Meta campaigns, from inside the dashboard',
+      adsLead: 'Want more traffic than the baseline advertising brings? You can run a paid campaign on Google and Meta straight from the dashboard, for an additional charge.',
+      adsPoint1: 'You set a monthly budget, and we build and run the campaign',
+      adsPoint2: 'The budget is a ceiling — whatever is not spent is never charged',
+      adsPoint3: 'No ad account of your own, and no settings to touch',
       choose: 'Choose this plan',
       current: 'Your plan',
       saving: 'Saving…',

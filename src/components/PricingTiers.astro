@@ -19,6 +19,17 @@
  * same numbers the page rendered rather than a second copy of them shipped alongside. It also keeps
  * a `<script is:inline>`-shaped JSON payload off the page entirely (memory
  * `project_json_script_xss`).
+ *
+ * ── The page ARRIVES with an answer on it (2026-08-24) ──
+ * Owner: *"הדף מאוד מת"*. It was: four cards with an empty line where the figure goes, and nothing
+ * on screen until somebody typed. So the example below is computed HERE, on the server, and the
+ * field opens holding it — the reader sees a worked comparison at a glance, and the same script
+ * recomputes the moment he changes the number. It also means the whole calculator works with
+ * JavaScript off, which the empty version did not.
+ *
+ * **5,000₪ is the example on purpose.** It is a plausible first year, and it is the band where the
+ * honest answer is "these plans are within twenty-odd shekels of each other" — which is what the
+ * page says there, rather than dressing a 24₪ gap as a saving (owner: *"המחשבון מגוחך"*).
  */
 import { SELLER_TIERS } from '../lib/pricing.js';
 import type { getT } from '../i18n/index.js';
@@ -26,13 +37,44 @@ import type { SellerTierId } from '../lib/pricing.js';
 
 interface Props {
   p: ReturnType<typeof getT>['pricing'];
+  lang: 'he' | 'en';
 }
-const { p } = Astro.props;
+const { p, lang } = Astro.props;
+
+/** The worked example the page opens on. Not a placeholder digit — every figure below is this
+ *  number run through the same arithmetic the script uses. */
+const EXAMPLE_REVENUE = 5000;
+const locale = lang === 'he' ? 'he-IL' : 'en-GB';
+const ils = (n: number): string => `₪${Math.round(n).toLocaleString(locale)}`;
+
+const costs = SELLER_TIERS.map((tier) => ({
+  tier,
+  cost: tier.monthlyFee + (EXAMPLE_REVENUE * tier.commissionPercent) / 100,
+}));
+const cheapest = costs.reduce((a, b) => (b.cost < a.cost ? b : a));
+const dearest = costs.reduce((a, b) => (b.cost > a.cost ? b : a));
+const spread = dearest.cost - cheapest.cost;
+/** "Near enough identical" is relative to the BILL, not an absolute shekel figure: 24₪ off 699₪ is
+ *  noise, 24₪ off 220₪ is not. Five percent is the line, and `scripts/pricing-tiers.ts` holds the
+ *  same one — it is the same sentence, recomputed. */
+const isClose = spread < cheapest.cost * 0.05;
+const summary = isClose
+  ? p.calcClose.replace('{amount}', ils(spread))
+  : p.calcGap
+      .replace('{tier}', p.tiers[cheapest.tier.id as SellerTierId].name)
+      .replace('{amount}', ils(spread))
+      .replace('{other}', p.tiers[dearest.tier.id as SellerTierId].name);
 ---
 
-<section class="mt-10" aria-labelledby="calc-title">
+<section class="mt-8" aria-labelledby="calc-title">
   <h2 id="calc-title" class="text-[1.15rem] font-bold m-0">{p.calcTitle}</h2>
-  <div class="card card--flat p-4 md:p-5 mt-3">
+  {/* Tinted rather than plain white, because this box is the one thing on the page a reader is
+      meant to touch — the same accent wash the site puts behind a row that wants attention
+      (`utils.css` unread rows, `store.css` active chip). One signal, no shadow: it does not float. */}
+  <div
+    class="p-4 md:p-5 mt-3 rounded-[var(--radius)] border"
+    style="border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface))"
+  >
     <label for="calc-revenue" class="block font-semibold text-[0.92rem]">{p.calcQuestion}</label>
     {/* `inputmode="numeric"` and not `type="number"`: the field takes a formatted amount with
         separators, and a number input rejects them outright on some browsers and silently blanks
@@ -44,29 +86,36 @@ const { p } = Astro.props;
         type="text"
         inputmode="numeric"
         autocomplete="off"
+        value={EXAMPLE_REVENUE.toLocaleString(locale)}
         placeholder={p.calcPlaceholder}
         class="input max-w-[12rem]"
       />
     </div>
-    <p class="muted m-0 mt-2 text-[0.84rem]" id="calc-hint">{p.calcHint}</p>
+    {/* The sentence the whole calculator exists to produce, and the only place a saving is ever
+        described in words. `aria-live` because it changes under a field being typed in. */}
+    <p class="m-0 mt-3 text-[0.9rem] font-semibold" id="calc-summary" aria-live="polite">{summary}</p>
+    <p class="muted m-0 mt-1 text-[0.84rem]">{p.calcHint}</p>
   </div>
 </section>
 
 <ul
   id="tier-list"
   role="list"
-  class="list-none p-0 m-0 mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+  class="list-none p-0 m-0 mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
   data-label-best={p.calcBest}
   data-label-total={p.calcTotal}
-  data-label-saves={p.calcSaves}
+  data-label-share={p.calcShare}
+  data-label-close={p.calcClose}
+  data-label-gap={p.calcGap}
   data-label-choose={p.choose}
   data-label-current={p.current}
   data-label-saving={p.saving}
   data-label-saved={p.saved}
   data-label-failed={p.saveFailed}
 >
-  {SELLER_TIERS.map((tier) => {
+  {costs.map(({ tier, cost }) => {
     const copy = p.tiers[tier.id as SellerTierId];
+    const best = tier.id === cheapest.tier.id;
     // `card--flat`: the card itself is not clickable — the button inside it is — and a shadow on
     // hover would claim otherwise (Hard rules → a shadow means the surface FLOATS).
     // The calculator sets `data-best` on the winning card; what that LOOKS like is decided in
@@ -80,8 +129,14 @@ const { p } = Astro.props;
         data-tier={tier.id}
         data-fee={String(tier.monthlyFee)}
         data-commission={String(tier.commissionPercent)}
+        data-best={best ? '' : undefined}
       >
-        <h3 class="text-[1.05rem] font-bold m-0">{copy.name}</h3>
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-[1.05rem] font-bold m-0">{copy.name}</h3>
+          {/* Rendered on every card and shown on one — the winner moves as the field changes, and a
+              badge the script has to build is a badge that arrives a frame late. */}
+          <span class="pricing-best-badge" data-role="best-badge">{p.calcBest}</span>
+        </div>
         <p class="muted m-0 mt-1 text-[0.84rem]">{copy.for}</p>
 
         <p class="m-0 mt-4 flex items-baseline gap-1">
@@ -93,13 +148,26 @@ const { p } = Astro.props;
           <span class="muted"> {p.commissionLabel}</span>
         </p>
 
-        {/* Filled by the calculator and empty until then — an amount with no revenue behind it
-            would be a made-up figure, and a placeholder digit is worse than a blank line. It is
-            `aria-live` because it changes under a field the reader is still typing in. */}
-        <p class="m-0 mt-3 text-[0.86rem] min-h-[1.4rem]" data-role="calc" aria-live="polite"></p>
+        {/* What this plan actually costs at the revenue in the field — the figure, and beside it
+            the share of turnover it represents, which is the number a seller compares platforms
+            on. Server-rendered for the example, rewritten by the script on every keystroke. */}
+        <div class="mt-3 pt-3 border-t" style="border-color: var(--color-border)">
+          <p class="m-0 text-[0.92rem] font-semibold tabular-nums" data-role="calc-total">
+            {p.calcTotal.replace('{amount}', ils(cost))}
+          </p>
+          <p class="muted m-0 text-[0.82rem] tabular-nums" data-role="calc-share">
+            {p.calcShare.replace('{percent}', ((cost / EXAMPLE_REVENUE) * 100).toFixed(1))}
+          </p>
+        </div>
 
-        {/* Pushed to the bottom so the four buttons line up however uneven the copy above them is. */}
-        <button type="button" class="btn btn--ghost btn--sm mt-auto" data-role="choose">
+        {/* Pushed to the bottom so the four buttons line up however uneven the copy above them is.
+            The cheapest card's button is the filled one: the page has four identical actions and
+            exactly one of them is the answer to the question the reader just asked. */}
+        <button
+          type="button"
+          class:list={['btn btn--sm mt-4', best ? 'btn--accent' : 'btn--ghost']}
+          data-role="choose"
+        >
           {p.choose}
         </button>
       </li>

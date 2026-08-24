@@ -39,43 +39,84 @@ export function initPricingTiers(): void {
   const tiers = cards.map((el) => ({
     el,
     id: el.dataset['tier'] ?? '',
+    name: el.querySelector('h3')?.textContent?.trim() ?? '',
     fee: Number(el.dataset['fee'] ?? 0),
     commission: Number(el.dataset['commission'] ?? 0),
-    out: el.querySelector<HTMLElement>('[data-role="calc"]')!,
+    total: el.querySelector<HTMLElement>('[data-role="calc-total"]')!,
+    share: el.querySelector<HTMLElement>('[data-role="calc-share"]')!,
     btn: el.querySelector<HTMLButtonElement>('[data-role="choose"]')!,
   }));
 
   // ── The calculator ────────────────────────────────────────────────────────────────────────
   const field = document.getElementById('calc-revenue') as HTMLInputElement | null;
+  const summary = document.getElementById('calc-summary');
+
+  /**
+   * **The line that says whether any of this matters.**
+   *
+   * The fee ladder is deliberately shallow (`lib/pricing.ts`), so under roughly 7,000₪ a month all
+   * four plans land within a few shekels of each other. Naming the winner and its "saving" there
+   * was the page boasting of 24₪ off a 699₪ bill — which reads as a trick and is the opposite of
+   * what a seller comparing platforms wants to hear (owner, 2026-08-24: *"המחשבון מגוחך"*). So
+   * below five percent of the bill the page says so in words instead, and points at the entry
+   * plan. The same threshold is in `PricingTiers.astro`, which renders this sentence for the
+   * worked example before any script runs.
+   */
+  function summarise(cheapestName: string, dearestName: string, cheapestCost: number, spread: number): string {
+    if (spread < cheapestCost * 0.05) return label('labelClose').replace('{amount}', ils(spread));
+    return label('labelGap')
+      .replace('{tier}', cheapestName)
+      .replace('{amount}', ils(spread))
+      .replace('{other}', dearestName);
+  }
 
   function render(revenue: number | null): void {
     if (revenue === null) {
-      // Back to the resting state rather than leaving the last answer on screen: a stale figure
-      // beside an emptied field is the one reading that is actively wrong.
-      for (const t of tiers) { t.out.textContent = ''; t.el.removeAttribute('data-best'); }
+      // Back to a resting state rather than leaving the last answer on screen: a stale figure
+      // beside an emptied field is the one reading that is actively wrong. The cards keep their
+      // fee and commission — those are true whatever is in the field — and lose only the two
+      // lines that were an answer to a number nobody is asking any more.
+      for (const t of tiers) {
+        t.total.textContent = '';
+        t.share.textContent = '';
+        t.el.removeAttribute('data-best');
+        t.btn.classList.remove('btn--accent');
+        t.btn.classList.add('btn--ghost');
+      }
+      if (summary) summary.textContent = '';
       return;
     }
     const costs = tiers.map((t) => ({ t, cost: t.fee + (revenue * t.commission) / 100 }));
     const cheapest = costs.reduce((a, b) => (b.cost < a.cost ? b : a));
-    // The runner-up, so the winner can say what choosing it actually saves. Without it the mark is
-    // a claim with no size — and at low revenue the gap is a few shekels, which is worth seeing
-    // before switching plan for it.
-    const runnerUp = costs.filter((c) => c !== cheapest).reduce((a, b) => (b.cost < a.cost ? b : a));
+    const dearest = costs.reduce((a, b) => (b.cost > a.cost ? b : a));
 
     for (const { t, cost } of costs) {
       const best = t === cheapest.t;
       t.el.toggleAttribute('data-best', best);
-      const saving = best && runnerUp.cost > cost
-        ? ` · ${label('labelSaves').replace('{amount}', ils(runnerUp.cost - cost))}`
+      t.total.textContent = label('labelTotal').replace('{amount}', ils(cost));
+      // The share of turnover, which is the figure a seller actually compares platforms on — a
+      // three-digit shekel amount on its own says nothing about whether it is a lot. One decimal:
+      // this is arithmetic on a number he guessed, and 13.5% is as precise as that guess deserves.
+      t.share.textContent = revenue > 0
+        ? label('labelShare').replace('{percent}', ((cost / revenue) * 100).toFixed(1))
         : '';
-      // The mark is never colour alone (WCAG 2.1 AA): the winning card says so IN WORDS on the same
-      // line as the figure, and `data-best` — which the card styles itself off, via a Tailwind
-      // variant rather than an inline style written from here — is the second, redundant signal.
-      t.out.textContent = `${label('labelTotal')}: ${ils(cost)}${best ? ` · ${label('labelBest')}${saving}` : ''}`;
+      // The filled button follows the mark. The page offers four identical actions and exactly one
+      // of them answers the question just asked, so the answer is the one that looks like a button
+      // — and it has to MOVE, or it is a recommendation of whichever plan the server guessed.
+      t.btn.classList.toggle('btn--accent', best);
+      t.btn.classList.toggle('btn--ghost', !best);
+    }
+    if (summary) {
+      summary.textContent = summarise(cheapest.t.name, dearest.t.name, cheapest.cost, dearest.cost - cheapest.cost);
     }
   }
 
   field?.addEventListener('input', () => render(parseRevenue(field.value)));
+  // The field opens holding the worked example (`PricingTiers.astro`), so the script's first act is
+  // to re-derive what the server already rendered — same numbers, same winner. It is not redundant:
+  // a browser that restores a typed value on a back-navigation would otherwise leave the server's
+  // example on the cards under a different figure in the field.
+  if (field) render(parseRevenue(field.value));
 
   // ── Which plan is this seller on, and choosing one ────────────────────────────────────────
   let current = '';
