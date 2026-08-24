@@ -2651,10 +2651,19 @@ html:has(#dash-main-card.dash-nav-side) {
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab__label,
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-foot { display: none; }
   /* Centred rather than tucked into a corner: at 3.75rem the rail has no corner to speak of, and
-     an end-aligned chevron would sit off the axis every icon below it stands on. */
+     an end-aligned chevron would sit off the axis every icon below it stands on.
+
+     `margin-bottom` overridden because the base rule's is NEGATIVE (-0.25rem), and it is negative
+     for the open rail, where it pulls the chevron up into `.dash-head`'s top padding — a head that
+     is 88.6px tall and full of text, so nothing is anywhere near it. Collapsed, that head measures
+     0 and the -0.25rem lands on the icon column instead: measured, the button's bottom sat at 89.6
+     and the first tab's top at 85.6, so the control was four pixels INSIDE the list it acts on
+     (owner, 2026-08-24: *"צריך להרחיק קצת את החץ של הסגירה ופתיחה מהאייקונים"*). 0.6rem puts a
+     clear 9.6px under it — a control separated from its list, not the first item of one. */
   html.dash-nav-mini #dash-main-card.dash-nav-side .dash-rail-toggle {
     align-self: center;
     margin-inline: 0;
+    margin-bottom: 0.6rem;
   }
   /* ── A collapsed row shows THAT something is waiting, not how many ──
      **The number has to go** (owner, 2026-08-23: *"האייקונים ממש מוסתרים על ידי הבאדג׳ים עם המספר

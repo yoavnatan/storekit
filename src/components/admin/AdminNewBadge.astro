@@ -17,8 +17,20 @@ interface Props {
 const { label = 'חדש', block = false } = Astro.props;
 ---
 
+{/* The chip carries its OWN separation from the title it follows (owner, 2026-08-24: *"הן צמודות
+    תמיד לכותרת של הכרטיסיה"*). Measured before the change: 6.4px in the stores row (its parent
+    flex's `gap`, nothing of the chip's own), ~4px in the sellers card where the parent is plain
+    inline flow, and 2.4px above the block form in the alerts table. Three different numbers, all of
+    them the row's own spacing between EQUAL siblings — which is the wrong measure here, because a
+    title and a mark on it are not siblings of equal weight.
+
+    Here rather than at the four call sites: it is one rule instead of four that drift, and it lands
+    on whatever a later panel does with the component without that panel having to know. It ADDS to
+    a parent `gap` where one exists (12.4px in stores and orders) and stands alone where none does
+    (~10px in sellers) — which is the hierarchy we want either way: more air after the title than
+    between the chips that follow it. */}
 <span
-  class:list={['admin-new-chip', block ? 'block w-fit' : 'inline-block',
+  class:list={['admin-new-chip', block ? 'block w-fit mt-1.5' : 'inline-block ms-1.5',
     'text-[0.72rem] font-semibold py-[0.2rem] px-[0.55rem] rounded-full whitespace-nowrap bg-[color-mix(in_srgb,var(--color-success)_15%,transparent)] [color:var(--color-success)]']}
   title="נוסף מאז הפעם האחרונה שיצאת מהלשונית הזו"
 >{label}</span>
