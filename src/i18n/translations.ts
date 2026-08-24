@@ -110,30 +110,34 @@ export const translations = {
       // — that there is nothing else to go and connect. Same claim `pricing.pillar1Body` makes.
       //
       // **And it now names the EXPOSURE, because that is the whole answer to the objection**
-      // (owner, 2026-08-24). A prospective seller asked him why anyone pays a per-sale commission
-      // when a freelancer builds a site once for ₪2-3k and takes nothing after. Every other thing
-      // this block lists — ads, SEO, shipping, payments — that seller can eventually buy or bolt
-      // on; the one item on the page a standalone site can never have is the shoppers who arrived
-      // for somebody else's store. The positioning note on `startSelling` above already says that
-      // is what leads, and until today the sentence under the heading did not say it at all.
+      // (owner, 2026-08-24: *"צריך איכשהו להכניס שם שהחנות זוכה לחשיפה ולתנועה"*). A prospective
+      // seller had asked him why anyone pays a per-sale commission when a freelancer builds a site
+      // once for ₪2-3k and takes nothing after. Of everything this block lists — ads, SEO,
+      // shipping, payments — that seller can eventually buy or bolt on every item but one: the
+      // shoppers who arrived for somebody else's store. The positioning note on `startSelling`
+      // above already says that is what leads, and the sentence under the heading had never said
+      // it.
       //
-      // It is FOUR WORDS, and that is the second half of the ruling (owner, same day). The first
-      // attempt rebuilt the sentence around the exposure — "חנות עצמאית משלך, שנחשפת לקונים
-      // שמגיעים ל…" — and he asked for the old copy back: *"אני מתגעגע לקופי הקודם"*. The old
-      // line's whole virtue is its rhythm, a noun phrase and a placement and a closing clause, and
-      // a subordinate clause in the middle flattens it into a pitch. So the exposure rides on the
-      // placement that was already there — "לצד כל שאר החנויות" gains "ומול הקונים שלהן" — and
-      // "בפלטפורמה" comes out, because the heading one line above already names the place and the
-      // sentence is then shorter than the version this replaced.
+      // **The wording is his, after two of mine were rejected, and the difference is grammatical.**
+      // Rebuilding the line around it ("חנות עצמאית משלך, שנחשפת לקונים שמגיעים ל…") drew *"אני
+      // מתגעגע לקופי הקודם"*, and hanging a clause off the placement ("…ומול הקונים שלהן") drew
+      // *"לא הקופי לא טוב"*. Both attached the claim as a VERB, and a subordinate clause in the
+      // middle of this sentence flattens it into a pitch. His — "חשיפה לקונים של שאר החנויות
+      // במתחם" — is a NOUN PHRASE, so it sits beside "חנות עצמאית משלך" as a second thing offered
+      // and the shape survives. If this line is ever edited again, keep whatever it says in that
+      // form.
       //
-      // It names the MECHANISM, never a volume: "מול הקונים שלהן", never "נביא לך תנועה" and
-      // never a number. Exposure inside the מתחם is true by construction on day one
-      // (the discovery shelves, category pages and cross-store search all list a new store);
-      // arriving traffic is not, least of all in launch mode at 5-9 stores. Promising the second
-      // is the same mistake `builtInAds` below is worded to avoid — free traffic is the one thing
-      // the business model does not include — and memory `project_seo_marketing_anxiety` is the
-      // standing rule against it.
-      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות ומול הקונים שלהן — הכל במקום אחד, ללא תוספים חיצוניים.',
+      // It names the MECHANISM, never a volume: the shoppers who came for the other stores, never
+      // "נביא לך תנועה" and never a number. Exposure inside the מתחם is true by construction on
+      // day one (the discovery shelves, category pages and cross-store search all list a new
+      // store); arriving traffic is not, least of all in launch mode at 5-9 stores. Promising the
+      // second is the mistake `builtInAds` below is worded to avoid — free traffic is the one
+      // thing the business model does not include — and memory `project_seo_marketing_anxiety` is
+      // the standing rule against it.
+      //
+      // The English does not carry "מתחם" as a noun: per the note on `startSelling`, where the
+      // Hebrew says "במתחם" mid-sentence the English names the other stores instead.
+      startSellingDesc: 'חנות עצמאית משלך, וחשיפה לקונים של שאר החנויות במתחם — הכל במקום אחד, ללא תוספים חיצוניים.',
       // "ממשק פרסום מובנה", never "פרסום מובנה" (owner, 2026-08-14). What is
       // built in is the SYSTEM that runs the campaigns — the ad SPEND is billed
       // separately, per actual spend, and is never inside the monthly fee (see
@@ -2732,7 +2736,7 @@ export const translations = {
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
       startSelling: 'A home for independent stores',
-      startSellingDesc: 'A store of your own, alongside every other store and in front of their shoppers — all in one place, with no third-party add-ons.',
+      startSellingDesc: 'A store of your own, and exposure to the shoppers who came for all the other stores — all in one place, with no third-party add-ons.',
       // "ads manager", never bare "ads" — see the Hebrew twin above: the manager
       // is included, the ad spend is billed separately.
       builtInAds: 'Built-in ads manager',
