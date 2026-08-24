@@ -311,7 +311,6 @@ export const translations = {
       calcQuestion: 'כמה אתם צפויים למכור בחודש?',
       calcPlaceholder: 'למשל 8,000',
       calcBest: 'הכי משתלם לכם',
-      calcSaves: 'חוסך {amount} בחודש',
       // ── The two sentences, and neither may argue with the mark above it ──
       // The first version boasted of a 24₪ saving on a 699₪ bill, which reads as a trick (owner:
       // *"המחשבון מגוחך"*). The second said "כל המסלולים כמעט זהים, התחילו בבסיס" — while the badge
@@ -324,12 +323,11 @@ export const translations = {
       // a number nobody would switch for is not an argument, in either direction.
       calcClose: 'מסלול {tier} הוא המשתלם ביותר במחזור כזה.',
       calcGap: 'מסלול {tier} חוסך לכם {amount} בחודש לעומת {other}.',
-      calcExample: 'לדוגמה, מחזור של {amount} בחודש:',
       // When billing starts. Its own section because it is the answer to the question that stops a
       // seller from registering, and it is buried if it sits as a footnote under a price.
       whenBody: 'המנוי מתחיל להיגבות במכירה הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה.',
       includedTitle: 'מה כלול בכל מסלול',
-      included1: 'חנות עצמאית ומתקדמת עם כתובת משלכם, וקידום אורגני בגוגל',
+      included1: 'חנות עצמאית ומתקדמת עם כתובת משלכם, וקידום אורגני בגוגל (SEO)',
       included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש, הקטגוריות וקונים של חנויות אחרות',
       included3: 'פרסום בסיסי בגוגל ובמטא, בלי לגעת בשום הגדרה',
       included4: 'משלוחים עם שליח, מדבקות ומעקב',
@@ -2653,13 +2651,11 @@ export const translations = {
       calcQuestion: 'How much do you expect to sell in a month?',
       calcPlaceholder: 'e.g. 8,000',
       calcBest: 'Cheapest for you',
-      calcSaves: 'saves {amount} a month',
       calcClose: '{tier} is the best value at this level of turnover.',
       calcGap: '{tier} saves you {amount} a month over {other}.',
-      calcExample: 'For example, a turnover of {amount} a month:',
       whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up.',
       includedTitle: 'In every plan',
-      included1: 'An independent, fully-featured shop at your own address, and organic ranking on Google',
+      included1: 'An independent, fully-featured shop at your own address, and organic ranking on Google (SEO)',
       included2: 'Exposure inside the marketplace — home, search and categories',
       included3: 'Baseline advertising on Google and Meta, with no setting to touch',
       included4: 'Courier delivery, labels and tracking',
