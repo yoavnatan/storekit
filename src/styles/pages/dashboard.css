@@ -2766,6 +2766,17 @@ html:has(#dash-main-card.dash-nav-side) {
     inset-inline-start: 0;
     width: min(17rem, 82vw);
     z-index: 100;
+    /* **A column here too, or the foot is not a foot** (owner, 2026-08-24: *"הפוטר בתוך התפריט צד
+       צריך לשבת למטה בתחתית, אמרתי את זה מספר פעמים וזה לא קרה"*). `display: flex` was declared
+       only in the 900px-and-up block, so in the drawer this box was a plain block and
+       `.dash-rail-foot`'s `margin-top: auto` had no free space to collect — measured at 375×812 the
+       links ended 39px above the drawer's own bottom edge, floating under the last tab. The desktop
+       column was right all along, which is why it never reproduced on the screen it was checked on.
+       Children keep their own height (`flex: 0 0 auto`): this element is the scroller here, unlike
+       the desktop rail where the tab list is, so a shrinkable child would squash the list instead
+       of letting the drawer scroll. */
+    display: flex;
+    flex-direction: column;
     padding: 1rem 0.75rem;
     background: var(--color-surface);
     border-inline-end: 1px solid var(--color-border);
@@ -2801,6 +2812,7 @@ html:has(#dash-main-card.dash-nav-side) {
     visibility: visible;
     transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
+  #dash-main-card.dash-nav-side > .dash-rail > * { flex: 0 0 auto; }
   #dash-main-card.dash-nav-side .dash-tab { padding: 0.6rem 0.7rem; }
 }
 
