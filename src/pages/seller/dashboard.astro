@@ -1174,7 +1174,18 @@ const orderStatusColors: Record<string, string> = {
           data-panel="overview"
           aria-selected={initialPanel === 'overview'}
           tabindex={initialPanel === 'overview' ? 0 : -1}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="dash-tab__label">{d.tabOverview}</span></button>
+          style="position:relative"
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="dash-tab__label">{d.tabOverview}</span>
+          {/* **The one thing a seller can miss forever** (owner, 2026-08-24: *"מסלול שמעודד
+              נטישה"*). The card that says what is still missing lives on this tab, so a seller
+              working in Products or Settings had nothing telling him his shop is not on the site.
+              A `warning` and not a `danger`: nobody is waiting on him — but it is the one state
+              where the shop does not exist for anybody, so it travels the same chain every other
+              dot does (`seller-alerts.ts`), from the store switcher down to here. */}
+          {publishHolds.length > 0 && (
+            <span class="dash-tab-dot" data-tab-alert="warning" aria-label={d.pubTitle}></span>
+          )}
+        </button>
         <button
           class={`dash-tab${initialPanel === 'orders' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -3767,7 +3778,10 @@ const orderStatusColors: Record<string, string> = {
   // uses (`data-tab-alert`, lib/seller-alerts.ts). A dot in the switcher now means exactly what the
   // seller would see on that shop's tabs, which is also what makes it impossible for the two to
   // disagree.
-  const PER_STORE_TABS = ['tab-orders', 'tab-returns', 'tab-messages', 'tab-products', 'tab-advertising'];
+  // `tab-overview` joined on 2026-08-24 and it belongs here for the same reason as the rest: the
+  // marker on it says THIS SHOP is not on the site, which is per-store, so the switcher's dot has
+  // to see it or the two surfaces disagree about a shop that does not exist for anybody yet.
+  const PER_STORE_TABS = ['tab-overview', 'tab-orders', 'tab-returns', 'tab-messages', 'tab-products', 'tab-advertising'];
   const TAB_RANK: Record<string, number> = { danger: 2, warning: 1 };
 
   /** The loudest live marker on this store's tabs, or null. */

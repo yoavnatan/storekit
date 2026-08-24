@@ -1,4 +1,4 @@
-import { getStoresBySellerId } from './stores.js';
+import { getStoresBySellerId, storeLifecycle } from './stores.js';
 import { getStoreSlugsWithPendingOrders } from './orders.js';
 import { getStoreIdsWithUnreadMessages } from './messages.js';
 import { getStoreIdsWithStockAlerts } from './store-products.js';
@@ -31,8 +31,17 @@ import { LOW_STOCK_THRESHOLD } from './variant-combo.js';
  * separates them (`data-tab-alert`, scripts/dashboard/tab-alert-edges.ts):
  *   • `danger`  — a person is waiting: a pending order, unread mail.
  *   • `warning` — a wrong state that can wait: products out of / low on stock, a boost paused for
- *     a reason that will not undo itself.
+ *     a reason that will not undo itself, **and a shop that has never gone live**.
  * A store showing both takes the higher one, because a dot is one pixel and cannot say two things.
+ *
+ * ── The one that was invisible until 2026-08-24 ──
+ * A shop that has never been published (`store-publication.ts`) had NO dot anywhere. The card
+ * saying what was missing lives on the overview tab, so a seller working in Products or Settings
+ * saw nothing at all — and the owner named the consequence exactly: *"מסלול שמעודד נטישה… אפשר
+ * פשוט להגדיר את החנות ולעולם לא להעלות אותה לאוויר או לא לדעת שצריך לעשות את זה בכלל."* It is a
+ * `warning` rather than a `danger` because nobody is waiting on him — but it is the one state where
+ * the shop does not exist for anybody, so it dots the store in the switcher and the Overview tab
+ * that carries the answer.
  *
  * **`warning` deliberately stops at the switcher and never reaches the avatar.** The header dot
  * says "something is waiting on you" on every page of the site; low stock is a state a working
@@ -96,7 +105,10 @@ async function collect(sellerId: string, withWarnings: boolean): Promise<SellerA
     // Danger wins outright — a store with both an unread buyer and a low shelf is a store someone
     // is waiting on, and the dot has one colour to spend.
     if (pendingSlugs.has(s.slug) || unreadStoreIds.has(s.id)) byStore[s.id] = 'danger';
-    else if (lowStockIds.has(s.id) || stalledAdIds.has(s.id)) byStore[s.id] = 'warning';
+    // `withWarnings` gates the two that cost a query; this one costs nothing — the lifecycle is
+    // already on the row `getStoresBySellerId` returned — so it is asked either way. The header's
+    // danger-only call still ignores it, because `warning` never reaches the avatar.
+    else if (withWarnings && (lowStockIds.has(s.id) || stalledAdIds.has(s.id) || storeLifecycle(s) === 'unpublished')) byStore[s.id] = 'warning';
   }
   return { byStore };
 }

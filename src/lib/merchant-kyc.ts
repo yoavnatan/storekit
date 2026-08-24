@@ -145,12 +145,19 @@ export function normalizeMerchantKyc(input: unknown): Partial<MerchantKyc> {
     : raw.ownerGender;
   if (gender === 0 || gender === 1) out.ownerGender = gender;
 
-  // Israeli mobile: 10 digits starting 05, or 12 with the country code. Normalised to the local
-  // form PayMe's examples use (`0540123456`) so one seller's `+972-54-…` and another's `054 …`
-  // reach them identically.
+  // **Any Israeli number, not only a mobile** (owner asked, 2026-08-24: *"יש גם טלפונים ישראלים
+  // שמתחילים ב-07"*). This was `^05\d{8}$` on a comment claiming PayMe reject a landline — and
+  // their own `create-seller` page says nothing of the kind: `seller_phone` is *"Seller's phone
+  // number"*, required, example `+9720520000000`, with no mobile rule anywhere on it. So the
+  // restriction was ours, it was never measured, and it silently dropped every 07x number, every
+  // VoIP line and every business landline — the field then came back "missing" with the seller
+  // looking at a number he knows is his.
+  // Normalised to the local form their examples use, so one seller's `+972-54-…` and another's
+  // `054 …` reach them identically. 9 or 10 digits after the leading zero covers both the 2-digit
+  // area codes (03, 04, 08, 09) and the 3-digit ones (050-059, 072-077).
   const phone = digits(raw.ownerPhone, 15);
   const local = phone.startsWith('972') ? `0${phone.slice(3)}` : phone;
-  if (/^05\d{8}$/.test(local)) out.ownerPhone = local;
+  if (/^0\d{8,9}$/.test(local)) out.ownerPhone = local;
 
   const registered = isoDate(raw.businessRegisteredOn);
   if (registered) out.businessRegisteredOn = registered;

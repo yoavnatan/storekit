@@ -82,8 +82,24 @@ describe('normalising a submission', () => {
     }
   });
 
-  it('rejects a landline — PayMe require a mobile', () => {
-    expect(normalizeMerchantKyc({ ...COMPLETE, ownerPhone: '031234567' }).ownerPhone).toBeUndefined();
+  /**
+   * **Takes a landline, a VoIP line and an 07x number too.** This asserted the opposite until
+   * 2026-08-24, on a comment claiming PayMe reject anything but a mobile — and their own
+   * `create-seller` page says no such thing: `seller_phone` is "Seller's phone number", required,
+   * with no mobile rule on it anywhere. So the restriction was ours and unmeasured, and it dropped
+   * every business landline and every 07x number silently: the field came back "missing" while the
+   * seller looked at a number he knows is his.
+   */
+  it('takes any Israeli number, not only a mobile', () => {
+    for (const typed of ['031234567', '0721234567', '086543210', '0771234567']) {
+      expect(normalizeMerchantKyc({ ...COMPLETE, ownerPhone: typed }).ownerPhone, typed).toBe(typed);
+    }
+  });
+
+  it('still refuses something that is not an Israeli number at all', () => {
+    for (const typed of ['12345', '1234567890123', '5401234567']) {
+      expect(normalizeMerchantKyc({ ...COMPLETE, ownerPhone: typed }).ownerPhone, typed).toBeUndefined();
+    }
   });
 
   it('accepts a nine-digit id without judging its check digit', () => {
