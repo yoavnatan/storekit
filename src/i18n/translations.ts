@@ -117,14 +117,23 @@ export const translations = {
       // for somebody else's store. The positioning note on `startSelling` above already says that
       // is what leads, and until today the sentence under the heading did not say it at all.
       //
-      // It names the MECHANISM, never a volume: "שנחשפת לקונים שמגיעים ל…", never "נביא לך
-      // תנועה" and never a number. Exposure inside the מתחם is true by construction on day one
+      // It is FOUR WORDS, and that is the second half of the ruling (owner, same day). The first
+      // attempt rebuilt the sentence around the exposure — "חנות עצמאית משלך, שנחשפת לקונים
+      // שמגיעים ל…" — and he asked for the old copy back: *"אני מתגעגע לקופי הקודם"*. The old
+      // line's whole virtue is its rhythm, a noun phrase and a placement and a closing clause, and
+      // a subordinate clause in the middle flattens it into a pitch. So the exposure rides on the
+      // placement that was already there — "לצד כל שאר החנויות" gains "ומול הקונים שלהן" — and
+      // "בפלטפורמה" comes out, because the heading one line above already names the place and the
+      // sentence is then shorter than the version this replaced.
+      //
+      // It names the MECHANISM, never a volume: "מול הקונים שלהן", never "נביא לך תנועה" and
+      // never a number. Exposure inside the מתחם is true by construction on day one
       // (the discovery shelves, category pages and cross-store search all list a new store);
       // arriving traffic is not, least of all in launch mode at 5-9 stores. Promising the second
       // is the same mistake `builtInAds` below is worded to avoid — free traffic is the one thing
       // the business model does not include — and memory `project_seo_marketing_anxiety` is the
       // standing rule against it.
-      startSellingDesc: 'חנות עצמאית משלך, שנחשפת לקונים שמגיעים לכל שאר החנויות בפלטפורמה — הכל במקום אחד, ללא תוספים חיצוניים.',
+      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות ומול הקונים שלהן — הכל במקום אחד, ללא תוספים חיצוניים.',
       // "ממשק פרסום מובנה", never "פרסום מובנה" (owner, 2026-08-14). What is
       // built in is the SYSTEM that runs the campaigns — the ad SPEND is billed
       // separately, per actual spend, and is never inside the monthly fee (see
@@ -2723,7 +2732,7 @@ export const translations = {
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
       startSelling: 'A home for independent stores',
-      startSellingDesc: 'A store of your own, in front of the shoppers who came for all the other stores on the platform — all in one place, with no third-party add-ons.',
+      startSellingDesc: 'A store of your own, alongside every other store and in front of their shoppers — all in one place, with no third-party add-ons.',
       // "ads manager", never bare "ads" — see the Hebrew twin above: the manager
       // is included, the ad spend is billed separately.
       builtInAds: 'Built-in ads manager',
