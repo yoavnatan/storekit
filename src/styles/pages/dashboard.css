@@ -2995,6 +2995,16 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
   /* No slide. The rail is already on screen at 3.75rem — it widens in place, and a panel sliding
      in from off-screen would be a second rail arriving over the one the seller can see. The scrim
      fades on its own 0.25s, which is the movement the eye follows. */
+
+  /* **The scrim stops at the header, because in this band so does the rail** (owner, 2026-08-24:
+     *"זה משחיר גם את הלוגו למעלה וזה יוצר מעין חתך מוזר"*). Full-bleed `inset: 0` is right for the
+     phone drawer, which covers the header itself — there the dark reaches the top edge and nothing
+     is left half-lit. Here the rail opens BELOW a header that is `position: fixed` and stays put,
+     so a scrim over the whole viewport dimmed the wordmark and drew a horizontal seam across the
+     screen at the rail's top edge: two different darknesses meeting on a line that belongs to
+     neither. Starting the scrim where the rail starts makes that line the header's own bottom
+     border, which is already there. */
+  .dash-nav-overlay { top: var(--site-header-h, 3.4rem); }
 }
 /* ── The chevron points the way the rail is about to move ──
    **The first version never turned at all** (owner, 2026-08-23: *"החץ לא משנה שם את הכיוון שלו
