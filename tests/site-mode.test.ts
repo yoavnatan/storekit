@@ -21,6 +21,12 @@ beforeEach(() => {
   vi.resetModules();
   delete process.env.SITE_NOINDEX;
   delete process.env.ALLOW_MOCK_CHECKOUT;
+  // The developer's real sandbox keys are in `.env` and `--env-file-if-exists` puts them in the
+  // process, so without this the two cases below would both be testing whatever that file happens
+  // to say rather than what each one sets.
+  delete process.env.PAYME_CLIENT_KEY;
+  delete process.env.PAYME_BASE_URL;
+  delete process.env.PAYME_DEV_LIVE;
 });
 
 afterEach(() => {
@@ -86,6 +92,37 @@ describe('selling, in production', () => {
     expect(real.paymentsAreMock()).toBe(false);
     expect(real.checkoutIsOpen()).toBe(true);
     vi.doUnmock('../src/lib/payment.js');
+  });
+
+  /**
+   * ⚠️ **A SANDBOX IS A MOCK.** The owner asked the question that found this (2026-08-24): *"כשאני
+   * אריץ ברנדר ועדיין לא מחבר ספק סליקה, קנייה תתרחש בסנדבוקס?!"*
+   *
+   * It would have. In production the credentials ARE the whole switch — deliberately — and the
+   * sandbox keys sit in `.env`, which is exactly the file whose variables get copied into a host's
+   * settings on the day the platform first goes up. The result is every symptom of a working shop:
+   * a real order, real stock off the shelf, a real confirmation email, and a charge that happened
+   * only in PayMe's test environment.
+   *
+   * That is the same "shop giving goods away" this file exists to prevent, reached through the one
+   * door it was not watching. So these two cases are the property, and the difference between them
+   * is one variable.
+   */
+  it('refuses to sell on sandbox credentials, however complete they are', async () => {
+    process.env.PAYME_CLIENT_KEY = 'sandbox-key';
+    process.env.PAYME_BASE_URL = 'https://sandbox.payme.io/api/';
+    const { paymentsAreMock, checkoutIsOpen, checkoutClosedReason } = await load();
+    expect(paymentsAreMock()).toBe(true);
+    expect(checkoutIsOpen()).toBe(false);
+    expect(checkoutClosedReason()).toBe('mock-payments');
+  });
+
+  it('sells the moment the same credentials point at the LIVE environment', async () => {
+    process.env.PAYME_CLIENT_KEY = 'live-key';
+    process.env.PAYME_BASE_URL = 'https://live.payme.io/api/';
+    const { paymentsAreMock, checkoutIsOpen } = await load();
+    expect(paymentsAreMock()).toBe(false);
+    expect(checkoutIsOpen()).toBe(true);
   });
 });
 

@@ -85,3 +85,21 @@ export function isDerivedPaymeCategory(code: string): boolean {
  *  vocabulary minus the deliberate exception, rather than the list quietly rotting when a category
  *  is added to `store-taxonomy.ts`. */
 export const MAPPED_STORE_CATEGORIES: readonly string[] = Object.keys(PAYME_CATEGORY_BY_STORE_CATEGORY);
+
+/**
+ * The fallback the clearing form offers when nothing derived — **our own categories, not PayMe's
+ * codes** (owner asked what happens then, 2026-08-24).
+ *
+ * A store's categories are FREE TEXT (`store-taxonomy.ts#sanitizeStoreCategories` accepts any short
+ * string, and the picker's vocabulary is a suggestion rather than a whitelist), so a seller who
+ * typed *"ציוד ספורט ימי"* maps to nothing — and that is an ordinary case, not the rare one. The
+ * field used to be a five-digit numeric input, which asked him for a code from a list he has never
+ * seen and could not find: the exact rubric `feedback_seller_form_burden` forbids.
+ *
+ * So he answers the question he can answer — which of these does your shop sell — and the code is
+ * ours to look up. Sorted by the Hebrew label, because that is what he is reading.
+ */
+export const MERCHANT_CATEGORY_OPTIONS: readonly { label: string; code: string }[] =
+  Object.entries(PAYME_CATEGORY_BY_STORE_CATEGORY)
+    .map(([label, code]) => ({ label, code }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'he'));

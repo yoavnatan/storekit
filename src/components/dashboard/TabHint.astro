@@ -24,7 +24,10 @@ const { text } = Astro.props;
     this really is just a line of text that needs a gap under it. The band rule in
     `dashboard.css` sets `margin-block` and is unlayered, so it wins over a Tailwind utility
     whatever the specificity (`project_unlayered_css_beats_utility`). */}
-<p class="dash-tab-hint flex items-start gap-[0.4rem] m-0 mb-3 text-[0.82rem] leading-[1.5] [color:var(--color-muted)]">
+{/* No colour utility on the element itself: it is `--color-muted` as a plain line and the
+    surface colour inside the navy band, and a Tailwind `[color:…]` here would beat neither
+    (unlayered CSS wins) nor be overridable per state. `dashboard.css` sets both. */}
+<p class="dash-tab-hint flex items-start gap-[0.4rem] m-0 mb-3 text-[0.82rem] leading-[1.5]">
   <svg class="shrink-0 mt-[0.15rem]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
   </svg>

@@ -14,6 +14,7 @@
 import { showToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
 import { announceValueChange } from './unsaved-guard.js';
+import { initSelectDropdown } from './select-dropdown.js';
 
 interface SaveResponse {
   ok?: boolean;
@@ -47,6 +48,12 @@ export function initMerchantKycForm(): void {
     summary.hidden = yes;
     fields.hidden = !yes;
   };
+  // The trade picker, when it is rendered at all — only for a shop whose own categories answered
+  // nothing (`merchant-category.ts`). A raw `<select>` is banned site-wide; this replaces it with
+  // the site's own dropdown and leaves the select as the value.
+  const category = document.getElementById('mk-category') as HTMLSelectElement | null;
+  if (category) initSelectDropdown(category);
+
   document.getElementById('mk-edit')?.addEventListener('click', () => open(true));
   document.getElementById('mk-cancel')?.addEventListener('click', () => open(false));
 

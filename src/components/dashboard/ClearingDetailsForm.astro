@@ -27,6 +27,7 @@
  * whether an account may be opened.
  */
 import type { MerchantKyc } from '../../lib/merchant-kyc.js';
+import { MERCHANT_CATEGORY_OPTIONS } from '../../lib/merchant-category.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -132,7 +133,19 @@ const v = (x: string | number | undefined): string => (x === undefined ? '' : St
       {!derivedCategory && (
         <label class="field sm:col-span-2">
           <span class="text-[0.85rem]">{d.mkCategory}</span>
-          <input class="input" name="businessCategory" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="5" value={v(kyc.businessCategory)} />
+          {/* **He picks one of OUR categories; the code is ours to look up.** This was a five-digit
+              numeric input, which asked a seller for a value from a list of several hundred trade
+              rows he has never seen — and it is the ORDINARY case, not the rare one, because a
+              store's categories are free text and anything he typed himself maps to nothing.
+              A real `<select>` because `initSelectDropdown` takes one and replaces it (raw selects
+              are banned site-wide); with no JS it stays a working native control, which is the
+              right failure for a field that gates a seller's ability to sell. */}
+          <select class="input" name="businessCategory" id="mk-category">
+            <option value="">{d.mkCategoryNone}</option>
+            {MERCHANT_CATEGORY_OPTIONS.map((o) => (
+              <option value={o.code} selected={kyc.businessCategory === o.code}>{o.label}</option>
+            ))}
+          </select>
           <p class="muted m-0 mt-1 text-[0.76rem]">{d.mkCategoryHint}</p>
         </label>
       )}

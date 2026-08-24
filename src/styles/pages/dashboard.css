@@ -2255,17 +2255,27 @@ html:has(#dash-main-card.dash-nav-side) {
    time a panel gained something above it. Overview is the case that proves it — its hint sits after
    the publish card and the checklist, is not first, and correctly stays the plain line it was.
 
-   `--color-bg` and not the surface: a band the eye reads as chrome rather than as the first row of
-   content, which is the whole difference the owner is pointing at. */
+   **The site's own dark navy** (`--color-primary-dark`, owner 2026-08-24 — the colour one of the
+   homepage's open-a-store cards was tried in). A grey band was the first attempt and it read as one
+   more pale row in a stack of pale rows, which is the thing he was pointing at: it has to be
+   chrome, and chrome here is dark. Nothing else in the panel is, so the band is unmistakably the
+   container's own edge rather than the first line of its content.
+   The text and the icon go to the surface colour for the contrast that needs (13.4:1, well past
+   AA), and the bottom border goes away entirely — a rule between the band and the title would be
+   drawing a seam across the one thing that is supposed to look like one piece. */
+/* The plain line, everywhere the band does not apply — Overview (its hint is not first) and any
+   layout without the side rail. It kept its muted colour by way of a utility until the band needed
+   to override it, which a layered utility cannot be. */
+.dash-tab-hint { color: var(--color-muted); }
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) { padding-top: 0; }
 #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child {
   margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
   margin-block: 0 1rem;
-  padding: 0.55rem var(--dash-panel-pad);
-  background: var(--color-bg);
-  border-top: var(--dash-sheet-edge, 0px) solid var(--color-border);
-  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
+  padding: 0.6rem var(--dash-panel-pad);
+  background: var(--color-primary-dark);
+  color: var(--color-surface);
+  border-top: var(--dash-sheet-edge, 0px) solid var(--color-primary-dark);
+  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-primary-dark);
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }

@@ -47,7 +47,7 @@
 
 import { serverEnv } from './runtime-env.js';
 import { paymentProvider, MockPaymentProvider } from './payment.js';
-import { paymeIsActive } from './payment-payme.js';
+import { paymeCredentials, paymeIsActive, isSandbox } from './payment-payme.js';
 
 /**
  * True when nothing configured here can actually take money. Asked of the objects and of the
@@ -64,10 +64,36 @@ import { paymeIsActive } from './payment-payme.js';
  * fully configured, real cards charged, and `checkoutClosedReason()` still answering
  * `'mock-payments'` on every production request — a shop that refuses to sell because it is looking
  * at the wrong provider.
+ *
+ * ── ⚠️ A SANDBOX IS A MOCK, and missing that was the same bug facing the other way (owner asked,
+ * 2026-08-24: *"כשאני אריץ ברנדר ועדיין לא מחבר ספק סליקה, קנייה תתרחש בסנדבוקס?!"*) ──
+ *
+ * It would have. `paymeIsActive()` answers "are there credentials", and in production credentials
+ * alone are the whole switch — deliberately, so that wiring the gateway opens the shop with nothing
+ * to remember. But the sandbox keys are in `.env` today and the obvious way to put this platform on
+ * a host is to copy that file's variables into the host's settings. Then: a real domain, a real
+ * shopper, a real order, real stock off the shelf, a real confirmation email, and a charge that
+ * happened only in PayMe's test environment. Every symptom of a working shop and no money.
+ *
+ * That is precisely the state this file's header describes — *"a shop giving goods away, and it is
+ * reachable by anyone who finds the URL"* — reached through the one door it was not watching. So
+ * the question is not "is a provider configured" but "can this provider actually take money", and a
+ * sandbox cannot. Derived from the base URL we deliberately set, never guessed from a key.
+ *
+ * Development is unaffected: `paymeIsActive()` is already false there without `PAYME_DEV_LIVE`, and
+ * with it the developer has asked for the sandbox on purpose. This gate is `import.meta.env.PROD`
+ * only, through `checkoutClosedReason` below.
  */
 export function paymentsAreMock(): boolean {
-  if (paymeIsActive()) return false;
+  if (paymeIsActive() && !paymeIsSandbox()) return false;
   return paymentProvider instanceof MockPaymentProvider;
+}
+
+/** Is the configured PayMe environment their TEST one? False when nothing is configured, because
+ *  then there is no environment to be wrong about — that case is the mock provider's. */
+export function paymeIsSandbox(): boolean {
+  const creds = paymeCredentials();
+  return !!creds && isSandbox(creds);
 }
 
 export type ClosedReason = 'mock-payments';

@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { paymeCategoryForStore, isDerivedPaymeCategory, MAPPED_STORE_CATEGORIES } from '../src/lib/merchant-category.js';
+import { paymeCategoryForStore, isDerivedPaymeCategory, MAPPED_STORE_CATEGORIES, MERCHANT_CATEGORY_OPTIONS } from '../src/lib/merchant-category.js';
 import { SEED_CATEGORIES } from '../src/lib/store-taxonomy.js';
 
 /** PayMe's Israeli MCC list, as captured from their documentation (docs/payme-docs/README.md).
@@ -74,6 +74,19 @@ describe('what the seller never has to answer', () => {
   // `null` is the answer that makes the form ask. A default here is the whole class of bug this
   // module exists to end — a code their system does not recognise, discovered as a merchant that
   // never gets approved.
+  // **A store's categories are FREE TEXT** — `sanitizeStoreCategories` takes any short string, and
+  // the picker's vocabulary is a suggestion rather than a whitelist. So "nothing mapped" is an
+  // ordinary outcome, and what the form falls back to has to be a question a seller can answer: our
+  // own categories, never PayMe's five-digit code from a list he has never seen.
+  it('offers our own categories as the fallback, every one of them a code we can send', () => {
+    expect(MERCHANT_CATEGORY_OPTIONS.length).toBe(MAPPED_STORE_CATEGORIES.length);
+    for (const option of MERCHANT_CATEGORY_OPTIONS) {
+      expect(isDerivedPaymeCategory(option.code), `${option.label} → ${option.code}`).toBe(true);
+      // The label is what he reads, so it is the Hebrew category and not a number.
+      expect(option.label).not.toMatch(/^\d+$/);
+    }
+  });
+
   it('answers null rather than inventing one', () => {
     expect(paymeCategoryForStore([])).toBeNull();
     expect(paymeCategoryForStore(undefined)).toBeNull();
