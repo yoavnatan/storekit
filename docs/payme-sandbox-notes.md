@@ -81,7 +81,13 @@ The second charge on the same key returned `Buyer inactive`. Passing
 upgraded rather than a new one. **A multi-store cart is broken without this flag** — store one
 succeeds and store two fails.
 
-### 4. ⚠️ Multiple captures are not enabled on our key
+### 4. ❌ SUPERSEDED BY §14 — "multiple captures are not enabled on our key" was WRONG
+**Read §14 instead. Multi-capture works, and the entire split model rests on it.** This measurement
+called `capture-sale`, which is by definition the single-capture endpoint; the multi-capture call is
+`generate-sale` with `sale_type: "multi-capture"` and `origin_sale_id`. The paragraph is kept
+verbatim below rather than deleted, because its conclusion was quoted into GO_LIVE and into a design
+decision — someone who remembers reading it needs to find it and see that it fell.
+
 Authorize ₪100 (`sale_type: "authorize"`), capture ₪40 → the sale jumps straight to `completed` and
 a second capture is refused `305 · Cannot perform action due to an incorrect status`. Capturing
 above the authorization is refused too: ₪11 against a ₪10 authorization →
@@ -532,7 +538,9 @@ script dry-runs by default and refuses any base URL but the sandbox.
 
 - The exact per-transaction fee actually deducted from a seller's balance (the tariff was READ, not
   measured against a balance).
-- Multi-capture behaviour once PayMe enable it.
+- ~~Multi-capture behaviour once PayMe enable it.~~ **Measured — §14.** It was never disabled; §4
+  called the wrong endpoint. What remains unmeasured about it is only the raise PayMe offered, from
+  a 100% to a 110% capture ceiling, which nothing we have built needs.
 - Whether the platform can switch on a seller's invoicing module through the API, or whether the
   seller must do it in their own panel. This decides how the invoicing add-on is sold
   (memory `project_business_model_pricing`).
