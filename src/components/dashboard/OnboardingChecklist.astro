@@ -15,8 +15,12 @@ import { missingRequiredSteps, onboardingProgress, type OnboardingStep, type Onb
 
 interface Props {
   steps: OnboardingStep[];
+  /** Is the store actually on the site? **The warning below said the direct link works and could be
+   *  shared, and for an unpublished store that is false** — it answers 404 to everyone but its owner
+   *  (`store-status.ts`). Two states, two sentences, rather than one that is right half the time. */
+  published?: boolean;
 }
-const { steps } = Astro.props;
+const { steps, published = true } = Astro.props;
 const lang = getLang(Astro.cookies);
 const d = getT(lang).dashboard;
 const progress = onboardingProgress(steps);
@@ -61,7 +65,7 @@ const COPY: Record<OnboardingStepId, { label: string; hint: string }> = {
         <svg class="shrink-0 mt-[0.15rem]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
-        <span>{d.onbNotLive}</span>
+        <span>{published ? d.onbNotLive : d.onbNotLiveUnpublished}</span>
       </p>
     )}
 

@@ -2240,6 +2240,49 @@ html:has(#dash-main-card.dash-nav-side) {
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }
+/* ══ THE TAB HINT, WHEN IT IS THE FIRST THING IN A PANEL ══
+   Owner, 2026-08-24: *"לא יושבות טוב על הקונטיינר... רק עם בורדר רדיוס עליון ושיתלבשו על גבי
+   הקונטיינר הכללי."*
+
+   The hint is rendered above the panel head on six of the seven tabs, which quietly took the top
+   edge away from the element designed to carry it: the head above declares the sheet's top border,
+   its side borders and its two top corners, and none of that is the top of anything if a paragraph
+   is sitting over it. So when the hint is first, IT becomes the band — the same three declarations,
+   for the same reason — and the head directly under it goes back to being an ordinary title.
+
+   `:first-child` and not a modifier prop: the hint's position is a fact about the panel it was
+   dropped into, and a component that had to be told which one it is would be told wrongly the first
+   time a panel gained something above it. Overview is the case that proves it — its hint sits after
+   the publish card and the checklist, is not first, and correctly stays the plain line it was.
+
+   `--color-bg` and not the surface: a band the eye reads as chrome rather than as the first row of
+   content, which is the whole difference the owner is pointing at. */
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) { padding-top: 0; }
+#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child {
+  margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
+  margin-block: 0 1rem;
+  padding: 0.55rem var(--dash-panel-pad);
+  background: var(--color-bg);
+  border-top: var(--dash-sheet-edge, 0px) solid var(--color-border);
+  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  border-start-start-radius: var(--radius);
+  border-start-end-radius: var(--radius);
+}
+/* The head under it is no longer an edge, so it gives the corners and the top border back — two
+   rounded bars stacked is the smudge the rule below already refuses for a different pair. */
+#dash-main-card.dash-nav-side .dash-tab-hint + .dash-panel-head,
+#dash-main-card.dash-nav-side .dash-tab-hint + .products-header {
+  border-top-width: 0;
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+/* Same doubling rule the title's own border follows: below 1180px the sheet is `#dash-main-card`
+   and keeps its top border, so a second one here would stack two 1px lines into a 2px smudge. */
+@media (max-width: 899.98px) {
+  #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child { border-top-width: 0; }
+}
+
 /* **The title's top border is the DESKTOP's alone**, because that is the only width where the
    panel IS the sheet. Below 1180px the sheet is `#dash-main-card` and it keeps its own top border,
    so a second one on the bar directly under it stacks two 1px rules into one smudged 2px line —

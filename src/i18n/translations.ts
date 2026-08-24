@@ -549,8 +549,11 @@ export const translations = {
       createStoreTitle: 'פתיחת חנות חדשה',
       storeNameReq: 'שם חנות *',
       storeNamePlaceholder: 'למשל: כלים של שרה',
-      storeUrlLabel: 'כתובת האתר *',
-      storeUrlHint: 'אותיות, מספרים ומקפים — זו תהיה כתובת האתר של החנות:',
+      storeUrlLabel: 'שם לכתובת האתר, באנגלית *',
+      // Says what the field IS and what it is NOT: the address on the platform, with a domain of
+      // your own a separate thing you connect later (owner, 2026-08-24). Naming the second here is
+      // what stops a seller trying to type one into this box.
+      storeUrlHint: 'אותיות, מספרים ומקפים. זו תהיה כתובת החנות במתחם, ואפשר לחבר דומיין משלכם בהגדרות החנות:',
       storeUrlHebrewNote: 'אפשר גם בעברית, וגוגל מציג אותה כמו שהיא. שים לב שחלק מהאפליקציות (וואטסאפ, מייל) מדביקות קישור עברי כרצף ארוך של תווים — באנגלית הוא תמיד יישאר קצר.',
       storeUrlRequired: 'כתובת האתר היא שדה חובה.',
       storeUrlTitle: 'כתובת האתר',
@@ -617,7 +620,9 @@ export const translations = {
       productsTitle: 'מוצרים',
       addProduct: 'הוסף מוצר',
       newProduct: 'מוצר חדש',
-      noProducts: 'אין מוצרים עדיין. הוסף את הראשון למעלה.',
+      // One sentence. The second — "add the first one above" — pointed at a button a few
+      // centimetres away inside the same empty box (owner, 2026-08-24).
+      noProducts: 'אין מוצרים עדיין.',
       noProductsMatch: 'אין מוצרים שתואמים לחיפוש/סינון.',
       colName: 'שם',
       colPrice: 'מחיר',
@@ -1361,7 +1366,15 @@ export const translations = {
       onbStepAddressHint: 'נדרש כדי להציע איסוף עצמי מהחנות.',
       onbGo: 'לביצוע',
       onbRequired: 'חובה',
+      // Two sentences for two different stores, because one of them stopped being true (owner,
+      // 2026-08-24). This one is for a shop that IS live and simply has nothing visible in it: its
+      // direct link really does work, which is what `store-readiness.ts` deliberately preserves.
       onbNotLive: 'החנות עדיין לא מופיעה בעמוד הבית, בחיפוש ובגוגל — כי אין בה מוצר אחד גלוי לקונים. הקישור הישיר עובד, אז אפשר להציץ ולשתף, אבל אף אחד לא ימצא אותה לבד עד שיהיה מוצר.',
+      // And this one is for a shop that has not gone live at all, where the sentence above was
+      // simply false: an unpublished store answers 404 to everyone but its owner
+      // (`store-status.ts`), so there is nothing to share yet. The card above this one already
+      // says what is holding it back, so this says only the part that is the checklist's own.
+      onbNotLiveUnpublished: 'בלי מוצר אחד גלוי לקונים החנות לא תופיע בעמוד הבית, בחיפוש ובגוגל — גם אחרי שתעלה לאוויר.',
       storeLimitReached: 'הגעת למקסימום החנויות לחשבון (5). כל החנויות שלך מנוהלות תחת אותו עסק רשום.',
       onbStepsDone: 'הושלמו',
       addStore: 'פתיחת חנות נוספת',
@@ -1805,7 +1818,9 @@ export const translations = {
       tagsPlaceholder: 'לדוגמה: בעבודת יד',
       tagsSuggestLabel: 'מוצע (הקלק להוספה):',
       tagsSuggestAdd: 'הוסף תגית מוצעת',
-      storeCategories: 'קטגוריות חנות (לעמוד הבית של הפלטפורמה)',
+      // A QUESTION, not a field name with a parenthetical about our own plumbing (owner,
+      // 2026-08-24). Where the answer is used is our business; what he has to answer is his.
+      storeCategories: 'מה החנות שלך מוכרת?',
       storeCategoriesPlaceholder: 'חפשו קטגוריה, או הקלידו כדי להוסיף חדשה',
       categoryAdd: 'הוסיפו קטגוריה',
       categoryAddAnyway: 'הוסיפו בכל זאת',
@@ -1887,7 +1902,11 @@ export const translations = {
       variantStockEditLabel: 'ערוך מלאי לגרסה זו',
       variantComboApply: 'העתק סה"כ למלאי הכללי',
       noStoreTitle: 'פתח את החנות הראשונה שלך',
-      noStoreDesc: 'הוסף שם לחנות ותתחיל למכור תוך דקות.',
+      // NOT "start selling in minutes" (owner, 2026-08-24): bad copy, and not true — a shop opens
+      // unpublished and selling waits on a clearing account PayMe examine for up to seven business
+      // days (`store-publication.ts`). What IS true is the thing that makes the offer good:
+      // everything can be built, seen and finished before anyone asks for a card.
+      noStoreDesc: 'בונים את החנות במלואה — מוצרים, עיצוב וקטגוריות — ורואים אותה לפני שמזינים כרטיס.',
       sortByLabel: 'מיין לפי',
       filterByLabel: 'סנן לפי',
       filterClearAll: 'נקה הכל',
@@ -2772,8 +2791,8 @@ export const translations = {
       createStoreTitle: 'Create a new store',
       storeNameReq: 'Store name *',
       storeNamePlaceholder: "e.g. Sarah's Ceramics",
-      storeUrlLabel: 'Store URL *',
-      storeUrlHint: 'Letters, numbers and hyphens — this becomes your store address:',
+      storeUrlLabel: 'Store address name, in English *',
+      storeUrlHint: 'Letters, numbers and hyphens. This is your address on the platform; you can connect a domain of your own in store settings:',
       storeUrlHebrewNote: 'Hebrew works too, and Google shows it as-is. Note that some apps (WhatsApp, email) paste a Hebrew link as a long run of characters — a Latin one always stays short.',
       storeUrlRequired: 'A store URL is required.',
       storeUrlTitle: 'Store URL',
@@ -2820,7 +2839,7 @@ export const translations = {
       productsTitle: 'Products',
       addProduct: 'Add product',
       newProduct: 'New product',
-      noProducts: 'No products yet. Add your first one above.',
+      noProducts: 'No products yet.',
       noProductsMatch: 'No products match your search/filter.',
       colName: 'Name',
       colPrice: 'Price',
@@ -3400,6 +3419,7 @@ export const translations = {
       onbGo: 'Go',
       onbRequired: 'required',
       onbNotLive: 'Your store does not appear on the homepage, in search or on Google yet — it has no product a shopper can see. The direct link works, so you can preview and share it, but nobody will find it on their own until there is a product.',
+      onbNotLiveUnpublished: 'With no product a shopper can see, the store will not appear on the homepage, in search or on Google — not even once it is live.',
       storeLimitReached: 'You have reached the maximum number of stores per account (5). All your stores are managed under the same registered business.',
       onbStepsDone: 'done',
       addStore: 'Open another store',
@@ -3791,7 +3811,7 @@ export const translations = {
       tagsPlaceholder: 'e.g. handmade',
       tagsSuggestLabel: 'Suggested (click to add):',
       tagsSuggestAdd: 'Add suggested tag',
-      storeCategories: 'Store categories (for the platform homepage)',
+      storeCategories: 'What does your store sell?',
       storeCategoriesPlaceholder: 'Search a category, or type to add a new one',
       categoryAdd: 'Add category',
       categoryAddAnyway: 'Add anyway',
@@ -3870,7 +3890,7 @@ export const translations = {
       variantStockEditLabel: 'Edit stock for this variant',
       variantComboApply: 'Copy total to overall stock',
       noStoreTitle: 'Open your first store',
-      noStoreDesc: 'Add a store name and start selling in minutes.',
+      noStoreDesc: 'Build the whole store — products, design, categories — and see it before you enter a card.',
       sortByLabel: 'Sort by',
       filterByLabel: 'Filter by',
       filterClearAll: 'Clear all',

@@ -15,7 +15,12 @@ import {
   checkAuthRate, countAuthAttempt, registerRules, retryAfterMinutes,
 } from '../../lib/rate-limit.js';
 
-if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
+// **Already signed in, and he pressed "פתח חנות"** — so take him to the form that opens one, not to
+// the dashboard he was already looking at (owner, 2026-08-24). `?new=1` is the dashboard's own entry
+// point for a second shop; for a seller with none it changes nothing, because the create card is
+// what that page renders anyway. `\u0026` is not needed and no user input reaches this string, so it
+// is a literal rather than a `machineUrl` — nothing here carries Hebrew.
+if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard?new=1');
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
