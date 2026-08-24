@@ -194,12 +194,32 @@ export function initFormToggles(): void {
       addFormWrap?.removeAttribute('hidden');
       toggleAdd.setAttribute('hidden', '');
       document.getElementById('csv-panel')?.setAttribute('hidden', '');
+      // **The empty-catalog CTA goes with it** (owner, 2026-08-24: *"עדיין יש למטה כפתור 'הוסף מוצר
+      // ראשון', הוא צריך להיעלם כאשר הטופס פתוח. כי זה נראה כאילו צריך ללחוץ עליו כדי לשמור את
+      // הפרטים"*). `#empty-products` sits BELOW the form, so with the form open its accent button
+      // was the last thing under the fields — exactly where a submit button belongs — and it does
+      // the opposite of saving. It reopens the form it is already looking at.
+      // `applyPagination` recomputes this element's `hidden` on every rebuild and agrees with this
+      // (see the same condition there), so a save/filter cannot bring it back under an open form.
+      document.getElementById('empty-products')?.setAttribute('hidden', '');
     });
   });
   bindOnce(cancelAdd, 'toggleBound', () => {
     cancelAdd?.addEventListener('click', () => {
       addFormWrap?.setAttribute('hidden', '');
       toggleAdd?.removeAttribute('hidden');
+      // Back only if the catalogue really is still empty, and the TABLE is the authority rather
+      // than this toggle — two states have to be told apart and both are read off the tbody:
+      //   · a product row present → something was added (here or in another tab) → stay hidden;
+      //   · `#products-empty-row` present → a FILTER matched nothing, which is a full catalogue,
+      //     and is exactly the state "add your first product" must not appear in (see the note
+      //     over `#empty-products` in dashboard.astro — it was hidden for that reason once
+      //     already, and re-deriving from "no rows on screen" alone would undo that).
+      // Nothing else can produce an empty tbody, so the two together are the whole rule.
+      const empty = document.getElementById('empty-products');
+      const hasRows = !!document.querySelector('#products-tbody tr[data-product-display]');
+      const filteredToNothing = !!document.getElementById('products-empty-row');
+      if (empty && !hasRows && !filteredToNothing) empty.removeAttribute('hidden');
     });
   });
 }

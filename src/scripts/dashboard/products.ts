@@ -3150,7 +3150,13 @@ export async function applyPagination(): Promise<void> {
   // The table only disappears when the store itself is empty; a filter that
   // matched nothing keeps it, with the row above explaining why.
   if (table) table.hidden = total === 0 && !hasActiveQuery;
-  if (emptyMsg) emptyMsg.hidden = total !== 0 || hasActiveQuery;
+  // ...and never while the add form is open: its accent button would then be the last control
+  // under the fields, reading as "save" (owner, 2026-08-24 — the same condition initFormToggles()
+  // applies when the form opens, stated here too because this function is the one that rebuilds
+  // the tab after every save, filter, sort and page change).
+  const addForm = document.getElementById('add-product-form');
+  const addFormOpen = !!addForm && !addForm.hidden;
+  if (emptyMsg) emptyMsg.hidden = total !== 0 || hasActiveQuery || addFormOpen;
 
   renderPaginationControls(data.totalPages ?? 1);
 }

@@ -108,6 +108,9 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
       initImageSkeletons('.dash-img-skel', frame!.parentElement ?? document);
     }
     uploadBtn!.textContent = url ? cfg.labels.change : cfg.labels.upload;
+    // The frame is the same control, so it says the same thing to a screen reader — and it has to
+    // be re-stated here, not only server-rendered, or it still reads "העלאת תמונה" over a picture.
+    frame!.setAttribute('aria-label', url ? cfg.labels.change : cfg.labels.upload);
     if (adjustBtn) adjustBtn.hidden = !url;
     if (removeBgBtn) removeBgBtn.hidden = !url;
     if (removeBtn) removeBtn.hidden = !url;
@@ -200,6 +203,15 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
   }
 
   uploadBtn.addEventListener('click', () => fileInput.click());
+
+  /** **The frame opens the picker too** (owner, 2026-08-24: *"צריך שאפשר יהיה ללחוץ ממש על
+   *  הקונטיינר… כדי להוסיף תמונה"*). Same line as the button above rather than its own path — the
+   *  frame is a real `<button>` in the markup, so keyboard, focus ring and Tab order come from the
+   *  element and there is nothing here to reimplement. It replaces the picture whatever the slot
+   *  holds, which is what the button beside it does once it says "החלפת תמונה"; the crop tool is
+   *  still reached by "מסגור מחדש", because "click the picture" meaning re-crop rather than replace
+   *  would make the empty state and the filled state two different controls. */
+  frame.addEventListener('click', () => fileInput.click());
 
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
