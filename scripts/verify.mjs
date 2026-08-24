@@ -166,7 +166,12 @@ function changedFiles() {
 // `memoryIndexHash()` below hashes it directly for that reason. Listing it here is still required —
 // `tests/verify-doc-inputs.test.ts` reads THIS regex to decide whether the doc is covered, and a
 // name missing from it reads as "no check depends on this file".
-const CHECKED_DOCS = /(?:^|\/)(?:AI_INSTRUCTIONS|CLAUDE|MEMORY)\.md$|(?:^|\/)\.claude\/(?:hooks|skills)\//;
+// Markdown is otherwise excluded from the fingerprint — a prose edit should not cost a full run —
+// but these files DECIDE whether a test passes, so excluding them would let `verify --all` answer
+// green from cache for a document it never re-read. `tests/verify-doc-inputs.test.ts` derives the
+// list from what the suite actually reads and fails when one is missing, which is how
+// `HOW_IT_WORKS.md` was caught the day it was written (2026-08-24).
+const CHECKED_DOCS = /(?:^|\/)(?:AI_INSTRUCTIONS|CLAUDE|MEMORY|HOW_IT_WORKS)\.md$|(?:^|\/)\.claude\/(?:hooks|skills)\//;
 const IRRELEVANT = /(?:(?:^|\/)\.claude\/)|(?:\.md$)/;
 const relevant = (p) => p && (CHECKED_DOCS.test(p) || !IRRELEVANT.test(p));
 
