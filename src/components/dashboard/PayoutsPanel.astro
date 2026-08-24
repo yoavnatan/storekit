@@ -26,8 +26,10 @@
  * provider is configured at all — with none, nothing is blocked and a status line about it would be
  * a sentence about a rule that is not in force.
  *
- * **One account, one registered business** — one subscription, one commission rate, one ח״פ, one
- * bank account, however many stores (`pricing.ts`). A seller with a second ח״פ opens a second
+ * **One account, one registered business** — one ח״פ, one bank account, one clearing account and
+ * ONE standing order, however many shops. What is NOT one of them, since 2026-08-24, is the plan:
+ * each shop carries its own fee and its own commission rate, and the standing order's amount is the
+ * sum of the shops on the site (`lib/store-plan.ts`). A seller with a second ח״פ opens a second
  * account; `DB_MIGRATION_PLAN.md` §10 records why, and it is closed rather than pending.
  */
 import { BUSINESS_TYPES, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';

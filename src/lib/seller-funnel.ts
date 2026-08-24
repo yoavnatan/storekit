@@ -1,5 +1,6 @@
 import { firstRow } from './db.js';
 import { getLifetimeEventSessions } from './analytics.js';
+import { PAYME_SUB_STATUS } from './payment-payme.js';
 
 // The SELLER onboarding funnel — a lifetime, cumulative snapshot (NOT windowed
 // by a date range) answering "of everyone who set out to open a store, where do
@@ -13,12 +14,33 @@ export interface SellerFunnel {
   registered: number;    // seller accounts created
   withStore: number;     // sellers who created ≥1 store
   withProduct: number;   // sellers with ≥1 store that has ≥1 product
+  /**
+   * ── The four stages between a built shop and a selling one (2026-08-24) ──
+   *
+   * The funnel used to jump straight from "added a product" to "made a sale", which hid the whole
+   * of the paying half — and that half is where a seller is most likely to stop. The owner asked
+   * for the real funnel to be visible here (*"המשפך צריך להיות מיוצג גם בלשונית בדשבורד אדמין של
+   * נתונים"*), and these are the four gates, in the order `store-publication.ts` puts them:
+   *
+   *   sentClearing  — sent PayMe what they need; a merchant account exists (his to do, minutes)
+   *   approved      — PayMe approved the business (nobody's to do, up to seven business days)
+   *   subscribed    — the standing order is running (his to do, one click and a card)
+   *   live          — a shop of his is actually on the site
+   *
+   * Splitting `sentClearing` from `approved` is the point of having four rather than two: a drop
+   * at the first is a form nobody finishes, a drop at the second is a wait people abandon, and the
+   * fix for one is nothing like the fix for the other.
+   */
+  sentClearing: number;
+  approved: number;
+  subscribed: number;
+  live: number;
   withSale: number;      // sellers with ≥1 store that has ≥1 order
 }
 
 // Minimal shapes so the pure builder is testable without the full domain types.
 interface FSeller { id: string }
-interface FStore { id: string; sellerId: string; slug: string }
+interface FStore { id: string; sellerId: string; slug: string; publishedAt?: string }
 interface FProduct { storeId: string }
 interface FOrderItem { storeSlug: string }
 interface FOrder { items: FOrderItem[] }
@@ -30,6 +52,10 @@ export function buildSellerFunnel(
   products: FProduct[],
   orders: FOrder[],
   registerViews: number,
+  /** The money half, per seller id — `sentClearing` implies nothing about the other two, which is
+   *  why they are three sets rather than a state. A seller can be approved and not subscribed, and
+   *  (mid-dunning) subscribed and not approved. */
+  money: { sentClearing?: Set<string>; approved?: Set<string>; subscribed?: Set<string> } = {},
 ): SellerFunnel {
   const storesBySeller = new Map<string, FStore[]>();
   for (const s of stores) {
@@ -42,16 +68,27 @@ export function buildSellerFunnel(
 
   let withStore = 0;
   let withProduct = 0;
+  let sentClearing = 0;
+  let approved = 0;
+  let subscribed = 0;
+  let live = 0;
   let withSale = 0;
   for (const seller of sellers) {
     const own = storesBySeller.get(seller.id) ?? [];
     if (own.length === 0) continue;
     withStore += 1;
     if (own.some((st) => storeIdsWithProduct.has(st.id))) withProduct += 1;
+    // The three money gates are asked of the SELLER (one clearing account and one standing order
+    // per registered business), and "live" is asked of his shops — because a shop is what goes on
+    // the site, and a seller counts here the moment any one of them does.
+    if (money.sentClearing?.has(seller.id)) sentClearing += 1;
+    if (money.approved?.has(seller.id)) approved += 1;
+    if (money.subscribed?.has(seller.id)) subscribed += 1;
+    if (own.some((st) => !!st.publishedAt)) live += 1;
     if (own.some((st) => soldStoreSlugs.has(st.slug))) withSale += 1;
   }
 
-  return { registerViews, registered: sellers.length, withStore, withProduct, withSale };
+  return { registerViews, registered: sellers.length, withStore, withProduct, sentClearing, approved, subscribed, live, withSale };
 }
 
 /**
@@ -68,24 +105,45 @@ export function buildSellerFunnel(
  */
 export async function getSellerFunnel(): Promise<SellerFunnel> {
   const [counts, registerViews] = await Promise.all([
-    firstRow<{ registered: string | number; with_store: string | number; with_product: string | number; with_sale: string | number }>(
+    firstRow<Record<string, string | number>>(
       `SELECT
          (SELECT COUNT(*) FROM sellers) AS registered,
          COUNT(DISTINCT s.seller_id)                                            AS with_store,
          COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
            SELECT 1 FROM store_products p WHERE p.store_id = s.id))             AS with_product,
+         -- The four money gates, in the order store-publication.ts puts them. Each is an EXISTS
+         -- over the seller, so a seller with three shops counts once — the clearing account and
+         -- the standing order are per registered business, not per shop.
          COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
-           SELECT 1 FROM order_items it WHERE it.store_slug = s.slug::text))     AS with_sale
+           SELECT 1 FROM seller_merchant_accounts m WHERE m.seller_id = s.seller_id))
+                                                                                AS sent_clearing,
+         COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM seller_merchant_accounts m
+            WHERE m.seller_id = s.seller_id AND m.approved))                    AS approved,
+         COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM seller_subscriptions sub
+            WHERE sub.seller_id = s.seller_id AND sub.status = ANY($1::int[]))) AS subscribed,
+         COUNT(DISTINCT s.seller_id) FILTER (WHERE s.published_at IS NOT NULL)  AS live,
+         COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM order_items it WHERE it.store_slug = s.slug::text))    AS with_sale
        FROM stores s
       WHERE s.deleted_at IS NULL`,
+      // PayMe's own integers, from the ONE module that interprets them — never literals here, or
+      // this becomes a second definition of "paying" that can drift from the publication gate.
+      [[PAYME_SUB_STATUS.active, PAYME_SUB_STATUS.retrying]],
     ),
     getLifetimeEventSessions('seller_register_view'),
   ]);
+  const n = (key: string): number => Number(counts?.[key] ?? 0);
   return {
     registerViews,
-    registered: Number(counts?.registered ?? 0),
-    withStore: Number(counts?.with_store ?? 0),
-    withProduct: Number(counts?.with_product ?? 0),
-    withSale: Number(counts?.with_sale ?? 0),
+    registered: n('registered'),
+    withStore: n('with_store'),
+    withProduct: n('with_product'),
+    sentClearing: n('sent_clearing'),
+    approved: n('approved'),
+    subscribed: n('subscribed'),
+    live: n('live'),
+    withSale: n('with_sale'),
   };
 }

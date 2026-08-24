@@ -38,28 +38,112 @@ The shape of this flow is one decision (owner, 2026-08-23): **everything is buil
 only the moment something goes OUT is blocked.** The reasoning is in `lib/store-publication.ts` and
 it is the platform's acquisition bet — *"מי שלא ראה מה הוא מקבל לא ישלם"*.
 
+### The funnel, on one picture
+
+Asked for on 2026-08-24 — *"ליצור סדר מופתי עם תרשים מסודר של מה קורה איפה ומתי במשפך לקוח"* — after
+several sessions on clearing and on plans had left the answer spread across five modules and three
+screens. **The same nine stages are counted in the admin's נתונים tab** (`lib/seller-funnel.ts` →
+`AdminDataPanel.astro`), so the picture below and the bars there are the same funnel: this says what
+happens, that says how many people it happened to.
+
+```
+  VISITOR                     free — no card is ever asked for here
+    │
+    │  /pricing ─── compares four plans, sees what a plan covers ──┐
+    ▼                                                              │
+  ① registers ······················ /seller/register              │
+    ▼                                                              │
+  ② opens a shop ··················· up to 5 per account           │
+    ▼                                                              │
+  ③ builds it ······················ products · images · design    │
+    │                                 categories · discounts       │
+    ▼                                                              │
+  ④ PREVIEWS it ···················· only he can reach it          │
+    │                                 (state: unpublished)         │
+    ═══════════════════════════════════ the line where money starts ══
+    ▼                                                              │
+  ⑤ sends clearing details ········· his, minutes ─────────────────┤
+    ▼                                                              │
+  ⑥ PayMe examine the business ····· NOBODY's, up to 7 business days
+    │                                 nothing to press; we email him
+    ▼                                                              │
+  ⑦ picks a plan and pays ·········· his, one click ◄──────────────┘
+    │                                 the plan is per SHOP
+    ▼
+  ⑧ THE SHOP PUBLISHES ITSELF ······ no button exists
+    │                                 he is notified
+    ▼
+  ⑨ first sale
+```
+
+**⑤⑥⑦ is the order, and it changed on 2026-08-24.** Paying used to come before the approval, so a
+seller paid and then sat up to seven days with a shop that was not on the site — through exactly the
+week he is most likely to change his mind in (owner: *"אני לא רוצה ליפול בין הכיסאות ושהמוכר
+יתחרט"*). Paying is now the LAST act, and the shop goes up in the same minute.
+
+**Where the seller SEES this:** one screen, `components/dashboard/GoLiveSteps.astro`, on the
+תשלומים tab. It states which shop it is about, which of the three money steps is open, "step N of
+3", and a three-segment bar — *"שיהיה ברור ליוזר באופן גרפי, איפה הוא עומד"*.
+
 | # | What happens | Owner | Today |
 |---|---|---|---|
 | 1 | Registers with email+password or Google. No card is asked for, ever, at this step | `lib/seller-auth.ts` · `/seller/register` | ✅ |
 | 2 | Creates a store — name, latin slug, basics. Up to `MAX_STORES_PER_SELLER` | `lib/stores.ts#createStore` | ✅ |
 | 3 | Builds it: products, images, variants, categories, discounts, coupons, design. No cap on any of it | `lib/store-products.ts`, `lib/discounts.ts` | ✅ |
 | 4 | Looks at it. The shop is `unpublished` — the public cannot reach it, the OWNER can | `lib/store-status.ts` · `store-publication.ts#mayPreviewStore` | ✅ |
-| 5 | Chooses a plan. Four tiers, same product, differing only in fee-to-commission ratio. Changing it while already paying patches the PayMe subscription's price — never cancels it — and applies from the next charge | `lib/pricing.ts` · `lib/seller-tier.ts` · `lib/seller-subscription.ts` · `/pricing` | ✅ |
-| 6 | Starts the monthly subscription — the seller's card charged by PayMe to OUR merchant account | `lib/seller-subscription.ts` | ⚠️ owner (needs live PayMe) |
-| 7 | Gets a clearing account, which PayMe examine — up to 7 business days (agreement §11) | `lib/seller-merchant.ts` | ⚠️ owner |
-| 8 | **The shop publishes itself.** Nobody presses a button — publication is the derived result of both holds clearing | `store-publication.ts#syncStorePublication` | ✅ |
+| 5 | Sends what PayMe require, and a clearing account is opened for his BUSINESS — one per ח״פ, however many shops | `lib/seller-merchant.ts` · `lib/merchant-kyc.ts` | ⚠️ owner (needs live PayMe) |
+| 6 | PayMe examine the business — up to 7 business days (agreement §11). Nobody can shorten it; the seller is told so and emailed when it clears | `lib/merchant-status-check.ts` | ⚠️ owner |
+| 7 | Picks this shop's plan and starts paying. Four tiers, same product, differing only in fee-to-commission ratio | `lib/pricing.ts` · `lib/store-plan.ts` · `lib/seller-subscription.ts` | ⚠️ owner |
+| 8 | **The shop publishes itself.** Nobody presses a button — publication is the derived result of every hold clearing, and of THIS shop being one of the lines on the standing order | `store-publication.ts#syncStorePublication` | ✅ |
 
-**Two holds, one state, and that is deliberate.** A shop is held back by an unpaid subscription or
-by unfinished clearing. The consequence is identical — he sees it, the public does not — so it is
-ONE state with two sentences, never two booleans that can contradict each other. The seller is told
-which hold applies and whether it is his to fix: `components/dashboard/PublishStatusCard.astro`.
+### A plan is bought PER SHOP, and there is still one charge
 
-**With no PayMe credentials configured at all, neither hold applies and shops publish normally.**
-That is the dev and pre-launch state, and it is why a fresh server does not look empty.
+Decided 2026-08-24 — *"כל חנות צריכה לעלות כסף בנפרד"*. `lib/store-plan.ts` owns it:
+
+- Each shop carries its own plan: its own monthly fee **and its own per-sale commission**. A tier is
+  one bargain (a higher fee buys a lower commission), so splitting it would let a tiny shop on
+  Enterprise collect the 10% rate for a large shop on Starter.
+- The seller has **one standing order** at PayMe whose amount is the SUM of the shops he has on the
+  site. Five separate subscriptions would pay five clearing fees for nothing.
+- Putting a second shop up patches that one order upward; closing a shop patches it down. The
+  breakdown is stored beside the amount, so *"why am I charged ₪224"* is answered on his own screen
+  rather than reconstructed.
+- **No extra terminal is needed at PayMe.** The clearing account is per registered business and
+  serves every shop he owns; the commission travels per capture, so two shops of one seller on two
+  plans are charged two different rates with nothing to configure at their end.
+
+### Holds, and the one state they produce
+
+**Three holds, one state, and that is deliberate.** A shop is held back by unfinished clearing
+details, by PayMe not having approved yet, or by not being paid for. The consequence is identical —
+he sees it, the public does not — so it is ONE state (`unpublished`) with three sentences, never
+three booleans that can contradict each other.
+
+**With no PayMe credentials configured at all, no hold applies and shops publish normally.** That is
+the dev and pre-launch state, and it is why a fresh server does not look empty.
 
 `syncStorePublication` is called from every place a hold can lift — the dashboard, the PayMe
 callback, and the `store-publication` job — because a seller who paid, closed the tab and never came
 back must not be left dark.
+
+### Leaving, and being taken down
+
+The other end of the same flow, built 2026-08-24. Both directions now exist; before this, cancelling
+changed nothing anyone could see.
+
+| What happens | When | Owner | Today |
+|---|---|---|---|
+| Seller cancels. He is shown the two things cheaper than leaving first — a lower plan, or taking ONE shop off the site — beside a cancel button of the same size | Any time | `SubscriptionCard.astro` · `/api/seller/subscription` | ✅ |
+| Charging stops at PayMe **immediately** — there is no way to say "one more month then stop" | On the click | `seller-subscription.ts#endSubscription` | ✅ |
+| He keeps everything until the end of the period he already paid for (`ends_at`, taken from PayMe's own next-charge date) | Until that date | `seller-subscription.ts#sellerIsSubscribed` | ✅ |
+| His shops come off the site and return to `unpublished` — products, settings and orders all kept, campaigns archived, a notification sent | At `ends_at`, hourly sweep | `lib/subscription-lapse.ts` | ✅ |
+| Renewing re-publishes them through the sweep that already exists | Any time | `store-publication.ts` | ✅ |
+| **Refund on the FIRST charge: 14 days, if the shop never went live** — he paid and did not get the thing | 🔶 decided, unbuilt | needs the subscription iteration's sale id, which arrives with the PayMe callback | 🔶 |
+
+Legally we are not obliged to offer one: חוק הגנת הצרכן covers a *consumer*, and a seller here is a
+registered business. It is offered because the cost of the doubt is higher than the cost of the
+refund — the whole flow is built against *"לא לבנות עכשיו חודשיים חנות ולהשאיר אותה עזובה"*.
+⚠️ **Confirm the wording with the lawyer** who is already on `CURRENT_TASK.md → Next`.
 
 ---
 
@@ -116,8 +200,8 @@ fee inside the same transaction.
 |---|---|---|---|
 | Buyer → seller, per store | never through us | `lib/payment-split.ts` | 🔶 |
 | Buyer → us, for shipping | our own merchant account | `lib/payment-split.ts` | 🔶 |
-| Our commission | taken inside the sale, transferred monthly | `lib/pricing.ts#commissionOnAgorot` | 🔶 |
-| Seller → us, monthly subscription | PayMe recurring on his card | `lib/seller-subscription.ts` | 🔶 |
+| Our commission | taken inside the sale, at THAT SHOP's plan rate, transferred monthly | `lib/store-plan.ts#commissionPercentForStore` · `lib/pricing.ts#commissionOnAgorot` | 🔶 |
+| Seller → us, monthly subscription | PayMe recurring on his card — ONE standing order, its amount the sum of the shops he has on the site | `lib/seller-subscription.ts` · `lib/store-plan.ts` | 🔶 |
 | Advertising | billed on actual spend + a disclosed margin, **never offset** against the above | `lib/ad-metrics.ts` | 🔶 |
 | The buyer's tax invoice | **the SELLER's**, not ours | `lib/invoicing/buyer-invoice.ts` | ✅ (records that he says he issued one) |
 

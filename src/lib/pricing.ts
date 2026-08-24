@@ -15,7 +15,19 @@
  *
  *  WHEN the monthly fee starts: **when the seller starts the subscription, which is the same act as
  *  putting his shop on the site.** Nothing before that, and no free window at all
- *  (`lib/store-publication.ts`, `lib/seller-subscription.ts`).
+ *  (`lib/store-publication.ts`, `lib/seller-subscription.ts`). And it starts AFTER PayMe approve the
+ *  business, not before — paying used to come first and left a seller charged through a seven-day
+ *  wait for a shop that was not up (owner, 2026-08-24). The order is in `store-publication.ts`.
+ *
+ *  WHOSE the plan is: **a STORE's, since 2026-08-24** (owner: *"כל חנות צריכה לעלות כסף בנפרד"*).
+ *  A tier is one bargain — a higher fee buys a lower commission — so the fee and the rate move
+ *  together and both belong to the shop. `lib/store-plan.ts` owns that, including the rule that a
+ *  seller still has ONE standing order whose amount is the sum of the shops he has on the site.
+ *  `sellers.tier` is the old single-plan column; nothing reads it any more.
+ *
+ *  AND NOT A CONFIG NUMBER: `store.config.ts` deliberately has no `commissionPercent`. A rate in a
+ *  config is a rate that applies to everybody, which is the one thing a tier ladder cannot be —
+ *  and it is the shape this file replaced.
  *
  *  ⚠️ **The old answer — "the fee starts at the seller's FIRST SALE, capped at 2 months from
  *  signup" — is WITHDRAWN, and it must not come back.** It was decided on 2026-07-29 against a

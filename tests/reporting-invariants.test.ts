@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Order } from '../src/lib/orders.js';
 import { countsAsRevenue } from '../src/lib/orders.js';
-import { query } from '../src/lib/db.js';
+import { query, rows } from '../src/lib/db.js';
 import { getAdminOrdersPage } from '../src/lib/orders.js';
 import { getAllStores, getStoresWithFeedUrl } from '../src/lib/stores.js';
 import { JOBS } from '../src/lib/jobs/registry.js';
@@ -14,6 +14,7 @@ import { campaignHealth } from '../src/lib/ad-campaign-health.js';
 import { getCategoriesByStoreId } from '../src/lib/store-categories.js';
 import { countOpenOrdersByStore } from '../src/lib/store-lifecycle.js';
 import { buildSellerFunnel, getSellerFunnel } from '../src/lib/seller-funnel.js';
+import { subscriptionIsPaying } from '../src/lib/payment-payme.js';
 import { JOURNAL_ONLY_CHECKS, reconcileOrders, reconcilePlatform } from '../src/lib/reconcile.js';
 import { daysInRangeInclusive } from '../src/lib/date-range.js';
 import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, getStoreRevenueBySlug } from '../src/lib/order-reporting.js';
@@ -1092,17 +1093,54 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     }
   });
 
-  it('the seller onboarding funnel: the four counts === buildSellerFunnel', async () => {
+  it('the seller onboarding funnel: every count === buildSellerFunnel', async () => {
     const fromDb = await getSellerFunnel();
+    const stores = await getAllStores();
+    /**
+     * The money half, read straight from its own tables and handed to the pure builder — so the
+     * comparison is between two real derivations rather than between the query and an empty set.
+     * Without these three the JS side answered 0 for all of them and the assertion held by
+     * accident, on a fixture database that happens to have no merchant accounts; the first fixture
+     * that added one would have failed a test that was never really checking.
+     *
+     * `subscriptionIsPaying` rather than a literal status, for the reason its own module gives:
+     * PayMe's integers are interpreted in exactly one place, and a second reading of them here
+     * could disagree with the publication gate about who is paying.
+     */
+    const merchants = await rows<{ seller_id: string; approved: boolean }>(
+      'SELECT seller_id, approved FROM seller_merchant_accounts',
+    );
+    const subs = await rows<{ seller_id: string; status: number }>(
+      'SELECT seller_id, status FROM seller_subscriptions',
+    );
     const fromJs = buildSellerFunnel(
       await getAllSellers(),
-      await getAllStores(),
-      [...(await getProductsByStoreIds((await getAllStores()).map((s) => s.id))).entries()]
+      stores,
+      [...(await getProductsByStoreIds(stores.map((s) => s.id))).entries()]
         .flatMap(([storeId, list]) => list.map(() => ({ storeId }))),
       stored,
       fromDb.registerViews,
+      {
+        sentClearing: new Set(merchants.map((m) => m.seller_id)),
+        approved: new Set(merchants.filter((m) => m.approved).map((m) => m.seller_id)),
+        subscribed: new Set(subs.filter((x) => subscriptionIsPaying(x.status)).map((x) => x.seller_id)),
+      },
     );
     expect(fromDb).toEqual(fromJs);
+  });
+
+  it('the seller funnel never reports a stage above the one that contains it', async () => {
+    // The property an admin reads the shape for: each bar is a subset of the bar above it, so a
+    // narrowing that widens is a counting bug rather than a surprising month. Asserted against the
+    // REAL database, because the pure builder is already covered and what can drift is the SQL.
+    const f = await getSellerFunnel();
+    expect(f.registered, 'registered ≥ opened a store').toBeGreaterThanOrEqual(f.withStore);
+    expect(f.withStore, 'opened a store ≥ added a product').toBeGreaterThanOrEqual(f.withProduct);
+    expect(f.withStore, 'opened a store ≥ sent clearing details').toBeGreaterThanOrEqual(f.sentClearing);
+    expect(f.sentClearing, 'sent details ≥ approved').toBeGreaterThanOrEqual(f.approved);
+    expect(f.withStore, 'opened a store ≥ shop on the site').toBeGreaterThanOrEqual(f.live);
+    expect(f.withStore, 'opened a store ≥ made a sale').toBeGreaterThanOrEqual(f.withSale);
+    for (const [name, value] of Object.entries(f)) expect(value, `${name} ≥ 0`).toBeGreaterThanOrEqual(0);
   });
 
   it('product counts per store: the GROUP BY === counting the rows', async () => {

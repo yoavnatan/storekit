@@ -78,11 +78,22 @@ const BUYER_LABELS: Record<FunnelStage['event'], string> = {
 const buyerRows = toRows(funnel.map((s) => ({ label: BUYER_LABELS[s.event], value: s.sessions })));
 const buyerHasData = (funnel[0]?.sessions ?? 0) > 0;
 
+// The whole journey, in the order a seller walks it. The four middle rows are new on 2026-08-24:
+// the funnel used to jump from "added a product" straight to "made a sale", which hid the paying
+// half — and the paying half is where a seller is most likely to stop (owner: *"המשפך צריך להיות
+// מיוצג גם בלשונית בדשבורד אדמין של נתונים"*). `store-publication.ts` owns the same order.
+//
+// Clearing is split in two on purpose: a drop at "sent details" is a form nobody finishes, a drop
+// at "approved" is a wait people abandon, and the fix for one is nothing like the fix for the other.
 const sellerRows = toRows([
   { label: 'ביקור בעמוד הרשמה', value: sellerFunnel.registerViews },
   { label: 'נרשמו כמוכרים', value: sellerFunnel.registered },
   { label: 'פתחו חנות', value: sellerFunnel.withStore },
   { label: 'הוסיפו מוצר', value: sellerFunnel.withProduct },
+  { label: 'שלחו פרטים לסליקה', value: sellerFunnel.sentClearing },
+  { label: 'אושרו בסליקה', value: sellerFunnel.approved },
+  { label: 'הפעילו מנוי', value: sellerFunnel.subscribed },
+  { label: 'החנות באוויר', value: sellerFunnel.live },
   { label: 'מכירה ראשונה', value: sellerFunnel.withSale },
 ]);
 
@@ -203,7 +214,7 @@ const rateCards = [
 <section>
   <div class="flex items-center gap-1 mb-3">
     <h3 class="m-0 text-[0.95rem] font-semibold">משפך הצטרפות מוכרים</h3>
-    <InfoTip text="מספר מצטבר (לכל הזמן, לא לפי הטווח) — מכלל מי שהתחיל בתהליך פתיחת חנות, כמה הגיעו לכל שלב. האחוז ליד כל שלב = כמה מהשלב הקודם המשיכו אליו. שם מזהים היכן מוכרים נתקעים. (״ביקור בעמוד הרשמה״ נמדד רק מתעבורה חדשה, לכן עשוי להיות נמוך משאר השלבים שנספרים מכל הזמן.)" />
+    <InfoTip text="מספר מצטבר (לכל הזמן, לא לפי הטווח) — מכלל מי שהתחיל בתהליך פתיחת חנות, כמה הגיעו לכל שלב. האחוז ליד כל שלב = כמה מהשלב הקודם המשיכו אליו. שם מזהים היכן מוכרים נתקעים. ארבעת השלבים האמצעיים הם שלבי התשלום: ״שלחו פרטים לסליקה״ תלוי במוכר, ״אושרו בסליקה״ תלוי בחברת הסליקה ואורך עד שבעה ימי עסקים, ״הפעילו מנוי״ תלוי במוכר, ו״החנות באוויר״ קורה מעצמו כששני הקודמים סגורים. (״ביקור בעמוד הרשמה״ נמדד רק מתעבורה חדשה, לכן עשוי להיות נמוך משאר השלבים שנספרים מכל הזמן.)" />
   </div>
   <div class="flex flex-col gap-2">
     {sellerRows.map((r) => (
