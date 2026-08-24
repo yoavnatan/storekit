@@ -44,9 +44,15 @@ const sellerId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sellerId;
 const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
 
-const included = [p.included1, p.included2, p.included3, p.included4, p.included5];
+const included = [p.included1, p.included2, p.included3, p.included4, p.included5, p.included6];
 
 const adsPoints = [p.adsPoint1, p.adsPoint2, p.adsPoint3];
+const pillars = [
+  { title: p.pillar1Title, body: p.pillar1Body },
+  { title: p.pillar2Title, body: p.pillar2Body },
+  { title: p.pillar3Title, body: p.pillar3Body },
+  { title: p.pillar4Title, body: p.pillar4Body },
+];
 ---
 
 <BaseLayout
@@ -57,30 +63,50 @@ const adsPoints = [p.adsPoint1, p.adsPoint2, p.adsPoint3];
   storeMode={true}
   showSearch={true}
 >
-  <div class="container py-8 max-w-[64rem]">
-    <h1 class="text-[1.6rem] md:text-[2rem] font-bold m-0">{p.heading}</h1>
-    <p class="m-0 mt-2 text-[1rem]">{p.lede}</p>
-    <p class="muted m-0 mt-2 text-[0.9rem] max-w-[46rem]">{p.sameEverything}</p>
+  <div class="container py-8 max-w-[64rem] pricing-page">
+    {/* ── One opening block, not three (2026-08-24) ──
+        Owner: *"יש יותר מדי אינפורמציה למוכר שם וזה דף שנהיה ונראה מסובך... צריך לפשט, להשאיר מינימום
+        חיכוך"*. The page used to open with a heading, a lede, a paragraph about the plans being
+        identical, and then — after the prices — two more cards saying "build before you pay" and
+        "when billing starts", and a third at the very bottom asking him to register. Five places
+        making one argument.
+        They are one block now, at the top, ending in the action: what it costs, that he builds
+        before he pays, and the button. Tinted, because this is the one thing on the page that is
+        asking for a decision, and a page of white cards is what read as dead. */}
+    <section class="pricing-hero">
+      {/* **Sized down twice on 2026-08-24** (owner: *"שים לב לא להגזים עם הגדלים של הכותרות, זה
+          צריך להיות חביב ונחמד לא דף נחיתה זול... שיהיה מקצועי"*). A 2.1rem heading over a tinted
+          band is the landing-page shape, and this page is read by somebody deciding where to put
+          his business. The site's own page headings are this size. */}
+      <h1 class="text-[1.3rem] md:text-[1.6rem] font-bold m-0">{p.heading}</h1>
+      <p class="m-0 mt-2 text-[0.95rem] max-w-[42rem]">{p.lede}</p>
+      <p class="m-0 mt-1 text-[0.95rem] font-semibold max-w-[42rem]">{p.buildBody}</p>
+      {!isLoggedIn && (
+        <a href="/seller/register" class="btn btn--accent mt-4 self-start">{p.ctaButton}</a>
+      )}
+    </section>
 
-    <PricingTiers p={p} lang={lang} />
+    {/* ── What this is, in three sentences (2026-08-24) ──
+        Owner: *"הדף הזה גם נראה כאילו זה מערכת לחנויות רגילה"* — everything already connected, the
+        exposure a marketplace gives, the offer to a seller who already has a shop, and the one he
+        could not phrase: that the system keeps improving and every shop gets that. Four lines
+        rather than a feature list, because a feature list is what a shop builder publishes and this
+        page's whole job is to not read like one.
+        Plain columns, no cards: bordered boxes under a tinted band would be five rectangles in the
+        first screen, which is the "cheap landing page" the owner named. */}
+    <section class="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4 mt-6" aria-label={p.includedTitle}>
+      {pillars.map(({ title, body }) => (
+        <div class="pricing-pillar">
+          <h2 class="font-semibold m-0">{title}</h2>
+          <p class="muted m-0 mt-1 text-[0.88rem]">{body}</p>
+        </div>
+      ))}
+    </section>
 
-    {/* Two sections that are one answer between them: nothing is charged until you sell, and
-        nothing has to be paid before you can build. They sit together, directly under the prices,
-        because they are what turns a number into a decision someone can actually make. */}
-    <div class="grid gap-3 sm:grid-cols-2 mt-10">
-      <section class="card card--flat p-4 md:p-5" aria-labelledby="when-title">
-        <h2 id="when-title" class="text-[1.05rem] font-bold m-0">{p.whenTitle}</h2>
-        <p class="m-0 mt-2 font-semibold">{p.whenLead}</p>
-        <p class="muted m-0 mt-1 text-[0.9rem]">{p.whenBody}</p>
-      </section>
-      <section class="card card--flat p-4 md:p-5" aria-labelledby="build-title">
-        <h2 id="build-title" class="text-[1.05rem] font-bold m-0">{p.buildTitle}</h2>
-        <p class="muted m-0 mt-2 text-[0.9rem]">{p.buildBody}</p>
-      </section>
-    </div>
+    <PricingTiers p={p} lang={lang} isLoggedIn={isLoggedIn} />
 
     <section class="mt-10" aria-labelledby="included-title">
-      <h2 id="included-title" class="text-[1.15rem] font-bold m-0">{p.includedTitle}</h2>
+      <h2 id="included-title" class="text-[1.05rem] font-bold m-0">{p.includedTitle}</h2>
       {/* One list for all four plans, which is the point being made: there is nothing here that a
           tier unlocks. Ticks per column would say the opposite of the sentence at the top. */}
       <ul role="list" class="list-none p-0 m-0 mt-3 grid gap-2 sm:grid-cols-2">
@@ -104,14 +130,8 @@ const adsPoints = [p.adsPoint1, p.adsPoint2, p.adsPoint3];
         beside the budget field, where it is a number he can act on rather than a deduction from a
         price he has not agreed to yet.
         Advertising is still never offset against the subscription or the commission
-        (AI_INSTRUCTIONS → Business model) — "בתשלום נוסף" is that sentence, in the seller's words.
-        Tinted like the calculator, because these are the page's two live things and a wall of
-        white cards is what made it read as dead. */}
-    <section
-      class="p-4 md:p-5 mt-10 rounded-[var(--radius)] border"
-      style="border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface))"
-      aria-labelledby="ads-title"
-    >
+        (AI_INSTRUCTIONS → Business model) — "בתשלום נוסף" is that sentence, in the seller's words. */}
+    <section class="pricing-panel mt-10" aria-labelledby="ads-title">
       <h2 id="ads-title" class="text-[1.05rem] font-bold m-0">{p.adsTitle}</h2>
       <p class="m-0 mt-2 text-[0.92rem] max-w-[46rem]">{p.adsLead}</p>
       <ul role="list" class="list-none p-0 m-0 mt-3 grid gap-2 sm:grid-cols-3">
@@ -126,15 +146,6 @@ const adsPoints = [p.adsPoint1, p.adsPoint2, p.adsPoint3];
       </ul>
     </section>
 
-    {!isLoggedIn && (
-      <section class="card card--flat p-5 mt-10 text-center" aria-labelledby="cta-title">
-        <h2 id="cta-title" class="text-[1.15rem] font-bold m-0">{p.ctaTitle}</h2>
-        <p class="muted m-0 mt-2 text-[0.9rem]">{p.ctaBody}</p>
-        {/* `self-center` — `.card` is a flex column, so without it the button spans the whole card
-            regardless of its own `inline-flex`. This one is centred because the card is. */}
-        <a href="/seller/register" class="btn btn--accent mt-4 self-center">{p.ctaButton}</a>
-      </section>
-    )}
   </div>
 </BaseLayout>
 

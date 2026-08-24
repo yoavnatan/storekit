@@ -42,8 +42,6 @@ export function initPricingTiers(): void {
     name: el.querySelector('h3')?.textContent?.trim() ?? '',
     fee: Number(el.dataset['fee'] ?? 0),
     commission: Number(el.dataset['commission'] ?? 0),
-    total: el.querySelector<HTMLElement>('[data-role="calc-total"]')!,
-    share: el.querySelector<HTMLElement>('[data-role="calc-share"]')!,
     btn: el.querySelector<HTMLButtonElement>('[data-role="choose"]')!,
   }));
 
@@ -77,8 +75,6 @@ export function initPricingTiers(): void {
       // fee and commission — those are true whatever is in the field — and lose only the two
       // lines that were an answer to a number nobody is asking any more.
       for (const t of tiers) {
-        t.total.textContent = '';
-        t.share.textContent = '';
         t.el.removeAttribute('data-best');
         t.btn.classList.remove('btn--accent');
         t.btn.classList.add('btn--ghost');
@@ -90,16 +86,14 @@ export function initPricingTiers(): void {
     const cheapest = costs.reduce((a, b) => (b.cost < a.cost ? b : a));
     const dearest = costs.reduce((a, b) => (b.cost > a.cost ? b : a));
 
-    for (const { t, cost } of costs) {
+    for (const { t } of costs) {
       const best = t === cheapest.t;
+      // **The mark, and nothing else.** What each plan would COST at this revenue is computed here
+      // and deliberately never rendered: fee-plus-commission on a guessed turnover is a bill the
+      // seller has not earned yet, and beside a 99₪ subscription it reads as though the
+      // subscription had been a lie (owner, 2026-08-24). The arithmetic still decides which card is
+      // cheapest — that is the whole answer he came for.
       t.el.toggleAttribute('data-best', best);
-      t.total.textContent = label('labelTotal').replace('{amount}', ils(cost));
-      // The share of turnover, which is the figure a seller actually compares platforms on — a
-      // three-digit shekel amount on its own says nothing about whether it is a lot. One decimal:
-      // this is arithmetic on a number he guessed, and 13.5% is as precise as that guess deserves.
-      t.share.textContent = revenue > 0
-        ? label('labelShare').replace('{percent}', ((cost / revenue) * 100).toFixed(1))
-        : '';
       // The filled button follows the mark. The page offers four identical actions and exactly one
       // of them answers the question just asked, so the answer is the one that looks like a button
       // — and it has to MOVE, or it is a recommendation of whichever plan the server guessed.
@@ -151,6 +145,11 @@ export function initPricingTiers(): void {
       current = tierId;
       paint();
       showToast(label('labelSaved'));
+      // **Where it went.** A toast says it was saved and then takes the fact away with it; this
+      // line stays on the page and names the screen the plan now lives on (owner, 2026-08-24:
+      // *"מה קורה אחרי שעושים בחירת מסלול? איפה זה מופיע?"*). Rendered only for a signed-in seller,
+      // so on a visitor's page there is nothing here to reveal.
+      document.getElementById('tier-saved-where')?.classList.remove('!hidden');
     } catch {
       // Said out loud, never swallowed — a plan the seller believes they chose and we did not
       // record is a bill for the wrong amount later (tests/silent-failure-guard.test.ts).

@@ -38,6 +38,48 @@
    does — two signals of one fact, landing at two different times.
    Small caps-height text on a filled accent pill: the same shape `admin.css` gives a status badge,
    at the one size that does not compete with the plan's own name beside it. */
+/* ── The pricing page's heading sizes ──
+   **Here, unlayered, because every `text-[…]` on a heading of this page was dead.** `tokens.css`
+   sets `h1 { font-size: clamp(1.8rem, 4vw, 2.6rem) }` and `h2 { clamp(1.4rem, 3vw, 2rem) }` as
+   unlayered base rules, and a layered Tailwind utility loses to unlayered CSS whatever its
+   specificity (`reset.css`'s layer(base) note, and `tests/unlayered-css-beats-utility.test.ts`
+   exists for exactly this). So the h1 measured 41.6px on a 1280px window while its class said
+   1.6rem, and the section headings measured 32px while they said 1.05 — which is the whole of
+   *"שים לב לא להגזים עם הגדלים של הכותרות, זה צריך להיות חביב ונחמד לא דף נחיתה זול"* (owner,
+   2026-08-24). The classes were not ignored by accident; they never applied.
+   The sizes: a heading a step above body text, not a banner. This page is read by somebody
+   deciding where to put his business. */
+.pricing-page h1 { font-size: clamp(1.3rem, 2.2vw, 1.6rem); }
+.pricing-page h2 { font-size: 1.05rem; }
+/* The pillar headings are labels on a paragraph, not sections of the page. */
+.pricing-page .pricing-pillar h2 { font-size: 0.95rem; }
+
+/* ── The pricing page's two tinted blocks ──
+   The opening block that ends in the register button, and the advertising panel. Both are the same
+   wash the site puts behind a row that wants attention (`utils.css` unread rows, `store.css` active
+   chip), and they are the answer to a page that was read as *"לא מספיק צבעוני ומזמין לפעולה"*
+   (owner, 2026-08-24) — four white cards on a white page, with the only colour in a tick.
+   Not `.card`: a card is a surface for an OBJECT, and these two are the page speaking. They take no
+   shadow for the same reason `.card--flat` does not — nothing here floats. */
+.pricing-hero,
+.pricing-panel {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface));
+  border-radius: var(--radius);
+}
+.pricing-hero {
+  /* A column, so `self-start` on the button inside means "as wide as its own words" rather than
+     the full width of the block — the same trick the CTA card it replaces needed. */
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1.25rem;
+}
+.pricing-panel { padding: 1rem; }
+@media (min-width: 768px) {
+  .pricing-hero { padding: 2rem 1.75rem; }
+  .pricing-panel { padding: 1.25rem 1.5rem; }
+}
+
 .pricing-best-badge { display: none; }
 .card[data-best] .pricing-best-badge {
   display: inline-flex;

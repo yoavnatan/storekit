@@ -34,6 +34,10 @@ const nextLang = lang === 'he' ? 'en' : 'he';
       answer a seller's question was reachable from every page except the one he works on. The rest
       of this row is reference — a policy, a way to write in; that one is the answer itself. */}
   <a href="/help">{t.footer.help}</a>
+  {/* The same page the site footer calls "מחירים", under the word that fits the reader here (owner,
+      2026-08-24: *"או שיקראו לזה מסלולים"*). A seller with an account is not shopping for a price;
+      he is looking at the plan he is on, and until now the dashboard linked to it from nowhere. */}
+  <a href="/pricing">{t.dashboard.navPlans}</a>
   <a href="/terms">{t.footer.terms}</a>
   {/* Added on his question (2026-08-23: *"ביטולים והחזרות לא צריכים להיות גם בפוטר של הדשבורד
       מוכרים?"*) — and the answer is yes, more so here than on a shopper's page: this page belongs

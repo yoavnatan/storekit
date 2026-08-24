@@ -59,13 +59,17 @@ interface Props {
   /** The seller's plan, read from his account. This panel STATES it; `/pricing` is where it is
    *  chosen (`/api/seller/tier`). */
   tier: SellerTierId | undefined;
+  /** The plan's NAME, which lives in the pricing copy rather than the dashboard's — passed through
+   *  rather than looked up, so no component below this one reaches into another screen's
+   *  translations (`SubscriptionCard.astro`). */
+  planName: string;
   /** What is on file, and whether PayMe are actually billing it. Both come from the server so this
    *  card can never disagree with the publication gate about whether the seller is paying. */
   subscription: { status: number; nextCharge?: string } | null;
   subscriptionPaying: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, tier, subscription, subscriptionPaying, d } = Astro.props;
+const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, tier, planName, subscription, subscriptionPaying, d } = Astro.props;
 
 /** One sentence per state, chosen here rather than in the markup so the three are visibly a set and
  *  a fourth state cannot be added without picking its words. */
@@ -229,7 +233,7 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
   {/* Last of the three, because it is the last thing that happens: bank account, then the business
       the processor examines, then the subscription that puts the shop live. The order on the screen
       is the order of the errand. */}
-  {clearing && <SubscriptionCard tier={tier} subscription={subscription} paying={subscriptionPaying} d={d} />}
+  {clearing && <SubscriptionCard tier={tier} planName={planName} subscription={subscription} paying={subscriptionPaying} d={d} />}
 
   {/* ── The rules, once, at the end ──────────────────────────────────────────────────────────
       Three questions in the order a seller asks them, each with one short answer. There is no

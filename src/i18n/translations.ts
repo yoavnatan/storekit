@@ -270,10 +270,34 @@ export const translations = {
       metaDesc: 'דמי מנוי חודשיים ועמלה על כל מכירה. בונים חנות שלמה בלי כרטיס אשראי, ומשלמים כשרוצים שהיא תעלה לאוויר.',
       heading: 'מה זה עולה',
       lede: 'מנוי חודשי ועמלה על כל מכירה. אין דמי הקמה ואין התחייבות.',
+      // ── The three sentences that say this is not another shop builder ──
+      // Owner, 2026-08-24: *"הדף הזה גם נראה כאילו זה מערכת לחנויות רגילה"*, and then *"הכל הרי
+      // במקום אחד, גם הפרסום, המשלוחים, אפשרות לחשבוניות, סליקה, הכל כבר מחובר... זה לא חנות
+      // אינטרנטית מוצר מדף"*, and *"יש לכם כבר חנות? אפשרות לחשיפה נוספת"*.
+      // Three claims, one line each, above the prices — because a reader who has not understood
+      // them is comparing this platform to a shop builder on price, which is the comparison it
+      // loses (AI_INSTRUCTIONS → Positioning). Not a feature list: a feature list is what every
+      // one of those shop builders publishes, and it reads as one.
+      // **Each line names only what works today.** Invoicing is deliberately absent — the seller
+      // invoices the buyer and our own invoicing still needs an allocation number
+      // (GO_LIVE §חשבוניות) — and the stock connection is described as the pull it is
+      // (`lib/store-feed-sync.ts`: an hourly read of the seller's feed), never as two-way.
+      pillar1Title: 'הכול כבר מחובר',
+      pillar1Body: 'סליקה, משלוחים, פרסום וניהול הזמנות — במערכת אחת. אין שירותים לחבר ואין תוספים להתקין.',
+      pillar2Title: 'חשיפה בתוך המתחם',
+      pillar2Body: 'קונים מגיעים לחנות שלכם מדף הבית, מהחיפוש, ומקנייה בחנות אחרת במתחם.',
+      pillar3Title: 'כבר יש לכם חנות?',
+      pillar3Body: 'אפשר לחבר את המלאי הקיים בקובץ אחד, והוא מתעדכן כאן אוטומטית מדי שעה.',
+      // The fourth claim, and the one the owner could not find words for (2026-08-24: *"זה שכל מוכר
+      // נהנה בעצם מהפיתוח של כל המערכת... המערכת משתפרת וכל חנות נהנית מזה"*). What he is describing
+      // is the difference between a platform and a product you bought a copy of, so the line says it
+      // as the absence of the two things a shop builder makes you do — upgrade, and buy a plugin.
+      pillar4Title: 'המערכת ממשיכה להשתפר',
+      pillar4Body: 'כל שיפור מגיע לכל החנויות באותו יום — בלי עדכון גרסה ובלי תוסף לקנות.',
       // The honest headline of the whole model, and the reason the page is a comparison and not a
       // feature matrix: the tiers differ ONLY in the ratio between fee and commission. Inventing a
       // feature difference to make a table look fuller would be inventing a product.
-      sameEverything: 'כל המסלולים כוללים בדיוק את אותם דברים. ההבדל היחיד הוא היחס בין המנוי לעמלה — ככל שמוכרים יותר, משתלם מנוי גבוה יותר ועמלה נמוכה יותר.',
+      sameEverything: 'כל המסלולים כוללים את אותם דברים. ההבדל היחיד הוא היחס בין המנוי לעמלה.',
       vatNote: 'כל המחירים אינם כוללים מע״מ.',
       perMonth: 'לחודש',
       commissionLabel: 'עמלה על כל מכירה',
@@ -282,13 +306,6 @@ export const translations = {
       calcTitle: 'איזה מסלול משתלם לכם',
       calcQuestion: 'כמה אתם צפויים למכור בחודש?',
       calcPlaceholder: 'למשל 8,000',
-      calcHint: 'שנו את הסכום למחזור שלכם, ונסמן מה הכי משתלם.',
-      calcTotal: '{amount} לחודש',
-      // The number beside the shekels, and the reason the shekels are worth showing at all: a
-      // seller comparing platforms compares a percentage of turnover, and 675₪ on its own tells
-      // him nothing about whether that is a lot (owner, 2026-08-24: *"לא ברור מה זה, מחיר לתשלום
-      // סופי בחודש? זה לא מושך מוכר לראות את המחיר הזה"*).
-      calcShare: '{percent}% מהמחזור',
       calcBest: 'הכי משתלם לכם',
       calcSaves: 'חוסך {amount} בחודש',
       // What the calculator says when the honest answer is "it barely matters". The fee ladder is
@@ -300,17 +317,15 @@ export const translations = {
       calcExample: 'לדוגמה, מחזור של {amount} בחודש:',
       // When billing starts. Its own section because it is the answer to the question that stops a
       // seller from registering, and it is buried if it sits as a footnote under a price.
-      whenTitle: 'מתי מתחילים לחייב',
-      whenLead: 'קודם מוכרים. אחר כך משלמים.',
-      whenBody: 'המנוי מתחיל להיגבות במכירה הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה. עד אז לא נגבה דבר.',
-      buildTitle: 'בונים לפני שמשלמים',
-      buildBody: 'נרשמים, מעלים מוצרים, מעצבים ורואים את החנות — בלי כרטיס אשראי. בוחרים מסלול רק כשרוצים שהחנות תעלה לאוויר.',
+      whenBody: 'המנוי מתחיל להיגבות במכירה הראשונה שלכם, ולכל היותר חודשיים אחרי ההרשמה.',
+      buildBody: 'בונים חנות שלמה בלי כרטיס אשראי. בוחרים מסלול רק כשרוצים שהיא תעלה לאוויר.',
       includedTitle: 'מה כלול בכל מסלול',
       included1: 'חנות משלכם עם כתובת משלכם, וקידום אורגני בגוגל',
-      included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש והקטגוריות',
+      included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש, הקטגוריות וקונים של חנויות אחרות',
       included3: 'פרסום בסיסי בגוגל ובמטא, בלי לגעת בשום הגדרה',
       included4: 'משלוחים עם שליח, מדבקות ומעקב',
       included5: 'מוצרים, תמונות, וריאציות ומבצעים — בלי הגבלה',
+      included6: 'מערכת ניהול מלאה — הזמנות, מלאי, החזרות, דוחות והודעות',
       // ── The advertising section says what the seller GETS, not what we take ──
       // It used to open on "דמי ניהול של X%", which is our side of the deal on the one page where
       // he is deciding whether to sell here at all (owner, 2026-08-24: *"חסר שם מידע על זה שיש כלי
@@ -326,9 +341,14 @@ export const translations = {
       current: 'המסלול שלכם',
       saving: 'שומר…',
       saved: 'המסלול נשמר',
+      // Where it LANDED. The save used to end in a toast and nothing else, so a seller had no way
+      // to know the choice had a home (owner, 2026-08-24: *"מה קורה אחרי שעושים בחירת מסלול? איפה
+      // זה מופיע?"*). Shown only after a successful save, and only to somebody signed in — for a
+      // visitor the save is a redirect to registration and this line would name a screen he has no
+      // account for.
+      savedWhere: 'המסלול מופיע בדשבורד, בלשונית תשלומים.',
+      savedWhereLink: 'מעבר לתשלומים',
       saveFailed: 'השמירה נכשלה. נסו שוב.',
-      ctaTitle: 'רוצים לראות איך זה נראה',
-      ctaBody: 'פתיחת חנות לוקחת כמה דקות ולא דורשת כרטיס אשראי.',
       ctaButton: 'פתיחת חנות',
       tiers: {
         starter: { name: 'בסיס', for: 'לחנות שרק מתחילה' },
@@ -987,6 +1007,11 @@ export const translations = {
       /** The rail's own footer link, which is `/contact?report=fault` — the short form of
        *  `report.kindFault`, because a rail row is a label and not a sentence. */
       navReportFault: 'דיווח על תקלה',
+      // The same page the site footer calls "מחירים", named for who is reading it here (owner,
+      // 2026-08-24). A stranger arrives asking what it costs; a seller with an account is not
+      // shopping for a price, he is looking at the plan he is on — and "מחירים" is the word he
+      // would search for in Google, which is why the public footer keeps it.
+      navPlans: 'מסלולים',
       /** The rail's width control. One button, two names — it says what pressing it will DO, so
        *  the name has to follow the state rather than describe the rail. */
       navCollapse: 'כווץ תפריט',
@@ -1186,6 +1211,7 @@ export const translations = {
       subTitle: 'מנוי חודשי',
       subWhy: 'המנוי הוא מה שמעלה את החנות לאוויר. אפשר לבטל בכל רגע.',
       subPlan: 'המסלול שלך',
+      subPlanValue: '{name} — {fee} ₪ {per}',
       subPerMonth: 'לחודש',
       subCommission: 'עמלה למכירה',
       subVat: 'המחירים אינם כוללים מע״מ',
@@ -2602,32 +2628,35 @@ export const translations = {
       metaDesc: 'A monthly subscription and a commission on each sale. Build the whole shop with no card, and pay when you want it live.',
       heading: 'What it costs',
       lede: 'A monthly subscription and a commission on each sale. No setup fee and no commitment.',
-      sameEverything: 'Every plan includes exactly the same things. The only difference is the ratio between the subscription and the commission — the more you sell, the more a higher subscription with a lower commission is worth.',
+      pillar1Title: 'It is all connected already',
+      pillar1Body: 'Payments, delivery, advertising and order management in one system. Nothing to connect and nothing to install.',
+      pillar2Title: 'Exposure inside the marketplace',
+      pillar2Body: 'Buyers reach your shop from the home page, from search, and from a purchase in another shop here.',
+      pillar3Title: 'Already have a shop?',
+      pillar3Body: 'Connect your existing stock with one file, and it updates here automatically every hour.',
+      pillar4Title: 'The platform keeps improving',
+      pillar4Body: 'Every improvement reaches every shop the same day — no version upgrade, no plugin to buy.',
+      sameEverything: 'Every plan includes the same things. The only difference is the ratio between the subscription and the commission.',
       vatNote: 'All prices exclude VAT.',
       perMonth: 'per month',
       commissionLabel: 'commission per sale',
       calcTitle: 'Which plan works out cheapest',
       calcQuestion: 'How much do you expect to sell in a month?',
       calcPlaceholder: 'e.g. 8,000',
-      calcHint: 'Change the amount to your own turnover and we will mark the cheapest plan.',
-      calcTotal: '{amount} a month',
-      calcShare: '{percent}% of turnover',
       calcBest: 'Cheapest for you',
       calcSaves: 'saves {amount} a month',
       calcClose: 'At this level the plans are near enough identical — {amount} a month between the cheapest and the dearest. Start on the entry plan; you can move at any time.',
       calcGap: '{tier} saves you {amount} a month over {other}.',
       calcExample: 'For example, a turnover of {amount} a month:',
-      whenTitle: 'When billing starts',
-      whenLead: 'Sell first. Pay after.',
-      whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up. Nothing is charged until then.',
-      buildTitle: 'Build before you pay',
-      buildBody: 'Sign up, add products, design the shop and look at it — with no card. You pick a plan only when you want the shop to go live.',
+      whenBody: 'The subscription starts on your first sale, and at the latest two months after you sign up.',
+      buildBody: 'Build the whole shop with no card. You pick a plan only when you want it to go live.',
       includedTitle: 'In every plan',
       included1: 'Your own shop at your own address, and organic ranking on Google',
       included2: 'Exposure inside the marketplace — home, search and categories',
       included3: 'Baseline advertising on Google and Meta, with no setting to touch',
       included4: 'Courier delivery, labels and tracking',
       included5: 'Products, images, variants and sales — with no cap',
+      included6: 'A full back office — orders, stock, returns, reports and messages',
       adsTitle: 'Google and Meta campaigns, from inside the dashboard',
       adsLead: 'Want more traffic than the baseline advertising brings? You can run a paid campaign on Google and Meta straight from the dashboard, for an additional charge.',
       adsPoint1: 'You set a monthly budget, and we build and run the campaign',
@@ -2637,9 +2666,9 @@ export const translations = {
       current: 'Your plan',
       saving: 'Saving…',
       saved: 'Plan saved',
+      savedWhere: 'Your plan is shown in the dashboard, on the Payments tab.',
+      savedWhereLink: 'Go to Payments',
       saveFailed: 'Saving failed. Please try again.',
-      ctaTitle: 'Want to see what it looks like',
-      ctaBody: 'Opening a shop takes a few minutes and needs no card.',
       ctaButton: 'Open a shop',
       tiers: {
         starter: { name: 'Starter', for: 'A shop that is just beginning' },
@@ -3152,6 +3181,7 @@ export const translations = {
       navMenu: 'Dashboard menu',
       navMenuClose: 'Close menu',
       navReportFault: 'Report a fault',
+      navPlans: 'Plans',
       navCollapse: 'Collapse menu',
       navExpand: 'Expand menu',
       tabProducts: 'Products',
@@ -3280,6 +3310,7 @@ export const translations = {
       subTitle: 'Monthly subscription',
       subWhy: 'The subscription is what puts your store live. Cancel any time.',
       subPlan: 'Your plan',
+      subPlanValue: '{name} — ₪{fee} {per}',
       subPerMonth: 'per month',
       subCommission: 'Commission per sale',
       subVat: 'Prices exclude VAT',

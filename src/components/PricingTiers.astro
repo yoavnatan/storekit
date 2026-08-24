@@ -38,8 +38,11 @@ import type { SellerTierId } from '../lib/pricing.js';
 interface Props {
   p: ReturnType<typeof getT>['pricing'];
   lang: 'he' | 'en';
+  /** Only a signed-in seller is told where his choice landed — for a visitor the same click is a
+   *  redirect to registration, and a line naming a dashboard tab he has no account for is noise. */
+  isLoggedIn: boolean;
 }
-const { p, lang } = Astro.props;
+const { p, lang, isLoggedIn } = Astro.props;
 
 /** The worked example the page opens on. Not a placeholder digit — every figure below is this
  *  number run through the same arithmetic the script uses. */
@@ -67,14 +70,9 @@ const summary = isClose
 ---
 
 <section class="mt-8" aria-labelledby="calc-title">
-  <h2 id="calc-title" class="text-[1.15rem] font-bold m-0">{p.calcTitle}</h2>
-  {/* Tinted rather than plain white, because this box is the one thing on the page a reader is
-      meant to touch — the same accent wash the site puts behind a row that wants attention
-      (`utils.css` unread rows, `store.css` active chip). One signal, no shadow: it does not float. */}
-  <div
-    class="p-4 md:p-5 mt-3 rounded-[var(--radius)] border"
-    style="border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 5%, var(--color-surface))"
-  >
+  <h2 id="calc-title" class="text-[1.05rem] font-bold m-0">{p.calcTitle}</h2>
+  <p class="muted m-0 mt-1 text-[0.88rem] max-w-[46rem]">{p.sameEverything}</p>
+  <div class="pricing-panel mt-3">
     <label for="calc-revenue" class="block font-semibold text-[0.92rem]">{p.calcQuestion}</label>
     {/* `inputmode="numeric"` and not `type="number"`: the field takes a formatted amount with
         separators, and a number input rejects them outright on some browsers and silently blanks
@@ -91,10 +89,11 @@ const summary = isClose
         class="input max-w-[12rem]"
       />
     </div>
-    {/* The sentence the whole calculator exists to produce, and the only place a saving is ever
-        described in words. `aria-live` because it changes under a field being typed in. */}
+    {/* The sentence the whole calculator exists to produce, and the only line under the field —
+        the hint that used to sit beneath it ("enter an amount and we will mark the cheapest") said
+        what this sentence demonstrates. `aria-live` because it changes under a field being typed
+        in. */}
     <p class="m-0 mt-3 text-[0.9rem] font-semibold" id="calc-summary" aria-live="polite">{summary}</p>
-    <p class="muted m-0 mt-1 text-[0.84rem]">{p.calcHint}</p>
   </div>
 </section>
 
@@ -103,8 +102,6 @@ const summary = isClose
   role="list"
   class="list-none p-0 m-0 mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
   data-label-best={p.calcBest}
-  data-label-total={p.calcTotal}
-  data-label-share={p.calcShare}
   data-label-close={p.calcClose}
   data-label-gap={p.calcGap}
   data-label-choose={p.choose}
@@ -113,7 +110,7 @@ const summary = isClose
   data-label-saved={p.saved}
   data-label-failed={p.saveFailed}
 >
-  {costs.map(({ tier, cost }) => {
+  {costs.map(({ tier }) => {
     const copy = p.tiers[tier.id as SellerTierId];
     const best = tier.id === cheapest.tier.id;
     // `card--flat`: the card itself is not clickable — the button inside it is — and a shadow on
@@ -137,10 +134,11 @@ const summary = isClose
               badge the script has to build is a badge that arrives a frame late. */}
           <span class="pricing-best-badge" data-role="best-badge">{p.calcBest}</span>
         </div>
-        <p class="muted m-0 mt-1 text-[0.84rem]">{copy.for}</p>
-
-        <p class="m-0 mt-4 flex items-baseline gap-1">
-          <span class="text-[1.6rem] font-bold tabular-nums">₪{tier.monthlyFee}</span>
+        {/* The audience line ("for a shop just starting out") is gone: the calculator answers the
+            same question with the seller's own number, and four cards each carrying six facts is
+            what made the page read as complicated. */}
+        <p class="m-0 mt-3 flex items-baseline gap-1">
+          <span class="text-[1.45rem] font-bold tabular-nums">₪{tier.monthlyFee}</span>
           <span class="muted text-[0.84rem]">{p.perMonth}</span>
         </p>
         <p class="m-0 mt-1 text-[0.88rem]">
@@ -148,17 +146,22 @@ const summary = isClose
           <span class="muted"> {p.commissionLabel}</span>
         </p>
 
-        {/* What this plan actually costs at the revenue in the field — the figure, and beside it
-            the share of turnover it represents, which is the number a seller compares platforms
-            on. Server-rendered for the example, rewritten by the script on every keystroke. */}
-        <div class="mt-3 pt-3 border-t" style="border-color: var(--color-border)">
-          <p class="m-0 text-[0.92rem] font-semibold tabular-nums" data-role="calc-total">
-            {p.calcTotal.replace('{amount}', ils(cost))}
-          </p>
-          <p class="muted m-0 text-[0.82rem] tabular-nums" data-role="calc-share">
-            {p.calcShare.replace('{percent}', ((cost / EXAMPLE_REVENUE) * 100).toFixed(1))}
-          </p>
-        </div>
+        {/* **The monthly bill is deliberately NOT on this card** (owner, 2026-08-24: *"לא צריך
+            להראות למוכר כמה הוא ישלם לנו בחודש עם המכירות, זה רעיון גרוע, זה נראה מפחיד... בראש שלו
+            זה נראה כאילו למה לי לשלם על חנות כל כך הרבה כסף בחודש? בלי שהוא מבין שזה כולל את כל
+            הסליקה והכל"*).
+            It was here for a day, as "₪675 לחודש · 13.5% מהמחזור", and the reasoning was that a
+            figure with no size means nothing. That is true of a PRICE and wrong about this number:
+            fee-plus-commission at a revenue he just guessed is not a price, it is a bill he has not
+            earned yet, and it lands beside a 99₪ subscription as if the subscription had been a
+            lie. **And it was not even the real total** — PayMe take a clearing fee on top of both
+            numbers (`docs/payme-correspondence.md`), so what the page called "סה״כ לחודש" was a
+            figure nobody would ever be charged (owner, 2026-08-24: *"אין פה שיקוף אמיתי של המחיר אז
+            אין בשביל מה להראות אותו"*).
+            **The saving survives that objection and the total does not**, which is why one stayed:
+            the clearing fee is the same on every plan, so it cancels in a difference between two of
+            them. "Growth saves you 500₪ a month" is exact; "you will pay 675₪" never was. What the calculator says instead is which plan is cheapest FOR HIM, and — only when
+            the gap is worth acting on — what choosing it saves. */}
 
         {/* Pushed to the bottom so the four buttons line up however uneven the copy above them is.
             The cheapest card's button is the filled one: the page has four identical actions and
@@ -175,4 +178,13 @@ const summary = isClose
   })}
 </ul>
 
-<p class="muted m-0 mt-3 text-[0.82rem]">{p.vatNote}</p>
+{/* Two facts on one line under the prices, where the two sections they used to have would have
+    been: when we start charging, and that these are pre-VAT figures. */}
+<p class="muted m-0 mt-3 text-[0.82rem]">{p.whenBody} {p.vatNote}</p>
+
+{isLoggedIn && (
+  <p class="!hidden m-0 mt-3 text-[0.88rem]" id="tier-saved-where">
+    <span>{p.savedWhere}</span>{' '}
+    <a href="/seller/dashboard?panel=payouts">{p.savedWhereLink}</a>
+  </p>
+)}

@@ -108,7 +108,7 @@ import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.
 import { storeBaselineStatus } from '../../lib/ad-baseline.js';
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
 import { getStoreIdsWithStalledCampaigns } from '../../lib/ad-campaigns.js';
-import { boostFeePercent, commissionPercentForTier } from '../../lib/pricing.js';
+import { boostFeePercent, commissionPercentForTier, resolveTier } from '../../lib/pricing.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote } from '../../lib/ad-scope-label.js';
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
 import { shortDate } from '../../lib/date-range.js';
@@ -2963,6 +2963,7 @@ const orderStatusColors: Record<string, string> = {
             derivedCategory={derivedMerchantCategory}
             kycComplete={merchantKycComplete}
             tier={seller.tier}
+            planName={t.pricing.tiers[resolveTier(seller.tier).id].name}
             subscription={subscription}
             subscriptionPaying={!!subscription && subscriptionIsPaying(subscription.status)}
             d={d}

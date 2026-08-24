@@ -30,13 +30,21 @@ interface Props {
   /** The seller's plan. Absent falls back to the default, exactly as `resolveTier` does everywhere
    *  else — a bad stored value must never break this render. */
   tier: SellerTierId | undefined;
+  /** What the plan is CALLED. It lives in the pricing copy rather than the dashboard's, so it is
+   *  handed in rather than looked up here — this card would otherwise be the one component that
+   *  reaches into another screen's translations to render a word.
+   *
+   *  Named at all because a seller who chose "צמיחה" met the word nowhere afterwards: the card said
+   *  "125 ₪ לחודש" and left him to recognise his plan by its price (owner, 2026-08-24: *"מה קורה
+   *  אחרי שעושים בחירת מסלול? איפה זה מופיע?"*). */
+  planName: string;
   /** What is on file: `null` = none yet, `paying` = billing is running, otherwise it was created
    *  and nobody has paid it. `payUrl` is present only in that middle state. */
   subscription: { status: number; nextCharge?: string } | null;
   paying: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { tier, subscription, paying, d } = Astro.props;
+const { tier, planName, subscription, paying, d } = Astro.props;
 const plan = resolveTier(tier);
 const created = !!subscription;
 ---
@@ -50,7 +58,7 @@ const created = !!subscription;
       his own commission rate in. */}
   <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mt-4 text-[0.86rem] m-0">
     <dt class="muted">{d.subPlan}</dt>
-    <dd class="m-0 font-semibold">{plan.monthlyFee} ₪ {d.subPerMonth}</dd>
+    <dd class="m-0 font-semibold">{d.subPlanValue.replace('{name}', planName).replace('{fee}', String(plan.monthlyFee)).replace('{per}', d.subPerMonth)}</dd>
     <dt class="muted">{d.subCommission}</dt>
     <dd class="m-0 font-semibold">{plan.commissionPercent}%</dd>
     {paying && subscription?.nextCharge && (
