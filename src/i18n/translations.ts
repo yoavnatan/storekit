@@ -108,7 +108,23 @@ export const translations = {
       // item would have made this sentence the list a second time, one line above the list; so the
       // enumeration is the chips' job and this line says the thing none of them can say on its own
       // — that there is nothing else to go and connect. Same claim `pricing.pillar1Body` makes.
-      startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה — הכל במקום אחד, ללא תוספים חיצוניים.',
+      //
+      // **And it now names the EXPOSURE, because that is the whole answer to the objection**
+      // (owner, 2026-08-24). A prospective seller asked him why anyone pays a per-sale commission
+      // when a freelancer builds a site once for ₪2-3k and takes nothing after. Every other thing
+      // this block lists — ads, SEO, shipping, payments — that seller can eventually buy or bolt
+      // on; the one item on the page a standalone site can never have is the shoppers who arrived
+      // for somebody else's store. The positioning note on `startSelling` above already says that
+      // is what leads, and until today the sentence under the heading did not say it at all.
+      //
+      // It names the MECHANISM, never a volume: "שנחשפת לקונים שמגיעים ל…", never "נביא לך
+      // תנועה" and never a number. Exposure inside the מתחם is true by construction on day one
+      // (the discovery shelves, category pages and cross-store search all list a new store);
+      // arriving traffic is not, least of all in launch mode at 5-9 stores. Promising the second
+      // is the same mistake `builtInAds` below is worded to avoid — free traffic is the one thing
+      // the business model does not include — and memory `project_seo_marketing_anxiety` is the
+      // standing rule against it.
+      startSellingDesc: 'חנות עצמאית משלך, שנחשפת לקונים שמגיעים לכל שאר החנויות בפלטפורמה — הכל במקום אחד, ללא תוספים חיצוניים.',
       // "ממשק פרסום מובנה", never "פרסום מובנה" (owner, 2026-08-14). What is
       // built in is the SYSTEM that runs the campaigns — the ad SPEND is billed
       // separately, per actual spend, and is never inside the monthly fee (see
@@ -2707,7 +2723,7 @@ export const translations = {
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
       startSelling: 'A home for independent stores',
-      startSellingDesc: 'A store of your own, alongside every other store on the platform — all in one place, with no third-party add-ons.',
+      startSellingDesc: 'A store of your own, in front of the shoppers who came for all the other stores on the platform — all in one place, with no third-party add-ons.',
       // "ads manager", never bare "ads" — see the Hebrew twin above: the manager
       // is included, the ad spend is billed separately.
       builtInAds: 'Built-in ads manager',
