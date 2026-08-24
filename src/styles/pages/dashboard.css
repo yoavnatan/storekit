@@ -2156,8 +2156,6 @@ html:has(#dash-main-card.dash-nav-side) {
      pinned title has to cancel it exactly (see the full-bleed rule below), and two values that must
      agree are one value. */
   --dash-panel-pad: 1.5rem;
-  /* The tab-hint band's own height — see the rule that reads it. */
-  --dash-hint-h: 2.45rem;
   /* What the sheet leaves at each side of the window, so the strip above it can be its width
      without measuring it. 2rem is the desktop card's own gutter; below 1180px the sheet is the
      container, whose padding is the same 1rem a side — and on a phone it is full-bleed, which is
@@ -2242,84 +2240,81 @@ html:has(#dash-main-card.dash-nav-side) {
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }
-/* ══ THE TAB HINT, WHEN IT IS THE FIRST THING IN A PANEL ══
-   Owner, 2026-08-24: *"לא יושבות טוב על הקונטיינר... רק עם בורדר רדיוס עליון ושיתלבשו על גבי
-   הקונטיינר הכללי."*
+/* ══ THE TAB HINT ══
+   Its own small container, sitting above the panel's content — and that is the whole of it (owner,
+   2026-08-24, after three rounds of trying to make it the sheet's own top edge: *"תחזיר למה שהיה
+   בהתחלה, פשוט שיהיה שם קונטיינר רגיל מעל הקונטיינר… רק שהצבע של הרקע שלו יישאר"*).
 
-   The hint is rendered above the panel head on six of the seven tabs, which quietly took the top
-   edge away from the element designed to carry it: the head above declares the sheet's top border,
-   its side borders and its two top corners, and none of that is the top of anything if a paragraph
-   is sitting over it. So when the hint is first, IT becomes the band — the same three declarations,
-   for the same reason — and the head directly under it goes back to being an ordinary title.
+   What was tried and removed, so nobody walks it again: breaking the band out to the sheet's width
+   and giving it the sheet's top corners (the corners are holes, and they showed the white behind
+   them); nesting it inside the sheet's border instead (kept the edge, read as inset, and left a
+   1px step where the title's borders resumed); and pinning it so the edge never scrolled away
+   (correct, and still one thing too many for a line of explanatory text). A hint is not chrome and
+   does not need to own an edge.
 
-   `:first-child` and not a modifier prop: the hint's position is a fact about the panel it was
-   dropped into, and a component that had to be told which one it is would be told wrongly the first
-   time a panel gained something above it. Overview is the case that proves it — its hint sits after
-   the publish card and the checklist, is not first, and correctly stays the plain line it was.
-
-   **A pale olive WASH, in two steps** — the third colour tried and the owner's own correction
-   (2026-08-24). Grey read as one more pale row in a stack of pale rows; the site's dark navy went
-   too far the other way and read as a foreign slab dropped on the card. What he asked for is one of
-   the washes the homepage's open-a-store tiles are drawn in: *"בגרדיאנט ומאוד בהיר על סף השקוף."*
-   So it is `--color-invite-olive` mixed into the surface at 14% → 6% down the band — the same
-   recipe `lib/placeholder-art.ts#tileBackground` uses for those tiles, at well under half its
-   depth, because this is a strip behind a line of text rather than a tile that has to hold a
-   drawing. Olive because it is the one hue in that palette that is a colour rather than an absence
-   of one and carries no state meaning: green would read as success and red as a warning on a bar
-   whose whole job is to say nothing more than "this is what this tab is".
-   The text stays `--color-muted`, which is what it is everywhere else, and the bottom border goes
-   away — a rule between the band and the title would draw a seam across the one thing that is
-   supposed to look like one piece. */
-/* The plain line, everywhere the band does not apply — Overview (its hint is not first) and any
-   layout without the side rail. It kept its muted colour by way of a utility until the band needed
-   to override it, which a layered utility cannot be. */
-.dash-tab-hint { color: var(--color-muted); }
-#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) { padding-top: 0; }
-#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child {
-  /* **The band IS the sheet's top edge, and it does not scroll away** (owner, 2026-08-24: *"לא אני
-     לא מקבל את זה שלכותרת הנעוצה אין כובע, הכובע אמור להיות גם וגם"*).
-     Two earlier attempts failed on the same question — who owns the edge. Breaking out without
-     staying put gave the band the corners and then took them away on the first scroll; nesting it
-     inside the sheet's own border kept the edge but left the band looking inset. It is sticky now,
-     pinned at the same offset the title uses and one layer above it, so the hat is simply always
-     there: the title pins directly beneath it and never needs one of its own, and the side borders
-     run unbroken from the band down through the title into the content. */
-  position: sticky;
-  top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
-  z-index: 7;
-  /* Past the panel's padding AND its 1px side border, so the band is the sheet's full width and
-     carries those borders for its own height — the same three declarations `.dash-panel-head` uses
-     for the same reason. */
-  margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
-  margin-block: 0;
-  border-top: var(--dash-sheet-edge, 0px) solid var(--color-border);
-  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-border);
-  padding: 0.6rem var(--dash-panel-pad);
+   The colour is the one thing kept from all of it: `--color-invite-olive` mixed into the surface at
+   14% → 6%, the same recipe `lib/placeholder-art.ts#tileBackground` uses for the homepage's
+   open-a-store tiles, at well under half its depth. Olive because it is the one hue in that palette
+   that is a colour rather than an absence of one and carries no state meaning — green would read as
+   success and red as a warning on a line whose whole job is to say what this tab is. */
+.dash-tab-hint {
+  color: var(--color-muted);
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--color-invite-olive) 14%, var(--color-surface)) 0%,
     color-mix(in srgb, var(--color-invite-olive) 6%, var(--color-surface)) 100%
   );
-  border-start-start-radius: var(--radius);
-  border-start-end-radius: var(--radius);
 }
-/* The title under it is no longer an edge, so it gives back the top border and the two corners the
-   rule above hands it. **Scoped by the PANEL and not by adjacency**, which is what the first
-   version got wrong: `.products-header` is nested one div deeper than the hint, so a `+` selector
-   never matched it and the header went on drawing its own rounded top under the band — the second
-   box, and the white between them, that the owner was pointing at. */
-#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .dash-panel-head,
-#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .products-header {
+
+/* ── …and when it is the first thing in a panel, it TUCKS BEHIND the content below ──
+   The final shape, after three that were not (owner, 2026-08-24): *"שלקונטיינר הפנימי כן יהיה
+   בורדר רדיוס, ושהקונטיינר העליון ישב קצת עליו מאחורה."*
+
+   So neither of them gives anything up. The hint keeps its own two top corners and the sheet's
+   width; the container under it keeps the rounded top edge it already had; and the hint simply
+   runs one radius further down, behind it. The overlap is what makes them read as two layers
+   rather than two boxes with a seam — and it is a negative margin plus matching padding, so the
+   text does not move by a pixel.
+
+   `z-index: 0` on a positioned box puts it under the pinned title (6) and the rail (7) while still
+   creating the stacking context the overlap needs. It is NOT pinned itself: an explanatory line is
+   not chrome, and the version that pinned it was one thing too many on screen. */
+/* The sheet hands its top edge to the hint, the way it already hands it to a pinned title: the hint
+   breaks out over the side borders and redraws them, so leaving the panel's own top border in place
+   stacks two 1px rules into one 2px line. Measured before the fix: panel top 66.4, hint top 67.4. */
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) {
+  padding-top: 0;
   border-top-width: 0;
   border-start-start-radius: 0;
   border-start-end-radius: 0;
-  /* Pinned BELOW the band rather than under it. `--dash-hint-h` is the band's own height as a
-     constant because that is what it is: one line of 0.82rem text at 1.5 and 0.6rem of padding,
-     on a sheet ~1120px wide where none of the seven hints comes close to wrapping. If one ever
-     does, this is the number to re-measure — and the failure is visible immediately, which is the
-     kind a constant is allowed to have. */
-  top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem) + var(--dash-hint-h));
 }
+#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child {
+  position: relative;
+  z-index: 0;
+  /* Past the panel's padding AND its 1px side border: the hint is the sheet's full width, and
+     carries those borders for its own height. */
+  margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
+  /* The tuck. `--radius` of the box is behind the container below it. */
+  margin-block: 0 calc(-1 * var(--radius));
+  padding: 0.55rem var(--dash-panel-pad) calc(0.55rem + var(--radius));
+  border: var(--dash-sheet-edge, 0px) solid var(--color-border);
+  border-bottom: 0;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+/* The two corner wedges of the container below paint `--color-bg`, which is right when the page is
+   what shows through a rounded corner and wrong here, where the hint is. Transparent, so the corner
+   shows the layer that is actually behind it. */
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .dash-panel-head::before,
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .dash-panel-head::after,
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .products-header::before,
+#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) .products-header::after {
+  background: transparent;
+}
+
 
 /* **The title's top border is the DESKTOP's alone**, because that is the only width where the
    panel IS the sheet. Below 1180px the sheet is `#dash-main-card` and it keeps its own top border,
@@ -2347,9 +2342,7 @@ html:has(#dash-main-card.dash-nav-side) {
 #dash-main-card.dash-nav-side .dash-panel-head::before,
 #dash-main-card.dash-nav-side .dash-panel-head::after,
 #dash-main-card.dash-nav-side .products-header::before,
-#dash-main-card.dash-nav-side .products-header::after,
-#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::before,
-#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::after {
+#dash-main-card.dash-nav-side .products-header::after {
   content: "";
   position: absolute;
   /* **Against the BORDER box, not the padding box** (owner, 2026-08-23: *"במצב של 0 גלילה יש קצת
@@ -2372,15 +2365,13 @@ html:has(#dash-main-card.dash-nav-side) {
    physical now and cannot disagree; a corner is a corner in any language. The centre is a
    percentage so it follows the box instead of repeating the radius. */
 #dash-main-card.dash-nav-side .dash-panel-head::before,
-#dash-main-card.dash-nav-side .products-header::before,
-#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::before {
+#dash-main-card.dash-nav-side .products-header::before {
   left: calc(-1 * var(--dash-sheet-edge, 0px));
   -webkit-mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
   mask: radial-gradient(circle at 100% 100%, transparent var(--radius), #000 0);
 }
 #dash-main-card.dash-nav-side .dash-panel-head::after,
-#dash-main-card.dash-nav-side .products-header::after,
-#dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::after {
+#dash-main-card.dash-nav-side .products-header::after {
   right: calc(-1 * var(--dash-sheet-edge, 0px));
   -webkit-mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
   mask: radial-gradient(circle at 0 100%, transparent var(--radius), #000 0);
@@ -2391,32 +2382,13 @@ html:has(#dash-main-card.dash-nav-side) {
   #dash-main-card.dash-nav-side .dash-panel-head::before,
   #dash-main-card.dash-nav-side .dash-panel-head::after,
   #dash-main-card.dash-nav-side .products-header::before,
-  #dash-main-card.dash-nav-side .products-header::after,
-  #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::before,
-  #dash-main-card.dash-nav-side > .dash-panel > .dash-tab-hint:first-child::after { display: none; }
+  #dash-main-card.dash-nav-side .products-header::after { display: none; }
 }
 /* …and the sheet gives them up, but only where a title actually took them. The four panels that
    pin nothing (Overview, Reports, Payouts, Settings) keep their own top edge, because there is
    nothing else there to hold it. */
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-panel-head:first-child),
 #dash-main-card.dash-nav-side > .dash-panel:has(.products-header) {
-  border-top-width: 0;
-  border-start-start-radius: 0;
-  border-start-end-radius: 0;
-}
-/* **Unless a tab hint is sitting on top of it**, in which case the sheet keeps its own edge and the
-   band fills the inside of it (see `.dash-tab-hint:first-child` above). Last, because this and the
-   rule directly above are the same specificity and disagree on purpose — the pinned title takes the
-   edge when it is the first thing in the panel, and it is not, when a hint is.
-
-   ⚠️ **What this gives up, knowingly:** the pinned title carries the top edge precisely so that the
-   edge does not scroll away, and here it does — the band is ordinary flow and leaves with the
-   content, so a hint panel scrolled down has a pinned title with no line above it. That is the
-   trade the owner chose when he asked for the band to be a hat on the container rather than the
-   container's edge itself, and it costs nothing for long: the hint is shown only while a seller's
-   onboarding checklist is incomplete (`TabHint.astro`), so the pinned-edge design comes back on its
-   own the moment he finishes setting up. */
-#dash-main-card.dash-nav-side > .dash-panel:has(> .dash-tab-hint:first-child) {
   border-top-width: 0;
   border-start-start-radius: 0;
   border-start-end-radius: 0;
