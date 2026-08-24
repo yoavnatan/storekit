@@ -119,6 +119,14 @@ const pillars = [
           </li>
         ))}
       </ul>
+      {/* The build-before-you-pay model, in one line, at the bottom of the list of what a plan
+          includes — which is exactly where a reader is asking "and what does it cost me to find
+          out". It is the platform's whole acquisition bet (`lib/store-publication.ts`), and until
+          now it was stated nowhere on the page that sells the plan. Deliberately not in the head:
+          the owner had that band removed on 2026-08-24 because telling a seller he does not have to
+          pay yet, above the prices, is the wrong thing to lead with — *"צריך לגרום למוכר כן ללחוץ
+          על מסלול"*. Under the list of what he gets, it is reassurance rather than a discount. */}
+      <p class="m-0 mt-3 text-[0.88rem]">{p.includedFree}</p>
     </section>
 
     {/* ── Advertising: a capability, not a fee schedule (2026-08-24) ──

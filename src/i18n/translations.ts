@@ -351,7 +351,19 @@ export const translations = {
       // August, when selling became one of the things blocked until the subscription starts — there
       // is no first sale before the first charge (`lib/pricing.ts` argues it at length).
       whenBody: 'המנוי נגבה מהרגע שהחנות עולה לאוויר, ומתחדש כל חודש.',
+      // ── The two facts that used to be missing, and both change a decision ──
+      // **Per shop** (owner, 2026-08-24: *"כל חנות צריכה לעלות כסף בנפרד"*) — a seller planning two
+      // shops is planning two plans, and finding that out on the payment screen is finding it out
+      // from us at the worst possible moment.
+      // **Cancelling**, in the same breath as the price, because the question that stops somebody
+      // pressing a plan is not what it costs but what happens if he stops. One charge, one card,
+      // one line per shop.
+      perStore: 'המסלול הוא לכל חנות. חנות שנייה היא מסלול נוסף — חיוב אחד בכרטיס, שורה לכל חנות.',
+      cancelAny: 'אפשר לבטל בכל רגע מהדשבורד. החנות נשארת באוויר עד סוף התקופה ששולמה, והמוצרים וההזמנות נשמרים.',
       includedTitle: 'מה כלול בכל מסלול',
+      // The whole build-before-you-pay model in one line, at the bottom of the list of what a plan
+      // includes — which is where a reader is asking "and what does it cost me to find out".
+      includedFree: 'הכול נבנה ונראה בלי כרטיס אשראי. התשלום פותח את המכירה, את הפרסום ואת ההופעה בגוגל ובמתחם.',
       included1: 'חנות עצמאית ומתקדמת עם כתובת משלכם, וקידום אורגני בגוגל (SEO)',
       included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש, הקטגוריות וקונים של חנויות אחרות',
       included3: 'פרסום בסיסי בגוגל ובמטא, בלי לגעת בשום הגדרה',
@@ -370,6 +382,10 @@ export const translations = {
       adsPoint2: 'התקציב הוא תקרה — מה שלא נוצל לא נגבה',
       adsPoint3: 'אין צורך בחשבון מודעות משלכם ובלי הגדרות',
       choose: 'בחירת המסלול',
+      // Which shop the choice is about. The plan is per shop, so on an account with more than one
+      // the button is meaningless without it — and on an account with one it would be noise, so it
+      // renders only when there really is a choice to disambiguate.
+      chooseFor: 'הבחירה חלה על {store}.',
       current: 'המסלול שלכם',
       saving: 'שומר…',
       saved: 'המסלול נשמר',
@@ -2771,6 +2787,9 @@ export const translations = {
       calcClose: '{tier} is the best value at this level of turnover.',
       calcGap: '{tier} saves you {amount} a month over {other}.',
       whenBody: 'The subscription is charged from the moment your shop goes live, and renews monthly.',
+      perStore: 'A plan is per shop. A second shop is a second plan — one charge on one card, with a line per shop.',
+      cancelAny: 'Cancel any time from the dashboard. The shop stays live to the end of the period you have paid for, and products and orders are kept.',
+      includedFree: 'Everything is built and previewed with no card. Paying is what opens selling, advertising and being found on Google and in the marketplace.',
       includedTitle: 'In every plan',
       included1: 'An independent, fully-featured shop at your own address, and organic ranking on Google (SEO)',
       included2: 'Exposure inside the marketplace — home, search and categories',
@@ -2784,6 +2803,7 @@ export const translations = {
       adsPoint2: 'The budget is a ceiling — whatever is not spent is never charged',
       adsPoint3: 'No ad account of your own, and no settings to touch',
       choose: 'Choose this plan',
+      chooseFor: 'This applies to {store}.',
       current: 'Your plan',
       saving: 'Saving…',
       saved: 'Plan saved',

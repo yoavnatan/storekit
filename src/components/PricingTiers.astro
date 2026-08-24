@@ -111,6 +111,7 @@ const summary = isClose
   data-label-saved={p.saved}
   data-label-failed={p.saveFailed}
   data-label-gateway={p.saveGateway}
+  data-label-for={p.chooseFor}
 >
   {costs.map(({ tier }) => {
     const copy = p.tiers[tier.id as SellerTierId];
@@ -180,11 +181,25 @@ const summary = isClose
   })}
 </ul>
 
-{/* The three facts that belong under a price table and nowhere else on the page: when we start
-    charging, that these are pre-VAT figures, and the one charge a seller meets that is NOT in the
-    table — PayMe's account-opening fee, which is his and used to be absorbed by us. */}
-<p class="muted m-0 mt-3 text-[0.82rem]">{p.whenBody} {p.vatNote}</p>
+{/* The facts that belong under a price table and nowhere else on the page, in the order a reader
+    asks them: what a plan covers, when we start charging, what happens if he stops, that these are
+    pre-VAT figures, and the one charge that is NOT in the table — PayMe's account-opening fee,
+    which is his and used to be absorbed by us.
+
+    The first two lines are new on 2026-08-24 and neither is decoration. **Per shop** is a price
+    fact a seller planning two shops has to have before he picks one, not on the payment screen
+    afterwards. **Cancelling** is here because the question that stops somebody pressing a plan is
+    not what it costs — it is what happens if he stops, and leaving that to a terms page is what
+    makes a decision feel irreversible. */}
+<p class="m-0 mt-3 text-[0.84rem] font-semibold">{p.perStore}</p>
+<p class="muted m-0 mt-1 text-[0.82rem]">{p.cancelAny}</p>
+<p class="muted m-0 mt-1 text-[0.82rem]">{p.whenBody} {p.vatNote}</p>
 <p class="muted m-0 mt-1 text-[0.82rem]">{p.setupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+
+{/* Which shop a choice would apply to. Rendered empty and filled by the script, because WHICH shop
+    is a per-seller answer and this page is one cached document for everybody (`/api/seller/tier`).
+    It stays empty for a seller with one shop — naming it there is noise, not clarity. */}
+{isLoggedIn && <p class="!hidden m-0 mt-3 text-[0.86rem] font-semibold" id="tier-for-store"></p>}
 
 {isLoggedIn && (
   <p class="!hidden m-0 mt-3 text-[0.88rem]" id="tier-saved-where">

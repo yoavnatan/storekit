@@ -112,18 +112,43 @@ export function initPricingTiers(): void {
   // example on the cards under a different figure in the field.
   if (field) render(parseRevenue(field.value));
 
-  // ── Which plan is this seller on, and choosing one ────────────────────────────────────────
+  // ── Which shop is this about, which plan is it on, and choosing one ──────────────────────
+  //
+  // **The plan belongs to a SHOP since 2026-08-24** (`lib/store-plan.ts`), so this page cannot say
+  // "your plan" any more — it has to say "this shop's plan", and it has to pick which shop. The
+  // rule is the one a seller would apply himself: the shop that still needs a decision, which is
+  // the first one not yet on the site; failing that, his first shop.
+  //
+  // And the button now ENDS somewhere. It used to write the plan and leave the reader on a pricing
+  // page, which is the owner's *"אדם פשוט לוחץ על 'בחר מסלול' ואז מה קורה? צריך שם הרי פרטי אשראי"*
+  // — a choice with no consequence reads as a form that did not submit. Choosing now records the
+  // plan and takes him to the one screen where the shop actually goes live.
   let current = '';
+  let storeId = '';
+  let storeName = '';
+  let manyStores = false;
+
   function paint(): void {
     for (const t of tiers) {
       const mine = !!current && t.id === current;
       t.btn.textContent = mine ? label('labelCurrent') : label('labelChoose');
       // `disabled`, and the site's `not-allowed` ban means it simply reads as inert rather than
-      // as forbidden (Hard rules → three standing bans). Re-choosing the plan you are already on
+      // as forbidden (Hard rules → three standing bans). Re-choosing the plan a shop is already on
       // is a no-op, and a no-op click that moves nothing is the interaction the owner banned.
       t.btn.disabled = mine;
     }
+    // Named only when there is really something to disambiguate. On a one-shop account the sentence
+    // would answer a question nobody asked.
+    const forLine = document.getElementById('tier-for-store');
+    if (forLine && manyStores && storeName) {
+      forLine.textContent = label('labelFor').replace('{store}', storeName);
+      forLine.classList.remove('!hidden');
+    }
   }
+
+  /** Where a choice lands: the shop's own go-live screen, which is the only place it can be paid
+   *  for. A plan chosen and left on this page is the dead end the owner named. */
+  const goLive = (): string => `/seller/dashboard?panel=payouts${storeId ? `&store=${encodeURIComponent(storeId)}` : ''}`;
 
   async function choose(tierId: string, btn: HTMLButtonElement): Promise<void> {
     const before = btn.textContent;
@@ -133,7 +158,7 @@ export function initPricingTiers(): void {
       const res = await fetch('/api/seller/tier', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: tierId }),
+        body: JSON.stringify({ tier: tierId, storeId }),
       });
       if (res.status === 401) {
         // Not an error to apologise for — it is the normal path for a visitor who has not
@@ -141,9 +166,15 @@ export function initPricingTiers(): void {
         window.location.href = `/seller/register?next=${encodeURIComponent('/pricing')}`;
         return;
       }
+      if (res.status === 404) {
+        // Signed in with no shop yet. There is nothing to price, so the honest destination is the
+        // screen that opens one rather than an error about a store id he never chose.
+        window.location.href = '/seller/dashboard?new=1';
+        return;
+      }
       if (res.status === 502) {
-        // The gateway refused to move a standing order, and the endpoint wrote nothing (its own
-        // header says why that order is not negotiable). So the sentence says the plan did NOT
+        // The gateway refused to move a standing order, and the endpoint rolled the plan back (its
+        // own header says why that order is not negotiable). So the sentence says the plan did NOT
         // change, which is true of our row and of PayMe at the same time.
         btn.disabled = false;
         btn.textContent = before;
@@ -151,19 +182,13 @@ export function initPricingTiers(): void {
         return;
       }
       if (!res.ok) throw new Error(String(res.status));
-      const body = (await res.json().catch(() => ({}))) as { fromNextCharge?: boolean };
       current = tierId;
       paint();
       showToast(label('labelSaved'));
-      // **Where it went.** A toast says it was saved and then takes the fact away with it; this
-      // line stays on the page and names the screen the plan now lives on (owner, 2026-08-24:
-      // *"מה קורה אחרי שעושים בחירת מסלול? איפה זה מופיע?"*). Rendered only for a signed-in seller,
-      // so on a visitor's page there is nothing here to reveal.
-      document.getElementById('tier-saved-where')?.classList.remove('!hidden');
-      // And for a seller who is already being billed, WHEN — his standing order has just been
-      // patched to the new amount, and a change to what someone pays that does not say when it
-      // starts is the half of the answer that generates the support message.
-      if (body.fromNextCharge) document.getElementById('tier-saved-next')?.classList.remove('!hidden');
+      // **And then it goes somewhere.** The toast alone was the dead end: the seller had chosen and
+      // was still on a page of prices, with the thing he actually wanted — the shop on the site —
+      // one tab and two clicks away. The go-live screen is where the plan is paid for.
+      window.location.href = goLive();
     } catch {
       // Said out loud, never swallowed — a plan the seller believes they chose and we did not
       // record is a bill for the wrong amount later (tests/silent-failure-guard.test.ts).
@@ -175,13 +200,21 @@ export function initPricingTiers(): void {
 
   for (const t of tiers) t.btn.addEventListener('click', () => void choose(t.id, t.btn));
 
-  // Asked last, and its failure is silent on purpose: not knowing which plan a seller is on leaves
-  // the page exactly as a logged-out visitor sees it, which is a complete and honest page.
+  // Asked last, and its failure is silent on purpose: not knowing which shop a seller is looking at
+  // leaves the page exactly as a logged-out visitor sees it, which is a complete and honest page.
+  interface StoreAnswer { id: string; name: string; tier: string; chosen: boolean; live: boolean }
   void fetch('/api/seller/tier')
     .then((r) => (r.ok ? r.json() : null))
-    .then((d: { signedIn?: boolean; tier?: string; chosen?: boolean } | null) => {
-      if (!d?.signedIn || !d.chosen) return;
-      current = d.tier ?? '';
+    .then((d: { signedIn?: boolean; stores?: StoreAnswer[] } | null) => {
+      const stores = d?.signedIn ? d.stores ?? [] : [];
+      if (!stores.length) return;
+      manyStores = stores.length > 1;
+      // The shop that still has a decision to make. A seller with one live shop and one half-built
+      // is on this page about the half-built one.
+      const target = stores.find((st) => !st.live) ?? stores[0]!;
+      storeId = target.id;
+      storeName = target.name;
+      if (target.chosen) current = target.tier;
       paint();
     })
     .catch(() => undefined);
