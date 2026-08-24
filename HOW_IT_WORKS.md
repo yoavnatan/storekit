@@ -44,7 +44,7 @@ it is the platform's acquisition bet — *"מי שלא ראה מה הוא מקב
 | 2 | Creates a store — name, latin slug, basics. Up to `MAX_STORES_PER_SELLER` | `lib/stores.ts#createStore` | ✅ |
 | 3 | Builds it: products, images, variants, categories, discounts, coupons, design. No cap on any of it | `lib/store-products.ts`, `lib/discounts.ts` | ✅ |
 | 4 | Looks at it. The shop is `unpublished` — the public cannot reach it, the OWNER can | `lib/store-status.ts` · `store-publication.ts#mayPreviewStore` | ✅ |
-| 5 | Chooses a plan. Four tiers, same product, differing only in fee-to-commission ratio | `lib/pricing.ts` · `lib/seller-tier.ts` · `/pricing` | ✅ |
+| 5 | Chooses a plan. Four tiers, same product, differing only in fee-to-commission ratio. Changing it while already paying patches the PayMe subscription's price — never cancels it — and applies from the next charge | `lib/pricing.ts` · `lib/seller-tier.ts` · `lib/seller-subscription.ts` · `/pricing` | ✅ |
 | 6 | Starts the monthly subscription — the seller's card charged by PayMe to OUR merchant account | `lib/seller-subscription.ts` | ⚠️ owner (needs live PayMe) |
 | 7 | Gets a clearing account, which PayMe examine — up to 7 business days (agreement §11) | `lib/seller-merchant.ts` | ⚠️ owner |
 | 8 | **The shop publishes itself.** Nobody presses a button — publication is the derived result of both holds clearing | `store-publication.ts#syncStorePublication` | ✅ |

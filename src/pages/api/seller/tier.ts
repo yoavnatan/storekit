@@ -3,6 +3,7 @@ import type { APIContext } from 'astro';
 import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { parseTierId, setSellerTier } from '../../../lib/seller-tier.js';
+import { propagateTierToSubscription } from '../../../lib/seller-subscription.js';
 import { DEFAULT_TIER } from '../../../lib/pricing.js';
 
 /**
@@ -21,12 +22,20 @@ import { DEFAULT_TIER } from '../../../lib/pricing.js';
  * the body — the "an id is not a permission" rule that `lib/store-ownership.ts` exists for does not
  * even get a chance to apply here, because there is nothing to pass.
  *
- * ── This route moves no money ──
+ * ── For a seller who is not paying yet, this route moves no money ──
  * It records which fee a LATER charge will read (`seller-subscription.ts` → `monthlyFeeForTier`).
- * That is why there is no idempotency key and no journal entry: choosing the same plan twice is one
- * state, and nothing has been charged at the moment this is called. The rule about changing a plan
- * once the subscription is already running — PayMe hold the amount at their end — is on
- * `lib/seller-tier.ts`, next to the write.
+ * No idempotency key and no journal entry: choosing the same plan twice is one state, and nothing
+ * has been charged at the moment it is called.
+ *
+ * ── For a seller who IS paying, it moves the standing order, and the order matters ──
+ * Until 2026-08-24 it did not, and that was a money bug: the row changed, every report and
+ * commission line followed the new tier, and PayMe went on charging the old amount with neither
+ * side reporting the gap. `seller-tier.ts` had documented the danger and exported
+ * `sellerMayChangeTier`; nothing called it.
+ * The fix is not a refusal (owner: *"למה לבטל את המנוי? זה רק להחליף את ההוראת קבע שלו"*) — the
+ * subscription's price is patched at PayMe FIRST, and the tier is written only if they accepted.
+ * A gateway refusal therefore leaves the seller on the plan he is actually being charged for,
+ * which is the one state that is never a lie.
  */
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -62,7 +71,22 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const tier = parseTierId(read.value?.tier);
   if (!tier) return json({ error: 'Unknown tier' }, 400);
 
+  // PayMe first — see the header. A `failed` here means nothing was written and nothing diverged.
+  const moved = await propagateTierToSubscription(sellerId, tier);
+  if (moved.status === 'failed') {
+    // 502 and not 400: the request was fine, the gateway refused. The seller is told his plan was
+    // not changed, which is true of both sides at once.
+    return json({ error: 'Subscription not updated', gateway: true }, 502);
+  }
+
   const saved = await setSellerTier(sellerId, tier);
   if (!saved) return json({ error: 'Seller not found' }, 404);
-  return json({ ok: true, tier: saved });
+  // `fromNextCharge` is what the page has to SAY, not a detail: a seller who is already billed has
+  // just changed what he pays, and the one thing he needs to know is when.
+  return json({
+    ok: true,
+    tier: saved,
+    fromNextCharge: moved.status === 'updated',
+    ...(moved.status === 'updated' && moved.nextCharge ? { nextCharge: moved.nextCharge } : {}),
+  });
 }

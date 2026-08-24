@@ -110,6 +110,7 @@ const summary = isClose
   data-label-saving={p.saving}
   data-label-saved={p.saved}
   data-label-failed={p.saveFailed}
+  data-label-gateway={p.saveGateway}
 >
   {costs.map(({ tier }) => {
     const copy = p.tiers[tier.id as SellerTierId];
@@ -185,6 +186,10 @@ const summary = isClose
 
 {isLoggedIn && (
   <p class="!hidden m-0 mt-3 text-[0.88rem]" id="tier-saved-where">
+    {/* Shown only when the seller is already being billed: the endpoint answers `fromNextCharge`
+        and the standing order at PayMe has just been patched. It is the first thing in the line
+        because it is the part that is about his money. */}
+    <span class="!hidden font-semibold" id="tier-saved-next">{p.savedNextCharge}</span>{' '}
     <span>{p.savedWhere}</span>{' '}
     <a href="/seller/dashboard?panel=payouts">{p.savedWhereLink}</a>
   </p>

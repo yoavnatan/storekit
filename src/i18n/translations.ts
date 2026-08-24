@@ -355,6 +355,14 @@ export const translations = {
       // account for.
       savedWhere: 'המסלול מופיע בדשבורד, בלשונית תשלומים.',
       savedWhereLink: 'מעבר לתשלומים',
+      // Said only to a seller who is ALREADY being billed: his standing order at PayMe has just
+      // been patched to the new amount (`seller-subscription.ts#propagateTierToSubscription`), and
+      // the one thing he needs to know is when it takes effect (owner, 2026-08-24: *"ולהדגיש שזה
+      // נכנס לתוקף לאחר התשלום הקרוב"*).
+      savedNextCharge: 'הסכום החדש ייגבה מהחיוב החודשי הקרוב.',
+      // A gateway refusal, and the sentence has to say that NOTHING changed — the endpoint patches
+      // PayMe before it writes the tier precisely so that this is true on both sides.
+      saveGateway: 'לא הצלחנו לעדכן את המנוי מול חברת הסליקה, והמסלול לא שונה. נסו שוב או פנו אלינו.',
       saveFailed: 'השמירה נכשלה. נסו שוב.',
       ctaButton: 'פתיחת חנות',
       tiers: {
@@ -2678,6 +2686,8 @@ export const translations = {
       saved: 'Plan saved',
       savedWhere: 'Your plan is shown in the dashboard, on the Payments tab.',
       savedWhereLink: 'Go to Payments',
+      savedNextCharge: 'The new amount is charged from your next monthly payment.',
+      saveGateway: 'We could not update your subscription with the payment provider, so your plan was not changed. Try again or contact us.',
       saveFailed: 'Saving failed. Please try again.',
       ctaButton: 'Open a shop',
       tiers: {

@@ -30,12 +30,12 @@ import { getSellerById } from './seller-auth.js';
 import { DEFAULT_TIER, monthlyFeeForTier, type SellerTierId } from './pricing.js';
 import {
   activePaymeCredentials, cancelSubscription as cancelAtPayme, generateSubscription,
-  getSubscriptionStatus, PaymeError, PAYME_SUB_STATUS, subscriptionIsPaying,
+  getSubscriptionStatus, PaymeError, PAYME_SUB_STATUS, setSubscriptionPrice, subscriptionIsPaying,
   type PaymeCredentials,
 } from './payment-payme.js';
 import { logError } from './error-log.js';
 import { recordMoneyEvent } from './money-events.js';
-import { toAgorot } from './money.js';
+import { formatAgorot, toAgorot } from './money.js';
 
 /** What a caller may see. **No `buyer_key`** — it is a chargeable token, and the reason it is absent
  *  from this shape is the same one that keeps `callback_secret` off `MerchantAccount`: a secret on
@@ -246,6 +246,96 @@ export async function startSubscription(
     }).catch(() => { /* nothing left to try */ });
     return { status: 'failed', error: message };
   }
+}
+
+/**
+ * The seller moved to another plan while he is already paying — carry it to the standing order.
+ *
+ * ── Why this function exists, and where the bug was ──
+ * `lib/seller-tier.ts` records the choice and says, in its own header, that propagating it belongs
+ * here. Nothing did it: `POST /api/seller/tier` wrote the row and stopped, so a paying seller could
+ * switch plans, every report and commission line would follow the new tier, and PayMe would go on
+ * charging the old figure — with neither side reporting the gap. Found 2026-08-24.
+ *
+ * ── The shape, ruled by the owner the same day ──
+ * *"למה לבטל את המנוי? זה רק להחליף את ההוראת קבע שלו מפעם הבאה"*. So the subscription is PATCHED,
+ * never cancelled and recreated: the card stays, the arrangement stays, only the amount moves, and
+ * the seller is told it applies from the next charge. `payment-payme.ts#setSubscriptionPrice`
+ * carries the measurement that says this works.
+ *
+ * ── The order is the point ──
+ * **PayMe first, our row second.** If the patch fails there is nothing to undo and the seller is
+ * still on the plan he was paying for — which is the honest state. Written the other way round, a
+ * refusal from the gateway would leave the divergence this function was written to remove, and it
+ * would be invisible.
+ *
+ * Returns what the caller has to tell the seller:
+ *   'not-paying'  — nothing standing at PayMe. The tier write is the whole change; say nothing.
+ *   'updated'     — the standing order now carries the new amount, from the next charge.
+ *   'failed'      — PayMe refused. **The tier must NOT be written**, and the caller must say so.
+ */
+export type TierPropagation =
+  | { status: 'not-paying' }
+  | { status: 'updated'; nextCharge?: string }
+  | { status: 'failed'; error: string };
+
+export async function propagateTierToSubscription(
+  sellerId: string,
+  tier: SellerTierId,
+  creds: PaymeCredentials | null = activePaymeCredentials(),
+): Promise<TierPropagation> {
+  const sub = await subscriptionFor(sellerId);
+  // Not paying covers three cases and they are one answer: no subscription, one created and never
+  // paid, and one cancelled. In all three the next charge is generated from the tier at the time
+  // (`startSubscription` reads `seller.tier`), so the row IS the propagation.
+  if (!sub || !subscriptionIsPaying(sub.status) || !sub.providerRef) return { status: 'not-paying' };
+  // No gateway configured is not a failure to report: nobody can be charged, so nothing can
+  // diverge. It is the same shape `sellerIsSubscribed` takes for the same window.
+  if (!creds?.ownMerchantId) return { status: 'not-paying' };
+
+  const priceAgorot = toAgorot(monthlyFeeForTier(tier));
+  if (priceAgorot === sub.priceAgorot) {
+    // Same money, and PayMe are already carrying it. Re-sending would be a request that cannot
+    // change anything and can still fail.
+    return { status: 'updated', ...(sub.nextCharge ? { nextCharge: sub.nextCharge } : {}) };
+  }
+
+  try {
+    await setSubscriptionPrice(creds.ownMerchantId, sub.providerRef, priceAgorot, creds);
+  } catch (err) {
+    const message = err instanceof PaymeError ? err.message : err instanceof Error ? err.message : String(err);
+    await logError({
+      source: 'server',
+      route: 'payme:set-price',
+      message: `could not move seller ${sellerId} to ${tier}: ${message}`,
+      actorRole: 'seller',
+      actorId: sellerId,
+      resolutionHint: 'מוכר משלם ניסה להחליף מסלול ו-PayMe סירבו לעדכן את הסכום. המסלול שלו לא שונה — הוא ממשיך לשלם את הישן, ואין פער בין מה שרשום למה שנגבה.',
+    }).catch(() => { /* nothing left to try */ });
+    return { status: 'failed', error: message };
+  }
+
+  // Our copy of the arrangement, brought level with theirs in the same breath. `tier` here is the
+  // subscription's own column — what this standing order charges for — and it is not a duplicate of
+  // `sellers.tier`: that one is the seller's choice, this one is what the gateway is billing.
+  await query(
+    'UPDATE seller_subscriptions SET tier = $2, price_agorot = $3, updated_at = now() WHERE seller_id = $1',
+    [sellerId, tier, priceAgorot],
+  );
+
+  // The journal carries every money fact of this platform, and a monthly charge that silently
+  // changed size is exactly the kind `lib/reconcile.ts` is later asked to explain.
+  await recordMoneyEvent({
+    type: 'payment_attempted',
+    amountAgorot: priceAgorot,
+    actor: 'seller',
+    // Shekels, not agorot: this line is read by a person in the admin journal, and
+    // `tests/money-guards.test.ts` refuses a raw agorot integer inside Hebrew copy — "12500" beside
+    // a ₪125 plan is exactly the misreading that guard exists to stop.
+    detail: `שינוי מסלול · מוכר ${sellerId} · ${formatAgorot(sub.priceAgorot)} → ${formatAgorot(priceAgorot)} · אסמכתה ${sub.providerRef}`,
+  }).catch(() => { /* a lost journal row must not undo a change PayMe already accepted */ });
+
+  return { status: 'updated', ...(sub.nextCharge ? { nextCharge: sub.nextCharge } : {}) };
 }
 
 /**

@@ -22,6 +22,9 @@ const rig = vi.hoisted(() => ({
   errors: [] as Record<string, unknown>[],
   generateThrows: false,
   cancelThrows: false,
+  /** Every `set-price` PATCH the module made, and whether PayMe should refuse it. */
+  priced: [] as { subId: string; agorot: number }[],
+  priceThrows: false,
   upstream: null as { subStatus: number; nextDate?: string; subUrl?: string } | null,
   /** What `generate-subscription` should answer with — `active` on the token route, `initial` on
    *  the hosted-page one, which is the case the double-charge guard is about. */
@@ -79,13 +82,17 @@ vi.mock('../src/lib/payment-payme.js', async () => {
       if (rig.cancelThrows) throw new Error('PayMe refused');
       rig.cancelled.push(id);
     },
+    setSubscriptionPrice: async (_own: string, subId: string, agorot: number) => {
+      if (rig.priceThrows) throw new actual.PaymeError('set-price', 172, 'subscription not active');
+      rig.priced.push({ subId, agorot });
+    },
     getSubscriptionStatus: async () => rig.upstream,
   };
 });
 
 const CREDS = { clientKey: 'k', ownMerchantId: 'MPL-OURS', baseUrl: 'https://sandbox.payme.io/api/' };
 
-const { startSubscription, endSubscription, refreshSubscription, sellerIsSubscribed, subscriptionFor } =
+const { startSubscription, endSubscription, refreshSubscription, sellerIsSubscribed, subscriptionFor, propagateTierToSubscription } =
   await import('../src/lib/seller-subscription.js');
 
 beforeEach(() => {
@@ -97,6 +104,8 @@ beforeEach(() => {
   rig.errors = [];
   rig.generateThrows = false;
   rig.cancelThrows = false;
+  rig.priced = [];
+  rig.priceThrows = false;
   rig.upstream = null;
   rig.generateStatus = payme.PAYME_SUB_STATUS.active;
   rig.queries = [];
@@ -265,5 +274,84 @@ describe('the card token never reaches a caller', () => {
       expect(q.sql).not.toContain('buyer_key');
       expect(q.sql).not.toContain('SELECT *');
     }
+  });
+});
+
+/**
+ * Changing plan while the card is already being charged.
+ *
+ * The defect this replaced was silent by construction: `POST /api/seller/tier` wrote `sellers.tier`
+ * and nothing else, so every report and commission line moved to the new plan while PayMe went on
+ * charging the old amount. Nothing errors, nothing reconciles, and the first person to notice is a
+ * seller reading a bank statement.
+ *
+ * The fix patches the standing order rather than replacing it (owner, 2026-08-24), so these tests
+ * are as much about what must NOT happen — no cancellation, no second subscription — as about the
+ * new call.
+ */
+describe('moving a paying seller to another plan', () => {
+  async function startPaying(): Promise<void> {
+    await startSubscription('seller-1', {}, CREDS);
+    // The setup call is not the subject: only what the PROPAGATION does afterwards is.
+    rig.queries = [];
+    rig.events = [];
+    rig.generated = [];
+  }
+
+  it("patches the standing order to the new plan's price, and never cancels it", async () => {
+    await startPaying();                                  // growth, 12,500 agorot
+    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+
+    expect(res.status).toBe('updated');
+    // 199₪ — read from `pricing.ts` through the tier, exactly as `startSubscription` reads it.
+    expect(rig.priced).toEqual([{ subId: 'SUB1', agorot: 19900 }]);
+    // The card the seller already gave us stays where it is. A cancel-and-recreate would ask him to
+    // authorise it again for a change he made in one click.
+    expect(rig.cancelled).toEqual([]);
+    expect(rig.generated).toEqual([]);
+  });
+
+  it('brings our own row level with what PayMe now charge', async () => {
+    await startPaying();
+    await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+
+    const update = rig.queries.find((q) => q.sql.includes('UPDATE seller_subscriptions'));
+    expect(update?.params).toEqual(['seller-1', 'enterprise', 19900]);
+    // And the journal carries it, because a monthly charge that changed size is exactly what
+    // reconciliation is later asked to explain.
+    expect(rig.events).toHaveLength(1);
+    expect(rig.events[0]).toMatchObject({ amountAgorot: 19900, actor: 'seller' });
+  });
+
+  it('reports failure and writes NOTHING when PayMe refuse', async () => {
+    await startPaying();
+    rig.priceThrows = true;
+
+    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+
+    expect(res.status).toBe('failed');
+    // The whole point of the order the route uses: a refusal leaves the seller on the plan he is
+    // actually being charged for, so there is no divergence to discover later.
+    expect(rig.queries.some((q) => q.sql.includes('UPDATE seller_subscriptions'))).toBe(false);
+    expect(rig.events).toEqual([]);
+    // Loud, because nobody else will notice: the seller was told it failed and we now know why.
+    expect(rig.errors[0]).toMatchObject({ route: 'payme:set-price' });
+  });
+
+  it('calls nobody when the seller is not paying — the tier row IS the change then', async () => {
+    // No subscription at all: `startSubscription` reads `seller.tier` when one is created, so the
+    // choice reaches PayMe the first time the seller pays.
+    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+    expect(res.status).toBe('not-paying');
+    expect(rig.priced).toEqual([]);
+  });
+
+  it('does not re-send a price PayMe are already charging', async () => {
+    await startPaying();
+    const res = await propagateTierToSubscription('seller-1', 'growth', CREDS);
+    expect(res.status).toBe('updated');
+    // Same money. A request that cannot change anything can still fail, and a failure here would be
+    // reported to a seller who changed nothing.
+    expect(rig.priced).toEqual([]);
   });
 });

@@ -50,6 +50,23 @@ async function call(endpoint, body = {}) {
   try { return JSON.parse(text); } catch { return { status_code: -1, status_error_details: `non-JSON (HTTP ${res.status})` }; }
 }
 
+/**
+ * The one endpoint here that is not a POST to `{BASE}{endpoint}`: updating a running
+ * subscription's price is `PATCH /api/subscriptions/{sub_id}/set-price`, with the id in the PATH.
+ * Written out rather than folded into `call` because that shape is the question — a body-only
+ * client would have to guess where the id goes.
+ */
+async function patchPrice(subId, body) {
+  const res = await fetch(`${BASE}subscriptions/${encodeURIComponent(subId)}/set-price`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  try { return { http: res.status, ...JSON.parse(text) }; }
+  catch { return { http: res.status, status_code: -1, status_error_details: `non-JSON (HTTP ${res.status})` }; }
+}
+
 const ok = (r) => r.status_code === 0;
 function say(label, r, extra = '') {
   console.log(label.padEnd(44), ok(r)
@@ -152,6 +169,16 @@ if (mode === 'exists') {
   });
   console.log(redact(JSON.stringify(sub, null, 2)));
   if (!ok(sub)) process.exit(1);
+
+  // **Changing the plan of a seller who is already paying** — the question that matters, because
+  // the alternative anyone reaches for first is cancel-and-recreate, which re-authorises a card
+  // the seller already gave us. Their docs say `set-price` applies to a subscription in status
+  // `active`; what a document cannot say is whether ours is in that status, whether the client key
+  // belongs in the body, and what the read-back shows afterwards.
+  const withKey = await patchPrice(sub.sub_payme_id, { payme_client_key: KEY, seller_payme_id: DELIVERY, sub_price: '12500' });
+  console.log('set-price (with client key)', redact(JSON.stringify(withKey)));
+  const noKey = await patchPrice(sub.sub_payme_id, { seller_payme_id: DELIVERY, sub_price: '17900' });
+  console.log('set-price (no client key)  ', redact(JSON.stringify(noKey)));
 
   // Read it back, then cancel — the sandbox is shared, and a recurring charge left running is the
   // one thing here that would keep happening after the probe exits.

@@ -141,7 +141,17 @@ export function initPricingTiers(): void {
         window.location.href = `/seller/register?next=${encodeURIComponent('/pricing')}`;
         return;
       }
+      if (res.status === 502) {
+        // The gateway refused to move a standing order, and the endpoint wrote nothing (its own
+        // header says why that order is not negotiable). So the sentence says the plan did NOT
+        // change, which is true of our row and of PayMe at the same time.
+        btn.disabled = false;
+        btn.textContent = before;
+        showErrorToast(label('labelGateway'));
+        return;
+      }
       if (!res.ok) throw new Error(String(res.status));
+      const body = (await res.json().catch(() => ({}))) as { fromNextCharge?: boolean };
       current = tierId;
       paint();
       showToast(label('labelSaved'));
@@ -150,6 +160,10 @@ export function initPricingTiers(): void {
       // *"מה קורה אחרי שעושים בחירת מסלול? איפה זה מופיע?"*). Rendered only for a signed-in seller,
       // so on a visitor's page there is nothing here to reveal.
       document.getElementById('tier-saved-where')?.classList.remove('!hidden');
+      // And for a seller who is already being billed, WHEN — his standing order has just been
+      // patched to the new amount, and a change to what someone pays that does not say when it
+      // starts is the half of the answer that generates the support message.
+      if (body.fromNextCharge) document.getElementById('tier-saved-next')?.classList.remove('!hidden');
     } catch {
       // Said out loud, never swallowed — a plan the seller believes they chose and we did not
       // record is a bill for the wrong amount later (tests/silent-failure-guard.test.ts).

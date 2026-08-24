@@ -177,12 +177,32 @@ export type PaymeResponse = Record<string, unknown>;
  * some errors, so the throw carries their code and their detail string and nothing of ours.
  */
 async function callPayme(endpoint: string, body: Record<string, unknown>, creds: PaymeCredentials): Promise<PaymeResponse> {
-  const res = await outboundFetch(`${creds.baseUrl}${endpoint}`, {
-    method: 'POST',
+  return sendPayme('POST', endpoint, endpoint, { payme_client_key: creds.clientKey, ...body }, creds);
+}
+
+/**
+ * One request to PayMe, and the answer read their way.
+ *
+ * Split out of `callPayme` for the one endpoint that is not a POST to `{base}{name}`:
+ * `set-price` is a PATCH and carries the subscription id in the PATH (`subscriptions/{id}/set-price`).
+ * Everything below the request is identical and must stay so — the non-JSON diagnosis and the rule
+ * about `status_code` are what make a PayMe failure legible, and a second copy of them would drift.
+ * `label` is what an error names, so a caller sees the endpoint rather than the built path.
+ */
+async function sendPayme(
+  method: 'POST' | 'PATCH',
+  label: string,
+  path: string,
+  body: Record<string, unknown>,
+  creds: PaymeCredentials,
+): Promise<PaymeResponse> {
+  const res = await outboundFetch(`${creds.baseUrl}${path}`, {
+    method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payme_client_key: creds.clientKey, ...body }),
+    body: JSON.stringify(body),
     timeoutMs: 20_000,
   });
+  const endpoint = label;
   const text = await res.text();
   let parsed: PaymeResponse;
   try {
@@ -784,6 +804,48 @@ export async function generateSubscription(input: GenerateSubscriptionInput, cre
  *  subscription is refused with a code, never a second charge. */
 export async function cancelSubscription(ownMerchantId: string, subPaymeId: string, creds: PaymeCredentials): Promise<void> {
   await callPayme('cancel-subscription', { seller_payme_id: ownMerchantId, sub_payme_id: subPaymeId }, creds);
+}
+
+/**
+ * Change what a RUNNING subscription charges, without touching the standing order behind it.
+ *
+ * **This is the whole of a plan change for a seller who is already paying** (owner, 2026-08-24:
+ * *"למה לבטל את המנוי? זה רק להחליף את ההוראת קבע שלו מפעם הבאה"*). The obvious alternative —
+ * cancel and generate a new subscription — throws away a card the seller already gave us and asks
+ * him to authorise it again, for a change he made in one click.
+ *
+ * ── Measured, not read (`scripts/payme-probe.mjs subscription`, 2026-08-24) ──
+ * A live subscription at 9,900 was patched to 12,500 and then to 17,900. Both answered
+ * `status_code: 0` with the new `sub_price` echoed back, `sub_status` stayed 2 (active), and
+ * `get-subscriptions` afterwards reported 17,900 — so the change lands on the standing arrangement
+ * and the next iteration is what charges it. `sub_next_date` did not move.
+ *
+ * **`payme_client_key` is not required here** — the probe ran it both ways and both were accepted.
+ * It is sent anyway, because every other call on this client carries it and an endpoint that
+ * authenticates differently from its neighbours is a fact about PayMe, not a licence for us to
+ * treat one call as special.
+ *
+ * The minimum is theirs and it is the same 500 agorot `generate-subscription` enforces; refused
+ * here rather than at their end so the failure names the number.
+ */
+export async function setSubscriptionPrice(
+  ownMerchantId: string,
+  subPaymeId: string,
+  priceAgorot: number,
+  creds: PaymeCredentials,
+): Promise<void> {
+  if (priceAgorot < PAYME_MIN_SUBSCRIPTION_AGOROT) {
+    throw new PaymeError('set-price', -1, `sub_price ${priceAgorot} is below PayMe's minimum of ${PAYME_MIN_SUBSCRIPTION_AGOROT}`);
+  }
+  await sendPayme(
+    'PATCH',
+    'set-price',
+    `subscriptions/${encodeURIComponent(subPaymeId)}/set-price`,
+    // A STRING, which is their documented shape for this field and what the probe sent
+    // (`"sub_price": "12500"`). Agorot either way — the same unit `generate-subscription` takes.
+    { payme_client_key: creds.clientKey, seller_payme_id: ownMerchantId, sub_price: String(priceAgorot) },
+    creds,
+  );
 }
 
 /**

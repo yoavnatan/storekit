@@ -462,6 +462,35 @@ shown "details are missing", which is true and unhelpful. Worth surfacing PayMe'
 
 ---
 
+### 23. ✅ A PLAN CHANGE IS A PATCH, not a cancel and a new subscription
+
+**`PATCH {base}subscriptions/{sub_payme_id}/set-price`** — the one endpoint on this integration that
+is not a POST to `{base}{name}`, and the id is in the PATH. Body: `seller_payme_id` and `sub_price`
+**as a string, in agorot** (their documented minimum is 500). Measured 2026-08-24 with
+`scripts/payme-probe.mjs subscription`:
+
+| what was done | answer |
+|---|---|
+| live token subscription created at `9900` | `sub_status: 2`, `sub_paid: true` |
+| patched to `12500` | `status_code: 0`, response echoes `sub_price: "12500"`, `sub_status` still 2 |
+| patched again to `17900` | `status_code: 0` |
+| `get-subscriptions` afterwards | `sub_price: 17900` · `sub_next_date` unchanged |
+
+So the standing order keeps its card, its id and its schedule, and only the amount moves — which is
+what a seller changing plan mid-subscription needs, and it is what `lib/seller-subscription.ts`
+does. **Cancel-and-recreate is the wrong shape here**: it discards a card the seller already
+authorised and asks him to enter it again for a one-click change.
+
+**`payme_client_key` is NOT required by this endpoint.** The probe ran it both with and without, and
+both were accepted — `seller_payme_id` alone was enough. We send the key anyway, because every other
+call on this client does and one call authenticating differently is a fact about PayMe rather than a
+licence to treat it as special. Worth remembering if their auth ever tightens.
+
+**Still unmeasured on it:** whether a patch made mid-cycle changes the CURRENT iteration or only the
+next. Everything the seller is told says "from the next charge", which is the safe half of that
+question; if it ever matters, the answer is a probe against a subscription with a real
+`sub_prev_date`, not a document.
+
 ## Still unmeasured — do not guess these
 
 - The exact per-transaction fee actually deducted from a seller's balance (the tariff was READ, not
@@ -471,3 +500,5 @@ shown "details are missing", which is true and unhelpful. Worth surfacing PayMe'
   seller must do it in their own panel. This decides how the invoicing add-on is sold
   (memory `project_business_model_pricing`).
 - The callback: nothing has been received end to end, because that needs a public URL.
+- Whether `set-price` on a subscription that is mid-cycle moves the current iteration or only the
+  next (§23).
