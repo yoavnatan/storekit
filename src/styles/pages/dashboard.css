@@ -2255,14 +2255,19 @@ html:has(#dash-main-card.dash-nav-side) {
    time a panel gained something above it. Overview is the case that proves it — its hint sits after
    the publish card and the checklist, is not first, and correctly stays the plain line it was.
 
-   **The site's own dark navy** (`--color-primary-dark`, owner 2026-08-24 — the colour one of the
-   homepage's open-a-store cards was tried in). A grey band was the first attempt and it read as one
-   more pale row in a stack of pale rows, which is the thing he was pointing at: it has to be
-   chrome, and chrome here is dark. Nothing else in the panel is, so the band is unmistakably the
-   container's own edge rather than the first line of its content.
-   The text and the icon go to the surface colour for the contrast that needs (13.4:1, well past
-   AA), and the bottom border goes away entirely — a rule between the band and the title would be
-   drawing a seam across the one thing that is supposed to look like one piece. */
+   **A pale olive WASH, in two steps** — the third colour tried and the owner's own correction
+   (2026-08-24). Grey read as one more pale row in a stack of pale rows; the site's dark navy went
+   too far the other way and read as a foreign slab dropped on the card. What he asked for is one of
+   the washes the homepage's open-a-store tiles are drawn in: *"בגרדיאנט ומאוד בהיר על סף השקוף."*
+   So it is `--color-invite-olive` mixed into the surface at 14% → 6% down the band — the same
+   recipe `lib/placeholder-art.ts#tileBackground` uses for those tiles, at well under half its
+   depth, because this is a strip behind a line of text rather than a tile that has to hold a
+   drawing. Olive because it is the one hue in that palette that is a colour rather than an absence
+   of one and carries no state meaning: green would read as success and red as a warning on a bar
+   whose whole job is to say nothing more than "this is what this tab is".
+   The text stays `--color-muted`, which is what it is everywhere else, and the bottom border goes
+   away — a rule between the band and the title would draw a seam across the one thing that is
+   supposed to look like one piece. */
 /* The plain line, everywhere the band does not apply — Overview (its hint is not first) and any
    layout without the side rail. It kept its muted colour by way of a utility until the band needed
    to override it, which a layered utility cannot be. */
@@ -2272,10 +2277,13 @@ html:has(#dash-main-card.dash-nav-side) {
   margin-inline: calc(-1 * (var(--dash-panel-pad) + var(--dash-sheet-edge, 0px)));
   margin-block: 0 1rem;
   padding: 0.6rem var(--dash-panel-pad);
-  background: var(--color-primary-dark);
-  color: var(--color-surface);
-  border-top: var(--dash-sheet-edge, 0px) solid var(--color-primary-dark);
-  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-primary-dark);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-invite-olive) 14%, var(--color-surface)) 0%,
+    color-mix(in srgb, var(--color-invite-olive) 6%, var(--color-surface)) 100%
+  );
+  border-top: var(--dash-sheet-edge, 0px) solid var(--color-border);
+  border-inline: var(--dash-sheet-edge, 0px) solid var(--color-border);
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }
