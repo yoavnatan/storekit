@@ -10,7 +10,7 @@
  * a seller reaches only after eight hundred product rows. Owner, 2026-08-23: *"הפעם הפוטר יורד
  * לתחתית הרצועה — תנאי שימוש, צור קשר, דיווח על תקלה ומתג שפה. בלי זה אל תבנה את זה בכלל."*
  *
- * Five links: the four he named, plus the returns policy he asked after — that one belongs here
+ * Six links: the four he named, the returns policy he asked after, and the help centre — that one belongs here
  * more than it does on a shopper's page, because this page belongs to the business the policy
  * binds. What the page footer carries and this one does not is "open a store" (the reader already
  * has one) and the © line (chrome for a shopper's page, not for a working surface).
@@ -28,6 +28,12 @@ const nextLang = lang === 'he' ? 'en' : 'he';
 ---
 
 <div class="dash-rail-foot">
+  {/* **First, and it is the only link here a seller comes looking FOR** (owner, 2026-08-24:
+      *"לא הבנתי למה העזרה לא מופיעה גם כשהמוכר כבר מחובר ופותח חנות. בפוטר"*). The help centre was
+      built into the page footer and this one never learned about it, so the one surface written to
+      answer a seller's question was reachable from every page except the one he works on. The rest
+      of this row is reference — a policy, a way to write in; that one is the answer itself. */}
+  <a href="/help">{t.footer.help}</a>
   <a href="/terms">{t.footer.terms}</a>
   {/* Added on his question (2026-08-23: *"ביטולים והחזרות לא צריכים להיות גם בפוטר של הדשבורד
       מוכרים?"*) — and the answer is yes, more so here than on a shopper's page: this page belongs

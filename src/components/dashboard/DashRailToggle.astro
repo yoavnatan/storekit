@@ -61,14 +61,24 @@ const d = t.dashboard;
          seller who has never chosen gets anyway — there is nothing to fall back FROM. */
     }
     var narrow = window.matchMedia('(max-width: ' + AUTO_MINI_MAX + 'px)');
+    /**
+     * The third input, and the only one that is not a preference: the rail is open OVER the
+     * content (900–1180, dashboard.css). While it is, the forced collapse yields — that is what
+     * brings the labels and the foot back — and the moment it closes the width band wins again
+     * with nothing to restore, because this never touches `chose`. `DashNavDrawer` owns the open
+     * state and announces it; this file only listens, so there is still exactly one place that
+     * decides whether the rail is open.
+     */
+    var over = false;
     function apply() {
-      root.classList.toggle('dash-nav-mini', chose || narrow.matches);
+      root.classList.toggle('dash-nav-mini', (chose || narrow.matches) && !over);
     }
     apply();
     narrow.addEventListener('change', apply);
     // The click handler below writes the preference; this keeps the two in step without it
     // having to know about the width band at all.
     root.addEventListener('dash:rail-pref', function (e) { chose = !!e.detail; apply(); });
+    root.addEventListener('dash:rail-over', function (e) { over = !!e.detail; apply(); });
   })();
 </script>
 
@@ -104,6 +114,11 @@ const d = t.dashboard;
     }
     function sync() {
       var mini = root.classList.contains(MINI);
+      // The class is the whole state, open-over-content included: `DashNavDrawer` announces the
+      // open and the boot script takes the collapse off, so a rail floating over the panel reads
+      // as expanded here and the chevron offers to close it. True only because ONE place sets
+      // that class — sync() must never start deciding this for itself.
+
       btn.setAttribute('aria-expanded', mini ? 'false' : 'true');
       // `aria-label` only, and NO `title`: the site labels every icon-only control from its
       // aria-label on hover (`scripts/icon-tooltips.ts`), and it skips anything carrying a `title`
@@ -114,8 +129,37 @@ const d = t.dashboard;
       if (mini) hide();
     }
     sync();
+    // A close this button did not perform — the scrim, Escape, or a tab choice, all of them the
+    // drawer's — still moved the rail, and a chevron left pointing the way it was is the defect
+    // the comment above is about. The boot script is registered on this event first, so the class
+    // is already current by the time this runs.
+    root.addEventListener('dash:rail-over', sync);
+
+    /**
+     * Which of the two things this button does, asked of the LAYOUT rather than of a remembered
+     * number — `dashboard.css` holds the one definition of the band, exactly as `isDrawer()` in
+     * `DashNavDrawer` does. Between 900 and 1180 the width forces the icon rail and a stored
+     * preference would change nothing on screen, so there the press floats the rail over the
+     * content instead; above 1180 it is the width control it has always been.
+     */
+    function opensOver() {
+      var card = document.getElementById('dash-main-card');
+      if (!card) return false;
+      // Open already: the rail is `position: fixed` and the card carries the state. Closed: the
+      // question is whether the width is forcing the collapse, which is the same test the boot
+      // script makes — and `matchMedia` is how it makes it.
+      if (card.hasAttribute('data-nav-open')) return true;
+      return window.matchMedia('(min-width: 900px) and (max-width: 1179.98px)').matches;
+    }
 
     btn.addEventListener('click', function () {
+      if (opensOver()) {
+        // The drawer component owns open/close — the scrim, Escape, the focus trap and closing on
+        // a tab choice are all its, and duplicating any of them here would be the second owner of
+        // one state. It answers `dash:nav-toggle` on the document.
+        document.dispatchEvent(new CustomEvent('dash:nav-toggle'));
+        return;
+      }
       var mini = !root.classList.contains(MINI);
       try { localStorage.setItem('dash-nav-mini', mini ? '1' : '0'); } catch (e) { /* see above */ }
       // The boot script owns the class, because below 1180 the WIDTH decides and a click must
@@ -133,6 +177,8 @@ const d = t.dashboard;
       // Asked of the rail's real width rather than of the viewport: below 1180px the rail is a
       // drawer, where the labels are on screen and a tooltip would be a second copy of them.
       var rail = document.querySelector('.dash-rail');
+      // `sticky` is the column. Open over the content it is `fixed` — with its labels on screen,
+      // where a tooltip would be a second copy of them — and that is the same test the drawer makes.
       return root.classList.contains(MINI) && !!rail && getComputedStyle(rail).position === 'sticky';
     }
     function hide() {

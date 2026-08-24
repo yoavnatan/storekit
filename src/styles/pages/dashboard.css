@@ -2945,16 +2945,56 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
    rather than a reflow was the SKU vanishing inside it, and that is fixed at the source —
    the value moves under the product name instead of leaving with its column.
 
-   THE TOGGLE GOES BELOW 1180, NOT BELOW 900 — and the difference is the whole reason this
-   is written out. Between 900 and 1180 the rail IS a column, so a width control looks like
-   it belongs; but the WIDTH decides there, so pressing it would store a preference and
-   change nothing on screen. A control that does not move what it points at is worse than
-   an absent one (`feedback_noop_interactions_invisible`), so it is absent exactly where it
-   would be inert — which is also every width where the rail is a drawer and there is no
-   column to size. One rule covers both cases because they are the same case: the seller
-   only gets the control where his answer is the one that wins. */
-@media (max-width: 1179.98px) {
+   THE TOGGLE IS ABSENT ONLY BELOW 900, where the rail is a drawer and there is no column
+   to size — the header's own trigger opens it there.
+   **It used to be absent below 1180 as well, and that was a hole** (owner, 2026-08-24: *"מה
+   קורה כשהתפריט צד סגור בלי דרך לפתוח אותו (יש רוחב מסויים שפשוט אין דרך לפתוח את תפריט הצד
+   ויש שם רק אייקונים) ואז בעצם - אין פוטר"*). Between 900 and 1180 the width forces the icon
+   rail, and with no control there the seller had 280px of viewport with unnamed icons, no way
+   back to the labels, and no footer at all — the foot is `display:none` while collapsed.
+   The old reasoning was sound about the wrong thing: a control that only STORED a preference
+   would indeed have been inert there, because the width overrules the preference
+   (`feedback_noop_interactions_invisible`). So the control does something else in that band —
+   it opens the rail OVER the content, which is the one move that costs the table nothing
+   (owner's choice, 2026-08-24, over the alternative of squeezing the table to 750px). */
+@media (max-width: 899.98px) {
   .dash-rail-toggle { display: none; }
+}
+
+/* ══ 900–1180: OPEN OVER THE CONTENT ══
+   The band where the width, not the seller, decides the rail is icons. Pressing the chevron here
+   does not widen the column — it lifts the rail out of the grid and floats it over the panel, with
+   the page's own drawer scrim behind it (owner, 2026-08-24: *"אם היא נפתחת מעל התוכן- שהתוכן יהיה
+   קצת כהה מאחוריה"*). The scrim, the Escape key, the focus trap and closing on a tab choice are
+   `DashNavDrawer`'s, unchanged — this band and the phone drawer are now the same OPEN state
+   (`data-nav-open`), differing only in what the rail looks like while it is on.
+   `html.dash-nav-mini` comes OFF while it is open, which is what brings the labels and the foot
+   back; the boot script in `DashRailToggle.astro` owns that class and is told, so the width band
+   still wins the moment it closes. */
+@media (min-width: 900px) and (max-width: 1179.98px) {
+  /* **The column keeps the collapsed width while the rail is open**, and that is the whole point
+     of floating it: an 11-column table must not reflow because somebody wanted to read a label.
+     `:has()` takes its argument's specificity, so this beats the 15.5rem rule that applies the
+     moment `dash-nav-mini` comes off — the attribute makes it one step more specific, which is
+     the same trap the collapsed block above documents. */
+  html:has(#dash-main-card.dash-nav-side[data-nav-open]) { --dash-rail-w: 3.75rem; }
+  #dash-main-card.dash-nav-side[data-nav-open] > .dash-rail {
+    position: fixed;
+    top: var(--site-header-h, 3.4rem);
+    /* **Sized, not stretched between `top` and `bottom`.** The pair was the first shape and it
+       measured 737px against a 900px window: the rail is a GRID ITEM, and taking it out of flow
+       with `bottom: 0` left the box sized by its own content instead of by the window. An explicit
+       height is the same expression the sticky column already uses, and it is the one that holds
+       whichever way the box is laid out. */
+    height: calc(100vh - var(--site-header-h, 3.4rem));
+    inset-inline-start: 0;
+    width: 15.5rem;
+    z-index: 100;
+    box-shadow: var(--shadow-sheet);
+  }
+  /* No slide. The rail is already on screen at 3.75rem — it widens in place, and a panel sliding
+     in from off-screen would be a second rail arriving over the one the seller can see. The scrim
+     fades on its own 0.25s, which is the movement the eye follows. */
 }
 /* ── The chevron points the way the rail is about to move ──
    **The first version never turned at all** (owner, 2026-08-23: *"החץ לא משנה שם את הכיוון שלו
