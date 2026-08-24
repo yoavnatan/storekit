@@ -486,10 +486,25 @@ both were accepted — `seller_payme_id` alone was enough. We send the key anywa
 call on this client does and one call authenticating differently is a fact about PayMe rather than a
 licence to treat it as special. Worth remembering if their auth ever tightens.
 
-**Still unmeasured on it:** whether a patch made mid-cycle changes the CURRENT iteration or only the
-next. Everything the seller is told says "from the next charge", which is the safe half of that
-question; if it ever matters, the answer is a probe against a subscription with a real
-`sub_prev_date`, not a document.
+**It only works on an ACTIVE subscription, and that is the second finding**
+(`payme-probe.mjs set-price`, 2026-08-24):
+
+| subscription | `set-price` | what we do instead |
+|---|---|---|
+| `active` (2) — paid, billing | ✅ accepted, price replaced | patch it |
+| `initial` (1) — created, unpaid | ❌ *"עדכון מנוי נכשל"* | cancel it (measured: accepted) and let the next attempt create one at the new price — no card was charged and there is no standing order to preserve |
+
+**And the timing, which is the question a seller actually asks** (owner: *"אבל זה נכנס לתוקף ממש
+מידי? מה יהיה בחיוב הקרוב?"*): **the patch itself charges nothing.** It returns no sale and no
+`payme_sale_id`, `sub_iterations_completed` does not move, and `sub_next_date` stays where it was —
+only `sub_price` changes. A subscription carries ONE price, so the next scheduled iteration takes
+the new one, and the charge already collected is untouched.
+
+**What could NOT be observed, and is therefore still not claimed as measured:** an actual monthly
+iteration firing after a patch. Forcing one is not available — `pay-subscription` on an already-paid
+subscription is refused with `305` (*"סטטוס מכירה לא מתאים"*), and a real iteration is a month away.
+The seller is told "from the next charge", which is what the price field and the untouched
+`sub_next_date` support.
 
 ## Still unmeasured — do not guess these
 

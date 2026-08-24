@@ -277,6 +277,8 @@ export async function startSubscription(
 export type TierPropagation =
   | { status: 'not-paying' }
   | { status: 'updated'; nextCharge?: string }
+  /** An unpaid subscription was thrown away, so the next attempt creates one at the new price. */
+  | { status: 'reset' }
   | { status: 'failed'; error: string };
 
 export async function propagateTierToSubscription(
@@ -285,13 +287,59 @@ export async function propagateTierToSubscription(
   creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<TierPropagation> {
   const sub = await subscriptionFor(sellerId);
-  // Not paying covers three cases and they are one answer: no subscription, one created and never
-  // paid, and one cancelled. In all three the next charge is generated from the tier at the time
-  // (`startSubscription` reads `seller.tier`), so the row IS the propagation.
-  if (!sub || !subscriptionIsPaying(sub.status) || !sub.providerRef) return { status: 'not-paying' };
+  // Nothing standing, or a cancelled one: the next subscription is generated from the tier at the
+  // time (`startSubscription` reads `seller.tier`), so the row IS the propagation.
+  if (!sub || !sub.providerRef) return { status: 'not-paying' };
   // No gateway configured is not a failure to report: nobody can be charged, so nothing can
   // diverge. It is the same shape `sellerIsSubscribed` takes for the same window.
   if (!creds?.ownMerchantId) return { status: 'not-paying' };
+
+  /**
+   * ── The unpaid subscription, which is the OTHER way the two sides drift apart ──
+   *
+   * A subscription PayMe created and nobody has paid (`initial`) carries the price it was created
+   * with, and `startSubscription` deliberately sends a seller who closed the tab back to that SAME
+   * page rather than opening a second one. So changing plan in between would have him pay the old
+   * amount on a page that outlived his decision, and land on a subscription whose price disagrees
+   * with his tier from its very first charge.
+   *
+   * **It cannot be patched** — measured 2026-08-24 (`payme-probe.mjs set-price`): `set-price` on a
+   * subscription in status `initial` is refused with *"עדכון מנוי נכשל"*, which matches their
+   * documentation saying it applies to `active` (or to a TEMPLATE in initial, which ours never is).
+   *
+   * So it is thrown away, and that costs nothing: no card was charged and there is no standing
+   * order yet. Cancelling an unpaid subscription was measured in the same run and accepted. The
+   * next press of "start subscription" then creates a fresh one at the new price, because
+   * `startSubscription` treats a cancelled row as nothing standing.
+   */
+  if (sub.status === PAYME_SUB_STATUS.initial) {
+    try {
+      await cancelAtPayme(creds.ownMerchantId, sub.providerRef, creds);
+    } catch (err) {
+      // Reported as a failure, so the TIER IS NOT WRITTEN. The alternative is worse than it looks:
+      // our row would say the new plan while PayMe's page — still live, still reachable from the
+      // link he was sent — charges the old one, which is the same divergence one door along.
+      const message = err instanceof PaymeError ? err.message : err instanceof Error ? err.message : String(err);
+      await logError({
+        source: 'server',
+        route: 'payme:cancel-subscription',
+        message: `could not discard seller ${sellerId}'s unpaid subscription ${sub.providerRef} on a plan change: ${message}`,
+        actorRole: 'seller',
+        actorId: sellerId,
+        resolutionHint: 'מוכר החליף מסלול לפני ששילם, ו-PayMe סירבו לבטל את המנוי הישן שטרם שולם. המסלול לא שונה — צריך לבטל אצלם ידנית ואז לתת לו לבחור שוב.',
+      }).catch(() => { /* nothing left to try */ });
+      return { status: 'failed', error: message };
+    }
+    await query(
+      'UPDATE seller_subscriptions SET status = $2, canceled_at = now(), buyer_key = NULL, updated_at = now() WHERE seller_id = $1',
+      [sellerId, PAYME_SUB_STATUS.canceled],
+    );
+    return { status: 'reset' };
+  }
+
+  // Anything that is neither paying nor waiting to be paid — cancelled, failed, completed — is
+  // nothing standing, and the tier write is again the whole change.
+  if (!subscriptionIsPaying(sub.status)) return { status: 'not-paying' };
 
   const priceAgorot = toAgorot(monthlyFeeForTier(tier));
   if (priceAgorot === sub.priceAgorot) {

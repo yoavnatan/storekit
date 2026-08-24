@@ -13,6 +13,7 @@
  *   node scripts/payme-probe.mjs sale <sale-id>        one sale read back, with its real fee split
  *   node scripts/payme-probe.mjs flow                  the whole checkout, end to end, on test cards
  *   node scripts/payme-probe.mjs subscription          the SELLER's monthly fee, created and cancelled
+ *   node scripts/payme-probe.mjs set-price             WHICH price a charge after a plan change uses
  *
  * **Sandbox only, and it refuses to run against anything else.** The sandbox is shared with PayMe's
  * other partners and has no delete, so this creates SALES freely and merchants never
@@ -190,6 +191,70 @@ if (mode === 'exists') {
   say('cancel', cancelled);
   if (!ok(cancelled)) console.log(redact(JSON.stringify(cancelled, null, 2)));
 
+} else if (mode === 'set-price') {
+  // **The question a document cannot answer: after the price is patched, what does the NEXT charge
+  // take?** `set-price` was already measured to change `sub_price` on a live subscription
+  // (§23), and the owner's question was the one that actually reaches a seller — *"אבל זה נכנס
+  // לתוקף ממש מידי? מה יהיה בחיוב הקרוב?"*.
+  // Waiting for a monthly iteration is not a measurement anyone can run, so the charge is forced:
+  // `pay-subscription` bills the subscription now, with the seller's card, and the sale it returns
+  // says which price the payment engine read.
+  if (!DELIVERY) { console.error('no PAYME_DELIVERY_MERCHANT_ID'); process.exit(1); }
+  const CARD = { credit_card_number: '12312312', credit_card_exp: '1230', credit_card_cvv: '123' };
+
+  // A. UNPAID first (status 1). Patch, then pay: does the first charge take the new price?
+  const unpaid = await call('generate-subscription', {
+    seller_payme_id: DELIVERY, sub_currency: 'ILS', sub_price: 9900,
+    sub_description: 'בדיקת עיתוי — לא שולם', sub_iteration_type: 3, sub_type: 1,
+    subscription_id: `timing-a-${Date.now()}`, sub_send_notification: false,
+  });
+  say('A · created unpaid at 9900', unpaid, `status ${unpaid.sub_status}`);
+  const patchA = await patchPrice(unpaid.sub_payme_id, { payme_client_key: KEY, seller_payme_id: DELIVERY, sub_price: '17900' });
+  console.log('A · patched to 17900        ', patchA.status_code === 0 ? `OK (sub_price ${patchA.sub_price})` : redact(patchA.status_error_details));
+  const payA = await call('pay-subscription', { seller_payme_id: DELIVERY, sub_payme_id: unpaid.sub_payme_id, ...CARD, buyer_name: 'Probe Seller', buyer_email: 'random@paymeservice.com', buyer_phone: '0500000001', buyer_social_id: '9999999999' });
+  console.log('A · paid it now             ', payA.status_code === 0
+    ? `CHARGED ${payA.sale_price ?? payA.sub_price ?? '?'} (sale ${payA.payme_sale_id ?? ''})`
+    : `REFUSED · ${redact(payA.status_error_details)} (${payA.status_error_code})`);
+  const listA = await call('get-subscriptions', { seller_payme_id: DELIVERY });
+  const rowA = (listA.items ?? []).find((i) => i.sub_payme_id === unpaid.sub_payme_id);
+  console.log('A · read back               ', rowA ? `price ${rowA.sub_price} · status ${rowA.sub_status} · next ${rowA.sub_next_date}` : 'not found');
+  await call('cancel-subscription', { seller_payme_id: DELIVERY, sub_payme_id: unpaid.sub_payme_id });
+
+  // A2. And what CAN be done with an unpaid one, since patching it is refused: cancelling it costs
+  // nothing — no card was charged and there is no standing order yet — which is what lets a seller
+  // who changed plan before paying be given a fresh subscription at the new price.
+  const spare = await call('generate-subscription', {
+    seller_payme_id: DELIVERY, sub_currency: 'ILS', sub_price: 9900,
+    sub_description: 'בדיקת עיתוי — ביטול לא-שולם', sub_iteration_type: 3, sub_type: 1,
+    subscription_id: `timing-a2-${Date.now()}`, sub_send_notification: false,
+  });
+  const killed = await call('cancel-subscription', { seller_payme_id: DELIVERY, sub_payme_id: spare.sub_payme_id });
+  say('A2 · cancel an UNPAID subscription', killed);
+
+  // B. MID-CYCLE. Token subscription charges 9900 at once; patch it, then force the next charge.
+  const tok = await call('capture-buyer-token', {
+    seller_payme_id: DELIVERY, buyer_is_permanent: true, ...CARD,
+    buyer_name: 'Probe Seller', buyer_email: 'random@paymeservice.com',
+    buyer_phone: '0500000001', buyer_social_id: '9999999999',
+  });
+  const live = await call('generate-subscription', {
+    seller_payme_id: DELIVERY, sub_currency: 'ILS', sub_price: 9900,
+    sub_description: 'בדיקת עיתוי — פעיל', sub_iteration_type: 3, sub_type: 1,
+    buyer_key: tok.buyer_key, subscription_id: `timing-b-${Date.now()}`, sub_send_notification: false,
+  });
+  say('B · created and charged at 9900', live, `status ${live.sub_status} · paid ${live.sub_paid}`);
+  const patchB = await patchPrice(live.sub_payme_id, { payme_client_key: KEY, seller_payme_id: DELIVERY, sub_price: '17900' });
+  console.log('B · patched to 17900        ', patchB.status_code === 0 ? `OK (sub_price ${patchB.sub_price})` : redact(patchB.status_error_details));
+  const payB = await call('pay-subscription', { seller_payme_id: DELIVERY, sub_payme_id: live.sub_payme_id, ...CARD, buyer_name: 'Probe Seller', buyer_email: 'random@paymeservice.com', buyer_phone: '0500000001', buyer_social_id: '9999999999' });
+  console.log('B · forced the next charge  ', payB.status_code === 0
+    ? `CHARGED ${payB.sale_price ?? payB.sub_price ?? '?'} (sale ${payB.payme_sale_id ?? ''})`
+    : `REFUSED · ${redact(payB.status_error_details)} (${payB.status_error_code})`);
+  const listB = await call('get-subscriptions', { seller_payme_id: DELIVERY });
+  const rowB = (listB.items ?? []).find((i) => i.sub_payme_id === live.sub_payme_id);
+  console.log('B · read back               ', rowB ? `price ${rowB.sub_price} · completed ${rowB.sub_iterations_completed} · next ${rowB.sub_next_date}` : 'not found');
+  const cancelledB = await call('cancel-subscription', { seller_payme_id: DELIVERY, sub_payme_id: live.sub_payme_id });
+  say('B · cancelled', cancelledB);
+
 } else {
-  console.log(fs.readFileSync(new URL(import.meta.url)).toString().split('\n').slice(2, 19).join('\n'));
+  console.log(fs.readFileSync(new URL(import.meta.url)).toString().split('\n').slice(2, 20).join('\n'));
 }

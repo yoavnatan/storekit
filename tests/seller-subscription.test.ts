@@ -338,6 +338,40 @@ describe('moving a paying seller to another plan', () => {
     expect(rig.errors[0]).toMatchObject({ route: 'payme:set-price' });
   });
 
+  it('throws away an UNPAID subscription so the next one is created at the new price', async () => {
+    // The hosted-page route: PayMe created it, nobody has paid, and `startSubscription` would send
+    // him back to that same page — priced at the plan he has just left.
+    rig.generateStatus = payme.PAYME_SUB_STATUS.initial;
+    await startSubscription('seller-1', {}, CREDS);
+    rig.queries = [];
+    rig.generated = [];
+
+    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+
+    expect(res.status).toBe('reset');
+    // Not patched: measured 2026-08-24, `set-price` on a subscription in `initial` is refused.
+    expect(rig.priced).toEqual([]);
+    expect(rig.cancelled).toEqual(['SUB1']);
+    // And our row says cancelled, which is what makes `startSubscription` open a fresh one rather
+    // than hand him the old page again.
+    const update = rig.queries.find((q) => q.sql.includes('UPDATE seller_subscriptions'));
+    expect(update?.params).toEqual(['seller-1', payme.PAYME_SUB_STATUS.canceled]);
+  });
+
+  it('writes no tier when PayMe refuse to discard the unpaid one', async () => {
+    rig.generateStatus = payme.PAYME_SUB_STATUS.initial;
+    await startSubscription('seller-1', {}, CREDS);
+    rig.queries = [];
+    rig.cancelThrows = true;
+
+    const res = await propagateTierToSubscription('seller-1', 'enterprise', CREDS);
+
+    // Their payment page is still live and still charges the old plan. Saying the change succeeded
+    // would put the divergence one door along instead of removing it.
+    expect(res.status).toBe('failed');
+    expect(rig.queries.some((q) => q.sql.includes('UPDATE seller_subscriptions'))).toBe(false);
+  });
+
   it('calls nobody when the seller is not paying — the tier row IS the change then', async () => {
     // No subscription at all: `startSubscription` reads `seller.tier` when one is created, so the
     // choice reaches PayMe the first time the seller pays.

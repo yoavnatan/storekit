@@ -26,6 +26,7 @@ const rig = vi.hoisted(() => ({
   propagation: { status: 'not-paying' } as
     | { status: 'not-paying' }
     | { status: 'updated'; nextCharge?: string }
+    | { status: 'reset' }
     | { status: 'failed'; error: string },
 }));
 
@@ -110,6 +111,15 @@ describe('a plan change that went through', () => {
     // He has no standing order, so there is no "from when" to name — the plan simply is what the
     // first subscription will be created at.
     expect(body.fromNextCharge).toBe(false);
+  });
+
+  it('records the tier when an unpaid subscription was discarded, and names no charge', async () => {
+    rig.propagation = { status: 'reset' };
+    const body = await (await post('enterprise')).json() as { ok?: boolean; fromNextCharge?: boolean };
+    expect(rig.written).toEqual(['enterprise']);
+    // Nothing is being charged yet — the plan is simply what the next subscription is created at,
+    // so there is no "from when" to promise.
+    expect(body).toMatchObject({ ok: true, fromNextCharge: false });
   });
 
   it('still refuses a tier that is not one of ours, before any of this', async () => {

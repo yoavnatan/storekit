@@ -80,8 +80,18 @@ const created = !!subscription;
   {paying ? (
     <div class="flex items-center justify-between gap-3 flex-wrap mt-4">
       <p class="m-0 text-[0.86rem] font-semibold">{d.subActive}</p>
-      <button type="button" class="btn btn--ghost btn--sm" id="sub-cancel">{d.subCancel}</button>
+      <div class="flex items-center gap-3 flex-wrap">
+        {/* A link and not a button, to the page that already owns this choice — the comparison, the
+            calculator and the write are all there (`/pricing`), and a second chooser in a column
+            beside a bank form would be the same decision asked twice.
+            It carries the timing with it: the switch patches the standing order at PayMe and
+            applies from the next charge (`seller-subscription.ts#propagateTierToSubscription`), and
+            a seller pressing this needs to know that before he presses, not after. */}
+        <a href="/pricing" class="text-[0.84rem]">{d.subChangePlan}</a>
+        <button type="button" class="btn btn--ghost btn--sm" id="sub-cancel">{d.subCancel}</button>
+      </div>
     </div>
+    <p class="muted m-0 mt-2 text-[0.78rem]">{d.subChangePlanNote}</p>
   ) : (
     <div class="mt-4">
       {created && <p class="m-0 mb-2 text-[0.84rem]">{d.subAwaitingPayment}</p>}

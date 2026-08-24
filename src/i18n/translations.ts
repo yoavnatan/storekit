@@ -297,7 +297,7 @@ export const translations = {
       // is the difference between a platform and a product you bought a copy of, so the line says it
       // as the absence of the two things a shop builder makes you do — upgrade, and buy a plugin.
       pillar4Title: 'המערכת ממשיכה להשתפר',
-      pillar4Body: 'כל שיפור מגיע לכל החנויות באותו יום — בלי עדכון גרסה ובלי תוסף לקנות.',
+      pillar4Body: 'כל שיפור במערכת חל על כל החנויות באותו יום — בלי עדכון גרסה ובלי תוסף לקנות.',
       // The honest headline of the whole model, and the reason the page is a comparison and not a
       // feature matrix: the tiers differ ONLY in the ratio between fee and commission. Inventing a
       // feature difference to make a table look fuller would be inventing a product.
@@ -1241,6 +1241,13 @@ export const translations = {
       subWhy: 'המנוי הוא מה שמעלה את החנות לאוויר. אפשר לבטל בכל רגע.',
       subPlan: 'המסלול שלך',
       subPlanValue: '{name} — {fee} ₪ {per}',
+      // The way OUT of this card, and it was missing (owner, 2026-08-24: *"איפה הוא בכל בוחר בין
+      // מסלולים אחרי שהחנות רצה?"*). The card stated the plan and offered no way to change it, so a
+      // seller who wanted another one had to know that a public page he last saw before registering
+      // is where the switch lives. One link, not a second chooser: four plan cards in a column beside
+      // a bank form is the shape `/pricing` exists to avoid.
+      subChangePlan: 'החלפת מסלול',
+      subChangePlanNote: 'שינוי מסלול נכנס לתוקף מהחיוב החודשי הקרוב.',
       subPerMonth: 'לחודש',
       subCommission: 'עמלה למכירה',
       subVat: 'המחירים אינם כוללים מע״מ',
@@ -3341,6 +3348,8 @@ export const translations = {
       subWhy: 'The subscription is what puts your store live. Cancel any time.',
       subPlan: 'Your plan',
       subPlanValue: '{name} — ₪{fee} {per}',
+      subChangePlan: 'Change plan',
+      subChangePlanNote: 'A plan change takes effect from your next monthly charge.',
       subPerMonth: 'per month',
       subCommission: 'Commission per sale',
       subVat: 'Prices exclude VAT',
