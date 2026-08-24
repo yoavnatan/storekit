@@ -2244,51 +2244,6 @@ html:has(#dash-main-card.dash-nav-side) {
   border-start-start-radius: var(--radius);
   border-start-end-radius: var(--radius);
 }
-/* ══ THE TAB HINT ══
-   Its own small container, above the panel's content. That is the whole of it — owner, 2026-08-24,
-   after five rounds of trying to make it part of the sheet's own edge: *"נעשה פשוט קונטיינר מעל
-   קונטיינר, הכי פשוט, הכי נקי. וזהו."*
-
-   **Every one of those five is worth naming, because each looked right until it was rendered**, and
-   the failure was the same each time: two boxes cannot share one edge. (1) Break the hint out to
-   the sheet's width and give it the sheet's top corners — a rounded corner is a hole, and both
-   showed the white behind them. (2) Nest it inside the sheet's border instead — kept the edge, read
-   as inset, and left a 1px step where the title's borders resumed. (3) Pin it so the edge never
-   scrolls away — correct, and one pinned thing too many for a line of explanatory text. (4) Tuck it
-   a radius behind the container below — two layers, and the panel's straight side border stuck out
-   past each of the hint's rounded corners as a 1px hook. (5) One border, one curve, hint inside it —
-   where this stopped, because by then the answer was that a hint is not chrome and should not be
-   trying to own an edge at all.
-
-   The colour is the one thing kept from all of it: `--color-invite-olive` mixed into the surface at
-   14% → 6%, the same recipe `lib/placeholder-art.ts#tileBackground` uses for the homepage's
-   open-a-store tiles, at well under half its depth. Olive because it is the one hue in that palette
-   that is a colour rather than an absence of one and carries no state meaning — green would read as
-   success and red as a warning on a line whose whole job is to say what this tab is. */
-.dash-tab-hint {
-  color: var(--color-muted);
-  padding: 0.55rem 0.8rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--color-invite-olive) 14%, var(--color-surface)) 0%,
-    color-mix(in srgb, var(--color-invite-olive) 6%, var(--color-surface)) 100%
-  );
-}
-
-/* ── …and when it is the first thing in a panel, it TUCKS BEHIND the content below ──
-   The final shape, after three that were not (owner, 2026-08-24): *"שלקונטיינר הפנימי כן יהיה
-   בורדר רדיוס, ושהקונטיינר העליון ישב קצת עליו מאחורה."*
-
-   So neither of them gives anything up. The hint keeps its own two top corners and the sheet's
-   width; the container under it keeps the rounded top edge it already had; and the hint simply
-   runs one radius further down, behind it. The overlap is what makes them read as two layers
-   rather than two boxes with a seam — and it is a negative margin plus matching padding, so the
-   text does not move by a pixel.
-
-   `z-index: 0` on a positioned box puts it under the pinned title (6) and the rail (7) while still
-   creating the stacking context the overlap needs. It is NOT pinned itself: an explanatory line is
 /* **The title's top border is the DESKTOP's alone**, because that is the only width where the
    panel IS the sheet. Below 1180px the sheet is `#dash-main-card` and it keeps its own top border,
    so a second one on the bar directly under it stacks two 1px rules into one smudged 2px line —

@@ -5,29 +5,22 @@
 // so a first-time seller is told what every tab is for, and an established seller never carries
 // the extra line. Same derived signal as the checklist, so nothing is stored or dismissed.
 //
-// **It is the sheet's own top band, not a paragraph floating above it** (owner, 2026-08-24: *"לא
-// יושבות טוב על הקונטיינר... עם בורדר רדיוס עליון ושיתלבשו על גבי הקונטיינר הכללי"*). As a plain
-// `<p>` inside the panel's padding it read as a stray line with the real content starting below it —
-// and worse, it displaced `.dash-panel-head`, which by design IS the sheet's top edge and carries
-// its border and its two top corners. So when this is first in a panel it takes that role instead:
-// the geometry lives in `dashboard.css` under `.dash-tab-hint`, beside the `.dash-panel-head` rule
-// it mirrors, because both are statements about the same edge and two copies of it is how the two
-// would start disagreeing.
+// **A line of text, and deliberately nothing more** (owner, 2026-08-24, after six attempts at
+// making it a box: *"פשוט לפני כל השינויים… הכי פשוט"*). It was tried as the sheet's own top band,
+// nested inside its border, pinned, tucked a radius behind the container below, and finally as a
+// small card of its own — and each one produced one more visible box on a screen that already has
+// two. The reason is structural rather than aesthetic: this element lives INSIDE `.dash-panel`,
+// whose side borders wrap whatever is in it, so a bordered box here is always a box inside a box.
+// A container ABOVE the sheet would have to be a SIBLING of it, which means moving this out of the
+// panel in `dashboard.astro` — a real change, not a CSS one, and worth doing only if the box is
+// wanted for its own sake. Until then: `--color-muted`, an icon, one line.
 interface Props {
   text: string;
 }
 const { text } = Astro.props;
 ---
 
-{/* `mb-3` is the SPACING FOR THE PLAIN CASE and has to stay: Overview's hint is not first in
-    its panel and neither is any hint on a layout without the side rail, so most of the time
-    this really is just a line of text that needs a gap under it. The band rule in
-    `dashboard.css` sets `margin-block` and is unlayered, so it wins over a Tailwind utility
-    whatever the specificity (`project_unlayered_css_beats_utility`). */}
-{/* No colour utility on the element itself: it is `--color-muted` as a plain line and the
-    surface colour inside the navy band, and a Tailwind `[color:…]` here would beat neither
-    (unlayered CSS wins) nor be overridable per state. `dashboard.css` sets both. */}
-<p class="dash-tab-hint flex items-start gap-[0.4rem] m-0 mb-3 text-[0.82rem] leading-[1.5]">
+<p class="flex items-start gap-[0.4rem] m-0 mb-3 text-[0.82rem] leading-[1.5] [color:var(--color-muted)]">
   <svg class="shrink-0 mt-[0.15rem]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
   </svg>
