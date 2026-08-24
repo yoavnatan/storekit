@@ -51,8 +51,17 @@ export interface SellerSubscription {
    *  it; this is what a seller is shown when he asks why the figure is what it is. */
   storeFees: StoreFeeLine[];
   priceAgorot: number;
-  /** PayMe's own number. Ask `subscriptionIsPaying`, never compare it to a literal. */
-  status: number;
+  /** PayMe's own number. Ask `subscriptionIsPaying`, never compare it to a literal.
+   *
+   *  **NULL means PayMe have nothing and we are holding a card** (`cardSavedAt`) — the state a
+   *  seller is in while his business is being reviewed. There is no integer of theirs that could
+   *  honestly stand for it, and inventing one would put our number in a column that is documented
+   *  as theirs. */
+  status: number | null;
+  /** When the seller put a card on file, before any subscription existed at PayMe. With no
+   *  `providerRef` this row is ARMED: `lib/subscription-arm.ts` starts the subscription by itself
+   *  the moment clearing is approved, so he never has to come back and press pay. */
+  cardSavedAt?: string;
   startedAt?: string;
   /** PayMe's string for the next iteration, passed through unparsed. Display only. */
   nextCharge?: string;
@@ -68,8 +77,9 @@ interface SubRow {
   provider: string;
   provider_ref: string | null;
   price_agorot: number;
-  status: number;
+  status: number | null;
   started_at: Date | string | null;
+  card_saved_at: Date | string | null;
   next_charge: string | null;
   canceled_at: Date | string | null;
   ends_at: Date | string | null;
@@ -79,7 +89,7 @@ interface SubRow {
 /** Every read names its columns, and `buyer_key` is not among them — see the interface above.
  *  `tier` is not among them either, and deliberately: it is the legacy one-plan-per-account column
  *  (see the migration), and a read that still selected it would invite a caller to trust it. */
-const SUB_COLUMNS = 'seller_id, provider, provider_ref, price_agorot, status, started_at, next_charge, canceled_at, ends_at, store_fees';
+const SUB_COLUMNS = 'seller_id, provider, provider_ref, price_agorot, status, started_at, next_charge, canceled_at, ends_at, store_fees, card_saved_at';
 
 const iso = (v: Date | string | null): string | undefined =>
   v === null ? undefined : v instanceof Date ? v.toISOString() : String(v);
@@ -101,6 +111,7 @@ function toSubscription(row: SubRow): SellerSubscription {
   const startedAt = iso(row.started_at);
   const canceledAt = iso(row.canceled_at);
   const endsAt = iso(row.ends_at);
+  const cardSavedAt = iso(row.card_saved_at);
   return {
     sellerId: row.seller_id,
     provider: row.provider,
@@ -112,7 +123,20 @@ function toSubscription(row: SubRow): SellerSubscription {
     ...(row.next_charge ? { nextCharge: row.next_charge } : {}),
     ...(canceledAt ? { canceledAt } : {}),
     ...(endsAt ? { endsAt } : {}),
+    ...(cardSavedAt ? { cardSavedAt } : {}),
   };
+}
+
+/** Is PayMe billing this seller right now? The one place a possibly-NULL status is narrowed, so no
+ *  caller has to remember that "armed with a card" is not a PayMe status at all. */
+export function subscriptionRunning(sub: SellerSubscription | null): boolean {
+  return !!sub && sub.status !== null && subscriptionIsPaying(sub.status);
+}
+
+/** Armed: the seller has chosen and given us a card, and PayMe have no subscription yet. This is
+ *  the state the whole clearing review is spent in since 2026-08-24 — see the migration. */
+export function subscriptionArmed(sub: SellerSubscription | null): boolean {
+  return !!sub && !sub.providerRef && !!sub.cardSavedAt;
 }
 
 /** What a cancelled seller is given when PayMe's next-charge date cannot be read — one month.
@@ -159,7 +183,7 @@ export async function sellerIsSubscribed(
   if (!creds) return true;
   const sub = await subscriptionFor(sellerId);
   if (!sub) return false;
-  if (subscriptionIsPaying(sub.status)) return true;
+  if (subscriptionRunning(sub)) return true;
   // **A cancelled subscription is still a paid one until the period he bought runs out**
   // (owner, 2026-08-24: cancellation takes effect *"בסוף התקופה ששולמה"*). Asking PayMe would
   // answer 'canceled' and take his shops down the same afternoon, for days he has already paid
@@ -220,7 +244,7 @@ export async function startSubscription(
   creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<StartSubscriptionResult> {
   const existing = await subscriptionFor(sellerId);
-  if (existing && subscriptionIsPaying(existing.status)) return { status: 'already', subscription: existing };
+  if (subscriptionRunning(existing)) return { status: 'already', subscription: existing! };
   if (!creds) return { status: 'not-configured' };
   if (!creds.ownMerchantId) return { status: 'no-collection-account' };
 
@@ -367,7 +391,7 @@ export async function syncSubscriptionPrice(
   const sub = await subscriptionFor(sellerId);
   // Nothing standing, or a cancelled one: the next subscription is generated from the stores at the
   // time (`startSubscription` reads them fresh), so there is nothing here to carry.
-  if (!sub || !sub.providerRef) return { status: 'not-paying' };
+  if (!sub?.providerRef) return { status: 'not-paying' };
   // No gateway configured is not a failure to report: nobody can be charged, so nothing can
   // diverge. It is the same shape `sellerIsSubscribed` takes for the same window.
   if (!creds?.ownMerchantId) return { status: 'not-paying' };
@@ -417,7 +441,7 @@ export async function syncSubscriptionPrice(
 
   // Anything that is neither paying nor waiting to be paid — cancelled, failed, completed — is
   // nothing standing, and there is nothing to carry.
-  if (!subscriptionIsPaying(sub.status)) return { status: 'not-paying' };
+  if (!subscriptionRunning(sub)) return { status: 'not-paying' };
 
   const storeFees = await billedStoresFor(sellerId, options.including);
   const priceAgorot = totalFeeAgorot(storeFees);

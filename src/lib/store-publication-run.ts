@@ -26,6 +26,7 @@
  */
 import { activePaymeCredentials } from './payment-payme.js';
 import { refreshSubscription } from './seller-subscription.js';
+import { startArmedSubscription } from './subscription-arm.js';
 import { sellersAwaitingPublication, syncStorePublication } from './store-publication.js';
 
 export async function runStorePublicationSweep(): Promise<string> {
@@ -45,7 +46,16 @@ export async function runStorePublicationSweep(): Promise<string> {
       // The subscription first: it is the hold PayMe change without telling us — a card that expired
       // between iterations moves the status, and the approval flag would not have moved with it.
       await refreshSubscription(sellerId, creds);
-      published += (await syncStorePublication(sellerId, creds)).length;
+      /**
+       * **And this is where a waiting seller's week actually ends** (2026-08-24). He put a card on
+       * file when he chose his plan and has been in PayMe's review since; the moment they approve,
+       * the card is charged and the shop goes up — without him coming back to press anything.
+       * `subscription-arm.ts` re-asks the clearing gate itself before spending his money, and
+       * answers with nothing at all when there is no armed card, which is every other seller here.
+       */
+      const armed = await startArmedSubscription(sellerId, creds);
+      published += armed.length;
+      if (!armed.length) published += (await syncStorePublication(sellerId, creds)).length;
     } catch {
       failed += 1;
     }

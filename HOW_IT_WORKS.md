@@ -60,26 +60,43 @@ happens, that says how many people it happened to.
     ▼                                                              │
   ④ PREVIEWS it ···················· only he can reach it          │
     │                                 (state: unpublished)         │
-    ═══════════════════════════════════ the line where money starts ══
+    ═══════════════════════════════════ the line where he COMMITS ════
     ▼                                                              │
-  ⑤ sends clearing details ········· his, minutes ─────────────────┤
+  ⑤ sends clearing details ········· his, minutes                  │
     ▼                                                              │
-  ⑥ PayMe examine the business ····· NOBODY's, up to 7 business days
-    │                                 nothing to press; we email him
-    ▼                                                              │
-  ⑦ picks a plan and pays ·········· his, one click ◄──────────────┘
-    │                                 the plan is per SHOP
+  ⑥ picks a plan, saves a card ····· his, one click ◄──────────────┘
+    │                                 NOTHING IS CHARGED HERE
     ▼
-  ⑧ THE SHOP PUBLISHES ITSELF ······ no button exists
-    │                                 he is notified
+  ⑦ PayMe examine the business ····· NOBODY's, up to 7 business days
+    │                                 nothing to press; we email him
+    ═══════════════════════════════════ the line where money MOVES ═══
+    ▼
+  ⑧ THE SHOP PUBLISHES ITSELF ······ the card is charged, the shop
+    │                                 goes up, he is notified — and
+    │                                 he pressed nothing to make it
     ▼
   ⑨ first sale
 ```
 
-**⑤⑥⑦ is the order, and it changed on 2026-08-24.** Paying used to come before the approval, so a
-seller paid and then sat up to seven days with a shop that was not on the site — through exactly the
-week he is most likely to change his mind in (owner: *"אני לא רוצה ליפול בין הכיסאות ושהמוכר
-יתחרט"*). Paying is now the LAST act, and the shop goes up in the same minute.
+**The two lines across that diagram are the whole design, and they moved twice in one day.**
+
+Paying used to be step ⑤ — before the review — so a seller paid and then sat up to seven business
+days with a shop that was not on the site, through the week he is most likely to change his mind in
+(*"אני לא רוצה ליפול בין הכיסאות ושהמוכר יתחרט"*). Moving it to LAST fixed that and opened the
+opposite hole, which the owner named the same day: *"אם מוכר ממתין לאישור מפיימי והוא עוד לא בחר
+מסלול או שילם, אז יכול להיות שעד שהוא כבר יקבל את האישור בדרך הוא מצא כבר חלופה אחרת ולא ימשיך
+איתנו."* The longest wait in the flow had become the one stretch where he has decided nothing.
+
+Both are answered by splitting one act into two: **he commits at ⑥ and pays at ⑧.** The card is
+tokenised on our page and held (`lib/subscription-arm.ts`), PayMe are told nothing, and the first
+charge fires the moment they approve — at which point the shop goes up in the same pass. He is
+committed through the wait, pays for none of it, and never has to come back and press anything,
+which is the zero-touch rule rather than a convenience.
+
+**What makes it possible at all** is `PAYME_OWN_PUBLIC_KEY`: Hosted Fields need our own merchant's
+public key, the §18 account was opened without keeping it, and a second one was opened on 2026-08-24
+that did (`docs/payme-sandbox-notes.md` §24). With no key configured the whole thing degrades to
+PayMe's own payment page, which is the older route and still works.
 
 **Where the seller SEES this:** one screen, `components/dashboard/GoLiveSteps.astro`, on the
 תשלומים tab. It states which shop it is about, which of the three money steps is open, "step N of
@@ -92,9 +109,9 @@ week he is most likely to change his mind in (owner: *"אני לא רוצה לי
 | 3 | Builds it: products, images, variants, categories, discounts, coupons, design. No cap on any of it | `lib/store-products.ts`, `lib/discounts.ts` | ✅ |
 | 4 | Looks at it. The shop is `unpublished` — the public cannot reach it, the OWNER can | `lib/store-status.ts` · `store-publication.ts#mayPreviewStore` | ✅ |
 | 5 | Sends what PayMe require, and a clearing account is opened for his BUSINESS — one per ח״פ, however many shops | `lib/seller-merchant.ts` · `lib/merchant-kyc.ts` | ⚠️ owner (needs live PayMe) |
-| 6 | PayMe examine the business — up to 7 business days (agreement §11). Nobody can shorten it; the seller is told so and emailed when it clears | `lib/merchant-status-check.ts` | ⚠️ owner |
-| 7 | Picks this shop's plan and starts paying. Four tiers, same product, differing only in fee-to-commission ratio | `lib/pricing.ts` · `lib/store-plan.ts` · `lib/seller-subscription.ts` | ⚠️ owner |
-| 8 | **The shop publishes itself.** Nobody presses a button — publication is the derived result of every hold clearing, and of THIS shop being one of the lines on the standing order | `store-publication.ts#syncStorePublication` | ✅ |
+| 6 | Picks this shop's plan and saves a card on our page. **Charges nothing** — PayMe are not called at all | `lib/store-plan.ts` · `lib/subscription-arm.ts` | ⚠️ owner |
+| 7 | PayMe examine the business — up to 7 business days (agreement §11). Nobody can shorten it; the seller is told he is finished and emailed when it clears | `lib/merchant-status-check.ts` | ⚠️ owner |
+| 8 | **The card is charged and the shop publishes itself**, in one pass, with nobody present. Publication is the derived result of every hold clearing and of THIS shop being one of the lines on the standing order | `subscription-arm.ts#startArmedSubscription` · `store-publication.ts` | ✅ |
 
 ### A plan is bought PER SHOP, and there is still one charge
 

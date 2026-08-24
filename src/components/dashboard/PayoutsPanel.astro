@@ -77,23 +77,32 @@ interface Props {
   /** What is on file, and whether PayMe are actually billing it. Both come from the server so this
    *  card can never disagree with the publication gate about whether the seller is paying.
    *  `storeFees` is what the standing order was last set from — the breakdown behind the total. */
-  subscription: { status: number; nextCharge?: string; endsAt?: string; priceAgorot?: number; storeFees?: StoreFeeLine[] } | null;
+  subscription: { status: number | null; nextCharge?: string; endsAt?: string; priceAgorot?: number; storeFees?: StoreFeeLine[]; cardSavedAt?: string; providerRef?: string } | null;
   subscriptionPaying: boolean;
+  /** Whose card the monthly fee is taken from — the seller's own account details, handed down so
+   *  the card fields never ask him for anything he has already given us. */
+  payer: { name: string; email: string };
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, holds, store, planNames, planName, subscription, subscriptionPaying, d } = Astro.props;
+const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, holds, store, planNames, planName, subscription, subscriptionPaying, payer, d } = Astro.props;
+
+/** A card is on file and PayMe have nothing yet — the state a seller spends the clearing review in
+ *  (`lib/subscription-arm.ts`). Derived from the same two facts the server derives it from, rather
+ *  than passed as a third flag that could disagree with them. */
+const cardOnFile = !!subscription?.cardSavedAt && !subscription.providerRef;
 
 /** Whether THIS shop is one of the lines the standing order pays for. A paying seller who has just
  *  opened a second shop clears every account-level hold and still owes for this one — the case that
  *  would otherwise put a shop on the site for free (`lib/store-plan.ts`). */
 const storeInPlan = !!store && (subscription?.storeFees ?? []).some((f) => f.storeId === store.id);
 
-/** Whether the go-live screen has anything left to say about THIS shop — the same condition it
- *  computes for itself, so the two can never both render or both vanish. A cancelled subscription
- *  inside its paid period counts as done: the shop is up, and what the seller needs is the manage
- *  card (which is where the renew button is), not a three-step wizard. */
-const goLiveDone = !!store && !!store.publishedAt && storeInPlan
-  && !holds.includes('clearing-details') && !holds.includes('clearing-approval');
+/** Whether the go-live screen has anything left to say about THIS shop — **the same single
+ *  condition it computes for itself**, so the two can never both render or both vanish. It is the
+ *  shop being on the site and nothing else: keyed off the STEPS instead, a seller who had finished
+ *  them all saw neither screen while his shop was still going up. A cancelled subscription inside
+ *  its paid period lands here too, which is right — the shop is up, and what he needs is the manage
+ *  card (where the renew button is), not a three-step wizard. */
+const goLiveDone = !!store?.publishedAt;
 
 /** One sentence per state, chosen here rather than in the markup so the three are visibly a set and
  *  a fourth state cannot be added without picking its words. */
@@ -270,6 +279,8 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       subscription={subscription}
       paying={subscriptionPaying}
       storeInPlan={storeInPlan}
+      cardOnFile={cardOnFile}
+      payer={payer}
       d={d}
     />
   )}
@@ -279,6 +290,8 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       holds={holds}
       store={store}
       storeInPlan={storeInPlan}
+      cardOnFile={cardOnFile}
+      payer={payer}
       kyc={kyc}
       derivedCategory={derivedCategory}
       kycComplete={kycComplete}

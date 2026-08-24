@@ -3,6 +3,7 @@ import type { APIContext } from 'astro';
 import { activePaymeCredentials, isSandbox } from '../../../lib/payment-payme.js';
 import { getStoreBySlugOrPrevious } from '../../../lib/stores.js';
 import { merchantAccountFor } from '../../../lib/seller-merchant.js';
+import { getSellerSession } from '../../../lib/seller-auth.js';
 
 /**
  * What the browser needs to draw PayMe's card fields — and nothing else.
@@ -31,13 +32,34 @@ function json(data: Record<string, unknown>, status = 200): Response {
   });
 }
 
-export async function GET({ url }: APIContext): Promise<Response> {
+export async function GET({ url, cookies }: APIContext): Promise<Response> {
   const creds = activePaymeCredentials();
   // `{ active: false }` rather than a 404 or a 503. The caller's correct behaviour is identical for
   // "no gateway configured" and "this seller cannot take cards": show no card fields and let the
   // mock path run. An error status would push the page into a failure branch for a state that is
   // not a failure — dev, and the pre-gateway window GO_LIVE §7 plans.
   if (!creds) return json({ active: false });
+
+  /**
+   * ── `?own=1`: OUR merchant, for the SELLER's own card ──
+   *
+   * The other caller of this route is a buyer paying a shop, and the key is that shop's. This one is
+   * a seller putting a card on file for his monthly fee, and the merchant being charged is ours
+   * (`lib/subscription-arm.ts`) — a different account, and therefore a different public key.
+   *
+   * It is gated on a seller session, and that is tidiness rather than protection: `ownPublicKey` is
+   * a publishable key like Stripe's, it authorises nothing, and every buyer already receives a
+   * seller's. Gating it simply keeps a key that only sellers can use out of every other response.
+   *
+   * Absent is a real state — a deployment whose own merchant was opened without keeping what it
+   * handed back (`payment-payme.ts`) — and the answer is the same `active: false` the buyer path
+   * uses, which sends the seller to PayMe's own payment page instead.
+   */
+  if (url.searchParams.get('own') === '1') {
+    if (!getSellerSession(cookies)) return json({ active: false });
+    if (!creds.ownPublicKey) return json({ active: false });
+    return json({ active: true, publicKey: creds.ownPublicKey, testMode: isSandbox(creds) });
+  }
 
   const slug = (url.searchParams.get('store') ?? '').trim();
   if (!slug) return json({ active: false });

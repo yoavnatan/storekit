@@ -87,10 +87,13 @@ describe('publishHoldsFor — what is standing in the way', () => {
    * Clearing first, paying last: the payment is the act that puts the shop up, and it is the last
    * thing between him and that.
    */
-  it('reports both holds at once, clearing first and paying last', async () => {
+  it('reports both holds at once, in the order the seller walks them', async () => {
     state.subscribed = false;
     state.merchantBlock = 'not-approved';
-    expect(await publishHoldsFor('seller-1', CREDS)).toEqual(['clearing-approval', 'subscription']);
+    // Details, then the plan and the card, then the wait nobody can shorten. Everything he can act
+    // on comes before the thing he cannot — and since 2026-08-24 none of it charges him until the
+    // shop is actually up, which is what lets the card step sit before the review rather than after.
+    expect(await publishHoldsFor('seller-1', CREDS)).toEqual(['subscription', 'clearing-approval']);
   });
 });
 

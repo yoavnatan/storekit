@@ -56,8 +56,7 @@ import { ensureMerchantAccount, clearingStatusFor, merchantKycFor } from '../../
 import { missingMerchantKyc } from '../../lib/merchant-kyc.js';
 import { paymeCategoryForStore } from '../../lib/merchant-category.js';
 import { publishHoldsFor, syncStorePublication } from '../../lib/store-publication.js';
-import { subscriptionFor } from '../../lib/seller-subscription.js';
-import { subscriptionIsPaying } from '../../lib/payment-payme.js';
+import { subscriptionFor, subscriptionRunning } from '../../lib/seller-subscription.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
 import { openOrderCount } from '../../lib/store-lifecycle.js';
@@ -436,9 +435,9 @@ const merchantKyc = clearingStatus ? await merchantKycFor(sellerId) : {};
 const derivedMerchantCategory = clearingStatus ? paymeCategoryForStore(allStores.flatMap((s) => s.categories ?? [])) : null;
 // "Complete" is asked of the RESOLVED picture — the seller has nothing left to do when the only
 // field still empty is one we can answer for him.
-// What is on file, read once for the card. `subscriptionIsPaying` rather than a comparison here:
-// the status is PayMe's integer and `payment-payme.ts` is the only place it is interpreted, so a
-// screen and the publication gate cannot disagree about whether this seller is paying.
+// What is on file, read once for the card. `subscriptionRunning` rather than a comparison here:
+// the status is PayMe's integer, `payment-payme.ts` is the only place it is interpreted, and NULL
+// (a card on file with nothing at PayMe yet) is a state no comparison would have handled.
 const subscription = clearingStatus ? await subscriptionFor(sellerId) : null;
 /** Plan id → its display name. Built once here because the names live in the PRICING copy and the
  *  go-live screen renders them, and a component reaching sideways into another screen's
@@ -2991,7 +2990,8 @@ const orderStatusColors: Record<string, string> = {
             planNames={planNames}
             planName={t.pricing.tiers[resolveTier(store?.tier).id].name}
             subscription={subscription}
-            subscriptionPaying={!!subscription && subscriptionIsPaying(subscription.status)}
+            subscriptionPaying={subscriptionRunning(subscription)}
+            payer={{ name: seller.name, email: seller.email }}
             d={d}
           />
         )}

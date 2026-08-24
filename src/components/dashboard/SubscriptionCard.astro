@@ -54,7 +54,7 @@ interface Props {
   /** What is on file: `null` = none yet, `paying` = billing is running, otherwise it was created and
    *  nobody has paid it. `endsAt` is present only on a cancelled one still inside its paid period. */
   subscription: {
-    status: number;
+    status: number | null;
     nextCharge?: string;
     endsAt?: string;
     priceAgorot?: number;
@@ -65,13 +65,19 @@ interface Props {
    *  opened a second shop is `paying: true` and `storeInPlan: false` — the case where the card must
    *  offer to ADD a shop rather than to start a subscription. */
   storeInPlan?: boolean;
+  /** A card is on file and nothing has been charged: he chose during PayMe's review and the first
+   *  charge fires when the shop goes up (`lib/subscription-arm.ts`). */
+  cardOnFile?: boolean;
+  /** Who the card belongs to. PayMe's tokenizer wants a payer, and these are the seller's own
+   *  account details — not a form for him to fill in again (`feedback_seller_form_burden`). */
+  payer: { name: string; email: string };
   /** Rendered INSIDE a go-live step, which already carries the title and the one-line reason. Drops
    *  its own heading and its own frame, so the step is one thing rather than a box in a box saying
    *  "מנוי חודשי" twice (owner, 2026-08-24). */
   bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { storeId, tier, planName, subscription, paying, storeInPlan = false, bare = false, d } = Astro.props;
+const { storeId, tier, planName, subscription, paying, storeInPlan = false, cardOnFile = false, payer, bare = false, d } = Astro.props;
 const plan = resolveTier(tier);
 const created = !!subscription;
 /** A cancelled subscription still inside the period he paid for. Not the same as "not paying": he
@@ -173,15 +179,79 @@ const showBreakdown = paying && lines.length > 1;
         </div>
       </div>
     </div>
+  ) : cardOnFile ? (
+    /* ── Card on file, nothing charged ──
+       The state a seller spends PayMe's whole review in since 2026-08-24. It has to say three
+       things and no more: that we hold the card, what will be taken, and WHEN — because the one
+       thing that turns a saved card into a complaint is a charge whose date nobody named. */
+    <div class="mt-4">
+      <p class="m-0 text-[0.86rem] font-semibold">{d.subCardOnFile}</p>
+      <p class="muted m-0 mt-1 text-[0.8rem]">
+        {d.subCardWhen.replace('{amount}', formatAgorot(subscription?.priceAgorot ?? 0))}
+      </p>
+      {/* A way to replace it, and deliberately quiet: an expired card between deciding and being
+          approved is rare, and a prominent "change card" beside a saved one reads as doubt about
+          whether it was saved. */}
+      <button type="button" class="btn btn--ghost btn--sm mt-3" id="sub-card-replace">{d.subCardReplace}</button>
+    </div>
   ) : (
     <div class="mt-4">
       {created && !paying && <p class="m-0 mb-2 text-[0.84rem]">{d.subAwaitingPayment}</p>}
+
+      {/* ── PayMe's own card fields, drawn on OUR page ───────────────────────────────────────
+          Three iframes served by PayMe and mounted here, so the seller commits at the moment he
+          decides instead of a week later on somebody else's page. The container ids are the ones
+          `scripts/checkout-card.ts` mounts into — the same three, because it is the same SDK call
+          and duplicating them would be a second definition of a string that must match exactly.
+          Hidden until the SDK answers: an empty bordered box where a card field should be is worse
+          than no box at all, and `active: false` (no key configured) is a real state that falls
+          back to PayMe's own page below. */}
+      {/* What the tokenizer is told, carried as data rather than fetched again: the amount is the
+          one this card already rendered, so the figure on the card issuer's own confirmation and
+          the figure on this screen come from the same place. `firstName`/`lastName` is PayMe's
+          split of a single Hebrew name — the first word and the rest, which is the honest reading
+          of a name we hold as one string. */}
+      <div
+        class="!hidden mt-1"
+        id="sub-card-fields"
+        data-first-name={payer.name.trim().split(/\s+/)[0] ?? ''}
+        data-last-name={payer.name.trim().split(/\s+/).slice(1).join(' ')}
+        data-email={payer.email}
+        data-label={d.subTitle}
+        data-amount={(plan.monthlyFee).toFixed(2)}
+      >
+        <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <div class="field m-0">
+            <span class="text-[0.8rem]">{d.subCardNumber}</span>
+            <div id="payme-card-number" class="input flex items-center"></div>
+          </div>
+          <div class="field m-0">
+            <span class="text-[0.8rem]">{d.subCardExpiry}</span>
+            <div id="payme-card-expiry" class="input flex items-center"></div>
+          </div>
+          <div class="field m-0">
+            <span class="text-[0.8rem]">{d.subCardCvc}</span>
+            <div id="payme-card-cvc" class="input flex items-center"></div>
+          </div>
+        </div>
+        <button type="button" class="btn btn--accent btn--sm mt-3" id="sub-card-save" data-store={storeId}>{d.subCardSave}</button>
+        {/* The sentence that makes the whole step acceptable, and it is the first thing under the
+            button rather than the last thing on the card. */}
+        <p class="m-0 mt-2 text-[0.8rem] font-semibold">{d.subCardNoCharge}</p>
+        <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+      </div>
+
       {/* A paying seller opening a SECOND shop is not starting a subscription — he is adding a line
           to one that is already running, and the button has to say that or it reads as a second
           monthly charge appearing from nowhere. */}
-      <button type="button" class="btn btn--accent btn--sm" id="sub-start" data-store={storeId}>
-        {paying && !storeInPlan ? d.subAddStore : created ? d.subResume : d.subStart}
-      </button>
+      {/* The fallback route, shown only when the card fields could not be drawn — a deployment
+          whose own merchant was opened without keeping its public key (`payment-payme.ts`). The
+          script un-hides whichever of the two is real, so a seller never sees both. */}
+      <div class="!hidden" id="sub-hosted-fallback">
+        <button type="button" class="btn btn--accent btn--sm" id="sub-start" data-store={storeId}>
+          {paying && !storeInPlan ? d.subAddStore : created ? d.subResume : d.subStart}
+        </button>
+      </div>
       {paying && !storeInPlan ? (
         <p class="muted m-0 mt-2 text-[0.78rem]">{d.subAddStoreNote.replace('{fee}', String(plan.monthlyFee))}</p>
       ) : (

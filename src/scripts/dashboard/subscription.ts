@@ -16,6 +16,7 @@
 // because being published is exactly what is being paid for.
 import { showToast, showErrorToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
+import { fetchOwnCardConfig, loadCardFields } from '../checkout-card.js';
 
 interface StartResponse { ok?: boolean; error?: string; payUrl?: string; published?: string[] }
 
@@ -76,6 +77,76 @@ export function initSubscriptionCard(): void {
         busy.done();
       }
     });
+  });
+
+  // ── The card, typed here rather than on PayMe's page ──────────────────────────────────────
+  //
+  // **Nothing is charged by this.** The token is stored and the first charge fires when the shop
+  // actually goes live (`lib/subscription-arm.ts`), which is what lets a seller commit during
+  // PayMe's seven-day review without paying for it.
+  //
+  // Drawn only after the server says it can be: the key belongs to OUR merchant and a deployment
+  // that opened its account without keeping it has no way to draw a field at all. Whichever of the
+  // two routes is real is un-hidden here, so a seller never sees both an empty card form and a
+  // button that leaves the site.
+  const fieldsBox = document.getElementById('sub-card-fields');
+  const fallbackBox = document.getElementById('sub-hosted-fallback');
+  const saveCard = document.getElementById('sub-card-save') as HTMLButtonElement | null;
+
+  if (fieldsBox && saveCard) {
+    void (async () => {
+      const config = await fetchOwnCardConfig();
+      if (!config.active) { fallbackBox?.classList.remove('!hidden'); return; }
+      try {
+        const lang = document.documentElement.lang === 'en' ? 'en' : 'he';
+        const fields = await loadCardFields(config, lang);
+        fieldsBox.classList.remove('!hidden');
+        saveCard.addEventListener('click', async () => {
+          error?.classList.add('hidden');
+          const busy = busyButton(saveCard, saveCard.textContent?.trim() ?? '');
+          try {
+            // Their `tokenize` wants a total, and this one is honest rather than cosmetic: it is
+            // what the standing order will charge, so a card issuer's own confirmation screen shows
+            // the seller the same figure the card page does. Read off the page's own data rather
+            // than recomputed, so the two cannot disagree.
+            const token = await fields.tokenize({
+              firstName: fieldsBox.dataset['firstName'] ?? '',
+              lastName: fieldsBox.dataset['lastName'] ?? '',
+              email: fieldsBox.dataset['email'] ?? '',
+              phone: fieldsBox.dataset['phone'] ?? '',
+              label: fieldsBox.dataset['label'] ?? '',
+              amountIls: fieldsBox.dataset['amount'] ?? '0',
+            });
+            const data = await post({ action: 'save-card', token, storeId: saveCard.dataset['store'] ?? '' });
+            if (!data.ok) { fail(data.error === 'no-store-to-bill' ? t['subNoStore'] : undefined); return; }
+            showToast(t['subCardSaved'] ?? '');
+            // Re-read rather than repainted: saving the card changes which step of the go-live
+            // screen is open, and rebuilding that by hand is how a screen starts disagreeing with
+            // the server about where somebody stands.
+            window.location.reload();
+          } catch {
+            // A refused card is the seller's to fix and he has to be told, out loud — a silent
+            // failure here is a seller who believes he is committed and is not.
+            fail(t['subCardRefused']);
+          } finally {
+            busy.done();
+          }
+        });
+      } catch {
+        // The SDK did not load or would not mount. The other route still works, so it is offered
+        // rather than reported: the seller's errand is putting a card on file, not hearing about
+        // a script.
+        fallbackBox?.classList.remove('!hidden');
+      }
+    })();
+  } else if (fallbackBox) {
+    fallbackBox.classList.remove('!hidden');
+  }
+
+  // Replacing a saved card is the same errand from the top — the server overwrites the token — so
+  // it simply re-opens the form rather than being a second, subtly different path.
+  document.getElementById('sub-card-replace')?.addEventListener('click', () => {
+    window.location.href = '/seller/dashboard?panel=payouts&card=1';
   });
 
   // ── Putting the shop on the site ──────────────────────────────────────────────────────────

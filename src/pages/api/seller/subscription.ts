@@ -3,6 +3,7 @@ import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { startSubscription, endSubscription, subscriptionFor } from '../../../lib/seller-subscription.js';
+import { armSubscriptionCard } from '../../../lib/subscription-arm.js';
 import { syncStorePublication, publishHoldsFor } from '../../../lib/store-publication.js';
 import { store as platform } from '../../../config/store.config.js';
 
@@ -39,8 +40,31 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
-  const read = await readJsonBody<{ action?: string; storeId?: unknown }>(request, BODY_LIMIT.form);
+  const read = await readJsonBody<{ action?: string; storeId?: unknown; token?: unknown }>(request, BODY_LIMIT.form);
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
+
+  /**
+   * ── A card on file, charged only when the shop goes up (2026-08-24) ──
+   *
+   * The seller types his card into PayMe's own iframes on our page and hands us a TOKEN, which is
+   * what this stores. **It charges nothing** — `generate-subscription` would charge immediately if
+   * it were handed this token now, which is exactly the seven-day review week this change exists to
+   * stop charging for (`lib/subscription-arm.ts`).
+   *
+   * The token is length-capped rather than pattern-matched, for the reason the checkout gives about
+   * the same value: the format is PayMe's to change, and what must be bounded is the SIZE, because
+   * without it a caller could push a quarter-megabyte string into an outbound request to them.
+   */
+  if (read.value.action === 'save-card') {
+    const token = typeof read.value.token === 'string' ? read.value.token.trim() : '';
+    if (!token || token.length > 200) return json({ ok: false, error: 'missing-card' }, 400);
+    const armed = await armSubscriptionCard(sellerId, token, {
+      ...(typeof read.value.storeId === 'string' ? { including: read.value.storeId } : {}),
+    });
+    if (armed.status === 'armed') return json({ ok: true, priceAgorot: armed.priceAgorot });
+    if (armed.status === 'already') return json({ ok: true, already: true });
+    return json({ ok: false, error: armed.status }, armed.status === 'not-configured' ? 503 : 400);
+  }
 
   if (read.value.action === 'cancel') {
     // Does NOT take the shop down, and not because nobody got round to it: cancellation takes

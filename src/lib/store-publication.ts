@@ -59,16 +59,23 @@ export type PublishHold =
    *  not tell a waiting seller to go and fill something in. */
   | 'clearing-approval'
   /**
-   * He has not started paying. His to fix, in a minute — and it is deliberately **LAST**.
+   * He has not started paying — which since 2026-08-24 means **he has not put a card on file**,
+   * not that he has not been charged.
    *
-   * It used to be first, and that was the bug the owner named on 2026-08-24: *"אני לא רוצה ליפול
-   * בין הכיסאות ושהמוכר יתחרט"*. A seller filled in his details, paid, and then waited up to seven
-   * business days for PayMe to approve the business — paying for a shop that was not on the site,
-   * for the whole of the one week he is most likely to change his mind in.
+   * ── The order of this union moved twice in one day, and both moves were right ──
+   * It was first: details → PAY → wait. The owner named the problem — *"אני לא רוצה ליפול בין
+   * הכיסאות ושהמוכר יתחרט"* — a seller charged, then left waiting up to seven business days with a
+   * shop that was not on the site. So it went LAST.
    *
-   * Ordered last, paying is the final act and the shop goes live in the same minute. Everything
-   * before it is free, which is the platform's whole acquisition bet, and nothing is charged for a
-   * wait nobody can shorten.
+   * And that opened the other side of the same week: *"אם מוכר ממתין לאישור מפיימי והוא עוד לא בחר
+   * מסלול או שילם... יכול להיות שעד שהוא כבר יקבל את האישור בדרך הוא מצא כבר חלופה אחרת"*. The
+   * longest wait in the flow had become the one stretch where he has decided nothing and owes
+   * nothing.
+   *
+   * It is back in the middle, and the thing that makes both true at once is that **the decision and
+   * the charge are no longer the same act**: he chooses a plan and puts a card on file here, and the
+   * card is charged when the shop actually goes up (`lib/subscription-arm.ts`). He is committed
+   * through the wait and pays for none of it.
    */
   | 'subscription';
 
@@ -91,13 +98,13 @@ export async function publishHoldsFor(
     sellerIsSubscribed(sellerId, creds),
     merchantBlockFor(sellerId, creds),
   ]);
-  // The order IS the flow the seller is walked through — see `PublishHold`. Clearing first because
-  // it is the part with a wait nobody can shorten; paying last because it is the act that puts the
-  // shop on the site, and it should be the last thing between him and that.
+  // The order IS the flow the seller is walked through — see `PublishHold`. Details, then the plan
+  // and the card, then the wait he cannot shorten: everything he can act on comes before the thing
+  // nobody can, and none of it charges him until the shop is actually up.
   const holds: PublishHold[] = [];
   if (merchantBlock === 'no-account') holds.push('clearing-details');
-  if (merchantBlock === 'not-approved') holds.push('clearing-approval');
   if (!subscribed) holds.push('subscription');
+  if (merchantBlock === 'not-approved') holds.push('clearing-approval');
   return holds;
 }
 

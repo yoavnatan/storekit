@@ -153,6 +153,29 @@ export async function fetchCardConfig(storeSlug: string): Promise<CardConfig> {
 }
 
 /**
+ * The same question for OUR OWN merchant, asked by the seller's subscription card.
+ *
+ * A different account and therefore a different public key: the buyer's card is tokenised under the
+ * SHOP's merchant, the seller's own card under ours (`lib/subscription-arm.ts`). Same silence on
+ * failure and for the same reason — "we could not ask" reads as "not enabled", which draws no
+ * fields and falls back to PayMe's own page rather than inviting somebody to type into a form that
+ * cannot tokenise.
+ */
+export async function fetchOwnCardConfig(): Promise<CardConfig> {
+  try {
+    const res = await fetch('/api/payme/hosted-fields?own=1', {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return { active: false };
+    return await res.json() as CardConfig;
+  // silent: see fetchCardConfig — the fallback path is a complete, working route, not an error.
+  } catch {
+    return { active: false };
+  }
+}
+
+/**
  * Draw the three fields, and hand back the one operation the checkout needs.
  *
  * Mounting is not retried on failure: the containers are already in the DOM, and a second `mount`
