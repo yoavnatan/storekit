@@ -18,6 +18,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const state = vi.hoisted(() => ({
   subscribed: true,
+  /** What PayMe have been given. Empty = the seller has typed nothing. */
+  kyc: {} as Record<string, unknown>,
   merchantBlock: null as 'no-account' | 'not-approved' | null,
   stores: [] as { id: string; slug: string; sellerId: string; publishedAt?: string; closedAt?: string }[],
   /** Store ids named in the standing order's breakdown. `null` = no subscription row at all. */
@@ -39,6 +41,13 @@ vi.mock('../src/lib/seller-subscription.js', () => ({
 }));
 vi.mock('../src/lib/seller-merchant.js', () => ({
   merchantBlockFor: async (_id: string, creds: unknown) => (creds ? state.merchantBlock : null),
+  // Asked since 2026-08-25: with the clearing account opened at card-save, "no account" no longer
+  // implies "no details", so the hold has to read the details themselves
+  // (`tests/publish-holds-meaning.test.ts` is the regression that owns the rule).
+  merchantKycFor: async () => state.kyc,
+}));
+vi.mock('../src/lib/merchant-kyc.js', () => ({
+  missingMerchantKyc: (kyc: Record<string, unknown>) => (Object.keys(kyc).length ? [] : ['businessId']),
 }));
 vi.mock('../src/lib/db.js', () => ({ rows: async () => [], isUuid: () => true }));
 vi.mock('../src/lib/seller-auth.js', () => ({ getSellerById: async () => ({ id: 'seller-1', email: 's@example.com' }) }));

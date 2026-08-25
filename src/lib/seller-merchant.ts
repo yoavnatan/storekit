@@ -388,7 +388,7 @@ export async function merchantBlockFor(sellerId: string, creds: PaymeCredentials
 export async function clearingStatusFor(
   sellerId: string,
   creds: PaymeCredentials | null = activePaymeCredentials(),
-): Promise<{ state: 'ready' | 'missing-details' | 'awaiting-approval'; signupLink?: string } | null> {
+): Promise<{ state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval'; signupLink?: string } | null> {
   if (!creds) return null;
   const account = await merchantAccountFor(sellerId);
   if (account) {
@@ -405,10 +405,20 @@ export async function clearingStatusFor(
       ? { state: 'ready' }
       : { state: 'awaiting-approval', ...(link ? { signupLink: link } : {}) };
   }
-  // No account, which under this model always has the same cause: PayMe cannot be asked to open one
-  // until we hold what they require. So the seller is told what is missing rather than that
-  // something failed — the second is true and useless.
-  return { state: 'missing-details' };
+  /**
+   * ── No account, which stopped having one cause on 2026-08-25 ──
+   *
+   * It used to: PayMe were asked the moment the details were saved, so no account meant no details.
+   * Since the account is opened at card-save instead (`subscription-arm.ts` — it costs ₪65 a month
+   * for as long as it exists), a seller who has typed every field PayMe require also has no
+   * account, and calling that "missing details" told him to go and fill in a form he had finished.
+   * The owner read exactly that and could not tell which of the two it meant (*"לא מבין גם על מה
+   * הוא מצביע?"*).
+   *
+   * Two states now, because they are two situations with two different next actions: something is
+   * missing and he must type it, or nothing is missing and the account opens when he commits.
+   */
+  return { state: missingMerchantKyc(await merchantKycFor(sellerId)).length ? 'missing-details' : 'not-opened' };
 }
 
 /** An `https:` absolute URL, or null. Parsed rather than pattern-matched, so the answer is the

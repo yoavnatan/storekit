@@ -1316,7 +1316,12 @@ export const translations = {
       glStepDetails: 'פרטי העסק',
       glStepDetailsNote: 'לאישור על ידי חברת הסליקה.',
       glStepApproval: 'אישור חברת הסליקה',
-      glStepApprovalNote: 'הבדיקה החלה עם שליחת פרטי העסק ואורכת עד 7 ימי עסקים. אין מה לעשות בינתיים.',
+      glStepApprovalNote: 'הבדיקה אורכת עד 7 ימי עסקים. אין מה לעשות בינתיים.',
+      // The clock starts when the details REACH them, which is when the card is saved — not when the
+      // form was filled in. Said separately from the note above, because a seller who has finished
+      // step 1 and not step 2 was being told a review was already running for him (owner,
+      // 2026-08-25: *"זה נראה כאילו בכל שלב זה מחכה 7 ימים"*).
+      glStepApprovalAfterCard: 'מתחיל עם שמירת הכרטיס, ואורך עד 7 ימי עסקים.',
       // Before the details go out there is no clock, and saying there is one is the only thing this
       // step can get wrong.
       glStepApprovalWaiting: 'מתחיל אחרי שליחת פרטי העסק, ואורך עד 7 ימי עסקים.',
@@ -1339,7 +1344,12 @@ export const translations = {
       // person stops playing with the site and becomes a seller). This button is that moment.
       pubHoldSubscriptionCta: 'העלה את החנות לאוויר',
       pubHoldDetails: 'חסרים פרטים לפתיחת חשבון סליקה',
-      pubHoldDetailsNote: 'בלי חשבון סליקה אין לאן שהכסף של הקונה ייכנס.',
+      // Owner, 2026-08-25: *"משפט גרוע. לא מבין גם על מה הוא מצביע?"* — and he was right twice.
+      // It argued from the absence of an account, which is a thing he has no view of and which by
+      // then could also mean "everything is filled in and waiting for your card". The title above it
+      // already says what is missing; this says why it is worth doing, in the one term that matters
+      // to a seller — the money from his buyers — and points at nothing he cannot see.
+      pubHoldDetailsNote: 'אלו הפרטים שחברת הסליקה דורשת כדי לפתוח את החשבון שאליו ייכנס הכסף מהקונים.',
       pubHoldDetailsCta: 'להשלמת הפרטים',
       pubHoldApproval: 'חברת הסליקה בודקת את העסק',
       pubHoldApprovalWaiting: 'ממתין לאישור העסק על ידי חברת הסליקה',
@@ -1392,7 +1402,7 @@ export const translations = {
       mkOnFile: 'הפרטים נשלחו לחברת הסליקה.',
       // Filled, not yet with them — opening the account failed or has not been attempted. Saying
       // "sent" here was a claim the seller could act on and be wrong about.
-      mkFilledNotSent: 'הפרטים נשמרו. שולחים אותם לחברת הסליקה.',
+      mkFilledNotSent: 'הפרטים נשמרו. הם יישלחו לחברת הסליקה עם שמירת הכרטיס, ועד אז אפשר לערוך אותם.',
       mkEdit: 'ערוך',
       // The subscription card (components/dashboard/SubscriptionCard.astro). What it says has to be
       // true of the LIVE flow: pressing the button sends the seller to the processor's own page to
@@ -3647,7 +3657,8 @@ export const translations = {
       glStepDetails: 'Business details',
       glStepDetailsNote: 'For the payment processor to approve.',
       glStepApproval: 'Processor approval',
-      glStepApprovalNote: 'The review began when your business details were sent and takes up to 7 business days. Nothing to do meanwhile.',
+      glStepApprovalNote: 'The review takes up to 7 business days. Nothing to do meanwhile.',
+      glStepApprovalAfterCard: 'Starts when you save your card, and takes up to 7 business days.',
       glStepApprovalWaiting: 'Starts once your business details are sent, and takes up to 7 business days.',
       glStepSubscription: 'Plan and card',
       glStepSubscriptionNote: 'Pick a plan and save a card. Nothing is charged until the store goes live.',
@@ -3661,7 +3672,7 @@ export const translations = {
       pubHoldSubscriptionNote: 'The store goes live as soon as the subscription starts.',
       pubHoldSubscriptionCta: 'Put my store live',
       pubHoldDetails: 'Details are missing to open a clearing account',
-      pubHoldDetailsNote: 'Without a clearing account there is nowhere for a buyer\'s money to go.',
+      pubHoldDetailsNote: 'These are what the processor needs to open the account your buyers\' money goes into.',
       pubHoldDetailsCta: 'Complete the details',
       pubHoldApproval: 'The processor is reviewing your business',
       pubHoldApprovalWaiting: 'Waiting for the processor to approve your business',
@@ -3696,7 +3707,7 @@ export const translations = {
       mkErrDate: 'That date is not valid.',
       mkStillMissing: 'Saved. {n} fields are still missing — you can finish any time.',
       mkOnFile: 'The details were sent to the processor.',
-      mkFilledNotSent: 'Your details are saved. We are sending them to the processor.',
+      mkFilledNotSent: 'Your details are saved. They go to the processor when you save your card, and you can edit them until then.',
       mkEdit: 'Edit',
       subTitle: 'Monthly subscription',
       subWhy: 'The subscription is what puts your store live. Cancel any time.',

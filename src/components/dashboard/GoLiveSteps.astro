@@ -66,6 +66,9 @@ interface Props {
   kyc: Partial<MerchantKyc>;
   derivedCategory: string | null;
   kycComplete: boolean;
+  /** What PayMe actually hold. The only honest source for step 3, because the holds say what is
+   *  BLOCKING and cannot distinguish an approval that is finished from one nobody asked for. */
+  clearing: { state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval' } | null;
   planName: string;
   /** Every plan's display name, for the picker. Lives in the pricing copy rather than the
    *  dashboard's, so it is handed in rather than looked up — no component below this one reaches
@@ -78,7 +81,7 @@ interface Props {
   d: ReturnType<typeof getT>['dashboard'];
 }
 const {
-  holds, store, storeInPlan, cardOnFile, payer, kyc, derivedCategory, kycComplete, planName, planNames,
+  holds, store, storeInPlan, cardOnFile, payer, kyc, derivedCategory, kycComplete, clearing, planName, planNames,
   subscription, subscriptionPaying, signupLink, d,
 } = Astro.props;
 
@@ -94,7 +97,25 @@ const {
  * afterwards is steps 2 and 3.
  */
 const detailsDone = kycComplete || !holds.includes('clearing-details');
-const approvalDone = detailsDone && !holds.includes('clearing-approval');
+/**
+ * ── This was WRONG for a day and the owner caught it (2026-08-25) ──
+ *
+ * *"עכשיו יש וי ירוק גם ליד אישור חברת הסליקה, זה בכוונה? נראה שלא, כי הכל אצלי ירוק עכשיו אבל
+ * החנות עדיין לא באוויר."* It was not.
+ *
+ * It read `detailsDone && !holds.includes('clearing-approval')`, which was sound while `detailsDone`
+ * meant *the account exists*: no account ⇒ no approval hold ⇒ but `detailsDone` false, so the `&&`
+ * held the line. Moving step 1 onto `kycComplete` took that prop away — a seller who had typed the
+ * form and no card had `detailsDone` true, no account, therefore no `clearing-approval` hold, and
+ * this went green for a review that had not been asked for. Every step ticked, shop dark, and the
+ * overview still asking for details. Two edits, each defensible, and the bug was in the gap.
+ *
+ * The lesson is in the shape, not the values: **an absent hold is not an achievement.** Holds say
+ * what is blocking, so "not blocked" covers both finished and not-yet-started, and a green tick is
+ * a claim about the first. Derived from the account's own state instead — `clearing.state` is
+ * `'ready'` only when PayMe hold an approved business.
+ */
+const approvalDone = clearing?.state === 'ready';
 /**
  * **This shop's** step, not the account's: a plan chosen and a card on file, or already being
  * billed for this shop. A seller can be paying and still owe for the shop he is looking at.
@@ -136,7 +157,17 @@ const STEPS = [
      * Since every unfinished step opens now, this one is on screen from the very first minute — so
      * a seller who had typed nothing was told a seven-day clock was already running for him.
      */
-    note: detailsDone ? d.glStepApprovalNote : d.glStepApprovalWaiting,
+    /**
+     * Three states, because there are three (2026-08-25). The review has not been ASKED for until
+     * the details reach PayMe, and they reach PayMe when the card is saved — so a seller who has
+     * finished the form has neither "nothing typed yet" nor "a clock is running".
+     *
+     * Read from the account, never from `detailsDone`: that is the reading that put a green tick on
+     * this step for a review nobody had requested.
+     */
+    note: clearing?.state === 'awaiting-approval' || clearing?.state === 'ready' ? d.glStepApprovalNote
+      : clearing?.state === 'not-opened' ? d.glStepApprovalAfterCard
+      : d.glStepApprovalWaiting,
   },
 ] as const;
 
@@ -254,9 +285,33 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
             <p class="muted m-0 mt-1 text-[0.84rem]">{step.note}</p>
           )}
 
-          {step.id === 'details' && !detailsDone && (
+          {/**
+            * ── Rendered while the details are still HIS, not only while they are unfinished ──
+            *
+            * `!detailsDone` meant the block vanished the instant the last field was typed, taking
+            * the summary and the edit button with it: the owner finished the form, the step went
+            * green, and there was no longer anything on the page to press (*"אי אפשר בעצם לערוך
+            * אותו, למה?"*). The step being done is not a reason to hide what was done — every other
+            * completed step on this screen keeps its content.
+            *
+            * The window that matters is the one between saving the form and PayMe receiving it,
+            * which since 2026-08-25 is a real span of time rather than an instant. Inside it a typo
+            * in a ח״פ is still fixable; outside it nothing here reaches them and the form says so
+            * instead of offering an edit it cannot deliver.
+            */}
+          {step.id === 'details' && clearing?.state !== 'ready' && (
             <div class="mt-3">
-              <ClearingDetailsForm kyc={kyc} derivedCategory={derivedCategory} complete={kycComplete} sent={detailsDone} bare d={d} />
+              {/* `sent` means **PayMe hold these details**, and it must not be `detailsDone`
+                  (owner, 2026-08-25: *"עכשיו יש וי ליד פרטי העסק והוא ירוק, ואי אפשר בעצם לערוך
+                  אותו, למה?"*). Step 1 completing is about HIM — everything asked for is typed —
+                  while this decides whether the form is still his to change. They were the same
+                  fact until the account moved to card-save; now there is a real window between
+                  them, and it is exactly the window in which a typo is still fixable. Locking the
+                  form there took away the last chance to correct a ח״פ before it went to a
+                  processor who will not amend it. */}
+              {/* `'ready'` cannot occur here — the block above only renders while the state is NOT
+                  ready — so `awaiting-approval` is the whole of "a processor holds these". */}
+              <ClearingDetailsForm kyc={kyc} derivedCategory={derivedCategory} complete={kycComplete} sent={clearing?.state === 'awaiting-approval'} bare d={d} />
             </div>
           )}
 

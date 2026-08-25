@@ -51,7 +51,7 @@ interface Props {
    *  **`null` means no clearing provider is configured**, which is dev and the pre-gateway window
    *  GO_LIVE §7 plans — nothing is blocked, so a line about being blocked would describe a rule
    *  that is not in force. The block renders only when there is really something to say. */
-  clearing: { state: 'ready' | 'missing-details' | 'awaiting-approval'; signupLink?: string } | null;
+  clearing: { state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval'; signupLink?: string } | null;
   /** What PayMe require about the business, as far as it has been filled in. Rendered under the
    *  bank block (owner, 2026-08-23) — one screen owns everything to do with money, and the
    *  "your shop is not live" card on the overview links straight here. */
@@ -234,6 +234,7 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       kyc={kyc}
       derivedCategory={derivedCategory}
       kycComplete={kycComplete}
+      clearing={clearing}
       planName={planName}
       planNames={planNames}
       subscription={subscription}

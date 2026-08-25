@@ -38,7 +38,8 @@
 import { rows } from './db.js';
 import { getStoresBySellerId, updateStore } from './stores.js';
 import { storeLifecycle, type StoreLifecycleFlags } from './store-status.js';
-import { merchantBlockFor } from './seller-merchant.js';
+import { merchantBlockFor, merchantKycFor } from './seller-merchant.js';
+import { missingMerchantKyc } from './merchant-kyc.js';
 import { createNotification } from './notifications.js';
 import { sendStoreLiveEmail } from './email/store-live-email.js';
 import { getSellerById } from './seller-auth.js';
@@ -96,15 +97,27 @@ export async function publishHoldsFor(
   sellerId: string,
   creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<PublishHold[]> {
-  const [subscribed, merchantBlock] = await Promise.all([
+  const [subscribed, merchantBlock, kyc] = await Promise.all([
     sellerIsSubscribed(sellerId, creds),
     merchantBlockFor(sellerId, creds),
+    // Asked separately from the account, because since 2026-08-25 the absence of an account no
+    // longer implies the absence of details — see below.
+    merchantKycFor(sellerId),
   ]);
   // The order IS the flow the seller is walked through — see `PublishHold`. Details, then the plan
   // and the card, then the wait he cannot shorten: everything he can act on comes before the thing
   // nobody can, and none of it charges him until the shop is actually up.
   const holds: PublishHold[] = [];
-  if (merchantBlock === 'no-account') holds.push('clearing-details');
+  /**
+   * **`no-account` is not the same as "details missing" any more.** The account is opened when the
+   * seller commits a card, not when he saves the form (`subscription-arm.ts`), so a seller who has
+   * given PayMe everything they ask for still has no account — and this hold used to fire for him,
+   * putting "חסרים פרטים לפתיחת חשבון סליקה" on the overview of somebody with nothing missing
+   * (owner, 2026-08-25). What he is actually waiting on in that state is his own card, which is the
+   * `subscription` hold on the next line and was already there. Two holds for one gap is how the
+   * two screens started contradicting each other.
+   */
+  if (merchantBlock === 'no-account' && missingMerchantKyc(kyc).length) holds.push('clearing-details');
   if (!subscribed) holds.push('subscription');
   if (merchantBlock === 'not-approved') holds.push('clearing-approval');
   return holds;
