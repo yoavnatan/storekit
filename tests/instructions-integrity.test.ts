@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { stripComments } from './helpers/source-guard.js';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -177,7 +178,11 @@ describe('AI_INSTRUCTIONS.md describes the repo it lives in', () => {
         : tracked.find((p) => p === clean || p.endsWith('/' + clean));
       if (!hit || safeIsDir(join(ROOT, hit))) return null;
       try {
-        return readFileSync(join(ROOT, hit), 'utf8');
+        // Comments stripped: this answers "does the thing AI_INSTRUCTIONS points at EXIST", and a
+        // name that appears only in that file's own prose is a pointer to nothing while looking
+        // perfectly resolved. Found 2026-08-25 by scripts/audit-hollow-guards.mjs, which runs the
+        // suite a second time with every src/ comment removed.
+        return stripComments(readFileSync(join(ROOT, hit), 'utf8'));
       } catch {
         return null;
       }

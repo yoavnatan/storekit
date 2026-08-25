@@ -90,7 +90,13 @@ import { fileURLToPath } from 'node:url';
  * the one session in five that edits money code, instead of being skimmed by the other four at
  * session start. Relocation buys attention here, not bytes. 40,106 → 39,743.
  */
-const CEILING = 39_743;
+/* Ratcheted down 39,743 → 39,554 on 2026-08-25. The gain was one relocation, not a trim: the
+   "why on contact and never as a session of its own" reasoning behind the Tailwind rule moved into
+   `.claude/hooks/remind-css-conversion.sh`, which re-injects it at the moment somebody is actually
+   converting CSS — i.e. it is read MORE often now, not less, and by the session that needs it.
+   That is the only move that lowers this number honestly. Shaving provenance out of a rule to buy
+   bytes makes the rule easier to ignore, which costs more than the bytes are worth. */
+const CEILING = 39_554;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 

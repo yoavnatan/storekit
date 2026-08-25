@@ -17,6 +17,12 @@ touching unrelated classes just to convert them).
 The rule was sharpened 2026-07-28 because it read as universal, so it got silently skipped whenever
 it did not apply — and then skipped when it did. CONVERT a rule you touched when it is a plain style
 on an element the component actually renders: spacing, colour, radius, border, a simple flex/grid box.
+#
+# WHY ON CONTACT AND NEVER AS A SESSION OF ITS OWN (decided 2026-07-15, moved here from
+# AI_INSTRUCTIONS 2026-08-25): ten dedicated conversion rounds showed weak ROI. The payoff is not
+# tidier CSS — it is less legacy-CSS context for a session to carry, and that only justifies opening
+# a file a real feature was already opening. This hook exists so the rule arrives at that moment
+# instead of being remembered at session start.
 
 LEAVE AS CSS — this is not a failure to convert:
  (a) A descendant selector whose target the component does not own. `.home-shelf .store-card` moved

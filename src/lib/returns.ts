@@ -348,7 +348,11 @@ export function returnedGoodsCount(lines: ReturnedLine[] | null | undefined): nu
  * quantity 900" must cost the seller nothing (`AI_INSTRUCTIONS` → bounds are checked on the server
  * even when the UI already checks them).
  */
-export function partialRefundAgorot(
+/* NOT exported: `refundForRequest` below is the single entry point every caller asks, which is the
+   whole point of that function existing. This became visible on 2026-08-25 only after the
+   dead-export guard stopped counting a mention inside a COMMENT as a use — two other files name
+   this function in prose, and that was enough to hide it. */
+function partialRefundAgorot(
   order: Pick<Order, 'items'>,
   lines: ReturnedLine[],
 ): number {

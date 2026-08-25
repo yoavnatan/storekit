@@ -7,6 +7,7 @@ import {
   returnShippingPayer, refundAmountAgorot, returnedGoods, returnedGoodsCount,
 } from '../src/lib/returns.js';
 import { translations } from '../src/i18n/translations.js';
+import { stripComments } from './helpers/source-guard.js';
 
 /**
  * Nothing in the returns feature may be written and left uncalled.
@@ -43,7 +44,12 @@ function allSources(): Map<string, string> {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const rel = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(rel);
-      else if (/\.(ts|astro|mjs)$/.test(entry.name)) out.set(rel, fs.readFileSync(rel, 'utf8'));
+      // COMMENTS OUT. This map answers "does anything else name this export", and a prose mention
+      // — `createReturn` is what does this — matched just as well as a call did. So an export
+      // nothing calls stayed invisible to a test whose entire job is finding exports nothing calls,
+      // and the better the module was documented the more thoroughly it was hidden. Found on
+      // 2026-08-25 by running the suite with every src/ comment stripped (scripts/audit-hollow-guards.mjs).
+      else if (/\.(ts|astro|mjs)$/.test(entry.name)) out.set(rel, stripComments(fs.readFileSync(rel, 'utf8')));
     }
   };
   ['src', 'tests', 'scripts'].forEach(walk);
