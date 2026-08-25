@@ -2716,12 +2716,31 @@ const orderStatusColors: Record<string, string> = {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
                   {d.adCreateCampaign}
                 </button>
+                {/* **`whitespace-nowrap` was here and it ran off the screen** (owner, 2026-08-25:
+                    *"ההודעה יוצאת מגבולות המסך"*). The note is ~55 characters, it is absolutely
+                    positioned from the button's inline-end, and the button sits at the end of a
+                    `justify-end` row — so on a narrow dashboard the box extended past the edge,
+                    taking the LINK at the end of the sentence with it. That is also why he asked
+                    for a link that was already there: it was the part that went off-screen.
+
+                    `w-max` keeps it as wide as its content when there is room; the clamp stops it
+                    at whichever runs out first, 22rem of its own or the viewport minus a gutter,
+                    and below that it wraps to a second line. The VIEWPORT and not the container,
+                    because an absolutely-positioned box is not bounded by its offset parent's
+                    width. **The underscores in `calc(100vw_-_2rem)` are required** — Tailwind's
+                    escape for the spaces CSS `calc` demands around an operator; `calc(100vw-2rem)`
+                    is not valid CSS and the declaration is dropped silently.
+
+                    ⚠️ And this comment sits ABOVE the element rather than between its attributes,
+                    where it was first written: an `{…}` expression among attributes is a parse
+                    error in `.astro`, and the six errors it produced named lines up to 34 rows
+                    away. That is the compile failure `scripts/verify.mjs`'s header describes. */}
                 {storeNotLive && (
                   <div
                     id="ad-needs-live"
                     role="status"
                     aria-live="polite"
-                    class="!hidden absolute top-[calc(100%+0.45rem)] inset-inline-end-0 z-30 rounded-[var(--radius)] border [border-color:var(--color-border)] [background:var(--color-surface)] [box-shadow:var(--shadow-card)] py-[0.45rem] px-[0.8rem] text-[0.8rem] whitespace-nowrap"
+                    class="!hidden absolute top-[calc(100%+0.45rem)] inset-inline-end-0 z-30 rounded-[var(--radius)] border [border-color:var(--color-border)] [background:var(--color-surface)] [box-shadow:var(--shadow-card)] py-[0.45rem] px-[0.8rem] text-[0.8rem] w-max max-w-[min(22rem,calc(100vw_-_2rem))] leading-[1.45]"
                   >
                     {d.adNeedsLive} <button type="button" class="[color:var(--color-accent)] font-semibold bg-transparent border-0 p-0 cursor-pointer" data-goto-panel="payouts">{d.adNeedsLiveLink}</button>
                   </div>
