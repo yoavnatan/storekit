@@ -1472,7 +1472,7 @@ export const translations = {
       subCardExpiry: 'תוקף',
       subCardCvc: 'CVV',
       subCardSave: 'שמירת הכרטיס',
-      subCardNoCharge: 'לא נגבה עכשיו. החיוב הראשון יורד ביום שהחנות עולה לאוויר, אפשר לבטל עד אז בלי שום חיוב.',
+      subCardNoCharge: 'לא נגבה עכשיו. החיוב הראשון יורד ביום שהחנות עולה לאוויר ואפשר לבטל עד אז בלי שום חיוב.',
       // Said when the card was accepted and the clearing account still cannot be opened. It names
       // no field: what is outstanding is marked on the two blocks themselves once the page re-reads,
       // and a toast listing four field names in a language nobody wrote for a toast is worse than
@@ -1487,7 +1487,7 @@ export const translations = {
       subCardRemoveTitle: 'להסיר את הכרטיס?',
       // Says the consequence, and says the part that keeps it from feeling final: nothing was
       // charged, and everything he built is where he left it.
-      subCardRemoveBody: 'לא בוצע חיוב, לא ייגבה דבר. החנות לא תעלה לאוויר עד שיישמר כרטיס, כל מה שבנית נשאר במקומו.',
+      subCardRemoveBody: 'לא בוצע חיוב ולא ייגבה דבר. החנות לא תעלה לאוויר עד שיישמר כרטיס וכל מה שבנית נשאר במקומו.',
       subCardRemoved: 'הכרטיס הוסר.',
       payClearingTitle: 'חשבון סליקה',
       payClearingReady: 'החנויות שלכם יכולות למכור.',
