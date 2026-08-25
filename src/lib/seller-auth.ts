@@ -405,6 +405,30 @@ export async function updateSeller(
  *
  * The values arriving here are already validated and normalised; this writes them.
  */
+/**
+ * The business number and type alone — nothing about the bank.
+ *
+ * A second, deliberately narrow writer beside {@link updateSellerPayoutDetails}, added when those
+ * two fields moved onto the business-details form (2026-08-25). It is narrow for a reason: the bank
+ * block is four fields that must arrive together or not at all, because three of four is an account
+ * money cannot be sent to, and a writer able to touch a subset of them is how that guarantee would
+ * quietly stop holding. This one writes two independent scalars.
+ *
+ * An absent key is left alone rather than nulled — see `parseBusinessFields`.
+ */
+export async function updateSellerBusinessFields(
+  sellerId: string,
+  fields: { businessId?: string | null; businessType?: string | null },
+): Promise<void> {
+  if (!isUuid(sellerId)) return;
+  const sets: string[] = [];
+  const params: unknown[] = [sellerId];
+  if (fields.businessId !== undefined) { params.push(fields.businessId); sets.push(`business_id = $${params.length}`); }
+  if (fields.businessType !== undefined) { params.push(fields.businessType); sets.push(`business_type = $${params.length}`); }
+  if (!sets.length) return;
+  await query(`UPDATE sellers SET ${sets.join(', ')} WHERE id = $1`, params);
+}
+
 export async function updateSellerPayoutDetails(id: string, details: PayoutDetails): Promise<Seller | null> {
   if (!isUuid(id)) return null;
   const row = await firstRow<SellerRow>(

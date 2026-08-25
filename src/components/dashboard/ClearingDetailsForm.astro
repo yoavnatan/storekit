@@ -28,6 +28,7 @@
  */
 import type { MerchantKyc } from '../../lib/merchant-kyc.js';
 import { MERCHANT_CATEGORY_OPTIONS } from '../../lib/merchant-category.js';
+import { BUSINESS_TYPES } from '../../lib/payout-details.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -48,6 +49,10 @@ interface Props {
    * whether editing is offered at all — see the summary below.
    */
   sent?: boolean;
+  /** The two fields that live on the `sellers` row rather than in `merchant_kyc` — the business
+   *  number and its type. Handed in because this component does not read the DB. */
+  businessId: string | undefined;
+  businessType: string | undefined;
   /** Rendered INSIDE a go-live step, which already carries the number and the title. Drops its own
    *  frame and its own heading, so the step is ONE thing rather than a box in a box with two
    *  headings for one errand (owner, 2026-08-25: *"יש שם ריבוי קונטיינרים... צריך רק כותרת אחת עם
@@ -55,7 +60,12 @@ interface Props {
   bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { kyc, derivedCategory, complete, sent = false, bare = false, d } = Astro.props;
+const { kyc, derivedCategory, complete, sent = false, bare = false, businessId, businessType, d } = Astro.props;
+const TYPE_LABEL: Record<string, string> = {
+  exempt: d.payBusinessExempt,
+  licensed: d.payBusinessLicensed,
+  company: d.payBusinessCompany,
+};
 const v = (x: string | number | undefined): string => (x === undefined ? '' : String(x));
 ---
 
@@ -148,6 +158,33 @@ const v = (x: string | number | undefined): string => (x === undefined ? '' : St
         columns let the fields flow: whatever is rendered fills the row, and the address stays
         together because `street` is given the wide column. */}
     <p class="muted m-0 mt-5 mb-1 text-[0.78rem] font-semibold">{d.mkBusinessLegend}</p>
+    {/* ── The business's own two numbers ──
+        Moved here from the bank block on 2026-08-25 (owner: *"פרטי העסק לא כוללים את סוג העסק,
+        מספר הח״פ"*). First in this section because they are what a person reaches for when
+        asked about his business, and because the type decides what the number should BE: an עוסק
+        פטור and an עוסק מורשה both type their ת.ז here, a חברה types its ח״פ — and PayMe enforce
+        the second of those, refusing an עוסק מורשה whose number is not his own ת.ז. */}
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBusinessType}</span>
+        {/* A real `<select>`, upgraded by `initSelectDropdown` like the category picker below —
+            raw selects are not this site's shape (`feedback_no_native_dropdowns`) and the helper
+            takes one and replaces it. */}
+        <select class="input" name="businessType" id="mk-business-type">
+          <option value="">{d.payBusinessNone}</option>
+          {BUSINESS_TYPES.map((t) => (
+            <option value={t} selected={businessType === t}>{TYPE_LABEL[t]}</option>
+          ))}
+        </select>
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBusinessId}</span>
+        <input class="input" name="businessId" id="mk-business-id" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={businessId ?? ''} />
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.mkBusinessIdHint}</p>
+      </label>
+    </div>
+
+
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1.4fr_0.6fr]">
       <label class="field">
         <span class="text-[0.85rem]">{d.mkRegisteredOn}</span>

@@ -2,8 +2,10 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { saveMerchantKyc, clearingStatusFor } from '../../../lib/seller-merchant.js';
-import { missingMerchantKyc } from '../../../lib/merchant-kyc.js';
+import { saveMerchantKyc, clearingStatusFor, missingForClearingAccount } from '../../../lib/seller-merchant.js';
+import { parseBusinessFields } from '../../../lib/payout-details.js';
+import { updateSellerBusinessFields } from '../../../lib/seller-auth.js';
+
 import { syncStorePublication, publishHoldsFor } from '../../../lib/store-publication.js';
 
 /**
@@ -48,7 +50,25 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   // `normalizeMerchantKyc` inside this drops any field that fails validation rather than refusing
   // the submission, which is what makes a partial save partial instead of lost.
-  const stored = await saveMerchantKyc(sellerId, read.value);
+  await saveMerchantKyc(sellerId, read.value);
+
+  /**
+   * ── The business NUMBER and the business TYPE are saved here too (owner, 2026-08-25) ──
+   *
+   * *"אני רואה שעדיין פרטי העסק לא כוללים את סוג העסק, מספר הח״פ או מה שזה לא יהיה."*
+   *
+   * They were on the bank block, and only for a reason of chronology: payouts needed them first, so
+   * they were collected on the payouts form and stored on the `sellers` row. Nothing about them is
+   * a bank detail — they are the two things PayMe examine hardest, the ח״פ is what their
+   * osek-murshe rule compares against the owner's ת.ז, and a form titled "פרטי העסק" that contains
+   * neither is a form a seller reasonably believes he has finished.
+   *
+   * Kept on their existing columns and written through `savePayoutBusiness`, so nothing about the
+   * payouts screen, the withdrawal flow or `create-seller` changes — only which form asks.
+   */
+  const business = parseBusinessFields(read.value);
+  if (!business.ok) return json({ error: business.error, field: business.field }, 400);
+  await updateSellerBusinessFields(sellerId, business);
 
   /**
    * ── The account is NOT opened here any more (owner, 2026-08-25) ──
@@ -80,7 +100,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     ok: true,
     // What is still missing, from the SAME function the account path asks — so the form can never
     // disagree with the thing that decides whether an account may be opened.
-    missing: missingMerchantKyc(stored),
+    // **Everything PayMe require**, not just this column's ten fields. The narrow version is what
+    // let a seller finish this form, see it ticked, and have no account opened because his business
+    // type was empty (`missingForClearingAccount` carries the whole finding).
+    missing: await missingForClearingAccount(sellerId),
     clearing: await clearingStatusFor(sellerId),
     holds: await publishHoldsFor(sellerId),
     published,

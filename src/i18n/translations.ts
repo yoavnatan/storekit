@@ -1379,6 +1379,9 @@ export const translations = {
       // category and asked whether the shop would then be listed under it). It is a code for the
       // processor, stored on the SELLER, and `stores.categories` — the thing that actually shows
       // on the site — is a different field this form never touches.
+      // Which number goes in, in the words of the three answers above it. The rule is not obvious
+      // and getting it wrong is a refusal from PayMe days later, on a screen the seller never sees.
+      mkBusinessIdHint: 'עוסק פטור ועוסק מורשה — מספר תעודת הזהות. חברה — מספר ח״פ.',
       mkCategoryHint: 'רק לצורך חברת הסליקה — לא מופיע באתר ולא משנה את הקטגוריות של החנות. בדרך כלל זה נקבע לבד מהקטגוריות שבחרתם; כאן זה לא הסתדר, אז בחרו את הקרוב ביותר.',
       mkCategoryNone: 'בחרו תחום',
       mkCity: 'עיר',
@@ -3697,6 +3700,7 @@ export const translations = {
       mkPhoneHint: 'Mobile or landline. The processor uses it to reach you.',
       mkRegisteredOn: 'Business registration date',
       mkCategory: 'Business field (for the processor)',
+      mkBusinessIdHint: 'Exempt and licensed dealers — your ID number. A company — its registration number.',
       mkCategoryHint: "For the processor only — it does not appear on the site and does not change your store's categories. It usually comes from the categories you picked; that did not resolve here, so choose the closest one.",
       mkCategoryNone: 'Pick a trade',
       mkCity: 'City',

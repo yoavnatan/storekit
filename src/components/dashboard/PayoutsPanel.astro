@@ -32,7 +32,7 @@
  * sum of the shops on the site (`lib/store-plan.ts`). A seller with a second ח״פ opens a second
  * account; `DB_MIGRATION_PLAN.md` §10 records why, and it is closed rather than pending.
  */
-import { BUSINESS_TYPES, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
+import { maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
 import { ISRAELI_BANKS, bankName } from '../../lib/israeli-banks.js';
 import GoLiveSteps from './GoLiveSteps.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
@@ -234,6 +234,8 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       kyc={kyc}
       derivedCategory={derivedCategory}
       kycComplete={kycComplete}
+      businessId={seller.businessId}
+      businessType={seller.businessType}
       clearing={clearing}
       planName={planName}
       planNames={planNames}
@@ -348,22 +350,11 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
         </label>
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2 mt-1">
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBusinessId}</span>
-          <input class="input" name="businessId" id="pay-business-id" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={seller.businessId ?? ''} />
-        </label>
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBusinessType}</span>
-          <select class="input" name="businessType" id="pay-business-type">
-            <option value="">{d.payBusinessNone}</option>
-            {BUSINESS_TYPES.map((t) => (
-              <option value={t} selected={seller.businessType === t}>{TYPE_LABEL[t]}</option>
-            ))}
-          </select>
-          <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessHint}</p>
-        </label>
-      </div>
+      {/* ── The business number and type moved to the business-details form (2026-08-25) ──
+          They were here only because payouts needed them first; nothing about them is a bank
+          detail. The owner read a form titled "פרטי העסק" that contained neither and reasonably
+          concluded it was not asking for them at all. `ClearingDetailsForm.astro` has them now;
+          the columns and every reader of them are unchanged. */}
 
       <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="pay-details-error" role="alert"></p>
       <div class="flex items-center gap-2 mt-3">

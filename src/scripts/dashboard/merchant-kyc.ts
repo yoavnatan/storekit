@@ -77,6 +77,10 @@ export function initMerchantKycForm(): void {
   // the site's own dropdown and leaves the select as the value.
   const category = document.getElementById('mk-category') as HTMLSelectElement | null;
   if (category) initSelectDropdown(category);
+  // The business type moved onto this form on 2026-08-25 and gets the same treatment — it was a raw
+  // `<select>` on the bank block, which is a shape this site does not use anywhere else.
+  const businessType = form.querySelector<HTMLSelectElement>('#mk-business-type');
+  if (businessType) initSelectDropdown(businessType);
 
   document.getElementById('mk-edit')?.addEventListener('click', () => open(true));
   document.getElementById('mk-cancel')?.addEventListener('click', () => open(false));

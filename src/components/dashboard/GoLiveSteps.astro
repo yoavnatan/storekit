@@ -48,7 +48,6 @@ import { SELLER_TIERS, type SellerTierId } from '../../lib/pricing.js';
 import type { getT } from '../../i18n/index.js';
 import ClearingDetailsForm from './ClearingDetailsForm.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
-import PlanPills from './PlanPills.astro';
 
 interface Props {
   /** Empty means nothing is gating the ACCOUNT. This screen can still render, because a second shop
@@ -67,6 +66,10 @@ interface Props {
   kyc: Partial<MerchantKyc>;
   derivedCategory: string | null;
   kycComplete: boolean;
+  /** The business number and its type. They sit on the `sellers` row rather than in `merchant_kyc`
+   *  — payouts needed them first — and moved onto this screen on 2026-08-25. */
+  businessId: string | undefined;
+  businessType: string | undefined;
   /** What PayMe actually hold. The only honest source for step 3, because the holds say what is
    *  BLOCKING and cannot distinguish an approval that is finished from one nobody asked for. */
   clearing: { state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval' } | null;
@@ -82,7 +85,7 @@ interface Props {
   d: ReturnType<typeof getT>['dashboard'];
 }
 const {
-  holds, store, storeInPlan, cardOnFile, payer, kyc, derivedCategory, kycComplete, clearing, planName, planNames,
+  holds, store, storeInPlan, cardOnFile, payer, kyc, derivedCategory, kycComplete, businessId, businessType, clearing, planName, planNames,
   subscription, subscriptionPaying, signupLink, d,
 } = Astro.props;
 
@@ -312,7 +315,7 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
                   processor who will not amend it. */}
               {/* `'ready'` cannot occur here — the block above only renders while the state is NOT
                   ready — so `awaiting-approval` is the whole of "a processor holds these". */}
-              <ClearingDetailsForm kyc={kyc} derivedCategory={derivedCategory} complete={kycComplete} sent={clearing?.state === 'awaiting-approval'} bare d={d} />
+              <ClearingDetailsForm kyc={kyc} derivedCategory={derivedCategory} complete={kycComplete} sent={clearing?.state === 'awaiting-approval'} businessId={businessId} businessType={businessType} bare d={d} />
             </div>
           )}
 
@@ -347,19 +350,37 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
             * charge, and while nothing has been charged at all there is not even a next charge to
             * wait for — so the chooser stays rather than becoming something he must go and find.
             */}
+          {/**
+            * ── A finished step keeps what it is about (owner, 2026-08-25) ──
+            *
+            * Two complaints, one fault. *"נראה שהמוכר לא רואה איזה מסלול הוא בחר, הוא רק רואה שנבחר
+            * מסלול"* and *"אני גם לא מצליח לראות שם את פרטי הכרטיס, אם לקוח רוצה לשנות פרטי אמצעי
+            * תשלום?"* — the whole body of this step was gated on `!cardDone`, so the moment he
+            * finished it, the plan's name, its price, its commission and the card he had just
+            * saved all left the screen. What replaced them was a tick meaning "a plan was picked",
+            * which is the one thing he already knew.
+            *
+            * The card component already renders both of those states — the plan grid, the "card on
+            * file, nothing charged" line and the button that replaces it. It simply was not being
+            * rendered. The plan chooser comes with it (`bare` draws it first), and it belongs here
+            * more than anywhere: nothing has been charged yet, so a change does not even have to
+            * wait for a next charge.
+            */}
           {step.id === 'card' && cardDone && (
             <div class="mt-3">
-              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.86rem] m-0">
-                <dt class="muted">{d.glPlanTitle}</dt>
-                <dd class="m-0 font-semibold justify-self-start">
-                  {d.subPlanValue.replace('{name}', planName).replace('{fee}', String(SELLER_TIERS.find((t) => t.id === (activeTier ?? SELLER_TIERS[0]!.id))!.monthlyFee)).replace('{per}', d.subPerMonth)}
-                </dd>
-                <dt class="muted">{d.subCommission}</dt>
-                <dd class="m-0 font-semibold justify-self-start" id="sub-commission">{SELLER_TIERS.find((t) => t.id === (activeTier ?? SELLER_TIERS[0]!.id))!.commissionPercent}%</dd>
-              </dl>
-              <div class="mt-3">
-                <PlanPills storeId={store.id} tier={store.tier} planNames={planNames} d={d} />
-              </div>
+              <SubscriptionCard
+                storeId={store.id}
+                planName={planName}
+                tier={store.tier as SellerTierId | undefined}
+                planNames={planNames}
+                subscription={subscription}
+                paying={subscriptionPaying}
+                storeInPlan={storeInPlan}
+                cardOnFile={cardOnFile}
+                payer={payer}
+                bare
+                d={d}
+              />
             </div>
           )}
 

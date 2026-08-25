@@ -140,6 +140,42 @@ export function parsePayoutDetails(input: PayoutDetailsInput): PayoutDetailsResu
 }
 
 /**
+ * The two business fields, validated on their own.
+ *
+ * Split out of `parsePayoutDetails` on 2026-08-25, when they moved to the business-details form
+ * (owner: *"פרטי העסק לא כוללים את סוג העסק, מספר הח״פ"* — and a form of that name that contains
+ * neither is one a seller reasonably believes he has finished). Two forms now submit them, so the
+ * rule about what they may contain is asked in one place rather than copied into the second.
+ *
+ * `undefined` means the submission did not carry the field at all, which is left alone rather than
+ * cleared: the two forms can be open in two tabs and a save from either must not blank the other's
+ * value (`project_multitab_concurrency`).
+ */
+export function parseBusinessFields(
+  input: { businessId?: unknown; businessType?: unknown },
+): { ok: true; businessId?: string | null; businessType?: string | null } | { ok: false; field: string; error: string } {
+  const out: { ok: true; businessId?: string | null; businessType?: string | null } = { ok: true };
+
+  if (input.businessId !== undefined) {
+    const businessId = digits(input.businessId).slice(0, LIMITS.businessId);
+    if (businessId !== '' && businessId.length !== LIMITS.businessId) {
+      return { ok: false, field: 'businessId', error: 'מספר עוסק/ח״פ הוא 9 ספרות' };
+    }
+    out.businessId = businessId || null;
+  }
+
+  if (input.businessType !== undefined) {
+    const businessType = typeof input.businessType === 'string' ? input.businessType : '';
+    if (businessType !== '' && !(BUSINESS_TYPES as readonly string[]).includes(businessType)) {
+      return { ok: false, field: 'businessType', error: 'סוג העסק לא מוכר' };
+    }
+    out.businessType = businessType || null;
+  }
+
+  return out;
+}
+
+/**
  * Did this submission carry ANYTHING at all?
  *
  * Separate from `parsePayoutDetails` on purpose. An all-empty result is legitimate — it is how a
