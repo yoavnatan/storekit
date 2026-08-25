@@ -88,9 +88,15 @@ async function orderForLeg(checkoutRef: string, leg: string): Promise<OrderRow |
 const SELLER_COPY: Record<ChargebackKind, { title: string; body: (amount: string) => string }> = {
   chargeback: {
     title: 'קונה הכחיש עסקה',
-    // States the fact and the consequence, and asks for nothing — because there is nothing here he
-    // can press. Naming an action that does not exist is worse than naming none.
-    body: (amount) => `קונה פנה לחברת האשראי וביקש לבטל חיוב של ${amount}. הכסף נלקח בחזרה מחשבון הסליקה שלכם. אנחנו בודקים מול חברת הסליקה מה אפשר לעשות ונעדכן.`,
+    // **The last sentence used to be "אנחנו בודקים מול חברת הסליקה ונעדכן", and nothing performed
+    // it** — no code checks anything and no update was ever going to arrive (owner caught it,
+    // 2026-08-25). A promise on a money notification that nothing keeps is the same defect as a
+    // button that does not work, and it is worse here because a seller would wait on it instead of
+    // acting. What replaces it is the only thing that is actually true: disputes are usually
+    // contestable with proof of delivery, and the processor is the one who runs that process.
+    // ⚠️ Whether he can hand that proof to us instead is question 4 in `payme-questions-open.md`;
+    // until they answer, this must not imply that he can.
+    body: (amount) => `קונה פנה לחברת האשראי וביקש לבטל חיוב של ${amount}, והכסף נלקח בחזרה מחשבון הסליקה שלכם. לרוב אפשר לערער מול חברת הסליקה עם אישור מסירה או מספר מעקב — כדאי לפנות אליהם בהקדם.`,
   },
   chargeback_reverted: {
     title: 'ההכחשה בוטלה',

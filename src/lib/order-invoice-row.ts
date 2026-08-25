@@ -30,6 +30,9 @@ export interface OrderInvoiceRowLabels {
   uploaded: string;
   view: string;
   undo: string;
+  /** The processor issued it in the seller's name and we fetched the link — he did nothing and
+   *  there is nothing for him to do. */
+  auto: string;
 }
 
 const CLS = {
@@ -113,7 +116,16 @@ export function orderInvoiceRowHtml(
   const handedLabel = delivery === 'pickup' ? labels.handedPickup : labels.handedShip;
 
   let body: string;
-  if (state?.mode === 'upload' && state.documentUrl) {
+  if (state?.mode === 'processor' && state.documentUrl) {
+    // **No undo, and no action at all.** The other two states record something the SELLER says he
+    // did, so both can be taken back; this one records a tax document that exists at the
+    // processor's own URL. An undo would only make our record disagree with a document still
+    // sitting there — and there is nothing here he was ever asked to do, which is the whole point
+    // of the service he is paying for.
+    body =
+      `<span class="${CLS.done}">${CHECK}${esc(labels.auto)}</span>` +
+      `<a class="${CLS.link}" href="${esc(state.documentUrl)}" target="_blank" rel="noopener noreferrer">${esc(labels.view)}</a>`;
+  } else if (state?.mode === 'upload' && state.documentUrl) {
     // `rel="noopener"` on a target=_blank link that the SELLER supplied the URL for. The host is
     // pinned server-side (`buyer-invoice.ts`), so this is the second layer rather than the only one.
     body =

@@ -246,10 +246,17 @@ describe('the registry itself', () => {
     // that are currently live, and a store it has already taken down is not in that list, so a
     // second pass over the same seller does nothing. What gates it is a DATE — the end of the
     // period already paid for — never the moment a seller pressed cancel.
+    // And `payme-invoices` (2026-08-25) — the only job that fetches a document from a third party
+    // and shows it to a buyer. Its idempotency is the settlement shape: `markBuyerInvoiceProvided`
+    // SETS a row rather than incrementing anything, keeps the first `issued_at` under a COALESCE,
+    // and is scoped by `seller_id`, so a second pass writes the same URL to the same row and
+    // changes nothing a screen can see. Everything before the write is read-only. What it must
+    // never do is attach a link that is not the processor's — that is `isProcessorDocumentUrl`,
+    // pinned in `tests/payme-invoice-sync.test.ts` against a lookalike domain.
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact', 'store-publication', 'subscription-lapse'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'payme-invoices', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact', 'store-publication', 'subscription-lapse'],
     );
   });
 });

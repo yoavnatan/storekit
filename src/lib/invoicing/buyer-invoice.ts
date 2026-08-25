@@ -15,22 +15,31 @@ import { rows, firstRow, isUuid } from '../db.js';
  * partial unique index, and the seller's action is the settlement of a row that is already there.
  * A second table would have been a second answer to "does this order have an invoice yet".
  *
- * ── The two ways a seller settles it ──
+ * ── The three ways it gets settled — and only two of them are the seller doing something ──
  *   `seller_upload`   — he issued it in his own system and uploaded the file. The buyer can open it.
  *   `seller_handover` — he gave it with the goods: in the parcel, or by hand at self-pickup. There is
  *                       no file and there must not be a pretend one; the row records the claim and
  *                       who made it, which is all the platform can honestly know.
+ *   `payme_auto`      — the seller switched on the processor's own invoicing service
+ *                       (`lib/seller-invoicing.ts`), so THEY issue the document in his name at the
+ *                       moment of the charge and we fetch the link. Added 2026-08-25.
+ *                       **Nothing about this one is a claim.** The other two record what a seller
+ *                       says he did; this one records a document that exists, at a URL on the
+ *                       processor's own host, which is why it has no undo — there is nothing for
+ *                       him to take back, and "undoing" it would only make our record disagree with
+ *                       a document still sitting there.
  *
  * ⚠️ The platform does not and cannot verify that a document was really issued. The obligation is
  * the seller's, and `terms.astro` says so to both sides. What this surface buys is that a buyer who
  * asks has somewhere to look, and a seller who forgot has something to be reminded of.
  */
 
-export type BuyerInvoiceMode = 'upload' | 'handover';
+export type BuyerInvoiceMode = 'upload' | 'handover' | 'processor';
 
 export const BUYER_INVOICE_PROVIDER: Record<BuyerInvoiceMode, string> = {
   upload: 'seller_upload',
   handover: 'seller_handover',
+  processor: 'payme_auto',
 };
 
 export interface BuyerInvoiceState {
@@ -53,6 +62,7 @@ interface StateRow {
 const modeOf = (provider: string | null): BuyerInvoiceMode | null =>
   provider === BUYER_INVOICE_PROVIDER.upload ? 'upload'
   : provider === BUYER_INVOICE_PROVIDER.handover ? 'handover'
+  : provider === BUYER_INVOICE_PROVIDER.processor ? 'processor'
   : null;
 
 const iso = (v: Date | string | null): string | null =>
@@ -113,6 +123,29 @@ export function isStoredDocumentUrl(url: string): boolean {
 }
 
 /**
+ * Is this a document the PROCESSOR issued, at a URL on their own host?
+ *
+ * The same shape rule as `isStoredDocumentUrl` and for the same reason: this URL is rendered as a
+ * link a buyer clicks, and it arrives from a third party's JSON. Pinning the host is what stops a
+ * compromised or mistaken field from turning an invoice link into a redirect to anywhere.
+ *
+ * **A suffix match on `payme.io`, anchored with the dot.** Their documents have been seen on more
+ * than one subdomain (`hf.payme.io` serves the card fields, the API answers on `sandbox.` and
+ * `live.`), so pinning one hostname would break the first time they moved the bucket — and a bare
+ * `endsWith('payme.io')` would accept `evilpayme.io`, which is the classic version of this mistake.
+ */
+export function isProcessorDocumentUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:') return false;
+  return parsed.hostname === 'payme.io' || parsed.hostname.endsWith('.payme.io');
+}
+
+/**
  * Record that the seller provided the buyer's invoice for one order.
  *
  * Scoped by `seller_id` in the WHERE, not checked before it: the order id comes from the client and
@@ -132,10 +165,18 @@ export async function markBuyerInvoiceProvided(
 ): Promise<BuyerInvoiceState | null> {
   if (!isUuid(sellerId) || !isUuid(orderId)) return null;
 
-  const url = input.mode === 'upload' ? (input.documentUrl ?? '') : '';
-  // An upload with nothing to open is not an upload. Refused rather than downgraded to a handover:
-  // the seller picked the mode, and silently recording a different one is a claim he did not make.
+  const carriesUrl = input.mode === 'upload' || input.mode === 'processor';
+  const url = carriesUrl ? (input.documentUrl ?? '') : '';
+  // A settlement with nothing to open is not one. Refused rather than downgraded to a handover: the
+  // mode is a statement about WHO produced the document, and silently recording a different one is
+  // a claim nobody made.
+  //
+  // **Two hosts, two validators, and they must not be merged.** An upload is ours and lives on our
+  // Cloudinary account; a processor document lives on the processor's. Accepting either URL for
+  // either mode would let a seller store an arbitrary PayMe-shaped link as his own upload, and
+  // would let a bug store one of our media URLs as a tax document the processor never issued.
   if (input.mode === 'upload' && !isStoredDocumentUrl(url)) return null;
+  if (input.mode === 'processor' && !isProcessorDocumentUrl(url)) return null;
 
   const updated = await firstRow<StateRow>(
     `UPDATE invoice_documents
@@ -147,7 +188,7 @@ export async function markBuyerInvoiceProvided(
         AND seller_id = $2
         AND direction = 'seller_to_buyer'
   RETURNING order_id, status, provider, document_url, issued_at`,
-    [orderId, sellerId, BUYER_INVOICE_PROVIDER[input.mode], input.mode === 'upload' ? url : null],
+    [orderId, sellerId, BUYER_INVOICE_PROVIDER[input.mode], carriesUrl ? url : null],
   );
   return updated ? toState(updated) : null;
 }
@@ -216,14 +257,26 @@ export async function clearBuyerInvoiceProvided(
   orderId: string,
 ): Promise<BuyerInvoiceState | null> {
   if (!isUuid(sellerId) || !isUuid(orderId)) return null;
+  // **The last clause: a processor-issued document is not his to undo.** It is in the STATEMENT and
+  // not in the row builder that already offers no button, because a hidden control is not a rule and
+  // this endpoint is directly callable. The other two modes record something the seller SAYS he did,
+  // so both can be taken back; this one records a tax document that exists at the processor's own
+  // URL, and clearing it would only make our record disagree with a document still sitting there —
+  // until the hourly `payme-invoices` job re-attached it anyway.
+  //
+  // ⚠️ And the note lives HERE rather than as a `--` comment inside the query: it names that job in
+  // backticks, and a backtick inside a template literal ends the string. That is memory
+  // `project_astro_inline_template_backtick`, and it cost this file one parse error before the
+  // comment moved out.
   const updated = await firstRow<StateRow>(
     `UPDATE invoice_documents
         SET status = 'pending', provider = NULL, document_url = NULL, issued_at = NULL
       WHERE order_id = $1
         AND seller_id = $2
         AND direction = 'seller_to_buyer'
+        AND provider IS DISTINCT FROM $3
   RETURNING order_id, status, provider, document_url, issued_at`,
-    [orderId, sellerId],
+    [orderId, sellerId, BUYER_INVOICE_PROVIDER.processor],
   );
   return updated ? toState(updated) : null;
 }

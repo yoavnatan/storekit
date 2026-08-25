@@ -161,6 +161,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       uploaded: tt('orderInvoiceUploaded'),
       view: tt('orderInvoiceView'),
       undo: tt('orderInvoiceUndo'),
+      auto: tt('orderInvoiceAuto'),
     };
   }
 

@@ -38,6 +38,7 @@ import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { runInboxDigest } from '../inbox-digest.js';
 import { runStorePublicationSweep } from '../store-publication-run.js';
 import { runSubscriptionLapseSweep } from '../subscription-lapse.js';
+import { runPaymeInvoiceSync } from '../payme-invoice-sync.js';
 
 export interface Job {
   /** Primary key in `job_runs`. Never rename one — the row is the schedule's memory, and a renamed
@@ -524,4 +525,30 @@ const subscriptionLapse: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse];
+/**
+ * Fetch the invoices the processor issued in a seller's name and put them on his orders.
+ *
+ * *What it fixes:* a seller who switched on the processor's invoicing service (`seller-invoicing.ts`)
+ * was billed monthly for documents that appeared nowhere in our dashboard, while his order cards
+ * went on asking him to upload the very invoice he was paying to have issued (owner, 2026-08-25).
+ *
+ * *Hourly, and it usually does nothing:* almost no seller has the service, and the gate is read per
+ * seller before any transaction is fetched — so the steady-state cost is one indexed query that
+ * returns the handful of approved merchants and nothing else. An invoice arriving an hour after the
+ * sale is invisible to everyone: the buyer is not waiting on this screen, and the seller's alternative
+ * was uploading it by hand.
+ *
+ * *Idempotent:* `markBuyerInvoiceProvided` is a settlement, not an increment — re-running attaches
+ * the same URL to the same row and keeps the original `issued_at`.
+ */
+const paymeInvoices: Job = {
+  name: 'payme-invoices',
+  intervalSec: 60 * MINUTE,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    const { sellersChecked, attached } = await runPaymeInvoiceSync();
+    return `${sellersChecked} seller(s) with invoicing on · ${attached} document(s) attached`;
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse, paymeInvoices];

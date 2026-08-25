@@ -2014,6 +2014,9 @@ export const translations = {
       orderInvoiceUploaded: 'זמינה לקונה',
       orderInvoiceView: 'צפייה',
       orderInvoiceUndo: 'ביטול סימון',
+      // The state a seller who pays for the processor's invoicing service sees. It names WHO issued
+      // it, because that is the fact he is paying for — and the row carries no button beside it.
+      orderInvoiceAuto: 'הופקה על ידי חברת הסליקה',
       orderInvoiceUploading: 'מעלה…',
       orderInvoiceError: 'לא נשמר — נסו שוב',
       // The order card's own strings. They were written straight into the markup
@@ -2478,7 +2481,12 @@ export const translations = {
       cardCvc: 'קוד אבטחה',
       // Said once, where the card is asked for. Not a standing reassurance banner — it is the one
       // sentence that answers "למה אני מקליד את זה כאן".
-      cardSecureNote: 'הפרטים נשמרים אצל חברת הסליקה ולא אצלנו.',
+      // **Not "הפרטים נשמרים אצל חברת הסליקה ולא אצלנו"** (owner, 2026-08-25: *"משפט גרוע"*), and he
+      // was right twice over: it opens by telling a buyer his card is being STORED somewhere, which
+      // is the word he least wants at that moment, and then names a company he has never heard of
+      // as the place. The true and calmer fact is about where the digits GO, not where they rest —
+      // they are typed into the processor's own fields and never reach our server at all.
+      cardSecureNote: 'פרטי הכרטיס נמסרים ישירות לחברת הסליקה ולא עוברים דרכנו.',
       // Shown when NO shop in the cart can take a card. Rare and not the buyer's fault, so it says
       // what to do rather than what went wrong — and it never appears beside a working form, which
       // is why it is not phrased as a warning about the order.
@@ -4164,6 +4172,7 @@ export const translations = {
       orderInvoiceUploaded: 'Available to the buyer',
       orderInvoiceView: 'View',
       orderInvoiceUndo: 'Undo',
+      orderInvoiceAuto: 'Issued by the processor',
       orderInvoiceUploading: 'Uploading…',
       orderInvoiceError: 'Not saved — try again',
       orderNewLabel: 'New order',
@@ -4543,7 +4552,7 @@ export const translations = {
       cardNumber: 'Card number',
       cardExpiry: 'Expiry',
       cardCvc: 'CVC',
-      cardSecureNote: 'Your card is held by the payment processor, not by us.',
+      cardSecureNote: 'Your card details go straight to the payment processor and never pass through us.',
       cardUnavailable: 'This order cannot be paid by card right now. Try removing items from other shops, or contact us.',
       cardLoadFailed: 'The card form could not be loaded. Refresh the page and try again.',
       cardDeclined: 'The card was not accepted. Check the details or try another card.',

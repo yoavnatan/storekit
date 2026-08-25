@@ -16,6 +16,7 @@ import {
   getBuyerInvoiceStates,
   getBuyerInvoiceForOrder,
   isStoredDocumentUrl,
+  clearBuyerInvoiceProvided,
 } from '../src/lib/invoicing/buyer-invoice.js';
 import type { Order } from '../src/lib/orders.js';
 
@@ -166,6 +167,34 @@ describe('correcting an answer', () => {
     expect(second!.documentUrl).toBe(FILE);
     // "When did this stop being outstanding" is not changed by uploading the file afterwards.
     expect(second!.providedAt).toBe(first!.providedAt);
+  });
+});
+
+describe('a document the PROCESSOR issued is not the seller\'s to undo', () => {
+  const PAYME_DOC = 'https://live.payme.io/invoice/abc.pdf';
+
+  /** The order card offers no undo button in this state — and a hidden control is not a rule. The
+   *  endpoint behind it is directly callable, so the refusal lives in the statement. */
+  it('refuses a clear, where the same clear works on a handover', async () => {
+    const auto = await owedInvoice();
+    await markBuyerInvoiceProvided(auto.sellerId, auto.orderId, { mode: 'processor', documentUrl: PAYME_DOC });
+    expect(await clearBuyerInvoiceProvided(auto.sellerId, auto.orderId)).toBeNull();
+    const after = await getBuyerInvoiceStates(auto.sellerId, [auto.orderId]);
+    expect(after.get(auto.orderId)!.mode).toBe('processor');
+    expect(after.get(auto.orderId)!.documentUrl).toBe(PAYME_DOC);
+
+    // The control case, so the assertion above cannot pass because clearing is broken generally.
+    const manual = await owedInvoice();
+    await markBuyerInvoiceProvided(manual.sellerId, manual.orderId, { mode: 'handover' });
+    expect(await clearBuyerInvoiceProvided(manual.sellerId, manual.orderId)).not.toBeNull();
+  });
+
+  /** The URL arrives inside a third party's JSON and is rendered as a link a buyer clicks. */
+  it('refuses a document that is not on the processor\'s host', async () => {
+    const { sellerId, orderId } = await owedInvoice();
+    for (const url of ['https://evilpayme.io/i.pdf', 'http://payme.io/i.pdf', '']) {
+      expect(await markBuyerInvoiceProvided(sellerId, orderId, { mode: 'processor', documentUrl: url }), url).toBeNull();
+    }
   });
 });
 
