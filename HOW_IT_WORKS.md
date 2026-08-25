@@ -196,14 +196,19 @@ is on anyone can order for free.
 | Seller moves the order: `pending → processing → shipped → delivered`, with a tracking number | `lib/order-status-rules.ts` | ✅ |
 | Buyer is notified on every change without the seller writing anything | `lib/notifications.ts` · `lib/notification-copy.ts` | ✅ |
 | Seller cancels: stock returns and the debt to the buyer is recorded | `lib/refund-owed.ts` (`refund_due`) | ✅ |
-| **The money actually going back** | — | 🔶 `refund_settled` is written by nothing |
+| The money actually goes back, on the same call, on both legs | `lib/refund-execute.ts` (`refund_settled`) | ✅ |
+| A leg that could not settle stays OPEN and is reported, never closed quietly | `lib/reconcile.ts` | ✅ |
 | Buyer opens a return; statutory window; no cancellation fee, ever | `lib/returns.ts` · `/returns-policy` | ✅ |
 | An order the seller never ships is warned at day 7 and cancelled at day 14 | `lib/order-sla.ts` + the `order-sla` job | ✅ |
 | Buyer may review — the gate is a PURCHASE, never an account | `lib/review-eligibility.ts` | ✅ |
 | Shipping labels, carrier pickup, return legs | — | 🔶 ⚠️ §5, courier not connected |
 
-**The refund gap is the one place this flow tells a seller to do something whose second half does not
-exist.** It is tracked in `GO_LIVE_CHECKLIST.md` §2.4.1 and is `CURRENT_TASK` סשן א׳ §2.
+**The refund gap closed on 2026-08-23 and this table said otherwise until 2026-08-25** — worth
+recording, because it is the failure mode the rule at the top of this file names: `refund-execute.ts`
+shipped, and the line here that called it unbuilt was read by two sessions as if it were current.
+What is left is not a gap but a floor: PayMe refuse a PARTIAL refund below ₪5, and a residue that
+small is given back only by reversing the whole capture — that module owns the rule, and an amount
+it cannot return stays open in the journal with the number in the log.
 
 ---
 
@@ -221,6 +226,7 @@ fee inside the same transaction.
 | Seller → us, monthly subscription | PayMe recurring on his card — ONE standing order, its amount the sum of the shops he has on the site | `lib/seller-subscription.ts` · `lib/store-plan.ts` | 🔶 |
 | Advertising | billed on actual spend + a disclosed margin, **never offset** against the above | `lib/ad-metrics.ts` | 🔶 |
 | The buyer's tax invoice | **the SELLER's**, not ours | `lib/invoicing/buyer-invoice.ts` | ✅ (records that he says he issued one) |
+| What the seller SEES: how much PayMe are about to move into his bank, and what they already moved | read live from PayMe, never our own accrual | `lib/seller-transfers.ts` · `/api/seller/transfers` | ✅ |
 
 Every reported number is derived from orders, never stored as a total: `lib/order-totals.ts`,
 `admin-stats.ts#orderNetForStore`, `lib/seller-balance.ts`. `lib/reconcile.ts` computes the same
@@ -261,8 +267,9 @@ inventory hourly), `review-invites`, `returns-sweep`, `inbox-digest`, `merchant-
 the mock provider, orders, order status, notifications, returns intake, reviews, external inventory
 sync, SEO surfaces, the seller and admin dashboards, and the help centre.
 
-**Decided and unbuilt:** performing a refund, shipping labels and carrier pickup, boost campaigns
-reaching a real ad API, Meta's Conversions API.
+**Decided and unbuilt:** shipping labels and carrier pickup, boost campaigns reaching a real ad API,
+Meta's Conversions API, and the refund of a seller's FIRST subscription charge (§3.0.2 — the policy
+is decided, the PayMe reference it needs arrives only on a callback we cannot yet receive).
 
 **Waiting on the owner:** ח.פ, a live domain and host, PayMe going live, the Google/Meta accounts and
 their two tag ids, `ALERT_EMAIL`, an uptime monitor. All of it, with what each unblocks, is in

@@ -14,6 +14,8 @@
  *   node scripts/payme-probe.mjs flow                  the whole checkout, end to end, on test cards
  *   node scripts/payme-probe.mjs subscription          the SELLER's monthly fee, created and cancelled
  *   node scripts/payme-probe.mjs set-price             WHICH price a charge after a plan change uses
+ *   node scripts/payme-probe.mjs withdrawals [MPL]     what PayMe owe a seller, and what they paid
+ *   node scripts/payme-probe.mjs vas [MPL]             which add-on services a merchant really has
  *
  * **Sandbox only, and it refuses to run against anything else.** The sandbox is shared with PayMe's
  * other partners and has no delete, so this creates SALES freely and merchants never
@@ -97,6 +99,27 @@ if (mode === 'exists') {
   // ⚠️ Their id field is `sale_payme_id` here and `payme_sale_id` on generate-sale. Same value.
   const found = (r.items ?? []).find((i) => i.sale_payme_id === arg);
   console.log(found ? redact(JSON.stringify({ price: found.sale_price, status: found.sale_status, fees: found.sale_fees }, null, 2)) : `not among ${r.items?.length ?? 0} items`);
+
+} else if (mode === 'withdrawals') {
+  // The seller's own money, as PayMe hold it — what `/api/seller/transfers` shows him
+  // (`lib/seller-transfers.ts`). Read-only: `withdraw-balance` is deliberately never called from
+  // anywhere, including here, because it MOVES money and costs the seller a fee.
+  const id = arg || SELLER_A;
+  const future = await call('get-future-withdrawals', { seller_payme_id: id, currency: 'ILS' });
+  // ⚠️ `total` is agorot and arrives as a STRING on a row with money, the number 0 on an empty one.
+  console.log('future  ', (future.items ?? []).map((i) => `${i.created_at} · ${i.total} · window_end ${i.end_time}`).join('\n         ') || 'none');
+  console.log('pending ', (future.items ?? []).reduce((n, i) => n + Number(i.total || 0), 0), 'agorot');
+  const past = await call('get-withdrawals', { seller_payme_id: id, page_size: 10, page: 1, language: 'he' });
+  console.log('past    ', (past.items ?? []).map((i) => `${i.withdrawal_created} · ${i.withdrawal_total} · ${i.withdrawal_description}`).join('\n         ') || `none (items_count ${past.items_count})`);
+
+} else if (mode === 'vas') {
+  // Which add-on services a merchant actually has. This is the call that settled whether we can
+  // switch a seller's INVOICING module on ourselves (§26 in the sandbox notes): `vas-enable` needs
+  // a `vas_payme_id`, i.e. it activates a service that already exists on that seller — so if
+  // `Invoice` is not in this list, no request of ours can put it there.
+  const r = await call('get-vas-seller', { seller_payme_id: arg || SELLER_A });
+  for (const v of r.items ?? []) console.log(`${v.vas_is_active ? '●' : '○'} ${String(v.vas_type).padEnd(26)} ${v.vas_description}`);
+  console.log(`— ${r.items_count} services · Invoice present: ${(r.items ?? []).some((v) => /invoic/i.test(String(v.vas_type)))}`);
 
 } else if (mode === 'flow') {
   // The whole checkout, exactly as `lib/payment-split.ts` performs it.

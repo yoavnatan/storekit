@@ -25,6 +25,7 @@ import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
 import { buildPlatformStatement, monthPeriod, recentMonthKeys, statementPeriod } from '../src/lib/platform-statement.js';
+import { summarizeTransfers } from '../src/lib/seller-transfers.js';
 
 /** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
  *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
@@ -1286,6 +1287,41 @@ describe('the accounting statement adds up and its periods compose', () => {
 // The double-run half of the standing rule (a job run twice = a job run once) is per-job and lives
 // in `tests/jobs-scheduler.test.ts`; what belongs here is the cross-surface statement.
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe("the seller's transfer strip cannot show more than the processor named", () => {
+  /**
+   * `pendingAgorot` is a new seller-visible money figure (2026-08-25), so it gets an invariant here
+   * as well as its own unit tests — the standing rule in AI_INSTRUCTIONS → money.
+   *
+   * It is unlike every other number in this file in one way worth stating: it is NOT derived from
+   * our orders. It is PayMe's own answer, summed. So the invariant is not "it agrees with the
+   * ledger" — it never will, and `seller-transfers.ts`'s header says why — it is **that the strip
+   * never invents money the processor did not name**: the total is exactly the rows, and the one
+   * dated transfer we single out is one of those rows and can never exceed the total.
+   */
+  const w = (totalAgorot: number, at: string, windowEnd: number) => ({ totalAgorot, at, windowEnd, code: 'c' });
+
+  it('the pending total is exactly the sum of the rows PayMe returned', () => {
+    const future = [w(0, '2026-08-26 13:15:00', 1), w(2_500, '2026-08-27 13:15:00', 2), w(101_348, '2026-08-25 11:43:31', -1)];
+    const out = summarizeTransfers(future, []);
+    expectSameMoney(out.pendingAgorot, future.reduce((a, r) => a + r.totalAgorot, 0), 'pending = the rows');
+  });
+
+  it('the transfer it names is one of those rows and never more than the total', () => {
+    const future = [w(4_400, '2026-08-28 13:15:00', 2), w(7_700, '2026-08-29 13:15:00', 3)];
+    const out = summarizeTransfers(future, []);
+    expect(out.next).not.toBeNull();
+    expect(future.some((r) => r.totalAgorot === out.next!.amountAgorot)).toBe(true);
+    expect(out.next!.amountAgorot).toBeLessThanOrEqual(out.pendingAgorot);
+  });
+
+  it('promises no date for money sitting in the open window', () => {
+    // The measured shape (2026-08-25, live sandbox): the whole balance in `end_time: -1`.
+    const out = summarizeTransfers([w(101_348, '2026-08-25 11:43:31', -1)], []);
+    expectSameMoney(out.pendingAgorot, 101_348, 'still counted');
+    expect(out.next, 'but no date is claimed').toBeNull();
+  });
+});
 
 describe('§8 — the scheduled jobs move statuses, never amounts', () => {
   interface Ledger { orders: number; gmv: number; campaigns: number; budget: number; stock: number }

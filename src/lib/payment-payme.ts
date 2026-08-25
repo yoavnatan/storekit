@@ -697,6 +697,110 @@ export async function refundSale(input: RefundSaleInput, creds: PaymeCredentials
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Withdrawals — what PayMe are about to move into the seller's BANK, and what they
+// already moved. Read-only, and the only reason the seller never has to open PayMe.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One line of PayMe's own answer, kept in THEIR vocabulary.
+ *
+ * Deliberately not reshaped here: this module is the transport, and a field renamed on the way
+ * through is a field nobody can look up in their documentation when it stops matching. The
+ * seller-facing summary is `lib/seller-transfers.ts`, which is pure and has the tests.
+ *
+ * **Amounts are AGOROT** and arrive as a string on one endpoint and a number on the other —
+ * measured 2026-08-25, both against the live sandbox. `Number()` at the edge, once, here.
+ */
+export interface PaymeWithdrawal {
+  /** Agorot. */
+  totalAgorot: number;
+  /** Their own code for the row. Opaque, and on `get-future-withdrawals` it is a long encrypted
+   *  blob rather than an id anyone would show — carried so a support question can quote it. */
+  code: string;
+  /** `get-future-withdrawals`: when the row was created. `get-withdrawals`: when the transfer was
+   *  made. ISO-ish, PayMe's own `YYYY-MM-DD HH:MM:SS`, their timezone. */
+  at: string;
+  /** Only on a FUTURE row: the end of the window this money is being paid for, epoch seconds, and
+   *  `-1` means the window is still open — i.e. this is the bucket money is accruing into right
+   *  now. Measured: six closed daily windows at 0 and one open row holding the whole balance. */
+  windowEnd?: number;
+  /** Only on a PAST row: PayMe's own description of the transfer ("משיכה לבנק"). */
+  description?: string;
+}
+
+const withdrawalAgorot = (v: unknown): number => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+};
+
+/**
+ * Money PayMe are holding for this seller and have not yet moved to his bank.
+ *
+ * **This is the number the owner asked for** (CURRENT_TASK סשן א׳ §1: *"איפה המוכר בעצם רואה כמה
+ * כסף יועבר לו"*). It is PayMe's own figure and not ours: `seller-balance.ts` says what he EARNED
+ * through the mall, which is a different question with a different answer — it knows nothing of
+ * their clearing fee, their monthly minimum, a chargeback, or a sale he took outside the platform.
+ * Showing our accrual under the words "will be transferred to you" would be a promise we do not
+ * make and cannot keep.
+ *
+ * `currency` is required by the endpoint (measured: it is the first thing it asks for) and the
+ * platform is ILS-only.
+ */
+export async function getFutureWithdrawals(sellerPaymeId: string, creds: PaymeCredentials): Promise<PaymeWithdrawal[]> {
+  const res = await callPayme('get-future-withdrawals', {
+    seller_payme_id: sellerPaymeId,
+    currency: PAYME_CURRENCY,
+  }, creds);
+  const items = Array.isArray(res.items) ? res.items : [];
+  return items.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      totalAgorot: withdrawalAgorot(row.total),
+      code: String(row.withdrawal_payme_code ?? ''),
+      at: String(row.created_at ?? ''),
+      // **Anything that is not a finite number is treated as the OPEN window (-1)**, which is the
+      // conservative direction: an open window promises the seller no date, and a dated one does.
+      // `Number(row.end_time ?? -1)` alone was not enough — `??` catches null and undefined, and
+      // `Number('')` is 0, a value that is neither the sentinel nor a plausible epoch and would
+      // have put a date on money PayMe have not dated.
+      windowEnd: Number.isFinite(Number(row.end_time)) ? Number(row.end_time) : -1,
+    };
+  });
+}
+
+/**
+ * Transfers PayMe have already made to this seller's bank, newest first.
+ *
+ * The other half of the same screen: a pending figure with no history behind it is a number a
+ * seller has no way to believe. Their `page_size` cap is 500; we ask for far less because this is a
+ * dashboard strip and not a statement — a seller wanting everything has PayMe's own reporting.
+ */
+export async function getPastWithdrawals(
+  sellerPaymeId: string,
+  creds: PaymeCredentials,
+  limit = 12,
+): Promise<PaymeWithdrawal[]> {
+  const res = await callPayme('get-withdrawals', {
+    seller_payme_id: sellerPaymeId,
+    items_order_by_column: 'withdrawal_created',
+    items_order_by_direction: 'desc',
+    page_size: limit,
+    page: 1,
+    language: 'he',
+  }, creds);
+  const items = Array.isArray(res.items) ? res.items : [];
+  return items.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      totalAgorot: withdrawalAgorot(row.withdrawal_total),
+      code: String(row.withdrawal_payme_code ?? ''),
+      at: String(row.withdrawal_created ?? ''),
+      description: String(row.withdrawal_description ?? ''),
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Subscriptions — the SELLER's monthly fee, and the only collection path we have
 // ─────────────────────────────────────────────────────────────────────────────
 

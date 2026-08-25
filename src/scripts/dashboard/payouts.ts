@@ -19,6 +19,7 @@ import { busyButton } from './btn-busy.js';
 import { announceValueChange, discardChanges } from './unsaved-guard.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { registerPanelRefresh } from './tab-sync.js';
+import { initTransfersStrip } from './transfers.js';
 
 interface SaveResponse {
   ok?: boolean; error?: string; field?: string;
@@ -117,6 +118,12 @@ async function refreshPayoutsPanel(): Promise<void> {
 }
 
 export function initPayoutsTab(): void {
+  // **Before the early return below, deliberately.** The strip and the bank form are two errands on
+  // one screen: a seller whose form is absent still has money on its way to him, and returning
+  // early on a missing `#pay-details-form` would leave that strip permanently on its skeleton.
+  // Not awaited — nothing after it depends on PayMe answering.
+  void initTransfersStrip();
+
   const form = document.getElementById('pay-details-form') as HTMLFormElement | null;
   const save = document.getElementById('pay-details-save') as HTMLButtonElement | null;
   const error = document.getElementById('pay-details-error');

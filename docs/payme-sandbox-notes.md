@@ -534,6 +534,50 @@ working merchant and not merely a row. `seller_inc: 3` (חברה בע"מ) rather
 production, which is exactly why the production account is opened once, by a person, and why the
 script dry-runs by default and refuses any base URL but the sandbox.
 
+### 25. ✅ THE SELLER'S OWN BALANCE IS READABLE — `get-future-withdrawals` / `get-withdrawals`
+Measured 2026-08-25 against `Dezabin TestA`, for `CURRENT_TASK` סשן א׳ §1 (*"איפה המוכר בעצם רואה
+כמה כסף יועבר לו"*). Both endpoints exist, answer with the partner key alone, and need nothing from
+the seller.
+
+`get-future-withdrawals` requires `seller_payme_id` **and `currency`** (it names `currency` first,
+which is how you know it is required). Real answer, seven rows: six DATED daily windows all holding
+`total: 0`, and one row with `end_time: -1` holding `"101348"` — ₪1,013.48. So the shape is: money
+accrues into an OPEN window with no payment date, and PayMe date it when they close it. A screen
+that promises a date from this data would be inventing one; `lib/seller-transfers.ts` is written to
+that shape and `payTransferNextUnknown` is the sentence it prints instead.
+
+⚠️ **Two unit traps in one pair of endpoints.** `total` (future) comes back as a STRING on a row with
+money and as the NUMBER `0` on an empty one; `withdrawal_total` (past) is a number. Both are AGOROT.
+`payment-payme.ts#withdrawalAgorot` converts once, at the edge.
+
+`get-withdrawals` answered `items_count: 0` for the same seller — nothing has ever been paid out of
+the sandbox — so the PAST shape is documented and not measured. What was measured is that it exists,
+accepts the paging arguments, and does not error.
+
+`withdraw-balance` also exists and is deliberately **not** wired: the payment schedule is PayMe's
+(agreement §37), and a manual withdrawal costs the seller ₪14.9 in a month under ₪5,000 of
+withdrawals. A button that spends his money over a fee he did not read is the opposite of the screen
+it would sit on.
+
+### 26. ⚠️ WE CANNOT SWITCH ON A SELLER'S INVOICING MODULE — this closes an open question
+Measured 2026-08-25, for `CURRENT_TASK` סשן א׳ §2 (*"גם פה יש אפשרות שלא יצטרך לצאת לפיימי?"*).
+
+`get-vas-seller` lists what is provisioned on a merchant. `Dezabin TestA` came back with **19
+services and not one of them is `Invoice` or `InvoicingService`** — the list is `Settlements`,
+`AlternativePaymentMethod`, `Payments`, `Email`, and 3DSecure sitting there `vas_is_active: false`.
+And `vas-enable` requires a `vas_payme_id`: it ACTIVATES a service that already exists on that
+seller, and there is no endpoint anywhere that creates one. So the platform cannot turn invoicing on
+for a seller through the API — PayMe have to provision it, which makes it a commercial step and not
+an integration one.
+
+**What the answer therefore is, today:** the seller issues the buyer's invoice from his own system
+and marks it provided on the order card (`lib/invoicing/buyer-invoice.ts`), and nobody has to open
+PayMe for that. If the module IS provisioned, PayMe issue it automatically in his name and hand back
+`sale_invoice_url` on the sale callback and on `refund-sale`'s own response, with `sale_invoices` on
+`get-sales` — i.e. the automatic path is a PULL we could add without the callback, on the day a
+seller actually has the module. Not built, because until one does the code would be unreachable and
+untestable. The price is on the seller either way (₪15/month + ₪0.3/document, GO_LIVE §3.1.0).
+
 ## Still unmeasured — do not guess these
 
 - The exact per-transaction fee actually deducted from a seller's balance (the tariff was READ, not
@@ -541,9 +585,12 @@ script dry-runs by default and refuses any base URL but the sandbox.
 - ~~Multi-capture behaviour once PayMe enable it.~~ **Measured — §14.** It was never disabled; §4
   called the wrong endpoint. What remains unmeasured about it is only the raise PayMe offered, from
   a 100% to a 110% capture ceiling, which nothing we have built needs.
-- Whether the platform can switch on a seller's invoicing module through the API, or whether the
-  seller must do it in their own panel. This decides how the invoicing add-on is sold
-  (memory `project_business_model_pricing`).
+- ~~Whether the platform can switch on a seller's invoicing module through the API.~~ **Measured —
+  §26. We cannot: `vas-enable` activates a service that already exists on the seller, and no
+  Invoice VAS is provisioned on one we created.** What is still unmeasured is the shape PayMe hand
+  back once a seller really has it — `sale_invoice_url` is documented and has never been seen.
+- The PAST-withdrawal shape (§25): the endpoint answers, and the sandbox has never paid anybody, so
+  the fields are read from their documentation rather than from a row.
 - The callback: nothing has been received end to end, because that needs a public URL.
 - Whether `set-price` on a subscription that is mid-cycle moves the current iteration or only the
   next (§23).

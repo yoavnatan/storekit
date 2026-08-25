@@ -1461,6 +1461,24 @@ export const translations = {
       payBankCancel: 'ביטול',
       payBusinessOnFile: 'עסק:',
       payBusinessMissing: 'לא הוזן',
+      // ── The strip at the TOP of the tab: what PayMe are about to pay him ──
+      // Owner, סשן א׳ §1 (2026-08-25): *"איפה המוכר בעצם רואה כמה כסף יועבר לו, אני רוצה שהוא בכלל
+      // לא יצטרך לצאת לפיימי כדי לעשות פעולות."* Every figure is the PROCESSOR's own, read live —
+      // `lib/seller-transfers.ts` says why ours would be a promise we cannot keep.
+      payTransferTitle: 'הכסף שבדרך אליכם',
+      payTransferPending: 'ממתין להעברה',
+      payTransferNext: 'ההעברה הקרובה',
+      // The second half of `payTransferNext` when the processor has not dated the money yet — which
+      // is the NORMAL case, not an error: it accrues into an open window and gets a date when they
+      // close it (measured 2026-08-25). No number is invented here; the tenth-of-the-month default
+      // is answered once below, in `payHowWhenA`, where it is a rule and not a promise about a sum.
+      payTransferNextUnknown: 'במועד התשלום הקרוב של חברת הסליקה',
+      payTransferPast: 'הועבר אליכם',
+      // Never a zero. "אין כסף שממתין" and "לא הצלחנו לקרוא" are different facts, and on a money
+      // screen a renderer that shows the first when the second is true has lied.
+      payTransferUnavailable: 'לא הצלחנו לקרוא את הנתונים מחברת הסליקה כרגע. נסו שוב בעוד רגע.',
+      payTransferSource: 'הנתונים מגיעים ישירות מחברת הסליקה. אין צורך להיכנס לשום מערכת אחרת.',
+
       // ── The rules, in ONE place, at the bottom of the tab (owner, §1) ──
       // *"החוקים שם לגבי חלוקת הכסף צריכים להופיע בהסבר פשוט, מתי מועבר כסף… ולמה"*. Three short
       // answers to three questions, in the order a seller asks them. It was four, and the fourth
@@ -1480,6 +1498,13 @@ export const translations = {
       payHowFeeA: 'בתוך העסקה עצמה. מה שנכנס אליכם הוא כבר אחרי עמלת הפלטפורמה, ואין על זה חיוב נפרד.',
       payHowRefundQ: 'ומה קורה בהחזר?',
       payHowRefundA: 'ההחזר חוזר לקונה מאותה עסקה שבה שילם, ומקוזז מהתנועות של אותו חודש.',
+      // ── The fourth question, added סשן א׳ §2 (2026-08-25) ──
+      // *"לא הבנתי כל כך את העניין"* — about a feature that was built and had no entry point
+      // anybody could find. It is asked HERE because this is the money screen a seller opens with
+      // the question in his head, and it NAMES THE DOOR (`feedback_entry_point_names_the_action`):
+      // the tab, the card and what the two buttons do. The full answer is the help article.
+      payHowInvoiceQ: 'ומי מוציא חשבונית לקונה?',
+      payHowInvoiceA: 'אתם, מהמערכת שלכם. בלשונית הזמנות, בכרטיס ההזמנה, מסמנים שסופקה — מעלים קובץ או מסמנים שצורפה לחבילה.',
       // The banner a deep link from here raises on the Orders tab. It names the filter and offers
       // the way out — a seller who followed a link and cannot tell what narrowed the list, or how
       // to widen it again, has been dropped somewhere rather than taken there (owner, 2026-08-11).
@@ -3656,6 +3681,13 @@ export const translations = {
       payBankCancel: 'Cancel',
       payBusinessOnFile: 'Business:',
       payBusinessMissing: 'Not set',
+      payTransferTitle: 'Money on its way to you',
+      payTransferPending: 'Awaiting transfer',
+      payTransferNext: 'Next transfer',
+      payTransferNextUnknown: 'On the processor\'s next payment date',
+      payTransferPast: 'Transferred to you',
+      payTransferUnavailable: 'We could not read the processor\'s figures just now. Try again in a moment.',
+      payTransferSource: 'These figures come straight from the processor. There is no other system to sign into.',
       payHowTitle: 'How this works',
       payHowWhenQ: 'When is the money transferred?',
       payHowWhenA: 'The processor credits your bank account on the 10th of each month, for the previous month\'s activity.',
@@ -3663,6 +3695,8 @@ export const translations = {
       payHowFeeA: 'Inside the transaction itself. What reaches you is already net of the platform commission, and there is no separate charge for it.',
       payHowRefundQ: 'What happens on a refund?',
       payHowRefundA: 'It goes back to the buyer from the same transaction they paid on, and is offset against that month\'s activity.',
+      payHowInvoiceQ: 'And who issues the buyer\'s invoice?',
+      payHowInvoiceA: 'You do, from your own system. On the Orders tab, inside the order card, mark it provided — upload the file or mark it as in the parcel.',
       ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
       ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
       ordersShowAll: 'Show all orders',

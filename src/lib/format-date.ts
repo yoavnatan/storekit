@@ -19,6 +19,8 @@ const heDateShort = new Intl.DateTimeFormat('he-IL', { timeZone: BUSINESS_TIMEZO
 /** UTC on purpose: its input is a business-day KEY ('YYYY-MM-DD'), already a plain
  *  calendar date with no timezone meaning — read at midday so no zone can shift it. */
 const heDayLabel = new Intl.DateTimeFormat('he-IL', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+/** UTC for the same reason as the line above: its input is already a calendar day. */
+const heDayShortUtc = new Intl.DateTimeFormat('he-IL', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: '2-digit' });
 
 /** '14:32' in the business timezone. */
 export function formatBusinessTime(iso: string): string {
@@ -33,4 +35,12 @@ export function formatBusinessDateShort(iso: string): string {
 /** A business-day key → 'יום שלישי, 29 ביולי 2026'. */
 export function formatBusinessDayLabel(dayISO: string): string {
   return heDayLabel.format(new Date(`${dayISO}T12:00:00Z`));
+}
+
+/** A business-day key → '29.07.26'. **Not `formatBusinessDateShort`** — that one takes an INSTANT
+ *  and converts it into the business zone, and a plain calendar day put through a zone conversion
+ *  is the off-by-one this file's own note warns about. Read at midday UTC, like the label above, so
+ *  no zone can move it. Its caller is a date PayMe already stated as a day (`seller-transfers.ts`). */
+export function formatDayShort(dayISO: string): string {
+  return heDayShortUtc.format(new Date(`${dayISO}T12:00:00Z`));
 }

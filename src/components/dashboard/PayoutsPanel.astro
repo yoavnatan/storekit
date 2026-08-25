@@ -124,6 +124,35 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle}</p>
   </div>
 
+  {/* ── The money on its way to his bank — the first thing on the screen the screen is named after ──
+      Owner, סשן א׳ §1 (2026-08-25): *"איפה המוכר בעצם רואה כמה כסף יועבר לו, אני רוצה שהוא בכלל לא
+      יצטרך לצאת לפיימי כדי לעשות פעולות."* Every figure here is PayMe's, read live through
+      `/api/seller/transfers` — never our own accrual, which answers a different question
+      (`lib/seller-transfers.ts` carries the distinction and why printing ours would be a promise).
+
+      **First on the page and not beside the bank form**, which the same day's reorganisation moved
+      to the END: the form is where the money LANDS, a thing a seller settles once, and this is the
+      one question he comes back to the tab for.
+
+      **Rendered only when a clearing provider is configured** — with none there is no account for
+      anything to be pending in, and a strip saying ₪0 would be a claim rather than an absence.
+
+      Empty on the server and filled by `scripts/dashboard/transfers.ts`. It is a THIRD-PARTY call,
+      so it must not sit on the panel's render path — PayMe being slow would be the dashboard being
+      slow, and PayMe being down would be a panel that does not render. `aria-live` so a screen
+      reader is told when the figure arrives rather than being left on an empty box. */}
+  {clearing && (
+    <section class="card card--flat p-4 md:p-5 mb-4" id="pay-transfers" aria-live="polite" hidden>
+      <h3 class="text-[1.05rem] font-bold m-0">{d.payTransferTitle}</h3>
+      {/* `max-w`, because each row is `justify-between`: on a 1100px panel that puts the label
+          against one edge and the figure against the other, and a label a seller has to travel the
+          width of the screen to attach to its number is not a labelled grid any more. 22rem is the
+          widest row this list can produce (the undated sentence) plus its label. */}
+      <dl class="mt-3 text-[0.85rem] max-w-[22rem]" id="pay-transfers-body"></dl>
+      <p class="muted m-0 mt-3 text-[0.76rem]">{d.payTransferSource}</p>
+    </section>
+  )}
+
   {/**
     * ── The clearing status USED to be announced here, and it is not any more (2026-08-25) ──
     *
@@ -322,8 +351,13 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       fourth about a hold, a release date or a minimum transfer: under the split model none of
       those is a thing that happens to his money.
 
-      A `<dl>` and not prose: a seller scanning for one of the three finds it by its question,
-      which is not true of a paragraph containing the same words. */}
+      A `<dl>` and not prose: a seller scanning for one of them finds it by its question,
+      which is not true of a paragraph containing the same words.
+
+      **A fourth arrived on 2026-08-25** — who issues the buyer's invoice. It is asked here because
+      this is the money screen a seller is standing on when the question occurs to him (owner:
+      *"לא הבנתי כל כך את העניין"*, about a feature that was built), and the answer NAMES THE DOOR:
+      the tab, the card and what the two buttons do. The long version is `/help/sale-invoices`. */}
   <h3 class="text-[1.05rem] font-bold m-0 mt-8 mb-2" id="pay-how">{d.payHowTitle}</h3>
   <dl class="card card--flat p-4 md:p-5 gap-3 text-[0.85rem]">
     <div>
@@ -337,6 +371,10 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     <div>
       <dt class="font-semibold m-0">{d.payHowRefundQ}</dt>
       <dd class="muted m-0 mt-0.5">{d.payHowRefundA}</dd>
+    </div>
+    <div>
+      <dt class="font-semibold m-0">{d.payHowInvoiceQ}</dt>
+      <dd class="muted m-0 mt-0.5">{d.payHowInvoiceA}</dd>
     </div>
   </dl>
 </div>
