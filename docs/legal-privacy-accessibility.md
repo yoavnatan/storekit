@@ -9,6 +9,9 @@ consequential facts wrong in the same direction: they overstate what a small sit
 a database, appoint a DPO) and understate the one duty it cannot escape (the accessibility
 statement, which no revenue threshold exempts a site built after 2017 from).
 
+**The questions this leaves open are written up for the people who answer them — hand over
+`docs/privacy-accessibility-brief.md`, do not reconstruct them in the meeting.**
+
 ⚠️ **None of this is legal advice and none of it replaces the עו״ד.** It is the factual base the
 two pages were written on, so that a later session does not re-derive it from a sales page.
 
