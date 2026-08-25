@@ -227,6 +227,9 @@ fee inside the same transaction.
 | Advertising | billed on actual spend + a disclosed margin, **never offset** against the above | `lib/ad-metrics.ts` | 🔶 |
 | The buyer's tax invoice | **the SELLER's**, not ours | `lib/invoicing/buyer-invoice.ts` | ✅ (records that he says he issued one) |
 | What the seller SEES: how much PayMe are about to move into his bank, and what they already moved | read live from PayMe, never our own accrual | `lib/seller-transfers.ts` · `/api/seller/transfers` | ✅ |
+| What each sale really cost him: PayMe's clearing fee and OUR commission as two separate numbers, plus the net | their arithmetic, passed through | `payment-payme.ts#getSellerTransactions` | ✅ |
+| The account-level monthly charges — the ₪50 minimum top-up, a chargeback, the terminal | — | 🔶 in no endpoint we have found (`docs/payme-questions-open.md` q4) |
+| The seller switches PayMe's own invoicing on for himself, billed to him at cost | `lib/seller-invoicing.ts` | ⚠️ built; PayMe have not provisioned the service (q1) |
 
 Every reported number is derived from orders, never stored as a total: `lib/order-totals.ts`,
 `admin-stats.ts#orderNetForStore`, `lib/seller-balance.ts`. `lib/reconcile.ts` computes the same

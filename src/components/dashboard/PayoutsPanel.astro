@@ -153,6 +153,36 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     </section>
   )}
 
+  {/* ── Where the clearing fee actually shows up (owner, 2026-08-25: *"לא הבנתי אז איפה הוא רואה
+      עמלת סליקה, מינימום חודשי, הכחשת עסקה"*) ──
+      PayMe publish the fee split per charge and nothing had ever read it. Three numbers per sale —
+      THEIR clearing fee, OUR commission, and what reached him — never one "fees" total, because a
+      seller shown a single deduction concludes the platform took all of it.
+
+      **What this deliberately does NOT claim to cover:** the account-level charges (the ₪50 monthly
+      minimum top-up, a ₪59 chargeback, the terminal). We have not found them in any endpoint —
+      question 4 in `docs/payme-questions-open.md` — so the heading says "on your sales" rather than
+      "your fees", which would be a total that is quietly missing rows. */}
+  {clearing && (
+    <section class="card card--flat p-4 md:p-5 mb-4" id="pay-charges" hidden>
+      <h3 class="text-[1.05rem] font-bold m-0">{d.payChargesTitle}</h3>
+      <div class="mt-2 max-w-[26rem]" id="pay-charges-body"></div>
+      <p class="muted m-0 mt-3 text-[0.76rem]">{d.payChargesHint}</p>
+    </section>
+  )}
+
+  {/* ── The one add-on a seller may switch on for himself ──
+      Owner, 2026-08-25: *"אני רוצה שהמוכר יוכל לבחור אם להפעיל את זה, ושזה יהיה בתשלום שלו"* —
+      PayMe issuing the buyer's invoice in his name, billed to him, **at cost with no margin of
+      ours** (the agreement would allow one; he declined it).
+
+      Empty markup, and it stays hidden unless PayMe have PROVISIONED the service on that merchant.
+      They have not, on any of ours — `lib/seller-invoicing.ts` carries the measurement and why an
+      absent card beats a disabled switch for a feature we cannot yet deliver. */}
+  {clearing && (
+    <section class="card card--flat p-4 md:p-5 mb-4" id="pay-invoicing" hidden></section>
+  )}
+
   {/**
     * ── The clearing status USED to be announced here, and it is not any more (2026-08-25) ──
     *

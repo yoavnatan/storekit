@@ -1478,6 +1478,32 @@ export const translations = {
       payTransferUnavailable: 'לא הצלחנו לקרוא את הנתונים מחברת הסליקה כרגע. נסו שוב בעוד רגע.',
       payTransferSource: 'הנתונים מגיעים ישירות מחברת הסליקה. אין צורך להיכנס לשום מערכת אחרת.',
 
+      // ── The fee split, per sale (owner, 2026-08-25) ──
+      // Three labels and no "total fees" line, on purpose: the clearing fee is the PROCESSOR's and
+      // the commission is OURS, and one merged number reads as the platform having taken both.
+      payChargesTitle: 'העמלות על המכירות שלכם',
+      payChargesNone: 'עוד לא בוצעה מכירה.',
+      payChargeClearing: 'עמלת סליקה',
+      payChargeCommission: 'עמלת המתחם',
+      payChargeNet: 'נכנס אליכם',
+      // Says what the figures ARE and what they are not. The monthly account-level charges are not
+      // readable through any endpoint we have found, and a hint implying this is everything would
+      // be the more expensive kind of wrong.
+      payChargesHint: 'המספרים של חברת הסליקה, אחרי מע״מ על העמלות. חיובים חודשיים על החשבון עצמו מופיעים אצלה.',
+
+      // ── The invoicing add-on ──
+      payInvoiceAutoTitle: 'חשבונית אוטומטית לקונה',
+      payInvoiceAutoBody: 'חברת הסליקה תוציא את החשבונית בשמכם על כל מכירה, ולא תצטרכו לסמן דבר.',
+      // `{monthly}` and `{doc}` are filled from what the processor charges THIS seller, read live —
+      // never a number typed here, because at-cost means his screen and his bill are one figure
+      // (`lib/seller-invoicing.ts`). The last clause is the owner's decision made visible.
+      payInvoiceAutoPrice: 'העלות שלה: {monthly} לחודש ועוד {doc} לכל מסמך. אנחנו לא גובים על זה דבר.',
+      payInvoiceAutoOn: 'פעיל',
+      payInvoiceAutoEnable: 'הפעלה',
+      payInvoiceAutoDisable: 'ביטול השירות',
+      payInvoiceAutoBusy: 'רגע…',
+      payInvoiceAutoFailed: 'לא הצלחנו לשנות את השירות. נסו שוב.',
+
       // ── The rules, in ONE place, at the bottom of the tab (owner, §1) ──
       // *"החוקים שם לגבי חלוקת הכסף צריכים להופיע בהסבר פשוט, מתי מועבר כסף… ולמה"*. Three short
       // answers to three questions, in the order a seller asks them. It was four, and the fourth
@@ -2428,7 +2454,13 @@ export const translations = {
       cardTitle: 'פרטי כרטיס',
       cardNumber: 'מספר כרטיס',
       cardExpiry: 'תוקף',
-      cardCvc: 'שלוש ספרות בגב הכרטיס',
+      // **Short because the column is 144px wide on a phone, and this was MEASURED** (2026-08-25,
+      // 375px, Chromium). It read "שלוש ספרות בגב הכרטיס", which wrapped to two lines while "תוקף"
+      // beside it stayed on one — so the two field boxes sat 20px out of line with each other, on
+      // the card form, on the screen where a buyer is deciding whether to trust us. The label and
+      // its neighbour share a two-column grid row: **anything longer than about twelve Hebrew
+      // characters here breaks that alignment again.** Re-measure before lengthening it.
+      cardCvc: 'קוד אבטחה',
       // Said once, where the card is asked for. Not a standing reassurance banner — it is the one
       // sentence that answers "למה אני מקליד את זה כאן".
       cardSecureNote: 'הפרטים נשמרים אצל חברת הסליקה ולא אצלנו.',
@@ -3692,6 +3724,20 @@ export const translations = {
       payTransferPast: 'Transferred to you',
       payTransferUnavailable: 'We could not read the processor\'s figures just now. Try again in a moment.',
       payTransferSource: 'These figures come straight from the processor. There is no other system to sign into.',
+      payChargesTitle: 'The fees on your sales',
+      payChargesNone: 'No sale yet.',
+      payChargeClearing: 'Clearing fee',
+      payChargeCommission: 'Marketplace commission',
+      payChargeNet: 'Reached you',
+      payChargesHint: 'The processor\'s own figures, net of VAT on the fees. Monthly account charges appear on their side.',
+      payInvoiceAutoTitle: 'Automatic buyer invoice',
+      payInvoiceAutoBody: 'The processor issues the invoice in your name on every sale, and you mark nothing.',
+      payInvoiceAutoPrice: 'Their cost: {monthly} a month plus {doc} per document. We add nothing to it.',
+      payInvoiceAutoOn: 'On',
+      payInvoiceAutoEnable: 'Turn on',
+      payInvoiceAutoDisable: 'Turn off',
+      payInvoiceAutoBusy: 'One moment…',
+      payInvoiceAutoFailed: 'We could not change the service. Try again.',
       payHowTitle: 'How this works',
       payHowWhenQ: 'When is the money transferred?',
       payHowWhenA: 'The processor credits your bank account on the 10th of each month, for the previous month\'s activity.',

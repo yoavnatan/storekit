@@ -559,24 +559,39 @@ accepts the paging arguments, and does not error.
 withdrawals. A button that spends his money over a fee he did not read is the opposite of the screen
 it would sit on.
 
-### 26. ⚠️ WE CANNOT SWITCH ON A SELLER'S INVOICING MODULE — this closes an open question
-Measured 2026-08-25, for `CURRENT_TASK` סשן א׳ §2 (*"גם פה יש אפשרות שלא יצטרך לצאת לפיימי?"*).
+### 26. ⚠️ THE INVOICING MODULE IS NOT PROVISIONED ON OUR PARTNER ACCOUNT — and that is the whole finding
+Measured 2026-08-25, for `CURRENT_TASK` סשן א׳ §2. **⚠️ This section said "we cannot switch it on"
+for a few hours and that was too strong — the owner pushed back and he was right.** What was measured
+is narrower and the difference decides a product:
 
-`get-vas-seller` lists what is provisioned on a merchant. `Dezabin TestA` came back with **19
-services and not one of them is `Invoice` or `InvoicingService`** — the list is `Settlements`,
-`AlternativePaymentMethod`, `Payments`, `Email`, and 3DSecure sitting there `vas_is_active: false`.
-And `vas-enable` requires a `vas_payme_id`: it ACTIVATES a service that already exists on that
-seller, and there is no endpoint anywhere that creates one. So the platform cannot turn invoicing on
-for a seller through the API — PayMe have to provision it, which makes it a commercial step and not
-an integration one.
+`get-vas-seller` lists the services provisioned on a merchant. All THREE of our merchants — both
+sandbox test sellers and our own delivery account — come back with the same **19 services and no
+`Invoice` among them**. `vas-enable` requires a `vas_payme_id`, i.e. it ACTIVATES a service that
+already sits on that seller, and there is no endpoint that creates one (`vas-list`, `get-vas`,
+`vas-create`, `get-vases` all 404; `vas-enable` and `vas-disable` exist). So nothing WE can call
+puts invoicing on a seller today.
 
-**What the answer therefore is, today:** the seller issues the buyer's invoice from his own system
-and marks it provided on the order card (`lib/invoicing/buyer-invoice.ts`), and nobody has to open
-PayMe for that. If the module IS provisioned, PayMe issue it automatically in his name and hand back
-`sale_invoice_url` on the sale callback and on `refund-sale`'s own response, with `sale_invoices` on
-`get-sales` — i.e. the automatic path is a PULL we could add without the callback, on the day a
-seller actually has the module. Not built, because until one does the code would be unreachable and
-untestable. The price is on the seller either way (₪15/month + ₪0.3/document, GO_LIVE §3.1.0).
+**But the pattern for what happens once PayMe provision it is already visible in the same answer,
+and it is why the toggle is buildable now: `שירות 3DSecure` sits on all three merchants with
+`vas_is_active: false`.** A provisioned-but-off service, waiting for exactly one `vas-enable` call.
+Invoicing will look like that row the day PayMe add it, and the per-seller mechanism is then
+`vas-enable` / `vas-disable` and nothing else.
+
+**The commercial side is already settled by the agreement, and it is the shape the owner wanted:**
+נספח ב׳ prices it at ₪15/month + ₪0.3/document **with no "גבייה מארנק פרטנר" marker, which by §3.1.0's
+own rule means it is billed to the MERCHANT**, and נספח א׳'s "שירותים נוספים" row explicitly allows
+the partner to charge more and keep the difference. The owner chose (2026-08-25) to pass it through
+**at cost, with no margin** — the number a seller sees is PayMe's number.
+
+**What the seller gets when it is on:** PayMe issue the buyer's invoice in HIS name at the moment of
+the charge and hand back `sale_invoice_url` on the sale callback and on `refund-sale`'s response, and
+`get-transactions` carries `transaction_invoice_url` per transaction (measured: `null` today, on a
+merchant with no invoicing). That last one is the useful route — a PULL, so it works without the
+public callback URL we still do not have.
+
+**⚠️ The open question is one sentence to PayMe** and it is written out in
+`docs/payme-questions-open.md`: how does a partner get the digital-invoices VAS provisioned onto its
+sellers, and is it per-partner or per-seller.
 
 ## Still unmeasured — do not guess these
 
@@ -585,10 +600,13 @@ untestable. The price is on the seller either way (₪15/month + ₪0.3/document
 - ~~Multi-capture behaviour once PayMe enable it.~~ **Measured — §14.** It was never disabled; §4
   called the wrong endpoint. What remains unmeasured about it is only the raise PayMe offered, from
   a 100% to a 110% capture ceiling, which nothing we have built needs.
-- ~~Whether the platform can switch on a seller's invoicing module through the API.~~ **Measured —
-  §26. We cannot: `vas-enable` activates a service that already exists on the seller, and no
-  Invoice VAS is provisioned on one we created.** What is still unmeasured is the shape PayMe hand
-  back once a seller really has it — `sale_invoice_url` is documented and has never been seen.
+- Whether the platform can switch on a seller's invoicing module through the API. **Half-measured —
+  §26.** `vas-enable` activates a service that already EXISTS on the seller, and no Invoice VAS is
+  provisioned on any of our three merchants — so not today. Whether PayMe provision it per-partner
+  (in which case it appears on every seller at once, like 3DSecure has) or per-seller on request is
+  the open half, and it is question 1 in `docs/payme-questions-open.md`. Also unmeasured: the shape
+  they hand back once a seller really has it — `sale_invoice_url` is documented and has never been
+  seen, and `transaction_invoice_url` was measured as `null`.
 - The PAST-withdrawal shape (§25): the endpoint answers, and the sandbox has never paid anybody, so
   the fields are read from their documentation rather than from a row.
 - The callback: nothing has been received end to end, because that needs a public URL.

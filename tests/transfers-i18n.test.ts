@@ -31,12 +31,12 @@ describe('transfer strip i18n', () => {
     expect([...new Set(keys)].filter((k) => !he[k] || !en[k])).toEqual([]);
   });
 
-  /** The panel's own two strings are server-rendered, so they are not in the sweep above — and a
-   *  half-translated strip is the same defect. */
-  it('defines the strip\'s server-rendered strings in both languages too', () => {
+  /** The panel's own headings are server-rendered, so they are not in the `tt()` sweep above — and
+   *  a half-translated strip is the same defect. */
+  it('defines the panel\'s server-rendered strings in both languages too', () => {
     const he = translations.he.dashboard as unknown as Record<string, string>;
     const en = translations.en.dashboard as unknown as Record<string, string>;
-    for (const key of ['payTransferTitle', 'payTransferSource']) {
+    for (const key of ['payTransferTitle', 'payTransferSource', 'payChargesTitle', 'payChargesHint']) {
       expect(he[key], `he.dashboard.${key}`).toBeTruthy();
       expect(en[key], `en.dashboard.${key}`).toBeTruthy();
     }

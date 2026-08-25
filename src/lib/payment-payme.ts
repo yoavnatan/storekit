@@ -697,6 +697,154 @@ export async function refundSale(input: RefundSaleInput, creds: PaymeCredentials
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Add-on services (PayMe call them VAS), and the fee breakdown of one transaction.
+// Both are READS about a seller's own account, plus the one write that turns a
+// service on or off for him.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One add-on service as it sits on a merchant, in PayMe's own vocabulary.
+ *
+ * **A service is PROVISIONED onto a seller by PayMe, and only then can we switch it.** There is no
+ * endpoint that creates one — measured 2026-08-25: `vas-list`, `get-vas`, `vas-create` and
+ * `get-vases` are all 404, while `vas-enable` and `vas-disable` exist and both demand a
+ * `vas_payme_id` that must already be on that merchant. `שירות 3DSecure` is the worked example: it
+ * sits on all three of our merchants with `active: false`, waiting for exactly one call.
+ *
+ * **Prices are AGOROT integers.** Measured against the credit-reconciliation service, which came
+ * back `vas_price_periodic_fixed: 25000` against a ₪250 line in the agreement.
+ */
+export interface PaymeService {
+  id: string;
+  /** Their type name — `Invoice`, `Payments`, `Settlements`, … (their VAS-types table). */
+  type: string;
+  /** Their Hebrew description of it, which is what a person would recognise. */
+  description: string;
+  active: boolean;
+  /** Recurring price, agorot. */
+  periodicAgorot: number;
+  /** Per-use price, agorot. */
+  usageAgorot: number;
+  /** Their period code: 1 instant · 2 daily · 3 monthly · 4 yearly. */
+  period: number;
+}
+
+const serviceAgorot = (v: unknown): number => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+};
+
+/** Every add-on service provisioned on this merchant, on or off. */
+export async function getSellerServices(sellerPaymeId: string, creds: PaymeCredentials): Promise<PaymeService[]> {
+  const res = await callPayme('get-vas-seller', { seller_payme_id: sellerPaymeId }, creds);
+  const items = Array.isArray(res.items) ? res.items : [];
+  return items.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      id: String(row.vas_guid ?? ''),
+      type: String(row.vas_type ?? ''),
+      description: String(row.vas_description ?? ''),
+      active: row.vas_is_active === true,
+      periodicAgorot: serviceAgorot(row.vas_price_periodic_fixed),
+      usageAgorot: serviceAgorot(row.vas_price_usage_fixed),
+      period: Number(row.vas_period ?? 0),
+    };
+  }).filter((s) => !!s.id);
+}
+
+/**
+ * Turn one of a seller's provisioned services on or off.
+ *
+ * **The only WRITE in this group, and it commits the SELLER to a recurring charge** — so the caller
+ * must have his explicit consent, and the price it showed him must be the one read back from
+ * `getSellerServices` rather than a number typed anywhere in this repo (`seller-invoicing.ts`).
+ */
+export async function setSellerServiceActive(
+  input: { sellerPaymeId: string; serviceId: string; active: boolean },
+  creds: PaymeCredentials,
+): Promise<void> {
+  await callPayme(input.active ? 'vas-enable' : 'vas-disable', {
+    seller_payme_id: input.sellerPaymeId,
+    vas_payme_id: input.serviceId,
+  }, creds);
+}
+
+/**
+ * What one charge really cost the seller — PayMe's own arithmetic, not ours.
+ *
+ * The owner asked where a seller sees his clearing fee (2026-08-25), and the answer is that PayMe
+ * publish it per transaction and we had never read it. **`processingAgorot` is the CLEARING fee and
+ * `marketFeeAgorot` is OUR commission**; they are separate numbers from separate parties and
+ * collapsing them into "fees" is how a seller ends up believing the platform took both.
+ *
+ * `netAgorot` is THEIRS too (`transaction_price_after_fees`) and is deliberately not recomputed
+ * here: measured on a ₪40 sale it came back ₪33.19 against ₪1.00 + ₪4.80 of fees, i.e. it also
+ * carries VAT on the fees and PayMe's fixed per-transaction charge. A number we derived would
+ * disagree with the one on his bank statement, which is the only one he can check.
+ */
+export interface PaymeTransaction {
+  saleId: string;
+  /** `YYYY-MM-DD HH:MM:SS`, PayMe's own clock. */
+  at: string;
+  description: string;
+  /** What the buyer paid on this charge, agorot. */
+  priceAgorot: number;
+  /** What reaches the seller after everything, agorot — PayMe's own figure. */
+  netAgorot: number;
+  /** PayMe's clearing fee on this charge, agorot. */
+  processingAgorot: number;
+  /** OUR distribution fee on this charge, agorot. */
+  marketFeeAgorot: number;
+  saleStatus: string;
+  /** The invoice PayMe issued in the seller's name, when his invoicing service is on. `null`
+   *  otherwise — measured null on a merchant without it. **This is the pull route** that makes the
+   *  automatic invoice work without the public callback URL we still do not have. */
+  invoiceUrl: string | null;
+}
+
+/**
+ * This seller's recent charges, newest first.
+ *
+ * Scoped by `seller_payme_id` and never unfiltered: the sandbox is shared with PayMe's other
+ * partners and an unscoped call really does return their merchants' rows (seen 2026-08-25).
+ */
+export async function getSellerTransactions(
+  sellerPaymeId: string,
+  creds: PaymeCredentials,
+  limit = 10,
+): Promise<PaymeTransaction[]> {
+  const res = await callPayme('get-transactions', {
+    seller_payme_id: sellerPaymeId,
+    items_order_by_column: 'transaction_created_at',
+    items_order_by_direction: 'desc',
+    page_size: limit,
+    page: 1,
+    language: 'he',
+  }, creds);
+  const items = Array.isArray(res.items) ? res.items : [];
+  return items
+    // Belt and braces on a shared sandbox: the id is asked for AND checked, the same rule §12 in
+    // the sandbox notes learned the hard way about `get-sales` ignoring its own filter.
+    .filter((raw) => String((raw as Record<string, unknown>).seller_payme_id ?? '') === sellerPaymeId)
+    .map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const fees = (row.sale_fees ?? {}) as Record<string, unknown>;
+      const url = String(row.transaction_invoice_url ?? '').trim();
+      return {
+        saleId: String(row.sale_payme_id ?? ''),
+        at: String(row.transaction_created_at ?? ''),
+        description: String(row.sale_description ?? ''),
+        priceAgorot: serviceAgorot(row.transaction_price),
+        netAgorot: serviceAgorot(row.transaction_price_after_fees),
+        processingAgorot: serviceAgorot(fees.sale_processing_fee_total),
+        marketFeeAgorot: serviceAgorot(fees.sale_market_fee_total),
+        saleStatus: String(row.sale_status ?? ''),
+        invoiceUrl: url || null,
+      };
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Withdrawals — what PayMe are about to move into the seller's BANK, and what they
 // already moved. Read-only, and the only reason the seller never has to open PayMe.
 // ─────────────────────────────────────────────────────────────────────────────

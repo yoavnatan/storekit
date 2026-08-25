@@ -40,6 +40,7 @@ const {
   callbackSignature, verifyCallbackSignature,
   PAYME_SUB_STATUS, PAYME_MIN_SUBSCRIPTION_AGOROT, PAYME_ITERATION_MONTHLY,
   subscriptionIsPaying, generateSubscription, cancelSubscription, getSubscriptionStatus,
+  getSellerServices, setSellerServiceActive, getSellerTransactions,
 } = await import('../src/lib/payment-payme.js');
 
 const CREDS = { clientKey: 'test-client-key', ownMerchantId: 'MPL-US', baseUrl: 'https://sandbox.payme.io/api/' };
@@ -541,5 +542,94 @@ describe('subscriptions — the seller pays US', () => {
     net.replies = [{ status_code: 0 }];
     await cancelSubscription('MPL-US', 'SUB1', CREDS);
     expect(lastBody()).toMatchObject({ seller_payme_id: 'MPL-US', sub_payme_id: 'SUB1' });
+  });
+});
+
+/**
+ * The add-on services and the per-charge fee split — both read from a merchant's own account, and
+ * both new on 2026-08-25 for the owner's two questions: can a seller switch invoicing on himself,
+ * and where does he see his clearing fee.
+ *
+ * The shapes below are the ones the LIVE sandbox returned, not the ones their documentation shows.
+ * Two differ, and both differences are the kind that produce a wrong number rather than an error.
+ */
+describe('add-on services and the fee split', () => {
+  it('reads a merchant\'s services, prices as AGOROT', async () => {
+    // Measured: `vas_price_periodic_fixed: 25000` against a ₪250 line in the agreement.
+    net.replies = [{ status_code: 0, items: [
+      { vas_guid: 'VASL-1', vas_type: 'Payments', vas_description: 'שירות 3DSecure', vas_is_active: false, vas_price_periodic_fixed: 0, vas_price_usage_fixed: 0, vas_period: 1 },
+      { vas_guid: 'VASL-2', vas_type: 'Payments', vas_description: 'התאמות', vas_is_active: true, vas_price_periodic_fixed: 25000, vas_price_usage_fixed: 0, vas_period: 3 },
+    ] }];
+    const out = await getSellerServices('MPL-US', CREDS);
+    expect(lastBody()).toMatchObject({ seller_payme_id: 'MPL-US' });
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({ id: 'VASL-2', active: true, periodicAgorot: 25000, period: 3 });
+    // `vas_is_active` is checked against `true` and never for truthiness: their JSON has carried
+    // both booleans and strings across endpoints, and `"false"` is truthy.
+    expect(out[0]!.active).toBe(false);
+  });
+
+  it('drops a service row with no id rather than offering one nothing can address', async () => {
+    net.replies = [{ status_code: 0, items: [{ vas_type: 'Invoice', vas_is_active: true }] }];
+    expect(await getSellerServices('MPL-US', CREDS)).toEqual([]);
+  });
+
+  it('enables and disables through the two different endpoints', async () => {
+    net.replies = [{ status_code: 0 }];
+    await setSellerServiceActive({ sellerPaymeId: 'MPL-US', serviceId: 'VASL-2', active: true }, CREDS);
+    expect(net.calls[net.calls.length - 1]!.url).toContain('vas-enable');
+    expect(lastBody()).toMatchObject({ seller_payme_id: 'MPL-US', vas_payme_id: 'VASL-2' });
+
+    net.replies = [{ status_code: 0 }];
+    await setSellerServiceActive({ sellerPaymeId: 'MPL-US', serviceId: 'VASL-2', active: false }, CREDS);
+    expect(net.calls[net.calls.length - 1]!.url).toContain('vas-disable');
+  });
+
+  /** The measured row: a ₪40 charge, ₪1.00 of clearing fee, ₪4.80 of our commission, ₪33.19 net —
+   *  which is NOT 4000 − 100 − 480, because their net also carries VAT on the fees and the fixed
+   *  per-transaction charge. Recomputing it would put a number on the seller's screen that his
+   *  bank statement contradicts. */
+  it('reads the fee split as agorot and takes the NET from PayMe rather than deriving it', async () => {
+    net.replies = [{ status_code: 0, items: [{
+      seller_payme_id: 'MPL-US',
+      sale_payme_id: 'SALE-1',
+      transaction_created_at: '2026-08-21 15:03:23',
+      sale_description: 'Dezabin probe',
+      transaction_price: 4000,
+      transaction_price_after_fees: '3319',
+      sale_status: 'completed',
+      transaction_invoice_url: null,
+      sale_fees: { sale_processing_fee: '2.50', sale_processing_fee_total: 100, sale_market_fee: '12.00', sale_market_fee_total: 480 },
+    }] }];
+    const [tx] = await getSellerTransactions('MPL-US', CREDS);
+    expect(tx).toMatchObject({
+      saleId: 'SALE-1', priceAgorot: 4000, netAgorot: 3319,
+      processingAgorot: 100, marketFeeAgorot: 480, invoiceUrl: null,
+    });
+    // The percentages sit beside the totals in their payload and are deliberately not read: the
+    // AMOUNT is the fact, and a percent re-multiplied here would be a second arithmetic.
+    expect(tx!.netAgorot).not.toBe(4000 - 100 - 480);
+  });
+
+  /** ⚠️ The sandbox is shared with PayMe's other partners and an unscoped read really did come back
+   *  with another partner's merchant on it (2026-08-25). The id is asked for AND checked — the same
+   *  lesson `get-sales` taught by ignoring its own filter (§12). */
+  it('refuses a row belonging to another merchant even though it asked for ours', async () => {
+    net.replies = [{ status_code: 0, items: [
+      { seller_payme_id: 'MPL-SOMEONE-ELSE', sale_payme_id: 'THEIRS', transaction_price: 9900 },
+      { seller_payme_id: 'MPL-US', sale_payme_id: 'OURS', transaction_price: 100 },
+    ] }];
+    const out = await getSellerTransactions('MPL-US', CREDS);
+    expect(out.map((t) => t.saleId)).toEqual(['OURS']);
+  });
+
+  it('turns an empty invoice url into null, so a caller cannot render a blank link', async () => {
+    net.replies = [{ status_code: 0, items: [
+      { seller_payme_id: 'MPL-US', sale_payme_id: 'A', transaction_invoice_url: '   ' },
+      { seller_payme_id: 'MPL-US', sale_payme_id: 'B', transaction_invoice_url: 'https://payme.io/i/1.pdf' },
+    ] }];
+    const out = await getSellerTransactions('MPL-US', CREDS);
+    expect(out[0]!.invoiceUrl).toBeNull();
+    expect(out[1]!.invoiceUrl).toBe('https://payme.io/i/1.pdf');
   });
 });
