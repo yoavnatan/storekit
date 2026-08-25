@@ -31,9 +31,25 @@ export interface BaselineInput {
   visibleProductCount: number;
 }
 
+/**
+ * WHY the platform campaign is not carrying this store — and it has to be a value, not a sentence.
+ *
+ * The card said one fixed thing ("you need at least one visible product") for every inactive state,
+ * so a shop that was simply **not on the site yet** was told to go and add a product it already had
+ * (owner, 2026-08-25: *"רשום שהקמפיין הבסיסי לא פעיל אבל לא כתוב למה, לא כתוב שהחנות לא באוויר
+ * ולכן"*). Two causes, two answers, and the one the seller can act on is not the same in each.
+ *
+ * Ordered by what he should do FIRST: a shop that is not up cannot be advertised however many
+ * products it has, so `not-live` outranks `no-products`.
+ */
+export type BaselineInactiveReason = 'not-live' | 'no-products';
+
 export interface BaselineStatus {
   /** Whether the platform-funded campaign carries this store at all. */
   active: boolean;
+  /** Absent when active. The reason to SHOW, chosen here rather than at the screen, so the card and
+   *  any future surface cannot disagree about which of the two applies. */
+  reason?: BaselineInactiveReason;
   /** Impressions over the window the card's label names. Zero when not carried — a store outside
    *  the feed accrues nothing, and showing a number there would be the original lie again. */
   impressions: number;
@@ -43,8 +59,13 @@ export interface BaselineStatus {
 const BASELINE_WINDOW = '30d' as const;
 
 export function storeBaselineStatus(input: BaselineInput, today: Date = new Date()): BaselineStatus {
-  const active = input.discoverable && isStoreReady({ visibleProductCount: input.visibleProductCount });
-  if (!active) return { active: false, impressions: 0 };
+  // `discoverable` is false for an unpublished shop as well as for a paused, closed or blocked one
+  // — and from the campaign's point of view they are the same fact: nothing of this shop is in the
+  // feed. What differs is what the seller does about it, which is why the reason is reported.
+  if (!input.discoverable) return { active: false, reason: 'not-live', impressions: 0 };
+  if (!isStoreReady({ visibleProductCount: input.visibleProductCount })) {
+    return { active: false, reason: 'no-products', impressions: 0 };
+  }
   const { from, to } = presetRange(BASELINE_WINDOW, today)!;
   return { active: true, impressions: baselineImpressionsInRange(input.storeId, from, to) };
 }

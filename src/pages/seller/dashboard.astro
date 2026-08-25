@@ -2716,8 +2716,13 @@ const orderStatusColors: Record<string, string> = {
               and guarantees no per-product priority — followed by a single pointer
               to the boost. No duplicate info tooltips or extra notes. */}
           <p class="text-[0.85rem] leading-relaxed m-0 [color:var(--color-text)]">{d.adBaselineLead}</p>
+          {/* The reason, not A reason. It used to say "add a visible product" for every inactive
+              state, including the commonest one — a shop that is simply not on the site yet, whose
+              seller then went looking for a product he already had. */}
           {!adBaseline.active && (
-            <p class="text-[0.8rem] m-0 mt-2 py-1.5 px-2 rounded-[var(--radius-sm)] [color:var(--color-text)] [background:color-mix(in_srgb,var(--color-danger)_9%,transparent)]">{d.adBaselineInactiveWhy}</p>
+            <p class="text-[0.8rem] m-0 mt-2 py-1.5 px-2 rounded-[var(--radius-sm)] [color:var(--color-text)] [background:color-mix(in_srgb,var(--color-danger)_9%,transparent)]">
+              {adBaseline.reason === 'not-live' ? d.adBaselineInactiveNotLive : d.adBaselineInactiveWhy}
+            </p>
           )}
 
           {/* Clickable CTA — scrolls to the boost form below (initAdvertisingTab

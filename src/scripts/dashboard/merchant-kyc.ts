@@ -22,6 +22,9 @@ interface SaveResponse {
   error?: string;
   /** Field names still outstanding, from the same function the account-opening path asks. */
   missing?: string[];
+  /** What is still holding the shop off the site, straight from `publishHoldsFor` — the same set
+   *  the go-live screen was rendered with, so the two can be compared rather than guessed at. */
+  holds?: string[];
   /** Slugs that went live in this save — usually empty, and worth a sentence when it is not. */
   published?: string[];
 }
@@ -179,6 +182,24 @@ export function initMerchantKycForm(): void {
       // Complete, so the fields collapse into the one-line summary — the same closed state the bank
       // block settles into, without a reload.
       if (!missing) open(false);
+
+      /**
+       * ── The go-live screen is SERVER-rendered, so a hold that lifted has to be re-read ──
+       *
+       * Owner, 2026-08-25: *"שום דבר לא משתנה שם בשלבים, השלב נשאר כחול, לא עובר לשלב הבא, היוזר
+       * נשאר תקוע, אני הייתי עוזב את האתר."* And he was right: this save is what opens the merchant
+       * account, which is what removes the `clearing-details` hold — and every part of that screen
+       * that depends on it (which step is open, the state line, "step N of 3", the bar, the tick)
+       * is decided on the server. The one thing this handler updated was the form's own summary.
+       *
+       * Patching the rest by hand would be five parallel renderers of one server decision, which
+       * is the drift this project has a rule about. So the page is re-read — but ONLY when the
+       * holds really moved, compared against the set the page was rendered with, so an ordinary
+       * partial save still costs nothing.
+       */
+      const rendered = document.getElementById('go-live')?.dataset['holds'];
+      const now = (data.holds ?? []).join(',');
+      if (rendered !== undefined && rendered !== now) { window.location.reload(); return; }
       // The shop went live in this very request: the seller was waiting on exactly this, and a page
       // that still says "not live" underneath a successful save is the disagreement worth avoiding.
       if (data.published?.length) window.location.reload();

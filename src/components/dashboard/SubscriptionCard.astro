@@ -203,6 +203,17 @@ const showBreakdown = paying && lines.length > 1;
           whether it was saved. */}
       <button type="button" class="btn btn--ghost btn--sm mt-3" id="sub-card-replace">{d.subCardReplace}</button>
     </div>
+  ) : paying && !storeInPlan ? (
+    /* ── A shop being ADDED to a subscription that is already running ──
+       He has a card PayMe are charging today, so there is nothing to type: one button, and the
+       standing order grows by this shop's plan from the next charge. Falling through to the card
+       fields would ask a paying seller to enter a card he has already given us, which is the one
+       thing a second shop must not feel like (owner, 2026-08-25: *"אם מוכר פותח חנות חדשה וכבר יש
+       לו חשבון סליקה, איך כל העניין הזה מופיע לו שם?"* — clearing is done, and so is the card). */
+    <div class="mt-4">
+      <button type="button" class="btn btn--accent btn--sm" id="sub-start" data-store={storeId}>{d.subAddStore}</button>
+      <p class="muted m-0 mt-2 text-[0.78rem]">{d.subAddStoreNote.replace('{fee}', String(plan.monthlyFee))}</p>
+    </div>
   ) : (
     <div class="mt-4">
       {created && !paying && <p class="m-0 mb-2 text-[0.84rem]">{d.subAwaitingPayment}</p>}
@@ -258,21 +269,15 @@ const showBreakdown = paying && lines.length > 1;
           script un-hides whichever of the two is real, so a seller never sees both. */}
       <div class="!hidden" id="sub-hosted-fallback">
         <button type="button" class="btn btn--accent btn--sm" id="sub-start" data-store={storeId}>
-          {paying && !storeInPlan ? d.subAddStore : created ? d.subResume : d.subStart}
+          {created ? d.subResume : d.subStart}
         </button>
       </div>
-      {paying && !storeInPlan ? (
-        <p class="muted m-0 mt-2 text-[0.78rem]">{d.subAddStoreNote.replace('{fee}', String(plan.monthlyFee))}</p>
-      ) : (
-        <>
-          {/* Said BEFORE the click, not after it. A redirect nobody was expecting is where a payment
-              gets abandoned — and so is a fee nobody mentioned. The account-opening charge is the
-              payment provider's, it is the seller's to pay (owner, 2026-08-24), and this is the last
-              screen before he meets it. */}
-          <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
-          <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
-        </>
-      )}
+      {/* Said BEFORE the click, not after it. A redirect nobody was expecting is where a payment
+          gets abandoned — and so is a fee nobody mentioned. The account-opening charge is the
+          payment provider's, it is the seller's to pay (owner, 2026-08-24), and this is the last
+          screen before he meets it. */}
+      <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
+      <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
     </div>
   )}
 </section>

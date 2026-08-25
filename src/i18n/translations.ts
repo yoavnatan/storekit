@@ -1254,7 +1254,7 @@ export const translations = {
       // store's dashboard read as somebody else's.
       payBankAllStores: 'פרטים אלו מתייחסים לכל החנויות בבעלותך.',
       payBankTitle: 'פרטי בנק ופרטי עסק',
-      payBankHint: 'ללא פרטים אלו הכסף לא יוכל להישלח אליכם.',
+      payBankHint: 'החשבון אליו תקבלו את הכסף.',
       payBankCode: 'קוד בנק',
       payBankBranch: 'סניף',
       payBankAccount: 'מספר חשבון',
@@ -1299,8 +1299,8 @@ export const translations = {
       glStateGoingUp: 'הכול אושר. החנות עולה לאוויר בדקות הקרובות, ותקבלו על כך התראה.',
       glStateLive: 'החנות לא באוויר — נשאר לבחור מסלול ולשמור כרטיס. לא ייגבה כלום עד שהיא עולה.',
       glStateReady: 'החנות באוויר.',
-      glStepDetails: 'פרטי העסק לחברת הסליקה',
-      glStepDetailsNote: 'פעם אחת, וזה מה שמתחיל את הבדיקה שלהם.',
+      glStepDetails: 'פרטי העסק',
+      glStepDetailsNote: 'לאישור על ידי חברת הסליקה.',
       glStepApproval: 'אישור חברת הסליקה',
       glStepApprovalNote: 'הם בודקים כל בית עסק, עד שבעה ימי עסקים. אין מה לעשות בינתיים — נשלח התראה ברגע שזה מאושר.',
       glStepSubscription: 'מסלול וכרטיס',
@@ -1313,7 +1313,9 @@ export const translations = {
       glPlanCompare: 'השוואת המסלולים',
       glAutomatic: 'אין כפתור פרסום — ברגע שהשלב האחרון נסגר החנות עולה לבד, ותקבלו על כך התראה.',
       pubTitle: 'החנות עדיין לא באוויר',
-      pubBuildOn: 'אפשר להמשיך לבנות הכל — מוצרים, עיצוב, קטגוריות ומבצעים. רק המכירה והפרסום ממתינים.',
+      // The owner's own sentence, 2026-08-25 — the previous one led with a list and buried the
+      // condition, so a seller learned what he could do and not what he still had to.
+      pubBuildOn: 'ניתן להמשיך לבנות את החנות, להוסיף מוצרים, עיצוב, קטגוריות ומבצעים. החנות תעלה לאוויר לאחר הסדרת פרטי העסק והתשלום.',
       pubHoldSubscription: 'מנוי חודשי לא הופעל',
       pubHoldSubscriptionNote: 'ברגע שהמנוי מתחיל, החנות עולה לאוויר.',
       // Names what he GETS, not what he starts (owner, 2026-08-24: the flow had no moment where a
@@ -1331,8 +1333,8 @@ export const translations = {
       // top — why it is worth doing today rather than next week. That second line is the whole
       // brief the owner gave: *"שהמוכר ידע שהוא צריך למלא את זה כמה שיותר מהר"*, and the honest
       // reason is that the seven-day review does not start until he presses save.
-      mkTitle: 'פרטים לפתיחת חשבון סליקה',
-      mkUrgent: 'חברת הסליקה בודקת כל בית עסק, והבדיקה נמשכת עד שבעה ימי עסקים — היא מתחילה רק אחרי שהפרטים כאן נשלחים. כל יום שממתינים כאן מתווסף לשבוע הזה.',
+      mkTitle: 'פרטי העסק',
+      mkUrgent: 'האישור אורך עד 7 ימי עסקים.',
       mkOwnerLegend: 'בעל העסק',
       mkBusinessLegend: 'העסק',
       mkSocialId: 'תעודת זהות',
@@ -1370,6 +1372,9 @@ export const translations = {
       mkErrDate: 'תאריך לא תקין.',
       mkStillMissing: 'נשמר. עדיין חסרים {n} שדות — אפשר להשלים בכל רגע.',
       mkOnFile: 'הפרטים נשלחו לחברת הסליקה.',
+      // Filled, not yet with them — opening the account failed or has not been attempted. Saying
+      // "sent" here was a claim the seller could act on and be wrong about.
+      mkFilledNotSent: 'הפרטים נשמרו. שולחים אותם לחברת הסליקה.',
       mkEdit: 'ערוך',
       // The subscription card (components/dashboard/SubscriptionCard.astro). What it says has to be
       // true of the LIVE flow: pressing the button sends the seller to the processor's own page to
@@ -1624,8 +1629,8 @@ export const translations = {
       onbStepAddressHint: 'נדרש כדי להציע איסוף עצמי מהחנות.',
       // The two steps that put the shop ON THE SITE. They live in this list — and not only on the
       // Payments tab — because a step nobody knows exists is not a step (owner, 2026-08-25).
-      onbStepClearing: 'פרטי העסק לחברת הסליקה',
-      onbStepClearingHint: 'בלי חשבון סליקה אין לאן שהכסף של הקונה ייכנס. הבדיקה שלהם נמשכת עד שבעה ימי עסקים, ומתחילה רק אחרי שהפרטים נשלחים.',
+      onbStepClearing: 'פרטי העסק',
+      onbStepClearingHint: 'לאישור על ידי חברת הסליקה. האישור אורך עד 7 ימי עסקים.',
       onbStepPlan: 'מסלול וכרטיס',
       onbStepPlanHint: 'בוחרים מסלול לחנות ושומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
       onbGo: 'לביצוע',
@@ -1852,6 +1857,7 @@ export const translations = {
       adTierHigh: 'גבוה',
       adBaselineInactive: 'לא פעיל',
       adBaselineInactiveWhy: 'החנות לא נכללת בקידום הבסיס — צריך לפחות מוצר אחד גלוי בחנות כדי להיכנס אליו.',
+      adBaselineInactiveNotLive: 'החנות לא נכללת בקידום הבסיס כי היא עדיין לא באוויר. היא תיכנס אליו מעצמה ברגע שתעלה.',
       adBaselineImpressions: 'חשיפות ב-30 הימים האחרונים (הערכה)',
       adBaselineImpTip: 'חשיפה = כמה פעמים מוצר שלך הופיע בפרסומת ב-Google או Meta. זו ספירת הופעות מול עיניים — לא קליקים ולא מספר אנשים, ולכן המספר גבוה יחסית.',
       adGlossaryTitle: 'מה המספרים אומרים?',
@@ -3508,7 +3514,7 @@ export const translations = {
       paySubtitle: 'The money from every sale lands directly in your own account at the processor.',
       payBankAllStores: 'These details apply to every store you own.',
       payBankTitle: 'Bank and business details',
-      payBankHint: 'Without these details the money cannot be sent to you.',
+      payBankHint: 'The account your money is paid into.',
       payBankCode: 'Bank code',
       payBankBranch: 'Branch',
       payBankAccount: 'Account number',
@@ -3532,8 +3538,8 @@ export const translations = {
       glStateGoingUp: 'Everything is approved. The store goes live within a few minutes, and you will be notified.',
       glStateLive: 'This store is not live — pick a plan and save a card. Nothing is charged until it goes up.',
       glStateReady: 'This store is live.',
-      glStepDetails: 'Business details for the processor',
-      glStepDetailsNote: 'Once, and it is what starts their review.',
+      glStepDetails: 'Business details',
+      glStepDetailsNote: 'For the payment processor to approve.',
       glStepApproval: 'Processor approval',
       glStepApprovalNote: 'They review every business, up to seven business days. Nothing to do meanwhile — we will notify you the moment it is approved.',
       glStepSubscription: 'Plan and card',
@@ -3543,7 +3549,7 @@ export const translations = {
       glPlanCompare: 'Compare the plans',
       glAutomatic: 'There is no publish button — once the last step is done the store goes live by itself, and you will be notified.',
       pubTitle: 'This store is not live yet',
-      pubBuildOn: 'You can keep building everything — products, design, categories and sales. Only selling and advertising are waiting.',
+      pubBuildOn: 'You can carry on building the store — products, design, categories and sales. It goes live once your business details and payment are settled.',
       pubHoldSubscription: 'No monthly subscription yet',
       pubHoldSubscriptionNote: 'The store goes live as soon as the subscription starts.',
       pubHoldSubscriptionCta: 'Put my store live',
@@ -3553,8 +3559,8 @@ export const translations = {
       pubHoldApproval: 'The processor is reviewing your business',
       pubHoldApprovalNote: 'The review takes up to seven business days and there is nothing to do meanwhile. The store goes live by itself the moment approval arrives, and we will email you.',
       pubGoesLive: 'Going live is automatic — there is no button to press.',
-      mkTitle: 'Details for opening a clearing account',
-      mkUrgent: 'The processor reviews every business, and the review takes up to seven business days — it only starts once these details are submitted. Every day spent here is added to that week.',
+      mkTitle: 'Business details',
+      mkUrgent: 'Approval takes up to 7 business days.',
       mkOwnerLegend: 'Business owner',
       mkBusinessLegend: 'The business',
       mkSocialId: 'ID number',
@@ -3582,6 +3588,7 @@ export const translations = {
       mkErrDate: 'That date is not valid.',
       mkStillMissing: 'Saved. {n} fields are still missing — you can finish any time.',
       mkOnFile: 'The details were sent to the processor.',
+      mkFilledNotSent: 'Your details are saved. We are sending them to the processor.',
       mkEdit: 'Edit',
       subTitle: 'Monthly subscription',
       subWhy: 'The subscription is what puts your store live. Cancel any time.',
@@ -3774,8 +3781,8 @@ export const translations = {
       onbStepCategoriesHint: 'Categories let a buyer filter and find a product fast.',
       onbStepAddress: 'Add physical address and hours',
       onbStepAddressHint: 'Required in order to offer self-pickup from the store.',
-      onbStepClearing: 'Business details for the processor',
-      onbStepClearingHint: 'Without a clearing account there is nowhere for a shopper\'s money to go. Their review takes up to seven business days and only starts once the details are sent.',
+      onbStepClearing: 'Business details',
+      onbStepClearingHint: 'For the payment processor to approve. Approval takes up to 7 business days.',
       onbStepPlan: 'Plan and card',
       onbStepPlanHint: 'Pick a plan for this store and save a card. Nothing is charged until the store goes live.',
       onbGo: 'Go',
@@ -3980,6 +3987,7 @@ export const translations = {
       adTierHigh: 'High',
       adBaselineInactive: 'Not running',
       adBaselineInactiveWhy: 'This store is not part of the baseline promotion — it needs at least one visible product to be included.',
+      adBaselineInactiveNotLive: 'This store is not in the baseline campaign because it is not live yet. It joins by itself the moment it goes up.',
       adBaselineImpressions: 'Impressions in the last 30 days (estimate)',
       adBaselineImpTip: 'An impression = how many times one of your products appeared in a Google or Meta ad. It counts appearances in front of eyes — not clicks and not unique people — which is why the number is relatively high.',
       adGlossaryTitle: 'What do the numbers mean?',

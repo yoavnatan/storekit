@@ -36,24 +36,51 @@ interface Props {
   /** The code derived from the store's categories, when there is one. Present means the field is
    *  not rendered at all — the seller never meets PayMe's several-hundred-row trade list. */
   derivedCategory: string | null;
-  /** True once PayMe hold everything they need; the fields collapse into one line with an edit
-   *  button, the same shape the bank block uses. */
+  /** True once PayMe hold everything they need; the fields collapse into one line, the same shape
+   *  the bank block uses. */
   complete: boolean;
+  /**
+   * Have the details actually REACHED the processor — i.e. does a merchant account exist?
+   *
+   * Not the same question as `complete`, and conflating them was a lie on screen: a seller whose
+   * ten fields were filled saw "the details were sent to the processor" while nothing had been
+   * sent, because opening the account had failed or had never been attempted. It also decides
+   * whether editing is offered at all — see the summary below.
+   */
+  sent?: boolean;
+  /** Rendered INSIDE a go-live step, which already carries the number and the title. Drops its own
+   *  frame and its own heading, so the step is ONE thing rather than a box in a box with two
+   *  headings for one errand (owner, 2026-08-25: *"יש שם ריבוי קונטיינרים... צריך רק כותרת אחת עם
+   *  הספרה 1, בלי קונטיינרים"*). The subscription card solved the same problem the same way. */
+  bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { kyc, derivedCategory, complete, d } = Astro.props;
+const { kyc, derivedCategory, complete, sent = false, bare = false, d } = Astro.props;
 const v = (x: string | number | undefined): string => (x === undefined ? '' : String(x));
 ---
 
-<form class="card card--flat p-4 md:p-5 mt-4" id="mk-form" data-unsaved-guard>
-  <h3 class="text-[1.05rem] font-bold m-0">{d.mkTitle}</h3>
+<form class={bare ? '' : 'card card--flat p-4 md:p-5 mt-4'} id="mk-form" data-unsaved-guard>
+  {!bare && <h3 class="text-[1.05rem] font-bold m-0">{d.mkTitle}</h3>}
 
   {/* SERVER-rendered `hidden` on whichever half does not apply, never revealed by a script on load
       — the flash class this project already has a memory for (`project_injected_overlay_flash`).
       The server knows which state this is. */}
-  <div id="mk-summary" class="flex items-center justify-between gap-3 flex-wrap mt-3 p-3 border [border-color:var(--color-border)] rounded-[var(--radius)]" hidden={!complete}>
-    <p class="muted m-0 text-[0.84rem]">{d.mkOnFile}</p>
-    <button type="button" class="btn btn--ghost btn--sm shrink-0" id="mk-edit">{d.mkEdit}</button>
+  {/* ── Done, and it LOOKS done ──
+      A muted grey line was the entire confirmation for the longest form on the platform (owner,
+      2026-08-25: *"צריך שם חיווי ברור יותר אולי עם וי או אולי ירוק יותר"*). A tick in the success
+      colour, and the sentence says which of the two states it is.
+
+      **Editing is offered only while nothing has been sent.** Once PayMe hold the details, this
+      form does not reach them — nothing here calls `update-seller` — so an edit button would
+      promise a change we do not make (owner: *"אנחנו יכולים לערוך את הבקשה למרות שהיא כבר נשלחה
+      לחברת הסליקה?!"*). After that the way to change anything is their own page, which the approval
+      step already links to. */}
+  <div id="mk-summary" class="flex items-center justify-between gap-3 flex-wrap mt-3" hidden={!complete}>
+    <p class="m-0 text-[0.86rem] font-semibold flex items-center gap-1.5">
+      <svg class="shrink-0 [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      {sent ? d.mkOnFile : d.mkFilledNotSent}
+    </p>
+    {!sent && <button type="button" class="btn btn--ghost btn--sm shrink-0" id="mk-edit">{d.mkEdit}</button>}
   </div>
 
   <div id="mk-fields" hidden={complete}>

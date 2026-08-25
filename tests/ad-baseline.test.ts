@@ -14,14 +14,24 @@ describe('storeBaselineStatus', () => {
     expect(s.impressions).toBeGreaterThan(0);
   });
 
-  it('does not claim to advertise a store with no visible product', () => {
+  it('does not claim to advertise a store with no visible product, and says which reason it is', () => {
     expect(storeBaselineStatus({ storeId: 's1', discoverable: true, visibleProductCount: 0 }, TODAY))
-      .toEqual({ active: false, impressions: 0 });
+      .toEqual({ active: false, reason: 'no-products', impressions: 0 });
   });
 
-  it('does not claim to advertise a store no platform surface carries (blocked, paused or closed)', () => {
+  /**
+   * **The reason is a value because one sentence was wrong for the commonest case.** The card told
+   * every inactive store to add a visible product — including a shop that simply was not on the
+   * site yet, whose seller then went looking for a product he already had (owner, 2026-08-25).
+   * `discoverable: false` covers unpublished as well as paused/closed/blocked, and it outranks the
+   * product count: a shop that is not up cannot be advertised however full it is.
+   */
+  it('does not claim to advertise a store no platform surface carries, and blames the right thing', () => {
     expect(storeBaselineStatus({ storeId: 's1', discoverable: false, visibleProductCount: 9 }, TODAY))
-      .toEqual({ active: false, impressions: 0 });
+      .toEqual({ active: false, reason: 'not-live', impressions: 0 });
+    // Both wrong at once: the one he can act on FIRST is the one he is told.
+    expect(storeBaselineStatus({ storeId: 's1', discoverable: false, visibleProductCount: 0 }, TODAY).reason)
+      .toBe('not-live');
   });
 
   // The label says "last 30 days". Before this the figure was a flat seeded number that never
