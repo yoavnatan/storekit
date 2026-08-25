@@ -18,7 +18,13 @@ import { showToast, showErrorToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
 import { fetchOwnCardConfig, loadCardFields } from '../checkout-card.js';
 
-interface StartResponse { ok?: boolean; error?: string; payUrl?: string; published?: string[] }
+interface StartResponse {
+  ok?: boolean; error?: string; payUrl?: string; published?: string[];
+  /** Present when the card was accepted but PayMe could not be asked to open the account: something
+   *  they require is still not held. It is all on this same tab — the bank block above, or the
+   *  business form in step 1 — which is why this is a sentence and not an error. */
+  stillMissing?: string[];
+}
 
 function i18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
@@ -169,7 +175,19 @@ export function initSubscriptionCard(): void {
             });
             const data = await post({ action: 'save-card', token, storeId: saveCard.dataset['store'] ?? '' });
             if (!data.ok) { fail(data.error === 'no-store-to-bill' ? t['subNoStore'] : undefined); return; }
-            showToast(t['subCardSaved'] ?? '');
+            /**
+             * The card saved — and, sometimes, that is not the whole story. PayMe cannot be asked
+             * to open the clearing account until they hold the bank block and the business type as
+             * well as the business form, and this screen deliberately lets a card be saved before
+             * all of them are in. A plain "card saved" there is true and misleading: it is what the
+             * owner met on 2026-08-25, tick and all, with nothing at PayMe.
+             *
+             * The reload below then re-renders the screen honestly — step 1 open, the wait not
+             * started — so this line only has to say WHY, once, out loud.
+             */
+            showToast(data.stillMissing?.length
+              ? (t['subCardSavedIncomplete'] ?? '')
+              : (t['subCardSaved'] ?? ''));
             // Re-read rather than repainted: saving the card changes which step of the go-live
             // screen is open, and rebuilding that by hand is how a screen starts disagreeing with
             // the server about where somebody stands. (A PLAN change is the opposite case — it

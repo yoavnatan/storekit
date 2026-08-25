@@ -1470,6 +1470,11 @@ export const translations = {
       subCardCvc: 'CVV',
       subCardSave: 'שמירת הכרטיס',
       subCardNoCharge: 'לא נגבה עכשיו. החיוב הראשון יורד ביום שהחנות עולה לאוויר, ואפשר לבטל עד אז בלי שום חיוב.',
+      // Said when the card was accepted and the clearing account still cannot be opened. It names
+      // no field: what is outstanding is marked on the two blocks themselves once the page re-reads,
+      // and a toast listing four field names in a language nobody wrote for a toast is worse than
+      // the sentence that sends him to look.
+      subCardSavedIncomplete: 'הכרטיס נשמר. עדיין חסרים פרטים לפתיחת חשבון הסליקה — הם מסומנים למעלה.',
       subCardSaved: 'הכרטיס נשמר. לא בוצע חיוב.',
       subCardRefused: 'הכרטיס לא התקבל. בדקו את הפרטים ונסו שוב.',
       subCardOnFile: 'הכרטיס שמור ולא בוצע חיוב.',
@@ -3750,6 +3755,7 @@ export const translations = {
       subCardCvc: 'CVV',
       subCardSave: 'Save the card',
       subCardNoCharge: 'Nothing is charged now. The first charge is taken on the day the store goes live, and you can cancel before then at no cost.',
+      subCardSavedIncomplete: 'Card saved. Some details are still needed before the clearing account can be opened — they are marked above.',
       subCardSaved: 'Card saved. Nothing was charged.',
       subCardRefused: 'The card was not accepted. Check the details and try again.',
       subCardOnFile: 'Your card is on file and nothing has been charged.',

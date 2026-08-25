@@ -61,7 +61,23 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     const armed = await armSubscriptionCard(sellerId, token, {
       ...(typeof read.value.storeId === 'string' ? { including: read.value.storeId } : {}),
     });
-    if (armed.status === 'armed') return json({ ok: true, priceAgorot: armed.priceAgorot });
+    /**
+     * **A card can be armed for an account that cannot be opened**, and the seller has to be told
+     * (owner, 2026-08-25 — he was in exactly this state: card saved, tick green, nothing at PayMe).
+     * The clearing account needs the bank block and the business type as well as the ten fields on
+     * the business form, and this screen lets him save a card before all of them are in — by
+     * design, because making the card wait on a form was the delay he asked to remove.
+     *
+     * So the card is accepted and the shortfall travels with the success. Not an error: nothing
+     * failed, and refusing the card would throw away the commitment it represents.
+     */
+    if (armed.status === 'armed') {
+      return json({
+        ok: true,
+        priceAgorot: armed.priceAgorot,
+        ...(armed.stillMissing?.length ? { stillMissing: armed.stillMissing } : {}),
+      });
+    }
     if (armed.status === 'already') return json({ ok: true, already: true });
     return json({ ok: false, error: armed.status }, armed.status === 'not-configured' ? 503 : 400);
   }
