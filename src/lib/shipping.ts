@@ -17,7 +17,14 @@ export type DeliveryMethod = 'pickup' | 'courier' | 'pickup_point';
  *  of destination. A function is allowed: "platform-set" means the seller never prices shipping
  *  or profits from it, not that there is exactly one number. What it would cost elsewhere —
  *  chiefly `offerShippingDetails()` below, which publishes a single figure to Merchant Center —
- *  is worked out in GO_LIVE §5.0.3, and no number moves before their rate table arrives. */
+ *  is worked out in GO_LIVE §5.0.3, and no number moves before their rate table arrives.
+ *
+ *  **These numbers INCLUDE VAT; a carrier's tariff does not. Compare net to net or the
+ *  comparison lies (2026-08-25).** This is a consumer-facing price, so 18% of it is never ours:
+ *  ₪30 leaves us ₪25.42 and ₪20 leaves ₪16.95. A ₪28 tariff therefore loses ₪2.58 per parcel
+ *  while reading as a ₪2 margin — the whole gap §5.0.3 has to place is 18% wider than it looks.
+ *  Whoever replaces these placeholders divides by 1.18 first. Why it nets to zero for income
+ *  tax, and the six questions for the accountant: `docs/shipping-tax-brief.md`. */
 export const SHIPPING_RATES = {
   courier: 30,
   pickup_point: 20,
