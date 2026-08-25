@@ -69,8 +69,13 @@ interface Props {
    *  charge fires when the shop goes up (`lib/subscription-arm.ts`). */
   cardOnFile?: boolean;
   /** Who the card belongs to. PayMe's tokenizer wants a payer, and these are the seller's own
-   *  account details — not a form for him to fill in again (`feedback_seller_form_burden`). */
-  payer: { name: string; email: string };
+   *  account details — not a form for him to fill in again (`feedback_seller_form_burden`).
+   *
+   *  **`phone` is not optional to them.** The script has always passed one and this component never
+   *  rendered it, so every tokenisation went out with an empty string and came back refused
+   *  (owner, 2026-08-25: *"הכרטיס לא התקבל"*). It comes from the clearing details he has already
+   *  given — `merchant_kyc.ownerPhone` — which is why the card asks him for nothing. */
+  payer: { name: string; email: string; phone: string };
   /** Rendered INSIDE a go-live step, which already carries the title and the one-line reason. Drops
    *  its own heading and its own frame, so the step is one thing rather than a box in a box saying
    *  "מנוי חודשי" twice (owner, 2026-08-24). */
@@ -239,6 +244,7 @@ const showBreakdown = paying && lines.length > 1;
         data-first-name={payer.name.trim().split(/\s+/)[0] ?? ''}
         data-last-name={payer.name.trim().split(/\s+/).slice(1).join(' ')}
         data-email={payer.email}
+        data-phone={payer.phone}
         data-label={d.subTitle}
         data-amount={(plan.monthlyFee).toFixed(2)}
       >

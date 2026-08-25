@@ -82,7 +82,7 @@ interface Props {
   subscriptionPaying: boolean;
   /** Whose card the monthly fee is taken from — the seller's own account details, handed down so
    *  the card fields never ask him for anything he has already given us. */
-  payer: { name: string; email: string };
+  payer: { name: string; email: string; phone: string };
   d: ReturnType<typeof getT>['dashboard'];
 }
 const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, holds, store, planNames, planName, subscription, subscriptionPaying, payer, d } = Astro.props;

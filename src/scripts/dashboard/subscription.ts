@@ -150,10 +150,19 @@ export function initSubscriptionCard(): void {
             // the server about where somebody stands. (A PLAN change is the opposite case — it
             // moves three known values and must not throw away a half-typed card.)
             window.location.reload();
-          } catch {
-            // A refused card is the seller's to fix and he has to be told, out loud — a silent
-            // failure here is a seller who believes he is committed and is not.
-            fail(t['subCardRefused']);
+          } catch (err) {
+            /**
+             * A refused card is the seller's to fix and he has to be told, out loud — a silent
+             * failure here is a seller who believes he is committed and is not.
+             *
+             * **And PayMe's own reason is shown**, because ours could not tell a declined card from
+             * a detail we failed to send: an empty phone came back looking exactly like a bad card
+             * (owner, 2026-08-25), and the generic sentence sent him to re-check digits that were
+             * fine. Their text is written for a MERCHANT, which is who is reading this screen — the
+             * rule that it must never reach a shopper is about the checkout, not here.
+             */
+            const said = err instanceof Error ? err.message.replace(/^payme: /, '') : '';
+            fail(said ? `${t['subCardRefused'] ?? ''} ${said}`.trim() : t['subCardRefused']);
           } finally {
             busy.done();
           }

@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { ownedStore } from '../../../lib/store-ownership.js';
-import { pauseStore, resumeStore, requestStoreClosure, openOrderCount } from '../../../lib/store-lifecycle.js';
+import { pauseStore, resumeStore, requestStoreClosure, discardUnpublishedStore, openOrderCount } from '../../../lib/store-lifecycle.js';
 import { pingStoreChange } from '../../../lib/indexnow.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { isLifecycleMailState, sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
@@ -17,7 +17,7 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-const ACTIONS = ['pause', 'resume', 'close'] as const;
+const ACTIONS = ['pause', 'resume', 'close', 'discard'] as const;
 type LifecycleAction = typeof ACTIONS[number];
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -36,6 +36,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   const result = action === 'pause' ? await pauseStore(store.id)
     : action === 'resume' ? await resumeStore(store.id)
+    // `discard` refuses anything that has ever been public — the guard is in the module, not here,
+    // so a second caller cannot get a laxer version of it (`store-lifecycle.ts`).
+    : action === 'discard' ? await discardUnpublishedStore(store.id)
     : await requestStoreClosure(store.id);
 
   if (!result.ok) return json({ ok: false, error: result.error }, 409);

@@ -3018,7 +3018,7 @@ const orderStatusColors: Record<string, string> = {
             planName={t.pricing.tiers[resolveTier(store?.tier).id].name}
             subscription={subscription}
             subscriptionPaying={subscriptionRunning(subscription)}
-            payer={{ name: seller.name, email: seller.email }}
+            payer={{ name: seller.name, email: seller.email, phone: merchantKyc.ownerPhone ?? '' }}
             d={d}
           />
         )}
@@ -3407,6 +3407,11 @@ const orderStatusColors: Record<string, string> = {
             <button type="button" class="btn btn--ghost btn--sm" id="lc-pause" hidden={lifecycleState !== 'active'}>{d.lcPause}</button>
             <button type="button" class="btn btn--sm" id="lc-resume" hidden={lifecycleState !== 'paused' && lifecycleState !== 'closing'}>{lifecycleState === 'closing' ? d.lcCancelClose : d.lcResume}</button>
             <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" id="lc-close" hidden={lifecycleState !== 'active' && lifecycleState !== 'paused'}>{d.lcClose}</button>
+            {/* The only exit a shop that never went live had was abandoning the row (owner,
+                2026-08-25). It is a DELETE and not a closure because nothing was sold, nothing is
+                owed and no figure anywhere is derived from it — `store-lifecycle.ts` argues the
+                distinction, and refuses this verb for anything that has ever been public. */}
+            <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" id="lc-discard" hidden={lifecycleState !== 'unpublished'}>{d.lcDiscard}</button>
           </div>
         </div>
       </SellerPanelShell>

@@ -43,8 +43,16 @@ const { holds, storeIsLive, d } = Astro.props;
  * instruction he cannot follow, on the one screen he lands on every time.
  *
  * The holds are already ordered by the flow (`store-publication.ts`), so the FIRST one is what he
- * is actually waiting on. The approval hold is the one nobody can act on, and there the card drops
- * its button entirely rather than pointing at a screen with nothing to press.
+ * is actually waiting on.
+ *
+ * **The approval wait keeps a control and it is DISABLED**, saying the status rather than offering
+ * a destination (owner, 2026-08-25: *"הוא רק צריך להיות דיסאייבל ולרשום 'ממתין לאישור העסק'"*).
+ * Two earlier attempts were wrong in the same way — both treated it as a navigation question.
+ * Removing it left the overview saying "not live" with nothing beside it; labelling it "go to
+ * payments" offered a trip to a screen with nothing to press. What belongs here is the STATE, in
+ * the place the eye already goes. Disabled is safe on this site specifically: `reset.css` forces
+ * `cursor:default` on every disabled control, so it reads as inert rather than as the banned
+ * no-entry cursor.
  */
 const blocking = holds[0] ?? null;
 const LINE: Record<string, string> = {
@@ -59,15 +67,20 @@ const LINE: Record<string, string> = {
  * It was dropped during the review on the reasoning that a button with nothing to press is worse
  * than none — and that was half right: pressing it does not SHORTEN the wait. But it is not a no-op
  * either, because the payments tab is where the wait is explained, where the card can still be
- * saved, and where the whole state lives. Removing it left the overview saying "not live" with no
- * route to the screen that says why.
+ * saved. **The approval wait keeps a control and it is DISABLED**, saying the status rather than
+ * offering a destination (owner, 2026-08-25). Two earlier attempts were wrong in the same way —
+ * both treated it as a navigation question. Removing the button left the overview saying "not live"
+ * with nothing beside it; labelling it "go to payments" offered a trip to a screen with nothing to
+ * press. What belongs here is the STATE, in the place the eye already goes. Disabled is safe on
+ * this site specifically: `reset.css` forces `cursor:default` on every disabled control, so it
+ * reads as inert rather than as the banned no-entry cursor.
  */
 const CTA: Record<string, string> = {
   'clearing-details': d.pubHoldDetailsCta,
-  'clearing-approval': d.pubHoldApprovalCta,
   'subscription': d.pubHoldSubscriptionCta,
 };
-const title = blocking === 'clearing-approval' ? d.pubHoldApproval : d.pubTitle;
+const waiting = blocking === 'clearing-approval';
+const title = waiting ? d.pubHoldApproval : d.pubTitle;
 const line = blocking ? LINE[blocking] : d.pubBuildOn;
 const cta = blocking ? CTA[blocking] : d.pubHoldSubscriptionCta;
 ---
@@ -80,7 +93,9 @@ const cta = blocking ? CTA[blocking] : d.pubHoldSubscriptionCta;
         mechanism every stat card on this tab uses, so this behaves like every other jump here.
         Absent while PayMe are reviewing: there is nothing to press, and a button that leads to a
         screen with nothing to do on it is worse than none. */}
-    {cta && (
+    {waiting ? (
+      <button type="button" class="btn btn--sm mt-3" disabled>{d.pubHoldApprovalWaiting}</button>
+    ) : cta && (
       <button type="button" class="btn btn--accent btn--sm mt-3" data-goto-panel="payouts">
         {cta}
       </button>

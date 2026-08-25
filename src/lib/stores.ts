@@ -441,6 +441,33 @@ interface CreateStoreInput {
   description?: string;
 }
 
+/**
+ * Take a store out of the application, without taking it out of the database.
+ *
+ * **The first writer this column has ever had.** `deleted_at` was added in 0001 and read everywhere
+ * — `FROM_LIVE` filters on it, the store cap counts around it, every discovery surface excludes it
+ * — and nothing set it. So "a deleted store is `deleted_at`, never a missing row" (the header rule
+ * at the top of this file) described a state that could not be reached.
+ *
+ * Its one caller is `store-lifecycle.ts#discardUnpublishedStore`, and the guard that matters lives
+ * THERE rather than here: only a shop that has never been public may be discarded. This function is
+ * deliberately the dumb half — a second caller with a different rule would be a second definition
+ * of when a storefront may vanish, and a live one vanishing takes its orders and its buyers'
+ * money out of the seller's dashboard while both keep existing.
+ *
+ * Nothing is erased: the row, its products, its categories and any order that ever named its slug
+ * stay exactly where they are, because every historical figure on this platform is derived from
+ * them (§7.9).
+ */
+export async function softDeleteStore(storeId: string): Promise<boolean> {
+  if (!isUuid(storeId)) return false;
+  const { rowCount } = await query(
+    'UPDATE stores SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL',
+    [storeId],
+  );
+  return rowCount > 0;
+}
+
 /** How many stores one seller account may open (decided 2026-07-27). All of a seller's stores bill
  *  through their ONE registered business — the sub-merchant at the payment processor is per legal
  *  entity, not per store — so a separate legal entity means a separate account, not a 6th store.

@@ -62,7 +62,7 @@ interface Props {
    *  review is spent in since 2026-08-24 (`lib/subscription-arm.ts`). */
   cardOnFile: boolean;
   /** Whose card it is — handed down to the card fields, never asked of the seller again. */
-  payer: { name: string; email: string };
+  payer: { name: string; email: string; phone: string };
   kyc: Partial<MerchantKyc>;
   derivedCategory: string | null;
   kycComplete: boolean;
@@ -82,9 +82,18 @@ const {
   subscription, subscriptionPaying, signupLink, d,
 } = Astro.props;
 
-/** A step is done when its hold is gone. `details` is also done once the account exists, which is
- *  what `clearing-details` disappearing means. */
-const detailsDone = !holds.includes('clearing-details');
+/**
+ * ── Step 1 is finished when HIS part is (2026-08-25) ──
+ *
+ * It used to key off the `clearing-details` hold, i.e. off PayMe having an account — and since the
+ * account is no longer opened when the form is submitted (`subscription-arm.ts`: it costs ₪65 a
+ * month for ever and cannot be closed, so it waits until he commits), that hold now lifts AFTER
+ * step 2. Keyed off it, step 1 would sit open while the step below it was being worked on.
+ *
+ * `kycComplete` is the honest test: everything PayMe require has been given. What happens with it
+ * afterwards is steps 2 and 3.
+ */
+const detailsDone = kycComplete || !holds.includes('clearing-details');
 const approvalDone = detailsDone && !holds.includes('clearing-approval');
 /**
  * **This shop's** step, not the account's: a plan chosen and a card on file, or already being

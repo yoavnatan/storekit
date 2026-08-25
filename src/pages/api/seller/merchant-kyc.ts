@@ -2,12 +2,9 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { saveMerchantKyc, ensureMerchantAccount, clearingStatusFor } from '../../../lib/seller-merchant.js';
+import { saveMerchantKyc, clearingStatusFor } from '../../../lib/seller-merchant.js';
 import { missingMerchantKyc } from '../../../lib/merchant-kyc.js';
 import { syncStorePublication, publishHoldsFor } from '../../../lib/store-publication.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
-import { store as platform } from '../../../config/store.config.js';
-import { urlSegment } from '../../../lib/url-base.js';
 
 /**
  * What PayMe require about the business, and the only place a seller types it.
@@ -53,29 +50,37 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // the submission, which is what makes a partial save partial instead of lost.
   const stored = await saveMerchantKyc(sellerId, read.value);
 
-  // Opened here, with the seller's first shop as the business PayMe are told about. It is the same
-  // call store-creation makes and it is deliberately the same one: a second path that opened an
-  // account would be a second place the ₪65-a-month one-account-per-seller rule could be broken.
-  const stores = await getStoresBySellerId(sellerId);
-  const first = stores[0];
-  const account = first
-    ? await ensureMerchantAccount(sellerId, {
-      storeName: first.name,
-      storeUrl: `${platform.url}/${urlSegment(first.slug)}`,
-      storeDescription: first.description || first.tagline || first.name,
-      storeCategories: first.categories,
-    })
-    : null;
+  /**
+   * ── The account is NOT opened here any more (owner, 2026-08-25) ──
+   *
+   * *"הרי יש עלות הקמה של 99 ש״ח! ו-65 ש״ח החזקת מסוף. אני לא מעוניין להפסיד את הכסף הזה על מוכרים
+   * שמתחרטים לי באמצע."*
+   *
+   * The ₪65-a-month terminal is charged to the PARTNER wallet — ours — for every merchant account
+   * that exists, and it cannot be passed to the seller (GO_LIVE §3.1.1). **And it cannot be
+   * stopped:** `update-seller` has no deactivation (`is_active` is about the public key), there is
+   * no delete-seller endpoint, and `docs/payme-sandbox-notes.md` records that accounts cannot be
+   * removed at all. So an account opened for somebody who then walks away is ₪65 every month, for
+   * ever, against a seller who never paid us a shekel.
+   *
+   * Opening it on THIS request meant the meter started the moment a form was submitted — the
+   * cheapest possible action, taken before the seller had committed to anything. It now starts when
+   * he puts a card on file (`lib/subscription-arm.ts`), which is the first moment he has.
+   *
+   * **His wait does not get longer for it.** Saving the card is a minute in the same sitting, and
+   * PayMe's seven-day review begins at that point rather than at this one.
+   */
 
-  // The gate, immediately: this may have been the last hold, and the seller is looking at the screen.
-  const published = account?.status === 'ready' ? await syncStorePublication(sellerId) : [];
+  // The gate is still asked, because saving these details can be the last thing a seller needed to
+  // do — for a second shop on an account PayMe already approved, nothing here opens anything and the
+  // shop may be free to go.
+  const published = await syncStorePublication(sellerId);
 
   return json({
     ok: true,
     // What is still missing, from the SAME function the account path asks — so the form can never
     // disagree with the thing that decides whether an account may be opened.
     missing: missingMerchantKyc(stored),
-    accountStatus: account?.status ?? 'no-store',
     clearing: await clearingStatusFor(sellerId),
     holds: await publishHoldsFor(sellerId),
     published,

@@ -71,7 +71,7 @@ interface PayMeGlobal {
 }
 interface PayMeInstance {
   hostedFields(): { create(field: unknown, options?: Record<string, unknown>): { mount(selector: string): void } };
-  tokenize(sale: Record<string, unknown>): Promise<{ token?: string }>;
+  tokenize(sale: Record<string, unknown>): Promise<{ token?: string; message?: string }>;
 }
 
 declare global {
@@ -214,10 +214,21 @@ export async function loadCardFields(config: CardConfig, lang: 'he' | 'en'): Pro
           amount: { currency: 'ILS', value: sale.amountIls },
         },
       });
-      // A tokenize that resolves without a token is not a success. Treating it as one would send
-      // `buyerKey: undefined` to the checkout, which refuses it — a correct outcome reached by the
-      // wrong route, with a confusing message.
-      if (!result?.token) throw new Error('payme: the card was not accepted');
+      /**
+       * A tokenize that resolves without a token is not a success. Treating it as one would send
+       * `buyerKey: undefined` to the checkout, which refuses it — a correct outcome reached by the
+       * wrong route, with a confusing message.
+       *
+       * **Their reason is carried, not swallowed.** It used to be a fixed sentence, so the caller
+       * showed "the card was not accepted" whether the card was declined, a field was empty or the
+       * payer details were incomplete — and a missing PHONE presented exactly like a bad card
+       * (owner, 2026-08-25). Their message is written for a merchant and must never reach a
+       * shopper, so the CALLER decides whether to show it; this only stops it being lost.
+       */
+      if (!result?.token) {
+        const said = typeof result?.message === 'string' ? result.message : '';
+        throw new Error(said ? `payme: ${said}` : 'payme: the card was not accepted');
+      }
       return result.token;
     },
   };

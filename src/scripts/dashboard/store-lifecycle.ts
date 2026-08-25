@@ -8,7 +8,9 @@
 // See lib/store-lifecycle.ts.
 import { showErrorToast, showToast } from '../../lib/toast.js';
 
-type LifecycleState = 'active' | 'paused' | 'closing' | 'closed' | 'blocked';
+// `unpublished` was missing, which is why the server has answered a state this file could not
+// name since 2026-08-23. It matters now that a button keys off it (`lc-discard`).
+type LifecycleState = 'active' | 'unpublished' | 'paused' | 'closing' | 'closed' | 'blocked';
 
 interface LifecycleResponse {
   ok: boolean;
@@ -34,6 +36,7 @@ export function initStoreLifecycle(): void {
   const pauseBtn  = document.getElementById('lc-pause')  as HTMLButtonElement | null;
   const resumeBtn = document.getElementById('lc-resume') as HTMLButtonElement | null;
   const closeBtn  = document.getElementById('lc-close')  as HTMLButtonElement | null;
+  const discardBtn = document.getElementById('lc-discard') as HTMLButtonElement | null;
 
   function render(state: LifecycleState, openOrders: number): void {
     root!.dataset['state'] = state;
@@ -45,6 +48,7 @@ export function initStoreLifecycle(): void {
         : state === 'closing' ? (i.lcStateClosing ?? '')
         : state === 'closed'  ? (i.lcStateClosed ?? '')
         : state === 'blocked' ? (i.lcStateBlocked ?? '')
+        : state === 'unpublished' ? (i.lcStateUnpublished ?? '')
         : (i.lcStateActive ?? '');
     }
     if (noteEl) {
@@ -53,6 +57,7 @@ export function initStoreLifecycle(): void {
         : state === 'closing' ? (i.lcClosingNote ?? '')
         : state === 'closed'  ? (i.lcClosedNote ?? '')
         : state === 'blocked' ? ''
+        : state === 'unpublished' ? (i.lcUnpublishedNote ?? '')
         : (i.lcActiveNote ?? '');
     }
     if (ordersEl) {
@@ -68,10 +73,11 @@ export function initStoreLifecycle(): void {
       resumeBtn.textContent = state === 'closing' ? (i.lcCancelClose ?? '') : (i.lcResume ?? '');
     }
     if (closeBtn) closeBtn.hidden = state !== 'active' && state !== 'paused';
+    if (discardBtn) discardBtn.hidden = state !== 'unpublished';
   }
 
-  async function send(action: 'pause' | 'resume' | 'close'): Promise<void> {
-    for (const btn of [pauseBtn, resumeBtn, closeBtn]) if (btn) btn.disabled = true;
+  async function send(action: 'pause' | 'resume' | 'close' | 'discard'): Promise<void> {
+    for (const btn of [pauseBtn, resumeBtn, closeBtn, discardBtn]) if (btn) btn.disabled = true;
     try {
       const res = await fetch('/api/seller/store-lifecycle', {
         method: 'POST',
@@ -83,6 +89,13 @@ export function initStoreLifecycle(): void {
         showErrorToast(data?.error || (i.lcFailed ?? 'Action failed.'));
         return;
       }
+      /**
+       * A discarded shop is GONE from this dashboard — its row, its tab, the store switcher, the
+       * whole panel this button lives in. There is nothing left here to re-render, so the page is
+       * re-read rather than patched; patching would leave a settings form open over a store that no
+       * longer exists.
+       */
+      if (action === 'discard') { showToast(i.lcDiscarded ?? ''); window.location.href = '/seller/dashboard'; return; }
       render(data.state, data.openOrders ?? 0);
       // Say it out loud when the store comes BACK. Pausing and closing announce
       // themselves — the page fills with a halted notice — but reopening only
@@ -92,7 +105,7 @@ export function initStoreLifecycle(): void {
     } catch {
       showErrorToast(i.lcFailed ?? 'Action failed.');
     } finally {
-      for (const btn of [pauseBtn, resumeBtn, closeBtn]) if (btn) btn.disabled = false;
+      for (const btn of [pauseBtn, resumeBtn, closeBtn, discardBtn]) if (btn) btn.disabled = false;
     }
   }
 
@@ -122,6 +135,13 @@ export function initStoreLifecycle(): void {
       () => void send('resume'),
     );
   });
+  /** Through the SAME modal as the other three, and in the danger tone: it takes something away and
+   *  cannot be undone. A sensitive action on this dashboard never happens on one stray click
+   *  (AI_INSTRUCTIONS → Micro-interactions bans `confirm()` and requires this dialog). */
+  discardBtn?.addEventListener('click', () => {
+    confirmThen(i.lcDiscardConfirmTitle ?? '', i.lcDiscardConfirmBody ?? '', i.lcDiscard ?? '', 'danger', () => void send('discard'));
+  });
+
   closeBtn?.addEventListener('click', () => {
     confirmThen(i.lcCloseConfirmTitle ?? '', i.lcCloseConfirmBody ?? '', i.lcClose ?? '', 'danger', () => void send('close'));
   });

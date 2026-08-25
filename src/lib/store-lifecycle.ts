@@ -26,7 +26,7 @@
  *  stopped, nothing erased. Only the FINAL closure archives them, because at that point there is
  *  nothing left to resume into.
  */
-import { getStoreById, getStoreBySlug, updateStore, type Store } from './stores.js';
+import { getStoreById, getStoreBySlug, softDeleteStore, updateStore, type Store } from './stores.js';
 import { storeLifecycle, type StoreLifecycle } from './store-status.js';
 import { countOrdersByStoreSlug, type Order } from './orders.js';
 import {
@@ -120,6 +120,45 @@ async function finalizeClosure(store: Store): Promise<Store | null> {
 
 /** Close the store — now if nothing is owed, otherwise as soon as everything is.
  *  Either way the store stops selling immediately, which is the half the seller asked for. */
+/**
+ * Throw away a shop that was never on the site.
+ *
+ * ── The gap (owner, 2026-08-25) ──
+ * *"אם הוא רוצה לסגור את החנות בשלב הזה שלפני שהיא באוויר — מה הדרך לעשות זאת? הרי צריכה להיות
+ * אופציה פשוט למחוק חנות."* There was none. Pause and close both require the state to be `active`,
+ * for a good reason — you cannot stop selling in a shop that never sold — and the effect was that
+ * the ONLY period in which a seller has committed nothing was also the only one he could not walk
+ * away from. He could abandon the row, and that is not the same as being able to leave.
+ *
+ * ── Why this is its own verb and not `close` ──
+ * A closure is an event with consequences: it defers to open orders, archives campaigns, mails the
+ * seller, and leaves a `closed_at` that every historical total still reads (`store-status.ts`).
+ * None of that applies here. Nothing was sold, nothing is owed, nothing was ever public, and no
+ * figure anywhere is derived from this shop. So it is a soft delete — the row and its products stay
+ * for forensics, `deleted_at` takes it out of `FROM_LIVE`, and that is the whole of it.
+ *
+ * ── The guard is the whole safety argument ──
+ * **Only a shop that has never been published**, checked here rather than by the caller. A live
+ * shop deleted this way would vanish from the seller's dashboard while its orders, its buyers and
+ * its money kept existing — which is exactly the shape `store-status.ts` refuses to allow, and the
+ * reason nothing here deletes anything else.
+ */
+export async function discardUnpublishedStore(storeId: string): Promise<LifecycleChange> {
+  const store = await getStoreById(storeId);
+  if (!store) return { ok: false, error: 'החנות לא נמצאה.' };
+  if (storeLifecycle(store) !== 'unpublished') {
+    return { ok: false, error: 'אפשר למחוק רק חנות שעדיין לא עלתה לאוויר.' };
+  }
+  // Campaigns cannot exist on an unpublished shop (`ad-campaign-input.ts` refuses to create one),
+  // so there is nothing to archive and no spend to stop — the one place this verb is simpler than
+  // a closure rather than merely different.
+  // Through `softDeleteStore`, which is the only writer this column has — see its header for why
+  // the guard above is not repeated there.
+  const removed = await softDeleteStore(storeId);
+  if (!removed) return { ok: false, error: 'החנות לא נמצאה.' };
+  return { ok: true, state: 'closed', store, openOrders: 0 };
+}
+
 export async function requestStoreClosure(storeId: string): Promise<LifecycleChange> {
   const store = await getStoreById(storeId);
   if (!store) return { ok: false, error: 'החנות לא נמצאה.' };

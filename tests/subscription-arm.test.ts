@@ -26,6 +26,8 @@ const rig = vi.hoisted(() => ({
   published: [] as string[],
   errors: [] as Record<string, unknown>[],
   queries: [] as { sql: string; params: readonly unknown[] }[],
+  /** How many times a clearing account was asked for. Zero everywhere except arming. */
+  opened: 0,
 }));
 
 vi.mock('../src/lib/db.js', () => ({
@@ -64,7 +66,16 @@ vi.mock('../src/lib/store-plan.js', async () => {
   const actual = await vi.importActual<typeof import('../src/lib/store-plan.js')>('../src/lib/store-plan.js');
   return { ...actual, billedStoresFor: async () => rig.stores };
 });
-vi.mock('../src/lib/seller-merchant.js', () => ({ merchantBlockFor: async () => rig.merchantBlock }));
+vi.mock('../src/lib/seller-merchant.js', () => ({
+  merchantBlockFor: async () => rig.merchantBlock,
+  // Arming a card is what OPENS the clearing account since 2026-08-25 — every account costs ₪65 a
+  // month for ever and cannot be closed at PayMe, so it waits for the seller to commit. Recorded
+  // rather than performed: what it sends is `seller-merchant.ts`'s to test.
+  ensureMerchantAccount: async () => { rig.opened += 1; return { status: 'pending' }; },
+}));
+vi.mock('../src/lib/stores.js', () => ({
+  getStoresBySellerId: async () => [{ id: 'store-1', slug: 'shop', name: 'החנות', description: '', tagline: '' }],
+}));
 vi.mock('../src/lib/store-publication.js', () => ({ syncStorePublication: async () => rig.published }));
 vi.mock('../src/lib/money-events.js', () => ({ recordMoneyEvent: async () => undefined }));
 vi.mock('../src/lib/error-log.js', () => ({
@@ -96,6 +107,7 @@ beforeEach(() => {
   rig.published = ['shop'];
   rig.errors = [];
   rig.queries = [];
+  rig.opened = 0;
 });
 
 describe('putting a card on file', () => {
@@ -106,6 +118,23 @@ describe('putting a card on file', () => {
     // A `generate-subscription` here would charge the first iteration on the spot, which is exactly
     // the review week this whole change exists to stop charging for.
     expect(rig.generated).toEqual([]);
+  });
+
+  /**
+   * **The ₪65-a-month decision, as an assertion** (owner, 2026-08-25). Every clearing account is
+   * charged to our partner wallet for as long as it exists, it cannot be deactivated or deleted at
+   * PayMe, and it cannot be billed to the seller. Opening it when a FORM was submitted meant paying
+   * that for everyone who ever changed their mind; it opens here, where he has committed.
+   */
+  it('opens the clearing account HERE, at the moment he commits', async () => {
+    await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
+    expect(rig.opened).toBe(1);
+  });
+
+  it('opens nothing for a seller with no shop to bill — there is no commitment to price', async () => {
+    rig.stores = [];
+    await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
+    expect(rig.opened).toBe(0);
   });
 
   it('records what the card will be charged, so it can be shown before it happens', async () => {

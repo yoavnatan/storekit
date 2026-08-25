@@ -32,7 +32,10 @@
 import { firstRow, isUuid, query } from './db.js';
 import { activePaymeCredentials, type PaymeCredentials } from './payment-payme.js';
 import { billedStoresFor, totalFeeAgorot } from './store-plan.js';
-import { merchantBlockFor } from './seller-merchant.js';
+import { ensureMerchantAccount, merchantBlockFor } from './seller-merchant.js';
+import { getStoresBySellerId } from './stores.js';
+import { store as platform } from '../config/store.config.js';
+import { urlSegment } from './url-base.js';
 import { startSubscription, subscriptionArmed, subscriptionFor } from './seller-subscription.js';
 import { syncStorePublication } from './store-publication.js';
 import { logError } from './error-log.js';
@@ -83,6 +86,29 @@ export async function armSubscriptionCard(
        canceled_at = NULL, ends_at = NULL, next_charge = NULL, updated_at = now()`,
     [sellerId, JSON.stringify(storeFees), priceAgorot, buyerKey],
   );
+  /**
+   * ── And NOW the clearing account is opened ──
+   *
+   * Every merchant account costs us ₪65 a month for as long as it exists, it cannot be closed at
+   * PayMe (no deactivation on `update-seller`, no delete endpoint), and it cannot be billed to the
+   * seller. Opening it when he submitted a FORM meant paying that for everyone who ever changed
+   * their mind; opening it here means paying it only for a seller who has committed — this function
+   * runs the moment his card is on file (owner, 2026-08-25).
+   *
+   * Awaited but never allowed to fail the arming: the card is saved either way, and a seller whose
+   * account PayMe refused is one `ensureMerchantAccount` has already logged loudly for a person to
+   * pick up. Failing here would throw away a commitment we had just captured.
+   */
+  const first = (await getStoresBySellerId(sellerId))[0];
+  if (first) {
+    await ensureMerchantAccount(sellerId, {
+      storeName: first.name,
+      storeUrl: `${platform.url}/${urlSegment(first.slug)}`,
+      storeDescription: first.description || first.tagline || first.name,
+      ...(first.categories ? { storeCategories: first.categories } : {}),
+    }, creds).catch(() => undefined);
+  }
+
   return { status: 'armed', priceAgorot };
 }
 
