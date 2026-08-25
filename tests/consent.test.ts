@@ -25,6 +25,7 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { sourceGuard } from './helpers/source-guard.js';
 import {
   CONSENT_ALL,
   CONSENT_NONE,
@@ -125,6 +126,20 @@ describe('where the off-switch is, and where it is NOT', () => {
     expect(notice).not.toContain('consent-save');
   });
 
+  it('the dismiss button carries no aria-label — proved against a counter-example', () => {
+    expect(sourceGuard({
+      file: 'src/components/ConsentBanner.astro',
+      rule: 'the dismiss button is named by its visible text, never by an aria-label',
+      find: (markup) => {
+        const at = markup.indexOf('id="consent-dismiss"');
+        if (at < 0) return ['the dismiss button is gone'];
+        const btn = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('</button>', at));
+        return /aria-label/.test(btn) ? ['aria-label on the dismiss button'] : [];
+      },
+      mustReject: '<button id="consent-dismiss" aria-label="סגירת ההודעה">הבנתי</button>',
+    })).toEqual([]);
+  });
+
   it('the dismiss button is named by its own visible text', () => {
     // No `aria-label`, and no icon-only variant. Both were here on 2026-08-25 and both came out:
     // the × below `sm` was measured against the live DOM at 360/375/390/430 and the bar was 46px
@@ -197,6 +212,23 @@ describe('the notice never covers anything', () => {
     walk(dir);
     return out;
   }
+
+  it('the product page\'s cart bar clears it — proved against a counter-example', () => {
+    // Through `sourceGuard`, which runs the rule against a broken sample as well as the real file.
+    // This exact rule was VACUOUS on its first run: it looked for `--consent-bar-h` in the block
+    // and found it in the comment explaining the rule, so the check passed with the fix reverted.
+    expect(sourceGuard({
+      file: 'src/styles/pages/product.css',
+      rule: 'a fixed element pinned to the bottom edge reads --consent-bar-h',
+      find: (css) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .filter((m) => /position:\s*fixed/.test(m[2] ?? ''))
+        .filter((m) => /bottom:\s*0(px)?\s*;/.test(m[2] ?? ''))
+        .filter((m) => !/top:\s*0/.test(m[2] ?? '') && !/inset:\s*0/.test(m[2] ?? ''))
+        .filter((m) => !(m[2] ?? '').includes('--consent-bar-h'))
+        .map((m) => (m[1] ?? '').trim()),
+      mustReject: '#sticky-cart-bar { position: fixed; inset-inline: 0; bottom: 0; z-index: 40; }',
+    })).toEqual([]);
+  });
 
   it('any fixed bar sitting on the bottom edge clears it', () => {
     // The bug this replaces: the notice is `position: fixed; bottom: 0` at z-index 60, and the

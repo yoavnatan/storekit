@@ -71,6 +71,20 @@ list is the accumulated cost of past sessions.
 - **A seller may not act on a store they do not own.** Check ownership from the session, not from a
   slug in the request.
 
+### Guards must be able to fail
+- **A grep-guard you did not watch FAIL is a guard you have not checked.** Three were written in one
+  session on 2026-08-25, all three passed, and all three would have passed with the bug deliberately
+  put back: one found its answer in the comment explaining the rule, one sliced the file from a
+  marker sitting after half of what it asserted, one reached backwards into a different element.
+  They were caught only by reverting each fix by hand.
+- **So a new source-text guard goes through `tests/helpers/source-guard.ts`.** It takes a
+  `mustReject` — a scrap of source the rule is supposed to catch — and fails if the rule accepts it,
+  which converts "I proved it can fail" from a discipline into the only way to write one. It also
+  strips comments by default, which is the specific trap above removed rather than remembered.
+  Existing guards (97 files make a negative assertion about source text) were NOT retrofitted; that
+  is a project, and none is known to be hollow. The rule binds what is written from here.
+- **When a guard does fail, fix the code — never the counter-example, and never widen the rule.**
+
 ### Architecture
 - **A rule that appears in two modules is the next bug.** Extract it and add a grep guard test that
   fails if anyone hand-rolls it again — `tests/safe-redirect.test.ts` and
