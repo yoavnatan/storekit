@@ -1414,7 +1414,7 @@ export const translations = {
       // The answer to "why am I charged ₪224" — one standing order, a line per shop
       // (lib/store-plan.ts). Shown only when there is more than one line.
       subTotal: 'סך החיוב החודשי',
-      subTotalOf: 'מורכב מ',
+      subTotalOf: 'פירוט החיוב',
       // A paying seller opening a SECOND shop is adding a line to a charge that already runs. If
       // the button said "start subscription" he would read it as a second monthly charge.
       subAddStore: 'הוסף את החנות למנוי',

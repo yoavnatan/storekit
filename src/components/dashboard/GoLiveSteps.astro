@@ -280,43 +280,17 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
             */}
           {step.id === 'card' && !cardDone && (
             <div class="mt-3">
-              {/* ── The plan, as four pills ──
-                  Named here rather than on a screen of its own, because this is the moment it starts
-                  costing him. The marked one is what this shop is on; pressing another moves it,
-                  and — for a seller already paying — moves the standing order with it, from the next
-                  charge (`/api/seller/tier`). */}
-              <p class="m-0 text-[0.84rem] font-semibold">{d.glPlanTitle}</p>
-              <div class="flex flex-wrap gap-2 mt-2" id="go-live-plans" data-store={store.id}>
-                {SELLER_TIERS.map((tier) => (
-                  <button
-                    type="button"
-                    class:list={[
-                      'btn btn--sm',
-                      tier.id === (activeTier ?? SELLER_TIERS[0]!.id) ? 'btn--accent' : 'btn--ghost',
-                    ]}
-                    data-role="plan"
-                    data-tier={tier.id}
-                    data-commission={String(tier.commissionPercent)}
-                    data-fee={String(tier.monthlyFee)}
-                  >
-                    {planNames[tier.id as SellerTierId]} · ₪{tier.monthlyFee}
-                  </button>
-                ))}
-              </div>
-              <p class="muted m-0 mt-2 text-[0.78rem]">
-                {/* `?from=payouts` is what lets the comparison page offer a way back. Without it a
-                    seller who followed this link was on a public marketing page with no route to
-                    the screen he left — the dashboard is not in the site nav, so Back was the only
-                    way and nothing said so (owner, 2026-08-25). */}
-                {d.glPlanSwitchable} <a href="/pricing?from=payouts">{d.glPlanCompare}</a>
-              </p>
-
+              {/* The plan chooser used to be drawn here and is now inside the card below, which is
+                  the only component that renders it in BOTH of a shop's lives — being taken live,
+                  and live (`PlanPills.astro`). Nothing moved on screen: in `bare` the card draws no
+                  frame and the pills are still its first row. */}
               <div class="mt-4">
                 <SubscriptionCard
                   storeId={store.id}
                   planName={planName}
                   tier={store.tier as SellerTierId | undefined}
                   subscription={subscription}
+                  planNames={planNames}
                   paying={subscriptionPaying}
                   storeInPlan={storeInPlan}
                   cardOnFile={cardOnFile}

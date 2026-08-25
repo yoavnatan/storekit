@@ -43,6 +43,31 @@ export function initSubscriptionCard(): void {
     error.classList.remove('hidden');
   };
 
+  // ── Opening the chooser on a shop that is already live ────────────────────────────────────
+  // On the go-live step the pills are simply there — choosing is the errand. On the card of a
+  // running subscription they start closed: that card's job is to say the subscription is running,
+  // and four pills standing open under it read as a decision being asked for. The pills themselves
+  // are the same element with the same handler either way (`PlanPills.astro`).
+  const planToggle = document.getElementById('sub-plan-toggle');
+  const planPicker = document.getElementById('sub-plan-picker');
+  const openPlans = (): void => {
+    planPicker?.classList.remove('!hidden');
+    planToggle?.setAttribute('aria-expanded', 'true');
+    // `block: 'nearest'` — the smallest scroll that makes it visible, never a jump to the top of
+    // the viewport (`feedback_subtle_scroll`).
+    planPicker?.scrollIntoView({ block: 'nearest' });
+  };
+  // The retention step's "move to a cheaper plan" is the same action as the toggle, reached from
+  // inside the cancel dialog.
+  for (const btn of document.querySelectorAll('[data-open-plans]')) btn.addEventListener('click', openPlans);
+  planToggle?.addEventListener('click', () => {
+    // `!hidden` and not `hidden`: the picker sits in a flex context, where Tailwind's `hidden`
+    // loses to `display:flex` on specificity (`project_tailwind_hidden_vs_flex`).
+    const opening = planPicker?.classList.contains('!hidden') ?? false;
+    planPicker?.classList.toggle('!hidden', !opening);
+    planToggle.setAttribute('aria-expanded', String(opening));
+  });
+
   // ── Which plan this shop is on ────────────────────────────────────────────────────────────
   // Four pills. The write goes through `/api/seller/tier`, which patches the standing order at
   // PayMe FIRST and records the plan only if they accepted — so a refusal here leaves the shop on

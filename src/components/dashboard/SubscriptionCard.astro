@@ -33,6 +33,7 @@
  * cancelling in a hurry to avoid being charged again.
  */
 import { resolveTier, SELLER_SETUP_FEE, type SellerTierId } from '../../lib/pricing.js';
+import PlanPills from './PlanPills.astro';
 import { formatAgorot } from '../../lib/money.js';
 import type { getT } from '../../i18n/index.js';
 
@@ -51,6 +52,10 @@ interface Props {
    *  "125 ₪ לחודש" and left him to recognise his plan by its price (owner, 2026-08-24: *"מה קורה
    *  אחרי שעושים בחירת מסלול? איפה זה מופיע?"*). */
   planName: string;
+  /** What every plan is called, for the chooser. Handed in for the same reason `planName` is: the
+   *  words live in the pricing copy, and a dashboard component that reaches into another screen's
+   *  translations is the one that goes stale when that screen is rewritten. */
+  planNames: Record<SellerTierId, string>;
   /** What is on file: `null` = none yet, `paying` = billing is running, otherwise it was created and
    *  nobody has paid it. `endsAt` is present only on a cancelled one still inside its paid period. */
   subscription: {
@@ -82,7 +87,7 @@ interface Props {
   bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { storeId, tier, planName, subscription, paying, storeInPlan = false, cardOnFile = false, payer, bare = false, d } = Astro.props;
+const { storeId, tier, planName, planNames, subscription, paying, storeInPlan = false, cardOnFile = false, payer, bare = false, d } = Astro.props;
 const plan = resolveTier(tier);
 const created = !!subscription;
 /** A cancelled subscription still inside the period he paid for. Not the same as "not paying": he
@@ -94,6 +99,17 @@ const showBreakdown = paying && lines.length > 1;
 ---
 
 <section class={bare ? '' : 'card card--flat p-4 md:p-5 mt-4'} id="sub-card" data-paying={String(paying)} data-store={storeId}>
+  {/* ── Choosing, at the moment it starts costing him ──
+      First thing in the step, because the figure two rows below is the one it decides. Only in
+      `bare`: on the standalone card a live shop is already ON a plan, and four pills at the top of
+      a card whose subject is "your subscription is running" invites a decision nobody came to make.
+      There it sits behind the switch button instead. */}
+  {bare && (
+    <div class="mb-3">
+      <p class="m-0 text-[0.84rem] font-semibold mb-2">{d.glPlanTitle}</p>
+      <PlanPills storeId={storeId} tier={tier} planNames={planNames} d={d} />
+    </div>
+  )}
   {!bare && (
     <>
       <h3 class="text-[1.05rem] font-bold m-0">{d.subTitle}</h3>
@@ -128,13 +144,18 @@ const showBreakdown = paying && lines.length > 1;
         <dt class="muted">{d.subTotal}</dt>
         <dd class="m-0 font-semibold">{formatAgorot(subscription?.priceAgorot ?? 0)}</dd>
         <dt class="muted">{d.subTotalOf}</dt>
-        <dd class="m-0">
-          <ul role="list" class="list-none p-0 m-0 flex flex-col gap-0.5">
+        {/* `justify-self-start` and a width of its own, because the value column is `1fr`: a
+            `justify-between` row inside it pushed every price to the far edge of the card, a hand's
+            width from the shop it belongs to, with nothing in between. Measured at 1100px, where
+            the three names ended around x=1430 and their ₪99s sat at x=60. The list is its own
+            two-column grid so the prices still line up with each other. */}
+        <dd class="m-0 justify-self-start w-full max-w-[22rem]">
+          <ul role="list" class="list-none p-0 m-0 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5">
             {lines.map((line) => (
-              <li class="flex items-baseline justify-between gap-3">
+              <>
                 <span class={line.storeId === storeId ? 'font-semibold' : ''}>{line.storeName}</span>
-                <span class="tabular-nums shrink-0">{formatAgorot(line.feeAgorot)}</span>
-              </li>
+                <span class="tabular-nums">{formatAgorot(line.feeAgorot)}</span>
+              </>
             ))}
           </ul>
         </dd>
@@ -145,7 +166,7 @@ const showBreakdown = paying && lines.length > 1;
         <dt class="muted">{d.subNextCharge}</dt>
         {/* PayMe's own string, passed through unparsed — it is theirs, and re-formatting it is how
             a displayed date and a billed date start disagreeing. */}
-        <dd class="m-0 font-semibold" dir="ltr">{subscription.nextCharge}</dd>
+        <dd class="m-0 font-semibold justify-self-start" dir="ltr">{subscription.nextCharge}</dd>
       </>
     )}
   </dl>
@@ -169,7 +190,35 @@ const showBreakdown = paying && lines.length > 1;
     <div class="mt-4">
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <p class="m-0 text-[0.86rem] font-semibold">{d.subActive}</p>
-        <button type="button" class="btn btn--ghost btn--sm" id="sub-cancel">{d.subCancel}</button>
+        <div class="flex items-center gap-2">
+          {/* ── The way off a plan, which a live shop did not have ──
+              Owner, asked three times, most recently 2026-08-25: *"אם אדם כבר רץ עם חנות פעילה,
+              איפה הוא משנה את המסלולים?"* The chooser lived inside the go-live step, which renders
+              nothing once the shop is up — so from the moment a seller succeeded, his plan was
+              fixed. The copy for this button was written on 2026-08-24 and never had a control
+              under it.
+
+              A toggle rather than four pills on show: this card's resting state is a statement that
+              the subscription is running, and a chooser standing open under it reads as a decision
+              being asked for. Pressed, it is the same pills and the same handler as the go-live
+              step — `/api/seller/tier` patches the standing order at PayMe first and records the
+              plan only if they accepted. */}
+          <button type="button" class="btn btn--ghost btn--sm" id="sub-plan-toggle" aria-expanded="false" aria-controls="sub-plan-picker">{d.subChangePlan}</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="sub-cancel">{d.subCancel}</button>
+        </div>
+      </div>
+
+      <div class="!hidden mt-3" id="sub-plan-picker">
+        <PlanPills storeId={storeId} tier={tier} planNames={planNames} showNote={false} d={d} />
+        {/* The date, not "your next charge" — he is deciding whether to switch, and the one thing he
+            wants to know is when it starts costing the new amount. PayMe's own next-charge string,
+            the same one shown two rows above, so the two cannot disagree. */}
+        <p class="muted m-0 mt-2 text-[0.78rem]">
+          {subscription?.nextCharge
+            ? d.subChangePlanDated.replace('{date}', subscription.nextCharge.slice(0, 10))
+            : d.subChangePlanNote}
+          {' '}<a href="/pricing?from=payouts">{d.glPlanCompare}</a>
+        </p>
       </div>
 
       {/* ── The retention step ──
@@ -189,7 +238,12 @@ const showBreakdown = paying && lines.length > 1;
             : d.subCancelWhen}
         </p>
         <div class="flex flex-wrap items-center gap-2 mt-3">
-          <a class="btn btn--ghost btn--sm" href="/pricing">{d.subCancelCheaper}</a>
+          {/* The retention offer now DOES the thing instead of linking to a page about it. It was
+              an `<a href="/pricing">` because a cheaper plan could not be chosen from this card at
+              all — so the only honest offer was a marketing page, off the dashboard, with the
+              cancel dialog abandoned behind it. With the chooser two rows up, "move to a cheaper
+              plan" opens it. */}
+          <button type="button" class="btn btn--ghost btn--sm" data-open-plans>{d.subCancelCheaper}</button>
           {lines.length > 1 && <span class="muted text-[0.8rem]">{d.subCancelOneStore}</span>}
           <button type="button" class="btn btn--sm" id="sub-cancel-confirm">{d.subCancelConfirm}</button>
         </div>

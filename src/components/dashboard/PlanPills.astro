@@ -1,0 +1,66 @@
+---
+/**
+ * The four plans, as four pills — one marked, the rest a click away.
+ *
+ * ── Why it is its own file ──
+ * It renders in two places that are never on screen together: inside the go-live step, where the
+ * plan is being chosen for the first time, and inside the subscription card of a shop that is
+ * already live and already paying. It was written only for the first, and the consequence was the
+ * question the owner asked three times — *"אם אדם כבר רץ עם חנות פעילה, איפה הוא משנה את
+ * המסלולים?"* — whose honest answer was **nowhere**: `GoLiveSteps` renders nothing once a shop is
+ * up, and the card that replaced it stated the plan and offered no way off it. Copy for the switch
+ * had existed since 2026-08-24 (`subChangePlan`) with no control under it.
+ *
+ * Extracted rather than copied, because the pills carry the contract the click handler reads
+ * (`data-role="plan"`, `data-tier`, `data-commission`, `data-fee`) and a second hand-written copy
+ * of that is the shape this repo keeps finding bugs in: one of the two gets a new attribute.
+ *
+ * ── The id is deliberately singular ──
+ * `#go-live-plans` is what `scripts/dashboard/subscription.ts` binds, and exactly one instance ever
+ * renders: the two states are complementary — a shop is either being taken live or is live.
+ */
+import { SELLER_TIERS, type SellerTierId } from '../../lib/pricing.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  /** The shop being priced. Every write names it — a plan belongs to a shop, not to the account. */
+  storeId: string;
+  /** The shop's current plan, or nothing. A stored value that is not a plan falls back to the first
+   *  rather than marking none: a chooser with nothing marked reads as broken. */
+  tier: string | undefined;
+  planNames: Record<SellerTierId, string>;
+  /** The line under the pills. Off inside the subscription card, where the surrounding block already
+   *  says when a change takes effect and with which date. */
+  showNote?: boolean;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { storeId, tier, planNames, showNote = true, d } = Astro.props;
+const activeTier = (SELLER_TIERS.find((t) => t.id === tier)?.id ?? SELLER_TIERS[0]!.id) as SellerTierId;
+---
+
+<div class="flex flex-wrap gap-2" id="go-live-plans" data-store={storeId}>
+  {SELLER_TIERS.map((plan) => (
+    <button
+      type="button"
+      class:list={['btn btn--sm', plan.id === activeTier ? 'btn--accent' : 'btn--ghost']}
+      data-role="plan"
+      data-tier={plan.id}
+      data-commission={String(plan.commissionPercent)}
+      data-fee={String(plan.monthlyFee)}
+    >
+      {/* `99 ₪`, the shape `formatAgorot` produces and every other figure on this screen uses.
+          `₪99` put the sign on the wrong side of the number in an RTL line and made the pills the
+          only place on the card where the same price looked different. */}
+      {planNames[plan.id as SellerTierId]} · {plan.monthlyFee} ₪
+    </button>
+  ))}
+</div>
+{showNote && (
+  <p class="muted m-0 mt-2 text-[0.78rem]">
+    {/* `?from=payouts` is what lets the comparison page offer a way back. Without it a seller who
+        followed this link was on a public marketing page with no route to the screen he left — the
+        dashboard is not in the site nav, so Back was the only way and nothing said so (owner,
+        2026-08-25). */}
+    {d.glPlanSwitchable} <a href="/pricing?from=payouts">{d.glPlanCompare}</a>
+  </p>
+)}
