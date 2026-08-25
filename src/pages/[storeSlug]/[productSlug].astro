@@ -1730,10 +1730,51 @@ const pmI18n = {
   const stickyMiniImg = document.getElementById('sticky-mini-img') as HTMLImageElement | null;
   const stickyMiniSummary = document.getElementById('sticky-mini-summary');
   const productNameHeading = document.getElementById('product-name-heading');
+  /** False while the bar's own show/hide transition is still running.
+   *
+   *  It exists because "the bar is not visible" and "the bar cannot be seen" are different facts
+   *  for 240ms, and the difference was a visible glitch — see `requestCollapse` below. */
+  /** The fixed header's height, as the inset every "is it still on screen" test here shrinks the
+   *  viewport by. It was the literal `56` in two `rootMargin` strings and a third time in the
+   *  geometry check below — and those three have to agree, or the bar decides the heading is
+   *  visible while the observer that triggered it decided the opposite. */
+  const STICKY_TOP_INSET = 56;
+  const STICKY_ROOT_MARGIN = `-${STICKY_TOP_INSET}px 0px 0px 0px`;
+
+  let barSettled = true;
+  /** The pending fallback timer, so a new transition can cancel the previous one's.
+   *
+   *  Without cancelling, an uncancelled timer from an EARLIER toggle fires mid-way through a LATER
+   *  one and settles it early — and settling early is exactly when `syncCollapse` runs against a
+   *  bar that is still on screen, i.e. the original glitch coming back through the safety net.
+   *  Reachable whenever two toggles land less than 400ms apart, which a flick up and back down
+   *  does easily. */
+  let barSettleTimer = 0;
+
   if (stickyCartBar && addBtn) {
     new IntersectionObserver(([entry]) => {
-      stickyCartBar.classList.toggle('is-visible', !entry.isIntersecting);
-    }, { rootMargin: '-56px 0px 0px 0px' }).observe(addBtn);
+      const next = !entry.isIntersecting;
+      if (next === stickyCartBar.classList.contains('is-visible')) return;
+      // BEFORE the class flips, while opacity is still 0: get the contents right for the state the
+      // bar is about to be seen in. Recomputed, never taken from the other observer — see
+      // `syncCollapse` for the ordering bug that cost.
+      if (next) syncCollapse();
+      stickyCartBar.classList.toggle('is-visible', next);
+      barSettled = false;
+      // `transitionend` is the real signal, and the timeout is the safety net: a visitor with
+      // `prefers-reduced-motion`, or a browser that drops the transition under load, fires no
+      // event at all — and a bar that never settles is one whose contents stop updating for the
+      // rest of the page. 400ms clears the longest of the two transitions (280ms). Cleared first,
+      // so the previous toggle's timer cannot settle THIS one early — see `barSettleTimer`.
+      window.clearTimeout(barSettleTimer);
+      barSettleTimer = window.setTimeout(settleBar, 400);
+    }, { rootMargin: STICKY_ROOT_MARGIN }).observe(addBtn);
+
+    stickyCartBar.addEventListener('transitionend', (e) => {
+      if (e.target !== stickyCartBar) return;
+      if (e.propertyName !== 'opacity' && e.propertyName !== 'transform') return;
+      settleBar();
+    });
   }
 
   // The bar's own image+name only join in once the real ones scroll out of
@@ -1746,13 +1787,67 @@ const pmI18n = {
     const isCollapsed = stickyMiniSummary?.classList.contains('is-collapsed') ?? false;
     stickyAddBtn?.classList.toggle('sticky-btn--solo', isCollapsed);
   }
+
+  /**
+   * **The bar's CONTENTS may only change while the bar cannot be seen — and they are RECOMPUTED at
+   * those two moments rather than remembered from an observer.**
+   *
+   * Reported by the owner, 2026-08-25: scroll a long product page down until the bar shows its
+   * thumbnail and price, then flick back up — for an instant the bar collapses to a bare "הוסף
+   * לעגלה" and only then fades out. Two independent observers on two different trigger elements,
+   * and the page fixes their order: the add-to-cart button sits BELOW the product name, so
+   * scrolling up re-enters the button first (bar starts its 240ms fade) and the name a moment
+   * later (summary collapses). The collapse therefore always landed *inside* the fade. Measured
+   * before the fix: the state flipped at opacity 0.53.
+   *
+   * **The first fix queued the change and flushed it after the fade, and it was WRONG in a way
+   * worth recording.** Observer callbacks for one scroll arrive in a single batch in an order this
+   * code does not control, so a jump to the bottom of the page — an anchor, scroll restoration,
+   * "back to top" — could deliver the visibility change first. The bar then appeared already
+   * showing the previous state, with the correct one stuck in the queue until the next hide: a
+   * flicker traded for a bar that is simply wrong, which is worse. Caught by the harness reporting
+   * `collapsed: true` at the foot of a page where the thumbnail should be showing.
+   *
+   * So nothing is queued. `syncCollapse` asks the DOM where the heading actually is, and it is
+   * called at exactly the two instants the answer can be applied unseen: **immediately before the
+   * bar is turned on** (opacity is still 0, so the change is invisible) and **once it has finished
+   * fading out**. Whatever order the observers fire in, both boundaries recompute from scratch.
+   */
+  function applyCollapse(next: boolean): void {
+    stickyMiniSummary?.classList.toggle('is-collapsed', next);
+    updateStickyBarSoloWidth();
+  }
+
+  /** Is the real heading still on screen? Reads `STICKY_TOP_INSET` for the same reason the two
+   *  observers do: this function and they must answer the same question, and a number written out
+   *  three times is two chances to change one of them. */
+  function nameStillOnScreen(): boolean {
+    if (!productNameHeading) return false;
+    const r = productNameHeading.getBoundingClientRect();
+    return r.bottom > STICKY_TOP_INSET && r.top < window.innerHeight;
+  }
+
+  function syncCollapse(): void {
+    applyCollapse(nameStillOnScreen());
+  }
+
+  function settleBar(): void {
+    if (barSettled) return;
+    barSettled = true;
+    // Fully faded out — this is the other instant a content change cannot be seen.
+    if (!stickyCartBar?.classList.contains('is-visible')) syncCollapse();
+  }
+
   if (stickyMiniSummary && productNameHeading) {
     // Collapse/expand only. The thumbnail used to be fetched from here too, at the exact
     // moment it was about to be revealed — see its markup for why that is now a plain `src`.
-    new IntersectionObserver(([entry]) => {
-      stickyMiniSummary.classList.toggle('is-collapsed', entry.isIntersecting);
-      updateStickyBarSoloWidth();
-    }, { rootMargin: '-56px 0px 0px 0px' }).observe(productNameHeading);
+    //
+    // While the bar is hidden and settled this is just "keep up"; while it is visible or
+    // mid-transition the observer does nothing at all, because the two transition boundaries
+    // above recompute the answer anyway and doing it here would be the visible change.
+    new IntersectionObserver(() => {
+      if (barSettled && !stickyCartBar?.classList.contains('is-visible')) syncCollapse();
+    }, { rootMargin: STICKY_ROOT_MARGIN }).observe(productNameHeading);
   }
 
   // Sticky bar: clicking the thumbnail or name scrolls back to the top of the
