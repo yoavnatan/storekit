@@ -198,6 +198,8 @@ is on anyone can order for free.
 | Seller cancels: stock returns and the debt to the buyer is recorded | `lib/refund-owed.ts` (`refund_due`) | ✅ |
 | The money actually goes back, on the same call, on both legs | `lib/refund-execute.ts` (`refund_settled`) | ✅ |
 | A leg that could not settle stays OPEN and is reported, never closed quietly | `lib/reconcile.ts` | ✅ |
+| **A buyer disputes the charge with their bank (chargeback)** | `lib/payme-chargeback.ts` | ✅ journalled under its own type, the seller is told, and a person is alerted — **the order is deliberately NOT moved**: a dispute is not a cancellation and what happens next has a human in it |
+| The seller sees the invoice PayMe issued in his name, on the order | — | 🔶 the toggle is built, the document is not attached to the order yet (`transaction_invoice_url`, a PULL) |
 | Buyer opens a return; statutory window; no cancellation fee, ever | `lib/returns.ts` · `/returns-policy` | ✅ |
 | An order the seller never ships is warned at day 7 and cancelled at day 14 | `lib/order-sla.ts` + the `order-sla` job | ✅ |
 | Buyer may review — the gate is a PURCHASE, never an account | `lib/review-eligibility.ts` | ✅ |

@@ -1114,11 +1114,36 @@ for (const s of await getVisibleStores()) {
       // holds an iframe is their SDK's problem, and not one worth handing it.
       if (cardMounting) return cardMounting;
       cardMounting = (async () => {
-        const firstStore = getActiveStoreCarts()[0]?.storeSlug;
-        if (!firstStore) return;
+        const carts = getActiveStoreCarts();
+        if (!carts.length) return;
         const { fetchCardConfig, loadCardFields } = await import('../scripts/checkout-card.js');
-        const config = await fetchCardConfig(firstStore);
-        if (!config.active) return;      // no gateway, or this seller cannot take cards yet
+
+        /* ── Ask EVERY shop in the cart, not just the first one ────────────────────────────────
+           This read `getActiveStoreCarts()[0]` and stopped there, and the owner hit it twice:
+           he was sent a working link, followed it, pressed "המשך לתשלום" and saw no card fields
+           at all (2026-08-25). His cart held an older item from another shop, that shop was
+           first, its seller has no clearing account — and the function returned, silently.
+
+           **Any active shop's key will do, and that is measured, not assumed** (sandbox notes §2):
+           a buyer token captured under one seller charges successfully under another. That is the
+           whole mechanism of a one-card multi-store cart. So the question is not "can the first
+           shop take cards" but "can ANY of them", and the first one that answers yes provides the
+           key for all of them.
+
+           Asked in parallel: a cart of four shops would otherwise be four sequential round trips
+           on a click a buyer is watching. */
+        const configs = await Promise.all(carts.map((c) => fetchCardConfig(c.storeSlug).catch(() => ({ active: false as const }))));
+        const config = configs.find((c) => c.active);
+
+        /* ── And when NONE of them can, say so ────────────────────────────────────────────────
+           The old code returned here too, which left a buyer looking at an opened payment step
+           with no card form, no message and a pay button that would refuse — the exact shape row
+           11 of the area audit is about. Silence is only correct when nothing is wrong. */
+        if (!config?.active) {
+          const noneEl = document.getElementById('form-global-error');
+          if (noneEl) { noneEl.textContent = i18n['cardUnavailable'] ?? ''; noneEl.classList.remove('hidden'); }
+          return;
+        }
         cardRequired = true;
         const cardBox = document.getElementById('payme-card');
         try {

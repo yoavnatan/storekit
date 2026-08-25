@@ -4,6 +4,7 @@ import { activePaymeCredentials, getSellerStatus, verifyCallbackSignature } from
 import { merchantAccountByProviderRef, merchantCallbackSecret, setMerchantApproval } from '../../../lib/seller-merchant.js';
 import { syncStorePublication } from '../../../lib/store-publication.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
+import { recordChargeback } from '../../../lib/payme-chargeback.js';
 import { logError } from '../../../lib/error-log.js';
 import { readFormBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
@@ -183,12 +184,34 @@ async function handleSaleNotification(body: URLSearchParams): Promise<Response> 
   const price = Number(body.get('price') ?? 0);
   const saleStatus = body.get('sale_status') ?? '';
   const notifyType = body.get('notify_type') ?? '';
+  const amountAgorot = Number.isFinite(price) && price > 0 ? Math.round(price) : 0;
+
+  // ── A dispute is not corroboration, and it was being filed as some ──────────────────────────
+  // `sale-chargeback` matched `startsWith('sale-')` and fell through to the journal line below,
+  // which writes `payment_attempted`: a row whose TYPE said a payment had been attempted, for an
+  // event that is a payment being TAKEN BACK. The order went on counting, the seller was never
+  // told, and the only trace contradicted what had happened (owner, 2026-08-25: *"מה קורה בעת
+  // הכחשת עסקה?"* — and the honest answer was "almost nothing").
+  //
+  // Handled BEFORE the generic journal write and returning, so a dispute produces exactly one row,
+  // of the right type. `payme-chargeback.ts` owns what happens and, more importantly, what
+  // deliberately does not: it never moves the order's status, because a chargeback is not a
+  // cancellation and that decision has a person in it.
+  if (notifyType === 'sale-chargeback' || notifyType === 'sale-chargeback-refund') {
+    const { orderId } = await recordChargeback({
+      transactionId: body.get('transaction_id') ?? '',
+      paymeSaleId,
+      amountAgorot,
+      kind: notifyType === 'sale-chargeback' ? 'chargeback' : 'chargeback_reverted',
+    }).catch(() => ({ orderId: null }));
+    return ack(orderId ? 'chargeback-recorded' : 'chargeback-unmatched');
+  }
   // The journal is the independent record a reconciliation compares against the order tables
   // (`lib/reconcile.ts`), which is exactly what a second source is for — so a corroboration that
   // disagrees with our own rows becomes visible instead of being the thing nobody wrote down.
   await recordMoneyEvent({
     type: notifyType === 'refund' ? 'refund_settled' : 'payment_attempted',
-    ...(Number.isFinite(price) && price > 0 ? { amountAgorot: Math.round(price) } : {}),
+    ...(amountAgorot > 0 ? { amountAgorot } : {}),
     actor: 'system',
     detail: `PayMe · ${notifyType} · ${saleStatus || '—'} · אסמכתה ${paymeSaleId}`,
   }).catch(() => { /* PayMe still get their 200; a lost journal row is not a lost sale */ });

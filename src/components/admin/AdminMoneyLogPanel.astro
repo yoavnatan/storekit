@@ -48,6 +48,12 @@ const TYPE_TONE: Record<MoneyEventType, 'good' | 'bad' | 'warn' | 'plain'> = {
   // back. Green for the settlement — the one row here that closes a debt.
   refund_due: 'bad',
   refund_settled: 'good',
+  // A dispute is red and its reversal is green, and neither is a shade of "refund": a chargeback is
+  // money taken back by a bank that did not ask us, usually with the goods already gone and a fee
+  // on top of the loss. It is the most expensive row this log can hold and nothing about it is
+  // automatic, so it must not be scrollable past.
+  chargeback: 'bad',
+  chargeback_reverted: 'good',
   // The payout side, and the tones say what someone scanning this log needs to act on. Creating
   // the obligation is neutral — it is bookkeeping, and no money has moved. Sending is the good
   // outcome. A FAILED payout is red and belongs beside `charge_voided` and `refund_due`: it is a

@@ -72,6 +72,14 @@ export const MONEY_EVENT_TYPES = [
   'order_discount_changed',
   'refund_due',
   'refund_settled',
+  // **A buyer went to their BANK instead of to us.** Its own type and not a `refund_*`: a refund is
+  // something we decided and performed, a chargeback is something done TO the sale by a third party
+  // — the money is pulled back whether anyone here agrees or not, the goods are usually already
+  // with the buyer, and the seller pays a fee on top. Filing it under refunds would put it in the
+  // same filter as money we chose to return and make the two impossible to tell apart in the log.
+  'chargeback',
+  /** The bank reversed the dispute and the money came back to the seller. */
+  'chargeback_reverted',
 ] as const;
 
 export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
@@ -95,6 +103,8 @@ export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
   order_discount_changed: 'סכום הזמנה שונה',
   refund_due: 'זיכוי מגיע לקונה',
   refund_settled: 'זיכוי בוצע',
+  chargeback: 'הכחשת עסקה',
+  chargeback_reverted: 'הכחשה בוטלה',
 };
 
 /** Type guard for a request-supplied value (`?mtype=`). */
@@ -178,6 +188,13 @@ export const MONEY_EVENT_GROUPS: readonly { label: string; types: readonly Money
   {
     label: 'ביטולים וזיכויים',
     types: ['charge_voided', 'refund_due', 'refund_settled'],
+  },
+  {
+    // Its own group, not a third row under "ביטולים וזיכויים": an owner looking for disputes is
+    // asking a different question from one reconciling refunds, and these are the rows that cost
+    // money nobody chose to spend.
+    label: 'הכחשות עסקה',
+    types: ['chargeback', 'chargeback_reverted'],
   },
 ];
 

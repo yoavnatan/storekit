@@ -2475,6 +2475,10 @@ export const translations = {
       // Said once, where the card is asked for. Not a standing reassurance banner — it is the one
       // sentence that answers "למה אני מקליד את זה כאן".
       cardSecureNote: 'הפרטים נשמרים אצל חברת הסליקה ולא אצלנו.',
+      // Shown when NO shop in the cart can take a card. Rare and not the buyer's fault, so it says
+      // what to do rather than what went wrong — and it never appears beside a working form, which
+      // is why it is not phrased as a warning about the order.
+      cardUnavailable: 'לא ניתן לשלם בכרטיס על ההזמנה הזאת כרגע. נסו להסיר פריטים מחנויות אחרות, או לפנות אלינו.',
       cardLoadFailed: 'טופס הכרטיס לא נטען. רעננו את הדף ונסו שוב.',
       cardDeclined: 'הכרטיס לא התקבל. בדקו את הפרטים או נסו כרטיס אחר.',
       // A single charge per חנות ועוד אחד למשלוח — הקונה יראה כמה שורות בדף האשראי, וזה בדיוק
@@ -4532,6 +4536,7 @@ export const translations = {
       cardExpiry: 'Expiry',
       cardCvc: 'CVC',
       cardSecureNote: 'Your card is held by the payment processor, not by us.',
+      cardUnavailable: 'This order cannot be paid by card right now. Try removing items from other shops, or contact us.',
       cardLoadFailed: 'The card form could not be loaded. Refresh the page and try again.',
       cardDeclined: 'The card was not accepted. Check the details or try another card.',
       cardSplitNote: 'Each store is charged separately, so you will see several lines on your statement.',
