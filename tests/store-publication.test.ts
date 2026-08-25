@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   /** Store ids named in the standing order's breakdown. `null` = no subscription row at all. */
   paidStoreIds: null as string[] | null,
   updates: [] as { id: string; patch: Record<string, unknown> }[],
+  mailed: [] as Record<string, unknown>[],
 }));
 
 // Both stubs mirror the one rule of the real modules that this file depends on and could not
@@ -39,7 +40,14 @@ vi.mock('../src/lib/seller-subscription.js', () => ({
 vi.mock('../src/lib/seller-merchant.js', () => ({
   merchantBlockFor: async (_id: string, creds: unknown) => (creds ? state.merchantBlock : null),
 }));
-vi.mock('../src/lib/db.js', () => ({ rows: async () => [] }));
+vi.mock('../src/lib/db.js', () => ({ rows: async () => [], isUuid: () => true }));
+vi.mock('../src/lib/seller-auth.js', () => ({ getSellerById: async () => ({ id: 'seller-1', email: 's@example.com' }) }));
+// The mail is stubbed at its own boundary: this file is about the GATE, and `store-live-email.ts`
+// owns what the letter says. What matters here is only that publication SENDS one — the notification
+// alone reaches a dashboard the seller may not open for a week (owner, 2026-08-25).
+vi.mock('../src/lib/email/store-live-email.js', () => ({
+  sendStoreLiveEmail: async (input: Record<string, unknown>) => { state.mailed.push(input); },
+}));
 vi.mock('../src/lib/stores.js', () => ({
   getStoresBySellerId: async (sellerId: string) => state.stores.filter((s) => s.sellerId === sellerId),
   updateStore: async (id: string, patch: Record<string, unknown>) => {
@@ -62,6 +70,7 @@ beforeEach(() => {
   state.stores = [{ id: 's1', slug: 'shop', sellerId: 'seller-1' }];
   state.paidStoreIds = ['s1'];
   state.updates = [];
+  state.mailed = [];
 });
 
 describe('publishHoldsFor — what is standing in the way', () => {
@@ -102,6 +111,18 @@ describe('syncStorePublication', () => {
     const published = await syncStorePublication('seller-1', CREDS);
     expect(published).toEqual(['shop']);
     expect(typeof state.updates[0]!.patch.publishedAt).toBe('string');
+  });
+
+  /**
+   * The last hold to lift is usually PayMe's approval, which lands on a day nobody chose — up to
+   * seven business days after the seller last touched anything. A badge on a dashboard he has not
+   * opened is a message to nobody, and this is the one moment the whole build-free-pay-to-publish
+   * flow exists to reach.
+   */
+  it('tells the seller by MAIL, not only with a badge', async () => {
+    await syncStorePublication('seller-1', CREDS);
+    expect(state.mailed).toHaveLength(1);
+    expect(state.mailed[0]).toMatchObject({ to: 's@example.com', storeSlug: 'shop' });
   });
 
   // The failure this whole change exists to fix: a shop on the site whose seller has nowhere for a

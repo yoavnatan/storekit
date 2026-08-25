@@ -117,7 +117,18 @@ const current: 'details' | 'card' | 'approval' | null =
 const STEPS = [
   { id: 'details', title: d.glStepDetails, done: detailsDone, note: d.glStepDetailsNote },
   { id: 'card', title: d.glStepSubscription, done: cardDone, note: d.glStepSubscriptionNote },
-  { id: 'approval', title: d.glStepApproval, done: approvalDone, note: d.glStepApprovalNote },
+  {
+    id: 'approval',
+    title: d.glStepApproval,
+    done: approvalDone,
+    /**
+     * **The review has not started until the details are sent**, and the note used to say it had
+     * either way (owner, 2026-08-25: *"נראה לי מוזר שזה לא משתנה במידה ופרטי העסק לא מולאו"*).
+     * Since every unfinished step opens now, this one is on screen from the very first minute — so
+     * a seller who had typed nothing was told a seven-day clock was already running for him.
+     */
+    note: detailsDone ? d.glStepApprovalNote : d.glStepApprovalWaiting,
+  },
 ] as const;
 
 /**
@@ -160,47 +171,78 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
     </div>
     <p class="m-0 mt-1 text-[0.88rem] font-semibold">{stateLine}</p>
 
-    {/* One segment per step, in the same order as the rows below — a done step is filled, the
-        current one is outlined, a later one is empty. `aria-hidden` because the three rows under it
-        say the same thing in words, and a screen reader reading a bar of empty divs learns
-        nothing. */}
-    <div class="flex gap-1.5 mt-3" aria-hidden="true">
-      {STEPS.map((step) => (
-        <div
-          class:list={[
-            'h-[0.3rem] flex-1 rounded-[var(--radius-sm)] border',
-            step.done
-              ? '[background:var(--color-success)] [border-color:var(--color-success)]'
-              : step.id === current
-                ? '[background:color-mix(in_srgb,var(--color-accent)_22%,transparent)] [border-color:var(--color-accent)]'
-                : '[background:var(--color-bg)] [border-color:var(--color-border)]',
-          ]}
-        ></div>
-      ))}
-    </div>
-
+    {/**
+      * ── The progress indicator is the LIST, not a bar above it (owner, 2026-08-25) ──
+      *
+      * *"המד שלבים הזה, הוא לא מוצא חן בעיניי, אולי הוא צריך להיות אנכי לשבת ליד השלבים עצמם? אני
+      * גם רוצה שהוא יהפוך לירוק כשחלק אחד בו הושלם."*
+      *
+      * The bar was three segments floating above three rows that said the same thing — the reader
+      * had to map one onto the other, and the mapping was the only information in it. A vertical
+      * rail cannot be misread that way: each marker sits on its own row, and the line between two
+      * markers is the progress between those two steps. It is the shape a checkout or an order
+      * tracker has settled on for the same reason.
+      *
+      * **Green means done, and only done.** The connector above a completed marker is green
+      * because that stretch is behind him; the one below the open step is not, because it is not.
+      *
+      * Built from the row's own layout rather than an absolute overlay: a marker column and a
+      * content column, with the connector drawn as the marker cell's background. Nothing is
+      * positioned against a measured height, so a step whose body grows — the ten-field clearing
+      * form, four plan pills, three card iframes — cannot tear the line.
+      */}
     <ol class="list-none p-0 m-0 mt-4 flex flex-col">
       {STEPS.map((step, i) => (
         <li
-          class="border-t [border-color:var(--color-border)] pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0"
+          class="grid grid-cols-[1.6rem_1fr] gap-x-2"
           data-step={step.id}
           data-state={step.done ? 'done' : step.id === current ? 'current' : 'waiting'}
         >
-          <div class="flex items-baseline gap-2">
-            {/* The number is the ordering, and the tick replaces it rather than sitting beside it —
-                a step that is finished has no position left to argue about. */}
+          {/* The marker column. `row-span-2` so the connector runs the full height of the step —
+              title AND body — which is what makes the line continuous down a long form. */}
+          <div class="row-span-2 flex flex-col items-center">
+            {/* The stub above the first marker is suppressed: a line arriving from nowhere reads
+                as a step that was cut off. */}
+            <span
+              class:list={[
+                'w-[2px] h-2 shrink-0',
+                i === 0 ? 'opacity-0' : step.done || STEPS[i - 1]!.done ? '[background:var(--color-success)]' : '[background:var(--color-border)]',
+              ]}
+              aria-hidden="true"
+            ></span>
             {step.done ? (
-              <svg class="shrink-0 translate-y-[0.15rem] [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span class="shrink-0 w-[1.35rem] h-[1.35rem] rounded-full grid place-items-center [background:var(--color-success)] text-white" aria-hidden="true">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
             ) : (
-              <span class={`shrink-0 text-[0.78rem] font-bold tabular-nums ${step.id === current ? '' : '[color:var(--color-muted)]'}`}>{i + 1}.</span>
+              <span
+                class:list={[
+                  'shrink-0 w-[1.35rem] h-[1.35rem] rounded-full grid place-items-center text-[0.72rem] font-bold tabular-nums border',
+                  step.id === current
+                    ? '[border-color:var(--color-accent)] [color:var(--color-accent)] [background:color-mix(in_srgb,var(--color-accent)_10%,transparent)]'
+                    : '[border-color:var(--color-border)] [color:var(--color-muted)]',
+                ]}
+                aria-hidden="true"
+              >{i + 1}</span>
             )}
-            <p class={`m-0 text-[0.92rem] font-semibold ${step.done || step.id !== current ? '[color:var(--color-muted)]' : ''}`}>{step.title}</p>
+            {/* The rest of the rail, filling whatever this step's body turns out to be. Green only
+                when this step is behind him. */}
+            <span
+              class:list={[
+                'w-[2px] flex-1 min-h-2',
+                i === STEPS.length - 1 ? 'opacity-0' : step.done ? '[background:var(--color-success)]' : '[background:var(--color-border)]',
+              ]}
+              aria-hidden="true"
+            ></span>
           </div>
 
-          {/* Every step that is not finished explains itself. A done one is a tick and nothing
+          <div class="min-w-0 pb-5">
+            <p class={`m-0 text-[0.92rem] font-semibold leading-[1.35rem] ${step.done || step.id !== current ? '[color:var(--color-muted)]' : ''}`}>{step.title}</p>
+
+          {/* Every step that is not finished explains itself. A done one is its marker and nothing
               else. */}
           {!step.done && (
-            <p class="muted m-0 mt-1 ms-[1.4rem] text-[0.84rem]">{step.note}</p>
+            <p class="muted m-0 mt-1 text-[0.84rem]">{step.note}</p>
           )}
 
           {step.id === 'details' && !detailsDone && (
@@ -212,7 +254,7 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
           {/* PayMe's own page, and the only thing there is to offer on a step nobody can act on:
               a seller they have questions about finishes his details there rather than here. */}
           {step.id === 'approval' && !approvalDone && signupLink && (
-            <a class="btn btn--ghost btn--sm mt-3 ms-[1.4rem]" href={signupLink} target="_blank" rel="noopener noreferrer">
+            <a class="btn btn--ghost btn--sm mt-3" href={signupLink} target="_blank" rel="noopener noreferrer">
               {d.payClearingLink}
             </a>
           )}
@@ -228,7 +270,7 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
             * own sake, and it cost the exact thing the card step exists to buy.
             */}
           {step.id === 'card' && !cardDone && (
-            <div class="mt-3 ms-[1.4rem]">
+            <div class="mt-3">
               {/* ── The plan, as four pills ──
                   Named here rather than on a screen of its own, because this is the moment it starts
                   costing him. The marked one is what this shop is on; pressing another moves it,
@@ -245,13 +287,19 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
                     ]}
                     data-role="plan"
                     data-tier={tier.id}
+                    data-commission={String(tier.commissionPercent)}
+                    data-fee={String(tier.monthlyFee)}
                   >
                     {planNames[tier.id as SellerTierId]} · ₪{tier.monthlyFee}
                   </button>
                 ))}
               </div>
               <p class="muted m-0 mt-2 text-[0.78rem]">
-                {d.glPlanSwitchable} <a href="/pricing">{d.glPlanCompare}</a>
+                {/* `?from=payouts` is what lets the comparison page offer a way back. Without it a
+                    seller who followed this link was on a public marketing page with no route to
+                    the screen he left — the dashboard is not in the site nav, so Back was the only
+                    way and nothing said so (owner, 2026-08-25). */}
+                {d.glPlanSwitchable} <a href="/pricing?from=payouts">{d.glPlanCompare}</a>
               </p>
 
               <div class="mt-4">
@@ -270,6 +318,7 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
               </div>
             </div>
           )}
+          </div>
         </li>
       ))}
     </ol>

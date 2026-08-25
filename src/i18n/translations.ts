@@ -475,6 +475,7 @@ export const translations = {
       // PayMe before it writes the tier precisely so that this is true on both sides.
       saveGateway: 'לא הצלחנו לעדכן את המנוי מול חברת הסליקה, והמסלול לא שונה. נסו שוב או פנו אלינו.',
       saveFailed: 'השמירה נכשלה. נסו שוב.',
+      backToPayouts: 'חזרה לתשלומים',
       ctaButton: 'פתיחת חנות',
       tiers: {
         starter: { name: 'בסיס', for: 'לחנות שרק מתחילה' },
@@ -1308,6 +1309,9 @@ export const translations = {
       glStepDetailsNote: 'לאישור על ידי חברת הסליקה.',
       glStepApproval: 'אישור חברת הסליקה',
       glStepApprovalNote: 'הבדיקה החלה עם שליחת פרטי העסק ואורכת עד 7 ימי עסקים. אין מה לעשות בינתיים.',
+      // Before the details go out there is no clock, and saying there is one is the only thing this
+      // step can get wrong.
+      glStepApprovalWaiting: 'מתחיל אחרי שליחת פרטי העסק, ואורך עד 7 ימי עסקים.',
       glStepSubscription: 'מסלול וכרטיס',
       glStepSubscriptionNote: 'בוחרים מסלול ושומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
       // The plan is met HERE, at the moment it starts costing him — not on a screen of its own
@@ -1672,7 +1676,7 @@ export const translations = {
       onbTitle: 'שלבים ראשונים',
       onbSubtitle: 'מה שיביא את החנות למצב פעיל ומוכר. ניתן לבצע בכל סדר, והרשימה מתעדכנת לבד.',
       onbStepProduct: 'להוסיף מוצר ראשון',
-      onbStepProductHint: 'בלי מוצרים אין מה למכור — זה השלב היחיד שחייב לקרות.',
+      onbStepProductHint: 'בלי מוצרים אין מה למכור.',
       onbStepImage: 'להעלות תמונת חנות',
       onbStepImageHint: 'התמונה מייצגת אותך בעמוד הבית, בחיפוש ובכל מקום שהחנות מוצגת בו.',
       onbStepBanner: 'להעלות באנר לראש החנות',
@@ -2999,6 +3003,7 @@ export const translations = {
       savedNextCharge: 'The new amount is charged from your next monthly payment.',
       saveGateway: 'We could not update your subscription with the payment provider, so your plan was not changed. Try again or contact us.',
       saveFailed: 'Saving failed. Please try again.',
+      backToPayouts: 'Back to payments',
       ctaButton: 'Open a shop',
       tiers: {
         starter: { name: 'Starter', for: 'A shop that is just beginning' },
@@ -3614,6 +3619,7 @@ export const translations = {
       glStepDetailsNote: 'For the payment processor to approve.',
       glStepApproval: 'Processor approval',
       glStepApprovalNote: 'The review began when your business details were sent and takes up to 7 business days. Nothing to do meanwhile.',
+      glStepApprovalWaiting: 'Starts once your business details are sent, and takes up to 7 business days.',
       glStepSubscription: 'Plan and card',
       glStepSubscriptionNote: 'Pick a plan and save a card. Nothing is charged until the store goes live.',
       glPlanTitle: "This store's plan",
@@ -3865,7 +3871,7 @@ export const translations = {
       onbTitle: 'First steps',
       onbSubtitle: 'What gets your store live and sale-ready. Do them in any order — the list updates itself.',
       onbStepProduct: 'Add your first product',
-      onbStepProductHint: 'No products, nothing to sell — this is the one step that has to happen.',
+      onbStepProductHint: 'No products, nothing to sell.',
       onbStepImage: 'Upload a store image',
       onbStepImageHint: 'It represents you on the homepage, in search and everywhere your store appears.',
       onbStepBanner: 'Upload a banner for the top of your store',

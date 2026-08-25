@@ -40,6 +40,8 @@ import { getStoresBySellerId, updateStore } from './stores.js';
 import { storeLifecycle, type StoreLifecycleFlags } from './store-status.js';
 import { merchantBlockFor } from './seller-merchant.js';
 import { createNotification } from './notifications.js';
+import { sendStoreLiveEmail } from './email/store-live-email.js';
+import { getSellerById } from './seller-auth.js';
 import { sellerIsSubscribed, subscriptionFor } from './seller-subscription.js';
 import { activePaymeCredentials, type PaymeCredentials } from './payment-payme.js';
 
@@ -181,6 +183,20 @@ export async function syncStorePublication(
       storeSlug: store.slug,
       storeName: store.name,
     }).catch(() => { /* the shop is live; a missing badge is not worth undoing that */ });
+
+    /**
+     * **And by MAIL**, which the notification alone could not do (owner, 2026-08-25).
+     *
+     * The last hold to lift is usually PayMe's approval, and that lands on a day nobody chose — up
+     * to seven business days after the seller last touched anything. A badge on a dashboard he has
+     * not opened is a message to nobody, and this is the one moment the whole build-free-pay-to-
+     * publish flow exists to reach. `sendStoreLiveEmail` never throws and logs its own failure, so
+     * a mail problem cannot undo a publication that already happened.
+     */
+    const seller = await getSellerById(sellerId);
+    if (seller?.email) {
+      await sendStoreLiveEmail({ to: seller.email, storeName: store.name, storeSlug: store.slug });
+    }
   }
   return pending.map((s) => s.slug);
 }

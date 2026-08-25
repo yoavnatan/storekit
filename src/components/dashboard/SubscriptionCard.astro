@@ -111,7 +111,9 @@ const showBreakdown = paying && lines.length > 1;
       </>
     )}
     <dt class="muted">{d.subCommission}</dt>
-    <dd class="m-0 font-semibold">{plan.commissionPercent}%</dd>
+    {/* Named so a plan change can repaint it without reloading the tab — it is the only figure on
+        this card that the choice moves. */}
+    <dd class="m-0 font-semibold" id="sub-commission">{plan.commissionPercent}%</dd>
     {showBreakdown && (
       <>
         {/* **The answer to "why am I charged ₪224".** One standing order, several shops — without

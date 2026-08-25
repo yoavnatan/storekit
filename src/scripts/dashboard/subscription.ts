@@ -66,11 +66,36 @@ export function initSubscriptionCard(): void {
           return;
         }
         const body = await res.json().catch(() => ({})) as { fromNextCharge?: boolean };
-        // Re-read rather than repainted: the plan changes the commission line, the monthly total
-        // and the breakdown beside it, and patching three numbers by hand is how one of them starts
-        // disagreeing with the server.
+
+        /**
+         * ── Repainted, not reloaded (owner, 2026-08-25) ──
+         *
+         * *"עדיין ללחוץ על שינוי מסלול שם מרענן את כל העמוד."* — and a full reload for a one-click
+         * choice is the heaviest possible answer: the seller loses his scroll position, the card
+         * iframes are torn down and re-drawn by PayMe's SDK, and any half-typed card number goes
+         * with them. On the one screen whose whole job is to get a card typed.
+         *
+         * A plan change moves exactly three things on this screen, so exactly three are written:
+         * which pill is filled, the commission percent, and the amount the tokenizer will quote.
+         * Everything else on the card — the VAT note, the breakdown, the next-charge date — is
+         * unaffected by WHICH plan this shop is on.
+         */
+        for (const other of plans.querySelectorAll<HTMLButtonElement>('[data-role="plan"]')) {
+          const mine = other === btn;
+          other.classList.toggle('btn--accent', mine);
+          other.classList.toggle('btn--ghost', !mine);
+        }
+        const commission = document.getElementById('sub-commission');
+        if (commission && btn.dataset['commission']) commission.textContent = `${btn.dataset['commission']}%`;
+        // What the card issuer's confirmation screen will say. Read by `tokenize` at press time, so
+        // writing it here is what keeps that figure and the marked pill the same fact.
+        // Looked up at click time rather than closed over: the card box is declared further down
+        // this file, and a handler that reaches backwards for it would depend on the order two
+        // unrelated blocks happen to sit in.
+        const box = document.getElementById('sub-card-fields');
+        if (box && btn.dataset['fee']) box.dataset['amount'] = Number(btn.dataset['fee']).toFixed(2);
+
         showToast(body.fromNextCharge ? (t['subPlanFromNextCharge'] ?? '') : (t['subPlanSaved'] ?? ''));
-        window.location.reload();
       } catch {
         showErrorToast(t['subFailed'] ?? '');
       } finally {
@@ -107,8 +132,8 @@ export function initSubscriptionCard(): void {
           try {
             // Their `tokenize` wants a total, and this one is honest rather than cosmetic: it is
             // what the standing order will charge, so a card issuer's own confirmation screen shows
-            // the seller the same figure the card page does. Read off the page's own data rather
-            // than recomputed, so the two cannot disagree.
+            // the seller the same figure the card page does. Read off the box's own data, which the
+            // plan pills rewrite when the choice changes.
             const token = await fields.tokenize({
               firstName: fieldsBox.dataset['firstName'] ?? '',
               lastName: fieldsBox.dataset['lastName'] ?? '',
@@ -122,7 +147,8 @@ export function initSubscriptionCard(): void {
             showToast(t['subCardSaved'] ?? '');
             // Re-read rather than repainted: saving the card changes which step of the go-live
             // screen is open, and rebuilding that by hand is how a screen starts disagreeing with
-            // the server about where somebody stands.
+            // the server about where somebody stands. (A PLAN change is the opposite case — it
+            // moves three known values and must not throw away a half-typed card.)
             window.location.reload();
           } catch {
             // A refused card is the seller's to fix and he has to be told, out loud — a silent

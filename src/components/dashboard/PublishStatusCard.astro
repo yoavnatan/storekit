@@ -33,16 +33,46 @@ interface Props {
   d: ReturnType<typeof getT>['dashboard'];
 }
 const { holds, storeIsLive, d } = Astro.props;
+
+/**
+ * ── What this card SAYS depends on which hold is in front (owner, 2026-08-25) ──
+ *
+ * *"עד מתי 'העלאה לאוויר' נשאר בסקירה בכפתור הזה? הרי אם ממתינים — צריך להיות רשום שם שההעלאה
+ * ממתינה לאישור."* It offered the same sentence and the same call to action in every state, so a
+ * seller a week into PayMe's review was still being told to go and put his shop live — an
+ * instruction he cannot follow, on the one screen he lands on every time.
+ *
+ * The holds are already ordered by the flow (`store-publication.ts`), so the FIRST one is what he
+ * is actually waiting on. The approval hold is the one nobody can act on, and there the card drops
+ * its button entirely rather than pointing at a screen with nothing to press.
+ */
+const blocking = holds[0] ?? null;
+const LINE: Record<string, string> = {
+  'clearing-details': d.pubHoldDetailsNote,
+  'clearing-approval': d.pubHoldApprovalNote,
+  'subscription': d.pubHoldSubscriptionNote,
+};
+const CTA: Record<string, string> = {
+  'clearing-details': d.pubHoldDetailsCta,
+  'subscription': d.pubHoldSubscriptionCta,
+};
+const title = blocking === 'clearing-approval' ? d.pubHoldApproval : d.pubTitle;
+const line = blocking ? LINE[blocking] : d.pubBuildOn;
+const cta = blocking ? CTA[blocking] : d.pubHoldSubscriptionCta;
 ---
 
 {!storeIsLive && (
   <section class="card card--flat p-4 md:p-5 mb-4" id="publish-status" data-publish-holds={holds.join(',')}>
-    <h3 class="text-[1.05rem] font-bold m-0">{d.pubTitle}</h3>
-    <p class="muted m-0 mt-1 text-[0.86rem]">{d.pubBuildOn}</p>
+    <h3 class="text-[1.05rem] font-bold m-0">{title}</h3>
+    <p class="muted m-0 mt-1 text-[0.86rem]">{line}</p>
     {/* `data-goto-panel` is the dashboard's own tab switch (scripts/dashboard/ui.ts) — the same
-        mechanism every stat card on this tab uses, so this behaves like every other jump here. */}
-    <button type="button" class="btn btn--accent btn--sm mt-3" data-goto-panel="payouts">
-      {d.pubHoldSubscriptionCta}
-    </button>
+        mechanism every stat card on this tab uses, so this behaves like every other jump here.
+        Absent while PayMe are reviewing: there is nothing to press, and a button that leads to a
+        screen with nothing to do on it is worse than none. */}
+    {cta && (
+      <button type="button" class="btn btn--accent btn--sm mt-3" data-goto-panel="payouts">
+        {cta}
+      </button>
+    )}
   </section>
 )}

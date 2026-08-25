@@ -44,6 +44,17 @@ const sellerId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sellerId;
 const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
 
+/**
+ * Did the reader arrive from his own dashboard?
+ *
+ * `/pricing` is a public marketing page and the dashboard is not in the site's navigation, so a
+ * seller who followed "compare the plans" from the go-live screen had no route back except the
+ * browser's own Back — and nothing on the page said so (owner, 2026-08-25: *"נתקעים שם, אי אפשר
+ * לחזור אחורה"*). A whitelisted flag rather than a `?next=`: this decides a LABEL, not a
+ * destination, so there is nothing here for a crafted URL to redirect.
+ */
+const backToPayouts = Astro.url.searchParams.get('from') === 'payouts' && isLoggedIn;
+
 const included = [p.included1, p.included2, p.included3, p.included4, p.included5, p.included6];
 
 const adsPoints = [p.adsPoint1, p.adsPoint2, p.adsPoint3];
@@ -74,6 +85,17 @@ const pillars = [
         (`lib/store-publication.ts`); it belongs where a seller meets it, not above the prices.
         The heading is "מסלולים" and not "מה זה עולה" for the same reason: the page offers something,
         it does not apologise for a price. */}
+    {backToPayouts && (
+      <a class="inline-flex items-center gap-1.5 text-[0.85rem] font-medium mb-3 [color:var(--color-accent-dark)] hover:underline" href="/seller/dashboard?panel=payouts">
+        {/* The arrow points the way the reader is going, which on an RTL page is to the right. The
+            site's own rule: a direction named on screen mirrors with `dir` (`arrow-step.ts`). */}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          {lang === 'he' ? <polyline points="9 18 15 12 9 6"/> : <polyline points="15 18 9 12 15 6"/>}
+        </svg>
+        {p.backToPayouts}
+      </a>
+    )}
+
     <header class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 class="font-bold m-0">{p.heading}</h1>
