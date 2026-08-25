@@ -9,7 +9,6 @@ import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js'
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { presetRange, shortDate } from '../../lib/date-range.js';
-import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote, campaignFeeOf, type AdScopeKind, type CampaignHealthView } from '../../lib/ad-scope-label.js';
 import { MIN_CAMPAIGN_BUDGET, MAX_CAMPAIGN_BUDGET, isValidCampaignBudget } from '../../lib/ad-budget.js';
 import { initProductMultiPicker, readProductOptions, type ProductPickerOption } from './product-multi-picker.js';
@@ -160,9 +159,10 @@ export function initAdvertisingTab(): void {
   showFeeSplit = list.dataset.showFee !== undefined;
   const i18n = getI18n();
 
-  // Bind the static "(i)" info triggers in this tab (e.g. the baseline-impressions
-  // explainer). Idempotent — guarded per-element by dataset.tooltipBound — so the
-  // seller dashboard, where performance.ts also calls this, double-calls safely.
+  // Bind the static "(i)" info triggers in this tab (the metric explainers, and on the admin's
+  // per-store view the baseline-impressions one). Idempotent — guarded per-element by
+  // dataset.tooltipBound — so the seller dashboard, where performance.ts also calls this,
+  // double-calls safely.
   initInfoTooltips();
 
   const scopeSelect = document.getElementById('ad-scope-select') as HTMLSelectElement | null;
@@ -183,17 +183,6 @@ export function initAdvertisingTab(): void {
   // has ever seen it. No-op on the admin's per-store view, which has no dashboard shell and binds
   // its own picker (see bindCategoryPickersIn).
   bindCategoryPickersIn('dash-panel-advertising');
-
-  // Baseline card's boost CTA jumps down to the boost card (seller tab only —
-  // null-safe on the admin per-store view where the CTA is absent). The card has
-  // to clear the whole pinned stack — fixed site header + sticky tab strip +
-  // sticky panel head ("פרסום ושיווק") — or it lands hidden beneath the panel
-  // head. scroll-utils.ts measures all three live and does the RTL-safe scroll.
-  document.getElementById('ad-boost-jump')?.addEventListener('click', () => {
-    // 12px of breathing room, kept below the baseline card's mb (1rem) so its green tint
-    // doesn't peek above the pinned head.
-    scrollBelowPinnedChrome(document.getElementById('ad-boost-card') ?? form, 12);
-  });
 
   // The seller tab's product scope is a tick-list (the shared dashboard picker), so one product
   // is simply a list of one — the server stores that as the long-standing single-product

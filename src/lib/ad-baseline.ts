@@ -1,7 +1,12 @@
 /** The platform-funded baseline: is this store actually IN it, and what has it accrued?
  *
- *  The baseline card is the first thing a seller reads on the Advertising tab, and it made two
- *  claims it could not keep:
+ *  **Admin-only since 2026-08-25.** The seller is told nothing about the platform campaign — the
+ *  owner removed the claim and kept the campaign (*"אני כן רוצה להיות מסוגל לעשות קמפיין בסיס,
+ *  אבל מאחורי הקלעים. בלי להגיד את זה כהצהרה."*), so the only caller is the admin's per-store
+ *  advertising page. `tests/baseline-claim-silent.test.ts` holds that boundary.
+ *
+ *  The card this once fed on the seller tab made two claims it could not keep, and the fixes for
+ *  both are still here because the admin's figure has to be true too:
  *    1. It said "impressions in the last 30 days" while showing a flat seeded number with no
  *       period behind it at all — a figure that never moved, under a label that promised a window.
  *    2. It said "active" for every store, including one that is not in the product feed. A store

@@ -123,11 +123,13 @@ const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDa
         </div>
 
         <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4 [background:color-mix(in_srgb,var(--color-success)_6%,transparent)]">
+          {/* Admin-only, and it stays admin-only. The seller's own Advertising tab carried this
+              same card until 2026-08-25, when the owner removed the CLAIM and kept the campaign:
+              *"אני כן רוצה להיות מסוגל לעשות קמפיין בסיס, אבל מאחורי הקלעים. בלי להגיד את זה
+              כהצהרה."* The numbers below are what the platform campaign accrued for this store —
+              read here, told to nobody. */}
           <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBaselineTitle}</h3>
-          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBaselineLead}</p>
-          <ul class="muted text-[0.82rem] m-0 mb-3 ps-[1.1rem] flex flex-col gap-1 list-disc marker:[color:var(--color-success)]">
-            {d.adBaselinePoints.map((p) => <li>{p}</li>)}
-          </ul>
+          <p class="muted text-[0.82rem] m-0 mb-3">המוצרים של החנות נכללים בקמפיין שאנחנו מריצים על חשבוננו, כל עוד היא בפיד. המוכר לא רואה את זה בשום מסך ולא מובטח לו דבר — אל תחזיר את הכרטיס הזה לדשבורד המוכרים.</p>
           <p class="m-0 text-[0.85rem] flex items-center gap-1 flex-wrap">
             <span>{d.adBaselineImpressions}:</span>
             <strong id="ad-baseline-impressions">{adBaseline.impressions.toLocaleString('he-IL')}</strong>

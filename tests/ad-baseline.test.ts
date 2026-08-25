@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { storeBaselineStatus } from '../src/lib/ad-baseline.js';
 
-/** The baseline card is the first thing a seller reads on the Advertising tab, and it is the one
- *  place the platform makes a claim about what IT is doing for him. These pin the two ways that
- *  claim used to be false: a number with no window behind it, and "active" on a store the feed
- *  does not carry. */
+/** Admin-only since 2026-08-25 — the seller's Advertising tab no longer shows this at all (why:
+ *  `tests/baseline-claim-silent.test.ts`). The function stays, and so do these, because the
+ *  admin's per-store card still reports what the platform campaign accrued for a store, and the
+ *  two ways the figure used to be false are still ways it could be false: a number with no window
+ *  behind it, and "active" on a store the feed does not carry. */
 const TODAY = new Date('2026-07-30T00:00:00Z');
 
 describe('storeBaselineStatus', () => {

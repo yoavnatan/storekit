@@ -8,7 +8,13 @@ import { toAgorot } from './money.js';
  * Meta account is connected.
  *
  * The baseline campaign uses a one-time LIFETIME budget, not a recurring one (AI_INSTRUCTIONS.md →
- * Ads two-tier model): spend auto-stops at the cap instead of renewing monthly. `0` = not set yet.
+ * Ads two-tier model): spend auto-stops at the cap instead of renewing monthly — a native lifetime
+ * cap in both Google Ads and Meta, so nothing here has to police it. `0` = not set yet.
+ *
+ * **This budget is invisible to sellers, and that is the point (2026-08-25).** The campaign it
+ * funds is ours to raise, cut or pause, which it could not be if a seller had been promised it —
+ * the owner removed the promise and kept the campaign. Nothing a seller can open may name it,
+ * measure it or imply it; `tests/baseline-claim-silent.test.ts` enforces that boundary.
  *
  * **Stored in `app_settings`, not a table of its own (DB_MIGRATION_PLAN.md §8).** Two fields with
  * exactly one row is not a table; the keyed jsonb store keeps it beside `admin_tab_views` and stays

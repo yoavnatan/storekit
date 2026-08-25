@@ -430,10 +430,14 @@ export const translations = {
       includedTitle: 'מה כלול בכל מסלול',
       // The whole build-before-you-pay model in one line, at the bottom of the list of what a plan
       // includes — which is where a reader is asking "and what does it cost me to find out".
-      includedFree: 'הכול נבנה ונראה בלי כרטיס אשראי. התשלום פותח את המכירה, את הפרסום ואת ההופעה בגוגל ובמתחם.',
+      includedFree: 'הכול נבנה ונראה בלי כרטיס אשראי. התשלום פותח את המכירה, את כלי הפרסום ואת ההופעה בגוגל ובמתחם.',
       included1: 'חנות עצמאית ומתקדמת עם כתובת משלכם, וקידום אורגני בגוגל (SEO)',
       included2: 'חשיפה בתוך המתחם — דף הבית, החיפוש, הקטגוריות וקונים של חנויות אחרות',
-      included3: 'פרסום בסיסי בגוגל ובמטא, בלי לגעת בשום הגדרה',
+      // What the subscription includes here is the TOOL, never the spend (owner, 2026-08-25). The
+      // line used to promise "פרסום בסיסי בגוגל ובמטא" — the platform paying to advertise his
+      // products — which is a commitment to spend our revenue on every seller's catalog. The
+      // second clause is what keeps the first honest inside a list titled "מה כלול".
+      included3: 'כלי פרסום מובנים לגוגל ולמטא — הקמפיין עצמו בתשלום נפרד',
       included4: 'משלוחים עם שליח, מדבקות ומעקב',
       included5: 'מוצרים, תמונות, וריאציות ומבצעים — בלי הגבלה',
       included6: 'מערכת ניהול מלאה — הזמנות, מלאי, החזרות, דוחות והודעות',
@@ -444,7 +448,7 @@ export const translations = {
       // דרך המערכת. בלי להזכיר שם עוד דמי ניהול"*). The exact percentage is still disclosed — on
       // the boost screen, beside the budget field, which is where it is a number he can act on.
       adsTitle: 'קמפיינים בגוגל ובמטא, מתוך המערכת',
-      adsLead: 'רוצים יותר תנועה מהפרסום הבסיסי? אפשר להריץ קמפיין ממומן בגוגל ובמטא ישירות מהדשבורד, בתשלום נוסף.',
+      adsLead: 'רוצים תנועה נוספת לחנות? אפשר להריץ קמפיין ממומן בגוגל ובמטא ישירות מהדשבורד, בתשלום נוסף.',
       adsPoint1: 'אתם קובעים תקציב חודשי, ואנחנו בונים ומנהלים את הקמפיין',
       adsPoint2: 'התקציב הוא תקרה — מה שלא נוצל לא נגבה',
       adsPoint3: 'אין צורך בחשבון מודעות משלכם ובלי הגדרות',
@@ -968,7 +972,7 @@ export const translations = {
         // product is image-less by construction, which is invisible in the storefront and fatal in
         // the ad feed (product-feed.ts#isProductAdvertisable) — so it is named before the upload, not
         // discovered when a campaign comes back paused.
-        'הקובץ לא נושא תמונות: מוצר חדש שנוצר ממנו ייווצר ללא תמונה, ומוצר ללא תמונה לא מוצג בפרסום בגוגל ובמטא. תמונות מוסיפים בכרטיס המוצר.',
+        'הקובץ לא נושא תמונות: מוצר חדש שנוצר ממנו ייווצר ללא תמונה, ובלי תמונה לא ניתן לפרסם אותו בגוגל ובמטא. תמונות מוסיפים בכרטיס המוצר.',
         {
           text: 'גרסאות:',
           sub: [
@@ -988,7 +992,7 @@ export const translations = {
       csvRowsError: 'שורות עם שגיאה',
       csvPreviewTitle: 'בדיקה לפני ייבוא',
       csvAdvisoryTitle: 'כדאי להשלים — לא חוסם את הייבוא',
-      csvAdvisoryNoImage: 'מוצרים ללא תמונה — מוצר בלי תמונה לא מוצג בפרסום בגוגל ובמטא.',
+      csvAdvisoryNoImage: 'מוצרים ללא תמונה — בלי תמונה לא ניתן לפרסם את המוצר בגוגל ובמטא.',
       csvAdvisoryThinDescription: 'מוצרים ללא תיאור (או עם תיאור קצר) — התיאור הוא מה שגוגל מציג בתוצאת החיפוש.',
       csvRowsUnchanged: 'ללא שינוי',
       csvUnchangedNote: 'שורות זהות למוצר הקיים — ידולגו בייבוא.',
@@ -1757,20 +1761,24 @@ export const translations = {
       // window can raise ("why is this zero?") at the place it gets asked, instead of in a document.
       perfRetentionNote: 'מבקרים ייחודיים נשמרים {days} יום אחורה. בטווח ישן יותר הצפיות מלאות, הייחודיים 0, ושיעור ההמרה מחושב לפי צפיות במקום לפי אנשים — כלומר נמוך יותר. מספרי הצפיות עצמם נשמרים לתמיד.',
       adTitle: 'פרסום ושיווק',
-      // His wording, verbatim (2026-08-24) — it says what the seller GETS for free before it says
-      // what he can buy, which the old "control your budget" line never did.
-      adSubtitle: 'המוצרים שלך מפורסמים על חשבון הפלטפורמה. כאן ניתן להקים קמפיין ממוקד ולעקוב אחר ביצועיו.',
+      // ── The platform campaign is NOT promised here, and that is deliberate ──
+      // Until 2026-08-25 this tab opened on a "קידום בסיס · פעיל" card: the platform advertises
+      // your products on its own budget, included in the subscription. The owner killed it that
+      // day — *"למה אני בכלל מציע קמפיין בסיס? זו הבטחה שאני לא יכול לעמוד בה, מאחר ולא יכול
+      // להיות שאת כל ההכנסות אני אוציא על פרסום של המוצרים של החנויות"* — and, in the same
+      // breath, kept the CAPABILITY: *"אני כן רוצה להיות מסוגל לעשות קמפיין בסיס, אבל מאחורי
+      // הקלעים. בלי להגיד את זה כהצהרה."*
+      // So the machinery stays whole (`ad-baseline.ts`, `platform-ads.ts`, the admin budget
+      // control) and only the CLAIM is gone. A seller-facing surface must never state, imply or
+      // measure it — an entitlement he can point at is one he can churn over when the budget
+      // moves, and the budget is ours to move. What this tab sells is the tool: a campaign he
+      // opens himself, paid for separately (`pricing.ts#boostFeePercent`).
+      adSubtitle: 'כאן מקימים קמפיין ממומן בגוגל ובמטא ועוקבים אחר ביצועיו.',
+      // Admin-only from here down — `/admin/store/[slug]/advertising`. The seller dashboard reads
+      // none of these; see the block comment above before wiring one back into a seller surface.
       adBaselineTitle: 'קידום בסיס',
-      adBaselineActive: 'פעיל',
-      adBaselineLead: 'המוצרים שלך מקודמים כחלק מהקמפיין הכללי של הפלטפורמה ב-Google וב-Meta, והתשתית מותאמת להגברת הסיכוי להופעת האתר והמוצר גם במנועי ה-AI הפופולריים (ChatGPT, Perplexity, Gemini). הקידום הבסיסי כלול בדמי המנוי ואינו מבטיח עדיפות או הופעה למוצר או לחנות מסוימים.',
-      adBaselineBoostHint: 'כדי להגביר חשיפה באופן ממוקד לחנות או למוצר — הפעילו קמפיין בוסט.',
-      adBaselinePoints: [
-        'כל המוצרים שלך מופיעים אוטומטית בפרסומות ב-Google ו-Meta (פייסבוק/אינסטגרם).',
-        'ממומן ע״י הפלטפורמה בתקציב משתנה, אינו קבוע לצמיתות.',
-        'על מנת לקבל חשיפה למוצר מסוים, הפעל קמפיין ״בוסט״',
-      ],
       adBoostTitle: 'הגברת חשיפה (בוסט)',
-      adBoostDesc: 'בוסט = קמפיין פרסום משלך — לכל החנות, למוצרים נבחרים או לקטגוריות נבחרות. אתם קובעים תקציב ומקבלים חשיפה ממוקדת מעבר לקידום הבסיס.',
+      adBoostDesc: 'בוסט = קמפיין פרסום משלך — לכל החנות, למוצרים נבחרים או לקטגוריות נבחרות. אתם קובעים תקציב ומקבלים חשיפה ממוקדת לפי מה שבחרתם.',
       adBoostWhySep: 'כל בוסט הוא קמפיין נפרד וממוקד — כך אפשר לתת תקציב שונה לכל מוצר או לכלל החנות בו-זמנית.',
       adBudgetFeeTip: 'מתוך התקציב מנוכים דמי ניהול לפלטפורמה.',
       adBudgetFeeTipRate: 'מתוך התקציב מנוכים דמי ניהול בשיעור {pct}%.',
@@ -1859,9 +1867,6 @@ export const translations = {
       adTierLow: 'נמוך',
       adTierMid: 'בינוני',
       adTierHigh: 'גבוה',
-      adBaselineInactive: 'לא פעיל',
-      adBaselineInactiveWhy: 'החנות לא נכללת בקידום הבסיס — צריך לפחות מוצר אחד גלוי בחנות כדי להיכנס אליו.',
-      adBaselineInactiveNotLive: 'החנות לא נכללת בקידום הבסיס כי היא עדיין לא באוויר. היא תיכנס אליו מעצמה ברגע שתעלה.',
       adBaselineImpressions: 'חשיפות ב-30 הימים האחרונים (הערכה)',
       adBaselineImpTip: 'חשיפה = כמה פעמים מוצר שלך הופיע בפרסומת ב-Google או Meta. זו ספירת הופעות מול עיניים — לא קליקים ולא מספר אנשים, ולכן המספר גבוה יחסית.',
       adGlossaryTitle: 'מה המספרים אומרים?',
@@ -2084,7 +2089,7 @@ export const translations = {
       seoPreviewLabel: 'כך המוצר ייראה בתוצאת חיפוש בגוגל',
       seoPreviewEmptyDesc: 'עדיין אין תיאור',
       seoLabelImage: 'תמונה (חובה)',
-      seoHintImage: 'בלעדיה המוצר לא ייכנס לפרסום בגוגל ובמטא',
+      seoHintImage: 'בלעדיה לא ניתן לפרסם את המוצר בגוגל ובמטא',
       seoLabelName: 'שם ספציפי',
       seoHintName: 'סוג המוצר ולמי הוא מתאים — בקצרה, לא רשימת מילים',
       seoLabelDescription: 'תיאור קצר',
@@ -2910,16 +2915,16 @@ export const translations = {
       whenBody: 'The subscription is charged from the moment your shop goes live, and renews monthly.',
       perStore: 'A plan is per shop. A second shop is a second plan — one charge on one card, with a line per shop.',
       cancelAny: 'Cancel any time from the dashboard. The shop stays live to the end of the period you have paid for, and products and orders are kept.',
-      includedFree: 'Everything is built and previewed with no card. Paying is what opens selling, advertising and being found on Google and in the marketplace.',
+      includedFree: 'Everything is built and previewed with no card. Paying is what opens selling, the advertising tools and being found on Google and in the marketplace.',
       includedTitle: 'In every plan',
       included1: 'An independent, fully-featured shop at your own address, and organic ranking on Google (SEO)',
       included2: 'Exposure inside the marketplace — home, search and categories',
-      included3: 'Baseline advertising on Google and Meta, with no setting to touch',
+      included3: 'Built-in Google and Meta advertising tools — the campaign itself is charged separately',
       included4: 'Courier delivery, labels and tracking',
       included5: 'Products, images, variants and sales — with no cap',
       included6: 'A full back office — orders, stock, returns, reports and messages',
       adsTitle: 'Google and Meta campaigns, from inside the dashboard',
-      adsLead: 'Want more traffic than the baseline advertising brings? You can run a paid campaign on Google and Meta straight from the dashboard, for an additional charge.',
+      adsLead: 'Want more traffic to the store? You can run a paid campaign on Google and Meta straight from the dashboard, for an additional charge.',
       adsPoint1: 'You set a monthly budget, and we build and run the campaign',
       adsPoint2: 'The budget is a ceiling — whatever is not spent is never charged',
       adsPoint3: 'No ad account of your own, and no settings to touch',
@@ -3295,7 +3300,7 @@ export const translations = {
         'From Excel (xlsx): save as CSV first (File → Save As → CSV), then import.',
         'How an existing product is matched: by the "ID" column, or — if it\'s blank — by a matching SKU already in the store. No match = a new product.',
         'A blank cell on an update row = the current value is kept (not cleared).',
-        'The file carries no images: a product it creates starts with no photo, and a product with no photo is not shown in Google/Meta ads. Photos are added in the product card.',
+        'The file carries no images: a product it creates starts with no photo, and without a photo it cannot be advertised on Google or Meta. Photos are added in the product card.',
         {
           text: 'Variants:',
           sub: [
@@ -3315,7 +3320,7 @@ export const translations = {
       csvRowsError: 'Rows with errors',
       csvPreviewTitle: 'Review before import',
       csvAdvisoryTitle: 'Worth completing — does not block the import',
-      csvAdvisoryNoImage: 'products with no image — a product without a photo is not shown in Google/Meta ads.',
+      csvAdvisoryNoImage: 'products with no image — without a photo the product cannot be advertised on Google or Meta.',
       csvAdvisoryThinDescription: 'products with no description (or a very short one) — the description is what Google shows in the search result.',
       csvRowsUnchanged: 'Unchanged',
       csvUnchangedNote: 'Rows identical to the existing product are skipped on import.',
@@ -3893,18 +3898,11 @@ export const translations = {
       perfIncomeTotal: 'Total income',
       perfRetentionNote: 'Unique visitors are kept for {days} days. An older range shows full view counts, 0 unique, and a conversion rate computed over views instead of people — so it reads lower. The view counts themselves are kept forever.',
       adTitle: 'Advertising & marketing',
-      adSubtitle: 'Your products are advertised on the platform\'s budget. Here you can run a targeted campaign and track how it performs.',
+      adSubtitle: 'Run a paid campaign on Google and Meta from here, and track how it performs.',
+      // Admin-only — see the Hebrew block: the platform campaign is never claimed to a seller.
       adBaselineTitle: 'Baseline promotion',
-      adBaselineActive: 'Active',
-      adBaselineLead: 'Your products are promoted as part of the platform\'s general campaign on Google and Meta, and the infrastructure is tuned to increase the chances of your site and products also appearing in the popular AI engines (ChatGPT, Perplexity, Gemini). This baseline promotion is included in the subscription fee and does not guarantee priority or appearance for any specific product or store.',
-      adBaselineBoostHint: 'To boost exposure for a specific store or product — launch a boost campaign.',
-      adBaselinePoints: [
-        'All your products appear automatically in Google and Meta (Facebook/Instagram) ads.',
-        'Funded by the platform from a variable budget — it is not permanent.',
-        'To get exposure for a specific product, run a "Boost" campaign',
-      ],
       adBoostTitle: 'Boost',
-      adBoostDesc: 'A boost = your own ad campaign — for the whole store, for selected products, or for selected categories. You set the budget and get targeted exposure beyond the baseline promotion.',
+      adBoostDesc: 'A boost = your own ad campaign — for the whole store, for selected products, or for selected categories. You set the budget and get exposure targeted at what you picked.',
       adBoostWhySep: 'Each boost is its own dedicated campaign — so you can give a different budget to each product or to the whole store at the same time.',
       adBudgetFeeTip: 'A platform management fee is taken out of the budget.',
       adBudgetFeeTipRate: 'A {pct}% platform management fee is taken out of the budget.',
@@ -3993,9 +3991,6 @@ export const translations = {
       adTierLow: 'Low',
       adTierMid: 'Medium',
       adTierHigh: 'High',
-      adBaselineInactive: 'Not running',
-      adBaselineInactiveWhy: 'This store is not part of the baseline promotion — it needs at least one visible product to be included.',
-      adBaselineInactiveNotLive: 'This store is not in the baseline campaign because it is not live yet. It joins by itself the moment it goes up.',
       adBaselineImpressions: 'Impressions in the last 30 days (estimate)',
       adBaselineImpTip: 'An impression = how many times one of your products appeared in a Google or Meta ad. It counts appearances in front of eyes — not clicks and not unique people — which is why the number is relatively high.',
       adGlossaryTitle: 'What do the numbers mean?',
@@ -4175,7 +4170,7 @@ export const translations = {
       seoPreviewLabel: 'How the product looks in a Google result',
       seoPreviewEmptyDesc: 'No description yet',
       seoLabelImage: 'Photo (required)',
-      seoHintImage: 'Without one it cannot enter Google or Meta advertising',
+      seoHintImage: 'Without one the product cannot be advertised on Google or Meta',
       seoLabelName: 'A specific name',
       seoHintName: 'What it is and who it suits — briefly, not a list of words',
       seoLabelDescription: 'Short description',

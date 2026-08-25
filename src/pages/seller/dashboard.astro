@@ -102,7 +102,6 @@ import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js'
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
 import { getViewStatsForStore, EMPTY_VIEW_STATS } from '../../lib/store-pageviews.js';
 import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.js';
-import { storeBaselineStatus } from '../../lib/ad-baseline.js';
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
 import { getStoreIdsWithStalledCampaigns } from '../../lib/ad-campaigns.js';
 import { boostFeePercent, resolveTier, type SellerTierId } from '../../lib/pricing.js';
@@ -124,7 +123,7 @@ import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRej
 import { storeSettingsRev } from '../../lib/record-rev.js';
 import { toSellerProductRow } from '../../lib/seller-product-row.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
-import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
+import { getVisibleStores } from '../../lib/stores.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -737,18 +736,9 @@ const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrder
 // which pausing FREEZES rather than erases (item 1). The range picker above the
 // list re-fetches a windowed "recent activity" view over other periods.
 const adCampaigns = (store && advIsInitial) ? (await getCampaignsForStore(store.id)).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) })) : [];
-// Baseline is the platform-funded free exposure the store has accrued to date —
-// a stable lifetime total, deliberately NOT windowed by the campaign picker.
-// `storeProductCounts.visible` and not a filter over the catalogue: the count is read on every
-// request for the checklist anyway, and taking it from there means this figure cannot be one
-// number while the "first steps" step beside it is another.
-const adBaseline = store
-  ? storeBaselineStatus({
-    storeId: store.id,
-    discoverable: isStoreDiscoverable(store),
-    visibleProductCount: storeProductCounts.visible,
-  })
-  : { active: false, impressions: 0 };
+// No baseline figure is computed here on purpose (2026-08-25). The platform campaign still runs
+// and `ad-baseline.ts` still answers for it — for the ADMIN. A seller surface that printed its
+// impressions would be stating the promise the owner just took off this tab in words.
 // Store activity (lib/store-status.ts): what the seller may switch, and what the current state
 // costs them. Open orders are read once here so the "close" path can say up front how many
 // remain — the API re-reads them at the moment of the click, which is the count that decides.
@@ -2699,47 +2689,6 @@ const orderStatusColors: Record<string, string> = {
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
           <p class="muted text-[0.82rem] m-0 mt-1">{d.adSubtitle}</p>
-        </div>
-
-        <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4 [background:color-mix(in_srgb,var(--color-success)_6%,transparent)]">
-          <div class="flex items-center gap-2 flex-wrap mb-2">
-            <h3 class="m-0 text-[0.9rem] font-semibold inline-flex items-center gap-1.5">
-              <svg class="shrink-0 [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 7.7 8 9 4.6-1.3 8-4 8-9V5l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>
-              {d.adBaselineTitle}
-            </h3>
-            {/* The badge reports the truth, not a slogan: a store the feed does not carry (no
-                visible product, or admin-blocked) is not being advertised, and saying "active"
-                there is the one claim on this page a seller could act on and be wrong about. */}
-            <span class={`inline-flex items-center gap-1.5 text-[0.72rem] font-bold py-[.15rem] px-[.5rem] rounded-full ${adBaseline.active ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]' : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]'}`}>
-              <span class={`w-[7px] h-[7px] rounded-full ${adBaseline.active ? '[background:var(--color-success)]' : '[background:var(--color-muted)]'}`}></span>
-              {adBaseline.active ? d.adBaselineActive : d.adBaselineInactive}
-            </span>
-          </div>
-          {/* One clear explanation, in one place only (CURRENT_TASK): the baseline
-              is part of the platform-wide campaign across Google/Meta/AI engines
-              and guarantees no per-product priority — followed by a single pointer
-              to the boost. No duplicate info tooltips or extra notes. */}
-          <p class="text-[0.85rem] leading-relaxed m-0 [color:var(--color-text)]">{d.adBaselineLead}</p>
-          {/* The reason, not A reason. It used to say "add a visible product" for every inactive
-              state, including the commonest one — a shop that is simply not on the site yet, whose
-              seller then went looking for a product he already had. */}
-          {!adBaseline.active && (
-            <p class="text-[0.8rem] m-0 mt-2 py-1.5 px-2 rounded-[var(--radius-sm)] [color:var(--color-text)] [background:color-mix(in_srgb,var(--color-danger)_9%,transparent)]">
-              {adBaseline.reason === 'not-live' ? d.adBaselineInactiveNotLive : d.adBaselineInactiveWhy}
-            </p>
-          )}
-
-          {/* Clickable CTA — scrolls to the boost form below (initAdvertisingTab
-              in advertising.ts). Button (not link): it triggers an in-page scroll,
-              not navigation. Underline appears on hover only. */}
-          <button type="button" id="ad-boost-jump" class="text-start bg-transparent border-0 p-0 cursor-pointer text-[0.85rem] leading-relaxed mt-2 font-bold [color:var(--color-text)] flex items-center gap-2 group">
-            <svg class="shrink-0 [color:var(--color-accent)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
-            <span class="group-hover:underline underline-offset-4 decoration-[color:var(--color-accent)]">{d.adBaselineBoostHint}</span>
-          </button>
-          <p class="m-0 mt-3 pt-3 border-t [border-color:color-mix(in_srgb,var(--color-success)_20%,transparent)] text-[0.82rem]">
-            <span class="muted">{d.adBaselineImpressions}:</span>
-            <strong id="ad-baseline-impressions" class="ms-1">{adBaseline.impressions.toLocaleString('he-IL')}</strong>
-          </p>
         </div>
 
         <div id="ad-boost-card" class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4">

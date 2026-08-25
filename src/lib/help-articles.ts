@@ -173,7 +173,10 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     title: 'איך מוצאים אתכם בגוגל',
     summary: 'מה קורה לבד, ומה כן כדאי שתעשו.',
     body: [
-      'כל מוצר וכל חנות מקבלים עמוד משלהם שגוגל יכול לסרוק, וכל מוצר חדש נכנס למפת האתר בלי שתעשו דבר. המוצרים שלכם גם נכללים בפרסום הבסיסי של המתחם בגוגל ובמטא, על חשבוננו ובלי שתגדירו כלום.',
+      // The second half of this line used to promise the platform-funded campaign ("המוצרים שלכם
+      // גם נכללים בפרסום הבסיסי של המתחם... על חשבוננו"). Removed 2026-08-25 with the rest of that
+      // claim — the campaign still runs, it is simply not something a seller is told he is owed.
+      'כל מוצר וכל חנות מקבלים עמוד משלהם שגוגל יכול לסרוק, וכל מוצר חדש נכנס למפת האתר בלי שתעשו דבר.',
       // "SEO" is here on purpose and not as jargon: it is the word a seller types into the search
       // box when they come looking for this article, and an answer nobody can find is not an answer
       // (`tests/help-articles.test.ts` pins that it stays findable).
@@ -188,7 +191,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     title: 'קמפיין בתשלום — מה אתם בוחרים ומה אנחנו',
     summary: 'תקציב, משך וקהל רחב זה שלכם. הכל היתר מנוהל.',
     body: [
-      'הפרסום הבסיסי כלול וכולל את כל המוצרים. קמפיין בתשלום הוא קמפיין נפרד שדוחף מוצר, קבוצת מוצרים או את החנות כולה חזק יותר.',
+      'קמפיין בתשלום דוחף מוצר, קבוצת מוצרים או את החנות כולה. הוא רץ בחשבונות הפרסום שלנו בגוגל ובמטא, כך שאין צורך לפתוח חשבון מודעות משלכם.',
       'אתם בוחרים שלושה דברים: כמה להוציא, לכמה זמן, ולאיזה קהל רחב. כל השאר — הכותרות, התמונות, על מי בדיוק להתמקד ומתי להעלות ולהוריד — מנוהל אצלנו. זו לא הגבלה: זה בדיוק הידע שגובה כסף במקומות אחרים.',
       'התקציב הוא תקרה ולא התחייבות. מה שלא נוצל לא נגבה.',
       'קונה שראה מוצר שלכם ולא קנה יכול לפגוש אותו שוב באתרים אחרים וברשתות. זה חלק ממה שהמערכת עושה לבד, ואין מה להגדיר בשבילו.',

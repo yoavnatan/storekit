@@ -238,7 +238,7 @@ figures a second way and is the tie-breaker against any code that disagrees with
 | **Showcase stores are `noindex` and sitemap-excluded**, though they appear on the home page and in `/stores` | `lib/demo-stores.ts` | ✅ |
 | A product feed for Google/Meta, rebuilt by a job | `lib/product-feed.ts` + `feed-artifact` job | ✅ |
 | Four funnel events to Google/Meta, all carrying the same catalog id | `lib/tracking.ts` · `lib/ad-item-id.ts` | ✅ (inert — tag ids empty, ⚠️ §2.2) |
-| Baseline ads for every product, platform-funded; seller-funded Boost on top | `lib/ad-baseline.ts` · `lib/ad-campaigns.ts` | 🔶 no API connected |
+| Baseline ads for every product, platform-funded — **admin-only, never claimed to a seller** (owner, 2026-08-25: the promise was one we could not fund; the capability stays, silent). Seller-funded Boost is the only advertising a seller is told about | `lib/ad-baseline.ts` (admin surfaces only) · `lib/ad-campaigns.ts` · guard `tests/baseline-claim-silent.test.ts` | 🔶 no API connected |
 | The whole site can be closed to crawlers with one switch | `SITE_NOINDEX=1` · `lib/site-mode.ts` | ✅ ⚠️ owner's judgement |
 
 ---

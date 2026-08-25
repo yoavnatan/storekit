@@ -4,8 +4,11 @@ import type { AdScopeKind } from './ad-scope-label.js';
 
 /**
  * Seller-funded "boost" campaigns — the paid tier of the two-tier ads model
- * (AI_INSTRUCTIONS.md "Ads — two-tier model"). Every product is already in the platform-funded
- * baseline campaign automatically and has no row here; a row here is a boost the seller bought.
+ * (AI_INSTRUCTIONS.md "Ads — two-tier model"), and the ONLY tier a seller is ever told about
+ * (2026-08-25; `tests/baseline-claim-silent.test.ts`). Every product is already in the
+ * platform-funded baseline campaign automatically and has no row here; a row here is a boost the
+ * seller bought — and it is a **separate, dedicated campaign** rather than a weighting inside the
+ * shared catalog one, because a catalog campaign cannot push one product ahead of its neighbours.
  *
  * **Moved to Postgres (DB_MIGRATION_PLAN.md §8, "the rest").** Three things changed with the move
  * and each one is a rule, not a detail:
