@@ -1372,6 +1372,10 @@ export const translations = {
       // end of the month he already paid for, so nobody cancels in a hurry to avoid a charge.
       subCancelTitle: 'לפני שמבטלים',
       subCancelWhen: 'הביטול עוצר את החיוב הבא. החנות נשארת באוויר עד סוף התקופה ששולמה, ואז יורדת מהאתר — המוצרים, ההגדרות וההזמנות נשמרים, וחידוש מחזיר אותה.',
+      // The same sentence with the day named. Used whenever PayMe have told us one — which is
+      // every running subscription — because "end of the period you paid for" is arithmetic a
+      // seller should not be doing at the moment he is deciding whether to leave.
+      subCancelWhenDated: 'הביטול עוצר את החיוב הבא. החנות נשארת באוויר עד {date}, ואז יורדת מהאתר — המוצרים, ההגדרות וההזמנות נשמרים, וחידוש מחזיר אותה.',
       subCancelCheaper: 'מעבר למסלול זול יותר',
       subCancelOneStore: 'אפשר גם להוריד חנות אחת בלבד מהאוויר ולהקטין את החיוב.',
       subCancelConfirm: 'בטל את המנוי',
@@ -1580,6 +1584,12 @@ export const translations = {
       onbStepCategoriesHint: 'קטגוריות מאפשרות לקונה לסנן ולמצוא מוצר מהר.',
       onbStepAddress: 'להזין כתובת פיזית ושעות',
       onbStepAddressHint: 'נדרש כדי להציע איסוף עצמי מהחנות.',
+      // The two steps that put the shop ON THE SITE. They live in this list — and not only on the
+      // Payments tab — because a step nobody knows exists is not a step (owner, 2026-08-25).
+      onbStepClearing: 'פרטי העסק לחברת הסליקה',
+      onbStepClearingHint: 'בלי חשבון סליקה אין לאן שהכסף של הקונה ייכנס. הבדיקה שלהם נמשכת עד שבעה ימי עסקים, ומתחילה רק אחרי שהפרטים נשלחים.',
+      onbStepPlan: 'מסלול וכרטיס',
+      onbStepPlanHint: 'בוחרים מסלול לחנות ושומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
       onbGo: 'לביצוע',
       onbRequired: 'חובה',
       // **One fact, and nothing else** (owner, 2026-08-24: *"לא מדויק, ולא ברור… מה זה יתן שהוא
@@ -3542,6 +3552,7 @@ export const translations = {
       subCancel: 'Cancel the subscription',
       subCancelTitle: 'Before you cancel',
       subCancelWhen: 'Cancelling stops the next charge. The store stays live to the end of the period you have paid for, then comes off the site — products, settings and orders are kept, and renewing brings it back.',
+      subCancelWhenDated: 'Cancelling stops the next charge. The store stays live until {date}, then comes off the site — products, settings and orders are kept, and renewing brings it back.',
       subCancelCheaper: 'Move to a cheaper plan',
       subCancelOneStore: 'You can also take a single store off the site and lower the charge instead.',
       subCancelConfirm: 'Cancel the subscription',
@@ -3709,6 +3720,10 @@ export const translations = {
       onbStepCategoriesHint: 'Categories let a buyer filter and find a product fast.',
       onbStepAddress: 'Add physical address and hours',
       onbStepAddressHint: 'Required in order to offer self-pickup from the store.',
+      onbStepClearing: 'Business details for the processor',
+      onbStepClearingHint: 'Without a clearing account there is nowhere for a shopper\'s money to go. Their review takes up to seven business days and only starts once the details are sent.',
+      onbStepPlan: 'Plan and card',
+      onbStepPlanHint: 'Pick a plan for this store and save a card. Nothing is charged until the store goes live.',
       onbGo: 'Go',
       onbRequired: 'required',
       onbNotLive: 'While the store has no product a shopper can see, it will not appear on the homepage, in search or on Google.',

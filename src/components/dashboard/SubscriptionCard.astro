@@ -171,7 +171,16 @@ const showBreakdown = paying && lines.length > 1;
           cheaper than leaving and that he may not know are possible. */}
       <div class="!hidden mt-3 rounded-[var(--radius)] border [border-color:var(--color-border)] p-3" id="sub-cancel-panel">
         <p class="m-0 text-[0.86rem] font-semibold">{d.subCancelTitle}</p>
-        <p class="muted m-0 mt-1 text-[0.82rem]">{d.subCancelWhen}</p>
+        {/* **With the DATE in it when we know one.** The rule alone — "until the end of the period
+            you have paid for" — is a sentence a seller has to do arithmetic on at the one moment he
+            is least inclined to. The date is PayMe's next-charge day, which is the same value shown
+            a few rows above, so the two cannot disagree; without one (a subscription whose next
+            date they have not returned) the sentence falls back to the rule, which is still true. */}
+        <p class="muted m-0 mt-1 text-[0.82rem]">
+          {subscription?.nextCharge
+            ? d.subCancelWhenDated.replace('{date}', subscription.nextCharge.slice(0, 10))
+            : d.subCancelWhen}
+        </p>
         <div class="flex flex-wrap items-center gap-2 mt-3">
           <a class="btn btn--ghost btn--sm" href="/pricing">{d.subCancelCheaper}</a>
           {lines.length > 1 && <span class="muted text-[0.8rem]">{d.subCancelOneStore}</span>}

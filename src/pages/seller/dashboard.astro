@@ -609,6 +609,21 @@ const onboardingSteps = store
       description: store.description ?? '',
       categoryCount: storeCategoryList.length,
       address: store.address ?? '',
+      // The publication half — passed ONLY when a clearing provider is configured, because with
+      // none nothing holds a shop off the site and two steps a seller cannot finish would keep
+      // this card on screen for ever (`lib/seller-onboarding.ts`).
+      ...(clearingStatus
+        ? {
+            goLive: {
+              clearingDone: !publishHolds.includes('clearing-details'),
+              // Done when the card is SAVED, not when it is charged — the charge happens by itself
+              // when PayMe approve (`lib/subscription-arm.ts`), so a seller who has done everything
+              // asked of him must see a finished step rather than one he cannot close.
+              planDone: !publishHolds.includes('subscription')
+                || (!!subscription?.cardSavedAt && !subscription.providerRef),
+            },
+          }
+        : {}),
     })
   : [];
 // The per-tab "what this tab does" explainers are GONE (owner, 2026-08-24: *"בכלל צריך את כל

@@ -13,10 +13,23 @@
  */
 
 /** Which checklist step. Stable ids — the UI maps them to translated copy. */
-export type OnboardingStepId = 'product' | 'image' | 'banner' | 'about' | 'categories' | 'address';
+export type OnboardingStepId =
+  | 'product' | 'image' | 'banner' | 'about' | 'categories' | 'address'
+  /** The two acts that put the shop ON THE SITE, as opposed to making it worth visiting.
+   *
+   *  They were reachable only from the Payments tab, which the owner caught on 2026-08-25: *"אם זה
+   *  מוחבא שם בתשלומים אז איך הוא רואה שהוא צריך לעשות את שני הדברים האלו?"*. A step nobody knows
+   *  exists is not a step, and this list is the first thing a new seller reads — it is where he
+   *  should learn the whole path, which is what he asked for in the first place (*"או חלק 'שלבים
+   *  ראשונים' שאומר לו מה הוא צריך לבצע כדי שהחנות תהיה במצב פעיל ומוכר"*).
+   *
+   *  **They are omitted entirely when no clearing provider is configured** — dev, and the
+   *  pre-gateway window — because nothing gates publication there and a step that can never be
+   *  completed would leave this card on screen for ever. */
+  | 'clearing' | 'plan';
 
 /** Dashboard tab a step's CTA jumps to (matches `[role="tab"][data-panel]`). */
-export type OnboardingPanel = 'products' | 'settings';
+export type OnboardingPanel = 'products' | 'settings' | 'payouts';
 
 export interface OnboardingStep {
   id: OnboardingStepId;
@@ -46,6 +59,10 @@ export interface OnboardingInput {
   description: string;
   categoryCount: number;
   address: string;
+  /** The publication half, and **absent means "do not show it at all"** rather than "not done":
+   *  with no clearing provider wired nothing holds a shop off the site, so naming two steps a
+   *  seller cannot finish would be inventing a barrier (`lib/store-publication.ts`). */
+  goLive?: { clearingDone: boolean; planDone: boolean };
 }
 
 /** Order = the order a seller should actually do them in (biggest payoff first). */
@@ -56,6 +73,8 @@ const STEP_PANELS: Record<OnboardingStepId, OnboardingPanel> = {
   about: 'settings',
   categories: 'settings',
   address: 'settings',
+  clearing: 'payouts',
+  plan: 'payouts',
 };
 
 /** `banner` sits right after `image` because they are the same job — the two pictures a shopper sees
@@ -63,9 +82,15 @@ const STEP_PANELS: Record<OnboardingStepId, OnboardingPanel> = {
  *  find the other beside it rather than three steps later. */
 export const ONBOARDING_STEP_ORDER: OnboardingStepId[] = ['product', 'image', 'banner', 'about', 'categories', 'address'];
 
+/** The go-live pair, LAST and in their own order — details before plan, because PayMe's review is
+ *  the long pole and it does not start until the details are sent. Last because everything above
+ *  them is what makes the shop worth putting up; a seller who publishes an empty shop has spent
+ *  money on a page nobody will come back to. */
+export const GO_LIVE_STEP_ORDER: OnboardingStepId[] = ['clearing', 'plan'];
+
 /** The steps that gate discoverability. Must stay in sync with lib/store-readiness.ts' blockers —
  *  that file is what actually enforces them; this is only how the seller is told. */
-const REQUIRED_STEPS = new Set<OnboardingStepId>(['product']);
+const REQUIRED_STEPS = new Set<OnboardingStepId>(['product', 'clearing', 'plan']);
 
 export function buildOnboardingSteps(input: OnboardingInput): OnboardingStep[] {
   const done: Record<OnboardingStepId, boolean> = {
@@ -77,8 +102,11 @@ export function buildOnboardingSteps(input: OnboardingInput): OnboardingStep[] {
     about: input.tagline.trim().length > 0 || input.description.trim().length > 0,
     categories: input.categoryCount > 0,
     address: input.address.trim().length > 0,
+    clearing: !!input.goLive?.clearingDone,
+    plan: !!input.goLive?.planDone,
   };
-  return ONBOARDING_STEP_ORDER.map((id) => ({
+  const order = input.goLive ? [...ONBOARDING_STEP_ORDER, ...GO_LIVE_STEP_ORDER] : ONBOARDING_STEP_ORDER;
+  return order.map((id) => ({
     id,
     done: done[id],
     panel: STEP_PANELS[id],
