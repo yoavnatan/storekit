@@ -57,3 +57,47 @@ describe('the settings panel title is flush with the top of the sheet', () => {
     expect(css).toContain(':has(> :first-child > .dash-panel-head:first-child)');
   });
 });
+
+/**
+ * The settings column has ONE right edge (owner, 2026-08-25: *"אין סיבה שיימשכו על כל הרוחב של
+ * העמוד... צריך אינפוט ברוחב ממוצע נורמלי"*). The image pickers already stopped at 420px while the
+ * text fields ran the full width of the sheet, so the column was ragged and a six-character shop
+ * name sat in a box the width of the screen.
+ *
+ * Pinned as a SET rather than per field: the failure mode is a sixth field added later with no cap,
+ * which reopens exactly the raggedness this closed and which nothing else would notice.
+ */
+describe('the settings text fields share one width', () => {
+  const dashboard = readFileSync(new URL('../src/pages/seller/dashboard.astro', import.meta.url), 'utf8');
+  const form = (() => {
+    const i = dashboard.indexOf('<form method="POST" action="/api/store"');
+    return dashboard.slice(i, dashboard.indexOf('</form>', i));
+  })();
+
+  it.each([
+    ['name', 'the shop name'],
+    ['tagline', 'the tagline'],
+    ['description', 'the description'],
+    ['address', 'the physical address'],
+  ])('%s is capped', (field) => {
+    // The tag that carries this field, from its name attribute back to the opening angle bracket.
+    const at = form.indexOf(`name="${field}"`);
+    expect(at).toBeGreaterThan(-1);
+    const tag = form.slice(form.lastIndexOf('<', at), form.indexOf('>', at));
+    expect(tag).toContain('max-w-[420px]');
+  });
+
+  it('the category picker sits on the same edge', () => {
+    const at = form.indexOf('<StoreCategoryPicker');
+    expect(at).toBeGreaterThan(-1);
+    // Its wrapper carries the cap — the picker is a component and sizes to its container.
+    const wrapper = form.slice(form.lastIndexOf('<div', at), at);
+    expect(wrapper).toContain('max-w-[420px]');
+  });
+
+  it('uses max-width, never width — full width is still right on a phone', () => {
+    // A fixed `w-[420px]` would hold that width down to 375px and push the panel sideways.
+    // The lookbehind is what keeps this from matching the `w-` inside `max-w-`.
+    expect(form).not.toMatch(/(?<![-\w])w-\[420px\]/);
+  });
+});

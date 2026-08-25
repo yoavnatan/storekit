@@ -3109,15 +3109,27 @@ const orderStatusColors: Record<string, string> = {
               already been burned by (memory `feedback_save_model_clarity`). */}
           <HeaderStyleCard store={store} d={d} />
 
+          {/* **These fields stop at 420px, and the number is not a new one** (owner, 2026-08-25:
+              *"יש שם אינפוטים שאין סיבה שיימשכו על כל הרוחב של העמוד... צריך אינפוט ברוחב ממוצע
+              נורמלי לדברים כאלו"*). A shop name is a few words and an address is one line; a field
+              stretched to the full sheet reads as an invitation to fill it, and on a wide screen
+              the eye has to travel the whole width to find a six-character value.
+              420px is the width the banner/profile picker above already uses, so the whole column
+              — picture, name, tagline, description, categories, address — now shares ONE right
+              edge instead of the pickers stopping and the text fields running on. `max-width`
+              rather than `width`, so nothing changes below that: at 375px they are still full
+              width, which is the only place full width was ever right. The description keeps the
+              same edge though it was not named: it sits between two capped fields, and one
+              protruding box is exactly the ragged column being complained about. */}
           <label class="field">
             <span>{d.storeName}</span>
-            <input class="input" name="name" value={store.name} required />
+            <input class="input max-w-[420px]" name="name" value={store.name} required />
           </label>
 
           <label class="field">
             <span>{d.tagline}</span>
             <input
-              class="input"
+              class="input max-w-[420px]"
               name="tagline"
               value={store.tagline}
               placeholder={d.descPlaceholder}
@@ -3126,10 +3138,10 @@ const orderStatusColors: Record<string, string> = {
 
           <label class="field">
             <span>{d.description}</span>
-            <textarea class="input" name="description" rows="3">{store.description}</textarea>
+            <textarea class="input max-w-[420px]" name="description" rows="3">{store.description}</textarea>
           </label>
 
-          <div class="field">
+          <div class="field max-w-[420px]">
             <span>{d.storeCategories}</span>
             <StoreCategoryPicker vocabulary={categoryVocabulary} selected={store.categories ?? []} id="settings-store-cats" />
           </div>
@@ -3144,7 +3156,7 @@ const orderStatusColors: Record<string, string> = {
           <div id="store-address-field" class="mt-[.9rem] ps-4 border-s-2 border-[color:var(--color-border)] transition-opacity duration-150 data-[open=false]:opacity-55" data-open={String(!!store.addressVisible)}>
             <label class="field">
               <span>{d.storeAddress}</span>
-              <input class="input" name="address" value={store.address ?? ''} placeholder={d.storeAddressPlaceholder} />
+              <input class="input max-w-[420px]" name="address" value={store.address ?? ''} placeholder={d.storeAddressPlaceholder} />
             </label>
           </div>
 
