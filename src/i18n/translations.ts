@@ -300,7 +300,6 @@ export const translations = {
       body: 'האתר עושה שימוש בעוגיות לתפעולו התקין, לשיפור חוויית הגלישה ולפרסום.',
       more: 'פרטים ואפשרויות',
       dismiss: 'הבנתי',
-      close: 'סגירת ההודעה',
       // The control itself, which lives in the cookies clause of /privacy and nowhere else.
       prefsTitle: 'ניהול העוגיות שאינן הכרחיות',
       analytics: 'מדידה',
@@ -2895,7 +2894,6 @@ export const translations = {
       body: 'This site uses cookies to run, to measure and to advertise.',
       more: 'Details and options',
       dismiss: 'Got it',
-      close: 'Close this notice',
       prefsTitle: 'Managing the non-essential cookies',
       analytics: 'Measurement',
       analyticsHint: 'How many people came and which pages they read, without identifying anyone.',

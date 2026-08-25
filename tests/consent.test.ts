@@ -125,6 +125,26 @@ describe('where the off-switch is, and where it is NOT', () => {
     expect(notice).not.toContain('consent-save');
   });
 
+  it('the dismiss button is named by its own text, never by an aria-label', () => {
+    // The bar shows a × on a phone and the word "הבנתי" from `sm` up, and the naive spellings of
+    // that are both wrong. `hidden sm:inline` leaves the phone with a nameless icon button;
+    // adding an `aria-label` to fix that then OVERRIDES the visible word on desktop, so the
+    // button reads "הבנתי" and announces something else — WCAG 2.5.3 Label in Name, level AA,
+    // which is the level `/accessibility` states in public that this site meets. `sr-only
+    // sm:not-sr-only` keeps the word in the accessible tree at every width. Driven in a browser:
+    // the accessible name is "הבנתי" at 375 and at 1280, with no aria-label at either.
+    // Comments stripped first — this is the THIRD time in one session that a guard read the prose
+    // explaining its own rule as a violation of it (`consent`, `accessibility-guards`, here). The
+    // comment above the button necessarily names `aria-label`, which is the string being banned.
+    const markup = notice
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ');
+    const btn = markup.slice(markup.indexOf('id="consent-dismiss"') - 400, markup.indexOf('</button>'));
+    expect(btn, 'an aria-label here would replace the visible label').not.toContain('aria-label');
+    expect(btn, 'the word must stay in the accessible tree on a phone too').toContain('sr-only');
+    expect(btn, 'display:none text is not an accessible name').not.toMatch(/class="hidden sm:inline"/);
+  });
+
   it('but it does link the policy, which is what keeps it a notice', () => {
     expect(notice, 'a notice that points nowhere is not a disclosure').toContain('href="/privacy"');
   });
