@@ -22,11 +22,17 @@ import type { Order } from './orders.js';
  * nothing here.
  *
  * **Why the obligation and the settlement are two events.** `refund_due` is written the moment the
- * debt exists, by the code that creates it. `refund_settled` is written when the money actually goes
- * back — which needs the payment provider's refund call, and no provider is chosen yet
- * (GO_LIVE_CHECKLIST §3). So nothing writes the second one today, ON PURPOSE: every obligation stays
- * open, `reconcile.ts` reports the outstanding total on the admin dashboard, and the day a provider
- * is wired the settlement closes them off instead of the record having quietly closed itself.
+ * debt exists, by the code that creates it. `refund_settled` is written when the money has actually
+ * gone back. They stay two events now that both really happen, and the separation is what makes a
+ * FAILED refund visible: `reconcile.ts` pairs them off and reports every obligation with no
+ * settlement against it, so a gateway refusal is an open row somebody can see rather than a debt
+ * the record closed on its own.
+ *
+ * **`refund-execute.ts` is the other half, and it exists** — since 2026-08-23, against PayMe. This
+ * header said "no provider is chosen yet" for two months after that stopped being true, and
+ * `HOW_IT_WORKS.md` repeated it; both were corrected on 2026-08-25. Nothing in THIS file performs a
+ * refund and nothing here should: it decides whether one is owed and how much, which is a rule over
+ * statuses, and the gateway call is a different job with different failure modes.
  */
 
 /** The amount the buyer is owed if this order stops counting — the whole slice, goods and shipping
