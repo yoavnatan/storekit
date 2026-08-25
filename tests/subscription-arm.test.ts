@@ -28,6 +28,8 @@ const rig = vi.hoisted(() => ({
   queries: [] as { sql: string; params: readonly unknown[] }[],
   /** How many times a clearing account was asked for. Zero everywhere except arming. */
   opened: 0,
+  /** Whether a DELETE would find an armed row. */
+  armedRowExists: true,
   /** What PayMe would still want. Non-empty means the account CANNOT be opened. */
   stillMissing: [] as string[],
 }));
@@ -59,6 +61,13 @@ vi.mock('../src/lib/db.js', () => ({
         canceled_at: null, ends_at: null, card_saved_at: '2026-08-24T00:00:00.000Z', buyer_key: params[3],
       };
     }
+    if (sql.includes('DELETE FROM seller_subscriptions')) {
+      rig.row = null;
+      // `removeArmedCard` reads `rowCount` to tell "removed" from "there was nothing of yours to
+      // remove" — a real `pg` result carries it and the mock has to as well.
+      return { rows: [], rowCount: rig.armedRowExists ? 1 : 0 };
+    }
+    return { rows: [], rowCount: 0 };
   },
 }));
 vi.mock('../src/lib/seller-auth.js', () => ({
@@ -105,7 +114,7 @@ vi.mock('../src/lib/payment-payme.js', async () => {
   };
 });
 
-const { armSubscriptionCard, startArmedSubscription } = await import('../src/lib/subscription-arm.js');
+const { armSubscriptionCard, removeArmedCard, startArmedSubscription } = await import('../src/lib/subscription-arm.js');
 const { sellerIsSubscribed, subscriptionFor } = await import('../src/lib/seller-subscription.js');
 
 beforeEach(() => {
@@ -118,6 +127,7 @@ beforeEach(() => {
   rig.queries = [];
   rig.opened = 0;
   rig.stillMissing = [];
+  rig.armedRowExists = true;
 });
 
 describe('putting a card on file', () => {
@@ -165,6 +175,34 @@ describe('putting a card on file', () => {
   it('reports nothing outstanding when the account opened cleanly', async () => {
     const result = await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
     expect(result.status === 'armed' && result.stillMissing).toBeUndefined();
+  });
+
+  /**
+   * ── Removing a card, and the one row it must never touch ──
+   *
+   * The seller can take back a card that has never been charged (owner, 2026-08-25: *"אי אפשר
+   * להסיר כרטיס"* — and between arming and PayMe's approval there was no way back at all short of
+   * deleting the shop).
+   *
+   * What the SQL must not do is drop a token PayMe are actually billing against. That would leave
+   * us charging a card nobody here can see, with no `canceled_at`, no end date and nothing told to
+   * the seller — a cancellation that forgot to cancel. The guard is `provider_ref IS NULL` in the
+   * WHERE clause, so it holds for every caller rather than for the one that remembered.
+   */
+  it('deletes only a row with no provider_ref and a saved card', async () => {
+    await removeArmedCard('11111111-1111-4111-8111-111111111111');
+    const sql = rig.queries.at(-1)!.sql;
+    expect(sql).toContain('DELETE FROM seller_subscriptions');
+    expect(sql).toContain('provider_ref IS NULL');
+    expect(sql).toContain('card_saved_at IS NOT NULL');
+  });
+
+  it('answers false when there was nothing of his to remove', async () => {
+    // A card already gone, or — the case the WHERE clause exists for — a subscription PayMe are
+    // billing, whose row this statement deliberately does not match. The caller answers 409 on it
+    // rather than a cheerful "removed".
+    rig.armedRowExists = false;
+    expect(await removeArmedCard('11111111-1111-4111-8111-111111111111')).toBe(false);
   });
 
   it('opens nothing for a seller with no shop to bill — there is no commitment to price', async () => {

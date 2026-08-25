@@ -175,6 +175,67 @@ const showBreakdown = paying && lines.length > 1;
       screen where trust is being established. */}
   <p class="muted m-0 mt-2 text-[0.76rem]">{d.subVat}</p>
 
+  {(!paying || !storeInPlan) && (
+    <div class:list={[cardOnFile ? 'mt-2' : 'mt-4']}>
+      {/* ── PayMe's own card fields, drawn on OUR page ───────────────────────────────────────
+          Three iframes served by PayMe and mounted here, so the seller commits at the moment he
+          decides instead of a week later on somebody else's page. The container ids are the ones
+          `scripts/checkout-card.ts` mounts into — the same three, because it is the same SDK call
+          and duplicating them would be a second definition of a string that must match exactly.
+          Hidden until the SDK answers: an empty bordered box where a card field should be is worse
+          than no box at all, and `active: false` (no key configured) is a real state that falls
+          back to PayMe's own page below. */}
+      {/* What the tokenizer is told, carried as data rather than fetched again: the amount is the
+          one this card already rendered, so the figure on the card issuer's own confirmation and
+          the figure on this screen come from the same place. `firstName`/`lastName` is PayMe's
+          split of a single Hebrew name — the first word and the rest, which is the honest reading
+          of a name we hold as one string. */}
+      <div
+        class="!hidden mt-1"
+        id="sub-card-fields"
+        {...(cardOnFile ? { 'data-collapsed': 'true' } : {})}
+        data-first-name={payer.name.trim().split(/\s+/)[0] ?? ''}
+        data-last-name={payer.name.trim().split(/\s+/).slice(1).join(' ')}
+        data-email={payer.email}
+        data-phone={payer.phone}
+        data-label={d.subTitle}
+        data-amount={(plan.monthlyFee).toFixed(2)}
+      >
+        {/* ── Fixed tracks, because these boxes contain IFRAMES ──
+            An iframe has no intrinsic width to measure, so `auto` columns collapsed to nothing and
+            `1fr` gave the rest away: the card number ended up a sliver with its label wrapped over
+            two lines while תוקף and CVV took half the row each (owner's screenshot, 2026-08-25).
+            Named tracks in `ch` instead — the card number keeps the row it needs, the two short
+            fields take exactly what their content is, and nothing depends on measuring an empty
+            frame. `minmax(0,…)` on the first so a long label cannot push the grid wider than its
+            container.
+
+            Each frame is given an explicit height too: an empty iframe is zero pixels tall until
+            PayMe paint into it, which is what made the boxes different sizes from each other. */}
+        <div class="grid gap-3 sm:grid-cols-[minmax(0,22ch)_9ch_7ch]">
+          <div class="field m-0">
+            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardNumber}</span>
+            <div id="payme-card-number" class="input flex items-center h-[2.6rem] py-0"></div>
+          </div>
+          <div class="field m-0">
+            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardExpiry}</span>
+            <div id="payme-card-expiry" class="input flex items-center h-[2.6rem] py-0"></div>
+          </div>
+          <div class="field m-0">
+            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardCvc}</span>
+            <div id="payme-card-cvc" class="input flex items-center h-[2.6rem] py-0"></div>
+          </div>
+        </div>
+        <button type="button" class="btn btn--accent btn--sm mt-3" id="sub-card-save" data-store={storeId}>{d.subCardSave}</button>
+        {/* The sentence that makes the whole step acceptable, and it is the first thing under the
+            button rather than the last thing on the card. */}
+        <p class="m-0 mt-2 text-[0.8rem] font-semibold">{d.subCardNoCharge}</p>
+        <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+      </div>
+
+    </div>
+  )}
+
   <p class="hidden text-sm [color:var(--color-danger)] mt-3 mb-0" id="sub-error" role="alert"></p>
 
   {endingOn ? (
@@ -259,10 +320,25 @@ const showBreakdown = paying && lines.length > 1;
       <p class="muted m-0 mt-1 text-[0.8rem]">
         {d.subCardWhen.replace('{amount}', formatAgorot(subscription?.priceAgorot ?? 0))}
       </p>
-      {/* A way to replace it, and deliberately quiet: an expired card between deciding and being
-          approved is rare, and a prominent "change card" beside a saved one reads as doubt about
-          whether it was saved. */}
-      <button type="button" class="btn btn--ghost btn--sm mt-3" id="sub-card-replace">{d.subCardReplace}</button>
+      {/* ── Replace, and REMOVE ──
+          Quiet on purpose: an expired card between deciding and being approved is rare, and a
+          prominent "change card" beside a saved one reads as doubt about whether it was saved.
+
+          **Replace was a dead link until 2026-08-25.** It navigated to `?panel=payouts&card=1`, and
+          `card=1` was a parameter nothing in the codebase read — so the page reloaded into exactly
+          this state and the seller saw nothing happen (owner: *"החלפת כרטיס לא עובד"*). It reveals
+          the real fields now, which render below in this state too.
+
+          **Remove exists only here, and that is the whole of the rule.** This is a card on file
+          with nothing charged — PayMe are still reviewing the business — and it was the one point
+          in the flow a seller had committed with no way back short of deleting his shop. Once the
+          subscription is RUNNING, taking the card away is cancellation and has its own screen with
+          its own dates and its own retention step; a second control that quietly did the same thing
+          differently is how two paths to one outcome start disagreeing. */}
+      <div class="flex flex-wrap items-center gap-2 mt-3">
+        <button type="button" class="btn btn--ghost btn--sm" id="sub-card-replace" aria-controls="sub-card-fields" aria-expanded="false">{d.subCardReplace}</button>
+        <button type="button" class="btn btn--ghost btn--sm" id="sub-card-remove">{d.subCardRemove}</button>
+      </div>
     </div>
   ) : paying && !storeInPlan ? (
     /* ── A shop being ADDED to a subscription that is already running ──
@@ -278,61 +354,6 @@ const showBreakdown = paying && lines.length > 1;
   ) : (
     <div class="mt-4">
       {created && !paying && <p class="m-0 mb-2 text-[0.84rem]">{d.subAwaitingPayment}</p>}
-
-      {/* ── PayMe's own card fields, drawn on OUR page ───────────────────────────────────────
-          Three iframes served by PayMe and mounted here, so the seller commits at the moment he
-          decides instead of a week later on somebody else's page. The container ids are the ones
-          `scripts/checkout-card.ts` mounts into — the same three, because it is the same SDK call
-          and duplicating them would be a second definition of a string that must match exactly.
-          Hidden until the SDK answers: an empty bordered box where a card field should be is worse
-          than no box at all, and `active: false` (no key configured) is a real state that falls
-          back to PayMe's own page below. */}
-      {/* What the tokenizer is told, carried as data rather than fetched again: the amount is the
-          one this card already rendered, so the figure on the card issuer's own confirmation and
-          the figure on this screen come from the same place. `firstName`/`lastName` is PayMe's
-          split of a single Hebrew name — the first word and the rest, which is the honest reading
-          of a name we hold as one string. */}
-      <div
-        class="!hidden mt-1"
-        id="sub-card-fields"
-        data-first-name={payer.name.trim().split(/\s+/)[0] ?? ''}
-        data-last-name={payer.name.trim().split(/\s+/).slice(1).join(' ')}
-        data-email={payer.email}
-        data-phone={payer.phone}
-        data-label={d.subTitle}
-        data-amount={(plan.monthlyFee).toFixed(2)}
-      >
-        {/* ── Fixed tracks, because these boxes contain IFRAMES ──
-            An iframe has no intrinsic width to measure, so `auto` columns collapsed to nothing and
-            `1fr` gave the rest away: the card number ended up a sliver with its label wrapped over
-            two lines while תוקף and CVV took half the row each (owner's screenshot, 2026-08-25).
-            Named tracks in `ch` instead — the card number keeps the row it needs, the two short
-            fields take exactly what their content is, and nothing depends on measuring an empty
-            frame. `minmax(0,…)` on the first so a long label cannot push the grid wider than its
-            container.
-
-            Each frame is given an explicit height too: an empty iframe is zero pixels tall until
-            PayMe paint into it, which is what made the boxes different sizes from each other. */}
-        <div class="grid gap-3 sm:grid-cols-[minmax(0,22ch)_9ch_7ch]">
-          <div class="field m-0">
-            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardNumber}</span>
-            <div id="payme-card-number" class="input flex items-center h-[2.6rem] py-0"></div>
-          </div>
-          <div class="field m-0">
-            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardExpiry}</span>
-            <div id="payme-card-expiry" class="input flex items-center h-[2.6rem] py-0"></div>
-          </div>
-          <div class="field m-0">
-            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardCvc}</span>
-            <div id="payme-card-cvc" class="input flex items-center h-[2.6rem] py-0"></div>
-          </div>
-        </div>
-        <button type="button" class="btn btn--accent btn--sm mt-3" id="sub-card-save" data-store={storeId}>{d.subCardSave}</button>
-        {/* The sentence that makes the whole step acceptable, and it is the first thing under the
-            button rather than the last thing on the card. */}
-        <p class="m-0 mt-2 text-[0.8rem] font-semibold">{d.subCardNoCharge}</p>
-        <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
-      </div>
 
       {/* A paying seller opening a SECOND shop is not starting a subscription — he is adding a line
           to one that is already running, and the button has to say that or it reads as a second

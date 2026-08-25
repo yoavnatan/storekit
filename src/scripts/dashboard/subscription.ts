@@ -156,7 +156,15 @@ export function initSubscriptionCard(): void {
       try {
         const lang = document.documentElement.lang === 'en' ? 'en' : 'he';
         const fields = await loadCardFields(config, lang);
-        fieldsBox.classList.remove('!hidden');
+        /**
+         * **Mounted either way, revealed only when there is nothing on file.**
+         *
+         * PayMe's iframes have to be mounted to be typed into, and mounting them is what proves the
+         * SDK works at all — the fallback below depends on that answer. But a seller who already
+         * has a card should not meet an empty card form: `data-collapsed` says so, and the replace
+         * button is what opens it (`SubscriptionCard.astro`).
+         */
+        if (fieldsBox.dataset['collapsed'] !== 'true') fieldsBox.classList.remove('!hidden');
         saveCard.addEventListener('click', async () => {
           error?.classList.add('hidden');
           const busy = busyButton(saveCard, saveCard.textContent?.trim() ?? '');
@@ -221,10 +229,65 @@ export function initSubscriptionCard(): void {
     fallbackBox.classList.remove('!hidden');
   }
 
-  // Replacing a saved card is the same errand from the top — the server overwrites the token — so
-  // it simply re-opens the form rather than being a second, subtly different path.
-  document.getElementById('sub-card-replace')?.addEventListener('click', () => {
-    window.location.href = '/seller/dashboard?panel=payouts&card=1';
+  /**
+   * ── Replacing a saved card ──
+   *
+   * The same errand from the top — the server overwrites the token — so it opens the same form
+   * rather than being a second, subtly different path.
+   *
+   * **It used to navigate to `?panel=payouts&card=1`, and nothing in the codebase read `card=1`**
+   * (owner, 2026-08-25: *"החלפת כרטיס לא עובד"*). The page reloaded into the identical state, so
+   * pressing it did nothing at all and looked like a broken button rather than a missing feature.
+   * The fields are on the page now — mounted, collapsed — and this reveals them.
+   */
+  const cardReplace = document.getElementById('sub-card-replace');
+  cardReplace?.addEventListener('click', () => {
+    fieldsBox?.classList.remove('!hidden');
+    cardReplace.setAttribute('aria-expanded', 'true');
+    // `block: 'nearest'` — the smallest scroll that brings it into view, never a jump
+    // (`feedback_subtle_scroll`).
+    fieldsBox?.scrollIntoView({ block: 'nearest' });
+  });
+
+  /**
+   * ── Taking the card away again ──
+   *
+   * Only ever offered on a card that has NOT been charged (`SubscriptionCard.astro` renders the
+   * button in that state alone). It was the one point in the flow where a seller had committed and
+   * had no way back that did not involve deleting his shop.
+   *
+   * A modal rather than a `confirm()`: this project does not use the browser's dialogs, and the
+   * sentence needs to say the consequence — the shop will not go live — which a one-line confirm
+   * cannot carry.
+   */
+  const cardRemove = document.getElementById('sub-card-remove') as HTMLButtonElement | null;
+  cardRemove?.addEventListener('click', () => {
+    // The project's own dialog, opened by event — the same one the lifecycle buttons use. Not
+    // `confirm()`, which this site does not use anywhere, and which could not carry the sentence
+    // that matters: the shop will not go live without a card.
+    window.dispatchEvent(new CustomEvent('confirm:open', {
+      detail: {
+        title: t['subCardRemoveTitle'] ?? '',
+        message: t['subCardRemoveBody'] ?? '',
+        okLabel: t['subCardRemove'] ?? '',
+        tone: 'danger',
+        onConfirm: () => void (async () => {
+          const busy = busyButton(cardRemove, cardRemove.textContent?.trim() ?? '');
+          try {
+            const data = await post({ action: 'remove-card' });
+            if (!data.ok) { fail(); return; }
+            showToast(t['subCardRemoved'] ?? '');
+            // Re-read: removing the card moves which go-live step is open and what the overview
+            // says, and rebuilding that by hand is how a screen starts disagreeing with the server.
+            window.location.reload();
+          } catch {
+            fail();
+          } finally {
+            busy.done();
+          }
+        })(),
+      },
+    }));
   });
 
   // ── Putting the shop on the site ──────────────────────────────────────────────────────────

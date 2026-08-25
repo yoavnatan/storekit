@@ -1483,6 +1483,12 @@ export const translations = {
       subCardOnFile: 'הכרטיס שמור ולא בוצע חיוב.',
       subCardWhen: 'החיוב הראשון, {amount}, יורד ביום שהחנות עולה לאוויר — מיד עם אישור חברת הסליקה.',
       subCardReplace: 'החלפת כרטיס',
+      subCardRemove: 'הסרת הכרטיס',
+      subCardRemoveTitle: 'להסיר את הכרטיס?',
+      // Says the consequence, and says the part that keeps it from feeling final: nothing was
+      // charged, and everything he built is where he left it.
+      subCardRemoveBody: 'לא בוצע חיוב, ולא ייגבה דבר. החנות לא תעלה לאוויר עד שיישמר כרטיס, וכל מה שבנית נשאר במקומו.',
+      subCardRemoved: 'הכרטיס הוסר.',
       payClearingTitle: 'חשבון סליקה',
       payClearingReady: 'החנויות שלכם יכולות למכור.',
       payClearingMissing: 'החנויות שלכם עדיין לא יכולות למכור — חסרים פרטים לפתיחת חשבון סליקה.',
@@ -3765,6 +3771,10 @@ export const translations = {
       subCardOnFile: 'Your card is on file and nothing has been charged.',
       subCardWhen: 'The first charge, {amount}, is taken on the day the store goes live — as soon as the processor approves you.',
       subCardReplace: 'Replace the card',
+      subCardRemove: 'Remove card',
+      subCardRemoveTitle: 'Remove the card?',
+      subCardRemoveBody: 'Nothing was charged and nothing will be. Your store stays off the site until a card is saved, and everything you have built stays where it is.',
+      subCardRemoved: 'The card was removed.',
       payClearingTitle: 'Clearing account',
       payClearingReady: 'Your stores can take orders.',
       payClearingMissing: 'Your stores cannot take orders yet — some details are still needed to open a clearing account.',

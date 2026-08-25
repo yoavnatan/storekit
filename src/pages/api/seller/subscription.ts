@@ -3,7 +3,7 @@ import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { startSubscription, endSubscription, subscriptionFor } from '../../../lib/seller-subscription.js';
-import { armSubscriptionCard } from '../../../lib/subscription-arm.js';
+import { armSubscriptionCard, removeArmedCard } from '../../../lib/subscription-arm.js';
 import { syncStorePublication, publishHoldsFor } from '../../../lib/store-publication.js';
 import { store as platform } from '../../../config/store.config.js';
 
@@ -80,6 +80,17 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     }
     if (armed.status === 'already') return json({ ok: true, already: true });
     return json({ ok: false, error: armed.status }, armed.status === 'not-configured' ? 503 : 400);
+  }
+
+  /**
+   * Take back a card that has never been charged. Refused for a subscription PayMe are billing —
+   * that is `cancel`, which has dates and a retention step (`removeArmedCard` carries the whole
+   * argument). The refusal is the module's, not this route's, so a second caller cannot get a
+   * laxer version of it.
+   */
+  if (read.value.action === 'remove-card') {
+    const removed = await removeArmedCard(sellerId);
+    return json({ ok: removed }, removed ? 200 : 409);
   }
 
   if (read.value.action === 'cancel') {

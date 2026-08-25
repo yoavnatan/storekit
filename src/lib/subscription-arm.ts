@@ -136,6 +136,39 @@ export async function armSubscriptionCard(
 }
 
 /**
+ * Drop a card that has never been charged.
+ *
+ * ── Why it exists (owner, 2026-08-25: *"אי אפשר להסיר כרטיס"*) ──
+ * Between arming a card and PayMe approving the business, the seller has committed and nothing has
+ * happened yet. That window is days long by design, and it was the only point in the whole flow
+ * with no way back: pause and close both need a live shop, cancelling needs a running subscription,
+ * and the only exit was deleting the shop — throwing away the products and the design to undo a
+ * card.
+ *
+ * ── The guard is the entire safety argument ──
+ * **`provider_ref IS NULL`**, in the WHERE clause rather than in the caller. A row with a
+ * provider_ref is a standing order PayMe are actually billing, and dropping its token here would
+ * leave us charging a card we can no longer see, with no `canceled_at`, no end date and nothing
+ * told to the seller — a cancellation that forgot to cancel. That path is `endSubscription`, which
+ * tells PayMe, records the date and keeps the shop up until the paid period ends.
+ *
+ * The whole row goes rather than the token alone: with no card and no provider_ref there is nothing
+ * left in it that means anything, and a row holding only a price is a state every reader would have
+ * to learn about for nothing.
+ *
+ * Answers `false` when it removed nothing — a card already gone, or one PayMe are billing — so the
+ * caller can tell "done" from "not yours to do".
+ */
+export async function removeArmedCard(sellerId: string): Promise<boolean> {
+  if (!isUuid(sellerId)) return false;
+  const gone = await query(
+    'DELETE FROM seller_subscriptions WHERE seller_id = $1 AND provider_ref IS NULL AND card_saved_at IS NOT NULL',
+    [sellerId],
+  );
+  return (gone.rowCount ?? 0) > 0;
+}
+
+/**
  * The token itself — **the one read in this codebase that selects `buyer_key`**.
  *
  * Everything else names its columns precisely to keep a chargeable token off any object a page
