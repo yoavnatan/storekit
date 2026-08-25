@@ -41,8 +41,13 @@ import { syncStorePublication } from './store-publication.js';
 import { logError } from './error-log.js';
 
 export type ArmResult =
-  /** The card is on file and what it will be charged is recorded. */
-  | { status: 'armed'; priceAgorot: number }
+  /** The card is on file and what it will be charged is recorded.
+   *
+   *  `stillMissing` is present when the card was accepted but PayMe could NOT be asked to open the
+   *  account, because something they require is still not held. It is the seller's to fix and it is
+   *  all on the screen he is looking at — but a card on file with no account behind it looks
+   *  finished and is not, which is why it travels back instead of being swallowed. */
+  | { status: 'armed'; priceAgorot: number; stillMissing?: string[] }
   /** He is already being billed — there is nothing to arm, and re-arming would replace a working
    *  card with one that has not been proved. */
   | { status: 'already' }
@@ -95,18 +100,36 @@ export async function armSubscriptionCard(
    * their mind; opening it here means paying it only for a seller who has committed — this function
    * runs the moment his card is on file (owner, 2026-08-25).
    *
-   * Awaited but never allowed to fail the arming: the card is saved either way, and a seller whose
-   * account PayMe refused is one `ensureMerchantAccount` has already logged loudly for a person to
-   * pick up. Failing here would throw away a commitment we had just captured.
+   * Awaited but never allowed to fail the arming: the card is saved either way, and failing here
+   * would throw away a commitment we had just captured.
+   *
+   * **But its answer is no longer discarded.** `needs-details` is a RETURN value rather than a
+   * throw, so the `.catch` that used to sit here caught nothing and the result went nowhere: a
+   * seller whose bank block was empty saved a card, saw a tick, and no account was opened or
+   * mentioned anywhere (owner, 2026-08-25). It is reported back to the caller now, and logged, so
+   * neither the screen nor a person here can be unaware of it.
    */
   const first = (await getStoresBySellerId(sellerId))[0];
-  if (first) {
-    await ensureMerchantAccount(sellerId, {
-      storeName: first.name,
-      storeUrl: `${platform.url}/${urlSegment(first.slug)}`,
-      storeDescription: first.description || first.tagline || first.name,
-      ...(first.categories ? { storeCategories: first.categories } : {}),
-    }, creds).catch(() => undefined);
+  if (!first) return { status: 'armed', priceAgorot };
+
+  const opened = await ensureMerchantAccount(sellerId, {
+    storeName: first.name,
+    storeUrl: `${platform.url}/${urlSegment(first.slug)}`,
+    storeDescription: first.description || first.tagline || first.name,
+    ...(first.categories ? { storeCategories: first.categories } : {}),
+  }, creds).catch(() => ({ status: 'failed' as const, error: 'ensureMerchantAccount threw' }));
+
+  if (opened.status === 'needs-details') {
+    // Not an error at their end and not ours either — something the SELLER still has to type, on a
+    // screen he is already looking at. Logged all the same, because a card on file with no account
+    // behind it is the one state in this flow that looks finished and is not.
+    await logError({
+      source: 'server',
+      route: 'payme:create-seller',
+      message: `card armed but no clearing account for seller ${sellerId}: still missing ${opened.missing.join(', ')}`,
+      resolutionHint: 'The seller has committed a card and PayMe have not been asked for anything. Everything named is on his own Payments tab — the bank block and the business type sit on the seller record, the rest in merchant_kyc.',
+    }).catch(() => { /* the card is armed either way */ });
+    return { status: 'armed', priceAgorot, stillMissing: opened.missing };
   }
 
   return { status: 'armed', priceAgorot };

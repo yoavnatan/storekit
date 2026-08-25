@@ -18,8 +18,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const state = vi.hoisted(() => ({
   subscribed: true,
-  /** What PayMe have been given. Empty = the seller has typed nothing. */
-  kyc: {} as Record<string, unknown>,
+  /** What PayMe still want. Empty = the account can be opened; the default is the state of a
+   *  seller who has typed nothing. */
+  missing: ['businessId'] as string[],
+  /** A card on file, PayMe not yet billing. */
+  armed: false,
   merchantBlock: null as 'no-account' | 'not-approved' | null,
   stores: [] as { id: string; slug: string; sellerId: string; publishedAt?: string; closedAt?: string }[],
   /** Store ids named in the standing order's breakdown. `null` = no subscription row at all. */
@@ -37,17 +40,25 @@ vi.mock('../src/lib/seller-subscription.js', () => ({
   // What the standing order is actually paying for. Since 2026-08-24 each shop is billed
   // separately, so "this seller is paying" stopped being the whole answer — a second shop must not
   // ride on the first one's fee (`lib/store-plan.ts`).
-  subscriptionFor: async () => (state.paidStoreIds === null ? null : { storeFees: state.paidStoreIds.map((id) => ({ storeId: id })) }),
+  //
+  // `cardSavedAt` rides on the same row because `publishHoldsFor` reads it through
+  // `subscriptionArmed`: a card already on file does not clear the subscription hold, but it moves
+  // the approval wait ahead of it, so the overview names what is actually pending.
+  subscriptionFor: async () => (state.paidStoreIds === null && !state.armed
+    ? null
+    : {
+        storeFees: (state.paidStoreIds ?? []).map((id) => ({ storeId: id })),
+        ...(state.armed ? { cardSavedAt: '2026-08-25' } : {}),
+      }),
+  subscriptionArmed: (sub: { cardSavedAt?: string } | null) => !!sub?.cardSavedAt,
 }));
+
 vi.mock('../src/lib/seller-merchant.js', () => ({
   merchantBlockFor: async (_id: string, creds: unknown) => (creds ? state.merchantBlock : null),
   // Asked since 2026-08-25: with the clearing account opened at card-save, "no account" no longer
   // implies "no details", so the hold has to read the details themselves
   // (`tests/publish-holds-meaning.test.ts` is the regression that owns the rule).
-  merchantKycFor: async () => state.kyc,
-}));
-vi.mock('../src/lib/merchant-kyc.js', () => ({
-  missingMerchantKyc: (kyc: Record<string, unknown>) => (Object.keys(kyc).length ? [] : ['businessId']),
+  missingForClearingAccount: async () => state.missing,
 }));
 vi.mock('../src/lib/db.js', () => ({ rows: async () => [], isUuid: () => true }));
 vi.mock('../src/lib/seller-auth.js', () => ({ getSellerById: async () => ({ id: 'seller-1', email: 's@example.com' }) }));

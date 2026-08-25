@@ -52,8 +52,8 @@ import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps } from '../../lib/seller-onboarding.js';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
-import { ensureMerchantAccount, clearingStatusFor, merchantKycFor } from '../../lib/seller-merchant.js';
-import { missingMerchantKyc } from '../../lib/merchant-kyc.js';
+import { ensureMerchantAccount, clearingStatusFor, merchantKycFor, missingForClearingAccount } from '../../lib/seller-merchant.js';
+
 import { paymeCategoryForStore } from '../../lib/merchant-category.js';
 import { publishHoldsFor, syncStorePublication } from '../../lib/store-publication.js';
 import { subscriptionFor, subscriptionRunning } from '../../lib/seller-subscription.js';
@@ -444,8 +444,20 @@ const subscription = clearingStatus ? await subscriptionFor(sellerId) : null;
 const planNames = Object.fromEntries(
   (Object.keys(t.pricing.tiers) as SellerTierId[]).map((id) => [id, t.pricing.tiers[id].name]),
 ) as Record<SellerTierId, string>;
+/**
+ * **The same question `ensureMerchantAccount` asks**, and it has to be the same one.
+ *
+ * This used to check `missingMerchantKyc` alone — the ten fields in the `merchant_kyc` column —
+ * while the opener also requires the bank block, a mappable business type and PayMe's osek-murshe
+ * rule, all of which live on the `sellers` row. A seller with an empty bank block therefore saw
+ * step 1 finished, saved a card on the strength of it, and no account was opened (owner,
+ * 2026-08-25). `missingForClearingAccount` is now the one definition.
+ */
 const merchantKycComplete = !!clearingStatus
-  && missingMerchantKyc(derivedMerchantCategory ? { ...merchantKyc, businessCategory: derivedMerchantCategory } : merchantKyc).length === 0;
+  // Every shop's categories, the same set `derivedMerchantCategory` is read from two lines above:
+  // the merchant account is per legal ENTITY, not per shop, so narrowing this to the shop that
+  // happens to be open would make the answer depend on which tab a seller had selected.
+  && (await missingForClearingAccount(sellerId, allStores.flatMap((st) => st.categories ?? []))).length === 0;
 // Why this seller's shops are not on the site — computed once, read by the overview card. Asked
 // only when at least one of his stores is actually waiting: for a live seller it would be two DB
 // reads on every dashboard load to render nothing.

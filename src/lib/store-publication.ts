@@ -38,12 +38,11 @@
 import { rows } from './db.js';
 import { getStoresBySellerId, updateStore } from './stores.js';
 import { storeLifecycle, type StoreLifecycleFlags } from './store-status.js';
-import { merchantBlockFor, merchantKycFor } from './seller-merchant.js';
-import { missingMerchantKyc } from './merchant-kyc.js';
+import { merchantBlockFor, missingForClearingAccount } from './seller-merchant.js';
 import { createNotification } from './notifications.js';
 import { sendStoreLiveEmail } from './email/store-live-email.js';
 import { getSellerById } from './seller-auth.js';
-import { sellerIsSubscribed, subscriptionFor } from './seller-subscription.js';
+import { sellerIsSubscribed, subscriptionArmed, subscriptionFor } from './seller-subscription.js';
 import { activePaymeCredentials, type PaymeCredentials } from './payment-payme.js';
 
 /**
@@ -97,12 +96,18 @@ export async function publishHoldsFor(
   sellerId: string,
   creds: PaymeCredentials | null = activePaymeCredentials(),
 ): Promise<PublishHold[]> {
-  const [subscribed, merchantBlock, kyc] = await Promise.all([
+  const [subscribed, armed, merchantBlock, missing] = await Promise.all([
     sellerIsSubscribed(sellerId, creds),
+    // Whether he has already given us a card. It does not clear the subscription hold — nothing has
+    // been charged and the shop must stay down — but it decides which hold is REPORTED FIRST, and
+    // the overview shows the first as the reason. See below.
+    subscriptionFor(sellerId).then(subscriptionArmed),
     merchantBlockFor(sellerId, creds),
     // Asked separately from the account, because since 2026-08-25 the absence of an account no
-    // longer implies the absence of details — see below.
-    merchantKycFor(sellerId),
+    // longer implies the absence of details — see below. Through the shared definition, which
+    // counts the bank block and the business type as well as the ten KYC fields: checking only the
+    // second set is what let a seller reach a card form he could not be billed from.
+    missingForClearingAccount(sellerId),
   ]);
   // The order IS the flow the seller is walked through — see `PublishHold`. Details, then the plan
   // and the card, then the wait he cannot shorten: everything he can act on comes before the thing
@@ -117,9 +122,27 @@ export async function publishHoldsFor(
    * `subscription` hold on the next line and was already there. Two holds for one gap is how the
    * two screens started contradicting each other.
    */
-  if (merchantBlock === 'no-account' && missingMerchantKyc(kyc).length) holds.push('clearing-details');
+  if (merchantBlock === 'no-account' && missing.length) holds.push('clearing-details');
+  /**
+   * ── The order is the flow, EXCEPT when the seller has already done his part ──
+   *
+   * `PublishStatusCard` shows the first hold as the reason and its button as the action, so the
+   * order decides what a seller is told to do. Normally the subscription comes before the approval
+   * wait, because choosing a plan and giving a card is his to do and the wait is nobody's.
+   *
+   * **Once his card is armed that is exactly backwards** (owner, 2026-08-25: *"בעמוד של הסקירה
+   * עדיין יש כפתור 'העלה את החנות לאוויר' למרות שעשיתי את 2 השלבים וכרגע אני ממתין לאישור"*).
+   * The subscription hold is still true — no money has been taken, the shop is rightly down — but
+   * it is no longer something he can act on, and offering him the button that starts a subscription
+   * he has already started reads as the last step having failed.
+   *
+   * So the hold stays and moves: the wait is reported first, and the overview says what is actually
+   * pending. Nothing about the GATE changes — publication still requires both to clear.
+   */
+  const waiting = merchantBlock === 'not-approved';
+  if (armed && waiting) holds.push('clearing-approval');
   if (!subscribed) holds.push('subscription');
-  if (merchantBlock === 'not-approved') holds.push('clearing-approval');
+  if (!armed && waiting) holds.push('clearing-approval');
   return holds;
 }
 

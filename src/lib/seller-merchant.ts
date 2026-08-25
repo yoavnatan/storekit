@@ -205,6 +205,44 @@ export type EnsureMerchantResult =
  * the seller, the first is a stranger meeting an error page while trying to become a customer.
  * A refusal is logged, not raised.
  */
+/**
+ * **Everything PayMe require, in one place** — and the reason this function exists is that there
+ * were two places and they disagreed.
+ *
+ * ── The bug (owner, 2026-08-25) ──
+ * *"כרגע אני במצב שבאתר שמתי פרטי עסק ופרטי כרטיס, ולמרות זאת מופיע לי ... הפרטים נשמרו. הם יישלחו
+ * לחברת הסליקה עם שמירת הכרטיס."* His card was saved, his step 1 was ticked green — and no account
+ * had been opened, because his bank block and business type were empty. `merchant_kyc` was
+ * complete; PayMe's requirements were not.
+ *
+ * The screen asked `missingMerchantKyc` (ten fields in one JSONB column) while
+ * `ensureMerchantAccount` asked that **plus** the bank block, plus a mappable incorporation type,
+ * plus PayMe's osek-murshe rule that the business number equal the owner's ת.ז. Those extra three
+ * live on the `sellers` row because payouts needed them first, and nothing on the go-live screen
+ * had ever been taught to count them. So the seller was shown a finished step for an account that
+ * could not be opened, and the refusal — a RETURN value, not a throw — was discarded by the caller.
+ *
+ * One function now answers it, and the screen, the publication hold and the opener all call it.
+ * Empty means the account can be opened.
+ */
+export async function missingForClearingAccount(
+  sellerId: string,
+  storeCategories?: readonly string[],
+): Promise<string[]> {
+  const [seller, kyc] = await Promise.all([
+    getSellerById(sellerId),
+    resolveMerchantKyc(sellerId, storeCategories),
+  ]);
+  if (!seller) return ['seller'];
+  const incorporation = paymeIncorporation(seller.businessType);
+  return [
+    ...missingMerchantKyc(kyc),
+    ...missingBankFields(seller),
+    ...(incorporation === null ? ['businessType'] : []),
+    ...(businessIdMismatch(seller.businessType, seller.businessId, kyc.ownerSocialId) ? ['businessId'] : []),
+  ];
+}
+
 export async function ensureMerchantAccount(
   sellerId: string,
   context: { storeName: string; storeUrl: string; storeDescription: string; storeCategories?: readonly string[] },
@@ -220,11 +258,10 @@ export async function ensureMerchantAccount(
   // The RESOLVED picture, so a seller whose trade we can read off his own shop never met the
   // category field at all.
   const kyc = await resolveMerchantKyc(sellerId, context.storeCategories);
-  const missing = missingMerchantKyc(kyc);
   // The bank block is PayMe's too, and it lives on the seller record rather than in `merchant_kyc`
-  // because payouts needed it first. Reported in the same list so a seller is told everything that
-  // is outstanding at once rather than one screen at a time.
-  const missingBank = missingBankFields(seller);
+  // because payouts needed it first. Asked through the shared definition so this function and the
+  // screen that tells a seller he is finished cannot answer differently (`missingForClearingAccount`).
+  const missing = await missingForClearingAccount(sellerId, context.storeCategories);
   // `isCompleteMerchantKyc` is a type guard as well as a check — it is what lets the call below
   // read `kyc.ownerSocialId` without a `!` on every field, so the "is it complete" question is
   // asked once by the compiler rather than ten times by hand.
@@ -238,12 +275,11 @@ export async function ensureMerchantAccount(
   // PayMe refuse an osek murshe whose business number is not his own ID number (114, measured).
   // Caught here rather than at their end, where the seller never sees the message and his store
   // simply never becomes able to sell.
-  const idMismatch = businessIdMismatch(seller.businessType, seller.businessId, kyc.ownerSocialId);
-  if (missingBank.length || incorporation === null || idMismatch || !isCompleteMerchantKyc(kyc)) {
-    return {
-      status: 'needs-details',
-      missing: [...missing, ...missingBank, ...(incorporation === null ? ['businessType'] : []), ...(idMismatch ? ['businessId'] : [])] as MerchantKycField[],
-    };
+  // `isCompleteMerchantKyc` is still asked, and only for its TYPE GUARD: it is what lets the call
+  // below read `kyc.ownerSocialId` without a `!` on every field. `missing` is the authority on
+  // whether to proceed.
+  if (missing.length || incorporation === null || !isCompleteMerchantKyc(kyc)) {
+    return { status: 'needs-details', missing: missing as MerchantKycField[] };
   }
 
   try {
@@ -418,7 +454,7 @@ export async function clearingStatusFor(
    * Two states now, because they are two situations with two different next actions: something is
    * missing and he must type it, or nothing is missing and the account opens when he commits.
    */
-  return { state: missingMerchantKyc(await merchantKycFor(sellerId)).length ? 'missing-details' : 'not-opened' };
+  return { state: (await missingForClearingAccount(sellerId)).length ? 'missing-details' : 'not-opened' };
 }
 
 /** An `https:` absolute URL, or null. Parsed rather than pattern-matched, so the answer is the

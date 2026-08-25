@@ -48,6 +48,7 @@ import { SELLER_TIERS, type SellerTierId } from '../../lib/pricing.js';
 import type { getT } from '../../i18n/index.js';
 import ClearingDetailsForm from './ClearingDetailsForm.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
+import PlanPills from './PlanPills.astro';
 
 interface Props {
   /** Empty means nothing is gating the ACCOUNT. This screen can still render, because a second shop
@@ -333,6 +334,35 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
             * the commitment are independent, so making one wait for the other was ordering for its
             * own sake, and it cost the exact thing the card step exists to buy.
             */}
+          {/**
+            * ── A finished step keeps what it is about (owner, 2026-08-25) ──
+            *
+            * *"נראה שהמוכר לא רואה איזה מסלול הוא בחר, הוא רק רואה שנבחר מסלול."* And he was right:
+            * the whole block disappeared on `cardDone`, so the moment he chose, the plan's NAME,
+            * its price and its commission all left the screen — replaced by a tick meaning "a plan
+            * was picked", which is the one thing he already knew.
+            *
+            * The same fault as step 1's vanishing summary, and the same fix: state what was done.
+            * The plan is also still changeable here — `/api/seller/tier` moves it from the next
+            * charge, and while nothing has been charged at all there is not even a next charge to
+            * wait for — so the chooser stays rather than becoming something he must go and find.
+            */}
+          {step.id === 'card' && cardDone && (
+            <div class="mt-3">
+              <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.86rem] m-0">
+                <dt class="muted">{d.glPlanTitle}</dt>
+                <dd class="m-0 font-semibold justify-self-start">
+                  {d.subPlanValue.replace('{name}', planName).replace('{fee}', String(SELLER_TIERS.find((t) => t.id === (activeTier ?? SELLER_TIERS[0]!.id))!.monthlyFee)).replace('{per}', d.subPerMonth)}
+                </dd>
+                <dt class="muted">{d.subCommission}</dt>
+                <dd class="m-0 font-semibold justify-self-start" id="sub-commission">{SELLER_TIERS.find((t) => t.id === (activeTier ?? SELLER_TIERS[0]!.id))!.commissionPercent}%</dd>
+              </dl>
+              <div class="mt-3">
+                <PlanPills storeId={store.id} tier={store.tier} planNames={planNames} d={d} />
+              </div>
+            </div>
+          )}
+
           {step.id === 'card' && !cardDone && (
             <div class="mt-3">
               {/* The plan chooser used to be drawn here and is now inside the card below, which is

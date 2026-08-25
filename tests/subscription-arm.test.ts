@@ -28,6 +28,8 @@ const rig = vi.hoisted(() => ({
   queries: [] as { sql: string; params: readonly unknown[] }[],
   /** How many times a clearing account was asked for. Zero everywhere except arming. */
   opened: 0,
+  /** What PayMe would still want. Non-empty means the account CANNOT be opened. */
+  stillMissing: [] as string[],
 }));
 
 vi.mock('../src/lib/db.js', () => ({
@@ -71,7 +73,14 @@ vi.mock('../src/lib/seller-merchant.js', () => ({
   // Arming a card is what OPENS the clearing account since 2026-08-25 — every account costs ₪65 a
   // month for ever and cannot be closed at PayMe, so it waits for the seller to commit. Recorded
   // rather than performed: what it sends is `seller-merchant.ts`'s to test.
-  ensureMerchantAccount: async () => { rig.opened += 1; return { status: 'pending' }; },
+  ensureMerchantAccount: async () => {
+    rig.opened += 1;
+    // `needs-details` is a RETURN, not a throw — which is exactly why the caller's `.catch` used to
+    // swallow it. Modelled here so the test can prove it no longer disappears.
+    return rig.stillMissing.length
+      ? { status: 'needs-details', missing: rig.stillMissing }
+      : { status: 'pending' };
+  },
 }));
 vi.mock('../src/lib/stores.js', () => ({
   getStoresBySellerId: async () => [{ id: 'store-1', slug: 'shop', name: 'החנות', description: '', tagline: '' }],
@@ -108,6 +117,7 @@ beforeEach(() => {
   rig.errors = [];
   rig.queries = [];
   rig.opened = 0;
+  rig.stillMissing = [];
 });
 
 describe('putting a card on file', () => {
@@ -129,6 +139,32 @@ describe('putting a card on file', () => {
   it('opens the clearing account HERE, at the moment he commits', async () => {
     await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
     expect(rig.opened).toBe(1);
+  });
+
+  /**
+   * **The state that looks finished and is not** (owner, 2026-08-25: *"נראה כאילו הכרטיס דמה לא
+   * נשמר למרות שמופיע לי וי ירוק"*).
+   *
+   * His card WAS saved — the tick was honest about that. What had not happened was the account,
+   * because his bank block and business type were empty, and `ensureMerchantAccount` says so by
+   * RETURNING `needs-details` rather than throwing. The caller wrapped the call in `.catch()`,
+   * which catches throws and not return values, so the refusal went nowhere: no screen mentioned
+   * it, no log recorded it, and the seller sat behind a green tick waiting for a review nobody had
+   * been asked for.
+   *
+   * The card stays armed either way — refusing it would throw away the one commitment we had just
+   * captured — so what this pins is that the shortfall travels back with it.
+   */
+  it('still arms the card when the account cannot be opened, and SAYS so', async () => {
+    rig.stillMissing = ['bankCode', 'businessType'];
+    const result = await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
+    expect(result.status).toBe('armed');
+    expect(result.status === 'armed' && result.stillMissing).toEqual(['bankCode', 'businessType']);
+  });
+
+  it('reports nothing outstanding when the account opened cleanly', async () => {
+    const result = await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
+    expect(result.status === 'armed' && result.stillMissing).toBeUndefined();
   });
 
   it('opens nothing for a seller with no shop to bill — there is no commitment to price', async () => {

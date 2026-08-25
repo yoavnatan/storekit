@@ -1307,7 +1307,7 @@ export const translations = {
       glStepOf: 'שלב {n} מתוך {total}',
       glStateDetails: 'החנות לא באוויר — ממתינה לפרטי העסק שלך.',
       glStateApproval: 'החנות לא באוויר — חברת הסליקה בודקת את העסק. אין מה לעשות בינתיים.',
-      glStateApprovalArmed: 'הכול מוכן מצדך. ממתינים לאישור חברת הסליקה, ואז החנות עולה לאוויר מעצמה והחיוב הראשון יורד.',
+      glStateApprovalArmed: 'הכל מוכן מצדך, החשבון ממתין לאישור מחברת הסליקה. לאחר האישור החנות עולה לאוויר באופן אוטומטי, והחיוב על המנוי ייכנס לתוקף.',
       // Everything cleared and the shop not up yet — the minutes between the last hold lifting and
       // the sweep running. Saying החנות באוויר here would be the one lie this screen can tell.
       glStateGoingUp: 'הכול אושר. החנות עולה לאוויר בדקות הקרובות, ותקבלו על כך התראה.',
@@ -1321,11 +1321,11 @@ export const translations = {
       // form was filled in. Said separately from the note above, because a seller who has finished
       // step 1 and not step 2 was being told a review was already running for him (owner,
       // 2026-08-25: *"זה נראה כאילו בכל שלב זה מחכה 7 ימים"*).
-      glStepApprovalAfterCard: 'מתחיל עם שמירת הכרטיס, ואורך עד 7 ימי עסקים.',
+      glStepApprovalAfterCard: 'אורך עד 7 ימי עסקים, לאחר שמירת הפרטים ואמצעי התשלום.',
       // Before the details go out there is no clock, and saying there is one is the only thing this
       // step can get wrong.
       glStepApprovalWaiting: 'מתחיל אחרי שליחת פרטי העסק, ואורך עד 7 ימי עסקים.',
-      glStepSubscription: 'מסלול וכרטיס',
+      glStepSubscription: 'מסלול ואמצעי תשלום',
       glStepSubscriptionNote: 'בוחרים מסלול ושומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
       // The plan is met HERE, at the moment it starts costing him — not on a screen of its own
       // earlier in the flow (owner, 2026-08-24). Four pills, and a way to the full comparison for
@@ -1333,7 +1333,7 @@ export const translations = {
       glPlanTitle: 'המסלול של החנות',
       glPlanSwitchable: 'אפשר להחליף מסלול בכל רגע, גם אחרי שהחנות באוויר.',
       glPlanCompare: 'השוואת המסלולים',
-      glAutomatic: 'בסיום השלבים החנות עולה לאוויר אוטומטית, ותישלח על כך התראה.',
+      glAutomatic: 'בסיום השלבים החנות עולה לאוויר אוטומטית, תתקבל התראה וניידע אותך במייל.',
       pubTitle: 'החנות עדיין לא באוויר',
       // The owner's own sentence, 2026-08-25 — the previous one led with a list and buried the
       // condition, so a seller learned what he could do and not what he still had to.
@@ -1402,7 +1402,7 @@ export const translations = {
       mkOnFile: 'הפרטים נשלחו לחברת הסליקה.',
       // Filled, not yet with them — opening the account failed or has not been attempted. Saying
       // "sent" here was a claim the seller could act on and be wrong about.
-      mkFilledNotSent: 'הפרטים נשמרו. הם יישלחו לחברת הסליקה עם שמירת הכרטיס, ועד אז אפשר לערוך אותם.',
+      mkFilledNotSent: 'הפרטים נשמרו. הם יישלחו לחברת הסליקה עם שמירת הכרטיס, עד אז ניתן לערוך אותם.',
       mkEdit: 'ערוך',
       // The subscription card (components/dashboard/SubscriptionCard.astro). What it says has to be
       // true of the LIVE flow: pressing the button sends the seller to the processor's own page to
@@ -3650,7 +3650,7 @@ export const translations = {
       glStepOf: 'Step {n} of {total}',
       glStateDetails: 'This store is not live — it is waiting for your business details.',
       glStateApproval: 'This store is not live — the processor is reviewing your business. Nothing to do meanwhile.',
-      glStateApprovalArmed: 'Everything is done on your side. We are waiting on the processor; the store then goes live by itself and the first charge is taken.',
+      glStateApprovalArmed: 'Everything is done on your side — the account is with the processor for approval. Once approved the store goes live automatically and the subscription charge takes effect.',
       glStateGoingUp: 'Everything is approved. The store goes live within a few minutes, and you will be notified.',
       glStateLive: 'This store is not live — pick a plan and save a card. Nothing is charged until it goes up.',
       glStateReady: 'This store is live.',
@@ -3658,14 +3658,14 @@ export const translations = {
       glStepDetailsNote: 'For the payment processor to approve.',
       glStepApproval: 'Processor approval',
       glStepApprovalNote: 'The review takes up to 7 business days. Nothing to do meanwhile.',
-      glStepApprovalAfterCard: 'Starts when you save your card, and takes up to 7 business days.',
+      glStepApprovalAfterCard: 'Takes up to 7 business days, once your details and payment method are saved.',
       glStepApprovalWaiting: 'Starts once your business details are sent, and takes up to 7 business days.',
-      glStepSubscription: 'Plan and card',
+      glStepSubscription: 'Plan and payment method',
       glStepSubscriptionNote: 'Pick a plan and save a card. Nothing is charged until the store goes live.',
       glPlanTitle: "This store's plan",
       glPlanSwitchable: 'You can change plan any time, including after the store is live.',
       glPlanCompare: 'Compare the plans',
-      glAutomatic: 'When the steps are done the store goes live automatically, and you will be notified.',
+      glAutomatic: 'When the steps are done the store goes live automatically. You get a notification, and we email you.',
       pubTitle: 'This store is not live yet',
       pubBuildOn: 'You can carry on building the store — products, design, categories and sales. It goes live once your business details and payment are settled.',
       pubHoldSubscription: 'No monthly subscription yet',

@@ -27,21 +27,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const rig = {
   subscribed: false,
+  /** A card on file, PayMe not yet billing. */
+  armed: false,
   block: null as 'no-account' | 'not-approved' | null,
-  kyc: {} as Record<string, unknown>,
+  /** What PayMe still want. Empty = the account can be opened. */
+  missing: [] as string[],
 };
 
 vi.mock('../src/lib/payment-payme.js', () => ({
   activePaymeCredentials: () => ({ partnerId: 'p', partnerKey: 'k', baseUrl: 'https://preprod.paymeservice.com' }),
 }));
-vi.mock('../src/lib/seller-subscription.js', () => ({ sellerIsSubscribed: async () => rig.subscribed }));
+vi.mock('../src/lib/seller-subscription.js', () => ({
+  sellerIsSubscribed: async () => rig.subscribed,
+  // Whether a card is already on file. It does not clear the subscription hold — nothing has been
+  // charged — but it decides which hold is reported FIRST, and the overview shows the first as the
+  // reason a seller is given.
+  subscriptionFor: async () => (rig.armed ? { cardSavedAt: '2026-08-25' } : null),
+  subscriptionArmed: (sub: unknown) => !!sub,
+}));
 vi.mock('../src/lib/seller-merchant.js', () => ({
   merchantBlockFor: async () => rig.block,
-  merchantKycFor: async () => rig.kyc,
-}));
-vi.mock('../src/lib/merchant-kyc.js', () => ({
-  // Only the fields the rig sets count as given; anything else is "missing".
-  missingMerchantKyc: (kyc: Record<string, unknown>) => (Object.keys(kyc).length ? [] : ['businessId']),
+  // ONE question — the same one `ensureMerchantAccount` asks. It counts the bank block and the
+  // business type as well as the ten KYC fields, which is the whole point of it existing: checking
+  // only the second set let a seller with an empty bank block reach a card form and see a tick.
+  missingForClearingAccount: async () => rig.missing,
 }));
 
 const { publishHoldsFor } = await import('../src/lib/store-publication.js');
@@ -49,7 +58,8 @@ const { publishHoldsFor } = await import('../src/lib/store-publication.js');
 beforeEach(() => {
   rig.subscribed = false;
   rig.block = null;
-  rig.kyc = {};
+  rig.missing = ['businessId'];
+  rig.armed = false;
 });
 
 describe('publishHoldsFor', () => {
@@ -65,7 +75,7 @@ describe('publishHoldsFor', () => {
    */
   it('does NOT ask for details once they are all given, even with no account open', async () => {
     rig.block = 'no-account';
-    rig.kyc = { businessId: '123' };
+    rig.missing = [];
     const holds = await publishHoldsFor('seller-1');
     expect(holds).not.toContain('clearing-details');
     // What he is actually waiting on is his own card, and that hold was always there. One gap, one
@@ -78,20 +88,45 @@ describe('publishHoldsFor', () => {
     // the assertion exists to keep it an absence rather than to make it a hold: the fix belongs in
     // the reader, not here.
     rig.block = 'no-account';
-    rig.kyc = { businessId: '123' };
+    rig.missing = [];
     expect(await publishHoldsFor('seller-1')).not.toContain('clearing-approval');
   });
 
   it('reports the approval hold once PayMe actually have the business', async () => {
     rig.block = 'not-approved';
-    rig.kyc = { businessId: '123' };
+    rig.missing = [];
     expect(await publishHoldsFor('seller-1')).toContain('clearing-approval');
+  });
+
+  /**
+   * ── Which hold is reported FIRST, because the overview shows the first as the reason ──
+   *
+   * Owner, 2026-08-25: *"בעמוד של הסקירה עדיין יש כפתור 'העלה את החנות לאוויר' למרות שעשיתי את 2
+   * השלבים וכרגע אני ממתין לאישור."* Both holds were true — nothing had been charged, so the shop
+   * was rightly down — but the one shown was the one he had already done, with a button offering to
+   * start a subscription he had started. It reads as the last step having failed.
+   *
+   * The gate is unchanged and that is the point of testing both together: publication still needs
+   * both to clear, and only the ORDER moves.
+   */
+  it('names the approval wait first once a card is already on file', async () => {
+    rig.block = 'not-approved';
+    rig.missing = [];
+    rig.armed = true;
+    expect(await publishHoldsFor('seller-1')).toEqual(['clearing-approval', 'subscription']);
+  });
+
+  it('names the subscription first while he has NOT given a card — it is his to do', async () => {
+    rig.block = 'not-approved';
+    rig.missing = [];
+    rig.armed = false;
+    expect(await publishHoldsFor('seller-1')).toEqual(['subscription', 'clearing-approval']);
   });
 
   it('holds nothing once the account is approved and the subscription runs', async () => {
     rig.block = null;
     rig.subscribed = true;
-    rig.kyc = { businessId: '123' };
+    rig.missing = [];
     expect(await publishHoldsFor('seller-1')).toEqual([]);
   });
 });
