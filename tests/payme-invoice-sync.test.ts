@@ -10,7 +10,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { isProcessorDocumentUrl } from '../src/lib/invoicing/buyer-invoice.js';
 
-const state = vi.hoisted(() => ({ orders: [] as { id: string }[], marked: [] as any[], markResult: {} as any }));
+const state = vi.hoisted(() => ({ orders: [] as { id: string }[], marked: [] as any[], markResult: {} as any, logs: [] as any[] }));
 
 vi.mock('../src/lib/db.js', () => ({ rows: async () => state.orders }));
 vi.mock('../src/lib/invoicing/buyer-invoice.js', async (orig) => ({
@@ -20,7 +20,7 @@ vi.mock('../src/lib/invoicing/buyer-invoice.js', async (orig) => ({
     return state.markResult;
   },
 }));
-vi.mock('../src/lib/error-log.js', () => ({ logError: async () => {} }));
+vi.mock('../src/lib/error-log.js', () => ({ logError: async (e: unknown) => { state.logs.push(e); } }));
 
 const { attachInvoices } = await import('../src/lib/payme-invoice-sync.js');
 
@@ -33,6 +33,7 @@ const tx = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   state.orders = [{ id: 'ORD-1' }];
   state.marked = [];
+  state.logs = [];
   state.markResult = { orderId: 'ORD-1', status: 'issued', mode: 'processor', documentUrl: 'x', providedAt: null };
 });
 
@@ -84,9 +85,21 @@ describe('attachInvoices', () => {
 
   /** `markBuyerInvoiceProvided` answers null when the URL fails its host check — so a bad link is
    *  counted as NOT attached rather than reported as a success. */
-  it('does not count a settlement the write refused', async () => {
+  /** The write answers null when the URL fails its host check. That branch was SILENT until the
+   *  owner asked whether the log reaches anyone — and it is the one case where a seller is paying
+   *  monthly for documents that exist, that we can see, and that we are deliberately not showing
+   *  him. Not counted, and not quiet. */
+  it('does not count a settlement the write refused, and says so loudly', async () => {
     state.markResult = null;
     expect(await attachInvoices('SELLER-1', [tx()])).toBe(0);
+    expect(state.logs).toHaveLength(1);
+    expect(state.logs[0].message).toContain('live.payme.io');
+    expect(state.logs[0].actorId).toBe('SELLER-1');
+  });
+
+  it('says nothing when there was simply no document to attach', async () => {
+    expect(await attachInvoices('SELLER-1', [tx({ invoiceUrl: null })])).toBe(0);
+    expect(state.logs).toHaveLength(0);
   });
 
   it('counts each charge once across a page of them', async () => {

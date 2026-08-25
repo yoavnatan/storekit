@@ -80,9 +80,25 @@ export async function attachInvoices(sellerId: string, txs: readonly PaymeTransa
       mode: 'processor',
       documentUrl: tx.invoiceUrl,
     }).catch(() => null);
-    // `null` also comes back when the URL is not on a PayMe host, which is the check that keeps a
-    // third party's JSON from putting an arbitrary link on a page a buyer clicks.
-    if (state) attached++;
+    if (state) { attached++; continue; }
+
+    // **`null` means the write REFUSED, and it must not be silent** — which it was until the owner
+    // asked whether the log actually reaches anyone (2026-08-25) and the honest answer turned out to
+    // be no, not for this branch. The reachable cause is the host check: PayMe handed us a document
+    // URL that is not on their own domain, so we would not put it in front of a buyer.
+    //
+    // That is the ONE case where the seller is paying ₪15 a month for documents that exist, that we
+    // can see, and that we are deliberately not showing him — which is precisely the shape that has
+    // to be loud. It goes to the admin alerts panel (`getRecentErrors`), and it names the URL,
+    // because the whole question a person will have is what shape it actually came in.
+    await logError({
+      source: 'server',
+      route: 'job:payme-invoices',
+      message: `refused a PayMe invoice URL for order ${order.id}: ${String(tx.invoiceUrl).slice(0, 200)}`,
+      actorRole: 'seller',
+      actorId: sellerId,
+      resolutionHint: 'חברת הסליקה החזירה קישור לחשבונית בכתובת שאינה בדומיין שלה, ולכן לא הצמדנו אותו להזמנה. אם הפורמט שלהם השתנה — צריך להרחיב את הבדיקה ב-buyer-invoice.ts. עד אז המוכר משלם על חשבוניות שלא מוצגות אצלנו.',
+    }).catch(() => { /* nothing left to try */ });
   }
   return attached;
 }
