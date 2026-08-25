@@ -70,15 +70,40 @@ export default defineConfig({
 
   devToolbar: { enabled: false },
 
-  // Astro's own cross-site POST protection: an on-demand route refuses a form-encoded request
-  // whose `Origin` is not this site. It is ALREADY Astro's default — pinned here anyway because
-  // the default is conditional in a way that is invisible from this file: it applies only when the
-  // build output is `server`, which for `output: 'static'` means "only while at least one route
-  // still says `prerender = false`". Every page does today; the day one of those lines moves, this
-  // protection would switch itself off with no error and no diff to point at.
-  // It is the FIRST of three layers, not the whole of it — `sameSite:'lax'` session cookies are
-  // the zeroth, and `src/lib/csrf.ts` is the signed-token layer that does not depend on either.
-  security: { checkOrigin: true },
+  // ── OFF since 2026-08-25, and it is a deliberate trade rather than a relaxation ──
+  //
+  // What it does: an on-demand route refuses a form-encoded POST whose `Origin` header is not this
+  // site. It was ON, pinned here explicitly, because Astro's default for it is conditional in a way
+  // that is invisible from this file — it applies only while at least one route still says
+  // `prerender = false`, so it could have switched itself off one day with no error and no diff.
+  //
+  // **Why it is off.** It is the ONLY one of the three anti-forgery layers with no per-route
+  // exemption — one global boolean — and it runs BEFORE our middleware, not after: Astro `unshift`s
+  // it onto the head of the chain (`core/base-pipeline.js`), so nothing in `src/` can get in front
+  // of it. A server-to-server webhook is form-encoded and carries no `Origin`, which is exactly the
+  // shape it refuses. Measured against a real build on 2026-08-25 before this line changed: a POST
+  // to `/api/payme/callback` shaped like PayMe's own came back
+  // `403 Cross-site POST form submissions are forbidden`, from this layer, before the route or our
+  // own gate ever ran. So PayMe's chargeback and merchant-approval notifications could never have
+  // arrived, and their retries would have hit the same 403 forever.
+  //
+  // **What still stands, and why it is enough.** Layer 0 is unchanged: `sameSite:'lax'` on every
+  // session cookie, so a browser does not attach one to a cross-site POST at all. Layer 2 —
+  // `src/lib/csrf.ts` — is strictly STRONGER than the one being removed, on every axis: it covers
+  // every non-safe method and every content type rather than form-like bodies only, and it requires
+  // an HMAC-signed token BOUND to the session identity, where this one read a single header. It is
+  // enforced in one place for every on-demand route (`src/middleware.ts`), and `tests/csrf.test.ts`
+  // greps `src/` to keep it that way, so a route added next month is covered on the day it exists.
+  //
+  // **The one thing that must never drift:** the exemption list in `csrf.ts#csrfExempt` is now the
+  // only door, so an entry in it must bring its own authentication. `tests/csrf.test.ts` pins the
+  // list to exactly one path and asserts that path verifies a provider signature.
+  //
+  // Do not switch this back on without moving the webhook somewhere that can be reached — that means
+  // a Node server of our own in front of Astro (`mode: 'middleware'` on the adapter, replacing the
+  // `standalone` server below), which was weighed on 2026-08-25 and judged a large change bought for
+  // the weaker of the two layers.
+  security: { checkOrigin: false },
 
   // Astro's own prefetch (no ClientRouter, no soft navigation) — opt-in per link
   // via `data-astro-prefetch`, never site-wide: prefetching every link on a

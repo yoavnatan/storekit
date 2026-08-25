@@ -8,21 +8,25 @@ import { BODY_LIMIT, readFormBody } from './request-body.js';
 import { CSRF_FIELD, CSRF_HEADER } from './csrf-names.js';
 
 /**
- * The SECOND layer against cross-site request forgery. The first two are already in place and are
- * not replaced by this file — say so out loud, because a defence-in-depth layer described as "the
- * protection" invites someone to remove one of the others:
+ * The DECIDING layer against cross-site request forgery, and since 2026-08-25 the only one that can
+ * refuse a request. There were three; one is gone and it matters that the next reader knows which:
  *
- *   1. `sameSite: 'lax'` on every session cookie (seller-auth.ts, admin-auth.ts). A modern browser
- *      does not attach a lax cookie to a cross-site POST at all, so the forged request arrives
- *      unauthenticated and the route's own 401 answers it.
- *   2. Astro's `security.checkOrigin` (astro.config.mjs, pinned explicitly there). It refuses any
- *      form-encoded, on-demand POST whose `Origin` is not our own.
+ *   0. `sameSite: 'lax'` on every session cookie (seller-auth.ts, admin-auth.ts). **Still in place.**
+ *      A modern browser does not attach a lax cookie to a cross-site POST at all, so the forged
+ *      request arrives unauthenticated and the route's own 401 answers it. It is a floor rather than
+ *      a gate — it costs an attacker the session, not the request.
+ *   1. Astro's `security.checkOrigin`. **OFF.** It refused any form-encoded POST whose `Origin` was
+ *      not ours, which is also the exact shape of a provider webhook — and it is one global boolean
+ *      that runs BEFORE this file, so no exemption was possible from anywhere in `src/`. The full
+ *      reasoning, the measurement, and what would have to be built before it can go back on are in
+ *      astro.config.mjs beside the setting.
  *
- * What this adds is that the protection stops depending on ONE framework default that a config
- * edit could flip, and it covers the shapes layer 2 deliberately does not test — Astro skips the
- * origin check entirely for a prerendered route, and skips it for a JSON body on the (correct, but
- * separate) reasoning that CORS preflight blocks that case in a browser. A signed token is checked
- * on its own terms and needs neither assumption to hold.
+ * So this file is now load-bearing rather than belt-and-braces. It was always the stronger of the
+ * two — it covers every non-safe method and every content type rather than form-like bodies only,
+ * and it checks a signed token bound to the caller rather than reading one header — but "stronger"
+ * and "the only one" are different jobs, and the difference is `csrfExempt` below: the exemption
+ * list is now the whole surface of the decision, which is why it is one path and why
+ * `tests/csrf.test.ts` pins its contents rather than its behaviour.
  *
  * **The token is signed, not stored, and it is BOUND to who is asking.** Payload is
  * `<binding>|<expiry>` plus an HMAC over it, so nothing has to be remembered between requests
@@ -34,10 +38,27 @@ import { CSRF_FIELD, CSRF_HEADER } from './csrf-names.js';
  * the session identity, a token minted for the attacker's own browser is rejected when replayed
  * against a victim's session.
  *
- * **What it deliberately does NOT defend against.** An anonymous visitor's token binds to `-`, so
- * any anonymous token is interchangeable with any other. That is accepted: an anonymous session has
- * no privileges to forge into, and layers 1 and 2 still stand behind it. It is written here so the
- * next reader does not mistake the gap for an oversight.
+ * **What it deliberately does NOT defend against, and what turning layer 1 off actually cost.** An
+ * anonymous visitor's token binds to `-`, so any anonymous token is interchangeable with any other:
+ * an attacker can mint one by visiting the site themselves and hard-code it into a form on their
+ * own page. Layer 1 used to stop that form from being submitted at all. So the honest accounting is
+ * that **anonymous, form-encoded forgery became possible** on 2026-08-25, and it was accepted after
+ * walking every route it can reach rather than by assertion:
+ *
+ *   · Anything with privileges behind it binds to `s:<id>` or `a`, so an anonymous token is refused
+ *     — the seller and admin routes, the buyer's cart and saved stores.
+ *   · Every remaining anonymous write takes its authority from the BODY, not from the caller's
+ *     cookies: `/api/checkout` from the cart it is sent, `/api/returns` and `/api/order-message`
+ *     from an order credential (`order-access.ts`), `/api/review` from an order that covers the
+ *     product. Making a stranger's browser send one buys the attacker nothing they could not send
+ *     from their own machine, which is the definition of a request not worth forging.
+ *   · What is left is nuisance with no privilege in it: `/api/lang` can flip a visitor's language
+ *     cookie, `/api/analytics/event` can add a tally, `/api/log-client-error` can write a capped log
+ *     line. Each is rate-limited or bounded on its own terms, and none of them is worth a layer that
+ *     costs the payment webhook.
+ *
+ * Written out because "an anonymous session has no privileges" is true and is not the whole answer —
+ * the next person to add an anonymous write path has to check their route against this list.
  *
  * **Where it is enforced: `src/middleware.ts`, and nowhere else.** One gate for every on-demand
  * route, in the same spirit as safe-redirect.ts and secret-compare.ts — a check copy-pasted per
@@ -59,18 +80,33 @@ const TTL_SEC = 60 * 60 * 24 * 180;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
- * Is this path allowed through WITHOUT a token?
+ * The paths allowed through WITHOUT a token — and there is exactly one.
  *
- * Nothing is, today, and that is a statement rather than a stub: every mutating endpoint this
- * application has is called by one of our own pages. The case this predicate exists for is the
- * payment provider's webhook (`/api/payment/confirm`, GO_LIVE_CHECKLIST.md §3) — a server-to-server
- * POST from a machine that has never loaded a page of ours and cannot hold a token. When it is
- * built it belongs here, and it must bring its OWN authentication (a provider signature, compared
- * through `secretsEqual`): an exemption from this check is not an exemption from proving who is
- * calling.
+ * **An exemption from this check is not an exemption from proving who is calling.** Everything on
+ * this list must authenticate itself, and the entry below does: a sale notification is verified
+ * against `payme_signature` (MD5 over our client key, the seller's own callback secret and the two
+ * ids, compared in `verifyCallbackSignature`) and refused if it does not match; a seller
+ * notification carries no signature in PayMe's spec at all, so the route believes nothing in its
+ * body and re-reads the truth over `get-sellers`, a call WE make with our own client key.
+ *
+ * ── Why the entry is a webhook, and why it could not simply be left out ──
+ * A server-to-server POST comes from a machine that has never loaded a page of ours and cannot hold
+ * a token, so this gate can only ever answer 403. Until 2026-08-25 the list was empty and this file
+ * said the exemption belonged to `/api/payment/confirm` "when it is built" — but the webhook that
+ * WAS built is `/api/payme/callback`, `checkout.ts` and `seller/subscription.ts` already register
+ * it with PayMe as the callback URL, and nobody joined the two facts. Astro's `checkOrigin` refused
+ * it one layer earlier for the same reason, which is why that setting is now off (astro.config.mjs
+ * carries the whole trade). Measured against a real build, both before and after.
+ *
+ * ── Exact match, never a prefix ──
+ * `startsWith` here would exempt `/api/payme/callback-anything` — a route nobody has written yet,
+ * on the one list where a mistake is silent. `tests/csrf.test.ts` pins the list to this single path
+ * and fails on a near miss.
  */
-function csrfExempt(_pathname: string): boolean {
-  return false;
+const CSRF_EXEMPT_PATHS: ReadonlySet<string> = new Set(['/api/payme/callback']);
+
+function csrfExempt(pathname: string): boolean {
+  return CSRF_EXEMPT_PATHS.has(pathname);
 }
 
 /**

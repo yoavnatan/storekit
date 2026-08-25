@@ -123,6 +123,54 @@ describe('which requests have to prove themselves', () => {
   });
 });
 
+/**
+ * ═══ THE EXEMPTION LIST — one path, and it is the only door in the building ═══
+ *
+ * Since `security.checkOrigin` went off (astro.config.mjs, 2026-08-25) this gate is the only thing
+ * standing in front of every mutating route, so the set of paths that skip it is the whole attack
+ * surface of the decision. Two things therefore have to be pinned rather than trusted: that the set
+ * is EXACTLY what it is meant to be, and that the one member of it authenticates itself.
+ *
+ * The near misses matter as much as the hit. `startsWith` instead of an exact match would exempt
+ * `/api/payme/callback-anything`, a route nobody has written yet — the kind of hole that is created
+ * by a future file rather than by this one, and that nothing else would ever report.
+ */
+describe('the exemption list', () => {
+  const EXEMPT = '/api/payme/callback';
+
+  it('lets the provider webhook through, since a server cannot hold a token', () => {
+    expect(csrfRequired('POST', EXEMPT)).toBe(false);
+  });
+
+  it('exempts that path EXACTLY — not a prefix, not a sibling, not a trailing slash', () => {
+    for (const near of [
+      `${EXEMPT}/`, `${EXEMPT}-anything`, `${EXEMPT}/x`, '/api/payme/callbacks',
+      '/api/payme/hosted-fields', '/api/payme', '/api/checkout', '/API/PAYME/CALLBACK',
+    ]) {
+      expect(csrfRequired('POST', near), `${near} must still need a token`).toBe(true);
+    }
+  });
+
+  it('is the ONLY path exempted — a second entry has to be argued for here first', () => {
+    const csrfSource = readFileSync(path.join(SRC_ROOT, 'lib', 'csrf.ts'), 'utf8');
+    const list = /CSRF_EXEMPT_PATHS[^=]*=\s*new Set\(\[([^\]]*)\]\)/.exec(csrfSource);
+    expect(list, 'the exemption list is no longer a literal Set this test can read').not.toBeNull();
+    const paths = [...list![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(paths).toEqual([EXEMPT]);
+  });
+
+  /**
+   * The rule the list carries in its own header: skipping the token is not skipping authentication.
+   * A textual check, like `api-route-guards.test.ts` — it proves the route ASKS the question. That
+   * the answer is right is `payme-callback.test.ts`'s job, and it drives both notification families.
+   */
+  it('demands that the exempted route authenticate its caller some other way', () => {
+    const route = readFileSync(path.join(SRC_ROOT, 'pages', 'api', 'payme', 'callback.ts'), 'utf8');
+    const code = route.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+    expect(code).toMatch(/verify\w*Signature\s*\(/);
+  });
+});
+
 describe('finding the token on a request', () => {
   it('reads the header', async () => {
     const request = new Request('https://example.test/api/store', {
@@ -230,9 +278,20 @@ describe('the gate stays in one place', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('keeps Astro origin checking pinned on, since it is the layer underneath', () => {
+  /**
+   * This test used to assert the OPPOSITE — `checkOrigin: true`, "the layer underneath" — and it is
+   * inverted rather than deleted on purpose, because the setting must not drift back by accident.
+   *
+   * It went off on 2026-08-25 for one reason: it is the only anti-forgery layer with no per-route
+   * exemption, and it runs BEFORE our middleware (Astro `unshift`s it onto the head of the chain),
+   * so a server-to-server webhook — form-encoded, no `Origin` — was refused where nothing in `src/`
+   * could let it through. Measured against a real build: `403 Cross-site POST form submissions are
+   * forbidden`. astro.config.mjs carries the whole trade, including what would have to be built
+   * before it can go back on.
+   */
+  it('keeps Astro origin checking OFF, because the gate below is the one with a door in it', () => {
     const config = readFileSync(fileURLToPath(new URL('../astro.config.mjs', import.meta.url)), 'utf8');
-    expect(config).toMatch(/security:\s*\{\s*checkOrigin:\s*true\s*\}/);
+    expect(config).toMatch(/security:\s*\{\s*checkOrigin:\s*false\s*\}/);
   });
 
   it('serves the token from BaseLayout and attaches it before any other module runs', () => {
