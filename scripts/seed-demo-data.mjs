@@ -82,7 +82,7 @@ function buildVariantStock(variants) {
 // is per-vertical and every vertical has at least two stores. Without it the
 // homepage's whole middle section silently never rendered.
 const VERTICALS = [
-  { key: 'fashion', tag: 'בגדים', variant: 'apparel', djCats: ['mens-shirts', 'tops', 'womens-dresses'], hebCats: ['נשים', 'גברים', 'קולקציה חדשה'], stores: ['אורבן סטייל', 'קפסולה', 'לוק בוק'] },
+  { key: 'fashion', tag: 'אופנה', variant: 'apparel', djCats: ['mens-shirts', 'tops', 'womens-dresses'], hebCats: ['נשים', 'גברים', 'קולקציה חדשה'], stores: ['אורבן סטייל', 'קפסולה', 'לוק בוק'] },
   { key: 'shoes', tag: 'הנעלה', variant: 'shoes', djCats: ['mens-shoes', 'womens-shoes'], hebCats: ['גברים', 'נשים', 'ספורט'], stores: ['סטפ אפ', 'סול', 'פוטוור'] },
   { key: 'tech', tag: 'אלקטרוניקה', variant: 'none', djCats: ['smartphones', 'laptops', 'tablets'], hebCats: ['סמארטפונים', 'מחשבים', 'טאבלטים'], stores: ['גאדג׳ט האב', 'טק פוינט', 'פיקסל'] },
   { key: 'gadgets', tag: 'אביזרים', variant: 'none', djCats: ['mobile-accessories', 'sunglasses'], hebCats: ['אביזרים', 'משקפי שמש', 'חדש'], stores: ['אקססורי', 'סטייל אפ'] },
@@ -96,7 +96,7 @@ const VERTICALS = [
   { key: 'auto', tag: 'רכב', variant: 'none', djCats: ['vehicle', 'motorcycle'], hebCats: ['רכב', 'דו-גלגלי', 'אביזרים'], stores: ['מוטו', 'גראז׳'] },
   // Department stores: draw 100 distinct products from the whole catalog, so the
   // storefront's pagination (24/page) and large-grid rendering get exercised.
-  { key: 'dept', tag: 'כלבו', variant: 'none', big: 100, djCats: [], hebCats: ['אלקטרוניקה', 'בגדים', 'לבית ולמטבח', 'מבצעים'], stores: ['MegaMart', 'City Market', 'The Bazaar'] },
+  { key: 'dept', tag: 'כלבו', variant: 'none', big: 100, djCats: [], hebCats: ['אלקטרוניקה', 'אופנה', 'לבית ולמטבח', 'מבצעים'], stores: ['MegaMart', 'City Market', 'The Bazaar'] },
 ];
 
 const FIRST = ['נועה', 'איתי', 'שירה', 'יונתן', 'מאיה', 'דניאל', 'תמר', 'עומר', 'ליאור', 'רוני', 'אורי', 'גל', 'הדר', 'אריאל', 'ניר'];

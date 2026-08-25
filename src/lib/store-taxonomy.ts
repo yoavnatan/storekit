@@ -36,12 +36,27 @@ export const MAX_CATEGORIES_PER_STORE = 3;
  * the store's own product category tree, `store-categories.ts`, is for).
  */
 export const SEED_CATEGORIES: readonly string[] = [
-  // Owner, 2026-08-25: *"אין לי בקטגוריות של החנויות 'בגדים'? זה דבר כל כך בסיסי."* — and he is
-  // right about the word. 'אופנה' was carrying it, but a shopper looking for clothes types בגדים,
-  // and the seed list is what a SELLER picks from, so the label has to be the one both sides say.
-  // The two are not kept side by side: that would be two shelves for one thing, which is the whole
-  // failure this vocabulary exists to prevent, and `findSimilarCategories` shares no token between
-  // them so nothing would have caught it.
+  /**
+   * ── 'אופנה' and 'בגדים' are TWO shelves, and that is a decision (owner, 2026-08-25) ──
+   *
+   * They arrived in that order. First *"אין לי בקטגוריות 'בגדים'? זה דבר כל כך בסיסי"* — a shopper
+   * looking for clothes types בגדים, and the seller picks from this list, so the word both sides
+   * say has to be in it. Then *"שלא יהיו כפילויות"*, so בגדים replaced אופנה rather than sitting
+   * beside it. Then *"אבל עדיין צריך אופנה (יש עוד דברים תחת אופנה חוץ מבגדים)"* — which is the
+   * correction that settles it.
+   *
+   * **They are not a duplicate of each other and they are not a hierarchy.** This vocabulary is
+   * FLAT by design (see the note above): a category groups a shopper's INTENT, and these are two
+   * different intents. Somebody browsing אופנה is looking for a look — a boutique whose shelves
+   * cross clothes, bags, jewellery and shoes. Somebody browsing בגדים wants garments. A shop that
+   * is both picks both; three categories are allowed and this is exactly what the allowance is for.
+   *
+   * What would make them a duplicate is one of them meaning "the other one, said differently", and
+   * `findSimilarCategories` cannot catch that here — the two share no token. So the distinction is
+   * written down rather than guarded, and it is the reason each has its OWN icon, its own spec
+   * vocabulary and its own merchant code rather than aliasing one to the other.
+   */
+  'אופנה',
   'בגדים',
   'הנעלה',
   'תיקים',
@@ -84,7 +99,8 @@ export const SEED_CATEGORIES: readonly string[] = [
  * outcome: a made-up translation would misname somebody's shop.
  */
 const SEED_CATEGORY_EN: Readonly<Record<string, string>> = {
-  'בגדים': 'Fashion',
+  'אופנה': 'Fashion',
+  'בגדים': 'Clothing',
   'הנעלה': 'Shoes',
   'תיקים': 'Bags',
   'תכשיטים': 'Jewellery',

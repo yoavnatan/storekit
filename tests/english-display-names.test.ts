@@ -43,8 +43,8 @@ describe('resolveCategoryLabel — a label, never an identity', () => {
 
   it('lets the seed map win over a seller row for a platform category', () => {
     // Otherwise one seller renames the shelf every other store sits on.
-    const hostile = new Map([['בגדים', 'Totally Different Shelf']]);
-    expect(resolveCategoryLabel('בגדים', 'en', hostile)).toBe('Fashion');
+    const hostile = new Map([['אופנה', 'Totally Different Shelf']]);
+    expect(resolveCategoryLabel('אופנה', 'en', hostile)).toBe('Fashion');
   });
 
   it('falls back to the Hebrew rather than to an empty label', () => {

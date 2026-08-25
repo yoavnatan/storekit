@@ -152,6 +152,18 @@ describe('categoryLabel — display only, never the value', () => {
   });
 
   it('trims, so a stored value with stray spaces still resolves', () => {
-    expect(categoryLabel(' בגדים ', 'en')).toBe('Fashion');
+    expect(categoryLabel(' אופנה ', 'en')).toBe('Fashion');
+  });
+
+  /**
+   * אופנה and בגדים are two shelves, not one word said twice (`SEED_CATEGORIES` argues it) — so
+   * they must not resolve to the same English name. This is the assertion that would catch a later
+   * session "tidying" one into an alias of the other, which is the shape the owner rejected twice
+   * on 2026-08-25: first as a duplicate, then as a missing shelf.
+   */
+  it('keeps אופנה and בגדים as two distinct shelves', () => {
+    expect(categoryLabel('אופנה', 'en')).toBe('Fashion');
+    expect(categoryLabel('בגדים', 'en')).toBe('Clothing');
+    expect(categoryLabel('אופנה', 'en')).not.toBe(categoryLabel('בגדים', 'en'));
   });
 });

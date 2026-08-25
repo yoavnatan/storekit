@@ -32,6 +32,7 @@
  *  store category everywhere in this codebase (`store-taxonomy.ts`). Every code is quoted with the
  *  row it came from so the next reader can check it against their list rather than trust this file. */
 const PAYME_CATEGORY_BY_STORE_CATEGORY: Readonly<Record<string, string>> = {
+  'אופנה':      '10200', // הלבשה כללית
   'בגדים':      '10200', // הלבשה כללית
   'הנעלה':      '10407', // הנעלה
   'תיקים':      '10140', // ארנקים ותיקים

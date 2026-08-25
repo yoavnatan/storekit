@@ -240,18 +240,29 @@ const showBreakdown = paying && lines.length > 1;
         data-label={d.subTitle}
         data-amount={(plan.monthlyFee).toFixed(2)}
       >
-        <div class="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+        {/* ── Fixed tracks, because these boxes contain IFRAMES ──
+            An iframe has no intrinsic width to measure, so `auto` columns collapsed to nothing and
+            `1fr` gave the rest away: the card number ended up a sliver with its label wrapped over
+            two lines while תוקף and CVV took half the row each (owner's screenshot, 2026-08-25).
+            Named tracks in `ch` instead — the card number keeps the row it needs, the two short
+            fields take exactly what their content is, and nothing depends on measuring an empty
+            frame. `minmax(0,…)` on the first so a long label cannot push the grid wider than its
+            container.
+
+            Each frame is given an explicit height too: an empty iframe is zero pixels tall until
+            PayMe paint into it, which is what made the boxes different sizes from each other. */}
+        <div class="grid gap-3 sm:grid-cols-[minmax(0,22ch)_9ch_7ch]">
           <div class="field m-0">
-            <span class="text-[0.8rem]">{d.subCardNumber}</span>
-            <div id="payme-card-number" class="input flex items-center"></div>
+            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardNumber}</span>
+            <div id="payme-card-number" class="input flex items-center h-[2.6rem] py-0"></div>
           </div>
           <div class="field m-0">
-            <span class="text-[0.8rem]">{d.subCardExpiry}</span>
-            <div id="payme-card-expiry" class="input flex items-center"></div>
+            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardExpiry}</span>
+            <div id="payme-card-expiry" class="input flex items-center h-[2.6rem] py-0"></div>
           </div>
           <div class="field m-0">
-            <span class="text-[0.8rem]">{d.subCardCvc}</span>
-            <div id="payme-card-cvc" class="input flex items-center"></div>
+            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardCvc}</span>
+            <div id="payme-card-cvc" class="input flex items-center h-[2.6rem] py-0"></div>
           </div>
         </div>
         <button type="button" class="btn btn--accent btn--sm mt-3" id="sub-card-save" data-store={storeId}>{d.subCardSave}</button>
@@ -267,17 +278,22 @@ const showBreakdown = paying && lines.length > 1;
       {/* The fallback route, shown only when the card fields could not be drawn — a deployment
           whose own merchant was opened without keeping its public key (`payment-payme.ts`). The
           script un-hides whichever of the two is real, so a seller never sees both. */}
+      {/* ── The fallback route, and everything about it lives INSIDE it ──
+          These two sentences used to sit outside this box, so they printed under the card fields as
+          well — a seller typing his card on our page was told he was being taken to the processor's
+          page, and the setup-fee line appeared twice on one screen (owner, 2026-08-25: *"מה הכוונה
+          מעבירים אותך לדף התשלום? והנה זה בדיוק כפילות שדיברתי עליה"*). They are true only of this
+          route, so they belong to it. */}
       <div class="!hidden" id="sub-hosted-fallback">
         <button type="button" class="btn btn--accent btn--sm" id="sub-start" data-store={storeId}>
           {created ? d.subResume : d.subStart}
         </button>
+        {/* Said BEFORE the click, not after it: a redirect nobody was expecting is where a payment
+            gets abandoned. */}
+        <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
+        <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
       </div>
-      {/* Said BEFORE the click, not after it. A redirect nobody was expecting is where a payment
-          gets abandoned — and so is a fee nobody mentioned. The account-opening charge is the
-          payment provider's, it is the seller's to pay (owner, 2026-08-24), and this is the last
-          screen before he meets it. */}
-      <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
-      <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+
     </div>
   )}
 </section>

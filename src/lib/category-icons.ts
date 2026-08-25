@@ -30,7 +30,7 @@
 import { SEED_CATEGORIES, findSimilarCategories, normalizeCategory } from './store-taxonomy.js';
 
 export type CategoryIconKey =
-  | 'fashion' | 'footwear' | 'bag' | 'jewelry' | 'beauty' | 'electronics'
+  | 'fashion' | 'clothing' | 'footwear' | 'bag' | 'jewelry' | 'beauty' | 'electronics'
   | 'accessories' | 'home' | 'kitchen' | 'furniture' | 'sports' | 'food'
   | 'toys' | 'baby' | 'pets' | 'books' | 'tools' | 'car' | 'gift' | 'store'
   | 'plants' | 'garden' | 'judaica' | 'computers' | 'kids' | 'music'
@@ -42,7 +42,8 @@ export type CategoryIconKey =
  *  `SEED_CATEGORIES` must appear here — asserted in the tests, so adding a seed
  *  without an icon fails the suite instead of silently rendering the tag. */
 const SEED_ICONS: Readonly<Record<string, CategoryIconKey>> = {
-  'בגדים': 'fashion',
+  'אופנה': 'fashion',
+  'בגדים': 'clothing',
   'הנעלה': 'footwear',
   'תיקים': 'bag',
   'תכשיטים': 'jewelry',

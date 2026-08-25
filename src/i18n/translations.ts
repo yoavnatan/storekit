@@ -1250,8 +1250,8 @@ export const translations = {
       // so on ITSELF, rather than a heading saying it about the whole screen (owner, 2026-08-11).
       // All three appear only for a seller who owns more than one shop.
       // Every "nothing is lost" line is a promise `terms.astro` also makes, in the same words.
-      payTitle: 'התשלומים שלי',
-      paySubtitle: 'הכסף מכל מכירה נכנס ישירות לחשבון שלכם אצל חברת הסליקה.',
+      payTitle: 'תשלומים',
+      paySubtitle: 'פרטי חשבון בנק, חיבור לחשבון סליקה, פרטי התשלום והמנוי.',
       // Sits UNDER "פרטי בנק ופרטי עסק" and only for a seller with more than one shop (owner,
       // 2026-08-11). It replaced `payAllStores`, which said the same thing in the panel's SUBTITLE
       // — where it described the whole screen instead of the one card it is true of, and made a
@@ -1308,7 +1308,7 @@ export const translations = {
       glStepDetails: 'פרטי העסק',
       glStepDetailsNote: 'לאישור על ידי חברת הסליקה.',
       glStepApproval: 'אישור חברת הסליקה',
-      glStepApprovalNote: 'הם בודקים כל בית עסק, עד שבעה ימי עסקים. אין מה לעשות בינתיים — נשלח התראה ברגע שזה מאושר.',
+      glStepApprovalNote: 'הבדיקה החלה עם שליחת פרטי העסק ואורכת עד 7 ימי עסקים. אין מה לעשות בינתיים.',
       glStepSubscription: 'מסלול וכרטיס',
       glStepSubscriptionNote: 'בוחרים מסלול ושומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
       // The plan is met HERE, at the moment it starts costing him — not on a screen of its own
@@ -1317,7 +1317,7 @@ export const translations = {
       glPlanTitle: 'המסלול של החנות',
       glPlanSwitchable: 'אפשר להחליף מסלול בכל רגע, גם אחרי שהחנות באוויר.',
       glPlanCompare: 'השוואת המסלולים',
-      glAutomatic: 'אין כפתור פרסום — ברגע שהשלב האחרון נסגר החנות עולה לבד, ותקבלו על כך התראה.',
+      glAutomatic: 'בסיום השלבים החנות עולה לאוויר אוטומטית, ותישלח על כך התראה.',
       pubTitle: 'החנות עדיין לא באוויר',
       // The owner's own sentence, 2026-08-25 — the previous one led with a list and buried the
       // condition, so a seller learned what he could do and not what he still had to.
@@ -3519,8 +3519,8 @@ export const translations = {
       repSumOut: 'Out of stock:',
       tabAdvertising: 'Advertising',
       tabPayouts: 'Payments',
-      payTitle: 'My payments',
-      paySubtitle: 'The money from every sale lands directly in your own account at the processor.',
+      payTitle: 'Payments',
+      paySubtitle: 'Bank account, clearing account, and your payment and subscription details.',
       payBankAllStores: 'These details apply to every store you own.',
       payBankTitle: 'Bank and business details',
       payBankHint: 'The account your money is paid into.',
@@ -3552,13 +3552,13 @@ export const translations = {
       glStepDetails: 'Business details',
       glStepDetailsNote: 'For the payment processor to approve.',
       glStepApproval: 'Processor approval',
-      glStepApprovalNote: 'They review every business, up to seven business days. Nothing to do meanwhile — we will notify you the moment it is approved.',
+      glStepApprovalNote: 'The review began when your business details were sent and takes up to 7 business days. Nothing to do meanwhile.',
       glStepSubscription: 'Plan and card',
       glStepSubscriptionNote: 'Pick a plan and save a card. Nothing is charged until the store goes live.',
       glPlanTitle: "This store's plan",
       glPlanSwitchable: 'You can change plan any time, including after the store is live.',
       glPlanCompare: 'Compare the plans',
-      glAutomatic: 'There is no publish button — once the last step is done the store goes live by itself, and you will be notified.',
+      glAutomatic: 'When the steps are done the store goes live automatically, and you will be notified.',
       pubTitle: 'This store is not live yet',
       pubBuildOn: 'You can carry on building the store — products, design, categories and sales. It goes live once your business details and payment are settled.',
       pubHoldSubscription: 'No monthly subscription yet',
