@@ -18,6 +18,7 @@ import { businessTodayISO } from '../src/lib/business-day.js';
 import { addDaysISO } from '../src/lib/date-range.js';
 import { buyerReturnCta } from '../src/lib/return-buyer-cta.js';
 import { POST as returnsRoute } from '../src/pages/api/returns.js';
+import { orderToken } from '../src/lib/order-token.js';
 import { setAdminCookie } from '../src/lib/admin-auth.js';
 import { setSellerSession } from '../src/lib/seller-auth.js';
 
@@ -622,5 +623,60 @@ describe('what the ADMIN decides, and what he has to say while deciding it', () 
     expect(decided.adminAwardAgorot).toBe(full);
     // Clamped to the full amount, so it is an ordinary whole return — the order really did come back.
     expect(decided.status).toBe('refunded');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+/**
+ * ═══ A PARTIAL RETURN, THROUGH THE ROUTE — the branch every other test in this file walks past ═══
+ *
+ * Every scenario above opens its case with `openReturnRequest` directly, and the two that do go
+ * through the real route are a seller's and an admin's move on an EXISTING case. So
+ * `POST /api/returns` with `action: 'open'` and a `lines` array — the buyer ticking some of the
+ * items rather than all of them — had no test at all, and it is the only shape that runs the route's
+ * line filter.
+ *
+ * That is exactly the shape that was broken. The filter read `allowedPositions` twenty lines above
+ * the `const` that declares it: a temporal dead zone, which throws `ReferenceError` the moment the
+ * callback actually runs. An EMPTY `lines` array never invokes the callback, so every existing test
+ * and every whole-order return sailed over it while a partial return answered 500.
+ */
+describe('a partial return through the real route', () => {
+  const buyerOpens = (body: Record<string, unknown>): Promise<Response> => returnsRoute({
+    request: new Request('http://localhost/api/returns', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }),
+    // No session — the guest who checked out and got the signed link, which is the default here.
+    cookies: { get: () => undefined, set: () => {}, delete: () => {}, has: () => false } as unknown as AstroCookies,
+    clientAddress: '127.0.0.1',
+  } as unknown as APIContext);
+
+  it('opens a case for the ticked lines only, instead of throwing', async () => {
+    const order = await deliveredOrder();
+    const res = await buyerOpens({
+      action: 'open',
+      orderId: order.id,
+      token: orderToken(order.id, 'help'),
+      reason: 'changed_mind',
+      lines: [{ position: 0, qty: 1 }],
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json() as { request?: ReturnRequest };
+    expect(body.request?.status).toBe('approved');
+  });
+
+  it('refuses a body whose only named line is not a line of that order', async () => {
+    const order = await deliveredOrder();
+    const res = await buyerOpens({
+      action: 'open',
+      orderId: order.id,
+      token: orderToken(order.id, 'help'),
+      reason: 'changed_mind',
+      // Position 99 is on no order. The filter must drop it and the route must refuse — quietly
+      // falling through to a WHOLE-order return would refund lines the buyer never ticked.
+      lines: [{ position: 99, qty: 1 }],
+    });
+    expect(res.status).toBe(409);
   });
 });

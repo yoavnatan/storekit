@@ -173,6 +173,27 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
 
     // The store is resolved here anyway, so the seller's id travels with the request and the
     // notification cannot be silently skipped for want of it.
+    const store = await getStoreBySlugOrPrevious(slug);
+
+    // The law's own exclusions, per PRODUCT (`return-eligibility-order.ts`). Enforced on the SERVER
+    // even though the buyer's screen already withholds the line — a hidden checkbox is not a rule,
+    // and this endpoint is directly callable.
+    //
+    // A CANCELLATION never reaches here: nothing was supplied yet, so there is nothing for the
+    // exclusion to be about. It is the return the regulation removes, not the right to stop an
+    // order that has not left.
+    //
+    // **Resolved BEFORE the line filter below, and that is the whole point of it sitting here.** It
+    // was declared twenty lines further down while the filter already read it — a temporal dead
+    // zone, so the callback threw `ReferenceError` and a partial return answered 500. Nothing saw
+    // it: `.filter()` on an EMPTY array never invokes its callback, so a whole-order return (no
+    // `lines` in the body, which is every existing test and the buyer's default button) walked past
+    // it, and only a buyer ticking individual items ever reached the throw.
+    const allowedPositions = store ? await returnableLinePositions(order, store.id) : null;
+    if (allowedPositions && allowedPositions.size === 0) {
+      return json({ error: 'לפי תקנות הגנת הצרכן, המוצרים בהזמנה הזאת לא ניתנים להחזרה' }, 409);
+    }
+
     // ── Which lines, if this is a partial return ──
     //
     // Validated here and clamped again in `partialRefundAgorot`: this list arrives in a request body,
@@ -203,20 +224,6 @@ export async function POST({ request, cookies, clientAddress }: APIContext): Pro
     const returnedLines = returnedLinesRaw;
     const wholeOrder = returnedLines.length === order.items.length
       && returnedLines.every((l) => l.qty === order.items[l.position]!.qty);
-
-    const store = await getStoreBySlugOrPrevious(slug);
-
-    // The law's own exclusions, per PRODUCT (`return-eligibility-order.ts`). Enforced on the SERVER
-    // even though the buyer's screen already withholds the line — a hidden checkbox is not a rule,
-    // and this endpoint is directly callable.
-    //
-    // A CANCELLATION never reaches here: nothing was supplied yet, so there is nothing for the
-    // exclusion to be about. It is the return the regulation removes, not the right to stop an
-    // order that has not left.
-    const allowedPositions = store ? await returnableLinePositions(order, store.id) : null;
-    if (allowedPositions && allowedPositions.size === 0) {
-      return json({ error: 'לפי תקנות הגנת הצרכן, המוצרים בהזמנה הזאת לא ניתנים להחזרה' }, 409);
-    }
 
     const result = await openReturnRequest({
       order, storeSlug: slug, reason,

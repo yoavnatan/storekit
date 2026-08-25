@@ -148,6 +148,20 @@ export default tseslint.config(
       // Complexity: worth knowing, never worth blocking.
       'sonarjs/cognitive-complexity': ['warn', 25],
       'sonarjs/no-nested-functions': ['warn', { threshold: 5 }],
+
+      // ── `@typescript-eslint/no-use-before-define` is deliberately NOT enabled here ──
+      //
+      // It is the obvious answer to the `/api/returns` temporal-dead-zone 500 (a `const` read by a
+      // `.filter()` callback twenty lines above its declaration) and it was measured before being
+      // rejected: switched on over this tree it reports **40** places, and 39 of them are legal —
+      // a click handler, a `setTimeout`, a `.then()` reading a module const declared lower down,
+      // all of which run long after the declaration. Making those 40 errors is how a rule gets
+      // switched off again, which is the same failure as regenerating a lint baseline.
+      //
+      // The narrow version of the same question lives in `tests/tdz-eager-callback-guard.test.ts`:
+      // it reports only a reference inside a callback that runs IMMEDIATELY (an array method, an
+      // IIFE) and therefore really does throw. It scans the whole tree and carries its own
+      // counter-example. Do not add the blunt rule here on top of it.
     },
   },
 
