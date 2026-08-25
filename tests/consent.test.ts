@@ -23,7 +23,7 @@
  *   move).
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   CONSENT_ALL,
@@ -146,5 +146,68 @@ describe('where the off-switch is, and where it is NOT', () => {
     // Implied consent is only consent when what is implied was published. Thinning this sentence
     // does not tidy the page; it removes the basis on which the cookies run at all.
     expect(privacy).toContain('מהכניסה הראשונה');
+  });
+});
+
+describe('the notice never covers anything', () => {
+  /** Every CSS rule block in `src/styles`, so a declaration can be read together with the rest of
+   *  its own block rather than as a line on its own. `bottom: 0` is unremarkable on an absolutely
+   *  positioned element and load-bearing on a fixed one, and only the block says which it is. */
+  function fixedBlocks(): { file: string; selector: string; body: string }[] {
+    const dir = join(import.meta.dirname, '..', 'src/styles');
+    const out: { file: string; selector: string; body: string }[] = [];
+    const walk = (d: string): void => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const p = join(d, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!e.name.endsWith('.css')) continue;
+        const css = readFileSync(p, 'utf8');
+        for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+          // Comments come OUT before anything is matched, and this is not tidiness — it is the
+          // bug this guard had on its first run. The rule the guard enforces is explained in a
+          // comment inside the very block it applies to, so `body.includes('--consent-bar-h')`
+          // was satisfied by the PROSE and the check passed with the fix deliberately reverted.
+          // A guard that reads its own documentation as compliance is worse than no guard.
+          const body = (m[2] ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ');
+          if (/position:\s*fixed/.test(body)) out.push({ file: p, selector: (m[1] ?? '').trim(), body });
+        }
+      }
+    };
+    walk(dir);
+    return out;
+  }
+
+  it('any fixed bar sitting on the bottom edge clears it', () => {
+    // The bug this replaces: the notice is `position: fixed; bottom: 0` at z-index 60, and the
+    // product page's sticky add-to-cart bar was `position: fixed; bottom: 0` at z-index 40. At
+    // 375px the notice was 124px tall and the cart bar 69px, so the notice covered ALL of it —
+    // a shopper arriving on a product page from an ad could not buy, and nothing anywhere
+    // reported it because both elements were doing exactly what they said.
+    //
+    // The fix is a variable, so the rule is a variable: a fixed element pinned to the bottom
+    // reads `--consent-bar-h` (with a `0px` fallback for every page that shows no notice).
+    const offenders = fixedBlocks()
+      .filter((b) => /bottom:\s*0(px)?\s*;/.test(b.body))
+      // A panel pinned to BOTH edges is a full-height drawer, not a bar on the bottom edge — the
+      // cart drawer, the dashboard rail, the category drawer. Those are overlays and are SUPPOSED
+      // to sit over the notice; lifting them would leave a strip of page showing under them.
+      .filter((b) => !/top:\s*0/.test(b.body) && !/inset:\s*0/.test(b.body))
+      .filter((b) => !b.body.includes('--consent-bar-h'))
+      .map((b) => `${b.file.split('/src/')[1]}: ${b.selector.split('*/').pop()!.trim()}`);
+    expect(
+      offenders,
+      'a fixed element on the bottom edge is covered by the cookie notice — give it '
+      + '`bottom: var(--consent-bar-h, 0px)`, or move it off the edge',
+    ).toEqual([]);
+  });
+
+  it('and the script actually publishes that height, and clears it again', () => {
+    const script = read('src/scripts/consent.ts');
+    expect(script, 'the variable the CSS above depends on').toContain('--consent-bar-h');
+    // Body padding as well as the variable: page padding does not move a fixed element, and a
+    // variable does not move normal content at the end of the document. Two problems, two fixes.
+    expect(script, 'content at the end of the document needs the padding, not the variable')
+      .toContain('paddingBottom');
+    expect(script, 'a dismissed notice must stop reserving space').toMatch(/classList\.contains\('!hidden'\)/);
   });
 });

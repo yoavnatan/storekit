@@ -172,7 +172,13 @@
   .product-detail-page #sticky-cart-bar {
     position: fixed;
     inset-inline: 0;
-    bottom: 0;
+    /* NOT `bottom: 0`. The cookie notice is also `position: fixed` at the bottom edge and outranks
+       this bar (z-index 60 vs 40), so at 375px it covered all 69px of it — measured 2026-08-25 —
+       and a shopper who arrived here from an ad could not add to cart at all. `--consent-bar-h` is
+       published by scripts/consent.ts while the notice is up, and is absent every other time, which
+       is every page view after it has been dismissed. The `0px` fallback matters: before that
+       script runs, and on every page that never shows a notice, this bar sits where it always did. */
+    bottom: var(--consent-bar-h, 0px);
     z-index: 40;
     display: flex;
     align-items: center;

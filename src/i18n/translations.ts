@@ -297,8 +297,8 @@ export const translations = {
     // are the sound of a form being filled in, and neither tells anybody anything.
     consent: {
       title: 'עוגיות באתר',
-      body: 'האתר משתמש בעוגיות כדי שיעבוד, כדי למדוד את השימוש בו וכדי לנהל את הפרסום שלנו.',
-      more: 'פרטים ואפשרויות במדיניות הפרטיות',
+      body: 'האתר משתמש בעוגיות להפעלתו, למדידה ולפרסום.',
+      more: 'פרטים ואפשרויות',
       dismiss: 'הבנתי',
       close: 'סגירת ההודעה',
       // The control itself, which lives in the cookies clause of /privacy and nowhere else.
@@ -2862,8 +2862,8 @@ export const translations = {
     },
     consent: {
       title: 'Cookies on this site',
-      body: 'This site uses cookies to work, to measure how it is used, and to run our advertising.',
-      more: 'Details and options are in the privacy policy',
+      body: 'This site uses cookies to run, to measure and to advertise.',
+      more: 'Details and options',
       dismiss: 'Got it',
       close: 'Close this notice',
       prefsTitle: 'Managing the non-essential cookies',

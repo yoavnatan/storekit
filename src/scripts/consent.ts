@@ -40,15 +40,42 @@ function readCookie(name: string): string | undefined {
  * on screen, so pressing "הבנתי" changes nothing about what runs — it only stops the notice
  * returning. A second flag would be a second thing that can disagree with the first.
  */
+/**
+ * The height the notice is occupying at the bottom of the viewport, published on `documentElement`
+ * so anything else pinned down there can get out of its way.
+ *
+ * **This is not polish — without it the bar HID the "add to cart" button.** Measured 2026-08-25 at
+ * 375px on a product page: the notice was 124px tall at `z-index: 60`, the sticky cart bar 69px at
+ * `z-index: 40`, and the overlap was the entire cart bar. A shopper arriving on a product page from
+ * an ad — the main traffic shape this site is built for — could not buy. Nothing reported it,
+ * because both elements were behaving exactly as written.
+ *
+ * Two consequences needing two different fixes, which is why this function does two things:
+ *   · a `position: fixed` bar is NOT moved by page padding, so it reads this variable and lifts
+ *     (`#sticky-cart-bar`, styles/pages/product.css);
+ *   · content at the very end of the document IS fixed by padding, so the body gets it.
+ *
+ * Re-measured on resize because the bar's height changes as its text rewraps, and cleared on
+ * dismissal so nothing goes on reserving space for an element that is gone.
+ */
+function publishBarHeight(bar: HTMLElement): void {
+  const h = bar.classList.contains('!hidden') ? 0 : Math.ceil(bar.getBoundingClientRect().height);
+  document.documentElement.style.setProperty('--consent-bar-h', `${h}px`);
+  document.body.style.paddingBottom = h ? `${h}px` : '';
+}
+
 export function initConsentNotice(): void {
   const bar = document.getElementById('consent-notice');
   if (!bar) return;
 
   if (bar.dataset.consentShow !== undefined) bar.classList.remove('!hidden');
+  publishBarHeight(bar);
+  window.addEventListener('resize', () => publishBarHeight(bar));
 
   document.getElementById('consent-dismiss')?.addEventListener('click', () => {
     writeCookie(effectiveConsent(parseConsent(readCookie(CONSENT_COOKIE))));
     bar.classList.add('!hidden');
+    publishBarHeight(bar);
   });
 }
 

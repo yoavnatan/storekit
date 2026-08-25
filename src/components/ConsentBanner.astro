@@ -49,10 +49,17 @@ const notified = parseConsent(Astro.cookies.get(CONSENT_COOKIE)?.value) !== null
   role="region"
   aria-label={c.title}
 >
-  <div class="container flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-    <p class="muted m-0 min-w-0 text-[0.82rem] leading-relaxed">
+  {/* Does NOT wrap, and the button never drops to a line of its own. Wrapping cost a whole extra
+      row at 375px — the text took two lines, the button took a third, and the bar stood 103px tall
+      over a 780px viewport. Text takes the remaining width (`flex-1 min-w-0`) and the button holds
+      its own (`shrink-0`), so the bar is as tall as the text and no taller. */}
+  <div class="container flex items-center gap-3">
+    <p class="muted m-0 min-w-0 flex-1 text-[0.82rem] leading-relaxed">
       {c.body}{' '}
-      <a href="/privacy" class="underline">{c.more}</a>
+      {/* `whitespace-nowrap`: at 375px "פרטים ואפשרויות" broke across the line end and left
+          "ואפשרויות" alone on a line of its own — a two-word link split in half reads as two
+          links, and it is the one thing on this bar a person is meant to be able to aim at. */}
+      <a href="/privacy" class="underline whitespace-nowrap">{c.more}</a>
     </p>
     <button type="button" class="btn btn--ghost btn--sm shrink-0" id="consent-dismiss" aria-label={c.close}>
       {c.dismiss}
