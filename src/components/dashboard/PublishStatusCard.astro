@@ -52,8 +52,19 @@ const LINE: Record<string, string> = {
   'clearing-approval': d.pubHoldApprovalNote,
   'subscription': d.pubHoldSubscriptionNote,
 };
+/**
+ * Every hold keeps its button, including the one nobody can act on (owner, 2026-08-25: *"למה לא
+ * להשאיר את הכפתור שיהפוך ל'ממתין לאישור העסק'"*).
+ *
+ * It was dropped during the review on the reasoning that a button with nothing to press is worse
+ * than none — and that was half right: pressing it does not SHORTEN the wait. But it is not a no-op
+ * either, because the payments tab is where the wait is explained, where the card can still be
+ * saved, and where the whole state lives. Removing it left the overview saying "not live" with no
+ * route to the screen that says why.
+ */
 const CTA: Record<string, string> = {
   'clearing-details': d.pubHoldDetailsCta,
+  'clearing-approval': d.pubHoldApprovalCta,
   'subscription': d.pubHoldSubscriptionCta,
 };
 const title = blocking === 'clearing-approval' ? d.pubHoldApproval : d.pubTitle;

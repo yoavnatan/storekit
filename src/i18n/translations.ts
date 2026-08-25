@@ -1092,6 +1092,10 @@ export const translations = {
       // operational halt, and the shopper-facing copy uses different words again (store.*).
       lcTitle: 'מצב פעילות החנות',
       lcHint: 'הקפאה זמנית של החנות, או סגירתה. שום נתון לא נמחק — ההזמנות, ההכנסות והדוחות נשמרים בכל מצב.',
+      // The state a shop is BORN in, and the one this label had no branch for — so it read
+      // "פעילה" for a shop that is not on the site at all (owner, 2026-08-25).
+      lcStateUnpublished: 'החנות עדיין לא באוויר',
+      lcUnpublishedNote: 'החנות נראית רק לך. השהיה וסגירה נפתחות אחרי שהיא עולה לאוויר — עד אז אין מה להשהות. מה שנשאר להשלים נמצא בלשונית תשלומים.',
       lcStateActive: 'החנות פעילה ומוכרת',
       lcStatePaused: 'החנות מוקפאת',
       lcStateClosing: 'החנות תיסגר בסיום ההזמנות הפתוחות',
@@ -1334,6 +1338,7 @@ export const translations = {
       pubHoldDetailsNote: 'בלי חשבון סליקה אין לאן שהכסף של הקונה ייכנס.',
       pubHoldDetailsCta: 'להשלמת הפרטים',
       pubHoldApproval: 'חברת הסליקה בודקת את העסק',
+      pubHoldApprovalCta: 'מעבר לתשלומים',
       pubHoldApprovalNote: 'הבדיקה נמשכת עד שבעה ימי עסקים ואין מה לעשות בינתיים. החנות תעלה לאוויר לבד ברגע שהאישור מגיע, ונשלח מייל.',
       pubGoesLive: 'העלייה לאוויר אוטומטית — אין כפתור ללחוץ.',
       // The clearing-details form (components/dashboard/ClearingDetailsForm.astro). Ten fields PayMe
@@ -1400,6 +1405,8 @@ export const translations = {
       // a bank form is the shape `/pricing` exists to avoid.
       subChangePlan: 'החלפת מסלול',
       subChangePlanNote: 'שינוי מסלול נכנס לתוקף מהחיוב החודשי הקרוב.',
+      // The same sentence with the day named — what a seller weighing a switch actually wants.
+      subChangePlanDated: 'שינוי מסלול נכנס לתוקף ב-{date}, בחיוב החודשי הקרוב.',
       // The answer to "why am I charged ₪224" — one standing order, a line per shop
       // (lib/store-plan.ts). Shown only when there is more than one line.
       subTotal: 'סך החיוב החודשי',
@@ -3478,6 +3485,8 @@ export const translations = {
       cdVisit: 'Open site',
       lcTitle: 'Store activity',
       lcHint: 'Put the store on hold temporarily, or close it. Nothing is deleted — orders, revenue and reports are kept in every state.',
+      lcStateUnpublished: 'This store is not live yet',
+      lcUnpublishedNote: 'Only you can see it. Pausing and closing open up once it is live — until then there is nothing to pause. What is left to finish is on the Payments tab.',
       lcStateActive: 'Store is open and selling',
       lcStatePaused: 'Store is on hold',
       lcStateClosing: 'Closing once the open orders are done',
@@ -3635,6 +3644,7 @@ export const translations = {
       pubHoldDetailsNote: 'Without a clearing account there is nowhere for a buyer\'s money to go.',
       pubHoldDetailsCta: 'Complete the details',
       pubHoldApproval: 'The processor is reviewing your business',
+      pubHoldApprovalCta: 'Go to payments',
       pubHoldApprovalNote: 'The review takes up to seven business days and there is nothing to do meanwhile. The store goes live by itself the moment approval arrives, and we will email you.',
       pubGoesLive: 'Going live is automatic — there is no button to press.',
       mkTitle: 'Business details',
@@ -3674,6 +3684,7 @@ export const translations = {
       subPlanValue: '{name} — ₪{fee} {per}',
       subChangePlan: 'Change plan',
       subChangePlanNote: 'A plan change takes effect from your next monthly charge.',
+      subChangePlanDated: 'A plan change takes effect on {date}, at your next monthly charge.',
       subTotal: 'Total monthly charge',
       subTotalOf: 'Made up of',
       subAddStore: 'Add this store to your subscription',

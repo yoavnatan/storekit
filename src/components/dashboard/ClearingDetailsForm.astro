@@ -76,8 +76,21 @@ const v = (x: string | number | undefined): string => (x === undefined ? '' : St
       לחברת הסליקה?!"*). After that the way to change anything is their own page, which the approval
       step already links to. */}
   <div id="mk-summary" class="flex items-center justify-between gap-3 flex-wrap mt-3" hidden={!complete}>
+    {/* ── The tick is GREEN only when the step really is finished ──
+        Owner, 2026-08-25: *"אני לא רואה עיגול ירוק אבל כן רואה וי ירוק ליד פרטי העסק שנשמרו, למה
+        העיגול לא ירוק?"* — because the two marks meant different things and looked the same. The
+        rail's marker turns green when the STEP is done, which here means PayMe hold an account; this
+        line was confirming that the FORM saved, which can be true while the account is still being
+        opened. A green tick beside an un-green marker reads as one of them being broken.
+
+        So the saved-but-not-sent state gets the neutral in-progress mark, and green is reserved for
+        the same fact the marker uses. */}
     <p class="m-0 text-[0.86rem] font-semibold flex items-center gap-1.5">
-      <svg class="shrink-0 [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      {sent ? (
+        <svg class="shrink-0 [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+      ) : (
+        <svg class="shrink-0 [color:var(--color-muted)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 7v5l3 2"/></svg>
+      )}
       {sent ? d.mkOnFile : d.mkFilledNotSent}
     </p>
     {!sent && <button type="button" class="btn btn--ghost btn--sm shrink-0" id="mk-edit">{d.mkEdit}</button>}
@@ -180,7 +193,11 @@ const v = (x: string | number | undefined): string => (x === undefined ? '' : St
 
     <p class="hidden text-sm [color:var(--color-danger)] mt-2 mb-0" id="mk-error" role="alert"></p>
     <div class="flex items-center gap-2 mt-4">
-      <button type="submit" class="btn btn--sm" id="mk-save">{d.mkSave}</button>
+      {/* `btn--accent`, like every other step's action on this screen. There was no reason for the
+          two to differ — since 2026-08-25 both steps are open at once, so a seller sees the dark
+          default beside the accent fill and reads a rank difference that does not exist (owner:
+          *"יש סיבה מיוחדת שזה בצבע כחול בהיר?"* — there was not). */}
+      <button type="submit" class="btn btn--accent btn--sm" id="mk-save">{d.mkSave}</button>
       <button type="button" class="btn btn--ghost btn--sm" id="mk-cancel" hidden={!complete}>{d.payBankCancel}</button>
     </div>
   </div>

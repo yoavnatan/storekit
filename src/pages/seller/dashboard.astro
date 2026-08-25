@@ -749,14 +749,29 @@ const lifecycleState = store ? storeLifecycle(store) : 'active';
  *  budget. The same single fact the go-live screen keys off, so the two cannot disagree. */
 const storeNotLive = !!store && !store.publishedAt;
 const lifecycleOpenOrders = store ? await only(['settings'], () => openOrderCount(store.slug), 0) : 0;
+/**
+ * ── `unpublished` had no branch, so it fell through to "פעילה" ──
+ *
+ * Owner, 2026-08-25: *"רואה שבהגדרות עדיין מופיע לחנות שהיא באוויר ופעילה למרות שבתשלומים רואים
+ * משהו אחר."* Two screens describing one shop, disagreeing — and this was the one that was wrong.
+ * `storeLifecycle` has answered `unpublished` since 2026-08-23; the `: d.lcStateActive` fallback was
+ * written when the state did not exist, and a default branch cannot notice that it has stopped
+ * being the only remaining case.
+ *
+ * It also explains the second half of his confusion: the pause and close buttons hide unless the
+ * state is exactly `active`, which was right — you cannot pause a shop that is not on the site —
+ * but with the label claiming otherwise the absence read as a missing feature.
+ */
 const lifecycleStateLabel =
   lifecycleState === 'paused'  ? d.lcStatePaused
   : lifecycleState === 'closing' ? d.lcStateClosing
   : lifecycleState === 'closed'  ? d.lcStateClosed
   : lifecycleState === 'blocked' ? d.lcStateBlocked
+  : lifecycleState === 'unpublished' ? d.lcStateUnpublished
   : d.lcStateActive;
 const lifecycleNote =
-  lifecycleState === 'paused'  ? d.lcPausedNote
+  lifecycleState === 'unpublished' ? d.lcUnpublishedNote
+  : lifecycleState === 'paused'  ? d.lcPausedNote
   : lifecycleState === 'closing' ? d.lcClosingNote
   : lifecycleState === 'closed'  ? d.lcClosedNote
   : lifecycleState === 'blocked' ? ''
