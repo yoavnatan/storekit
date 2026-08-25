@@ -87,7 +87,8 @@ async function orderForLeg(checkoutRef: string, leg: string): Promise<OrderRow |
 
 /**
  * ⚠️ **Two wording rules the owner set on this copy (2026-08-25), and they are not local to it:**
- * no `ו` after a comma — the clause becomes its own sentence — and `ניתן` rather than `אפשר`. Both
+ * no `ו` after a comma — **the comma STAYS, only the `ו` goes** (I removed both the first time and
+ * he corrected it again) — and `ניתן` rather than `אפשר`. Both
  * were given about the dispute notice and both apply to the reversal beside it, which carried the
  * identical comma-plus-ו construction two lines away; leaving one of a pair corrected would read
  * as an oversight rather than as a rule.
@@ -103,11 +104,11 @@ const SELLER_COPY: Record<ChargebackKind, { title: string; body: (amount: string
     // contestable with proof of delivery, and the processor is the one who runs that process.
     // ⚠️ Whether he can hand that proof to us instead is question 4 in `payme-questions-open.md`;
     // until they answer, this must not imply that he can.
-    body: (amount) => `קונה פנה לחברת האשראי וביקש לבטל חיוב של ${amount}. הכסף נלקח בחזרה מחשבון הסליקה שלכם. לרוב ניתן לערער מול חברת הסליקה עם אישור מסירה או מספר מעקב — כדאי לפנות אליהם בהקדם.`,
+    body: (amount) => `קונה פנה לחברת האשראי וביקש לבטל חיוב של ${amount}, הכסף נלקח בחזרה מחשבון הסליקה שלכם. לרוב ניתן לערער מול חברת הסליקה עם אישור מסירה או מספר מעקב — כדאי לפנות אליהם בהקדם.`,
   },
   chargeback_reverted: {
     title: 'ההכחשה בוטלה',
-    body: (amount) => `חברת האשראי ביטלה את ההכחשה על ${amount}. הכסף חזר לחשבון הסליקה שלכם.`,
+    body: (amount) => `חברת האשראי ביטלה את ההכחשה על ${amount}, הכסף חזר לחשבון הסליקה שלכם.`,
   },
 };
 
