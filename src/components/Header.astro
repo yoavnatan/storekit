@@ -322,6 +322,14 @@ const strEmpty   = t.store.noProductsFound;
         data-str-empty={strEmpty}
       >
         <label for="header-search-input" class="visually-hidden">{t.store.searchLabel}</label>
+        {/* `role="combobox"` below is what MAKES aria-autocomplete/aria-controls/aria-expanded
+            legal here. Without it an <input type="search"> maps to `searchbox`, which allows none
+            of the three — axe reports it critical, and a screen reader announces a plain field
+            that never says a list opened. The home field further up gets the same role
+            IMPLICITLY, from its `list=` pointing at an empty <datalist>; that is a browser
+            mapping rather than a declaration, so it is not the thing to copy. The dropdown this
+            controls is already role="listbox" with role="option" children, so the pattern is
+            complete the moment the role is stated. */}
         <input
           type="search"
           id="header-search-input"
@@ -329,6 +337,7 @@ const strEmpty   = t.store.noProductsFound;
           placeholder={t.store.searchPlaceholder}
           autocomplete="off"
           aria-label={t.store.searchLabel}
+          role="combobox"
           aria-autocomplete="list"
           aria-controls="header-search-dropdown"
           aria-expanded="false"

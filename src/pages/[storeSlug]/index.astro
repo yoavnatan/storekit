@@ -1146,12 +1146,22 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                     data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
                     data-variant-stock={p.variantStock ? JSON.stringify(p.variantStock) : undefined}
                     data-variant-images={p.variantImages ? JSON.stringify(p.variantImages) : undefined}>
+                  {/* The button role sits on `__slides`, NOT on this wrap — TWIN at the client
+                      renderer below (search `product-card__img-wrap--clickable` in the script).
+                      The wrap also holds the wishlist BUTTON and the carousel dots, so a role on
+                      it nested one control inside another: axe reported `nested-interactive`
+                      serious on every card, and a screen reader offered a button whose contents
+                      were more buttons. `__slides` holds only images, so it can carry the role —
+                      and being the element that actually scrolls, giving it the tab stop fixed
+                      `scrollable-region-focusable` in the same move (a shopper on a keyboard had
+                      no way to reach the second photo at all). The click handler stays on the
+                      wrap, which is where the whole picture area is. */}
                   <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}`}
-                       data-skeleton={hasImages ? '' : undefined}
-                       role={hasImages ? 'button' : undefined}
-                       aria-label={hasImages ? p.name : undefined}
-                       tabindex={hasImages ? 0 : undefined}>
-                    <div class="product-card__slides">
+                       data-skeleton={hasImages ? '' : undefined}>
+                    <div class="product-card__slides"
+                         role={hasImages ? 'button' : undefined}
+                         aria-label={hasImages ? p.name : undefined}
+                         tabindex={hasImages ? 0 : undefined}>
                       {hasImages
                         ? p.images!.map((img, imgIdx) => (
                             <div class="product-card__slide">
@@ -2255,8 +2265,10 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         ${p.variants?.length ? `data-variants="${escHtml(JSON.stringify(p.variants))}"` : ''}
         ${p.variantStock ? `data-variant-stock="${escHtml(JSON.stringify(p.variantStock))}"` : ''}
         ${p.variantImages ? `data-variant-images="${escHtml(JSON.stringify(p.variantImages))}"` : ''}>
-      <div class="product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}"${hasImages ? ' data-skeleton' : ''} ${hasImages ? `role="button" aria-label="${escHtml(p.name)}" tabindex="0"` : ''}>
-        <div class="product-card__slides">${slidesHtml}</div>
+      <div class="product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}"${hasImages ? ' data-skeleton' : ''}>
+        <!-- TWIN of the frontmatter card above: the button role belongs to __slides, never to the
+             wrap, which also contains the wishlist button and the dots. Why, in the comment there. -->
+        <div class="product-card__slides"${hasImages ? ` role="button" aria-label="${escHtml(p.name)}" tabindex="0"` : ''}>${slidesHtml}</div>
         ${isNew ? `<span class="img-badge badge--new">${escHtml(pi.badgeNew ?? '')}</span>` : ''}
         ${saleBadgeHtml(pv, pi.saleBadge)}
         <button type="button" class="wishlist-btn" data-wishlist-slug="${escHtml(p.slug)}" data-wishlist-name="${escHtml(p.name)}" data-wishlist-price="${pv.price}" data-wishlist-image="${escHtml(firstImg)}" data-wishlist-store-slug="${escHtml(storeSlug)}" data-wishlist-store-name="${escHtml(storeName)}" data-wishlist-stock="${p.stock}" data-wishlisted="false" aria-pressed="false" aria-label="${escHtml(pi.addToWishlist ?? '')}" style="position:absolute;top:0.45rem;inset-inline-end:0.45rem;z-index:2;display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--radius-icon);background:rgba(255,255,255,0.9);color:var(--color-muted);transition:color 0.15s,background 0.15s,transform 0.15s">
@@ -3103,7 +3115,17 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       // breaking closest()'s walk to its ancestor button. composedPath() is
       // captured at dispatch time, so it's immune to that.
       const path = e.composedPath() as HTMLElement[];
-      if (path.some((el) => el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute?.('role') === 'button')) return;
+      // `.product-card__img-wrap--clickable` is named EXPLICITLY, and it has to be. The picture area
+      // has its own click handler (`initImageClickToModal`) and used to be excluded from this one
+      // for free, because it carried `role="button"` and the test below caught it. That role moved
+      // down onto `__slides` on 2026-08-25 so the wishlist button would stop being nested inside a
+      // button — after which a click landing on the wrap but NOT inside the strip (a sale or "new"
+      // badge, the carousel dots, the picture's own padding) matched nothing here, so BOTH handlers
+      // ran and the modal opened twice on one click. Measured: two `store-product-modal:open`
+      // events per click, before this line and one after.
+      if (path.some((el) => el.tagName === 'BUTTON' || el.tagName === 'A'
+        || el.getAttribute?.('role') === 'button'
+        || el.classList?.contains('product-card__img-wrap--clickable'))) return;
       openCardModal(card);
     });
   }
@@ -3121,16 +3143,25 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       }, { passive: true });
     }
 
-    wrap.addEventListener('click', () => {
-      if (slides && Math.abs(Math.abs(slides.scrollLeft) - scrollAtPress) > 3) return;
+    const open = (): void => {
       const card = wrap.closest<HTMLElement>('.product-card');
       if (card) openCardModal(card);
+    };
+
+    wrap.addEventListener('click', () => {
+      if (slides && Math.abs(Math.abs(slides.scrollLeft) - scrollAtPress) > 3) return;
+      open();
     });
-    wrap.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        (e.currentTarget as HTMLElement).click();
-      }
+
+    // Keydown goes on `slides` (the element that now carries role="button" and the tab stop) and
+    // calls `open()` DIRECTLY rather than synthesising a click on the wrap. The click path is
+    // guarded by "did the carousel move since the last pointerdown", which is what stops a swipe
+    // from opening the modal — and arrow-scrolling the strip with the keyboard moves it with no
+    // pointerdown at all, so a synthetic click would trip that guard and leave Enter doing nothing.
+    slides?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open();
     });
   }
 

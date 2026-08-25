@@ -899,11 +899,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
 /* Fill + border-color + weight carry the pressed state on their own. No shadow:
    at chip size 2px of blur is invisible, and a third signal for one state is
    exactly the decoration the elevation rule (base/tokens.css) rules out. */
-/* Two attributes for one state, and both are needed: the chip is a <button> in the
-   mobile drawer and an <a href> in the crawlable filter row (2026-08-03), and
-   `aria-pressed` is not valid ARIA on a link — a link that IS the current view says
-   `aria-current="page"`. Missing this pair is what made the selected chip lose its
-   fill the moment the row became links. */
+/* ONE attribute for this state, and it is `aria-current="page"` — never `aria-pressed`.
+   Every `.category-chip` on the site is an <a href> (the row is crawlable, 2026-08-03),
+   and `aria-pressed` is not valid ARIA on a link: axe reports it critical and a screen
+   reader is handed a pressed state with nothing to map it to. The selector used to
+   carry both because the platform row at /stores was still on `aria-pressed` while the
+   store row had moved; that copy was fixed 2026-08-25 and the `[aria-pressed]` half of
+   these selectors went with it. Missing this attribute is what makes the selected chip
+   lose its fill — that is the failure to look for if a chip ever renders unselected. */
 /* The OPEN slot — a seed category nobody sells yet, linking to store registration (stores.astro).
    It has to read as "not one of the filters" while still belonging to the row, so it keeps every
    bit of `.category-chip`'s geometry and changes exactly three things: a DASHED border (the one
@@ -937,7 +940,6 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   opacity: 0.75;
 }
 
-.category-chip[aria-pressed="true"],
 .category-chip[aria-current="page"] {
   background: var(--color-primary);
   border-color: var(--color-primary);
@@ -951,7 +953,6 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
 }
 
-.category-chip[aria-pressed="true"]:hover,
 .category-chip[aria-current="page"]:hover {
   background: color-mix(in srgb, var(--color-primary) 87%, #000);
   border-color: color-mix(in srgb, var(--color-primary) 87%, #000);
@@ -963,9 +964,7 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
    it picks up the accent on hover and rides the white text when pressed. */
 .category-chip > svg { color: var(--color-muted); transition: color 0.13s; }
 .category-chip:hover > svg { color: var(--color-primary); }
-.category-chip[aria-pressed="true"] > svg,
 .category-chip[aria-current="page"] > svg,
-.category-chip[aria-pressed="true"]:hover > svg,
 .category-chip[aria-current="page"]:hover > svg { color: inherit; }
 
 /* Store-level chips get no icon — these two carry the same job instead: how many
@@ -977,7 +976,6 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   font-variant-numeric: tabular-nums;
 }
 .category-chip:hover > .category-chip__count { color: var(--color-text); }
-.category-chip[aria-pressed="true"] > .category-chip__count,
 .category-chip[aria-current="page"] > .category-chip__count {
   color: #fff;
   opacity: 0.75;
@@ -1415,6 +1413,18 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   overscroll-behavior-x: contain;
 }
 .product-card__slides::-webkit-scrollbar { display: none; }
+
+/* This strip is the card's picture button and its keyboard tab stop (see the markup comment in
+   [storeSlug]/index.astro), and it fills a wrap that is `overflow: hidden` — so the global
+   `outline-offset: 2px` from reset.css draws the ring on the two pixels the wrap clips away, i.e.
+   nowhere. Negative offset pulls it inside the picture, the same fix and the same reason as
+   `.dash-tab:focus-visible` in dashboard.css. Without it a keyboard shopper tabs through a row of
+   product photos with no visible indication of where they are — the focus-visible failure that is
+   invisible to every check except driving it. */
+.product-card__slides:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
 
 .product-card__slide {
   flex: 0 0 100%;

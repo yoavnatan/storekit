@@ -266,12 +266,19 @@ const jsonLd = {
                    meaningful; a seller-added category inherits the nearest seed's icon.
                    A store's own product categories are free text and deliberately get
                    none (see the module header). -->
-              <a href={categoryUrl('')} class="category-chip" role="listitem" aria-pressed={!category}>
+              {/* `aria-current="page"`, never `aria-pressed`: this is a LINK, and `aria-pressed`
+                   is only valid on a button — axe reports it critical, and a screen reader gets a
+                   pressed state it cannot map to anything. The store page's own chip row already
+                   moved to `aria-current` for exactly this reason; this row was the copy that did
+                   not follow. `.category-chip`'s selected style keys on both, so the look is
+                   unchanged (styles/pages/store.css). Absent, never `"false"` — an explicit false
+                   is the same invalid attribute with a different value. */}
+              <a href={categoryUrl('')} class="category-chip" role="listitem" aria-current={!category ? 'page' : undefined}>
                 <CategoryIcon name="all" />
                 {t.home.directoryAllCategories}
               </a>
               {allCategories.map((c) => (
-                <a href={categoryUrl(c)} class="category-chip" role="listitem" aria-pressed={category === c}>
+                <a href={categoryUrl(c)} class="category-chip" role="listitem" aria-current={category === c ? 'page' : undefined}>
                   {/* The ICON still keys off the stored Hebrew value — the icon map is
                       keyed by it — while the text is the reader's label. */}
                   <CategoryIcon label={c} />
