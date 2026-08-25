@@ -270,6 +270,22 @@
         "src/scripts/dashboard/cleanup-modal.ts",
         "src/scripts/dashboard/cloudinary.ts"
       ]
+    },
+    {
+      "id": 22,
+      "title": "Accessibility — WCAG 2.1 AA / ת״י 5568, the whole rendered surface",
+      "audited": "2026-08-25",
+      "paths": [
+        "src/layouts/BaseLayout.astro",
+        "src/components/Header.astro",
+        "src/components/Footer.astro",
+        "src/pages/stores.astro",
+        "src/pages/[storeSlug]/index.astro",
+        "src/pages/accessibility.astro",
+        "src/styles/base/reset.css",
+        "src/styles/pages/store.css",
+        "src/lib/arrow-step.ts"
+      ]
     }
   ]
 }

@@ -297,7 +297,7 @@ export const translations = {
     // are the sound of a form being filled in, and neither tells anybody anything.
     consent: {
       title: 'עוגיות באתר',
-      body: 'האתר משתמש בעוגיות להפעלתו, למדידה ולפרסום.',
+      body: 'האתר עושה שימוש בעוגיות לתפעולו התקין, לשיפור חוויית הגלישה ולפרסום.',
       more: 'פרטים ואפשרויות',
       dismiss: 'הבנתי',
       close: 'סגירת ההודעה',
