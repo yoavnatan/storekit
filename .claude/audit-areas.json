@@ -238,14 +238,21 @@
     {
       "id": 19,
       "title": "Every write path a stranger can reach without an account",
-      "audited": null,
+      "audited": "2026-08-25",
       "paths": [
         "src/pages/api/report.ts",
         "src/pages/api/log-client-error.ts",
         "src/pages/api/analytics/",
         "src/pages/api/cart/",
         "src/pages/api/lang.ts",
-        "src/lib/request-body.ts"
+        "src/pages/api/returns.ts",
+        "src/pages/api/order-message.ts",
+        "src/pages/api/review.ts",
+        "src/pages/api/payme/callback.ts",
+        "src/lib/request-body.ts",
+        "src/lib/order-access.ts",
+        "src/lib/csrf.ts",
+        "src/middleware.ts"
       ]
     },
     {
