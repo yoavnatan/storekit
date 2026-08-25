@@ -23,6 +23,15 @@ const nextLang = lang === 'he' ? 'en' : 'he';
         <li><a href="/help" class="muted">{t.footer.help}</a></li>
         <li><a href="/terms" class="muted">{t.footer.terms}</a></li>
         <li><a href="/returns-policy" class="muted">{t.footer.returns}</a></li>
+        {/* Kept beside terms and returns because they are the same KIND of thing — the four
+            documents the site is legally required to publish and to keep reachable. `/privacy`
+            carries the §11 notification duty as תיקון 13 widened it (in force 2025-08-14);
+            `/accessibility` is the statement תקנה 35ה requires, and the turnover exemption people
+            assume covers a small site reaches only sites operating before 26.10.2017 — not this
+            one, at any revenue. Removing either link does not just tidy the row, it un-publishes
+            a document; `tests/legal-pages.test.ts` fails if one goes. */}
+        <li><a href="/privacy" class="muted">{t.footer.privacy}</a></li>
+        <li><a href="/accessibility" class="muted">{t.footer.accessibility}</a></li>
         <li><a href="/contact" class="muted">{t.footer.contact}</a></li>
         <li>
           {/* data-native-submit: no AJAX handler exists for this one on purpose — /api/lang sets

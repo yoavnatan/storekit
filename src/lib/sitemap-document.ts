@@ -125,6 +125,13 @@ export function platformPageEntries(baseUrl: string): SitemapEntry[] {
     })),
     { loc: `${baseUrl}/terms`, changefreq: 'yearly', priority: '0.3' },
     { loc: `${baseUrl}/returns-policy`, changefreq: 'yearly', priority: '0.3' },
+    // Listed for the same reason as terms and the returns policy, and it is not an SEO reason: a
+    // commerce account is reviewed partly on whether the site publishes who it is and on what
+    // terms it handles people — and BOTH of these are pages a person may be sent to look for by
+    // name. They are SSR (`prerender = false`), so @astrojs/sitemap cannot see them at build time
+    // and this list is the only thing that puts them in front of a crawler.
+    { loc: `${baseUrl}/privacy`, changefreq: 'yearly', priority: '0.3' },
+    { loc: `${baseUrl}/accessibility`, changefreq: 'yearly', priority: '0.3' },
     { loc: `${baseUrl}/contact`, changefreq: 'yearly', priority: '0.3' },
   ];
 }

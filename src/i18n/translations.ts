@@ -288,6 +288,19 @@ export const translations = {
     footer: {
       terms: 'תנאי שימוש',
       returns: 'ביטולים והחזרות',
+      // Both added 2026-08-25 and both are LEGAL obligations rather than footer furniture, which is
+      // why they sit in the run of legal links and not at the end as an afterthought: `/privacy`
+      // discharges the §11 notification duty that תיקון 13 widened, and `/accessibility` is the
+      // הצהרת נגישות that תקנה 35ה requires be published. Neither page may lose its link — a
+      // statement nobody can reach is a statement that was not published.
+      //
+      // ONE WORD each, not the documents' full titles. Two reasons, and the second is the one that
+      // decided it: "פרטיות"/"נגישות" is what an Israeli footer says, so it is what a person scans
+      // for — and the full titles pushed the mobile row from two wrapped lines to three, leaving
+      // "צור קשר" stranded on a line of its own beside the language toggle (measured at 375px).
+      // The pages keep their full names in their own <h1>, which is where a title belongs.
+      privacy: 'פרטיות',
+      accessibility: 'נגישות',
       contact: 'צור קשר',
       pricing: 'מחירים',
       help: 'עזרה',
@@ -2815,6 +2828,8 @@ export const translations = {
     footer: {
       terms: 'Terms',
       returns: 'Returns',
+      privacy: 'Privacy',
+      accessibility: 'Accessibility',
       contact: 'Contact',
       pricing: 'Pricing',
       help: 'Help',

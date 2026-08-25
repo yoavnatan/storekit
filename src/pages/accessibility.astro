@@ -1,0 +1,143 @@
+---
+/** Accessibility statement — הצהרת נגישות. A legal obligation, not a courtesy page.
+ *
+ *  **Why it is compulsory here, checked 2026-08-25 against the regulation rather than a vendor's
+ *  sales page** (sourcing in `docs/legal-privacy-accessibility.md`):
+ *  תקנה 35 לתקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), תשע״ג-2013 requires an
+ *  internet service to meet ת״י 5568 at **level AA**, and **תקנה 35ה** requires publishing a
+ *  statement of the accommodations made, who to contact about accessibility, and how to report a
+ *  problem. The turnover exemption people reach for — under ₪1,000,000 — applies **only to a site
+ *  whose operation began before 26.10.2017**. This one did not, so no exemption of any kind reaches
+ *  it, at any revenue. Enforcement is real: administrative ₪7,500 per day of violation, and a civil
+ *  claim of up to ₪50,000 with no proof of damage.
+ *
+ *  **What we are NOT obliged to do, and must not pretend to:** appoint a רכז נגישות. That duty
+ *  (תקנה 91) starts at 25 employees. So this page names an address to write to and does not use
+ *  that title — claiming the role would take on its duties without being under them.
+ *
+ *  **Every accommodation listed below is one the code actually implements**, and the "נבדק" line
+ *  is a real measurement: axe-core 4.10 at WCAG 2.1 AA was driven over the home page, the store
+ *  directory, search, a store page, checkout, contact, help, pricing, the returns policy and seller
+ *  registration, at 1280px and at 375px, and the three defects it found were fixed the same day —
+ *  a chip using `aria-pressed` on a link, a product card whose picture role wrapped two buttons,
+ *  and the card carousel having no keyboard tab stop at all. **Re-run that scan before changing
+ *  the date on this page.** A statement that says "tested" over untested code is worse than no
+ *  statement: it is the one document a regulator reads first.
+ *
+ *  ⚠️ The KNOWN-LIMITS clause is load-bearing and must stay honest. It names the alt text on
+ *  seller-uploaded photos, which is auto-derived from the product name and is therefore a label
+ *  rather than a description. Do not delete it to make the page read better — an undisclosed known
+ *  gap is the thing the regulation punishes; a disclosed one with a human alternative beside it is
+ *  what תקנה 35 asks for.
+ *
+ *  Hebrew, in both UI languages, with the Hebrew stated as binding — same standing as `/terms`
+ *  and `/privacy`.
+ */
+export const prerender = false;
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang } from '../i18n/index.js';
+import { store as platform } from '../config/store.config.js';
+
+const lang = getLang(Astro.cookies);
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+
+const title = lang === 'he' ? 'הצהרת נגישות' : 'Accessibility statement';
+const email = platform.business.email;
+const phone = platform.business.phone;
+
+/** The date the accessibility review this statement reports was actually run. A constant rather
+ *  than `new Date()`: a statement that silently re-dates itself every page load claims a check
+ *  nobody performed. Move it only when the axe run is repeated — see the header. */
+const REVIEWED = '25.8.2026';
+
+const clauses: { h: string; p: string[] }[] = [
+  {
+    h: 'המחויבות שלנו',
+    p: [
+      `${platform.name} היא זירת מסחר מקוונת, ואנחנו רואים בנגישות האתר חלק מהשירות עצמו ולא תוספת לו. האתר נבנה כדי לאפשר לכל אדם, לרבות אנשים עם מוגבלות, לגלוש בחנויות, למצוא מוצר ולהשלים רכישה באופן עצמאי.`,
+      'האתר הונגש בהתאם לתקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), תשע״ג-2013, ולפי התקן הישראלי ת״י 5568 ברמת הנגישות AA.',
+    ],
+  },
+  {
+    h: 'מה הונגש באתר',
+    p: [
+      'ניווט מלא במקלדת: אפשר להגיע לכל קישור, כפתור, שדה, תפריט וסינון בלי עכבר, והמוקד מסומן בבירור בכל מקום שאליו הוא מגיע.',
+      'קישור "דילוג לתוכן הראשי" בראש כל עמוד, המאפשר לדלג על התפריט העליון.',
+      'מבנה סמנטי ותיאורים: כותרות בהיררכיה, תווית לכל שדה בטופס, תיאור חלופי לתמונות, ותיאור לכל כפתור שמסומן באייקון בלבד.',
+      'הודעות מצב — הוספה לסל, שמירה, שגיאה בטופס — מוקראות בידי קורא מסך ואינן נסמכות על צבע בלבד.',
+      'חלוניות ותפריטים נסגרים במקש Escape, והמוקד מוחזר למקום שממנו נפתחו.',
+      'ניגודיות צבעים העומדת בדרישת התקן, טקסט שניתן להגדיל, ותצוגה מותאמת למסכים קטנים ולמכשירים ניידים.',
+      'האתר מכבד את הגדרת "הפחתת תנועה" של מערכת ההפעלה, ואין בו תנועה אוטומטית מתמשכת, הבהובים או תוכן שמתחלף מעצמו.',
+      'האתר כתוב עברית ומוצג מימין לשמאל, וסדר הקריאה של קורא מסך תואם לסדר שעל המסך.',
+    ],
+  },
+  {
+    h: 'בדיקת הנגישות',
+    p: [
+      `הנגישות נבדקה לאחרונה ב-${REVIEWED} בכלי בדיקה אוטומטי מול WCAG 2.1 ברמה AA — שהוא הבסיס לת״י 5568 — על עמוד הבית, מדריך החנויות, החיפוש, עמוד חנות, עמוד התשלום, יצירת קשר, מרכז העזרה, עמוד המסלולים, מדיניות הביטולים ופתיחת חנות, במסך רחב ובמסך נייד. הליקויים שנמצאו תוקנו.`,
+      'בנוסף נבדקה הפעלה של האתר במקלדת בלבד.',
+    ],
+  },
+  {
+    h: 'מה עדיין לא נגיש במלואו',
+    // Stated because it is TRUE and because an undisclosed gap is the exposure. `alt` on a product
+    // photo is the product's name (see the card markup) — a correct label, not a description.
+    p: [
+      'התיאור החלופי של תמונות מוצר נגזר משם המוצר שהזין המוכר. זהו תיאור נכון של מה שמוצג, אך לא תמיד תיאור מלא של פרטי התמונה.',
+      'חלקים באתר נשענים על שירותים חיצוניים (סליקה, מפות, נגני תוכן של צד שלישי), ולנגישותם אנחנו כפופים לספק.',
+      'תוכן שכותבים בעלי החנויות — תיאורי מוצר ופרטי חנות — נכתב בידיהם. אנחנו מנגישים את המסגרת שבה הוא מוצג.',
+      'אנחנו ממשיכים לשפר. אם נתקלת בקושי, הפנייה שלך היא הדרך המהירה ביותר שנדע עליו.',
+    ],
+  },
+  {
+    h: 'נתקלתם בבעיה? כתבו לנו',
+    // תקנה 35ה: the statement must say who to contact and how to report a problem. Two channels,
+    // because "write to us" is not an accommodation for someone who cannot use the form.
+    p: [
+      `אחראי הנגישות מטעם ${platform.name} — דואר אלקטרוני: ${email} · טלפון: ${phone}.`,
+      'אפשר לפנות בכל דרך שנוחה לכם, גם בטלפון וגם בדואר אלקטרוני, ואין צורך למלא טופס. נשמח לדעת באיזה עמוד מדובר ומה לא עבד, ונטפל בפנייה בהקדם.',
+      'אם נדרשת התאמה כדי להשלים הזמנה — נשמח לסייע בביצועה מולכם ישירות.',
+    ],
+  },
+];
+---
+
+<BaseLayout
+  title={`${title} — ${platform.name}`}
+  description={lang === 'he'
+    ? `הצהרת הנגישות של ${platform.name} — מה הונגש באתר, לפי איזה תקן, ואיך פונים אלינו בנושא נגישות.`
+    : `${platform.name} accessibility statement — what has been made accessible, to which standard, and how to reach us.`}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <section class="section container" dir="rtl" style="max-width:70ch">
+    <h1 class="!text-[1.6rem] !font-semibold">הצהרת נגישות</h1>
+    {lang !== 'he' && (
+      <p class="muted" style="margin-top:0.75rem">This statement is published in Hebrew, which is the binding version.</p>
+    )}
+
+    {clauses.map((c) => (
+      <>
+        <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">{c.h}</h2>
+        {c.p.map((line) => <p style="margin-top:0.5rem">{line}</p>)}
+      </>
+    ))}
+
+    <p class="muted" style="margin-top:1.75rem">{`ההצהרה עודכנה לאחרונה ב-${REVIEWED}.`}</p>
+
+    <p style="margin-top:2rem">
+      <a href="/privacy" class="muted">מדיניות פרטיות</a>
+      <span class="muted" aria-hidden="true"> · </span>
+      <a href="/terms" class="muted">תנאי שימוש</a>
+      <span class="muted" aria-hidden="true"> · </span>
+      <a href="/contact" class="muted">יצירת קשר</a>
+    </p>
+  </section>
+</BaseLayout>

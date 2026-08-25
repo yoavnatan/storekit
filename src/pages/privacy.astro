@@ -1,0 +1,209 @@
+---
+/** Privacy policy — the document the site collected personal data for a year without publishing.
+ *
+ *  Until 2026-08-25 the whole of it was ONE paragraph inside `/terms` under the heading "פרטיות".
+ *  That paragraph was true; it was not a privacy policy. **תיקון 13 לחוק הגנת הפרטיות came into
+ *  force on 2025-08-14** and rewrote what a site that collects personal data owes the person it
+ *  collects from — the sourcing, with the Authority's own guide quoted, is in
+ *  `docs/legal-privacy-accessibility.md`, and every clause below maps to a duty named there.
+ *
+ *  **The two facts that decided the shape of this page, both checked against the Authority's
+ *  professional guide rather than against a blog:**
+ *  1. **We do NOT have to register a database.** Amendment 13 abolished registration for the
+ *     private sector almost entirely — what remains is public bodies, and data brokers with
+ *     10,000+ subjects. Selling goods is neither. **Nor do we have to appoint a ממונה הגנת
+ *     פרטיות (DPO):** that duty lands on public bodies, data brokers, and controllers whose
+ *     *main occupation* is large-scale monitoring or large-scale sensitive-data processing. A
+ *     marketplace running one platform-wide pixel is none of those. Do not add either claim to
+ *     this page — naming a DPO we are not obliged to appoint creates the duty's obligations
+ *     without its exemptions.
+ *  2. **The §11 notification duty is now WIDER than "say what you collect".** It must also say
+ *     whether there is a legal obligation to give the data and **what happens if the person
+ *     refuses**, plus that a right of access (§13) and a right of correction (§14) exist. Those
+ *     are the "האם חייבים למסור" and "הזכויות שלך" clauses below, and they are the two a
+ *     copy-pasted policy always omits.
+ *
+ *  **Everything here is a statement about what the CODE does.** Not a template, not an intention.
+ *  Every recipient named below is a service the repo actually calls, every retention window is a
+ *  constant in `lib/data-retention.ts` interpolated rather than typed, and the sentence about card
+ *  details never reaching us is the split model (GO_LIVE §3.1.0), not a courtesy. If a feature
+ *  starts sending personal data somewhere new, this page is part of that change — the same rule as
+ *  a GO_LIVE row, and `tests/privacy-policy.test.ts` is what stops the numbers drifting.
+ *
+ *  ⚠️ **One thing on this page is deliberately UNSTATED: how long a buyer's identifying details
+ *  live inside an old order.** `ORDER_RETENTION_YEARS` is `null` because nobody has decided —
+ *  it is an open ⚠️ row in GO_LIVE (רו״ח: how many years an accounting record must be kept;
+ *  עו״ד: when the identifying fields come off). The clause states the duty and the fact instead of
+ *  inventing a number, which is the one thing a published policy must never do.
+ *
+ *  ⚠️ NOT a substitute for legal review before launch — same standing as `/terms`.
+ *
+ *  Hebrew, in both UI languages, with the Hebrew stated as binding: the standard for an Israeli
+ *  consumer site, and more honest than a machine translation that would then contradict it.
+ */
+export const prerender = false;
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang } from '../i18n/index.js';
+import { store as platform } from '../config/store.config.js';
+// Interpolated, never restated — a window written as a digit in a legal clause AND in the job that
+// enforces it is a pair that drifts, and the copy is the half a person can hold us to. Same rule
+// `/terms` follows for the fulfilment deadlines. `tests/privacy-policy.test.ts` pins it.
+import {
+  VISITOR_RETENTION_DAYS,
+  ATTRIBUTION_WINDOW_DAYS,
+  AUTH_ATTEMPT_RETENTION_MINUTES,
+  ORDER_RETENTION_YEARS,
+} from '../lib/data-retention.js';
+
+const lang = getLang(Astro.cookies);
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+
+const title = lang === 'he' ? 'מדיניות פרטיות' : 'Privacy policy';
+const email = platform.business.email;
+
+/** Every clause, in the one language that binds. Same shape as `/terms` on purpose: one loop, and a
+ *  new clause is one entry. */
+const clauses: { h: string; p: string[] }[] = [
+  {
+    h: 'מי אחראי למידע',
+    p: [
+      `${platform.name} מפעילה את האתר והיא בעלת השליטה במידע האישי שנאסף בו. כתובת לפניות בענייני פרטיות: ${email}.`,
+      // Said early and plainly because it is the thing a buyer is least likely to guess, and it
+      // decides who they should be talking to about half the data on the site.
+      `כל חנות באתר מנוהלת בידי עסק עצמאי. הפרטים הדרושים לאספקת הזמנה נמסרים למוכר שאצלו בוצעה, והוא אחראי למידע שברשותו בנפרד מ-${platform.name}.`,
+    ],
+  },
+  {
+    h: 'איזה מידע נאסף, ולשם מה',
+    p: [
+      'בהזמנה: שם, כתובת דואר אלקטרוני, טלפון וכתובת למשלוח, יחד עם פרטי ההזמנה עצמה. הם משמשים להשלמת ההזמנה, לאספקתה, לשירות הלקוחות סביבה ולהפקת מסמכי החשבונאות הנדרשים בדין.',
+      'בפתיחת חשבון קונה: כתובת דואר אלקטרוני וסיסמה. הסיסמה נשמרת כגיבוב חד-כיווני בלבד, ולא ניתן לשחזר ממנה את הסיסמה עצמה. חשבון מאפשר לראות הזמנות קודמות, לשמור סל ולנהל רשימת מועדפים.',
+      'בפתיחת חנות: פרטי הקשר של המוכר, פרטי העסק שלו ופרטי חשבון הבנק שאליו ייגבו מכירותיו. פרטי העסק והבנק נדרשים בידי חברת הסליקה לצורך פתיחת חשבון סליקה, ומועברים אליה.',
+      // The card sentence is the split model stated to the person it protects. It is a fact about
+      // the architecture (GO_LIVE §3.1.0), not a reassurance.
+      `פרטי אמצעי תשלום — מספר כרטיס, תוקף וקוד אימות — נמסרים ישירות לחברת הסליקה ואינם עוברים דרך ${platform.name} ואינם נשמרים אצלה בשום שלב.`,
+      `בגלישה באתר: מזהה ביקור אקראי הנשמר בעוגייה, ומשמש לספירת מבקרים נבדלים בדוחות של החנויות; מקור ההגעה לאתר (למשל קמפיין פרסום), המשמש לייחוס מכירה למקור שלה; ותיעוד תקלות טכניות. אין מדובר בשם ואין בו כדי לזהות אדם בשמו.`,
+      'בהתחברות ובטפסים פתוחים: כתובת ה-IP שממנה בוצע הניסיון, לצורך הגנה מפני ניסיונות חוזרים ומפני שימוש לרעה בלבד. זהו המקום היחיד באתר שבו נרשמת כתובת IP.',
+      'בפנייה אלינו או אל מוכר, ובכתיבת חוות דעת על מוצר: התוכן שנכתב ופרטי הקשר שנמסרו בו.',
+    ],
+  },
+  {
+    h: 'האם חובה למסור את המידע, ומה קורה אם לא',
+    // The §11 clause, and the one a copied policy never has. It exists because the law was amended
+    // to require exactly this: not only what is collected, but the consequence of refusing.
+    p: [
+      'אין חובה חוקית למסור לנו מידע כלשהו, והמסירה תלויה ברצונך.',
+      'עם זאת, בלי שם, כתובת דואר אלקטרוני, טלפון וכתובת למשלוח לא ניתן להשלים הזמנה ולספק אותה, ולכן לא ניתן לבצע רכישה באתר בלעדיהם. בלי כתובת דואר אלקטרוני וסיסמה לא ניתן לפתוח חשבון. בלי פרטי עסק ופרטי חשבון בנק לא תיפתח למוכר חשבון סליקה, ולא ניתן יהיה למכור באתר.',
+      'גלישה, חיפוש ועיון בחנויות אינם מחייבים מסירת פרטים כלל.',
+    ],
+  },
+  {
+    h: 'למי המידע נמסר',
+    p: [
+      'למוכר שאצלו בוצעה ההזמנה — שם, טלפון, כתובת דואר אלקטרוני וכתובת למשלוח, לצורך אספקת ההזמנה, מתן שירות בגינה והוצאת חשבונית.',
+      'לחברת הסליקה — הפרטים הדרושים לביצוע החיוב ולזיהוי העסקה.',
+      'לחברת השילוח — שם, טלפון וכתובת, לצורך מסירת המשלוח ומעקב אחריו.',
+      'לספקי תשתית שמפעילים עבורנו את האתר — אחסון וניהול מסד הנתונים, אחסון ועיבוד תמונות ושליחת הודעות דואר אלקטרוני. הם מעבדים את המידע עבורנו בלבד ולפי הנחיותינו.',
+      // Named because it is a transfer for OUR purposes to companies with their own — the class a
+      // reader is entitled to know about, and the one a policy is tempted to leave vague.
+      'לגוגל ולמטא — נתוני שימוש באתר ואירועי רכישה, לצורך מדידת ביצועי האתר וניהול הפרסום של הפלטפורמה ושל החנויות שבה. השירותים האלה פועלים בכל עמוד באתר וקובעים עוגיות משלהם, בהתאם למדיניות הפרטיות שלהם.',
+      'ככל שנדרש לפי דין, או לצורך בירור והגנה מפני שימוש לרעה, הונאה או הפרת זכויות.',
+      `${platform.name} אינה מוכרת מידע אישי ואינה מוסרת אותו לצדדים שלישיים לצורכי פרסום שלהם.`,
+    ],
+  },
+  {
+    h: 'העברת מידע אל מחוץ לישראל',
+    p: [
+      'חלק מספקי התשתית והפרסום שלנו פועלים מחוץ לישראל, ולכן מידע עשוי להישמר או להיות מעובד בשרתים במדינות אחרות, ובכללן מדינות באיחוד האירופי ובארצות הברית. ההתקשרות עם ספקים אלה נעשית באופן המחייב אותם לשמור על המידע ולעבד אותו לצורכי השירות בלבד.',
+    ],
+  },
+  {
+    h: 'כמה זמן נשמר המידע',
+    p: [
+      // Two windows the code actually enforces, interpolated. Stating them is the retention-policy
+      // duty Amendment 13 added; stating them as digits typed here would be the drift it invites.
+      `פירוט לפי מבקר בנתוני התנועה באתר נשמר עד ${VISITOR_RETENTION_DAYS} ימים ונמחק לאחר מכן. הנתונים המצטברים — כמה צפיות היו ובכמה מוצרים — נשמרים ללא פירוט אישי.`,
+      `מקור ההגעה לאתר נשמר עד ${ATTRIBUTION_WINDOW_DAYS} ימים. תיעוד ניסיונות התחברות נמחק בתוך ${AUTH_ATTEMPT_RETENTION_MINUTES} דקות, והתחברות מוצלחת מוחקת אותו מיד.`,
+      ORDER_RETENTION_YEARS === null
+        // The honest form of "we have not decided yet": the duty is real and is stated; the number
+        // is not invented. GO_LIVE holds the ⚠️ row and the two people who have to answer it.
+        ? 'הזמנות והרישום החשבונאי הנלווה להן נשמרים כל עוד הדין מחייב לשמור רישום כזה, וכל עוד הם דרושים לבירור פנייה, החזרה או מחלוקת. פרטי חשבון שנסגר נמחקים או הופכים לבלתי מזוהים, למעט מה שחובה לשמור לפי דין.'
+        : `הזמנות והרישום החשבונאי הנלווה להן נשמרים ${ORDER_RETENTION_YEARS} שנים, כנדרש בדין. לאחר מכן מוסרים מהם הפרטים המזהים.`,
+    ],
+  },
+  {
+    h: 'הזכויות שלך',
+    // §13 and §14, named as rights because the amended §11 requires the person to be TOLD they
+    // exist — being willing to honour them quietly is not the duty.
+    p: [
+      'כל אדם זכאי לעיין במידע האישי שנשמר עליו, ולבקש לתקן מידע שאינו נכון, שלם, ברור או מעודכן. אפשר גם לבקש למחוק מידע, ואנחנו נמחק כל מה שאיננו חייבים לשמור לפי דין או לצורך בירור עסקה פתוחה.',
+      `פנייה בכל אחד מאלה: ${email}. נשיב בתוך 30 יום. אם לא נוכל למחוק פרט מסוים, נאמר מדוע.`,
+      'מי שקיבל ממך פרטים כמוכר — כלומר החנות שאצלה קנית — מחזיק בהם בנפרד. נשמח להפנות אותך אליו, ואם לא נצליח לתווך, אפשר לפנות אלינו והמידע שברשותנו יטופל בכל מקרה.',
+    ],
+  },
+  {
+    h: 'עוגיות',
+    p: [
+      'האתר משתמש בעוגיות הדרושות לפעולתו: שמירת ההתחברות לחשבון, שמירת סל הקניות, זכירת שפת הממשק, הגנה מפני זיוף בקשות, וזכירת חנויות שביקרת בהן לאחרונה. בלעדיהן חלקים מהאתר לא יפעלו.',
+      `בנוסף נשמרת עוגייה עם מזהה ביקור אקראי לצורך ספירת מבקרים נבדלים (עד ${VISITOR_RETENTION_DAYS} ימים), ועוגייה עם מקור ההגעה לאתר (עד ${ATTRIBUTION_WINDOW_DAYS} ימים).`,
+      'שירותי המדידה והפרסום של גוגל ומטא, הפועלים באתר, קובעים עוגיות משלהם. אפשר לחסום או למחוק עוגיות בהגדרות הדפדפן; חסימה של עוגיות הדרושות לפעולת האתר תמנע התחברות ורכישה.',
+    ],
+  },
+  {
+    h: 'אבטחת מידע',
+    p: [
+      'האתר מוגש בתעבורה מוצפנת, סיסמאות נשמרות כגיבוב חד-כיווני בלבד, הגישה למידע מוגבלת לפי הרשאה, וקיימת הגבלת קצב על ניסיונות התחברות. אין מערכת חסינה לחלוטין, ואנו פועלים לצמצם את הסיכון ולטפל בכל אירוע.',
+    ],
+  },
+  {
+    h: 'קטינים',
+    p: [
+      'האתר אינו מיועד לילדים. רכישה בידי קטין טעונה הסכמת האחראי עליו.',
+    ],
+  },
+  {
+    h: 'שינוי המדיניות ויצירת קשר',
+    p: [
+      `המדיניות עשויה להתעדכן; הנוסח המחייב הוא זה המפורסם בעמוד זה. לכל שאלה או בקשה בענייני פרטיות: ${email}.`,
+    ],
+  },
+];
+---
+
+<BaseLayout
+  title={`${title} — ${platform.name}`}
+  description={lang === 'he'
+    ? `מדיניות הפרטיות של ${platform.name} — איזה מידע נאסף, למי הוא נמסר, כמה זמן הוא נשמר ומה הזכויות שלך.`
+    : `${platform.name} privacy policy — what is collected, who receives it, how long it is kept and what your rights are.`}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <section class="section container" dir="rtl" style="max-width:70ch">
+    <h1 class="!text-[1.6rem] !font-semibold">מדיניות פרטיות</h1>
+    {lang !== 'he' && (
+      <p class="muted" style="margin-top:0.75rem">This policy is published in Hebrew, which is the binding version.</p>
+    )}
+
+    {clauses.map((c) => (
+      <>
+        <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">{c.h}</h2>
+        {c.p.map((line) => <p style="margin-top:0.5rem">{line}</p>)}
+      </>
+    ))}
+
+    <p style="margin-top:2rem">
+      <a href="/terms" class="muted">תנאי שימוש</a>
+      <span class="muted" aria-hidden="true"> · </span>
+      <a href="/accessibility" class="muted">הצהרת נגישות</a>
+      <span class="muted" aria-hidden="true"> · </span>
+      <a href="/contact" class="muted">יצירת קשר</a>
+    </p>
+  </section>
+</BaseLayout>

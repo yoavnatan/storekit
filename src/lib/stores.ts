@@ -399,6 +399,13 @@ export const RESERVED_SLUGS = new Set<string>([
   // all point at it — so an unreserved `pricing` would hand a seller the page on which every other
   // seller reads what the platform charges.
   'pricing', 'help',
+  // The two statutory documents (2026-08-25). Same class again, and the consequence is worse than
+  // a wrong link: a seller who registered `privacy` would answer for the page that discharges the
+  // §11 notification duty, and one who registered `accessibility` for the הצהרת נגישות that
+  // תקנה 35ה requires be published — a legal document silently replaced by a shopfront, with the
+  // footer of every page still pointing at it. `tests/external-contract.test.ts` caught this the
+  // same minute the links went in, which is exactly what that test is for.
+  'privacy', 'accessibility',
 ]);
 
 const LONGEST_RESERVED_SLUG = Math.max(...[...RESERVED_SLUGS].map((s) => s.length));

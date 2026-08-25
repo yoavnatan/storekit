@@ -36,6 +36,14 @@ export const PLATFORM_PAGE_SEGMENTS: readonly string[] = [
   // 'returns-policy' is the platform's, like 'terms': it is ONE policy for every shop (decisions §2),
   // so a buyer on a seller's custom domain must read the platform's copy and not a per-host one.
   'terms', 'contact', 'returns-policy',
+  // 'privacy' and 'accessibility' (2026-08-25) sit with 'terms' for the same reason and one more.
+  // The reason: there is ONE of each for the whole site, and a buyer on a seller's custom domain
+  // must read ours rather than a per-host copy. The one more: both are statements about who is
+  // legally answerable, and serving them from `shop.acme.co.il` would present the SELLER as the
+  // party who wrote them — the privacy policy names us as בעל השליטה במאגר and the accessibility
+  // statement gives our address to write to, so a host-local copy would be a document making
+  // claims about a business that never made them.
+  'privacy', 'accessibility',
   // 'pricing' is the platform's for a sharper reason than the three beside it: it is what WE charge
   // a seller, so serving it from a shop's own domain would put our seller pricing in front of that
   // shop's customers, on the shop's brand, as if it were theirs.

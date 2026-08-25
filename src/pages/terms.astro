@@ -132,9 +132,15 @@ const clauses: { h: string; p: string[] }[] = [
     ],
   },
   {
+    // This clause is now a SUMMARY with a pointer, not the policy. It was the whole of the site's
+    // privacy documentation until 2026-08-25, which was one paragraph where תיקון 13 (in force
+    // 2025-08-14) requires a document — see `/privacy`. It stays because a reader of the terms
+    // should not have to already know the other page exists, and it must never grow back into a
+    // second, competing statement: anything new about personal data belongs on `/privacy` alone.
     h: 'פרטיות',
     p: [
       'הפרטים שנמסרים בהרשמה ובהזמנה משמשים להפעלת האתר, לביצוע ההזמנה ולשירות הלקוחות. פרטי הקונה הדרושים לאספקה נמסרים למוכר שאצלו בוצעה ההזמנה. פרטי אמצעי התשלום מעובדים אצל חברת הסליקה ואינם נשמרים באתר.',
+      'הפירוט המלא — איזה מידע נאסף, למי הוא נמסר, כמה זמן הוא נשמר וכיצד מממשים זכות עיון, תיקון או מחיקה — נמצא במדיניות הפרטיות.',
     ],
   },
   {
@@ -170,6 +176,10 @@ const clauses: { h: string; p: string[] }[] = [
     ))}
 
     <p style="margin-top:2rem">
+      <a href="/privacy" class="muted">מדיניות פרטיות</a>
+      <span class="muted" aria-hidden="true"> · </span>
+      <a href="/accessibility" class="muted">הצהרת נגישות</a>
+      <span class="muted" aria-hidden="true"> · </span>
       <a href="/contact" class="muted">יצירת קשר</a>
     </p>
   </section>
