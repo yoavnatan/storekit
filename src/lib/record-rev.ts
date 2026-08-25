@@ -80,7 +80,16 @@ export const PRODUCT_REV_FIELDS = [
 /** The store fields the Settings form submits (api/store.ts `save-settings`). Everything else on the store — sale, bg colours, feed config, export token, custom domain, slug — saves live from its own section and is intentionally outside this revision. */
 export const STORE_REV_FIELDS = [
   'name', 'tagline', 'description', 'categories', 'bannerImage', 'profileImage',
-  'address', 'addressVisible', 'hours', 'hoursVisible', 'shipping',
+  'address', 'addressVisible', 'hours', 'hoursVisible',
+  // **Sub-keys of `shipping`, not `shipping` itself — and that is the whole point.** The column is
+  // one JSON object, so listing it whole made every setting inside it ONE mergeable unit: two tabs
+  // toggling two DIFFERENT switches both reported having changed "shipping", to different values,
+  // and the seller was interrupted by a conflict this module exists to avoid. It was invisible
+  // while `shipping` held a single key, because then the object and the field were the same thing.
+  // A dotted path is read and written by `readPath`/`writePath` below; a plain name still behaves
+  // exactly as it always did. **Adding a switch to `shipping` means adding its path HERE too** —
+  // otherwise it is not merged, and worse, it is not written at all.
+  'shipping.selfPickup', 'shipping.printsLabels',
   // Appended rather than inserted — a convention here, not a safety property, and the difference is
   // worth stating because the obvious guess is wrong. `fieldRevs` joins one revision PER FIELD
   // positionally, so the tempting conclusion is that a mid-list insert would misalign an in-flight
@@ -95,9 +104,37 @@ export const STORE_REV_FIELDS = [
   'headerLogo', 'headerStyle',
 ] as const;
 
+/** Read a field that may be a dotted path into a nested object (`shipping.selfPickup`). A plain
+ *  name is a one-segment path, so this is identical to `record[f]` for every field that is not
+ *  nested — the product form's entire list included. Missing intermediates read as `undefined`,
+ *  which is what an absent field has always produced here. */
+function readPath(record: Record<string, unknown>, path: string): unknown {
+  if (!path.includes('.')) return record[path];
+  return path.split('.').reduce<unknown>(
+    (value, key) => (value == null ? undefined : (value as Record<string, unknown>)[key]),
+    record,
+  );
+}
+
+/** The write half. Intermediates are created as plain objects, so a merge result is assembled the
+ *  same way whether the record it came from had the nested object or not. Deliberately only ever
+ *  called on the merge's own fresh output — it mutates, and nothing else here may. */
+function writePath(target: Record<string, unknown>, path: string, value: unknown): void {
+  if (!path.includes('.')) { target[path] = value; return; }
+  const keys = path.split('.');
+  const last = keys.pop() as string;
+  let node = target;
+  for (const key of keys) {
+    const next = node[key];
+    if (typeof next !== 'object' || next === null) node[key] = {};
+    node = node[key] as Record<string, unknown>;
+  }
+  node[last] = value;
+}
+
 /** One revision PER FIELD, positional over the field list above — that is what lets a save be merged field by field instead of accepted or rejected whole. */
 function fieldRevs(record: Record<string, unknown>, fields: readonly string[]): string {
-  return fields.map((f) => revOf(normalize(record[f]))).join('.');
+  return fields.map((f) => revOf(normalize(readPath(record, f)))).join('.');
 }
 
 export function productEditRev(p: object): string {
@@ -155,18 +192,19 @@ export function mergeByFieldRev(opts: {
   const usable = base.length === fields.length;
 
   fields.forEach((field, i) => {
-    const submittedValue = submitted[field];
-    if (!usable) { merged[field] = submittedValue; return; }
+    const submittedValue = readPath(submitted, field);
+    if (!usable) { writePath(merged, field, submittedValue); return; }
 
     const baseRev = base[i];
     const submittedRev = revOf(normalize(submittedValue));
-    const storedRev = revOf(normalize(stored[field]));
+    const storedValue = readPath(stored, field);
+    const storedRev = revOf(normalize(storedValue));
     const seller = submittedRev !== baseRev;
     const elsewhere = storedRev !== baseRev;
 
-    if (!seller) { merged[field] = stored[field]; return; }
+    if (!seller) { writePath(merged, field, storedValue); return; }
     if (elsewhere && submittedRev !== storedRev && !force) conflicts.push(field);
-    merged[field] = submittedValue;
+    writePath(merged, field, submittedValue);
   });
 
   return { merged, conflicts };

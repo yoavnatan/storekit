@@ -53,6 +53,30 @@ export function offersSelfPickup(
   return !!store?.shipping?.selfPickup && !!store.address;
 }
 
+/**
+ * Does this seller print the carrier label himself?
+ *
+ * **The default is NO, and it is a decision rather than a fallback** (owner, 2026-08-25):
+ * *"אני רוצה לאפשר מצב שבו המוכר גם לא צריך להדפיס מדבקות, אבל כן לאפשר את זה אם הוא בוחר בכך."*
+ * Printing is a convenience a seller may opt INTO; it is never a condition of selling here. So a
+ * seller who never opened the settings screen — which is most of them on day one — gets the path
+ * that asks nothing of him, and the parcel is labelled by the carrier at collection.
+ *
+ * Whether a carrier can actually do that is the open question in GO_LIVE §5.0.2, and it does not
+ * belong in this function: our side is identical either way. We always create the shipment and
+ * always hold the label; this flag decides one thing only — whether the seller is SHOWN a print
+ * action. Nothing here may ever gate creating the shipment, because a seller's printer preference
+ * cannot be allowed to decide whether a buyer's parcel exists.
+ *
+ * Shaped structurally, like `offersSelfPickup` above and for the same reason: this file stays pure
+ * and importable from the browser bundle and from a test, with no store model behind it.
+ */
+export function sellerPrintsLabels(
+  store: { shipping?: { printsLabels?: boolean } } | null | undefined,
+): boolean {
+  return store?.shipping?.printsLabels === true;
+}
+
 /** Courier + pickup point are platform defaults available on every store. Self-pickup is
  *  offered only when the seller opted in AND the store has a pickup address — the caller
  *  passes that already-resolved boolean (address presence is checked where the Store is

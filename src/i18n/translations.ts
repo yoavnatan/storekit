@@ -2161,6 +2161,8 @@ export const translations = {
       storeAddressPlaceholder: 'לדוגמה: רחוב הרצל 1, תל אביב',
       offerSelfPickup: 'אפשר איסוף עצמי מהחנות',
       offerSelfPickupHint: 'הלקוח יוכל לאסוף מהחנות ללא דמי משלוח. דורש כתובת פיזית.',
+      printsLabels: 'אני מדפיס את מדבקות המשלוח בעצמי',
+      printsLabelsHint: 'ברירת המחדל: אינך צריך להדפיס כלום — השליח מגיע לאסוף והמדבקה מטופלת מולנו. סמן רק אם נוח לך להדפיס מדבקה לכל חבילה.',
       storeHours: 'שעות פתיחה',
       storeHoursClosed: 'סגור',
       storeHoursDay: {
@@ -4248,6 +4250,8 @@ export const translations = {
       storeAddressPlaceholder: 'e.g. 1 Herzl St, Tel Aviv',
       offerSelfPickup: 'Offer self-pickup from the store',
       offerSelfPickupHint: 'Buyers can collect from the store with no shipping fee. Requires a physical address.',
+      printsLabels: 'I print the shipping labels myself',
+      printsLabelsHint: 'By default you print nothing — the courier collects and the label is handled with us. Tick this only if printing a label per parcel suits you.',
       storeHours: 'Opening hours',
       storeHoursClosed: 'Closed',
       storeHoursDay: {

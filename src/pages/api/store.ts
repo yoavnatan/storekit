@@ -69,7 +69,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       addressVisible: form.get('addressVisible') === 'on',
       hoursVisible: form.get('hoursVisible') === 'on',
       hours: parseStoreHoursForm(form),
-      shipping: { selfPickup: form.get('selfPickup') === 'on' },
+      shipping: {
+        selfPickup: form.get('selfPickup') === 'on',
+        printsLabels: form.get('printsLabels') === 'on',
+      },
     };
 
     // The uncropped originals travel with the form but deliberately stay OUT of the merge below.
@@ -118,8 +121,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     // Self-pickup is the seller's only shipping lever (prices are platform-set). It needs
     // a pickup address — a buyer can't collect from "nowhere" — so block enabling it blank.
-    const selfPickup = (merged.shipping as { selfPickup?: boolean } | undefined)?.selfPickup === true;
+    const mergedShipping = merged.shipping as { selfPickup?: boolean; printsLabels?: boolean } | undefined;
+    const selfPickup = mergedShipping?.selfPickup === true;
     if (selfPickup && !address) return json({ ok: false, error: 'כדי לאפשר איסוף עצמי יש להזין כתובת חנות.' }, 400);
+    // Every field of `shipping` has to be named again here: the column is written whole, so a
+    // key left out of this object is a key ERASED on the next save of any other setting. That is
+    // the trap this endpoint already carries once (`selfPickup`), and adding the second field is
+    // what makes it worth saying out loud rather than discovering from a seller whose print
+    // preference silently reverted after he edited his opening hours.
+    const printsLabels = mergedShipping?.printsLabels === true;
 
     // Which original goes with the image the merge settled on (store-image.ts states the rule).
     const sourceFor = (field: 'bannerImage' | 'profileImage'): string | undefined => pairedImageSource({
@@ -150,7 +160,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       addressVisible: merged.addressVisible === true,
       hours: merged.hours as ReturnType<typeof parseStoreHoursForm>,
       hoursVisible: merged.hoursVisible === true,
-      shipping: { selfPickup },
+      shipping: { selfPickup, printsLabels },
     });
     // A NEW banner: ask Cloudinary to render its four widths now, while the seller is already
     // waiting on a save, rather than leaving the bill with whoever visits this store first. The

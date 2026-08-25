@@ -34,6 +34,12 @@ export interface StoreShipping {
    *  lever a seller has — courier/pickup-point are platform methods and their prices are
    *  platform-set (see lib/shipping.ts). A seller never sets shipping prices. */
   selfPickup?: boolean;
+  /** Seller wants to print the carrier label himself. **Absent means NO, and that is the
+   *  point** — the owner's rule (2026-08-25) is that printing is the seller's choice and
+   *  never a condition of selling here, so the burden-free path has to be what a seller who
+   *  never opened this screen gets. Read it through `sellerPrintsLabels()` in lib/shipping.ts,
+   *  never off this field, so the default lives in one place. */
+  printsLabels?: boolean;
 }
 
 export type StoreWeekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';

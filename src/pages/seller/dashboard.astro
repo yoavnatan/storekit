@@ -31,7 +31,7 @@ import { compactCount, isCompacted } from '../../lib/format-count.js';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import SellerPanelShell from '../../components/dashboard/SellerPanelShell.astro';
 import ReturnsPanel from '../../components/dashboard/ReturnsPanel.astro';
-import { offersSelfPickup } from '../../lib/shipping.js';
+import { offersSelfPickup, sellerPrintsLabels } from '../../lib/shipping.js';
 import { getReturnsForStore, countSellerActionReturns, getLatestReturnsByOrder, getOrderFactsForReturns } from '../../lib/return-requests.js';
 import { orderReturnChip, orderReturnChipHtml, type OrderReturnChip } from '../../lib/return-chip.js';
 
@@ -3143,6 +3143,14 @@ const orderStatusColors: Record<string, string> = {
               <span>{d.offerSelfPickup}</span>
             </label>
             <p class="[color:var(--color-muted)] mt-[.35rem] text-[.8rem]">{d.offerSelfPickupHint}</p>
+          </div>
+
+          <div class="field">
+            <label class="inline-flex items-center gap-[.55rem] font-semibold text-[.9rem] cursor-pointer">
+              <input type="checkbox" name="printsLabels" id="prints-labels-toggle" checked={sellerPrintsLabels(store)} />
+              <span>{d.printsLabels}</span>
+            </label>
+            <p class="[color:var(--color-muted)] mt-[.35rem] text-[.8rem]">{d.printsLabelsHint}</p>
           </div>
 
           <div class="field">
