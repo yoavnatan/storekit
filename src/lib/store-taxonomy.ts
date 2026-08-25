@@ -36,7 +36,13 @@ export const MAX_CATEGORIES_PER_STORE = 3;
  * the store's own product category tree, `store-categories.ts`, is for).
  */
 export const SEED_CATEGORIES: readonly string[] = [
-  'אופנה',
+  // Owner, 2026-08-25: *"אין לי בקטגוריות של החנויות 'בגדים'? זה דבר כל כך בסיסי."* — and he is
+  // right about the word. 'אופנה' was carrying it, but a shopper looking for clothes types בגדים,
+  // and the seed list is what a SELLER picks from, so the label has to be the one both sides say.
+  // The two are not kept side by side: that would be two shelves for one thing, which is the whole
+  // failure this vocabulary exists to prevent, and `findSimilarCategories` shares no token between
+  // them so nothing would have caught it.
+  'בגדים',
   'הנעלה',
   'תיקים',
   'תכשיטים',
@@ -78,7 +84,7 @@ export const SEED_CATEGORIES: readonly string[] = [
  * outcome: a made-up translation would misname somebody's shop.
  */
 const SEED_CATEGORY_EN: Readonly<Record<string, string>> = {
-  'אופנה': 'Fashion',
+  'בגדים': 'Fashion',
   'הנעלה': 'Shoes',
   'תיקים': 'Bags',
   'תכשיטים': 'Jewellery',

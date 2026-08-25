@@ -63,8 +63,8 @@ describe('what the seller never has to answer', () => {
   });
 
   it('takes the first category the seller ordered, which is what his shop mostly is', () => {
-    expect(paymeCategoryForStore(['הנעלה', 'אופנה'])).toBe('10407');
-    expect(paymeCategoryForStore(['אופנה', 'הנעלה'])).toBe('10200');
+    expect(paymeCategoryForStore(['הנעלה', 'בגדים'])).toBe('10407');
+    expect(paymeCategoryForStore(['בגדים', 'הנעלה'])).toBe('10200');
   });
 
   it('skips a category it cannot answer for and keeps looking', () => {

@@ -14,9 +14,9 @@
 // A pure leaf module — no database, no request — so importing it into the browser bundle costs the
 // composition rule and nothing else. Same split `seller-report-shapes.ts` exists for.
 import { businessSummaryLine, type BusinessType } from '../../lib/payout-details.js';
-import { showToast, showErrorToast } from '../../lib/toast.js';
+import { showErrorToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
-import { discardChanges } from './unsaved-guard.js';
+import { announceValueChange, discardChanges } from './unsaved-guard.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { registerPanelRefresh } from './tab-sync.js';
 
@@ -210,12 +210,104 @@ export function initPayoutsTab(): void {
     (inputs.find((f) => !f.value) ?? inputs[0])?.focus({ preventScroll: true });
   });
 
+  /**
+   * ── The bank picker ──
+   *
+   * Search by name or by code, pick, and the input keeps the CODE — which is what PayMe take and
+   * what the form posts. The list is read off the input's own `data-banks`, so the browser and the
+   * server are looking at one copy of it rather than two that can drift.
+   *
+   * It never refuses an unlisted code (`lib/israeli-banks.ts` says why); it just shows no name.
+   */
+  const bankInput = document.getElementById('pay-bank-code') as HTMLInputElement | null;
+  const bankList = document.getElementById('pay-bank-list');
+  const bankLabel = document.getElementById('pay-bank-name');
+  if (bankInput && bankList && bankLabel) {
+    interface Bank { code: string; name: string }
+    let banks: Bank[] = [];
+    try { banks = JSON.parse(bankInput.dataset['banks'] ?? '[]') as Bank[]; } catch { banks = []; }
+    const norm = (v: string): string => v.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    const nameOf = (code: string): string => banks.find((b) => b.code === norm(code))?.name ?? '';
+
+    const closeList = (): void => {
+      bankList.classList.add('!hidden');
+      bankInput.setAttribute('aria-expanded', 'false');
+    };
+
+    const render = (query: string): void => {
+      const q = query.trim();
+      const digits = norm(q);
+      const hits = !q ? banks : banks.filter((b) => b.name.includes(q) || (!!digits && b.code.startsWith(digits)));
+      if (!hits.length) { closeList(); return; }
+      bankList.replaceChildren(...hits.map((b) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.setAttribute('role', 'option');
+        row.className = 'w-full text-start rounded-[var(--radius-sm)] py-[0.45rem] px-[0.75rem] text-[0.85rem] hover:[background:var(--color-bg)] cursor-pointer bg-transparent border-0';
+        row.textContent = `${b.name} · ${b.code}`;
+        // `mousedown`, not `click`: `blur` fires first on a click and would close the list before
+        // the pick landed — the same ordering trap every dropdown on this site has to answer.
+        row.addEventListener('mousedown', (ev) => {
+          ev.preventDefault();
+          bankInput.value = b.code;
+          bankLabel.textContent = b.name;
+          closeList();
+          // Through the ONE announcer, never a hand-rolled `input` event: a widget that writes into
+          // a field without firing one leaves the unsaved-changes guard believing nothing moved,
+          // and `tests/unsaved-notice.test.ts` scans for exactly this.
+          announceValueChange(bankInput);
+        });
+        return row;
+      }));
+      bankList.classList.remove('!hidden');
+      bankInput.setAttribute('aria-expanded', 'true');
+    };
+
+    bankInput.addEventListener('focus', () => render(bankInput.value));
+    bankInput.addEventListener('input', () => {
+      bankLabel.textContent = nameOf(bankInput.value);
+      render(bankInput.value);
+    });
+    bankInput.addEventListener('blur', () => window.setTimeout(closeList, 0));
+    bankInput.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeList(); });
+
+    /**
+     * ── The name is a PICTURE of the field, so it repaints when the field is rewritten ──
+     *
+     * This widget keeps its state in the input and its readable half in a sibling — exactly the
+     * shape that breaks when the form replaces the field underneath it (a draft restore, a panel
+     * swap). Four widgets were missing this listener in the 2026-08-09 sweep and the symptom each
+     * time was the same: the value came back and the picture did not. `field-repaint-guard` scans
+     * for `announceValueChange` without this listener, which is how it was caught here too.
+     */
+    window.addEventListener('dash:fieldsrewritten', () => {
+      bankLabel.textContent = nameOf(bankInput.value);
+      closeList();
+    });
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const t = i18n();
     error.classList.add('hidden');
 
     const data = new FormData(form);
+
+    /**
+     * ── Nothing typed is not something to save ──
+     *
+     * Owner, 2026-08-25: *"אפשר לעשות שם כרגע שמור פרטים למרות שלא הוזנו שם פרטים בכלל"*. An empty
+     * submit reached the server, wrote nothing, and answered "saved" — a confirmation for an act
+     * that did not happen, on the screen where a seller is deciding whether to trust us with an
+     * account number. The server refuses it too; this is the half that names the field.
+     */
+    if (![...data.values()].some((v) => String(v).trim() !== '')) {
+      error.textContent = t['payDetailsEmpty'] ?? '';
+      error.classList.remove('hidden');
+      form.querySelector<HTMLElement>('[name="bankCode"]')?.focus();
+      return;
+    }
+
     const busy = busyButton(save, t['payDetailsSave'] ?? 'Save');
     try {
       const res = await fetch('/api/seller/payout-details', {
@@ -234,7 +326,16 @@ export function initPayoutsTab(): void {
         return;
       }
 
-      showToast(t['payDetailsSaved'] ?? 'Saved');
+      /**
+       * ── The confirmation belongs IN the button ──
+       *
+       * Owner, 2026-08-25: *"השמירת פרטים פותחת טוסט של 'הפרטים נשמרו' בעוד שמתבקש שזה יהיה בכלל
+       * בתוך הכפתור שמירה"*. A toast for a save the seller is looking straight at travels to the
+       * corner of the screen to report something that happened under his cursor. `btn--confirmed`
+       * is this site's existing recipe for exactly that (`components/buttons.css`), so the button
+       * he pressed says it and settles back.
+       */
+      busy.confirm(t['payDetailsSaved'] ?? 'Saved');
       // What was just written is the state a later "discard" comes back to, and it is what stops
       // the floating unsaved-changes bar from claiming this form still holds work (unsaved-guard.ts
       // listens for exactly this event).

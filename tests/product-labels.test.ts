@@ -49,7 +49,7 @@ describe('deriveProductLabels — stable positional slots', () => {
 
   it('store_type: first flat tag as a clean token, else general', () => {
     expect(deriveProductLabels(base({ storeTags: ['Home Decor', 'x'] }))[4]).toBe('home_decor');
-    expect(deriveProductLabels(base({ storeTags: ['אופנה'] }))[4]).toBe('אופנה');
+    expect(deriveProductLabels(base({ storeTags: ['בגדים'] }))[4]).toBe('בגדים');
     expect(deriveProductLabels(base({ storeTags: [] }))[4]).toBe('general');
     expect(deriveProductLabels(base())[4]).toBe('general');
   });

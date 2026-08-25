@@ -42,7 +42,7 @@ export type CategoryIconKey =
  *  `SEED_CATEGORIES` must appear here — asserted in the tests, so adding a seed
  *  without an icon fails the suite instead of silently rendering the tag. */
 const SEED_ICONS: Readonly<Record<string, CategoryIconKey>> = {
-  'אופנה': 'fashion',
+  'בגדים': 'fashion',
   'הנעלה': 'footwear',
   'תיקים': 'bag',
   'תכשיטים': 'jewelry',

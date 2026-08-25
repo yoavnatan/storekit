@@ -41,7 +41,10 @@ vi.mock('../src/lib/store-categories.js', async (importOriginal) => {
 const { buildCampaignInput, MAX_CAMPAIGN_PRODUCTS, MAX_CAMPAIGN_CATEGORIES, MIN_CAMPAIGN_BUDGET, MAX_CAMPAIGN_BUDGET,
   isValidCampaignBudget, AD_BUDGET_PRESETS } = await import('../src/lib/ad-campaign-input.js');
 
-const STORE = { id: 's1', slug: 'my-store' };
+// `publishedAt` because since 2026-08-25 an unpublished shop may not buy ads at all — every case
+// below is about a shop that IS on the site, and without the field they would all be refused for
+// that reason instead of testing what they name.
+const STORE = { id: 's1', slug: 'my-store', publishedAt: '2026-01-01T00:00:00.000Z' };
 const base = { platform: 'both', monthlyBudget: 200 };
 
 describe('buildCampaignInput — product scope', () => {
@@ -286,8 +289,44 @@ describe('campaign budget bounds', () => {
  * `canStoreSell`, which a showcase store passes, so such a campaign read perfectly healthy while
  * advertising nothing.
  */
+describe('buildCampaignInput — a shop that is not on the site may not be advertised', () => {
+  /**
+   * A boost points PAID clicks at product pages, and an unpublished shop answers 404 to everyone
+   * but its owner. The budget would buy traffic to a page nobody can reach — and every one of those
+   * URLs sits on the platform's ONE Merchant Center account, where a dead landing page is the
+   * misrepresentation class that suspends every seller at once. Same blast radius as the showcase
+   * rule, so it lives in the same place: the admin route reaches any store by slug.
+   */
+  const NOT_LIVE = { id: 's1', slug: 'my-store' };
+
+  it('refuses a campaign on an unpublished shop, whatever the scope', async () => {
+    for (const scope of [
+      { scope: 'store' },
+      { scope: 'products', productIds: ['p1'] },
+      { scope: 'categories', categoryIds: ['c1'] },
+    ]) {
+      const built = await buildCampaignInput({ ...base, ...scope }, NOT_LIVE);
+      expect(built.ok, JSON.stringify(scope)).toBe(false);
+      if (built.ok) return;
+      expect(built.error).toBe('CAMPAIGN_STORE_NOT_LIVE');
+      expect(built.status).toBe(409);
+    }
+  });
+
+  it('names THAT reason rather than a budget he could fix without being allowed anyway', async () => {
+    const built = await buildCampaignInput({ platform: 'both', monthlyBudget: -5, scope: 'store' }, NOT_LIVE);
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.error).toBe('CAMPAIGN_STORE_NOT_LIVE');
+  });
+
+  it('leaves a live shop alone', async () => {
+    expect((await buildCampaignInput({ ...base, scope: 'store' }, { ...NOT_LIVE, publishedAt: '2026-01-01T00:00:00.000Z' })).ok).toBe(true);
+  });
+});
+
 describe('buildCampaignInput — a showcase store may not be advertised', () => {
-  const DEMO = { id: 's1', slug: 'my-store', demo: true };
+  const DEMO = { id: 's1', slug: 'my-store', demo: true, publishedAt: '2026-01-01T00:00:00.000Z' };
 
   it('refuses a campaign on a showcase store, whatever the scope', async () => {
     for (const scope of [

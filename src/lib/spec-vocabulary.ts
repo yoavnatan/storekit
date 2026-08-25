@@ -53,7 +53,7 @@ export const MAX_SUGGESTED_VALUES = 10;
  * `כלבו` is intentionally absent: a general store has no attribute in common by definition.
  */
 export const STARTER_SPEC_LABELS: Readonly<Record<string, readonly string[]>> = {
-  'אופנה':      ['חומר', 'סגנון', 'עונה', 'גזרה'],
+  'בגדים':      ['חומר', 'סגנון', 'עונה', 'גזרה'],
   'הנעלה':      ['חומר', 'סגנון', 'עונה'],
   'תיקים':      ['חומר', 'סגנון', 'נפח'],
   'תכשיטים':    ['חומר', 'אבן', 'אורך'],
@@ -119,7 +119,7 @@ export const STARTER_SPEC_VALUES: Readonly<Record<string, readonly string[]>> = 
  * Each list stays at four to six. Past that it stops being an example and starts being a form.
  */
 export const STARTER_CATEGORY_VALUES: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
-  'אופנה':      { 'חומר': ['כותנה', 'פשתן', 'צמר', 'ויסקוזה', 'דנים', 'עור'],
+  'בגדים':      { 'חומר': ['כותנה', 'פשתן', 'צמר', 'ויסקוזה', 'דנים', 'עור'],
                   'סגנון': ['יומיומי', 'ערב', 'ספורטיבי', 'קלאסי'],
                   'גזרה': ['צמודה', 'רגילה', 'אוברסייז'] },
   'הנעלה':      { 'חומר': ['עור', 'זמש', 'בד', 'סינתטי'],
@@ -284,7 +284,7 @@ export function buildSpecVocabulary(
 
 /**
  * The starter names for a store's platform categories, de-duplicated and in the order the seller
- * chose their categories — a store tagged אופנה + הנעלה is offered אופנה's names first.
+ * chose their categories — a store tagged בגדים + הנעלה is offered בגדים's names first.
  */
 export function starterLabelsFor(storeCategories: readonly string[]): string[] {
   const out: string[] = [];

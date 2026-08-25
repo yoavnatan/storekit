@@ -33,6 +33,7 @@
  * account; `DB_MIGRATION_PLAN.md` §10 records why, and it is closed rather than pending.
  */
 import { BUSINESS_TYPES, maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
+import { ISRAELI_BANKS, bankName } from '../../lib/israeli-banks.js';
 import GoLiveSteps from './GoLiveSteps.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
 import type { PublishHold } from '../../lib/store-publication.js';
@@ -104,14 +105,6 @@ const storeInPlan = !!store && (subscription?.storeFees ?? []).some((f) => f.sto
  *  card (where the renew button is), not a three-step wizard. */
 const goLiveDone = !!store?.publishedAt;
 
-/** One sentence per state, chosen here rather than in the markup so the three are visibly a set and
- *  a fourth state cannot be added without picking its words. */
-const CLEARING_LINE: Record<NonNullable<Props['clearing']>['state'], string> = {
-  'ready': d.payClearingReady,
-  'missing-details': d.payClearingMissing,
-  'awaiting-approval': d.payClearingWaiting,
-};
-
 const TYPE_LABEL: Record<string, string> = {
   exempt: d.payBusinessExempt,
   licensed: d.payBusinessLicensed,
@@ -131,131 +124,17 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle}</p>
   </div>
 
-  {/* Above the bank form, because it is the consequence of that form and a seller reads down. Only
-      a PROBLEM gets a card (`feedback_no_standing_screen_prose`); the ready state is one quiet line,
-      because "everything is fine" earns no more than that. */}
-  {clearing && (
-    <div
-      class={`mb-4 rounded-[var(--radius)] ${clearing.state === 'ready' ? '' : 'card card--flat p-4 md:p-5'}`}
-      id="pay-clearing"
-      data-clearing-state={clearing.state}
-    >
-      {clearing.state === 'ready'
-        ? <p class="muted m-0 text-[0.82rem]">{d.payClearingTitle}: {CLEARING_LINE[clearing.state]}</p>
-        : (
-          <>
-            <h3 class="text-[1.05rem] font-bold m-0">{d.payClearingTitle}</h3>
-            <p class="m-0 mt-1 text-[0.9rem]">{CLEARING_LINE[clearing.state]}</p>
-            {/* PayMe's own onboarding page, where the seller finishes the details we deliberately
-                do not ask for. `rel="noopener"` because `target="_blank"` otherwise hands the opened
-                page a live `window.opener` back into the dashboard. */}
-            {clearing.signupLink && (
-              <a class="btn btn--ghost btn--sm mt-3" href={clearing.signupLink} target="_blank" rel="noopener noreferrer">
-                {d.payClearingLink}
-              </a>
-            )}
-          </>
-        )}
-    </div>
-  )}
-
-  <form class="card card--flat p-4 md:p-5" id="pay-details-form" data-unsaved-guard>
-    <h3 class="text-[1.05rem] font-bold m-0">
-      {d.payBankTitle}
-    </h3>
-    {/* The one thing on this screen that genuinely is account-wide and could be MISTAKEN for the
-        store's, so it is said here and only here (owner, 2026-08-11: *"לא צריך להיות בכותרת, אלא
-        ליד הפרטי בנק… וזה צריך להופיע רק אם יש לו מעל חנות אחת"*). A seller with one shop has no
-        second shop for the sentence to be about, and telling them anyway invents a distinction they
-        do not have. The two account-wide FIGURES carry their own scope in their own labels. */}
-    {multiStore && <p class="muted m-0 mt-1 text-[0.8rem]">{d.payBankAllStores}</p>}
-
-    {/* ── The closed summary (owner, סשן א׳ §2) ──────────────────────────────────────────────
-        *"אם יש חשבון בנק לא צריך לשים שם את האינפוטים ככה פתוחים, הפרטים צריכים להופיע בתוך מסגרת
-        קטנה סגורה, עם כפתור ״ערוך״"*. Six open inputs on a saved account read as unfinished work
-        on the one screen a seller opens to reassure themselves that nothing is.
-
-        **Both halves are SERVER-rendered with `hidden` on the one that does not apply**, never
-        revealed by a script on load: a JS-gated visibility is the flash class this project already
-        has a memory for (`project_injected_overlay_flash`). The server knows which state this is —
-        `bankLine` is non-null exactly when all four fields make a payable account — so there is
-        nothing for the client to decide before first paint.
-
-        The account is MASKED here, as it is everywhere: `maskedBankLine` shows the last four digits
-        so a seller recognises their own account and a screen-share does not carry the whole number.
-        Its header carries the reasoning. */}
-    <div
-      id="pay-bank-summary"
-      class="flex items-center justify-between gap-3 flex-wrap mt-3 p-3 border [border-color:var(--color-border)] rounded-[var(--radius)]"
-      hidden={!bankLine}
-    >
-      <div class="min-w-0">
-        <p class="muted m-0 text-[0.76rem] font-medium">{d.payBankOnFile}</p>
-        <p class="m-0 mt-0.5 text-[0.9rem] font-semibold"><code dir="ltr" id="pay-bank-summary-line">{bankLine}</code></p>
-        <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessOnFile} <span id="pay-business-summary">{businessSummary}</span></p>
-      </div>
-      <button type="button" class="btn btn--ghost btn--sm shrink-0" id="pay-bank-edit">{d.payBankEdit}</button>
-    </div>
-
-    {/* The fields. `hidden` while a saved account is being summarised — and they stay INSIDE the
-        form rather than being rendered only on demand, so "ערוך" is a class toggle instead of a
-        second renderer for a money form (`project_client_renderer_i18n_drift`). A hidden input is
-        still submitted, which is correct here: pressing Save from the summary state would post the
-        account exactly as it stands. */}
-    <div id="pay-bank-fields" hidden={!!bankLine}>
-      <p class="muted m-0 mt-1 text-[0.82rem]">{d.payBankHint}</p>
-
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
-        {/* `inputmode="numeric"` + `dir="ltr"`: these are ASCII numbers on an RTL page, and left to
-            inherit they render with their digits grouped the wrong way round. */}
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBankCode}</span>
-          <input class="input" name="bankCode" id="pay-bank-code" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="2" value={seller.bankCode ?? ''} />
-        </label>
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBankBranch}</span>
-          <input class="input" name="bankBranch" id="pay-bank-branch" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="3" value={seller.bankBranch ?? ''} />
-        </label>
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBankAccount}</span>
-          <input class="input" name="bankAccount" id="pay-bank-account" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="20" value={seller.bankAccount ?? ''} />
-        </label>
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBankHolder}</span>
-          <input class="input" name="bankAccountHolder" id="pay-bank-holder" autocomplete="off" maxlength="120" value={seller.bankAccountHolder ?? ''} />
-          <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBankHolderHint}</p>
-        </label>
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-2 mt-1">
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBusinessId}</span>
-          <input class="input" name="businessId" id="pay-business-id" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={seller.businessId ?? ''} />
-        </label>
-        <label class="field">
-          <span class="text-[0.85rem]">{d.payBusinessType}</span>
-          <select class="input" name="businessType" id="pay-business-type">
-            <option value="">{d.payBusinessNone}</option>
-            {BUSINESS_TYPES.map((t) => (
-              <option value={t} selected={seller.businessType === t}>{TYPE_LABEL[t]}</option>
-            ))}
-          </select>
-          <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessHint}</p>
-        </label>
-      </div>
-
-      <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="pay-details-error" role="alert"></p>
-      <div class="flex items-center gap-2 mt-3">
-        <button type="submit" class="btn btn--sm" id="pay-details-save">{d.payDetailsSave}</button>
-        {/* Rendered always, HIDDEN until there is a saved account to go back to. It has to exist in
-            the markup because a seller filling this in for the first time collapses into the
-            summary the moment they save, without a reload — so `payouts.ts` un-hides it there.
-            Cancelling with nothing saved would close the fields over an EMPTY summary card, which
-            is why it is not simply always visible. */}
-        <button type="button" class="btn btn--ghost btn--sm" id="pay-bank-cancel" hidden={!bankLine}>{d.payBankCancel}</button>
-      </div>
-    </div>
-  </form>
+  {/**
+    * ── The clearing status USED to be announced here, and it is not any more (2026-08-25) ──
+    *
+    * The page read: "חשבון סליקה … / פרטי בנק … / פרטי העסק לחברת הסליקה" — the same subject twice
+    * with the bank block wedged between them (owner: *"לא הבנתי את הסדר הלא מסודר בדף הזה ואת ריבוי
+    * הסקשנים"*). It was a status line about a process that now has a whole screen of its own, so
+    * it said the same thing worse and a paragraph earlier.
+    *
+    * `GoLiveSteps` below is the one place that answers it, in the order a seller walks it. The
+    * signup link the block carried moved with it, into the approval step that is about that wait.
+    */}
 
   {/* Directly under the bank block, because it is the same errand: the bank account says where the
       money goes and this says who the business is, and PayMe need both before they will open an
@@ -304,6 +183,139 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     />
   )}
 
+
+  {/* AFTER the go-live screen, not before it. This is where the seller's money LANDS — a fact
+      about being paid, not a step in getting the shop up — and putting it first made the page open
+      on a form whose purpose the reader had not been told yet. `mt-6` because two bordered cards
+      flush against each other read as one thing with a line through it (owner, 2026-08-25:
+      *"צריך ריווחים בין הסקשנים"*). */}
+  <form class="card card--flat p-4 md:p-5 mt-6" id="pay-details-form" data-unsaved-guard>
+    <h3 class="text-[1.05rem] font-bold m-0">
+      {d.payBankTitle}
+    </h3>
+    {/* The one thing on this screen that genuinely is account-wide and could be MISTAKEN for the
+        store's, so it is said here and only here (owner, 2026-08-11: *"לא צריך להיות בכותרת, אלא
+        ליד הפרטי בנק… וזה צריך להופיע רק אם יש לו מעל חנות אחת"*). A seller with one shop has no
+        second shop for the sentence to be about, and telling them anyway invents a distinction they
+        do not have. The two account-wide FIGURES carry their own scope in their own labels. */}
+    {multiStore && <p class="muted m-0 mt-1 text-[0.8rem]">{d.payBankAllStores}</p>}
+
+    {/* ── The closed summary (owner, סשן א׳ §2) ──────────────────────────────────────────────
+        *"אם יש חשבון בנק לא צריך לשים שם את האינפוטים ככה פתוחים, הפרטים צריכים להופיע בתוך מסגרת
+        קטנה סגורה, עם כפתור ״ערוך״"*. Six open inputs on a saved account read as unfinished work
+        on the one screen a seller opens to reassure themselves that nothing is.
+
+        **Both halves are SERVER-rendered with `hidden` on the one that does not apply**, never
+        revealed by a script on load: a JS-gated visibility is the flash class this project already
+        has a memory for (`project_injected_overlay_flash`). The server knows which state this is —
+        `bankLine` is non-null exactly when all four fields make a payable account — so there is
+        nothing for the client to decide before first paint.
+
+        The account is MASKED here, as it is everywhere: `maskedBankLine` shows the last four digits
+        so a seller recognises their own account and a screen-share does not carry the whole number.
+        Its header carries the reasoning. */}
+    <div
+      id="pay-bank-summary"
+      class="flex items-center justify-between gap-3 flex-wrap mt-3 p-3 border [border-color:var(--color-border)] rounded-[var(--radius)]"
+      hidden={!bankLine}
+    >
+      <div class="min-w-0">
+        <p class="muted m-0 text-[0.76rem] font-medium">{d.payBankOnFile}</p>
+        <p class="m-0 mt-0.5 text-[0.9rem] font-semibold"><code dir="ltr" id="pay-bank-summary-line">{bankLine}</code></p>
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessOnFile} <span id="pay-business-summary">{businessSummary}</span></p>
+      </div>
+      <button type="button" class="btn btn--ghost btn--sm shrink-0" id="pay-bank-edit">{d.payBankEdit}</button>
+    </div>
+
+    {/* The fields. `hidden` while a saved account is being summarised — and they stay INSIDE the
+        form rather than being rendered only on demand, so "ערוך" is a class toggle instead of a
+        second renderer for a money form (`project_client_renderer_i18n_drift`). A hidden input is
+        still submitted, which is correct here: pressing Save from the summary state would post the
+        account exactly as it stands. */}
+    <div id="pay-bank-fields" hidden={!!bankLine}>
+      <p class="muted m-0 mt-1 text-[0.82rem]">{d.payBankHint}</p>
+
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
+        {/* `inputmode="numeric"` + `dir="ltr"`: these are ASCII numbers on an RTL page, and left to
+            inherit they render with their digits grouped the wrong way round. */}
+        {/* ── The bank, by name — the code is what gets stored ──
+            A bare two-digit box is a field a seller guesses at, and a guessed code is a transfer
+            that bounces weeks later (owner, 2026-08-25). So he searches by name or by code and
+            picks; the input keeps the CODE, because that is what PayMe take, and the name of the
+            match is shown under it as confirmation that he picked the bank he meant.
+
+            **Not a `<select>`** — this site does not use native dropdowns — and **not a gate**: a
+            code that is not on the list is still accepted and simply shows no name, for the same
+            reason `payout-details.ts` refuses to check a business number's check digit. */}
+        <div class="field relative" id="pay-bank-picker">
+          <span class="text-[0.85rem]">{d.payBankCode}</span>
+          <input
+            class="input"
+            name="bankCode"
+            id="pay-bank-code"
+            dir="ltr"
+            inputmode="numeric"
+            autocomplete="off"
+            maxlength="2"
+            role="combobox"
+            aria-expanded="false"
+            aria-autocomplete="list"
+            aria-controls="pay-bank-list"
+            placeholder={d.payBankCodePlaceholder}
+            value={seller.bankCode ?? ''}
+            data-banks={JSON.stringify(ISRAELI_BANKS)}
+          />
+          <p class="muted m-0 mt-1 text-[0.76rem]" id="pay-bank-name">{bankName(seller.bankCode) ?? ''}</p>
+          <div
+            id="pay-bank-list"
+            role="listbox"
+            class="!hidden absolute top-[calc(100%-1.25rem)] inset-inline-start-0 z-30 w-full max-h-52 overflow-y-auto rounded-[var(--radius)] border p-[0.3rem] [border-color:var(--color-border)] [background:var(--color-surface)] [box-shadow:var(--shadow-card)]"
+          ></div>
+        </div>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBankBranch}</span>
+          <input class="input" name="bankBranch" id="pay-bank-branch" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="3" value={seller.bankBranch ?? ''} />
+        </label>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBankAccount}</span>
+          <input class="input" name="bankAccount" id="pay-bank-account" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="20" value={seller.bankAccount ?? ''} />
+        </label>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBankHolder}</span>
+          <input class="input" name="bankAccountHolder" id="pay-bank-holder" autocomplete="off" maxlength="120" value={seller.bankAccountHolder ?? ''} />
+          <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBankHolderHint}</p>
+        </label>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2 mt-1">
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBusinessId}</span>
+          <input class="input" name="businessId" id="pay-business-id" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={seller.businessId ?? ''} />
+        </label>
+        <label class="field">
+          <span class="text-[0.85rem]">{d.payBusinessType}</span>
+          <select class="input" name="businessType" id="pay-business-type">
+            <option value="">{d.payBusinessNone}</option>
+            {BUSINESS_TYPES.map((t) => (
+              <option value={t} selected={seller.businessType === t}>{TYPE_LABEL[t]}</option>
+            ))}
+          </select>
+          <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessHint}</p>
+        </label>
+      </div>
+
+      <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="pay-details-error" role="alert"></p>
+      <div class="flex items-center gap-2 mt-3">
+        <button type="submit" class="btn btn--sm" id="pay-details-save">{d.payDetailsSave}</button>
+        {/* Rendered always, HIDDEN until there is a saved account to go back to. It has to exist in
+            the markup because a seller filling this in for the first time collapses into the
+            summary the moment they save, without a reload — so `payouts.ts` un-hides it there.
+            Cancelling with nothing saved would close the fields over an EMPTY summary card, which
+            is why it is not simply always visible. */}
+        <button type="button" class="btn btn--ghost btn--sm" id="pay-bank-cancel" hidden={!bankLine}>{d.payBankCancel}</button>
+      </div>
+    </div>
+  </form>
 
   {/* ── The rules, once, at the end ──────────────────────────────────────────────────────────
       Three questions in the order a seller asks them, each with one short answer. There is no

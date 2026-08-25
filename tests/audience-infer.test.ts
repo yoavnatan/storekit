@@ -3,7 +3,7 @@ import { inferAudienceGender, inferAgeGroup } from '../src/lib/audience-infer.js
 
 describe('inferAudienceGender', () => {
   it('infers men from a Hebrew category path', () => {
-    expect(inferAudienceGender(['אופנה > גברים > חולצות', 'חולצת פולו'])).toBe('men');
+    expect(inferAudienceGender(['בגדים > גברים > חולצות', 'חולצת פולו'])).toBe('men');
   });
 
   it('infers women from a Hebrew category path', () => {
@@ -31,13 +31,13 @@ describe('inferAudienceGender', () => {
   });
 
   it('returns null when both genders are present (ambiguous)', () => {
-    expect(inferAudienceGender(['אופנה', 'בושם לגברים ולנשים'])).toBeNull();
+    expect(inferAudienceGender(['בגדים', 'בושם לגברים ולנשים'])).toBeNull();
   });
 });
 
 describe('inferAgeGroup', () => {
   it('infers infant from baby-scoped text', () => {
-    expect(inferAgeGroup(['אופנה > תינוקות', 'בגד גוף'])).toBe('infant');
+    expect(inferAgeGroup(['בגדים > תינוקות', 'בגד גוף'])).toBe('infant');
     expect(inferAgeGroup(['Newborn onesie'])).toBe('infant');
   });
 

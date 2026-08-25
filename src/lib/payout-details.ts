@@ -139,6 +139,23 @@ export function parsePayoutDetails(input: PayoutDetailsInput): PayoutDetailsResu
   return { ok: true, details };
 }
 
+/**
+ * Did this submission carry ANYTHING at all?
+ *
+ * Separate from `parsePayoutDetails` on purpose. An all-empty result is legitimate — it is how a
+ * stored account is CLEARED, and `tests/payout-details.test.ts` pins that — so the parser cannot
+ * refuse it. What is not legitimate is an all-empty submission from a seller who has nothing
+ * stored: it writes nothing and used to answer "the details were saved", which is a confirmation
+ * for an act that did not happen, on the screen where a seller is deciding whether to trust us
+ * with an account number (owner, 2026-08-25).
+ *
+ * Only the ROUTE can tell the two apart, because only it knows what is on file. This is the half of
+ * the question that is pure.
+ */
+export function isEmptyPayoutSubmission(details: PayoutDetails): boolean {
+  return Object.keys(details).length === 0;
+}
+
 /** Can a payout actually be sent to this seller? The same all-four question `payout-run.ts#bankOf`
  *  asks, exported so the screen and the run cannot answer it differently — a banner that says
  *  "add your bank details" while the run would happily pay, or the reverse, is worse than neither. */

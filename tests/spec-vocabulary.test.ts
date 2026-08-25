@@ -75,7 +75,7 @@ describe('the starter vocabulary', () => {
   it('gives the common verticals real value lists, not just names', () => {
     // The owner's ask, 2026-08-20: the names covered nearly every category, the VALUES did not,
     // and values are the half that stops "עץ מלא" being spelled three ways.
-    for (const category of ['אופנה', 'לבית', 'ריהוט', 'צעצועים', 'ספרים', 'מחשבים', 'ספורט']) {
+    for (const category of ['בגדים', 'לבית', 'ריהוט', 'צעצועים', 'ספרים', 'מחשבים', 'ספורט']) {
       const byLabel = STARTER_CATEGORY_VALUES[category];
       expect(byLabel, category).toBeDefined();
       expect(Object.keys(byLabel!).length, category).toBeGreaterThan(0);
@@ -93,7 +93,7 @@ describe('the starter vocabulary', () => {
 
   it('never offers one shop another shop\'s materials', () => {
     // The whole reason the per-vertical map exists: "חומר" is one word and two different lists.
-    const fashion = STARTER_CATEGORY_VALUES['אופנה']!['חומר']!.map(facetKey);
+    const fashion = STARTER_CATEGORY_VALUES['בגדים']!['חומר']!.map(facetKey);
     const furniture = STARTER_CATEGORY_VALUES['ריהוט']!['חומר']!.map(facetKey);
     expect(fashion).toContain('כותנה');
     expect(fashion).not.toContain('עץ מלא');
@@ -102,7 +102,7 @@ describe('the starter vocabulary', () => {
   });
 
   it('de-duplicates across a store\'s categories, in the order the seller chose them', () => {
-    expect(starterLabelsFor(['אופנה', 'הנעלה'])).toEqual(['חומר', 'סגנון', 'עונה', 'גזרה']);
+    expect(starterLabelsFor(['בגדים', 'הנעלה'])).toEqual(['חומר', 'סגנון', 'עונה', 'גזרה']);
     expect(starterLabelsFor(['כלבו'])).toEqual([]);
     expect(starterLabelsFor([])).toEqual([]);
   });

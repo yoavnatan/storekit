@@ -27,7 +27,18 @@ const t    = getT(lang);
 const googleEnabled = isGoogleAuthEnabled();
 
 // Same rule as login — see lib/safe-redirect.ts.
-const safeNext = safeRedirectPath(Astro.url.searchParams.get('next'), '/', ['/seller/register']);
+/**
+ * Where registration ENDS, and the default is not the home page.
+ *
+ * It was `/`, so a visitor who pressed "open a store" registered and landed back on the homepage
+ * with nothing to show for it (owner, 2026-08-25). Somebody who has just created a SELLER account
+ * is going to the dashboard — `?new=1` opens the create-store card, the same place an already
+ * signed-in seller pressing the same link is sent a few lines above.
+ *
+ * An explicit `?next=` still wins: that is a shopper who was interrupted mid-errand (saving a
+ * store, sending a message) and has somewhere real to be returned to.
+ */
+const safeNext = safeRedirectPath(Astro.url.searchParams.get('next'), '/seller/dashboard?new=1', ['/seller/register']);
 
 // The seller-facing way into a finished store (lib/demo-stores.ts) — this entry
 // point never expires, unlike the showcase stores' presence in shopper discovery.

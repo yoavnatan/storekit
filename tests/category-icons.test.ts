@@ -89,7 +89,7 @@ describe('categoryIconKey', () => {
   });
 
   it('ignores casing and stray whitespace', () => {
-    expect(categoryIconKey('  אופנה  ')).toBe('fashion');
+    expect(categoryIconKey('  בגדים  ')).toBe('fashion');
   });
 
   it('lets a seller-added category inherit the nearest seed icon', () => {

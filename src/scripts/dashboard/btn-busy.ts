@@ -24,6 +24,19 @@ export interface BusyButton {
   /** Restore the button exactly as it was — label, icon, and its own previous disabled state.
    *  Idempotent, so a `finally` that runs after an early return cannot double-restore. */
   done(): void;
+  /**
+   * Say it WORKED, in the button, and settle back.
+   *
+   * The alternative is a toast, and for an action the person is looking straight at that means
+   * travelling to the corner of the screen to report something that happened under their cursor
+   * (owner, 2026-08-25, about the payout form). `.btn--confirmed` is this project's existing
+   * recipe for a disabled state that is really a brief success — `components/buttons.css` names it
+   * beside the rule that a plain disabled look is the wrong one here.
+   *
+   * Idempotent with `done()`: whichever runs first wins, so a `finally { done() }` after a
+   * confirm does not snatch the confirmation away.
+   */
+  confirm(label: string, holdMs?: number): void;
 }
 
 /**
@@ -99,6 +112,44 @@ export function busyButton(btn: HTMLButtonElement, label: string): BusyButton {
       btn.classList.remove('btn--busy');
       btn.disabled = wasDisabled;
       btn.innerHTML = before;
+    },
+    confirm(label: string, holdMs = 1800): void {
+      if (restored) return;
+      restored = true;
+      btn.classList.remove('btn--busy');
+      btn.classList.add('btn--confirmed');
+      // Disabled DURING the confirmation on purpose: the action just succeeded, so a second press
+      // in that second would be a duplicate submit of the same form. `.btn--confirmed` is what
+      // keeps it from reading as the ordinary greyed-out disabled (buttons.css).
+      btn.disabled = true;
+      const tick = document.createElement('span');
+      tick.style.cssText = 'display:inline-flex;align-items:center;gap:0.4em';
+      tick.setAttribute('role', 'status');
+      const mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      mark.setAttribute('width', '15');
+      mark.setAttribute('height', '15');
+      mark.setAttribute('viewBox', '0 0 24 24');
+      mark.setAttribute('fill', 'none');
+      mark.setAttribute('stroke', 'currentColor');
+      mark.setAttribute('stroke-width', '2.5');
+      mark.setAttribute('stroke-linecap', 'round');
+      mark.setAttribute('stroke-linejoin', 'round');
+      mark.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      path.setAttribute('points', '20 6 9 17 4 12');
+      mark.appendChild(path);
+      const words = document.createElement('span');
+      // `textContent`, never an interpolated string — the same reason the busy label is built with
+      // DOM calls: this module is the definition every dashboard button uses, and a later caller
+      // passing a store name into an attribute is the breakout its header already argues about.
+      words.textContent = label;
+      tick.append(mark, words);
+      btn.replaceChildren(tick);
+      window.setTimeout(() => {
+        btn.classList.remove('btn--confirmed');
+        btn.disabled = wasDisabled;
+        btn.innerHTML = before;
+      }, holdMs);
     },
   };
 }

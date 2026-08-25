@@ -12,7 +12,7 @@ import { normalizeCategory } from './store-taxonomy.js';
  * one nobody complains about because they never learn they had the right.
  *
  * So the question is asked of the PRODUCT: its own category inside that shop, and every ancestor of
- * it. A product filed under `אופנה › הלבשה תחתונה` is excluded; its sibling under `אופנה › מעילים`
+ * it. A product filed under `בגדים › הלבשה תחתונה` is excluded; its sibling under `בגדים › מעילים`
  * is not.
  *
  * ── Why it matches WORDS rather than an id ──

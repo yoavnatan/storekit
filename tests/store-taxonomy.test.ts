@@ -14,9 +14,9 @@ import {
 
 describe('normalizeCategory', () => {
   it('trims, collapses whitespace and strips edge punctuation', () => {
-    expect(normalizeCategory('  אופנה  ')).toBe('אופנה');
+    expect(normalizeCategory('  בגדים  ')).toBe('בגדים');
     expect(normalizeCategory('כלי   עבודה')).toBe('כלי עבודה');
-    expect(normalizeCategory('-אופנה,')).toBe('אופנה');
+    expect(normalizeCategory('-בגדים,')).toBe('בגדים');
   });
 
   it('unifies latin case so Fashion and fashion are one category', () => {
@@ -43,11 +43,11 @@ describe('near-duplicate detection', () => {
   });
 
   it('reports an exact match as similar too', () => {
-    expect(findSimilarCategories('אופנה', ['אופנה'])).toEqual(['אופנה']);
+    expect(findSimilarCategories('בגדים', ['בגדים'])).toEqual(['בגדים']);
   });
 
   it('does not fire on unrelated categories', () => {
-    expect(findSimilarCategories('צעצועים', ['אופנה', 'מטבח', 'רכב'])).toEqual([]);
+    expect(findSimilarCategories('צעצועים', ['בגדים', 'מטבח', 'רכב'])).toEqual([]);
   });
 
   it('does not treat a short generic word as proof — the "כלי" false positive', () => {
@@ -65,7 +65,7 @@ describe('near-duplicate detection', () => {
 });
 
 describe('proposeCategory', () => {
-  const existing = ['אלקטרוניקה', 'אופנה'];
+  const existing = ['אלקטרוניקה', 'בגדים'];
 
   it('accepts a genuinely new category', () => {
     expect(proposeCategory('כלי נגינה', existing)).toEqual({ ok: true, value: 'כלי נגינה' });
@@ -97,27 +97,27 @@ describe('buildVocabulary', () => {
   });
 
   it('adds seller-created categories and floats the most-used to the front', () => {
-    const v = buildVocabulary({ 'כלי נגינה': 9, 'אופנה': 3 });
+    const v = buildVocabulary({ 'כלי נגינה': 9, 'בגדים': 3 });
     expect(v).toContain('כלי נגינה');
-    expect(v.indexOf('כלי נגינה')).toBeLessThan(v.indexOf('אופנה'));
+    expect(v.indexOf('כלי נגינה')).toBeLessThan(v.indexOf('בגדים'));
   });
 
   it('folds a differently-spaced duplicate into the seed entry, not a second row', () => {
-    const v = buildVocabulary({ '  אופנה ': 5 });
-    expect(v.filter((c) => normalizeCategory(c) === 'אופנה')).toHaveLength(1);
+    const v = buildVocabulary({ '  בגדים ': 5 });
+    expect(v.filter((c) => normalizeCategory(c) === 'בגדים')).toHaveLength(1);
   });
 });
 
 describe('sanitizeStoreCategories — the server-side rule', () => {
   it('normalizes, de-duplicates and caps', () => {
-    const out = sanitizeStoreCategories([' אופנה ', 'אופנה', 'הנעלה', 'מזון', 'רכב']);
-    expect(out).toEqual(['אופנה', 'הנעלה', 'מזון']);
+    const out = sanitizeStoreCategories([' בגדים ', 'בגדים', 'הנעלה', 'מזון', 'רכב']);
+    expect(out).toEqual(['בגדים', 'הנעלה', 'מזון']);
     expect(out.length).toBeLessThanOrEqual(MAX_CATEGORIES_PER_STORE);
   });
 
   it('drops unsafe entries even when the client sent them', () => {
     // The picker is convenience; a hand-crafted POST must not get through.
-    expect(sanitizeStoreCategories(['אופנה', 'קזינו'])).toEqual(['אופנה']);
+    expect(sanitizeStoreCategories(['בגדים', 'קזינו'])).toEqual(['בגדים']);
   });
 
   it('drops empties and over-long entries', () => {
@@ -152,6 +152,6 @@ describe('categoryLabel — display only, never the value', () => {
   });
 
   it('trims, so a stored value with stray spaces still resolves', () => {
-    expect(categoryLabel(' אופנה ', 'en')).toBe('Fashion');
+    expect(categoryLabel(' בגדים ', 'en')).toBe('Fashion');
   });
 });

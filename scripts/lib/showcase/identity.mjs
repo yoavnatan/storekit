@@ -529,7 +529,7 @@ export const SHOWCASE_STORES = [
   {
     slug: 'showcase-fashion',
     name: 'סהר',
-    tag: 'אופנה',
+    tag: 'בגדים',
     /** Was "אופנה יומיומית שכיף ללבוש" — owner, 2026-08-17: "משפט מאוד מטומטם". It is painted into
      *  the banner photograph rather than laid over it, so this line and that picture change
      *  together or the shop says two different things. */

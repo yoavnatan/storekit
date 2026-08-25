@@ -28,7 +28,14 @@ export { MIN_CAMPAIGN_BUDGET, MAX_CAMPAIGN_BUDGET, AD_BUDGET_PRESETS, isValidCam
 
 /** Only the two store fields this module needs — the seller route resolves its store from the
  *  session, the admin route by slug, and neither should have to hand over the whole record. */
-interface StoreRef { id: string; slug: string; demo?: boolean }
+interface StoreRef {
+  id: string;
+  slug: string;
+  demo?: boolean;
+  /** Absent = the shop is not on the site. A campaign against it would buy clicks on a 404 — see
+   *  the refusal in `buildCampaignInput`. */
+  publishedAt?: string;
+}
 
 export type CampaignInputResult =
   | { ok: true; input: CreateCampaignInput }
@@ -136,6 +143,21 @@ export async function buildCampaignInput(body: CampaignBody, store: StoreRef): P
   // In `buildCampaignInput` and not in either route, because the admin route reaches ANY store by
   // slug — which is exactly how a showcase store's campaign would be created.
   if (store.demo) return { ok: false, error: 'CAMPAIGN_DEMO_STORE', status: 400 };
+  /**
+   * ── A shop that is not ON THE SITE may not buy ads (2026-08-25) ──
+   *
+   * A boost points paid clicks at product pages, and an unpublished shop answers 404 to everyone
+   * but its owner (`store-status.ts`). So the budget buys traffic to a page nobody can reach — and
+   * every one of those URLs sits on the platform's ONE Merchant Center account, where a dead
+   * landing page is the "misrepresentation" class that suspends every seller's ads at once
+   * (AI_INSTRUCTIONS → SEO). The blast radius is the same as the showcase rule above it, which is
+   * why it sits in the same place: the admin route reaches any store by slug.
+   *
+   * Refused straight after `demo` and before anything else, so a seller with an unpublished shop
+   * AND a bad budget is told the reason that actually blocks him — fixing the budget would not
+   * make the campaign legal (owner, 2026-08-25).
+   */
+  if (!store.publishedAt) return { ok: false, error: 'CAMPAIGN_STORE_NOT_LIVE', status: 409 };
   if (platform !== 'google' && platform !== 'meta' && platform !== 'both') return { ok: false, error: 'Invalid platform', status: 400 };
   if (!isValidCampaignBudget(monthlyBudget)) {
     return {

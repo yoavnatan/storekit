@@ -754,6 +754,10 @@ const adBaseline = store
 // remain — the API re-reads them at the moment of the click, which is the count that decides.
 // Settings only: it is printed inside that panel's lifecycle card and nowhere else.
 const lifecycleState = store ? storeLifecycle(store) : 'active';
+/** Is this shop off the site? A boost buys clicks on product pages, and an unpublished shop answers
+ *  404 to everyone but its owner — so the campaign form has to say "not yet" rather than take the
+ *  budget. The same single fact the go-live screen keys off, so the two cannot disagree. */
+const storeNotLive = !!store && !store.publishedAt;
 const lifecycleOpenOrders = store ? await only(['settings'], () => openOrderCount(store.slug), 0) : 0;
 const lifecycleStateLabel =
   lifecycleState === 'paused'  ? d.lcStatePaused
@@ -2749,11 +2753,31 @@ const orderStatusColors: Record<string, string> = {
 
           <form id="ad-create-form" class="flex flex-col gap-3 [&_.field>span]:text-[0.8rem]" data-store-slug={store.slug} data-unsaved-guard>
             <BoostFormFields products={adProductOptions} hasCategories={categoryTree.length > 0} budgetTipText={adBudgetFeeTipText} d={d} />
+            {/* ── A campaign cannot run for a shop that is not on the site ──
+                Owner, 2026-08-25: *"אני רואה שבמסך הפרסום ניתן פשוט להפעיל קמפיין בלי שום בעיה"*.
+                A boost points ads at product pages, and an unpublished shop answers 404 to
+                everyone but its owner — so the money would buy clicks on a page nobody can reach.
+                The shape is the one this site already uses for a shopper who presses "save store"
+                while logged out: the button stays, the press opens a small note beside it saying
+                what has to happen first, with the way there. Not a disabled button — the site's
+                own rule is that disabled reads as forbidden, and this is a "not yet". */}
             <div class="flex justify-end pt-1">
-              <button type="submit" class="btn btn--accent gap-1.5">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
-                {d.adCreateCampaign}
-              </button>
+              <div class="relative">
+                <button type="submit" class="btn btn--accent gap-1.5" data-needs-live={storeNotLive ? '' : undefined}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
+                  {d.adCreateCampaign}
+                </button>
+                {storeNotLive && (
+                  <div
+                    id="ad-needs-live"
+                    role="status"
+                    aria-live="polite"
+                    class="!hidden absolute top-[calc(100%+0.45rem)] inset-inline-end-0 z-30 rounded-[var(--radius)] border [border-color:var(--color-border)] [background:var(--color-surface)] [box-shadow:var(--shadow-card)] py-[0.45rem] px-[0.8rem] text-[0.8rem] whitespace-nowrap"
+                  >
+                    {d.adNeedsLive} <button type="button" class="[color:var(--color-accent)] font-semibold bg-transparent border-0 p-0 cursor-pointer" data-goto-panel="payouts">{d.adNeedsLiveLink}</button>
+                  </div>
+                )}
+              </div>
             </div>
           </form>
         </div>

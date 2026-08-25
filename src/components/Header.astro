@@ -95,7 +95,13 @@ if (!storeMode && !sellerMode) {
   } else {
     navItems = [
       { label: t.nav.home, href: '/' },
-      { label: t.nav.openStore, href: `/seller/register?next=${encodeURIComponent(currentPath)}` },
+      /* **No `?next=` here, deliberately** (owner, 2026-08-25: *"לוחצים על 'פתח חנות חדשה', מצטרפים,
+         וזה חוזר לעמוד הראשי!"*). `?next=` means "put me back where I was", which is right for a
+         shopper who was interrupted by a sign-in and wrong for this: pressing "open a store" is a
+         statement about where he wants to GO. Sending him back to the page he pressed it on is the
+         one destination that guarantees he has to start again. `register.astro` lands him on the
+         dashboard's create-store card instead. */
+      { label: t.nav.openStore, href: '/seller/register' },
       { label: t.nav.login, href: loginUrl },
     ];
   }

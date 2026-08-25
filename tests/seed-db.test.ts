@@ -34,7 +34,7 @@ function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
     sellers: [{ id: sellerId, name: 'נועה כהן', email: over.email ?? `${slug}${DEMO_EMAIL_SUFFIX}`, passwordHash: 'salt:hash', createdAt: '2026-01-01T00:00:00.000Z' }],
     stores: [{
       id: storeId, sellerId, slug, name: 'סטודיו לבוש', tagline: 't', description: 'd',
-      colors: { primary: '#111827', accent: '#f97316' }, categories: ['אופנה'],
+      colors: { primary: '#111827', accent: '#f97316' }, categories: ['בגדים'],
       shipping: { selfPickup: true }, profileImage: 'https://cdn.test/p.webp',
       address: 'דיזנגוף 112, תל אביב', addressVisible: true,
       hours: { sun: { closed: false, open: '09:00', close: '19:00' } }, hoursVisible: true,

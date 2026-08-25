@@ -19,7 +19,7 @@ function product(overrides: Partial<StoreProduct> = {}): StoreProduct {
 
 describe('buildProductFeedAttributes', () => {
   it('derives gender + age_group from the category path', () => {
-    const f = buildProductFeedAttributes(product({ name: 'חולצה' }), { storeName: 'חנות', categoryPath: 'אופנה > גברים' });
+    const f = buildProductFeedAttributes(product({ name: 'חולצה' }), { storeName: 'חנות', categoryPath: 'בגדים > גברים' });
     expect(f.gender).toBe('male');
     expect(f.ageGroup).toBe('adult');
   });
@@ -65,10 +65,10 @@ describe('buildProductFeedAttributes', () => {
     // Fixed nowMs so the "new" recency window is deterministic (product is created 2026-01-01).
     const nowMs = Date.parse('2026-06-01T00:00:00.000Z'); // > 30d after creation → not "new"
     const f = buildProductFeedAttributes(product({ price: 40, stock: 2 }), {
-      storeName: 'x', storeTags: ['אופנה'], purchasedUnits: 25, nowMs,
+      storeName: 'x', storeTags: ['בגדים'], purchasedUnits: 25, nowMs,
     });
     // [price_tier, performance, availability, audience, store_type]
-    expect(f.customLabels).toEqual(['budget', 'platform_bestseller', 'low_stock', 'unisex', 'אופנה']);
+    expect(f.customLabels).toEqual(['budget', 'platform_bestseller', 'low_stock', 'unisex', 'בגדים']);
   });
 });
 

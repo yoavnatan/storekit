@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession, getSellerById, updateSellerPayoutDetails } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { parsePayoutDetails, hasPayableBank, maskedBankLine, type PayoutDetailsInput } from '../../../lib/payout-details.js';
+import { parsePayoutDetails, hasPayableBank, isEmptyPayoutSubmission, maskedBankLine, type PayoutDetailsInput } from '../../../lib/payout-details.js';
 import { createNotification } from '../../../lib/notifications.js';
 
 /**
@@ -53,6 +53,20 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   const before = await getSellerById(sellerId);
   if (!before) return json({ error: 'Unauthorized' }, 401);
+
+  /**
+   * ── Nothing in, nothing stored: there is nothing to save ──
+   *
+   * An all-empty submission is legitimate when it is CLEARING an account that exists — that is the
+   * only way to remove one and `payout-details.test.ts` pins it. From a seller who has nothing on
+   * file it is a no-op that used to answer "the details were saved", a confirmation for an act that
+   * did not happen, on the screen where he is deciding whether to trust us with an account number
+   * (owner, 2026-08-25). Only this route can tell the two apart, because only it knows what is
+   * already there.
+   */
+  if (isEmptyPayoutSubmission(parsed.details) && !hasPayableBank(before) && !before.businessId && !before.businessType) {
+    return json({ error: 'אין מה לשמור — צריך למלא לפחות את פרטי הבנק', field: 'bankCode' }, 400);
+  }
 
   const seller = await updateSellerPayoutDetails(sellerId, parsed.details);
   if (!seller) return json({ error: 'Seller not found' }, 404);

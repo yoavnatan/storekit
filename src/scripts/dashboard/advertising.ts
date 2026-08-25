@@ -485,6 +485,18 @@ export function initAdvertisingTab(): void {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    /**
+     * ── A shop that is not on the site cannot be advertised ──
+     *
+     * The button is not disabled, deliberately: this site's rule is that disabled reads as
+     * forbidden, and this is a "not yet" with a way out of it. So the press opens the note beside
+     * the button — the same shape a shopper meets pressing "save store" while logged out — and the
+     * campaign is not created. The server refuses it too; this is the half that explains why.
+     */
+    if (submitBtn?.hasAttribute('data-needs-live')) {
+      document.getElementById('ad-needs-live')?.classList.remove('!hidden');
+      return;
+    }
     const fd = new FormData(form);
     const scope = String(fd.get('scope') ?? 'store');
     const platform = String(fd.get('platform') ?? 'google');
