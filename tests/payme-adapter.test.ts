@@ -603,12 +603,46 @@ describe('add-on services and the fee split', () => {
     }] }];
     const [tx] = await getSellerTransactions('MPL-US', CREDS);
     expect(tx).toMatchObject({
-      saleId: 'SALE-1', priceAgorot: 4000, netAgorot: 3319,
+      saleId: 'SALE-1', priceAgorot: 4000, netAgorot: 3319, netIsFinal: true,
       processingAgorot: 100, marketFeeAgorot: 480, invoiceUrl: null,
     });
     // The percentages sit beside the totals in their payload and are deliberately not read: the
     // AMOUNT is the fact, and a percent re-multiplied here would be a second arithmetic.
     expect(tx!.netAgorot).not.toBe(4000 - 100 - 480);
+  });
+
+  /**
+   * ⚠️ **Their net is not computed until settlement, and until then the field repeats the GROSS.**
+   * Measured 2026-08-26 on a real purchase made through our own checkout: 12000 in, 12000 back as
+   * `transaction_price_after_fees`, beside fees of 300 and 1440 — while a charge five days older
+   * came back correctly net. Reading it regardless printed "you keep ₪120" on a ₪120 sale with
+   * ₪17.40 of fees, which is the flattering direction and the one a seller would not question.
+   *
+   * The discriminator is arithmetic and not a status: `transaction_status` was `validated` and
+   * `sale_status` `completed` on the very row that reported its gross as its net.
+   */
+  it('marks the net as NOT final while PayMe are still repeating the gross', async () => {
+    net.replies = [{ status_code: 0, items: [{
+      seller_payme_id: 'MPL-US', sale_payme_id: 'FRESH', transaction_price: 12000,
+      transaction_price_after_fees: '12000', transaction_status: 'validated', sale_status: 'completed',
+      sale_fees: { sale_processing_fee_total: 300, sale_market_fee_total: 1440 },
+    }] }];
+    const [fresh] = await getSellerTransactions('MPL-US', CREDS);
+    expect(fresh!.netIsFinal).toBe(false);
+    // The fees themselves ARE final from the first second — only the net waits.
+    expect(fresh!.processingAgorot).toBe(300);
+    expect(fresh!.marketFeeAgorot).toBe(1440);
+  });
+
+  /** A genuinely free charge — no fees at all — must not be reported as "still calculating"
+   *  forever, so the rule needs fees to exist before it can call the net unfinished. */
+  it('treats a charge with no fees as final', async () => {
+    net.replies = [{ status_code: 0, items: [{
+      seller_payme_id: 'MPL-US', sale_payme_id: 'FREE', transaction_price: 5000,
+      transaction_price_after_fees: '5000', sale_fees: {},
+    }] }];
+    const [free] = await getSellerTransactions('MPL-US', CREDS);
+    expect(free!.netIsFinal).toBe(true);
   });
 
   /** ⚠️ The sandbox is shared with PayMe's other partners and an unscoped read really did come back

@@ -1525,6 +1525,10 @@ export const translations = {
       payChargeClearing: 'עמלת סליקה',
       payChargeCommission: 'עמלת המתחם',
       payChargeNet: 'נכנס אליכם',
+      // What stands in the net's place until the processor has computed it. Says WHEN rather than
+      // apologising, and never a number — their field repeats the gross until settlement, and the
+      // gross under "נכנס אליכם" is the one wrong answer a seller would not question.
+      payChargeNetPending: 'יחושב בהעברה',
       // Says what the figures ARE and what they are not. The monthly account-level charges are not
       // readable through any endpoint we have found, and a hint implying this is everything would
       // be the more expensive kind of wrong.
@@ -3797,6 +3801,7 @@ export const translations = {
       payChargeClearing: 'Clearing fee',
       payChargeCommission: 'Marketplace commission',
       payChargeNet: 'Reached you',
+      payChargeNetPending: 'Set at transfer',
       payChargesHint: 'The processor\'s own figures, net of VAT on the fees. Monthly account charges appear on their side.',
       payInvoiceAutoTitle: 'Automatic buyer invoice',
       payInvoiceAutoBody: 'The processor issues the invoice in your name on every sale, and you mark nothing.',

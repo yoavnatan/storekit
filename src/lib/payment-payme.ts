@@ -789,8 +789,24 @@ export interface PaymeTransaction {
   description: string;
   /** What the buyer paid on this charge, agorot. */
   priceAgorot: number;
-  /** What reaches the seller after everything, agorot — PayMe's own figure. */
+  /** What reaches the seller after everything, agorot — PayMe's own figure.
+   *
+   *  ⚠️ **Only meaningful when `netIsFinal` is true.** See below. */
   netAgorot: number;
+  /**
+   * Has PayMe actually computed the net yet?
+   *
+   * **Measured 2026-08-26, on a real sandbox purchase made through our own checkout:** a charge of
+   * 12000 agorot came back `transaction_price_after_fees: "12000"` — the GROSS — beside fees of 300
+   * and 1440. A charge from five days earlier came back 4000 → 3319, correctly net. So their field
+   * is populated at settlement and repeats the price until then.
+   *
+   * Reading it as net regardless put "נכנס אליכם ₪120" on a ₪120 sale whose fees were ₪17.40: a
+   * wrong number on a seller's money screen, wrong in the flattering direction, and one he would
+   * only discover from his bank. The flag is derived here rather than at the screen so no second
+   * surface can read the raw field and reach the same conclusion again.
+   */
+  netIsFinal: boolean;
   /** PayMe's clearing fee on this charge, agorot. */
   processingAgorot: number;
   /** OUR distribution fee on this charge, agorot. */
@@ -830,14 +846,26 @@ export async function getSellerTransactions(
       const row = raw as Record<string, unknown>;
       const fees = (row.sale_fees ?? {}) as Record<string, unknown>;
       const url = String(row.transaction_invoice_url ?? '').trim();
+      const priceAgorot = serviceAgorot(row.transaction_price);
+      const netAgorot = serviceAgorot(row.transaction_price_after_fees);
+      const processingAgorot = serviceAgorot(fees.sale_processing_fee_total);
+      const marketFeeAgorot = serviceAgorot(fees.sale_market_fee_total);
       return {
         saleId: String(row.sale_payme_id ?? ''),
         at: String(row.transaction_created_at ?? ''),
         description: String(row.sale_description ?? ''),
-        priceAgorot: serviceAgorot(row.transaction_price),
-        netAgorot: serviceAgorot(row.transaction_price_after_fees),
-        processingAgorot: serviceAgorot(fees.sale_processing_fee_total),
-        marketFeeAgorot: serviceAgorot(fees.sale_market_fee_total),
+        priceAgorot,
+        netAgorot,
+        // **Stated as the ONE case that is not final**, not as the case that is: a charge carrying
+        // no fees at all has a net that equals its gross and is perfectly final, and the first
+        // version — "final when it is below the gross" — called that one unfinished for ever.
+        // So: unfinished only when fees exist AND the net has not yet moved below the price.
+        // Not a status check either: `transaction_status` read `validated` and `sale_status`
+        // `completed` on the very charge reporting its gross as its net, so neither separates the
+        // two states. The arithmetic does, and it assumes nothing about when they settle.
+        netIsFinal: !(processingAgorot + marketFeeAgorot > 0 && netAgorot >= priceAgorot),
+        processingAgorot,
+        marketFeeAgorot,
         saleStatus: String(row.sale_status ?? ''),
         invoiceUrl: url || null,
       };

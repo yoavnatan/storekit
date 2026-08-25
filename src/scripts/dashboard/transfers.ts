@@ -139,7 +139,13 @@ function chargesHtml(charges: readonly PaymeTransaction[]): string {
       // mark, which it gets in colour.
       line(tt('payChargeClearing'), formatAgorot(c.processingAgorot)) +
       line(tt('payChargeCommission'), formatAgorot(c.marketFeeAgorot)) +
-      line(tt('payChargeNet'), formatAgorot(c.netAgorot), '[color:var(--color-success)]') +
+      // **The net is printed only once the processor has computed it.** Until then their field
+      // repeats the GROSS (measured — `payment-payme.ts#netIsFinal`), and printing that under
+      // "נכנס אליכם" tells a seller he keeps the whole sale. The two fee lines above are final from
+      // the first second, so the row that is not yet knowable is the only one that waits.
+      line(tt('payChargeNet'),
+        c.netIsFinal ? formatAgorot(c.netAgorot) : tt('payChargeNetPending'),
+        c.netIsFinal ? '[color:var(--color-success)]' : 'muted font-normal') +
     '</dl>'
   )).join('');
 }
