@@ -60,36 +60,32 @@ const notified = parseConsent(Astro.cookies.get(CONSENT_COOKIE)?.value) !== null
       over a 780px viewport. Text takes the remaining width (`flex-1 min-w-0`) and the button holds
       its own (`shrink-0`), so the bar is as tall as the text and no taller. */}
   <div class="container flex items-center gap-2 sm:gap-3">
-    <p class="muted m-0 min-w-0 flex-1 text-[0.76rem] leading-snug sm:text-[0.82rem] sm:leading-relaxed">
+    {/* `0.82rem` at EVERY width — the shopper-facing size, not a smaller one for phones.
+        It was `0.76rem` below `sm` for one afternoon, to buy height. Checked against the rest of
+        the site afterwards (owner: *"הוא לא קצת קטן מדי"*): every size under `0.8rem` here lives in
+        the seller dashboard or the admin, which are dense data tables read by someone working. The
+        buyer-facing pages use none of them. A bar every shopper meets on their first visit is the
+        last place to introduce dashboard-density type, and 12px of Hebrew is small in a way the
+        4px of height it saved does not pay for. `leading-snug` and the tighter padding stay —
+        those cost legibility nothing. */}
+    <p class="muted m-0 min-w-0 flex-1 text-[0.82rem] leading-snug sm:leading-relaxed">
       {c.body}{' '}
       {/* `whitespace-nowrap`: at 375px "פרטים ואפשרויות" broke across the line end and left
           "ואפשרויות" alone on a line of its own — a two-word link split in half reads as two
           links, and it is the one thing on this bar a person is meant to be able to aim at. */}
       <a href="/privacy" class="underline whitespace-nowrap">{c.more}</a>
     </p>
-    {/* ONE button, two faces. On a phone it is a 28px ×, which hands its ~54px back to the text and
-        is the difference between a second line that is nearly full and one carrying three words;
-        from `sm` up, where the whole notice fits on one line anyway, it says "הבנתי", because a
-        word is a clearer target than a glyph when there is room for it. Not two buttons: one
-        element, one id, one `aria-label` — the accessible name is the same at every width, so a
-        screen reader is never told a different thing by the viewport. */}
-    <button
-      type="button"
-      class="btn btn--ghost btn--sm shrink-0 !px-2 sm:!px-3"
-      id="consent-dismiss"
-    >
-      <svg class="sm:hidden" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      {/* `sr-only sm:not-sr-only`, NOT `hidden sm:inline`, and there is deliberately no `aria-label`
-          on the button. Two rules meet here and only this spelling satisfies both. `display:none`
-          text is not in the accessible name, so a phone would get a nameless icon button — which is
-          why the first draft carried an `aria-label`. But an `aria-label` OVERRIDES the visible
-          text, so from `sm` up the button would read "הבנתי" and announce "סגירת ההודעה": a
-          different name from the visible label, which is WCAG 2.5.3 Label in Name, level AA — the
-          exact level `/accessibility` states in public that this site meets. Keeping the word in
-          the accessible tree at every width makes the name "הבנתי" always, and identical to the
-          label wherever the label is visible. */}
-      <span class="sr-only sm:not-sr-only">{c.dismiss}</span>
+    {/* Plain text at every width, and the icon variant that was here on 2026-08-25 is NOT to come
+        back. It swapped the word for a 28px × below `sm` to hand ~54px of width to the text — and
+        measured against the live DOM at 360/375/390/430, the bar was 46px and two lines either way.
+        The × bought nothing and cost the clearest thing on the bar (owner: *"אז זה בכל מקרה נשאר
+        שתי שורות אז חבל שלא יהיה שם כפתור הבנתי"*). His sentence is 68 characters against roughly
+        280px of usable width; no button size reaches one line, so the button size is not the lever.
+        It also takes a whole ARIA problem with it: an icon needs a name, an `aria-label` overrides
+        the visible word, and the two together were a WCAG 2.5.3 Label-in-Name failure at the level
+        `/accessibility` publicly claims. Visible text is its own accessible name. */}
+    <button type="button" class="btn btn--ghost btn--sm shrink-0" id="consent-dismiss">
+      {c.dismiss}
     </button>
   </div>
 </div>

@@ -1039,7 +1039,10 @@ a.msg-thread-head__product:hover { border-color: var(--color-primary); }
   border-radius: var(--radius-sm);
   --badge-hue: var(--color-sale);
   color: var(--color-sale);
-  font-size: 0.68rem;
+  /* Moves with `.store-card__tag` (0.68 → 0.75rem, 2026-08-25) and must never move without it —
+     the height note just below derives this chip's box from THIS number, so a size that differs
+     from the tag's puts two chips of different heights in the same badge row. */
+  font-size: 0.75rem;
   font-weight: 600;
   /* 1.5, matching `.store-card__tag`, so 22px is this chip's OWN height. At `line-height: 1` it
      computed to ~17px and only looked right because the flex row stretched it — which means it

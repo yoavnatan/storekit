@@ -43,13 +43,12 @@
  * the same thing is how a notice becomes furniture people dismiss without reading.
  */
 
-/** Categories a visitor can switch off. "Essential" is not here on purpose: a cookie the site
- *  cannot work without (session, cart, CSRF, language) is not a preference, and offering it as one
- *  invites a person to break the site and blame it. `/privacy` lists them so the claim is
- *  auditable. */
-export type ConsentCategory = 'analytics' | 'ads';
-
-export const CONSENT_CATEGORIES: readonly ConsentCategory[] = ['analytics', 'ads'];
+/* The categories a visitor can switch off are the two fields of `Consent` below, and there is
+   deliberately no separate `ConsentCategory` union or `CONSENT_CATEGORIES` array — both existed
+   until 2026-08-25 and nothing ever read them, which is what a list kept "for completeness" always
+   becomes. "Essential" is absent on purpose too: a cookie the site cannot work without (session,
+   cart, CSRF, language) is not a preference, and offering it as one invites a person to break the
+   site and blame it. `/privacy` names all of them, which is where that claim has to be auditable. */
 
 /** Bump ONLY when the categories or their recipients change — see the header. */
 export const CONSENT_VERSION = 1;

@@ -176,7 +176,14 @@
    that finish exists to remove, and leaving it here would also silently outrank the shared one
    (this file is unlayered legacy CSS). */
 .store-card__tag {
-  font-size: 0.68rem;
+  /* 0.75rem, up from 0.68 on 2026-08-25 (owner: *"גם אצל הקונים זה קצת קטן... בעיקר על באדג׳ים ועל
+     כרטיסיות של חנויות"*). 0.68rem is 10.9px, and checking the rest of the site put the complaint
+     on a rule rather than on taste: everything under 0.75rem here lives in the seller dashboard and
+     the admin, which are dense tables read by someone working. This is a shopper's card. **Move it
+     together with the sale chip in utilities/utils.css** — that chip's own comment pins its height
+     to this size × line-height 1.5, so changing one alone makes two chips of different heights sit
+     in one row. */
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--color-muted);
   --badge-hue: var(--color-muted);

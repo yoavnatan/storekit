@@ -125,24 +125,25 @@ describe('where the off-switch is, and where it is NOT', () => {
     expect(notice).not.toContain('consent-save');
   });
 
-  it('the dismiss button is named by its own text, never by an aria-label', () => {
-    // The bar shows a × on a phone and the word "הבנתי" from `sm` up, and the naive spellings of
-    // that are both wrong. `hidden sm:inline` leaves the phone with a nameless icon button;
-    // adding an `aria-label` to fix that then OVERRIDES the visible word on desktop, so the
-    // button reads "הבנתי" and announces something else — WCAG 2.5.3 Label in Name, level AA,
-    // which is the level `/accessibility` states in public that this site meets. `sr-only
-    // sm:not-sr-only` keeps the word in the accessible tree at every width. Driven in a browser:
-    // the accessible name is "הבנתי" at 375 and at 1280, with no aria-label at either.
-    // Comments stripped first — this is the THIRD time in one session that a guard read the prose
-    // explaining its own rule as a violation of it (`consent`, `accessibility-guards`, here). The
-    // comment above the button necessarily names `aria-label`, which is the string being banned.
+  it('the dismiss button is named by its own visible text', () => {
+    // No `aria-label`, and no icon-only variant. Both were here on 2026-08-25 and both came out:
+    // the × below `sm` was measured against the live DOM at 360/375/390/430 and the bar was 46px
+    // and two lines with it or without it, so it bought nothing and cost the clearest control on
+    // the bar. The ARIA half is why it must not come back quietly — an icon needs a name, an
+    // `aria-label` OVERRIDES the visible word, and the pair announced "סגירת ההודעה" on a button
+    // reading "הבנתי": WCAG 2.5.3 Label in Name, level AA, the level `/accessibility` claims in
+    // public. Visible text is its own accessible name and needs none of it.
     const markup = notice
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
       .replace(/<!--[\s\S]*?-->/g, ' ');
-    const btn = markup.slice(markup.indexOf('id="consent-dismiss"') - 400, markup.indexOf('</button>'));
+    // From the button's OWN opening tag, not a fixed number of characters back: the wrapper <div>
+    // carries a perfectly legitimate `aria-label` naming the region, and a slice wide enough to
+    // reach it fails on the wrong element.
+    const at = markup.indexOf('id="consent-dismiss"');
+    const btn = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('</button>', at));
     expect(btn, 'an aria-label here would replace the visible label').not.toContain('aria-label');
-    expect(btn, 'the word must stay in the accessible tree on a phone too').toContain('sr-only');
-    expect(btn, 'display:none text is not an accessible name').not.toMatch(/class="hidden sm:inline"/);
+    expect(btn, 'the button says its own name').toContain('c.dismiss');
+    expect(btn, 'no icon-only variant — it saved no line and lost the word').not.toContain('<svg');
   });
 
   it('but it does link the policy, which is what keeps it a notice', () => {
