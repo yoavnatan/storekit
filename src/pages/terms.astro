@@ -123,6 +123,12 @@ const clauses: { h: string; p: string[] }[] = [
     h: 'פרסום',
     p: [
       `קידום מוצר או חנות ("בוסט") רץ בחשבונות הפרסום של ${platform.name} בגוגל ובמטא. התקציב שהמוכר מגדיר הוא תקרה, והחיוב הוא לפי ההוצאה בפועל בלבד.`,
+      // The permission the platform campaign needs, worded as a permission and NOT as a benefit
+      // (2026-08-25). Products are pushed to Merchant Center / Meta Catalog and can be carried by
+      // a campaign we fund; a seller has to have agreed to that. The second sentence is what keeps
+      // this from becoming the promise that was just removed from every seller screen — no scope,
+      // no frequency, no result is undertaken, and nothing here is charged to the seller.
+      `${platform.name} רשאית לכלול מוצרים וחנויות בפעולות קידום ופרסום מטעמה ועל חשבונה, לפי שיקול דעתה ובכל היקף שתבחר. אין בכך התחייבות לחשיפה, לתדירות או לתוצאה כלשהי, ואין בגין כך חיוב של המוכר.`,
     ],
   },
   {
