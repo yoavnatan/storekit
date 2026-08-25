@@ -285,6 +285,31 @@ export const translations = {
       // repeating it on the control reads as a label for the field, not for the press.
       submit: 'חפש',
     },
+    // ── Cookie notice (2026-08-25) ──
+    // The ISRAELI shape, after a first version built the European one (owner: *"הלכת רחוק מדי"*).
+    // This is a NOTICE, not a request: it states that the site uses cookies, points at the policy
+    // where the detail and the off-switch live, and closes. There is deliberately no reject button
+    // and no settings button on the bar — *"שלא יהיה שם כפתור כיבוי (כל עוד זה חוקי) פשוט שקל
+    // ללחוץ עליו"*. What makes that lawful is that the control exists one level in and the
+    // disclosure is complete; see lib/consent.ts.
+    //
+    // Register: two clauses, no "אנחנו מכבדים את פרטיותך", no "כדי לשפר את חוויית הגלישה". Both
+    // are the sound of a form being filled in, and neither tells anybody anything.
+    consent: {
+      title: 'עוגיות באתר',
+      body: 'האתר משתמש בעוגיות כדי שיעבוד, כדי למדוד את השימוש בו וכדי לנהל את הפרסום שלנו.',
+      more: 'פרטים ואפשרויות במדיניות הפרטיות',
+      dismiss: 'הבנתי',
+      close: 'סגירת ההודעה',
+      // The control itself, which lives in the cookies clause of /privacy and nowhere else.
+      prefsTitle: 'ניהול העוגיות שאינן הכרחיות',
+      analytics: 'מדידה',
+      analyticsHint: 'כמה אנשים נכנסו ולאילו עמודים, בלי לזהות אף אחד בשמו.',
+      ads: 'פרסום',
+      adsHint: 'לדעת אילו מודעות הביאו קונים, ולהראות מודעות רלוונטיות יותר.',
+      save: 'שמירת ההעדפות',
+      saved: 'ההעדפות נשמרו.',
+    },
     footer: {
       terms: 'תנאי שימוש',
       returns: 'ביטולים והחזרות',
@@ -2824,6 +2849,20 @@ export const translations = {
       back: 'Back',
       viewAllResults: 'All results',
       submit: 'Search',
+    },
+    consent: {
+      title: 'Cookies on this site',
+      body: 'This site uses cookies to work, to measure how it is used, and to run our advertising.',
+      more: 'Details and options are in the privacy policy',
+      dismiss: 'Got it',
+      close: 'Close this notice',
+      prefsTitle: 'Managing the non-essential cookies',
+      analytics: 'Measurement',
+      analyticsHint: 'How many people came and which pages they read, without identifying anyone.',
+      ads: 'Advertising',
+      adsHint: 'Which ads brought buyers, and showing more relevant ads.',
+      save: 'Save preferences',
+      saved: 'Your preferences have been saved.',
     },
     footer: {
       terms: 'Terms',

@@ -73,8 +73,18 @@ describe('a credential in the URL never reaches a third-party tag', () => {
     // Both ids are computed through the flag, so all four insertion points (two head scripts, two
     // <noscript> fallbacks) go dark together — asserted at the source of the value rather than at
     // each use, since a fifth use added later would inherit it.
-    expect(layout).toMatch(/const platformGtm\s*=\s*noTracking \?/);
-    expect(layout).toMatch(/const platformPixel\s*=\s*noTracking \?/);
+    //
+    // The value is now computed in TWO steps (consent, 2026-08-25): `configuredX` is what the
+    // platform would run, and `platformX` is what it is allowed to run. `noTracking` gates the
+    // FIRST, which is the stronger place — a credential page then has no id to hand even to the
+    // consent banner, so accepting cookies on such a page still cannot start a tag there. Both
+    // links are asserted, because breaking either one restores the leak.
+    expect(layout, 'noTracking must kill the id at its source, before consent is even consulted')
+      .toMatch(/const configuredGtm\s*=\s*noTracking \?/);
+    expect(layout).toMatch(/const configuredPixel\s*=\s*noTracking \?/);
+    expect(layout, 'the emitted id must derive from the noTracking-gated one, not from config')
+      .toMatch(/const platformGtm\s*=\s*[^;]*configuredGtm/);
+    expect(layout).toMatch(/const platformPixel\s*=\s*[^;]*configuredPixel/);
     expect(layout, 'the dataLayer push exists to be read by GTM — it goes with them')
       .toMatch(/const dlJson\s*=\s*dataLayer && !noTracking/);
   });

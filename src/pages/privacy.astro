@@ -48,6 +48,7 @@ import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId } from '../lib/stores.js';
 import { getLang } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
+import ConsentPreferences from '../components/ConsentPreferences.astro';
 // Interpolated, never restated — a window written as a digit in a legal clause AND in the job that
 // enforces it is a pair that drifts, and the copy is the half a person can hold us to. Same rule
 // `/terms` follows for the fulfilment deadlines. `tests/privacy-policy.test.ts` pins it.
@@ -68,7 +69,7 @@ const email = platform.business.email;
 
 /** Every clause, in the one language that binds. Same shape as `/terms` on purpose: one loop, and a
  *  new clause is one entry. */
-const clauses: { h: string; p: string[] }[] = [
+const clauses: { h: string; p: string[]; id?: string }[] = [
   {
     h: 'מי אחראי למידע',
     p: [
@@ -111,15 +112,23 @@ const clauses: { h: string; p: string[] }[] = [
       'לספקי תשתית שמפעילים עבורנו את האתר — אחסון וניהול מסד הנתונים, אחסון ועיבוד תמונות ושליחת הודעות דואר אלקטרוני. הם מעבדים את המידע עבורנו בלבד ולפי הנחיותינו.',
       // Named because it is a transfer for OUR purposes to companies with their own — the class a
       // reader is entitled to know about, and the one a policy is tempted to leave vague.
-      'לגוגל ולמטא — נתוני שימוש באתר ואירועי רכישה, לצורך מדידת ביצועי האתר וניהול הפרסום של הפלטפורמה ושל החנויות שבה. השירותים האלה פועלים בכל עמוד באתר וקובעים עוגיות משלהם, בהתאם למדיניות הפרטיות שלהם.',
+      'לגוגל ולמטא — נתוני שימוש באתר ואירועי רכישה, לצורך מדידת ביצועי האתר וניהול הפרסום של הפלטפורמה ושל החנויות שבה. השירותים האלה פועלים בכל עמוד באתר וקובעים עוגיות משלהם, בהתאם למדיניות הפרטיות שלהם. אפשר לכבות אותם בסעיף "עוגיות" למטה.',
       'ככל שנדרש לפי דין, או לצורך בירור והגנה מפני שימוש לרעה, הונאה או הפרת זכויות.',
       `${platform.name} אינה מוכרת מידע אישי ואינה מוסרת אותו לצדדים שלישיים לצורכי פרסום שלהם.`,
     ],
   },
   {
+    // **This clause is an ISRAELI duty, not an imported one** (the owner asked, 2026-08-25: *"לא
+    // הבנתי מה הכנסת את אירופה, אנחנו בישראל"*). Nothing here applies European law. תקנות הגנת
+    // הפרטיות (העברת מידע אל מאגרי מידע שמחוץ לגבולות המדינה), תשס״א-2001 require an Israeli site
+    // to disclose that personal data leaves the country — and ours does, as a fact about where the
+    // servers physically are rather than about which regime we chose: the database is Neon in
+    // `eu-central-1`, i.e. Frankfurt (read off DATABASE_URL, 2026-08-25), and the advertising and
+    // measurement services are American companies. The clause names those two facts and no regime.
+    // If the database ever moves to an Israeli region, this sentence is part of that change.
     h: 'העברת מידע אל מחוץ לישראל',
     p: [
-      'חלק מספקי התשתית והפרסום שלנו פועלים מחוץ לישראל, ולכן מידע עשוי להישמר או להיות מעובד בשרתים במדינות אחרות, ובכללן מדינות באיחוד האירופי ובארצות הברית. ההתקשרות עם ספקים אלה נעשית באופן המחייב אותם לשמור על המידע ולעבד אותו לצורכי השירות בלבד.',
+      'שרתי מסד הנתונים של האתר, וכן שירותי אחסון התמונות, הדיוור, המדידה והפרסום שאנחנו משתמשים בהם, ממוקמים מחוץ לישראל. משמעות הדבר שמידע שנאסף באתר נשמר ומעובד בשרתים שמחוץ לגבולות המדינה. ההתקשרות עם הספקים האלה מחייבת אותם לשמור על המידע ולעבד אותו לצורך מתן השירות בלבד.',
     ],
   },
   {
@@ -147,11 +156,20 @@ const clauses: { h: string; p: string[] }[] = [
     ],
   },
   {
+    // **The clause that carries the whole weight of the cookie arrangement, and it has to keep
+    // doing so.** Israeli law has no cookie-banner duty and no opt-in requirement, and consent may
+    // be implied from a visitor's conduct — but only where the disclosure is clear and published.
+    // This IS that disclosure: name every category, say plainly that they run from the first
+    // visit, and put the off-switch on the same screen as the sentence explaining it. Thinning
+    // this clause does not tidy a page; it removes the basis on which the cookies run at all.
+    // `lib/consent.ts` holds the reasoning and `docs/legal-privacy-accessibility.md` §4 the source.
     h: 'עוגיות',
+    id: 'cookies',
     p: [
       'האתר משתמש בעוגיות הדרושות לפעולתו: שמירת ההתחברות לחשבון, שמירת סל הקניות, זכירת שפת הממשק, הגנה מפני זיוף בקשות, וזכירת חנויות שביקרת בהן לאחרונה. בלעדיהן חלקים מהאתר לא יפעלו.',
       `בנוסף נשמרת עוגייה עם מזהה ביקור אקראי לצורך ספירת מבקרים נבדלים (עד ${VISITOR_RETENTION_DAYS} ימים), ועוגייה עם מקור ההגעה לאתר (עד ${ATTRIBUTION_WINDOW_DAYS} ימים).`,
-      'שירותי המדידה והפרסום של גוגל ומטא, הפועלים באתר, קובעים עוגיות משלהם. אפשר לחסום או למחוק עוגיות בהגדרות הדפדפן; חסימה של עוגיות הדרושות לפעולת האתר תמנע התחברות ורכישה.',
+      'שירותי המדידה והפרסום של גוגל ומטא פועלים באתר מהכניסה הראשונה, וקובעים עוגיות משלהם. השימוש באתר לאחר קריאת מדיניות זו מהווה הסכמה לכך.',
+      'אפשר לכבות את העוגיות שאינן הכרחיות כאן למטה, בכל רגע, וההעדפה נשמרת לשנה. אפשר גם לחסום או למחוק עוגיות בהגדרות הדפדפן; חסימה של עוגיות הדרושות לפעולת האתר תמנע התחברות ורכישה.',
     ],
   },
   {
@@ -195,6 +213,10 @@ const clauses: { h: string; p: string[] }[] = [
       <>
         <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">{c.h}</h2>
         {c.p.map((line) => <p style="margin-top:0.5rem">{line}</p>)}
+        {/* The off-switch sits INSIDE the clause that explains it, not in a settings screen of its
+            own — a control a person meets while reading the sentence that describes it is the one
+            they can act on. It is also the only place on the site it exists; see the component. */}
+        {c.id === 'cookies' && <ConsentPreferences />}
       </>
     ))}
 

@@ -1,0 +1,66 @@
+---
+/** The cookie NOTICE — a statement, not a request.
+ *
+ *  **Read `lib/consent.ts` before changing anything here.** The short version: Israeli law has no
+ *  cookie-banner duty and no opt-in requirement, and with clear disclosure in the privacy policy
+ *  consent may be implied from conduct. So cookies run from the first visit, this bar says that
+ *  they do, and the detail plus the off-switch live in `/privacy`. That is the Israeli practice,
+ *  and it replaced a first version of this component that implemented the European one (owner,
+ *  2026-08-25: *"הלכת רחוק מדי"*).
+ *
+ *  **There is no reject button and no settings button on this bar, deliberately** — *"שלא יהיה שם
+ *  כפתור כיבוי (כל עוד זה חוקי) פשוט שקל ללחוץ עליו"*. The parenthesis is the constraint, and it
+ *  is a real one: what keeps conduct-based consent lawful is that the disclosure is complete and
+ *  the control is genuinely reachable. It is, in the cookies clause of `/privacy`, which the footer
+ *  links from every page — one level in, never hidden. **Do not remove the link to the policy from
+ *  this bar.** Without it the notice stops being a notice and the arrangement loses the thing that
+ *  makes it defensible.
+ *
+ *  **It is rendered on every page and starts HIDDEN, always**, then its script shows it if nobody
+ *  has dismissed it. Default-hidden is the rule for every injected overlay here (memory
+ *  `project_injected_overlay_flash`), and it matters more than usual on this one: a bar that
+ *  flashes for a returning visitor who already dismissed it reads as the site having forgotten
+ *  them.
+ *
+ *  **No shadow** — it is pinned to the viewport edge, and a bar says which layer it is on with a
+ *  border and a fill (the elevation rule, base/tokens.css). Header and store filter row, same call.
+ */
+import { getLang, getT } from '../i18n/index.js';
+import { CONSENT_COOKIE, parseConsent } from '../lib/consent.js';
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const c = t.consent;
+
+/** Never notified → the bar shows on load. Note this is `parseConsent` and NOT `effectiveConsent`:
+ *  the question here is "has this visitor been told", which is a different question from "what may
+ *  run", and the tags are already running either way. */
+const notified = parseConsent(Astro.cookies.get(CONSENT_COOKIE)?.value) !== null;
+---
+
+{/* `role="region"` + a label, not `role="dialog"`: it traps nothing, blocks nothing and demands
+    nothing, and announcing a dialog that does not behave like one is worse for a screen reader
+    than announcing a landmark that does. No `aria-live` — the bar is in the DOM from first paint,
+    so there is no insertion for a live region to announce. */}
+<div
+  id="consent-notice"
+  class="!hidden fixed bottom-0 inset-x-0 z-[60] border-t [border-color:var(--color-border)] [background:var(--color-surface)] py-2.5" data-bottom-bar
+  data-consent-show={notified ? undefined : ''}
+  role="region"
+  aria-label={c.title}
+>
+  <div class="container flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+    <p class="muted m-0 min-w-0 text-[0.82rem] leading-relaxed">
+      {c.body}{' '}
+      <a href="/privacy" class="underline">{c.more}</a>
+    </p>
+    <button type="button" class="btn btn--ghost btn--sm shrink-0" id="consent-dismiss" aria-label={c.close}>
+      {c.dismiss}
+    </button>
+  </div>
+</div>
+
+<script>
+  import { initConsentNotice } from '../scripts/consent.js';
+  initConsentNotice();
+</script>

@@ -10,6 +10,7 @@ import StickyGlassBoot from '../components/StickyGlassBoot.astro';
 import ProductQuickView from '../components/ProductQuickView.astro';
 import StoreProductModal from '../components/StoreProductModal.astro';
 import ToastContainer from '../components/ToastContainer.astro';
+import ConsentBanner from '../components/ConsentBanner.astro';
 import MessageCompose from '../components/MessageCompose.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
 import { needsDashboardI18n } from '../lib/i18n-island.js';
@@ -19,6 +20,11 @@ import { getSellerSession } from '../lib/seller-auth.js';
 import { CSRF_META, issueCsrfToken } from '../lib/csrf.js';
 import { getUnreadCountForUser } from '../lib/notifications.js';
 import { storeIconUrl } from '../lib/store-image.js';
+// The tag bootstraps moved OUT of this file (2026-08-25): the browser has to be able to start the
+// same snippets the moment a visitor accepts, and a bootstrap copied into a second file is one that
+// gets a parameter added in only one of them.
+import { gtmHeadScript, metaPixelScript, consentDefaultScript } from '../lib/tag-bootstrap.js';
+import { CONSENT_COOKIE, consentModeSignal, mayLoadAdPixel, mayLoadTagManager, parseConsent } from '../lib/consent.js';
 import heeboHebrewUrl from '@fontsource-variable/heebo/files/heebo-hebrew-wght-normal.woff2?url';
 import heeboLatinUrl from '@fontsource-variable/heebo/files/heebo-latin-wght-normal.woff2?url';
 // Two files, not ten: these are the VARIABLE cuts, one per script, each carrying the whole
@@ -128,20 +134,35 @@ function sanitizePixelId(id?: string): string {
  * `tests/credential-url-tracking.test.ts` scans every page for the shape rather than for this file:
  * read a credential out of the URL, and the layout call has to say `noTracking`.
  */
-const platformGtm   = noTracking ? '' : sanitizeTagId(platform.ads?.googleTagId);
-const platformPixel = noTracking ? '' : sanitizePixelId(platform.ads?.metaPixelId);
+/**
+ * The CONFIGURED tag ids — what the platform would run if it were allowed to. Kept separate from
+ * whether it may, below, because the banner has to be handed these even on a page that ships no
+ * tag: a visitor who presses accept starts them without a reload.
+ */
+const configuredGtm   = noTracking ? '' : sanitizeTagId(platform.ads?.googleTagId);
+const configuredPixel = noTracking ? '' : sanitizePixelId(platform.ads?.metaPixelId);
 
-function gtmHeadScript(id: string): string {
-  return `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${id}');`;
-}
-function metaPixelScript(id: string): string {
-  return `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${id}');fbq('track','PageView');`;
-}
+/**
+ * **The consent gate, and it is a SERVER gate on purpose (owner's decision, 2026-08-25).**
+ *
+ * A banner that hides a tag with CSS, or unloads it after the fact, is not consent — the request
+ * already went out and the third party already has the page URL and the visitor's IP. So with no
+ * decision recorded these are empty, and the markup below then contains no loader, no `<noscript>`
+ * pixel and no dataLayer push at all. Refusing is the DEFAULT, not a state a script has to reach.
+ *
+ * `lib/consent.ts` owns what the cookie means; this reads it and nothing more.
+ */
+const consent = parseConsent(Astro.cookies.get(CONSENT_COOKIE)?.value);
+const platformGtm   = mayLoadTagManager(consent) ? configuredGtm : '';
+const platformPixel = mayLoadAdPixel(consent) ? configuredPixel : '';
 
 // The one blob that lands in EXECUTABLE JS rather than a JSON island, so it needs
 // jsonForScript's U+2028/2029 escapes as much as its `</script>` ones. Carries
 // seller-supplied product names (dataLayer ecommerce items) to every visitor.
-const dlJson = dataLayer && !noTracking ? jsonForScript(dataLayer) : null;
+// Gated on consent as well as on `noTracking`. The push is ours and harmless on its own, but it
+// exists to be READ by GTM — a page that may not be reported on must not stage a report either,
+// which is the same argument `noTracking` already made for a different reason.
+const dlJson = dataLayer && !noTracking && platformGtm ? jsonForScript(dataLayer) : null;
 const sessionUserId = getSellerSession(Astro.cookies) ?? '';
 
 /**
@@ -272,6 +293,11 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} storeOwned={storeOwnsThisPage} siteName={storeName} />
+    {/* Google Consent Mode v2's `default`, and it MUST come before any loader below or the
+        container treats a missing signal as its own default. Emitted on every page that has a tag
+        id configured at all — including pages currently shipping no tag, because it costs four
+        lines and it is what makes the banner's later `update` mean anything. */}
+    {configuredGtm && <script is:inline set:html={consentDefaultScript(consentModeSignal(consent))} />}
     {dlJson && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];window.dataLayer.push(${dlJson});`} />}
     {platformGtm && <script is:inline set:html={gtmHeadScript(platformGtm)} />}
     {platformPixel && <script is:inline set:html={metaPixelScript(platformPixel)} />}
@@ -350,6 +376,10 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
         the copy at the end of the document is the one nobody reaches, being eight hundred product
         rows down. Still one footer per page; only its address changed. */}
     {!dashNav && <Footer />}
+    {/* Rendered on EVERY page, dashboard included — a seller is a visitor too, and the footer's
+        re-open control is not the only way here: an undecided visitor who lands straight on the
+        dashboard must still be asked. It is `!hidden` until its script decides otherwise. */}
+    <ConsentBanner gtmId={configuredGtm} pixelId={configuredPixel} />
     <CartDrawer />
     <AddToCartPreview />
     <WishlistDrawer />

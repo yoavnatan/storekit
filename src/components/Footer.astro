@@ -32,6 +32,13 @@ const nextLang = lang === 'he' ? 'en' : 'he';
             a document; `tests/legal-pages.test.ts` fails if one goes. */}
         <li><a href="/privacy" class="muted">{t.footer.privacy}</a></li>
         <li><a href="/accessibility" class="muted">{t.footer.accessibility}</a></li>
+        {/* There is deliberately NO cookie-settings entry in this row (owner, 2026-08-25: *"שלא
+            יהיה שם כפתור כיבוי (כל עוד זה חוקי) פשוט שקל ללחוץ עליו"*). Under the Israeli model the
+            control lives one level in, in the cookies clause of `/privacy` — which this row links,
+            two lines up, from every page on the site. **That link is what keeps the arrangement
+            lawful** (lib/consent.ts): implied consent needs the disclosure published and the
+            control genuinely reachable, and "reachable" is the floor even though "prominent" is
+            not the goal. Do not remove the privacy link to make this tidier. */}
         <li><a href="/contact" class="muted">{t.footer.contact}</a></li>
         <li>
           {/* data-native-submit: no AJAX handler exists for this one on purpose — /api/lang sets

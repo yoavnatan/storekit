@@ -16,8 +16,15 @@ two pages were written on, so that a later session does not re-derive it from a 
 
 ## 1. Privacy — תיקון 13 לחוק הגנת הפרטיות
 
-**In force 2025-08-14.** It is the largest change to Israeli privacy law in decades and it moved
-the regime substantially towards GDPR shapes.
+**In force 2025-08-14.** The largest change to Israeli privacy law in decades.
+
+> **Read this section as Israeli law only** (owner, 2026-08-25: *"צריך להתאים לחוקים ולנוהג המקובל
+> בישראל, לא באירופה"*, and then *"נכון על כל הסשן"*). GDPR material is far better documented in
+> English than Israeli law is, so it is what a session drifts to by default — and it produces work
+> that is both wrong about which rules bind us and heavier than what an Israeli business actually
+> does. Every claim below is sourced to an Israeli statute, regulation or Authority publication.
+> **Where the law and the local practice differ, both are stated** — a duty nobody in Israel
+> discharges is still worth naming, but so is the gap.
 
 Source: *מדריך מקצועי: תיקון מס' 13 לחוק הגנת הפרטיות*, הרשות להגנת הפרטיות —
 <https://www.gov.il/he/pages/guide_tikon13_professional>
@@ -116,11 +123,36 @@ Playwright rule in `AI_INSTRUCTIONS.md`); rebuild it from this paragraph.
 
 ## 4. Open, and owner's to decide
 
-- ⚠️ **Cookie consent.** GTM and the Meta pixel load on **every page for every visitor with no
-  consent gate**. The Authority's draft guidance (Nov 2020) is that non-essential tracking needs
-  active opt-in, and Amendment 13 added "מדעת/informed" to the definition of consent. Building a
-  banner is a product decision with a real cost — it is the first thing a shopper sees, and
-  refusals degrade the ad attribution the whole growth plan rests on. GO_LIVE §0 carries the row.
+- **Cookies — DECIDED and built, 2026-08-25. The first version of this row got the law wrong, so
+  the correction is kept here rather than tidied away.** It said the Authority's 2020 draft
+  "requires" opt-in. It does not, and neither does the statute:
+
+  > **Israeli law contains no express cookie-banner duty and does not require opt-in.** What it
+  > requires is the §11 notification duty and consent *מדעת* — and, subject to clear disclosure in
+  > the privacy policy, consent **may be implied from the user's conduct**. The 2020 document is a
+  > *draft* opinion that was never finalised. **The Israeli practice** follows: most Israeli sites
+  > run cookies from the first visit and show at most a notice bar saying so. A blocking opt-in
+  > banner is the European shape.
+
+  **What shipped is the Israeli one**, after a first implementation of the European one was built
+  and replaced the same day (owner: *"צריך להתאים לחוקים ולנוהג המקובל בישראל, לא באירופה"*, then
+  *"נכון על כל הסשן"* and *"הלכת רחוק מדי"*). Concretely:
+
+  | | |
+  |---|---|
+  | Tags run | from the first visit, for a visitor with no recorded preference |
+  | The bar | a NOTICE — one sentence, a link to `/privacy`, and "הבנתי". **No reject button, no settings button** (*"שלא יהיה שם כפתור כיבוי… פשוט שקל ללחוץ עליו"*) |
+  | The off-switch | in the cookies clause of `/privacy`, which the footer links from every page |
+  | Google Consent Mode | `default` on every page, `update` when a preference changes — so a switched-off category reaches Google's gate and not only ours |
+
+  **The three things that make this lawful rather than merely customary, and none is optional:**
+  a visitor with no preference is treated as permitting (that IS implied consent); the disclosure
+  is actually published, in full, on `/privacy`; and the control is genuinely reachable. The
+  parenthesis in the owner's instruction — *"כל עוד זה חוקי"* — is the constraint, and "reachable"
+  is the floor even though "prominent" is not the goal. `lib/consent.ts` carries the reasoning and
+  `tests/consent.test.ts` pins both directions, including that the notice bar has no off-switch and
+  that `/privacy` does.
+
 - ⚠️ **How long a buyer's identifying details live inside an old order.** Two questions to two
   people: the רו״ח (how many years an accounting record must be kept) and the עו״ד (when the
   identifying fields come off). Until answered, `ORDER_RETENTION_YEARS` stays `null` and the page
