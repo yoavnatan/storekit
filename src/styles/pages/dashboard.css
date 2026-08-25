@@ -2088,17 +2088,37 @@ textarea.input { resize: none; }
 #dash-main-card.dash-nav-side .dash-head__top {
   flex-direction: column;
   align-items: stretch;
-  /* **0.35rem, and the two gaps in this block are NOT the same number on purpose** (owner,
-     2026-08-23: *"הריווח בין הכפתור של החלפת החנויות לבין צפה בחנות יהיה כמו הריווח שבין צפה
-     בחנות לבין הכתובת"*). Measured, they already were — 8.80px on both sides of the button. What
-     is not equal is what the eye measures from: the row above is a 28px avatar with a ~17px name
-     centred in it, so there are about five pixels of circle below the last letter before the box
-     even ends, and the space under it reads as half again as large as the space under the button,
-     whose text fills its own box. Taking those pixels out of the declared gap is what makes the
-     two read the same. Optical, so it is written as a number with its reason rather than derived
-     from anything. */
-  gap: 0.35rem;
+  /* **1rem, the same number as the space under the button — and this is the third attempt at the
+     owner's one request** (2026-08-23: *"הריווח בין הכפתור של החלפת החנויות לבין צפה בחנות יהיה
+     כמו הריווח שבין צפה בחנות לבין הכתובת"*; again 2026-08-25: *"צמוד מדי… משהו שם לא עובד עם
+     הריווחים"*). The first two attempts tuned this number optically and by hand, and both failed
+     for the same reason: **the number here was never the distance on the screen.**
+
+     What was really happening is measured on `#store-switcher` below. The switcher's box was
+     36.59px tall around a 28px control, so 8.59px of nothing sat between the avatar and this gap —
+     and the eye saw 14.19px where the stylesheet said 5.6px. Every earlier value was therefore
+     read back wrong (the 2026-08-23 note recorded "8.80px on both sides", which is what you get
+     measuring the wrapper's box instead of the control's), and no amount of care spent on the
+     number could have worked while the number meant something else.
+
+     With the phantom gone (see below) this declares what it does. 1rem, not the 14.19px that was
+     there by accident: the owner called that too tight, and a filled slab spanning the rail's full
+     width needs more air above it than a line of text does. Equal to `.dash-head .muted`'s
+     `margin-top` further down, which is the request itself — the two must be edited together. */
+  gap: 1rem;
 }
+/* **The 8.59px that made every earlier number a lie.** `#store-switcher` is a block whose only
+   in-flow child is an `inline-flex` button, so it carries a LINE BOX: the strut of the inherited
+   1rem/1.5 line-height reserves descender space under the button's inline box, and the wrapper
+   measured 36.59px around a 28.00px control. That space is inside the flex item, so it added
+   itself to the `gap` above and could not be seen in any rule.
+   `flex` removes the line box — a flex container has no inline formatting context — and the
+   wrapper's height becomes the button's. `min-width: 0` on the button because it stops being a
+   width-constrained inline-block and becomes a flex item, whose automatic minimum size would
+   otherwise refuse to shrink and take `.dash-store-name`'s `truncate` out of service on a long
+   store name. Measured both ways before and after. */
+#dash-main-card.dash-nav-side #store-switcher { display: flex; }
+#dash-main-card.dash-nav-side #store-switcher > button { min-width: 0; max-width: 100%; }
 /* The one action in the rail's head, whichever dashboard it is: "צפה בחנות" for a seller,
    "התנתקות" for the admin. Keyed to the slot rather than to either id, because a 15.5rem column has
    room for one full-width control and no room for a row of them. */
@@ -2112,8 +2132,13 @@ textarea.input { resize: none; }
 html.dash-nav-mini #dash-main-card.dash-nav-side.admin-dash .dash-head { display: none; }
 /* Air between the address line and the button above it. The address inherits `mt-3 sm:mt-1` from
    the full-width layout, where the button sits BESIDE it rather than on top of it; stacked in the
-   rail those 4px read as the two being one control (owner, 2026-08-23). */
-#dash-main-card.dash-nav-side .dash-head .muted { margin-top: 0.55rem; }
+   rail those 4px read as the two being one control (owner, 2026-08-23).
+   **1rem, and it is the same declaration as `.dash-head__top`'s `gap` on purpose** — the owner's
+   request is that the two distances be equal, so they are one value written twice and neither may
+   be changed alone. It stopped being 0.55rem when the phantom line box above the button was
+   removed: with the real gaps at 14.19px above and 8.80px below, matching meant raising both, not
+   splitting the difference. */
+#dash-main-card.dash-nav-side .dash-head .muted { margin-top: 1rem; }
 
 /* ── The rail's own item, shared by both breakpoints ──
    The horizontal tab marks itself with a 2.5px underline; the rail marks itself with the same
@@ -2251,7 +2276,7 @@ html:has(#dash-main-card.dash-nav-side) {
    the thing `.dash-section--bleed > .card` already refuses to do against the site header. Measured
    at 834px: card edge at 66.39, bar edge at 67.39. Below 641px there is no sheet border at all and
    nothing to double. */
-@media (max-width: 899.98px) {
+@media (max-width: 767.98px) {
   #dash-main-card.dash-nav-side .dash-panel-head,
   #dash-main-card.dash-nav-side .products-header { border-top-width: 0; }
 }
@@ -2462,7 +2487,7 @@ html:has(#dash-main-card.dash-nav-side) {
 }
 
 /* ── Desktop: a real column beside the panel ── */
-@media (min-width: 900px) {
+@media (min-width: 768px) {
   /* ══ THE SHELL: a sidebar and a main, and nothing wrapped around both ══
      Owner, 2026-08-23: *"כלומר להפריד לגמרי בין הסייד בר לבין המיין"* — and then, when asked what
      it should look like: *"קח דוגמא מפייסבוק"*. So this is that shape, which is also the shape of
@@ -2731,7 +2756,7 @@ html:has(#dash-main-card.dash-nav-side) {
    `visibility` handoff that keeps a closed drawer out of the Tab order, the 0.4 black scrim and
    the z-index pair are `components/cart-drawer.css`'s, value for value. It opens from the START
    side (the right, in Hebrew), which is where its own trigger is. */
-@media (max-width: 899.98px) {
+@media (max-width: 767.98px) {
   #dash-main-card.dash-nav-side > .dash-rail {
     position: fixed;
     top: 0;
@@ -2741,7 +2766,7 @@ html:has(#dash-main-card.dash-nav-side) {
     z-index: 100;
     /* **A column here too, or the foot is not a foot** (owner, 2026-08-24: *"הפוטר בתוך התפריט צד
        צריך לשבת למטה בתחתית, אמרתי את זה מספר פעמים וזה לא קרה"*). `display: flex` was declared
-       only in the 900px-and-up block, so in the drawer this box was a plain block and
+       only in the desktop block (768px and up), so in the drawer this box was a plain block and
        `.dash-rail-foot`'s `margin-top: auto` had no free space to collect — measured at 375×812 the
        links ended 39px above the drawer's own bottom edge, floating under the last tab. The desktop
        column was right all along, which is why it never reproduced on the screen it was checked on.
@@ -2810,7 +2835,7 @@ html:has(#dash-main-card.dash-nav-side) {
    it started before the rail existed.
    Only the dot and the breakpoint are this file's business. */
 .dash-nav-trigger { display: none; }
-@media (max-width: 899.98px) {
+@media (max-width: 767.98px) {
   .dash-nav-trigger { display: inline-flex; }
 }
 /* ── The marker a closed drawer has to show from the outside ──
@@ -2909,7 +2934,8 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
 /* ── THE RAIL SHRINKS INSTEAD OF VANISHING (owner, 2026-08-23) ──
    It used to stop being a column at 1180 and become a hidden drawer, which is a laptop
    width: at 1100px the whole navigation disappeared behind a hamburger while there was
-   still room for it. Now the shell runs down to 900 and the band between is the ICON rail
+   still room for it. Now the shell runs down to 768 (it was 900 until 2026-08-25 — see below)
+   and the band between is the ICON rail
    — the same `dash-nav-mini` presentation the toggle has always produced, so all 23 rules
    that draw it are untouched; only WHEN it applies changed. `DashRailToggle.astro` sets the
    class by width in that band and restores his own choice above it.
@@ -2920,8 +2946,27 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
    rather than a reflow was the SKU vanishing inside it, and that is fixed at the source —
    the value moves under the product name instead of leaving with its column.
 
-   THE TOGGLE IS ABSENT ONLY BELOW 900, where the rail is a drawer and there is no column
+   THE TOGGLE IS ABSENT ONLY BELOW 768, where the rail is a drawer and there is no column
    to size — the header's own trigger opens it there.
+
+   **768 and not 900 (owner, 2026-08-25):** *"אני לא אוהב את זה שבדשבורד הסייד בר הופך להיות
+   המבורגר עוד לפני שזה הופך למובייל, ההמבורגר לדעתי צריך להיות במובייל בלבד."* 900px is a small
+   laptop and a tablet in landscape, and hiding the whole navigation behind a hamburger there is the
+   same complaint that moved the collapse from 1180 to 900 the day before — one band further down.
+
+   **640 was tried first and rendered, and it is the more literal reading of "mobile" — it is the
+   site's own phone line in `header.css`, and where `.dash-section--bleed` starts. It was rejected
+   on the picture.** The rail costs the panel 60px, and the products table's three states are tuned
+   to the WINDOW (the block at the top of this file), with its narrowest state measured against a
+   641px panel. At 640 the drawer boundary put a 60px rail into that band: measured at a 660px
+   window, the product name column rendered `…ress`, `…own`, `…Skirt`. The table did not break — it
+   scrolls — but a name column showing four letters is not a table anyone can work in.
+   768 is the first boundary that costs the table nothing: at 769px the panel is 709px, still above
+   the floor those thresholds were measured at, and below 768 there is no rail so the panel is the
+   whole window again. Nothing else in this file had to move.
+
+   ⚠️ **So this number and the ≤640 cards threshold are attached.** Lowering it again means moving
+   the table to cards earlier by the rail's width, not just editing the media query here.
    **It used to be absent below 1180 as well, and that was a hole** (owner, 2026-08-24: *"מה
    קורה כשהתפריט צד סגור בלי דרך לפתוח אותו (יש רוחב מסויים שפשוט אין דרך לפתוח את תפריט הצד
    ויש שם רק אייקונים) ואז בעצם - אין פוטר"*). Between 900 and 1180 the width forces the icon
@@ -2932,7 +2977,7 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
    (`feedback_noop_interactions_invisible`). So the control does something else in that band —
    it opens the rail OVER the content, which is the one move that costs the table nothing
    (owner's choice, 2026-08-24, over the alternative of squeezing the table to 750px). */
-@media (max-width: 899.98px) {
+@media (max-width: 767.98px) {
   .dash-rail-toggle { display: none; }
 }
 
@@ -2946,7 +2991,7 @@ html.dash-nav-mini .dash-view-store__icon { display: inline-flex; }
    `html.dash-nav-mini` comes OFF while it is open, which is what brings the labels and the foot
    back; the boot script in `DashRailToggle.astro` owns that class and is told, so the width band
    still wins the moment it closes. */
-@media (min-width: 900px) and (max-width: 1179.98px) {
+@media (min-width: 768px) and (max-width: 1179.98px) {
   /* **The column keeps the collapsed width while the rail is open**, and that is the whole point
      of floating it: an 11-column table must not reflow because somebody wanted to read a label.
      `:has()` takes its argument's specificity, so this beats the 15.5rem rule that applies the
@@ -3075,7 +3120,7 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
 }
 /* In the drawer the foot is the last thing in a scrollable sheet, and a link 2px off the bottom
    edge reads as clipped. */
-@media (max-width: 899.98px) {
+@media (max-width: 767.98px) {
   /* The drawer scrolls and ends where its own padding does, so it needs less than the column that
      ends at the window's edge — but not nothing. */
   .dash-rail-foot { padding-bottom: 0.75rem; }

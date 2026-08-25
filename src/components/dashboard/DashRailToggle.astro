@@ -63,7 +63,7 @@ const d = t.dashboard;
     var narrow = window.matchMedia('(max-width: ' + AUTO_MINI_MAX + 'px)');
     /**
      * The third input, and the only one that is not a preference: the rail is open OVER the
-     * content (900–1180, dashboard.css). While it is, the forced collapse yields — that is what
+     * content (768–1180, dashboard.css). While it is, the forced collapse yields — that is what
      * brings the labels and the foot back — and the moment it closes the width band wins again
      * with nothing to restore, because this never touches `chose`. `DashNavDrawer` owns the open
      * state and announces it; this file only listens, so there is still exactly one place that
@@ -138,7 +138,7 @@ const d = t.dashboard;
     /**
      * Which of the two things this button does, asked of the LAYOUT rather than of a remembered
      * number — `dashboard.css` holds the one definition of the band, exactly as `isDrawer()` in
-     * `DashNavDrawer` does. Between 900 and 1180 the width forces the icon rail and a stored
+     * `DashNavDrawer` does. Between 768 and 1180 the width forces the icon rail and a stored
      * preference would change nothing on screen, so there the press floats the rail over the
      * content instead; above 1180 it is the width control it has always been.
      */
@@ -149,7 +149,7 @@ const d = t.dashboard;
       // question is whether the width is forcing the collapse, which is the same test the boot
       // script makes — and `matchMedia` is how it makes it.
       if (card.hasAttribute('data-nav-open')) return true;
-      return window.matchMedia('(min-width: 900px) and (max-width: 1179.98px)').matches;
+      return window.matchMedia('(min-width: 768px) and (max-width: 1179.98px)').matches;
     }
 
     btn.addEventListener('click', function () {

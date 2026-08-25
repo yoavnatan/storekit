@@ -69,15 +69,18 @@
       scrim.classList.toggle('is-open', open);
       trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
       /**
-       * **Announced, because above 900 this same state is the rail opening OVER the content**
-       * (dashboard.css, 900–1180) and the collapse it has to overrule is a class on `<html>` that
+       * **Announced, because above 768 this same state is the rail opening OVER the content**
+       * (dashboard.css, 768–1180) and the collapse it has to overrule is a class on `<html>` that
        * `DashRailToggle`'s boot script owns. Telling that script is how the labels and the foot
        * come back for as long as the rail is open, without a second place deciding the width.
-       * Guarded by the band on purpose: below 900 the rail is the phone drawer, the collapsed
+       * Guarded by the band on purpose: below 768 the rail is the phone drawer, the collapsed
        * rules do not apply to it at all, and dropping the class there would change what the
        * back-to-store control shows for no reason anyone asked for.
+       * **768 and not 900 since 2026-08-25** — the owner's "hamburger on mobile only"; the number
+       * lives in this file twice, in `DashRailToggle.astro` once and in dashboard.css's media
+       * queries, and dashboard.css carries the argument for the value.
        */
-      var overBand = !window.matchMedia || window.matchMedia('(min-width: 900px)').matches;
+      var overBand = !window.matchMedia || window.matchMedia('(min-width: 768px)').matches;
       document.documentElement.dispatchEvent(
         new CustomEvent('dash:rail-over', { detail: open && overBand }));
       var list = navList();
@@ -131,7 +134,7 @@
     trigger.addEventListener('click', toggle);
     scrim.addEventListener('click', close);
     /**
-     * The other way in: the rail's own chevron, between 900 and 1180, where the header's trigger
+     * The other way in: the rail's own chevron, between 768 and 1180, where the header's trigger
      * is not on screen. It asks rather than reimplements — everything below this line (the scrim,
      * Escape, the focus trap, closing on a tab choice) has to hold for that band too, and the way
      * to be sure it does is for both controls to open the same state.
@@ -218,12 +221,12 @@
     // over the page, with no visible control to dismiss it.
     if (window.matchMedia) {
       // **Both edges of the open band, because there are now two of them.** Above 1180 the rail is
-      // simply the column and nothing is floating; below 900 it becomes the phone drawer, whose
+      // simply the column and nothing is floating; below 768 it becomes the phone drawer, whose
       // closed state is a transform this open state would leave half-applied. Crossing either is
       // not a gesture: nothing may animate, and an open rail must not be left pinned open with the
       // scrim over a page that no longer shows the control that dismisses it.
       window.matchMedia('(min-width: 1180px)').addEventListener('change', closeInstantly);
-      window.matchMedia('(min-width: 900px)').addEventListener('change', closeInstantly);
+      window.matchMedia('(min-width: 768px)').addEventListener('change', closeInstantly);
     }
   })();
 </script>

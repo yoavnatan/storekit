@@ -2,8 +2,9 @@
  * Two ways the seller's navigation column can strand him, both of which it did.
  *
  * **1. A width with no control.** The rail collapses to 3.75rem of unlabelled icons below 1180px
- * because the width decides there, and below 900px it becomes a drawer with a trigger in the site
- * header. The chevron that opens it was hidden below 1180 — so between 900 and 1180 there was no
+ * because the width decides there, and below 768px it becomes a drawer with a trigger in the site
+ * header (900px until 2026-08-25 — dashboard.css argues the value). The chevron that opens it was
+ * hidden below 1180 — so between the drawer's edge and 1180 there was no
  * control at either end: icons with no names, no way back to the labels, and no footer at all,
  * since the foot is `display:none` while collapsed (owner, 2026-08-24: *"יש רוחב מסויים שפשוט אין
  * דרך לפתוח את תפריט הצד ויש שם רק אייקונים) ואז בעצם - אין פוטר"*).
@@ -52,7 +53,16 @@ function bandMax(needle: string): string | null {
   return null;
 }
 
-const OVER_BAND = '@media (min-width: 900px) and (max-width: 1179.98px)';
+/**
+ * The over-content band, **DERIVED and never typed**. Its lower edge is by definition the width at
+ * which the header's trigger takes over — the very thing the first test asserts — so a literal here
+ * is a second copy of that number, and this file exists because a number written twice drifts.
+ * It drifted immediately: the boundary moved 900 → 768 on 2026-08-25 (the owner's "hamburger on
+ * mobile only"), the CSS and both scripts moved together, and this constant did not — two red
+ * assertions about a band that no longer existed, on a change that was correct.
+ */
+const DRAWER_MAX = bandMax('.dash-nav-trigger { display: inline-flex; }');
+const OVER_BAND = `@media (min-width: ${Math.round(Number(DRAWER_MAX) + 0.02)}px) and (max-width: 1179.98px)`;
 
 describe('the collapsed rail can always be opened', () => {
   it('hides the chevron at exactly the width where the header trigger takes over', () => {
