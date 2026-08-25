@@ -299,7 +299,8 @@
   background: linear-gradient(135deg, #2a3c40, #3a5260);
   color: #fff;
   font-weight: 700;
-  font-size: 0.7rem;
+  /* Buyer-facing floor, 0.75rem — components/cards.css carries the note and the measurement. */
+  font-size: 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;

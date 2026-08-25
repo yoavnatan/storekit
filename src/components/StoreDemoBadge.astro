@@ -32,7 +32,7 @@ interface Props {
 const { demo = false, compact = false, quiet = false } = Astro.props;
 const t = getT(getLang(Astro.cookies));
 const size = compact || quiet
-  ? 'text-[0.68rem] gap-1'
+  ? 'text-[0.75rem] gap-1'
   : 'text-[0.75rem] gap-1.5';
 const shape = quiet
   ? 'font-medium [color:var(--color-muted)]'

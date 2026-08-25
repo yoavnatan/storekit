@@ -502,7 +502,7 @@ const i18n = {
               const isCv = isColorVariantName(v.name);
               const isSingleOption = v.options.length === 1;
               return `<div class="variant-group" data-variant-group="${escHtml(v.name)}">
-                <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
+                <p style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
                   ${v.options.map((opt) => {
                     const { display, hex } = resolveColor(opt);

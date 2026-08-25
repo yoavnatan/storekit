@@ -107,7 +107,8 @@
   max-width: 15rem;
   background: var(--color-text);
   color: #fff;
-  font-size: 0.74rem;
+  /* Buyer-facing floor, 0.75rem — components/cards.css carries the note and the measurement. */
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.35;
   border-radius: var(--radius-sm);
@@ -196,7 +197,8 @@
    stores" heading with an underline sized to the text (CartDrawer render()). */
 .cart-other-stores-label {
   display: inline-block;
-  font-size: 0.72rem;
+  /* Buyer-facing floor, 0.75rem — components/cards.css carries the note and the measurement. */
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-muted);
   padding: 0 0 0.15rem;

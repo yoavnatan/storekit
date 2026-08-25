@@ -570,7 +570,8 @@
 
 .home-category-row-label {
   display: block;
-  font-size: 0.72rem;
+  /* Buyer-facing floor, 0.75rem — components/cards.css carries the note and the measurement. */
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;

@@ -181,7 +181,7 @@
           ${c.items.map((i) => {
               const key = i.cartKey ?? i.slug;
               const variantLine = i.selectedVariants && Object.keys(i.selectedVariants).length
-                ? `<div style="font-size:0.72rem;color:var(--color-muted);margin-top:0.1rem">${Object.entries(i.selectedVariants).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</div>`
+                ? `<div style="font-size:0.75rem;color:var(--color-muted);margin-top:0.1rem">${Object.entries(i.selectedVariants).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</div>`
                 : '';
               // Unavailable: its store stopped selling, or the product left the catalog. The line
               // STAYS — a buyer who added three items and finds two does not know what happened,
