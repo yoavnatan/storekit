@@ -2161,8 +2161,12 @@ export const translations = {
       storeAddressPlaceholder: 'לדוגמה: רחוב הרצל 1, תל אביב',
       offerSelfPickup: 'אפשר איסוף עצמי מהחנות',
       offerSelfPickupHint: 'הלקוח יוכל לאסוף מהחנות ללא דמי משלוח. דורש כתובת פיזית.',
-      printsLabels: 'אני מדפיס את מדבקות המשלוח בעצמי',
-      printsLabelsHint: 'ברירת המחדל: אינך צריך להדפיס כלום — השליח מגיע לאסוף והמדבקה מטופלת מולנו. סמן רק אם נוח לך להדפיס מדבקה לכל חבילה.',
+      // Genderless, and that is a rule rather than a preference (owner, 2026-08-25: *"אל תרשום
+      // 'אני מדפיס' אלא 'אדפיס' כי זה צריך להיות ללא מין"*). Hebrew present tense carries gender,
+      // so first-person FUTURE is the escape for a seller checkbox; the hint below avoids it the
+      // other way, with `אין צורך` for `אינך צריך` and an infinitive `לסמן` for the imperative.
+      printsLabels: 'אדפיס את מדבקות המשלוח בעצמי',
+      printsLabelsHint: 'ברירת המחדל: אין צורך להדפיס כלום — השליח מגיע לאסוף והמדבקה מטופלת מולנו. לסמן רק אם נוח להדפיס מדבקה לכל חבילה.',
       storeHours: 'שעות פתיחה',
       storeHoursClosed: 'סגור',
       storeHoursDay: {

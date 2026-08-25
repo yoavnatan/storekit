@@ -2237,8 +2237,16 @@ html:has(#dash-main-card.dash-nav-side) {
    measured, Reports and Payouts, which wrap everything in a `#*-root`, and Products, which wraps
    its toolbar and table together). The middle selector is the general form of that: the panel's
    first child's first child.
-   What must NOT match is a title that has something before it — Settings has a form above its
-   section header, and Overview has no title at all; both keep the padding their content needs. */
+   What must NOT match is a title that has something VISIBLE before it — Overview has no title at
+   all and keeps the padding its content needs.
+   **Settings was in this sentence and did not belong (fixed 2026-08-25).** It was listed as "a form
+   above its section header", which was never the shape: the form CONTAINS the header. What actually
+   happened is that two `<input type="hidden">` sat above it inside that form, and a hidden input is
+   still an element, so `:first-child` missed and the panel kept a band of white above its title —
+   on that tab alone. The owner reported it as the visual bug it was. The inputs moved below the
+   head (they render nothing and form serialization ignores order), so Settings now matches like
+   every other panel. Held by `tests/settings-head-flush.test.ts`, because the next stray element
+   parked at the top of that form would silently reopen it. */
 #dash-main-card.dash-nav-side > .dash-panel:has(> .dash-panel-head:first-child),
 #dash-main-card.dash-nav-side > .dash-panel:has(> :first-child > .dash-panel-head:first-child),
 #dash-main-card.dash-nav-side > .dash-panel:has(.products-header) { padding-top: 0; }
