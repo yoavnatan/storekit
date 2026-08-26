@@ -533,8 +533,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
      an attempt at the BLUR — not at the tint, and not at a number between these two. */
   background: color-mix(in srgb, var(--color-bg) 50%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
-  backdrop-filter: blur(14px) saturate(1.05);
+  /* -webkit- FIRST, standard LAST — and it is not cosmetic (measured 2026-08-26).
+     With the standard property written first, the production minifier treats it as a duplicate of
+     the `-webkit-` line below and DROPS IT, shipping only the prefixed one. Chromium does not honour
+     `-webkit-backdrop-filter` on its own — `getComputedStyle` reports `backdrop-filter: none` — so
+     the blur was dead in every production build, in Chrome, Edge and Firefox alike, while dev
+     (unminified) looked perfect. `tests/backdrop-filter-order.test.ts` holds the order. */
   -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  backdrop-filter: blur(14px) saturate(1.05);
   /* NO SHADOW, deliberately (2026-08-02, and the reasoning is on the deleted --shadow-bar
      in base/tokens.css). The blur IS the depth cue here — content behind this row visibly
      goes out of focus, which says "in front" far louder than a 10% shadow, and the
@@ -1451,8 +1457,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   padding: 4px 8px;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px);
+  /* -webkit- FIRST, standard LAST — and it is not cosmetic (measured 2026-08-26).
+     With the standard property written first, the production minifier treats it as a duplicate of
+     the `-webkit-` line below and DROPS IT, shipping only the prefixed one. Chromium does not honour
+     `-webkit-backdrop-filter` on its own — `getComputedStyle` reports `backdrop-filter: none` — so
+     the blur was dead in every production build, in Chrome, Edge and Firefox alike, while dev
+     (unminified) looked perfect. `tests/backdrop-filter-order.test.ts` holds the order. */
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   border: 0.75px solid rgba(255, 255, 255, 0.2);
   z-index: 3;
   pointer-events: none;
@@ -1592,7 +1604,13 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   gap: 4px; padding: 4px 8px;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  /* -webkit- FIRST, standard LAST — and it is not cosmetic (measured 2026-08-26).
+     With the standard property written first, the production minifier treats it as a duplicate of
+     the `-webkit-` line below and DROPS IT, shipping only the prefixed one. Chromium does not honour
+     `-webkit-backdrop-filter` on its own — `getComputedStyle` reports `backdrop-filter: none` — so
+     the blur was dead in every production build, in Chrome, Edge and Firefox alike, while dev
+     (unminified) looked perfect. `tests/backdrop-filter-order.test.ts` holds the order. */
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border: 0.75px solid rgba(255, 255, 255, 0.2);
   z-index: 3;
   pointer-events: none;
