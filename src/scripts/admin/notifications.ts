@@ -63,6 +63,26 @@ const MAX_TOASTS_PER_POLL = 3;
  *  everything older is a backlog the bell's number already reports. */
 const FIRST_CHECK_RECENCY_MS = 30_000;
 const CURSOR_KEY = '__adminNotifToastCursor';
+/**
+ * The ids this browser has already toasted — the half the cursor cannot cover.
+ *
+ * `ToastContainer` keeps its own `shownKeys` set and that closes the repeat WITHIN a page. It is in
+ * memory, so a reload empties it, and the cursor does not close the gap that opens: measured
+ * against the running server, a cursor set to a row's own `createdAt` still returns that row,
+ * because Postgres keeps microseconds and `toISOString()` keeps milliseconds. So on the first poll
+ * after every reload, the newest notification toasted a second time.
+ *
+ * Advancing the cursor by a millisecond was the obvious fix and is the wrong one: it would silently
+ * skip anything created inside the same millisecond as the newest row. Remembering what was toasted
+ * is exact, and it survives the reload the way the cursor does.
+ *
+ * Capped, and the cap is what keeps this from becoming a leak: a bell can raise thousands of these
+ * over a year, and `localStorage` is a few megabytes shared with everything else on the origin. Two
+ * hundred is far more than the fifty a poll can ever return, so an id can only fall out of this
+ * list long after its row has fallen out of the feed.
+ */
+const TOASTED_KEY = '__adminNotifToasted';
+const TOASTED_CAP = 200;
 
 /** The tab labels, for the small line above each row. Read from the strip that is already on the
  *  page rather than repeated here — the tab list lives in `admin/index.astro`, and a second copy of
@@ -79,6 +99,34 @@ function timeAgo(iso: string): string {
   if (diff < 3600) return `לפני ${Math.floor(diff / 60)} דקות`;
   if (diff < 86400) return `לפני ${Math.floor(diff / 3600)} שעות`;
   return `לפני ${Math.floor(diff / 86400)} ימים`;
+}
+
+/**
+ * Which of a poll's items get a toast, and which are merely remembered.
+ *
+ * Pure, exported and tested (`tests/admin-toast-selection.test.ts`) because every past complaint
+ * about toasts on this project has been about this decision and never about the drawing of them:
+ * one arriving twice, one arriving from an hour ago, one that never arrived because a cap ate the
+ * budget. Reasoning about it inside a poller with a DOM and a clock is how those shipped.
+ *
+ * `toasted` is what this browser has already shown, restored from `localStorage` — the half the
+ * cursor cannot cover, since a reload empties the toast layer's own in-memory set and the cursor
+ * still returns the row it points at (microseconds against milliseconds).
+ *
+ * `show` is capped; `remember` is not, and the difference is deliberate — see the call site.
+ */
+export function pickToasts(
+  items: readonly { id: string; createdAt: string }[],
+  toasted: ReadonlySet<string>,
+  opts: { firstEverCheck: boolean; now: number; cap: number; recencyMs: number },
+): { show: string[]; remember: string[] } {
+  const fresh = opts.firstEverCheck
+    ? items.filter((n) => opts.now - new Date(n.createdAt).getTime() < opts.recencyMs)
+    : items;
+  // Before the cap, never after: a poll returning three already-toasted rows would otherwise spend
+  // its whole budget on them and hide a genuinely new fourth.
+  const unseen = fresh.filter((n) => !toasted.has(n.id)).map((n) => n.id);
+  return { show: unseen.slice(0, opts.cap), remember: unseen };
 }
 
 export function initAdminNotifications(): void {
@@ -179,6 +227,25 @@ export function initAdminNotifications(): void {
   let cursor = localStorage.getItem(CURSOR_KEY);
   let firstEverCheck = !cursor;
 
+  /** Read defensively: a private window, cleared site data or a browser refusing storage all throw
+   *  or answer null, and none of them is a reason for the bell to stop working. */
+  function readToasted(): Set<string> {
+    try {
+      const raw = JSON.parse(localStorage.getItem(TOASTED_KEY) ?? '[]') as unknown;
+      return new Set(Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []);
+    } catch { return new Set(); }
+  }
+  const toasted = readToasted();
+
+  function rememberToasted(ids: readonly string[]): void {
+    for (const id of ids) toasted.add(id);
+    try {
+      // Newest kept: `Set` preserves insertion order, so the tail is the most recent and the head
+      // is what ages out.
+      localStorage.setItem(TOASTED_KEY, JSON.stringify([...toasted].slice(-TOASTED_CAP)));
+    } catch { /* silent: storage is a convenience here, and the in-memory set still holds. */ }
+  }
+
   async function pollForToasts(): Promise<void> {
     try {
       const url = `/api/admin/notifications${cursor ? `?since=${encodeURIComponent(cursor)}` : ''}`;
@@ -187,10 +254,17 @@ export function initAdminNotifications(): void {
       const data = await res.json() as { notifications: AdminNotifItem[]; unreadCount: number };
       const items = data.notifications ?? [];
 
-      const toToast = firstEverCheck
-        ? items.filter((n) => Date.now() - new Date(n.createdAt).getTime() < FIRST_CHECK_RECENCY_MS)
-        : items;
-      for (const n of toToast.slice(0, MAX_TOASTS_PER_POLL)) {
+      const { show, remember } = pickToasts(items, toasted, {
+        firstEverCheck, now: Date.now(), cap: MAX_TOASTS_PER_POLL, recencyMs: FIRST_CHECK_RECENCY_MS,
+      });
+      /* EVERYTHING unseen is remembered, not only the three that get shown, and that is deliberate
+         rather than a slip: a burst is capped at three on purpose, and the rest are reported by the
+         number on the bell. The site's poller reaches the same outcome by moving its cursor past
+         the whole batch. Remembering only the three would hold the other seven back for the next
+         poll, and a burst of thirty would then trickle across two and a half minutes. */
+      rememberToasted(remember);
+      const byId = new Map(items.map((n) => [n.id, n]));
+      for (const n of show.map((id) => byId.get(id)!)) {
         // `key` is what makes a repeat impossible — `ToastContainer` keeps a set of the keys it has
         // shown. The id is stable per source row, so an item that stays unread across ten polls
         // toasts exactly once.
