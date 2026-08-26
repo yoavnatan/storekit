@@ -223,6 +223,37 @@ export async function getMoneyEvents(type?: MoneyEventType, fromDay?: string, to
   return found.map(toEvent);
 }
 
+/**
+ * One seller's rows of one STREAM, inside a business-day window — the fee report's source for the
+ * monthly subscription charge.
+ *
+ * **Narrowed on two columns, never on `detail`.** The subscription charge is identified by
+ * `seller_id` and by `from = SUBSCRIPTION_EVENT_STREAM` (`seller-subscription.ts`), because a
+ * journal row's identity has to be a column: `detail` is a Hebrew sentence written for a person to
+ * read, and a query pattern-matching it is a second definition of the row that a reword silently
+ * breaks — on a money document.
+ *
+ * Reuses `windowClauses` so the window means exactly what it means everywhere else in this file,
+ * index and business calendar included.
+ */
+export async function getSellerStreamEvents(
+  sellerId: string,
+  stream: string,
+  fromDay?: string,
+  toDay?: string,
+): Promise<MoneyEvent[]> {
+  if (!isUuid(sellerId)) return [];
+  const params: unknown[] = [sellerId, stream];
+  const where = windowClauses(undefined, fromDay, toDay, params).join(' AND ');
+  const found = await rows<EventRow>(
+    `SELECT ${EVENT_COLUMNS} FROM money_events e
+      WHERE e.seller_id = $1 AND e.from_value = $2 AND ${where}
+      ORDER BY e.at DESC, e.id`,
+    params,
+  );
+  return found.map(toEvent);
+}
+
 /** One page of the journal, with the total behind it — everything the admin panel renders.
  *
  *  Narrowing, ordering, counting and slicing are ALL in the query. What used to happen instead:

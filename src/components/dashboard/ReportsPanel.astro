@@ -34,9 +34,12 @@ const REPORT_META: Record<string, { titleKey: string; descKey: string; icon: 're
   sales:    { titleKey: 'repSalesTitle',    descKey: 'repSalesDesc',    icon: 'receipt' },
   products: { titleKey: 'repProductsTitle', descKey: 'repProductsDesc', icon: 'box' },
   stock:    { titleKey: 'repStockTitle',    descKey: 'repStockDesc',    icon: 'layers' },
-  // The accounting report (owner, סשן א׳ §6) — what the platform transferred, by period. It is the
-  // one report here that is account-wide rather than about the store in the switcher.
-  payouts:  { titleKey: 'repPayoutsTitle',  descKey: 'repPayoutsDesc',  icon: 'bank' },
+  // ── The fee ledger (owner, סשן א׳ §1, 2026-08-26) ──
+  // *"העמלות על המכירות לא צריכות להופיע שם, אלא בלשונית דוח״ות, כדו״ח עמלות."* Every fee the
+  // seller pays, whoever charges it, over a period, exportable. It replaces the `payouts` entry
+  // that sat in this map for five days pointing at a report id `REPORT_IDS` no longer held — so it
+  // rendered nowhere, and the account-wide chip below it had nothing to mark.
+  fees:     { titleKey: 'repFeesTitle',     descKey: 'repFeesDesc',     icon: 'bank' },
 };
 
 /**

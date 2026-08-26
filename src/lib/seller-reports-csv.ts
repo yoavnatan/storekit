@@ -28,7 +28,7 @@
  */
 import { BOM, toCsvCell, sanitizeCsvCell } from './csv-bulk.js';
 import { fromAgorot } from './money.js';
-import type { SalesRow, ProductSalesRow, StockRow, ReportId } from './seller-reports.js';
+import type { SalesRow, ProductSalesRow, StockRow, FeeRow, ReportId } from './seller-reports.js';
 import type { Lang } from '../i18n/translations.js';
 
 /** Agorot → the decimal a spreadsheet can add up. Two places always, so a column of them lines up. */
@@ -73,6 +73,29 @@ const STOCK_HEADERS: Header[] = [
   { he: 'מצב', en: 'State' },
 ];
 
+const FEE_HEADERS: Header[] = [
+  { he: 'תאריך', en: 'Date' },
+  { he: 'סוג העמלה', en: 'Fee type' },
+  { he: 'נגבית על ידי', en: 'Charged by' },
+  { he: 'על', en: 'Reference' },
+  { he: 'בסיס החישוב', en: 'Calculated on' },
+  { he: 'סכום לפני מע״מ', en: 'Amount before VAT' },
+  { he: 'מע״מ', en: 'VAT' },
+  { he: 'סה״כ לתשלום', en: 'Total' },
+];
+
+/** The two vocabularies the fee ledger needs in a FILE. Written here rather than pulled from the
+ *  dashboard's translations for the reason `SALES_HEADERS` is: a CSV is read by a bookkeeper in a
+ *  spreadsheet, so its words are part of the document, not of a screen. */
+const FEE_KIND: Record<Lang, Record<FeeRow['kind'], string>> = {
+  he: { commission: 'עמלת מכירה', clearing: 'עמלת סליקה', subscription: 'מנוי חודשי' },
+  en: { commission: 'Sale commission', clearing: 'Clearing fee', subscription: 'Monthly subscription' },
+};
+const FEE_PAYEE: Record<Lang, Record<FeeRow['payee'], string>> = {
+  he: { platform: 'המתחם', processor: 'חברת הסליקה' },
+  en: { platform: 'The mall', processor: 'The processor' },
+};
+
 const YES_NO: Record<Lang, [string, string]> = { he: ['כן', 'לא'], en: ['Yes', 'No'] };
 const STOCK_STATE: Record<Lang, Record<StockRow['state'], string>> = {
   he: { out: 'אזל', low: 'נמוך', ok: 'תקין' },
@@ -108,6 +131,18 @@ export function productSalesReportCsv(rows: readonly ProductSalesRow[], lang: La
 export function stockReportCsv(rows: readonly StockRow[], lang: Lang): string {
   return serialize(STOCK_HEADERS, rows.map((r) => [
     r.name, r.sku, String(r.stock), r.price.toFixed(2), money(r.valueAgorot), STOCK_STATE[lang][r.state],
+  ]), lang);
+}
+
+export function feesReportCsv(rows: readonly FeeRow[], lang: Lang): string {
+  return serialize(FEE_HEADERS, rows.map((r) => [
+    r.dayISO, FEE_KIND[lang][r.kind], FEE_PAYEE[lang][r.payee], r.reference,
+    // Blank, never 0: the monthly subscription is not a cut of anything, and a 0 in a column headed
+    // "calculated on" reads as a sale of nothing rather than as a fee that has no base.
+    r.baseAgorot ? money(r.baseAgorot) : '',
+    money(r.amountAgorot),
+    money(r.vatAgorot),
+    money(r.totalAgorot),
   ]), lang);
 }
 

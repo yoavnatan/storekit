@@ -21,7 +21,7 @@ import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, ge
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { productShare } from '../src/lib/top-product-share.js';
-import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
+import { buildSalesReport, buildProductSalesReport, buildStockReport, buildFeesReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales, buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
 import { buildPlatformStatement, monthPeriod, recentMonthKeys, statementPeriod } from '../src/lib/platform-statement.js';
@@ -440,6 +440,55 @@ describe('the three seller reports reconcile with each other and with Performanc
       expect(r.payoutAgorot).toBe(r.netAgorot - r.commissionAgorot);
       for (const v of [r.grossAgorot, r.netAgorot, r.commissionAgorot, r.payoutAgorot]) expect(v).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  /**
+   * ── The fee ledger against the sales report (owner, סשן א׳ §1, 2026-08-26) ──
+   *
+   * They are read side by side: the sales report's commission column is what a seller was charged
+   * on his sales, and the fee report is the document his bookkeeper posts. Two different modules
+   * computing "what the mall took this month" is exactly the shape this file exists for.
+   *
+   * The one difference is deliberate and is asserted rather than tolerated: the fee ledger splits
+   * every charge into סכום · מע״מ · סה״כ, so its TOTAL is the sales report's commission and its
+   * `amountAgorot` is that figure net of the tax inside it.
+   */
+  it('the fee ledger and the sales report agree about what the mall took', () => {
+    const fees = buildFeesReport({
+      orders,
+      rateFor: new Map([[STORE, RATE]]),
+      fromISO: FROM,
+      toISO: TO,
+    });
+    expect(fees.totals.totalAgorot).toBe(sales.totals.commissionAgorot);
+    expect(fees.totals.commissionAgorot).toBe(fees.totals.netAgorot);
+    // Every row closes on its own three numbers, which is the property a document a person adds up
+    // has to have — and the reason the VAT is summed from the rows rather than extracted from the
+    // total (`buildFeesReport`).
+    for (const row of fees.rows) expect(row.amountAgorot + row.vatAgorot).toBe(row.totalAgorot);
+    expect(fees.totals.netAgorot + fees.totals.vatAgorot).toBe(fees.totals.totalAgorot);
+  });
+
+  it('the fee ledger charges nothing for a cancelled order', () => {
+    const fees = buildFeesReport({ orders, rateFor: new Map([[STORE, RATE]]), fromISO: FROM, toISO: TO });
+    // `r3` is the cancelled one. A commission row for it would be us billing for a sale that did
+    // not happen, on the document a seller checks us against.
+    expect(fees.rows.some((r) => r.reference === 'r3')).toBe(false);
+  });
+
+  it('the fee ledger SPLITS a processor fee instead of grossing it up again', () => {
+    // PayMe report their fees after VAT (GO_LIVE §3.1.0), so a row of theirs must come apart rather
+    // than have tax added to it — the mistake would inflate a seller's stated expenses by 18%.
+    const fees = buildFeesReport({
+      orders: [],
+      rateFor: new Map(),
+      fromISO: FROM,
+      toISO: TO,
+      clearing: [{ dayISO: '2026-07-05', reference: 'SALE-1', baseAgorot: 12000, feeAgorot: 118 }],
+    });
+    expect(fees.totals.totalAgorot).toBe(118);
+    expect(fees.rows[0]!.amountAgorot).toBe(100);
+    expect(fees.rows[0]!.vatAgorot).toBe(18);
   });
 
   it('the stock report values the shelf at the same agorot every money surface uses', () => {

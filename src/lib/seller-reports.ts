@@ -31,14 +31,15 @@ import { countsAsRevenue } from './orders.js';
 import { orderNetForStore } from './admin-stats.js';
 import { allocateAgorot, toAgorot } from './money.js';
 import { commissionOnAgorot } from './pricing.js';
+import { vatWithinAgorot } from './vat.js';
 import { businessDayISO } from './business-day.js';
 import type { StoreProduct } from './store-products.js';
 // Ids and row shapes live in their own leaf module so the reports TAB can import them without
 // dragging `orders.ts` → `db.ts` into the browser bundle — its header carries the reasoning.
 // Re-exported here so a server caller has one import for the whole feature.
-import type { SalesRow, ReportTotals, ProductSalesRow, StockRow } from './seller-report-shapes.js';
+import type { SalesRow, ReportTotals, ProductSalesRow, StockRow, FeeRow, FeeTotals } from './seller-report-shapes.js';
 import { LOW_STOCK_AT } from './seller-report-shapes.js';
-export type { ReportId, SalesRow, ProductSalesRow, StockRow } from './seller-report-shapes.js';
+export type { ReportId, SalesRow, ProductSalesRow, StockRow, FeeRow, FeeTotals, FeeKind } from './seller-report-shapes.js';
 export { isReportId, LOW_STOCK_AT, ACCOUNT_WIDE_REPORTS } from './seller-report-shapes.js';
 
 /* ── 1. Sales, one row per order ─────────────────────────────────────────────────────────── */
@@ -218,5 +219,116 @@ export function buildStockReport(products: readonly StoreProduct[]): {
   };
 }
 
-/* ── 4. Platform payments, one row per transfer ──────────────────────────────────────────── */
 
+
+
+/* ── 4. Fees, one row per fee ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Every fee this seller was charged in the window, from whichever party charged it.
+ *
+ * ── Why the commission half is derived and the clearing half is read ──
+ * Our commission is a rule we own: a percentage of a figure we computed, and
+ * `commissionOnAgorot` is the one definition of it — the same call the sales report and the
+ * Performance tab's expense line make, so the fee report cannot disagree with either about what a
+ * month cost. The clearing fee is PayMe's, is not derivable from anything here, and arrives as a
+ * measured amount per charge (`PaymeTransaction.processingAgorot`); it is passed IN so this module
+ * stays pure and so a processor being unreachable degrades to a report with one source missing and
+ * a sentence saying so, rather than to no report.
+ *
+ * ── Account-wide, and the orders arrive that way ──
+ * `orders` is every order across every shop this seller owns, and `rateFor` gives the commission
+ * percent of the SHOP each order slice belongs to — a seller can run two shops on two plans, and a
+ * single blended rate would misstate both. `ACCOUNT_WIDE_REPORTS` carries why the report is not
+ * scoped to the shop in the switcher.
+ *
+ * ── Three columns per row, in the shape of a tax invoice (owner, 2026-08-26) ──
+ * *"בדוחו״ת צריך להיות שקופים… מה שנהוג. באופן אחיד."* The Israeli convention for a business
+ * document is סכום · מע״מ · סה״כ, and the word that does the work is *uniformly*: our fees are
+ * quoted before VAT (`pricing.ts`) and charged with it, while the processor reports figures that
+ * already contain it. Both are normalised to the same three columns here — ours by ADDING the tax
+ * we charge, the processor's by EXTRACTING the tax already inside theirs — so the sheet sums to a
+ * number that means one thing.
+ *
+ * ── A cancelled order costs nothing, here as everywhere ──
+ * `countsAsRevenue` is the gate, never `paymentStatus === 'paid'`. A refunded sale that still
+ * showed a commission row would be us billing for a sale that did not happen, on the document a
+ * seller checks us against.
+ */
+/** A charged amount, as the three columns a business document carries.
+ *
+ *  Extraction rather than addition, always: every amount that reaches this function is a GROSS —
+ *  what was really deducted or debited — and `vatWithinAgorot` is spelled so that net + vat is the
+ *  gross exactly. Grossing a net up instead would let a row's three cells disagree by an agora. */
+function split(grossAgorot: number): Pick<FeeRow, 'amountAgorot' | 'vatAgorot' | 'totalAgorot'> {
+  const vatAgorot = vatWithinAgorot(grossAgorot);
+  return { amountAgorot: grossAgorot - vatAgorot, vatAgorot, totalAgorot: grossAgorot };
+}
+
+export function buildFeesReport(input: {
+  orders: readonly Order[];
+  /** Slug → commission percent, for every shop this seller owns. */
+  rateFor: ReadonlyMap<string, number>;
+  fromISO: string;
+  toISO: string;
+  /** The processor's own per-charge fees, already narrowed to the window by the caller — it is the
+   *  only part of this that came off a network. Empty is a real answer and not an error. */
+  clearing?: readonly { dayISO: string; reference: string; baseAgorot: number; feeAgorot: number }[];
+  /** Monthly subscription charges we have a RECORD of — never a schedule we re-derived. Deriving
+   *  "he has paid every month since March" from a standing order's start date would invent history
+   *  on a money document; a month with no recorded charge is simply absent. */
+  subscription?: readonly { dayISO: string; reference: string; amountAgorot: number }[];
+}): { rows: FeeRow[]; totals: FeeTotals } {
+  const { orders, rateFor, fromISO, toISO, clearing = [], subscription = [] } = input;
+
+  const rows: FeeRow[] = [];
+
+  for (const order of orders) {
+    const day = businessDayISO(new Date(order.createdAt));
+    if (day < fromISO || day > toISO) continue;
+    if (!countsAsRevenue(order)) continue;
+    for (const slug of Object.keys(order.storeSubtotals ?? {})) {
+      const rate = rateFor.get(slug);
+      if (rate === undefined) continue;  // a slice of another seller's shop in the same order
+      const net = orderNetForStore(order, slug);
+      // `rate` is the CHARGED percent — the plan's rate plus VAT — because that is what PayMe
+      // really deducted. So the gross is what it produced, and the fee before tax is derived back
+      // out of it by extraction: computing it from the quoted rate instead would give a net and a
+      // gross that differ by a rounding, on a document whose whole job is that its columns add up.
+      const gross = commissionOnAgorot(net, rate);
+      if (gross <= 0) continue;
+      rows.push({ dayISO: day, kind: 'commission', reference: order.id, baseAgorot: net, ...split(gross), payee: 'platform' });
+    }
+  }
+
+  // The processor's figures already contain the tax (GO_LIVE §3.1.0 — their per-charge fees are
+  // reported after VAT), so they are SPLIT, never grossed up a second time.
+  for (const c of clearing) {
+    rows.push({ dayISO: c.dayISO, kind: 'clearing', reference: c.reference, baseAgorot: c.baseAgorot, ...split(c.feeAgorot), payee: 'processor' });
+  }
+  // The standing order's price is the billed figure since 2026-08-26 (`store-plan.ts`), i.e. gross.
+  for (const sub of subscription) {
+    rows.push({ dayISO: sub.dayISO, kind: 'subscription', reference: sub.reference, baseAgorot: 0, ...split(sub.amountAgorot), payee: 'platform' });
+  }
+
+  // Newest first, and by kind within a day so the two fees on one sale sit together rather than
+  // being separated by whatever order the two sources happened to arrive in.
+  rows.sort((a, b) => (a.dayISO < b.dayISO ? 1 : a.dayISO > b.dayISO ? -1 : a.kind.localeCompare(b.kind)));
+
+  const sum = (kind: FeeRow['kind']): number =>
+    rows.reduce((n, r) => (r.kind === kind ? n + r.amountAgorot : n), 0);
+  // Every total is summed from the ROWS and never re-derived from another total: `split` guarantees
+  // net + vat === total per row, so summing the three columns keeps that property for the sheet.
+  // Re-extracting the VAT from the grand total can differ from the sum of the extractions by an
+  // agora — which on a document a bookkeeper adds up is a document that does not add up.
+  const totals: FeeTotals = {
+    rows: rows.length,
+    commissionAgorot: sum('commission'),
+    clearingAgorot: sum('clearing'),
+    subscriptionAgorot: sum('subscription'),
+    netAgorot: rows.reduce((n, r) => n + r.amountAgorot, 0),
+    vatAgorot: rows.reduce((n, r) => n + r.vatAgorot, 0),
+    totalAgorot: rows.reduce((n, r) => n + r.totalAgorot, 0),
+  };
+  return { rows, totals };
+}

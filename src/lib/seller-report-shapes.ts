@@ -14,21 +14,23 @@
  */
 import type { Order } from './orders.js';
 
-export type ReportId = 'sales' | 'products' | 'stock';
-export const REPORT_IDS: readonly ReportId[] = ['sales', 'products', 'stock'];
+export type ReportId = 'sales' | 'products' | 'stock' | 'fees';
+export const REPORT_IDS: readonly ReportId[] = ['sales', 'products', 'stock', 'fees'];
 
 /**
  * Reports that are about the ACCOUNT rather than about the store in the switcher.
  *
- * Empty since 2026-08-21: the only one was `payouts`, a history of the transfers this platform made
- * to a seller, and the platform makes none — the processor pays each seller directly, on its own
- * schedule. The seller's own transaction history for his accountant is a real gap and it is
- * recorded as one (GO_LIVE §3.0.1); it will come from the processor, not from our tables.
+ * It was empty between 2026-08-21 and 2026-08-26 — the old `payouts` report listed transfers this
+ * platform made, and under the split model it makes none.
  *
- * The constant stays rather than being deleted with its one member: every route on this tab asks it
- * whether a report is store-scoped, and an empty list is the honest answer to that question.
+ * **`fees` put it back, and it belongs here because two of its three sources are account-level.**
+ * A seller has ONE clearing account and ONE standing order however many shops he runs
+ * (`store-plan.ts`), so his clearing fees and his monthly charge are not a fact about the shop in
+ * the switcher. Only the sale commission is per-shop, and scoping the whole report to one shop to
+ * accommodate that column would produce a fee total that is missing rows — which on a document a
+ * bookkeeper reconciles against is worse than no document.
  */
-export const ACCOUNT_WIDE_REPORTS: readonly ReportId[] = [];
+export const ACCOUNT_WIDE_REPORTS: readonly ReportId[] = ['fees'];
 
 export function isReportId(v: string | null | undefined): v is ReportId {
   return REPORT_IDS.includes(v as ReportId);
@@ -97,4 +99,68 @@ export interface StockRow {
   /** stock × price, in agorot. */
   valueAgorot: number;
   state: 'out' | 'low' | 'ok';
+}
+
+
+/* ── The fee ledger (owner, סשן א׳ §1, 2026-08-26) ──────────────────────────────────────────
+ *
+ * *"העמלות על המכירות לא צריכות להופיע שם, אלא בלשונית דוח״ות, כדו״ח עמלות. כולל כל העמלות
+ * שהיוזר משלם. עמלת סליקה, עמלת מכירה, וכו׳."*
+ *
+ * The Payments tab used to carry a card listing the last six charges with their fee split. It is
+ * the right information in the wrong place twice over: that tab answers *"how much money is coming
+ * to me"*, and six rows is a sample rather than a record. A fee is an EXPENSE, and an expense
+ * belongs in the thing a bookkeeper exports — a period, every row in it, and a CSV.
+ *
+ * ── One row per fee, never one row per sale ──
+ * A sale can carry two fees charged by two different parties, and rolling them into one "fees"
+ * column is the exact mistake `payChargeClearing`/`payChargeCommission` were split to avoid: a
+ * seller shown a single deduction concludes the platform took all of it. So `payee` is a column of
+ * the data and not a footnote.
+ */
+export type FeeKind = 'commission' | 'clearing' | 'subscription';
+
+export interface FeeRow {
+  /** Business-day ISO. For a processor fee it is PayMe's own calendar day, sliced never parsed
+   *  (`seller-transfers.ts#paymeDay`). */
+  dayISO: string;
+  kind: FeeKind;
+  /** What it was taken on — an order id, PayMe's sale id, or the month of a subscription charge. */
+  reference: string;
+  /** The amount the fee was calculated FROM, agorot. Zero for a fee that is not a cut of anything
+   *  (the monthly subscription), which the table renders as a dash rather than as ₪0. */
+  baseAgorot: number;
+  /**
+   * The fee itself, agorot, **before VAT** — the first of the three columns every row carries.
+   *
+   * ── The shape is a tax invoice's, and that was the owner's instruction ──
+   * *"ובדוחו״ת צריך להיות שקופים, לא יודע איך זה נהוג עם מע״מ או בלי, מה שנהוג. באופן אחיד"*
+   * (2026-08-26). The Israeli convention for a business document is סכום · מע״מ · סה״כ, so that is
+   * what this is — and *uniformly*, which is the harder half: our fees arrive quoted before VAT and
+   * the processor's arrive reported after it, so one of the two has to be converted. The
+   * processor's is, by extraction (`vat.ts#vatWithinAgorot`), because extraction from their gross
+   * is exact and cannot disagree with the figure on his statement.
+   */
+  amountAgorot: number;
+  /** The VAT on `amountAgorot`. Zero only for a fee that genuinely carries none. */
+  vatAgorot: number;
+  /** `amountAgorot + vatAgorot`, always — what actually left his account. Stored rather than
+   *  re-added at every renderer so the row a spreadsheet sums and the row a screen prints are the
+   *  same three numbers. */
+  totalAgorot: number;
+  /** Who charges it. Two parties, and the seller must be able to tell them apart. */
+  payee: 'platform' | 'processor';
+}
+
+export interface FeeTotals {
+  rows: number;
+  /** Each kind's own subtotal, BEFORE VAT — the same convention as the rows. */
+  commissionAgorot: number;
+  clearingAgorot: number;
+  subscriptionAgorot: number;
+  /** Everything before VAT, the VAT on it, and the sum of the two. Three figures rather than one,
+   *  because that is what a seller copies into his books. */
+  netAgorot: number;
+  vatAgorot: number;
+  totalAgorot: number;
 }

@@ -22,7 +22,7 @@ import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 // `seller-report-shapes.js`, never `seller-reports.js`: the builders there import `orders.ts`,
 // which reaches `db.ts`, which opens a connection pool at module scope — so importing them from a
 // browser file would bundle Postgres into the seller dashboard.
-import { isReportId, type ReportId, type SalesRow, type ProductSalesRow, type StockRow } from '../../lib/seller-report-shapes.js';
+import { isReportId, type ReportId, type SalesRow, type ProductSalesRow, type StockRow, type FeeRow } from '../../lib/seller-report-shapes.js';
 import { showErrorToast } from '../../lib/toast.js';
 
 const ENDPOINT = '/api/seller/reports';
@@ -32,8 +32,16 @@ function i18n(): Record<string, string> {
   catch { return {}; }
 }
 
-export type AnyRow = SalesRow | ProductSalesRow | StockRow;
-interface Payload { ok?: boolean; rows?: AnyRow[]; totals?: Record<string, number> }
+export type AnyRow = SalesRow | ProductSalesRow | StockRow | FeeRow;
+interface Payload {
+  ok?: boolean;
+  rows?: AnyRow[];
+  totals?: Record<string, number>;
+  /** Fee report only — how much of the PROCESSOR's half of the ledger this window really covers.
+   *  `partial` and `unavailable` are said in the summary rather than left to look like a quiet
+   *  zero (AI_INSTRUCTIONS → no silent caps). */
+  processor?: 'ok' | 'partial' | 'unavailable' | 'none';
+}
 
 /** A column: its heading, how to draw a cell, and whether it is a number (so the whole column can
  *  be right-aligned and tabular in one place rather than per cell). */
@@ -54,6 +62,10 @@ export interface Column<R> {
 }
 
 const money = (agorot: number): string => formatAgorot(agorot);
+
+/** Eight characters of a machine id, the way every other screen on this dashboard shortens one.
+ *  A lookup aid and never an identifier — the whole value travels in the `title` and in the CSV. */
+const shortRef = (ref: string): string => `#${ref.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 
 /** The products table's sort chevron, to the attribute. Inline SVG and not a glyph — the site has
  *  a standing rule against emoji/geometric characters in place of an icon. */
@@ -111,7 +123,45 @@ export function columnsFor(report: ReportId, t: Record<string, string>): Column<
   ];
 
 
-  const byReport = { sales, products, stock };
+  /* ── The fee ledger ──────────────────────────────────────────────────────────────────────
+     Five columns and no cleverness: what, who charged it, on what, and how much. **`payee` is a
+     column of its own** rather than a shade of the amount — the clearing fee is the processor's and
+     the commission is ours, and a seller reading one "fees" column concludes the mall took all of
+     it (the same rule that split `payChargeClearing` from `payChargeCommission`). */
+  const fees: Column<FeeRow>[] = [
+    { key: 'day', head: t.repColDate ?? '', cell: (r) => esc(displayDate(r.dayISO)), sortBy: (r) => r.dayISO },
+    {
+      key: 'kind',
+      head: t.repColFeeKind ?? '',
+      cell: (r) => esc(t[FEE_KIND_KEY[r.kind]] ?? ''),
+      sortBy: (r) => r.kind,
+    },
+    { key: 'payee', head: t.repColFeePayee ?? '', cell: (r) => esc(t[r.payee === 'processor' ? 'repFeePayeeProcessor' : 'repFeePayeePlatform'] ?? '') },
+    // ── The reference, SHORTENED on screen and whole in the file ──
+    // A commission row references an order id and a clearing row references the processor's sale
+    // id; both are 36-character machine strings, and printed in full they were the widest column
+    // in the table and unreadable in every one of them (driven, 2026-08-26). Eight characters is
+    // the convention this project already uses for exactly this — `error-reference.ts#errorRef`,
+    // and `order-notify.ts` for an order — and the full value stays in the `title` and in the CSV,
+    // which is what a spreadsheet joins on.
+    {
+      key: 'ref',
+      head: t.repColFeeRef ?? '',
+      cell: (r) => (r.reference
+        ? `<span title="${esc(r.reference)}" dir="ltr">${esc(shortRef(r.reference))}</span>`
+        : '—'),
+    },
+    // A dash, never ₪0: the monthly subscription is not a cut of anything.
+    { key: 'base', head: t.repColFeeBase ?? '', num: true, cell: (r) => (r.baseAgorot ? money(r.baseAgorot) : '—') },
+    // סכום · מע״מ · סה״כ — a tax invoice's three columns, uniform across every row whoever charged
+    // it (owner, 2026-08-26). The last one is bold because it is the money that left his account;
+    // the first two are what his bookkeeper posts.
+    { key: 'amount', head: t.repColFeeAmount ?? '', num: true, cell: (r) => money(r.amountAgorot), sortBy: (r) => r.amountAgorot },
+    { key: 'vat', head: t.repColFeeVat ?? '', num: true, cell: (r) => (r.vatAgorot ? money(r.vatAgorot) : '—') },
+    { key: 'total', head: t.repColFeeTotal ?? '', num: true, cell: (r) => `<strong>${money(r.totalAgorot)}</strong>`, sortBy: (r) => r.totalAgorot },
+  ];
+
+  const byReport = { sales, products, stock, fees };
   return byReport[report] as unknown as Column<never>[];
 }
 
@@ -180,8 +230,26 @@ function tableHtml(report: ReportId, rows: AnyRow[], t: Record<string, string>, 
   return `<table class="report-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
+/** Fee kind → the translation key that names it. A map rather than a chain, so a kind added to
+ *  `FeeKind` without a word here is a missing key rather than a silently blank cell. */
+const FEE_KIND_KEY: Record<FeeRow['kind'], string> = {
+  commission: 'repFeeKindCommission',
+  clearing: 'repFeeKindClearing',
+  subscription: 'repFeeKindSubscription',
+};
+
 function summaryText(report: ReportId, totals: Record<string, number>, t: Record<string, string>): string {
   const n = (key: string): number => totals[key] ?? 0;
+  if (report === 'fees') {
+    return [
+      `${t.repSumFeesNet ?? ''} ${money(n('netAgorot'))}`,
+      `${t.repSumFeesVat ?? ''} ${money(n('vatAgorot'))}`,
+      `${t.repSumFeesTotal ?? ''} ${money(n('totalAgorot'))}`,
+      `${t.repFeeKindCommission ?? ''} ${money(n('commissionAgorot'))}`,
+      `${t.repFeeKindClearing ?? ''} ${money(n('clearingAgorot'))}`,
+      n('subscriptionAgorot') ? `${t.repFeeKindSubscription ?? ''} ${money(n('subscriptionAgorot'))}` : '',
+    ].filter(Boolean).join(' · ');
+  }
   if (report === 'stock') {
     return [
       `${t.repSumProducts ?? ''} ${n('products')}`,
@@ -403,7 +471,15 @@ export function initReportsTab(): void {
       wrap.removeAttribute('aria-busy');
       everRendered = true;
     }
-    if (summaryEl) summaryEl.textContent = summaryText(report, payload.totals ?? {}, t);
+    if (summaryEl) {
+      // The fee ledger's processor half comes off a network and can be short or missing. Appended
+      // to the summary rather than dropped: a total that is quietly incomplete is the one number on
+      // this tab a seller would reconcile his books against and never question.
+      const gap = report === 'fees' && payload.processor === 'partial' ? t.repFeesPartial
+        : report === 'fees' && payload.processor === 'unavailable' ? t.repFeesNoProcessor
+        : '';
+      summaryEl.textContent = [summaryText(report, payload.totals ?? {}, t), gap].filter(Boolean).join(' · ');
+    }
     if (exportLink) {
       exportLink.href = query('csv');
       // Nothing to export is not an error, but a download of a header row and no rows is a file
