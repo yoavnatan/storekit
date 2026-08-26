@@ -24,10 +24,11 @@
  * live. The count of failures is on the row, so a systematic outage is visible as a number rather
  * than as silence.
  */
-import { activePaymeCredentials } from './payment-payme.js';
+import { activePaymeCredentials, getSellerStatus } from './payment-payme.js';
 import { refreshSubscription } from './seller-subscription.js';
 import { startArmedSubscription } from './subscription-arm.js';
 import { sellersAwaitingPublication, syncStorePublication } from './store-publication.js';
+import { merchantAccountFor, setMerchantApproval } from './seller-merchant.js';
 
 export async function runStorePublicationSweep(): Promise<string> {
   const creds = activePaymeCredentials();
@@ -46,6 +47,33 @@ export async function runStorePublicationSweep(): Promise<string> {
       // The subscription first: it is the hold PayMe change without telling us — a card that expired
       // between iterations moves the status, and the approval flag would not have moved with it.
       await refreshSubscription(sellerId, creds);
+      /**
+       * ── And ASK them whether the business was approved (2026-08-26) ──
+       *
+       * This sweep's own header says it reads "the approval flag the callback maintains" — and the
+       * callback has never once been received, because it needs a public URL this platform does not
+       * have yet (`docs/payme-sandbox-notes.md`). So nothing in the running system ever moved that
+       * flag: a seller who had done everything sat in `awaiting-approval` for ever, and the sweep
+       * looked at him every half hour without asking the one question that would have ended it.
+       *
+       * Asking is cheap and it is the same call the callback makes — `getSellerStatus`, over a
+       * request WE authenticate, which is why the callback is only ever treated as a hint. It also
+       * gives a REFUSAL somewhere to land (owner, §20): `setMerchantApproval` writes `active`, tells
+       * the seller, and logs it for us. Once a public callback URL exists this stays as the
+       * backstop for a notification they drop.
+       *
+       * Only for an account that is not settled yet: an approved, active merchant has nothing to
+       * ask about, and a seller here may be waiting on the subscription rather than on them.
+       */
+      const account = await merchantAccountFor(sellerId);
+      if (account?.providerRef && (!account.approved || !account.active)) {
+        const status = await getSellerStatus(account.providerRef, creds);
+        // Null is "they do not know him", which is not a verdict — writing `false` for it would
+        // close a working seller's shop on a failed lookup.
+        if (status && (status.approved !== account.approved || status.active !== account.active)) {
+          await setMerchantApproval(account.providerRef, status.approved, status.active);
+        }
+      }
       /**
        * **And this is where a waiting seller's week actually ends** (2026-08-24). He put a card on
        * file when he chose his plan and has been in PayMe's review since; the moment they approve,

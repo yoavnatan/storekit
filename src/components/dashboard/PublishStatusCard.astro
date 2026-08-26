@@ -1,104 +1,126 @@
 ---
 /**
- * One line on the overview saying the shop is not on the site, and one button to the screen that
- * fixes it.
+ * Where this shop stands, on the screen a seller lands on — one line, and at most one thing to do.
  *
- * ── It used to be the whole errand, and that was the problem ──
+ * ── It used to be the whole errand, and that was the first problem ──
  * It listed every hold with its own explanation and its own button, while the Payments tab
  * separately carried a clearing-status line, a details form and a subscription card. Four boxes
  * across two tabs for one thing (owner, 2026-08-24: *"סירבול של כפתורים ומידע למוכר. צריך משהו
- * מרוכז וברור"*). `GoLiveSteps.astro` is now the one place, and this is a POINTER to it.
+ * מרוכז וברור"*). `GoLiveSteps.astro` is the one place that answers it; this is a POINTER.
  *
- * It still earns its place: the overview is where a seller lands, and a shop that is not on the
- * site is the most important thing true about it. What it must not do is answer the question here
- * as well — two screens explaining one errand is how they start disagreeing.
+ * ── And then it said the wrong thing (owner, סשן א׳ §17, 2026-08-26) ──
+ * *"בסקירה הכללית כתוב: 'אלו הפרטים שחברת הסליקה דורשת כדי לפתוח את החשבון שאליו ייכנס הכסף
+ * מהקונים'. המשפט הזה לא ברור למה הוא שייך, מה זה 'אלו הפרטים'?"* And he was right: "אלו" pointed
+ * at a list that is on a different tab. The card was describing the CONTENTS of a form the reader
+ * cannot see instead of saying what is missing and what to do about it.
  *
- * Renders nothing once the shop is live.
+ * So it says the state, from the stage, and then names what is outstanding:
+ *   · *"כדי להעלות את החנות לאוויר יש להשלים פרטי עסק ואמצעי תשלום"* — or whichever of the two is
+ *     actually missing, because telling a seller to complete something he has finished is the same
+ *     mistake one door along.
+ *   · *"החשבון ממתין לאישור חברת הסליקה"*, with no button at all — *"באופן ברור, בלי כפתור בכלל"*.
+ *
+ * ── And once the shop IS live (his question, and my answer) ──
+ * *"ומה קורה כשהחנות באוויר? הסקשן הזה פשוט נעלם? לדעתי לא צריך להופיע שם שהחנות באוויר לנצח, אבל
+ * לפחות בשלב הראשוני אולי? מה דעתך?"*
+ *
+ * It confirms, and then it goes. A shop can go live days after the last thing the seller did — the
+ * processor's approval lands on a day nobody chose — so the first time he opens the dashboard
+ * afterwards is exactly when "it worked" is worth saying, and there is no other screen that says
+ * it. Forever is furniture: "your shop is live" on the overview of a shop that has been live for
+ * six months is a permanent congratulation nobody reads, occupying the top of the one screen where
+ * yesterday's orders should be. So: `LIVE_NOTICE_DAYS` after publication, and then nothing.
+ *
+ * The window is counted from `publishedAt`, which is written once and never cleared
+ * (`store-publication.ts`), so this cannot re-appear for a shop that has been up for a year.
  */
 import type { PublishHold } from '../../lib/store-publication.js';
+import { sellerStageKey, type SellerStage } from '../../lib/seller-stage.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
+  /** The one word this card is about (`lib/seller-stage.ts`). */
+  stage: SellerStage;
+  /** What is holding the ACCOUNT off the site — used only to name which of HIS two jobs is left,
+   *  never to decide what state he is in. That is the stage's job. */
   holds: PublishHold[];
-  /**
-   * Is the shop the seller is LOOKING AT on the site?
-   *
-   * The card used to key off `holds` alone, and since 2026-08-24 that is no longer the whole
-   * question: the holds are the ACCOUNT's, and a paying seller who has just opened a second shop
-   * has none of them while that shop is still not up (`lib/store-plan.ts` — its fee is not on the
-   * standing order yet). Keyed off holds alone the overview would have said nothing at all about a
-   * shop that is not on the site, which is the most important thing true about it.
-   */
-  storeIsLive: boolean;
+  /** The shop the dashboard is on, for the live-confirmation window. Null for a seller who has not
+   *  created one, in which case this card has nothing to be about. */
+  store: { name: string; publishedAt?: string } | null;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { holds, storeIsLive, d } = Astro.props;
+const { stage, holds, store, d } = Astro.props;
+
+/** How long after going live the confirmation keeps showing. A week: long enough that a seller who
+ *  opens the dashboard once a week still sees it, short enough that it is an event and not a
+ *  fixture. */
+const LIVE_NOTICE_DAYS = 7;
+
+const liveSince = stage === 'live' && store?.publishedAt ? new Date(store.publishedAt) : null;
+const daysLive = liveSince ? (Date.now() - liveSince.getTime()) / 86_400_000 : Infinity;
+const showLiveNotice = daysLive >= 0 && daysLive < LIVE_NOTICE_DAYS;
 
 /**
- * ── What this card SAYS depends on which hold is in front (owner, 2026-08-25) ──
+ * What is outstanding, named as things rather than as a form's contents.
  *
- * *"עד מתי 'העלאה לאוויר' נשאר בסקירה בכפתור הזה? הרי אם ממתינים — צריך להיות רשום שם שההעלאה
- * ממתינה לאישור."* It offered the same sentence and the same call to action in every state, so a
- * seller a week into PayMe's review was still being told to go and put his shop live — an
- * instruction he cannot follow, on the one screen he lands on every time.
- *
- * The holds are already ordered by the flow (`store-publication.ts`), so the FIRST one is what he
- * is actually waiting on.
- *
- * **The approval wait keeps a control and it is DISABLED**, saying the status rather than offering
- * a destination (owner, 2026-08-25: *"הוא רק צריך להיות דיסאייבל ולרשום 'ממתין לאישור העסק'"*).
- * Two earlier attempts were wrong in the same way — both treated it as a navigation question.
- * Removing it left the overview saying "not live" with nothing beside it; labelling it "go to
- * payments" offered a trip to a screen with nothing to press. What belongs here is the STATE, in
- * the place the eye already goes. Disabled is safe on this site specifically: `reset.css` forces
- * `cursor:default` on every disabled control, so it reads as inert rather than as the banned
- * no-entry cursor.
+ * Read off the holds and not off the stage, because the stage is one word and this is a list: a
+ * seller can be missing both, and a sentence that names only the first sends him back twice.
  */
-const blocking = holds[0] ?? null;
-const LINE: Record<string, string> = {
-  'clearing-details': d.pubHoldDetailsNote,
-  'clearing-approval': d.pubHoldApprovalNote,
-  'subscription': d.pubHoldSubscriptionNote,
-};
-/**
- * Every hold keeps its button, including the one nobody can act on (owner, 2026-08-25: *"למה לא
- * להשאיר את הכפתור שיהפוך ל'ממתין לאישור העסק'"*).
- *
- * It was dropped during the review on the reasoning that a button with nothing to press is worse
- * than none — and that was half right: pressing it does not SHORTEN the wait. But it is not a no-op
- * either, because the payments tab is where the wait is explained, where the card can still be
- * saved. **The approval wait keeps a control and it is DISABLED**, saying the status rather than
- * offering a destination (owner, 2026-08-25). Two earlier attempts were wrong in the same way —
- * both treated it as a navigation question. Removing the button left the overview saying "not live"
- * with nothing beside it; labelling it "go to payments" offered a trip to a screen with nothing to
- * press. What belongs here is the STATE, in the place the eye already goes. Disabled is safe on
- * this site specifically: `reset.css` forces `cursor:default` on every disabled control, so it
- * reads as inert rather than as the banned no-entry cursor.
- */
-const CTA: Record<string, string> = {
-  'clearing-details': d.pubHoldDetailsCta,
-  'subscription': d.pubHoldSubscriptionCta,
-};
-const waiting = blocking === 'clearing-approval';
-const title = waiting ? d.pubHoldApproval : d.pubTitle;
-const line = blocking ? LINE[blocking] : d.pubBuildOn;
-const cta = blocking ? CTA[blocking] : d.pubHoldSubscriptionCta;
+const missing = [
+  holds.includes('clearing-details') ? d.pubNeedDetails : '',
+  holds.includes('subscription') ? d.pubNeedPayment : '',
+].filter(Boolean);
+
+/** Does this card have anything to say at all? Everything except a live shop past its notice
+ *  window, and a shop that is paused or closed — those have their own screen in Settings, and the
+ *  overview repeating them is the clutter this card was cut down to avoid. */
+const speaks = stage !== 'paused' && stage !== 'closed' && stage !== 'no-store'
+  && (stage !== 'live' || showLiveNotice);
+
+/** A refusal, which is neither an errand nor a wait. It gets the same shape as the wait — a state
+ *  and no button — but its own sentence, and the button it does NOT get is the one telling him to
+ *  go and finish something (owner, §20: *"הטוסטים הקטנים האלו לא מספיקים"*). The detail and the
+ *  processor's own link are on the Payments tab, which is where his notification lands. */
+const refused = stage === 'rejected';
+
+/** Waiting on the processor: a state, not an errand. No button, by instruction. */
+const waiting = stage === 'awaiting-approval' || stage === 'going-live';
+
+/** The stage's own line. The cast is the narrow one a computed key needs against a frozen literal
+ *  type — and computing the key is the point, since it is what stops the stage list and the copy
+ *  from being kept in step by hand (`seller-stage.ts#sellerStageKey`). */
+const stageLine = (d as unknown as Record<string, string>)[sellerStageKey(stage)] ?? '';
 ---
 
-{!storeIsLive && (
-  <section class="card card--flat p-4 md:p-5 mb-4" id="publish-status" data-publish-holds={holds.join(',')}>
-    <h3 class="text-[1.05rem] font-bold m-0">{title}</h3>
-    <p class="muted m-0 mt-1 text-[0.86rem]">{line}</p>
-    {/* `data-goto-panel` is the dashboard's own tab switch (scripts/dashboard/ui.ts) — the same
-        mechanism every stat card on this tab uses, so this behaves like every other jump here.
-        Absent while PayMe are reviewing: there is nothing to press, and a button that leads to a
-        screen with nothing to do on it is worse than none. */}
-    {waiting ? (
-      <button type="button" class="btn btn--sm mt-3" disabled>{d.pubHoldApprovalWaiting}</button>
-    ) : cta && (
-      <button type="button" class="btn btn--accent btn--sm mt-3" data-goto-panel="payouts">
-        {cta}
-      </button>
+{speaks && (
+  <section class="card card--flat p-4 md:p-5 mb-4" id="publish-status" data-publish-holds={holds.join(',')} data-stage={stage}>
+    {/* The stage's own line is the heading — the same words the admin's roster will show for this
+        seller (session ד׳), so the two screens cannot describe one state differently. */}
+    <h3 class="text-[1.05rem] font-bold m-0">{stageLine}</h3>
+
+    {stage === 'live' ? (
+      <p class="muted m-0 mt-1 text-[0.86rem]">{d.pubLiveNote.replace('{store}', store?.name ?? '')}</p>
+    ) : refused ? (
+      <>
+        <p class="muted m-0 mt-1 text-[0.86rem]">{d.pubRejectedNote}</p>
+        <button type="button" class="btn btn--accent btn--sm mt-3" data-goto-panel="payouts">{d.pubRejectedCta}</button>
+      </>
+    ) : waiting ? (
+      /* The wait, in one sentence, with nothing to press. Owner: *"או: החשבון ממתין לאישור חברת
+         הסליקה, באופן ברור, בלי כפתור בכלל."* */
+      <p class="muted m-0 mt-1 text-[0.86rem]">{d.pubHoldApprovalNote}</p>
+    ) : (
+      <>
+        {/* Exactly what is left, and only what is left. */}
+        <p class="muted m-0 mt-1 text-[0.86rem]">
+          {d.pubToGoLive.replace('{items}', missing.join(d.pubNeedJoin))}
+        </p>
+        {/* `data-goto-panel` is the dashboard's own tab switch (scripts/dashboard/ui.ts) — the same
+            mechanism every stat card on this tab uses. */}
+        <button type="button" class="btn btn--accent btn--sm mt-3" data-goto-panel="payouts">
+          {d.pubHoldDetailsCta}
+        </button>
+      </>
     )}
   </section>
 )}

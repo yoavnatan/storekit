@@ -44,6 +44,7 @@
  */
 import type { PublishHold } from '../../lib/store-publication.js';
 import type { MerchantKyc } from '../../lib/merchant-kyc.js';
+import type { ClearingStatus } from '../../lib/seller-merchant.js';
 import { SELLER_TIERS, type SellerTierId } from '../../lib/pricing.js';
 import type { getT } from '../../i18n/index.js';
 import ClearingDetailsForm from './ClearingDetailsForm.astro';
@@ -72,7 +73,7 @@ interface Props {
   businessType: string | undefined;
   /** What PayMe actually hold. The only honest source for step 3, because the holds say what is
    *  BLOCKING and cannot distinguish an approval that is finished from one nobody asked for. */
-  clearing: { state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval' } | null;
+  clearing: ClearingStatus | null;
   planName: string;
   /** Every plan's display name, for the picker. Lives in the pricing copy rather than the
    *  dashboard's, so it is handed in rather than looked up — no component below this one reaches
@@ -169,7 +170,14 @@ const STEPS = [
      * Read from the account, never from `detailsDone`: that is the reading that put a green tick on
      * this step for a review nobody had requested.
      */
-    note: clearing?.state === 'awaiting-approval' || clearing?.state === 'ready' ? d.glStepApprovalNote
+    /**
+     * A fourth state, and it is the one that stops being a wait (owner, סשן א׳ §20, 2026-08-26).
+     * PayMe may refuse a business at their sole discretion (agreement §11) and gave us no way to
+     * tell that apart from a review still running — so a refused seller read "up to seven business
+     * days" for ever. `clearingStatusFor` answers `'rejected'` now, and this step says so.
+     */
+    note: clearing?.state === 'rejected' ? d.glStepApprovalRejected
+      : clearing?.state === 'awaiting-approval' || clearing?.state === 'ready' ? d.glStepApprovalNote
       : clearing?.state === 'not-opened' ? d.glStepApprovalAfterCard
       : d.glStepApprovalWaiting,
   },
@@ -195,6 +203,9 @@ const stateLine =
   // Two different waits, and the difference is the whole point of the change of 2026-08-24: a
   // seller with a card on file is finished and waiting, and the sentence has to say so rather than
   // leaving him reading the same "we are reviewing you" as somebody who has not decided yet.
+  // A refusal is not one of the three steps' states — it is the flow stopping — so it takes the
+  // headline outright rather than being a note further down.
+  : clearing?.state === 'rejected' ? d.glStateRejected
   : current === 'approval' ? (cardOnFile ? d.glStateApprovalArmed : d.glStateApproval)
   // Nothing left to do and the shop not up yet — the minutes between the last hold lifting and the
   // sweep running. Saying "your shop is live" here would be the one lie this screen can tell.
@@ -246,11 +257,18 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
               title AND body — which is what makes the line continuous down a long form. */}
           <div class="row-span-2 flex flex-col items-center">
             {/* The stub above the first marker is suppressed: a line arriving from nowhere reads
-                as a step that was cut off. */}
+                as a step that was cut off.
+
+                **It is the PREVIOUS step that colours it, never this one** (owner, 2026-08-26:
+                *"הפס הירוק מתחיל קצת לפני חץ ירוק, בסקשן שעדיין לא ירוק"*). It read
+                `step.done || STEPS[i-1].done`, so a finished step 2 painted the stub above its own
+                marker green while step 1 — the stretch that stub actually spans — was still open:
+                a green line emerging out of a grey section a few pixels before the tick. Green means
+                the stretch is BEHIND him, and the stretch above marker `i` is step `i-1`. */}
             <span
               class:list={[
                 'w-[2px] h-2 shrink-0',
-                i === 0 ? 'opacity-0' : step.done || STEPS[i - 1]!.done ? '[background:var(--color-success)]' : '[background:var(--color-border)]',
+                i === 0 ? 'opacity-0' : STEPS[i - 1]!.done ? '[background:var(--color-success)]' : '[background:var(--color-border)]',
               ]}
               aria-hidden="true"
             ></span>
@@ -378,6 +396,7 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
                 storeInPlan={storeInPlan}
                 cardOnFile={cardOnFile}
                 payer={payer}
+                businessType={businessType}
                 bare
                 d={d}
               />
@@ -401,6 +420,7 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === store.tier)?.id ?? null) a
                   storeInPlan={storeInPlan}
                   cardOnFile={cardOnFile}
                   payer={payer}
+                  businessType={businessType}
                   bare
                   d={d}
                 />

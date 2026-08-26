@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { ownedStore } from '../../../lib/store-ownership.js';
 import { pauseStore, resumeStore, requestStoreClosure, discardUnpublishedStore, openOrderCount } from '../../../lib/store-lifecycle.js';
+import { syncSubscriptionPrice } from '../../../lib/seller-subscription.js';
 import { pingStoreChange } from '../../../lib/indexnow.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { isLifecycleMailState, sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
@@ -48,6 +49,27 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // of at the next crawl, and a reopened one comes back just as fast. No-op without a real
   // domain + key (indexnow.ts).
   pingStoreChange(result.store);
+
+  /**
+   * ── A closed shop stops costing money, and until 2026-08-26 it did not ──
+   *
+   * The monthly charge is the SUM of the shops on the site (`store-plan.ts#billedStoresFor`, which
+   * excludes `closed_at`), and nothing re-priced the standing order when one closed. So a seller
+   * with two shops who closed one went on being charged for both — silently, because every screen
+   * showed the shops he had and every screen was right. Found while writing §7's copy, which claims
+   * the charge stops.
+   *
+   * PayMe first and our row second, as everywhere: `syncSubscriptionPrice` is the same function the
+   * tier route calls, and it cancels the standing order outright rather than patching it to ₪0 when
+   * the last shop goes (a ₪0 iteration is not a thing they accept).
+   *
+   * Not awaited and never fatal: the closure is already recorded and is what the seller asked for.
+   * If the processor is unreachable the nightly `subscription-price-sync` job levels it within a
+   * day, which is the same safety net the VAT switch relies on.
+   */
+  if (result.state === 'closed') {
+    void syncSubscriptionPrice(sellerId).catch(() => { /* the nightly sweep re-levels it */ });
+  }
 
   const openOrders = result.state === 'closing' ? result.openOrders : await openOrderCount(result.store.slug);
 
