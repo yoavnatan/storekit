@@ -33,12 +33,12 @@ import { checkCoupon, normalizeCouponCode } from '../../lib/coupons.js';
 import { planBuyerInvoice } from '../../lib/invoicing/index.js';
 import { getSellerById } from '../../lib/seller-auth.js';
 import { merchantAccountsFor } from '../../lib/seller-merchant.js';
-import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
+import { activePaymeCredentials, captureBuyerToken, type PaymeCredentials } from '../../lib/payment-payme.js';
+import { isDemoMode } from '../../lib/demo-mode.js';
 import { planSplit, authorizeCart, captureSlices, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
 import { commissionOnAgorot, commissionPercentForTier, feeWithVatPercent, DEFAULT_TIER } from '../../lib/pricing.js';
 import { chargedCommissionPercentForStore } from '../../lib/store-plan.js';
 import { store as platform } from '../../config/store.config.js';
-import { serverEnv } from '../../lib/runtime-env.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -754,12 +754,42 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // from one example would start refusing real tokens without warning. What must be bounded is
     // the SIZE: the body cap is 256KB, and without this a caller could push a quarter-megabyte
     // string straight into an outbound request to PayMe.
-    if (!isString(buyerKey) || buyerKey.trim().length > 200) return abort({ error: 'missing-card' }, 400);
+    // Unchanged for every real deployment: no token means nothing to charge, refused before any
+    // work is done. The size cap applies to whatever the caller did send, demonstration or not.
+    if (isString(buyerKey) && buyerKey.trim().length > 200) return abort({ error: 'missing-card' }, 400);
+    if (!isString(buyerKey) && !isDemoMode()) return abort({ error: 'missing-card' }, 400);
 
     const accounts = await merchantAccountsFor([...storeSellers.values()]);
 
+    /**
+     * ── The demonstration's token (`lib/demo-mode.ts`) ──
+     *
+     * The demo collects no card — the panel where PayMe's iframes would be says so — so the browser
+     * has no token to send, and the branch above is a 400 on every purchase. That is the one flow
+     * the whole demonstration exists to show, and it would have failed on `missing-card`.
+     *
+     * The token is minted HERE rather than the split being skipped, and that is the important part.
+     * Skipping it would mean the demonstration never runs `authorizeCart`, `captureSlices`, the
+     * per-store market fee or the shipping leg — i.e. the entire payment architecture would be
+     * absent from the thing built to demonstrate it. With a token, every one of those runs exactly
+     * as in production; only the gateway answering them is local (`lib/payme-demo.ts`), which is
+     * what `capture-buyer-token` returning a key from no card details means.
+     *
+     * `isDemoMode()` is asserted a second time rather than inferred from `!token`: this is the most
+     * sensitive branch in the application, and a later edit that changes the guard above must not
+     * silently turn this into a free checkout on a real deployment.
+     */
+    let token = isString(buyerKey) ? buyerKey.trim() : '';
+    if (!token && isDemoMode()) {
+      // Under any of the cart's merchants: a token created under one charges under any other, which
+      // is the measured behaviour the whole one-card-many-stores design rests on (§3.1.1 item 2).
+      const under = [...accounts.values()].find((a) => a.providerRef)?.providerRef;
+      if (under) token = (await captureBuyerToken({ sellerPaymeId: under }, paymeCreds)).buyerKey;
+    }
+    if (!token) return abort({ error: 'missing-card' }, 400);
+
     splitInput = {
-      buyerKey: buyerKey.trim(),
+      buyerKey: token,
       stores: Object.entries(storeSubtotals).map(([storeSlug, sub]) => {
         const sellerId = storeSellers.get(storeSlug) ?? '';
         return {
@@ -793,7 +823,13 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       }),
       // Our OWN merchant account — an ordinary one opened with `create-seller`, NOT the partner
       // id, which cannot receive money (174). `payment-split.ts` says why the distinction matters.
-      deliveryMerchantId: serverEnv('PAYME_DELIVERY_MERCHANT_ID'),
+      // Off the CREDENTIALS rather than re-reading the variable they were built from. Same value in
+      // production — `paymeCredentials()` fills `ownMerchantId` from exactly this environment
+      // variable — and the difference is that the credentials are the one object that knows which
+      // gateway this process is talking to. Re-reading the variable meant the portfolio
+      // demonstration had no delivery merchant at all, so the shipping leg was refused on every
+      // cart while the store legs charged, which is the shape of bug a second source always makes.
+      deliveryMerchantId: paymeCreds.ownMerchantId,
       checkoutRef,
       buyerEmail: buyerData.buyerEmail,
       buyerName: buyerData.buyerName,

@@ -39,11 +39,12 @@
  * this file only knows how PayMe works, exactly as `payment-hyp.ts` only knows how Hyp works.
  */
 import crypto from 'node:crypto';
-import { agorotToDecimalString } from './money.js';
-import { commissionOnAgorot } from './pricing.js';
 import { outboundFetch } from './outbound-fetch.js';
 import { serverEnv } from './runtime-env.js';
 import { isDemoMode } from './demo-mode.js';
+// Imported as well as re-exported below: a `export … from` does not bring the names into this
+// module's own scope, and `exceedsMarketFeeCeiling` calls one of them.
+import { marketFeeFixedShekels, marketFeeTotalAgorot } from './payme-fees.js';
 import { answerDemoPayme, DEMO_PAYME_BASE_URL, DEMO_PAYME_CLIENT_KEY, DEMO_PAYME_OWN_MERCHANT } from './payme-demo.js';
 
 /** PayMe answers every call with JSON carrying its own status. `0` is success — and it can arrive
@@ -283,34 +284,13 @@ async function sendPayme(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Agorot → the shekel NUMBER `market_fee_fixed` expects.
- *
- * `agorotToDecimalString` and not a division, deliberately: `1015 / 100` is `10.149999999999999`
- * in binary floating point, and a JSON body carrying fifteen decimal places of a fee is a
- * conversation with PayMe's support nobody wants to have. The string is exact, and `Number` of an
- * exact two-decimal string is the nearest double to it, which is the best any JSON number can be.
+ * The fee arithmetic now lives in `lib/payme-fees.ts` and is re-exported here so every call site
+ * and the money guard-scan find it where they always have. It moved because `payme-demo.ts` needs
+ * the same formula and cannot import this module — see that file's header for why a copy was the
+ * wrong answer.
  */
-export function marketFeeFixedShekels(agorot: number): number {
-  return Number(agorotToDecimalString(agorot));
-}
+export { marketFeeFixedShekels, marketFeeTotalAgorot } from './payme-fees.js';
 
-/**
- * What PayMe will actually take for us on a sale, in agorot.
- *
- * The percentage applies to `sale_price`; the fixed amount is added on top. Measured exactly:
- * `sale_price 5000` + `market_fee 12` + `market_fee_fixed 15` → `sale_market_fee_total: 2100`.
- * Rounded to the agora once, at the end, for the same reason `pricing.ts#commissionOnAgorot`
- * exists — so our figure and theirs cannot disagree by a rounding.
- */
-export function marketFeeTotalAgorot(input: { salePriceAgorot: number; marketFeePercent: number; marketFeeFixedAgorot?: number }): number {
-  // `commissionOnAgorot` and not `Math.round(price * pct / 100)` written out again, even though
-  // that is all it is. It is `pricing.ts`'s definition of "the platform's cut of a figure held in
-  // agorot", and the percentage PayMe apply here IS that cut — so a hand-rolled copy is two
-  // definitions of one number, and the day they round differently our predicted commission and the
-  // seller's reported commission disagree by an agora with no way to tell which is right. Written
-  // out once, caught reviewing this diff.
-  return commissionOnAgorot(input.salePriceAgorot, input.marketFeePercent) + (input.marketFeeFixedAgorot ?? 0);
-}
 
 /**
  * Would this sale breach the 60% ceiling — checked HERE, before the call, and not left to PayMe.

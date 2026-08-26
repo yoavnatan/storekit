@@ -58,6 +58,8 @@
 import crypto from 'node:crypto';
 import { firstRow, query, rows } from './db.js';
 import { DEMO_APPROVAL_SECONDS } from './demo-mode.js';
+import { marketFeeTotalAgorot } from './payme-fees.js';
+import { toAgorot } from './money.js';
 
 /**
  * The base URL that means "answer locally".
@@ -213,9 +215,17 @@ export async function answerDemoPayme(
         // `completed` is the only status `saleIsPaid` accepts, and the money in this demo moves
         // exactly as far as the record of it.
         sale_status: 'completed',
-        // THEIR arithmetic in production, so it is arithmetic here too rather than a copy of the
-        // caller's own figure: percentage of the sale plus the fixed part, back in agorot.
-        sale_market_fee_total: Math.round((price * feePercent) / 100 + feeFixedShekels * 100),
+        /* THEIR arithmetic in production, so it is arithmetic here too rather than an echo of the
+           caller's own figure — and through `payme-fees.ts` rather than written out, which is the
+           whole reason that module exists. This line was a third copy of the fee formula on its
+           first draft, in a demo whose entire job is to answer as the real gateway would; a
+           demonstration that rounds differently from production is a demonstration of different
+           software. `toAgorot` for the wire's shekel figure, for the same reason. */
+        sale_market_fee_total: marketFeeTotalAgorot({
+          salePriceAgorot: price,
+          marketFeePercent: feePercent,
+          marketFeeFixedAgorot: toAgorot(feeFixedShekels),
+        }),
       };
     }
 
