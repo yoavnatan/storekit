@@ -1091,7 +1091,20 @@ export const translations = {
       // on different objects (user, 2026-07-31). Never worded as a holiday — this is an
       // operational halt, and the shopper-facing copy uses different words again (store.*).
       lcTitle: 'מצב פעילות החנות',
-      lcHint: 'הקפאה זמנית של החנות, או סגירתה. שום נתון לא נמחק — ההזמנות, ההכנסות והדוחות נשמרים בכל מצב.',
+      // ── §7: what the two buttons DO, and it used to be inaccurate ──
+      // It read *"הקפאה זמנית של החנות, או סגירתה. שום נתון לא נמחק — ההזמנות, ההכנסות והדוחות
+      // נשמרים בכל מצב."* The owner: *"זה לא מדוייק, בסגירת החנות שום נתון לא נמחק? מה קורה בכלל
+      // בסגירת החנות?"* Two things were wrong with it. It described the two actions as if they
+      // differed only in duration, when one is reversible in a click and the other cannot be undone
+      // at all (`store-lifecycle.ts#refuseIfNotSellerControlled` — a closed store has no
+      // transitions left). And "שום נתון לא נמחק" was true and beside the point: nothing is deleted
+      // either way, and what a seller is actually afraid of is whether the shop can come back.
+      //
+      // So it names the difference that matters, and it now also says the thing that made the
+      // sentence worth re-checking: closing stops the monthly charge for that shop
+      // (`api/seller/store-lifecycle.ts` re-prices the standing order, which it did not until
+      // 2026-08-26).
+      lcHint: 'הקפאה עוצרת את המכירות ואפשר לבטל אותה בלחיצה. סגירה היא סופית — החנות יורדת מהאתר ולא ניתן לפתוח אותה שוב, והחיוב החודשי עליה נפסק. בשני המקרים המוצרים, ההזמנות והדוחות נשמרים ונשארים זמינים לכם.',
       // The state a shop is BORN in, and the one this label had no branch for — so it read
       // "פעילה" for a shop that is not on the site at all (owner, 2026-08-25).
       lcStateUnpublished: 'החנות עדיין לא באוויר',
@@ -1108,7 +1121,9 @@ export const translations = {
       lcActiveNote: 'הכל פעיל: החנות מופיעה במתחם, בחיפוש ובגוגל, וניתן לקנות בה.',
       lcPausedNote: 'החנות לא מקבלת הזמנות והוסרה מהמתחם, מהחיפוש ומהפיד לפרסום. דף החנות מציג הודעה לקונים במקום הקטלוג. קמפיינים פעילים נעצרים לבד — הנתונים שנצברו נשמרים.',
       lcClosingNote: 'המכירות כבר הופסקו. ברגע שההזמנה הפתוחה האחרונה תסומן כנמסרה או תבוטל, החנות תיסגר לבד — אין צורך לחזור לכאן.',
-      lcClosedNote: 'החנות אינה מופיעה באתר. הנתונים ההיסטוריים שלה נשמרו במלואם.',
+      // Says what is true of a closed shop, including the two things a seller asks next: it cannot
+      // be reopened, and it stopped costing money.
+      lcClosedNote: 'החנות ירדה מהאתר ולא ניתן לפתוח אותה שוב. החיוב החודשי עליה נפסק, והמוצרים, ההזמנות והדוחות נשמרו במלואם ונשארים זמינים לכם.',
       lcPause: 'הקפא את החנות',
       lcResume: 'החזר לפעילות',
       lcCancelClose: 'בטל את הסגירה',
@@ -1207,8 +1222,33 @@ export const translations = {
       // The chip on the picker card, drawn from `ACCOUNT_WIDE_REPORTS` so it marks whichever
       // reports are declared account-wide rather than a report named here.
       repAllStoresChip: 'כל החנויות',
-      repPayoutsTitle: 'העברות לבנק',
-      repPayoutsDesc: 'כל העברה שיצאה לחשבון שלכם, וכמה עמלת פלטפורמה נוכתה ממנה. העברה אחת מאחדת את כל החנויות שלכם.',
+      // ── The fee ledger (owner, סשן א׳ §1, 2026-08-26) ──
+      // The title names the DOCUMENT, not the feeling: this is the sheet a bookkeeper reconciles
+      // expenses against, so it says which fees and over what.
+      repFeesTitle: 'עמלות ותשלומים',
+      repFeesDesc: 'כל מה שנגבה מכם בתקופה — עמלת מכירה, עמלת סליקה והמנוי החודשי. סכום, מע״מ וסה״כ בכל שורה, כמו בחשבונית.',
+      repColFeeKind: 'סוג',
+      repColFeePayee: 'נגבית על ידי',
+      repColFeeRef: 'על',
+      repColFeeBase: 'בסיס החישוב',
+      repColFeeAmount: 'סכום',
+      repColFeeVat: 'מע״מ',
+      repColFeeTotal: 'סה״כ',
+      repFeeKindCommission: 'עמלת מכירה',
+      repFeeKindClearing: 'עמלת סליקה',
+      repFeeKindSubscription: 'מנוי חודשי',
+      // Two parties, named. A seller shown one merged "fees" number concludes the mall took all of
+      // it — the same rule that keeps the clearing fee and the commission on separate rows.
+      repFeePayeePlatform: 'המתחם',
+      repFeePayeeProcessor: 'חברת הסליקה',
+      repSumFeesNet: 'עמלות לפני מע״מ:',
+      repSumFeesVat: 'מע״מ:',
+      repSumFeesTotal: 'סה״כ שולם:',
+      // Said out loud, never left as a quiet zero: the processor's half of the ledger is read live
+      // and their endpoint answers newest-first with no date filter, so a long period can reach
+      // past what one read covers.
+      repFeesPartial: 'עמלות הסליקה מוצגות מהחיובים האחרונים בלבד — לתקופה ארוכה ייתכנו חיובים נוספים.',
+      repFeesNoProcessor: 'לא הצלחנו לקרוא את עמלות הסליקה מחברת הסליקה כרגע.',
 
       repColDate: 'תאריך',
       repColCustomer: 'לקוח',
@@ -1324,35 +1364,58 @@ export const translations = {
       glStepApprovalAfterCard: 'אורך עד 7 ימי עסקים, לאחר שמירת הפרטים ואמצעי התשלום.',
       // Before the details go out there is no clock, and saying there is one is the only thing this
       // step can get wrong.
-      glStepApprovalWaiting: 'מתחיל אחרי שליחת פרטי העסק, ואורך עד 7 ימי עסקים.',
+      glStepApprovalWaiting: 'מתחיל אחרי שליחת פרטי העסק, אורך עד 7 ימי עסקים.',
+      // ── §20: the outcome nobody had a screen for ──
+      // PayMe may refuse a business at their sole discretion (הסכם §11) and do not give a reason
+      // over the API, so the copy cannot invent one. What it CAN do is stop the seller waiting for
+      // a decision that has been made, and name the only door there is — their own page.
+      glStepApprovalRejected: 'חברת הסליקה לא אישרה את בית העסק, ולכן החנות אינה יכולה למכור. הסיבה נמסרת על ידם בלבד — אפשר לפנות אליהם בקישור שלמטה, ואנחנו כאן אם צריך עזרה.',
+      glStateRejected: 'חברת הסליקה לא אישרה את בית העסק',
       glStepSubscription: 'מסלול ואמצעי תשלום',
       glStepSubscriptionNote: 'בוחרים מסלול ושומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
       // The plan is met HERE, at the moment it starts costing him — not on a screen of its own
       // earlier in the flow (owner, 2026-08-24). Four pills, and a way to the full comparison for
       // the seller who wants one.
       glPlanTitle: 'המסלול של החנות',
-      glPlanSwitchable: 'אפשר להחליף מסלול בכל רגע, גם אחרי שהחנות באוויר.',
+      glPlanSwitchable: 'ניתן לשנות את המסלול בהמשך, גם לאחר עליית האתר לאוויר.',
       glPlanCompare: 'השוואת המסלולים',
       glAutomatic: 'בסיום השלבים החנות עולה לאוויר אוטומטית, תתקבל התראה וניידע אותך במייל.',
       pubTitle: 'החנות עדיין לא באוויר',
       // The owner's own sentence, 2026-08-25 — the previous one led with a list and buried the
       // condition, so a seller learned what he could do and not what he still had to.
-      pubBuildOn: 'ניתן להמשיך לבנות את החנות, להוסיף מוצרים, עיצוב, קטגוריות ומבצעים. החנות תעלה לאוויר לאחר הסדרת פרטי העסק והתשלום.',
-      pubHoldSubscription: 'מנוי חודשי לא הופעל',
-      pubHoldSubscriptionNote: 'ברגע שהמנוי מתחיל, החנות עולה לאוויר.',
+      // ── The stage vocabulary (owner, §17) — one line per state, used by the overview card and,
+      // from session ד׳, by the admin's seller roster. Plain Hebrew, said from the seller's side.
+      stageNoStore: 'נרשם, טרם נפתחה חנות',
+      stageBuilding: 'החנות בבנייה, טרם הוזנו פרטי תשלום',
+      stageCardOnly: 'אמצעי תשלום הוזן, חסרים פרטי העסק',
+      stageDetailsOnly: 'פרטי העסק הוזנו, חסר אמצעי תשלום',
+      stageAwaitingApproval: 'ממתין לאישור חברת הסליקה',
+      stageRejected: 'חברת הסליקה לא אישרה את בית העסק',
+      stageGoingLive: 'הכול הושלם, החנות עולה לאוויר',
+      stageLive: 'החנות באוויר ומוכרת',
+      stagePaused: 'החנות מוקפאת',
+      stageClosed: 'החנות סגורה',
       // Names what he GETS, not what he starts (owner, 2026-08-24: the flow had no moment where a
       // person stops playing with the site and becomes a seller). This button is that moment.
       pubHoldSubscriptionCta: 'העלה את החנות לאוויר',
-      pubHoldDetails: 'חסרים פרטים לפתיחת חשבון סליקה',
       // Owner, 2026-08-25: *"משפט גרוע. לא מבין גם על מה הוא מצביע?"* — and he was right twice.
       // It argued from the absence of an account, which is a thing he has no view of and which by
       // then could also mean "everything is filled in and waiting for your card". The title above it
       // already says what is missing; this says why it is worth doing, in the one term that matters
       // to a seller — the money from his buyers — and points at nothing he cannot see.
-      pubHoldDetailsNote: 'אלו הפרטים שחברת הסליקה דורשת כדי לפתוח את החשבון שאליו ייכנס הכסף מהקונים.',
+      // ── §17: the card names what is LEFT, not what a form on another tab contains ──
+      // *"המשפט הזה לא ברור למה הוא שייך, מה זה 'אלו הפרטים'?"* — because "אלו" pointed at a list
+      // the reader cannot see. `{items}` is only what is actually outstanding, so a seller is never
+      // told to complete something he has finished.
+      pubToGoLive: 'כדי להעלות את החנות לאוויר יש להשלים {items}.',
+      pubNeedDetails: 'פרטי עסק',
+      pubNeedPayment: 'אמצעי תשלום',
+      // A comma between two Hebrew items, never a comma AND a ו (`feedback_hebrew_copy_grammar`).
+      pubNeedJoin: ', ',
+      pubLiveNote: 'החנות {store} מופיעה במתחם, בחיפוש ובגוגל, ואפשר לקנות בה.',
+      pubRejectedNote: 'החנות לא תוכל למכור עד שזה ייפתר. ההסבר והדרך לפנות אליהם נמצאים בלשונית תשלומים.',
+      pubRejectedCta: 'לפרטים בלשונית תשלומים',
       pubHoldDetailsCta: 'להשלמת הפרטים',
-      pubHoldApproval: 'חברת הסליקה בודקת את העסק',
-      pubHoldApprovalWaiting: 'ממתין לאישור העסק על ידי חברת הסליקה',
       pubHoldApprovalNote: 'הבדיקה נמשכת עד שבעה ימי עסקים ואין מה לעשות בינתיים. החנות תעלה לאוויר לבד ברגע שהאישור מגיע, ונשלח מייל.',
       pubGoesLive: 'העלייה לאוויר אוטומטית — אין כפתור ללחוץ.',
       // The clearing-details form (components/dashboard/ClearingDetailsForm.astro). Ten fields PayMe
@@ -1401,7 +1464,12 @@ export const translations = {
       mkErrSocialId: 'תעודת זהות היא תשע ספרות.',
       mkErrPhone: 'מספר טלפון ישראלי, מתחיל ב-0.',
       mkErrDate: 'תאריך לא תקין.',
-      mkStillMissing: 'נשמר. עדיין חסרים {n} שדות — אפשר להשלים בכל רגע.',
+      // Says the CONSEQUENCE and points at the marks. It read "אפשר להשלים בכל רגע", which is the
+      // wording of an optional form — and this one is the gate on his ability to sell (owner, §14).
+      mkStillMissing: 'הפרטים נשמרו, אך עדיין לא נשלחו לחברת הסליקה — {n} שדות מסומנים בטופס.',
+      // Both fields are filled in and they disagree, which is a different mistake from an empty
+      // field and needs a sentence that names the rule (owner, §13).
+      mkErrIdMismatch: 'אצל עוסק פטור ועוסק מורשה מספר העסק הוא מספר תעודת הזהות — השניים חייבים להיות זהים.',
       mkOnFile: 'הפרטים נשלחו לחברת הסליקה.',
       // Filled, not yet with them — opening the account failed or has not been attempted. Saying
       // "sent" here was a claim the seller could act on and be wrong about.
@@ -1435,7 +1503,16 @@ export const translations = {
       subSetupFee: 'בפתיחת חשבון הסליקה נגבים דמי הקמה חד-פעמיים של {amount} ₪ על ידי חברת הסליקה.',
       subPerMonth: 'לחודש',
       subCommission: 'עמלה למכירה',
+      // ── The VAT line, and who gets a second one (owner, 2026-08-26) ──
+      // The convention is unchanged — a B2B fee is quoted before VAT (`pricing.ts`) — but *"גם
+      // לקוח שלי יכול להיות עוסק פטור"*: he deducts no input tax, so for him the 18% is a real
+      // cost and the only figure that matters is the gross. *"שלעוסק פטור יהיה כתוב גם הסה״כ,
+      // ולעוסק מורשה ומעלה לא. בצורה עדינה."* So: everyone reads the first line, and a seller who
+      // cannot reclaim reads the second — a quiet statement of the number that will leave his
+      // account, never a warning.
       subVat: 'המחירים אינם כוללים מע״מ',
+      subVatTotal: 'סה״כ לחיוב, כולל מע״מ: {amount}',
+      subVatRow: 'מע״מ',
       subStart: 'התחל מנוי',
       subGoingToProcessor: 'מעבירים אותך לדף התשלום של חברת הסליקה.',
       subActive: 'המנוי פעיל.',
@@ -1452,6 +1529,16 @@ export const translations = {
       // every running subscription — because "end of the period you paid for" is arithmetic a
       // seller should not be doing at the moment he is deciding whether to leave.
       subCancelWhenDated: 'הביטול עוצר את החיוב הבא. החנות נשארת באוויר עד {date}, ואז יורדת מהאתר — המוצרים, ההגדרות וההזמנות נשמרים, וחידוש מחזיר אותה.',
+      // ── What happens after, and the question (owner, §6) ──
+      subCancelAfter: 'בסיום התקופה החנות יורדת מהאתר ומפסיקה למכור. המוצרים, ההזמנות, הדוחות וההגדרות נשמרים כמו שהם, וחידוש המנוי מחזיר את החנות לאוויר.',
+      subCancelWhy: 'למה אתם מבטלים?',
+      subCancelReasonExpensive: 'יקר מדי',
+      subCancelReasonNoSales: 'אין מספיק מכירות',
+      subCancelReasonTooComplex: 'מסובך לתפעול',
+      subCancelReasonMoving: 'עוברים לפלטפורמה אחרת',
+      subCancelReasonOther: 'סיבה אחרת',
+      subCancelNote: 'רוצים להוסיף משהו? (לא חובה)',
+      subCancelNotePlaceholder: 'מה היה חסר לכם',
       subCancelCheaper: 'מעבר למסלול זול יותר',
       subCancelOneStore: 'אפשר גם להוריד חנות אחת בלבד מהאוויר ולהקטין את החיוב.',
       subCancelConfirm: 'בטל את המנוי',
@@ -1460,7 +1547,19 @@ export const translations = {
       subEnding: 'המנוי בוטל. החנות באוויר עד {date}.',
       subEndingNote: 'לא ייגבה חיוב נוסף. אפשר לחדש בכל רגע עד התאריך הזה, ולהמשיך בלי הפסקה.',
       subFailed: 'הפעולה נכשלה, נסה שוב.',
-      subGatewayFailed: 'חברת הסליקה לא אישרה את השינוי. המסלול לא שונה.',
+      // ── The dialog that explains a plan change before it happens (owner, §5) ──
+      // It says the three things he asked for: what changes, when, and what it involves. The last
+      // is what makes the failure message below make sense — the monthly fee is collected by a
+      // standing order at the processor, so a plan change is an amendment to that instruction and
+      // not a setting on our side.
+      subPlanConfirmTitle: 'מעבר למסלול {plan}?',
+      subPlanConfirmBodyDated: 'דמי המנוי נגבים בהוראת קבע דרך חברת הסליקה, ולכן המעבר הוא עדכון של הסכום בהוראה הקיימת. הכרטיס נשאר, המועד נשאר, והסכום החדש ייגבה בחיוב הקרוב ב-{date}. עמלת המכירה משתנה מיד.',
+      subPlanConfirmBody: 'דמי המנוי נגבים בהוראת קבע דרך חברת הסליקה, ולכן המעבר הוא עדכון של הסכום בהוראה הקיימת. הכרטיס נשאר, המועד נשאר, והסכום החדש ייגבה בחיוב החודשי הקרוב. עמלת המכירה משתנה מיד.',
+      subPlanConfirmOk: 'אישור המעבר',
+      // Names WHO refused and what state it leaves him in. "לא אישרה את השינוי" alone read as a
+      // business veto by a third party (owner: *"למה חברת הסליקה היא זו שאמורה לאשר?"*); what
+      // actually happened is that the request to amend the standing order did not go through.
+      subGatewayFailed: 'עדכון הסכום בהוראת הקבע לא עבר אצל חברת הסליקה. המסלול לא שונה ואתם ממשיכים במסלול הנוכחי — אפשר לנסות שוב.',
       subPlanSaved: 'המסלול נשמר.',
       subPlanFromNextCharge: 'המסלול שונה. הסכום החדש ייגבה מהחיוב הקרוב.',
       subNoStore: 'אין עדיין חנות שאפשר להעלות לאוויר.',
@@ -1475,7 +1574,7 @@ export const translations = {
       subCardPhone: 'טלפון',
       subCardPhoneHint: 'חברת הסליקה דורשת מספר טלפון של בעל הכרטיס. הוא יישמר גם בפרטי העסק, כך שלא תצטרכו למלא אותו שוב.',
       subCardPhoneMissing: 'צריך למלא מספר טלפון ישראלי לפני שמירת הכרטיס.',
-      subCardNoCharge: 'לא נגבה עכשיו. החיוב הראשון יורד ביום שהחנות עולה לאוויר ואפשר לבטל עד אז בלי שום חיוב.',
+      subCardNoCharge: 'החיוב הראשון ייגבה עם אישור העסק על ידי חברת הסליקה.',
       // Said when the card was accepted and the clearing account still cannot be opened. It names
       // no field: what is outstanding is marked on the two blocks themselves once the page re-reads,
       // and a toast listing four field names in a language nobody wrote for a toast is worse than
@@ -1486,6 +1585,11 @@ export const translations = {
       subCardOnFile: 'הכרטיס שמור ולא בוצע חיוב.',
       subCardWhen: 'החיוב הראשון, {amount}, יורד ביום שהחנות עולה לאוויר — מיד עם אישור חברת הסליקה.',
       subCardReplace: 'החלפת כרטיס',
+      // ── The payment-method row on a running subscription (owner, §9) ──
+      // No PAN is stored anywhere, so the honest statement is that a card is held and since when.
+      subMethodTitle: 'אמצעי תשלום',
+      subMethodOnFile: 'כרטיס אשראי שמור',
+      subMethodOnFileSince: 'כרטיס אשראי שמור מאז {date}',
       subCardRemove: 'הסרת הכרטיס',
       subCardRemoveTitle: 'להסיר את הכרטיס?',
       // Says the consequence, and says the part that keeps it from feeling final: nothing was
@@ -1506,38 +1610,50 @@ export const translations = {
       // Owner, סשן א׳ §1 (2026-08-25): *"איפה המוכר בעצם רואה כמה כסף יועבר לו, אני רוצה שהוא בכלל
       // לא יצטרך לצאת לפיימי כדי לעשות פעולות."* Every figure is the PROCESSOR's own, read live —
       // `lib/seller-transfers.ts` says why ours would be a promise we cannot keep.
-      payTransferTitle: 'הכסף שבדרך אליכם',
-      payTransferPending: 'ממתין להעברה',
+      // **Named for the BALANCE, not for the journey** (owner, סשן א׳ §2, 2026-08-26): it read
+      // "הכסף שבדרך אליכם" above a row labelled "ממתין להעברה" — the same fact twice, once as a
+      // heading and once as a label. The heading is the label now, and the figure stands under it
+      // with no label of its own.
+      payTransferTitle: 'יתרה לתשלום הקרוב',
       payTransferNext: 'ההעברה הקרובה',
       // The second half of `payTransferNext` when the processor has not dated the money yet — which
       // is the NORMAL case, not an error: it accrues into an open window and gets a date when they
       // close it (measured 2026-08-25). No number is invented here; the tenth-of-the-month default
-      // is answered once below, in `payHowWhenA`, where it is a rule and not a promise about a sum.
+      // is the schedule line below, where it is a rule and not a promise about a sum.
       payTransferNextUnknown: 'במועד התשלום הקרוב של חברת הסליקה',
       payTransferPast: 'הועבר אליכם',
       // Never a zero. "אין כסף שממתין" and "לא הצלחנו לקרוא" are different facts, and on a money
       // screen a renderer that shows the first when the second is true has lied.
       payTransferUnavailable: 'לא הצלחנו לקרוא את הנתונים מחברת הסליקה כרגע. נסו שוב בעוד רגע.',
-      payTransferSource: 'הנתונים מגיעים ישירות מחברת הסליקה. אין צורך להיכנס לשום מערכת אחרת.',
-
-      // ── The fee split, per sale (owner, 2026-08-25) ──
-      // Three labels and no "total fees" line, on purpose: the clearing fee is the PROCESSOR's and
-      // the commission is OURS, and one merged number reads as the platform having taken both.
-      payChargesTitle: 'העמלות על המכירות שלכם',
-      payChargesNone: 'עוד לא בוצעה מכירה.',
-      payChargeClearing: 'עמלת סליקה',
-      payChargeCommission: 'עמלת המתחם',
-      payChargeNet: 'נכנס אליכם',
-      // What stands in the net's place until the processor has computed it. Says WHEN rather than
-      // apologising, and never a number — their field repeats the gross until settlement, and the
-      // gross under "נכנס אליכם" is the one wrong answer a seller would not question.
-      payChargeNetPending: 'יחושב בהעברה',
-      // Says what the figures ARE and what they are not. The monthly account-level charges are not
-      // readable through any endpoint we have found, and a hint implying this is everything would
-      // be the more expensive kind of wrong.
-      payChargesHint: 'המספרים של חברת הסליקה, אחרי מע״מ על העמלות. חיובים חודשיים על החשבון עצמו מופיעים אצלה.',
+      // ── The one line that replaced the whole "איך זה עובד" block (owner, §3, 2026-08-26) ──
+      // *"אפשר לרשום את היועבר בעשירי לכל חודש תחת היתרה לתשלום הקרוב, בקצרה."* The date is the
+      // PROCESSOR's and saying so is half the point: there is no platform transfer to be late or to
+      // hold. The tenth is their published default on the monthly settlement track (GO_LIVE §3.1.0
+      // §37). The four Q&A pairs that used to carry this at the foot of the tab are gone — the fee
+      // report and the pricing section answer the rest with numbers instead of prose.
+      payTransferSchedule: 'מועבר לחשבון הבנק שלכם בעשירי לכל חודש, על התנועות של החודש שלפניו. הנתונים מגיעים ישירות מחברת הסליקה.',
 
       // ── The invoicing add-on ──
+      // ── §8: the TARIFF, closed, at the end of the tab (owner, 2026-08-26) ──
+      // *"לא כמה הוא שילם, אלא התמחור עצמו."* What he PAID is the fee report on the Reports tab;
+      // this is what he is charged.
+      feeSchedTitle: 'התמחור שלכם',
+      feeSchedPlan: 'מנוי חודשי',
+      feeSchedPlanValue: '{name} · {amount}',
+      feeSchedCommission: 'עמלת מכירה',
+      feeSchedCommissionValue: '{percent}% מכל מכירה',
+      feeSchedPlusVat: '+ מע״מ',
+      // `{net}` and, for a seller who does not reclaim, what it really costs him.
+      feeSchedGross: '{net} + מע״מ · סה״כ {gross}',
+      feeSchedClearing: 'עמלת סליקה',
+      // What is FIXED in the processor's schedule. The percentage is set per business in the
+      // clearing agreement and no number has been decided, so none is printed — the fee report
+      // shows what was actually deducted from each sale.
+      feeSchedClearingValue: '₪1 קבוע לכל עסקה בשקלים, ועמלה באחוזים שנקבעת מול חברת הסליקה. יש גם עמלת מינימום חודשית של ₪50, שמשלימה את עמלות הסליקה של החודש ולא מתווספת עליהן.',
+      feeSchedSetup: 'דמי הקמה, חד־פעמי',
+      feeSchedInvoicing: 'חשבונית אוטומטית לקונה',
+      feeSchedInvoicingValue: 'לפי התעריף של חברת הסליקה, כפי שמופיע בכרטיס השירות למעלה. אנחנו לא גובים על זה דבר.',
+      feeSchedToReport: 'לדוח העמלות',
       payInvoiceAutoTitle: 'חשבונית אוטומטית לקונה',
       payInvoiceAutoBody: 'חברת הסליקה תוציא את החשבונית בשמכם על כל מכירה, ולא תצטרכו לסמן דבר.',
       // `{monthly}` and `{doc}` are filled from what the processor charges THIS seller, read live —
@@ -1555,27 +1671,18 @@ export const translations = {
       // answers to three questions, in the order a seller asks them. It was four, and the fourth
       // was "when is it held" — nothing is held any more, so the question stopped being a question
       // rather than getting a shorter answer.
-      payHowTitle: 'איך זה עובד',
-      payHowWhenQ: 'מתי הכסף מועבר?',
       // The date is the PROCESSOR's, not ours, and saying so is the point of the sentence: there
       // is no platform transfer to be late, to round, or to hold. The tenth is their published
       // default for a seller on the monthly settlement track (GO_LIVE §3.1.0 §37).
-      payHowWhenA: 'חברת הסליקה מזכה את חשבון הבנק שלכם בעשירי לכל חודש, על התנועות של החודש שלפניו.',
-      payHowFeeQ: 'איפה יורדת העמלה?',
       // Answering the question a seller asks next, which is not "how much" but "when do I pay it".
       // Nothing is ever invoiced to him for a sale: the cut comes out inside the transaction, so
       // what lands is already net. The RATE lives in the tier table and is deliberately not
       // repeated here — a number in two places is a number that will disagree with itself.
-      payHowFeeA: 'בתוך העסקה עצמה. מה שנכנס אליכם הוא כבר אחרי עמלת הפלטפורמה, ואין על זה חיוב נפרד.',
-      payHowRefundQ: 'ומה קורה בהחזר?',
-      payHowRefundA: 'ההחזר חוזר לקונה מאותה עסקה שבה שילם, ומקוזז מהתנועות של אותו חודש.',
       // ── The fourth question, added סשן א׳ §2 (2026-08-25) ──
       // *"לא הבנתי כל כך את העניין"* — about a feature that was built and had no entry point
       // anybody could find. It is asked HERE because this is the money screen a seller opens with
       // the question in his head, and it NAMES THE DOOR (`feedback_entry_point_names_the_action`):
       // the tab, the card and what the two buttons do. The full answer is the help article.
-      payHowInvoiceQ: 'ומי מוציא חשבונית לקונה?',
-      payHowInvoiceA: 'אתם, מהמערכת שלכם. בלשונית הזמנות, בכרטיס ההזמנה, מסמנים שסופקה — מעלים קובץ או מסמנים שצורפה לחבילה.',
       // The banner a deep link from here raises on the Orders tab. It names the filter and offers
       // the way out — a seller who followed a link and cannot tell what narrowed the list, or how
       // to widen it again, has been dropped somewhere rather than taken there (owner, 2026-08-11).
@@ -3531,7 +3638,7 @@ export const translations = {
       cdRemove: 'Remove domain',
       cdVisit: 'Open site',
       lcTitle: 'Store activity',
-      lcHint: 'Put the store on hold temporarily, or close it. Nothing is deleted — orders, revenue and reports are kept in every state.',
+      lcHint: 'Pausing stops sales and can be undone in one click. Closing is final — the store comes off the site, it cannot be reopened, and the monthly charge for it stops. Either way your products, orders and reports are kept and stay available to you.',
       lcStateUnpublished: 'This store is not live yet',
       lcDiscard: 'Delete the store',
       lcDiscardConfirmTitle: 'Delete this store?',
@@ -3546,7 +3653,7 @@ export const translations = {
       lcActiveNote: 'Everything is live: the store is listed with the others, in search and on Google, and can be bought from.',
       lcPausedNote: 'The store takes no orders and is out of the listing, search and the ad feed. Its page shows a notice to shoppers instead of the catalog. Running campaigns stop by themselves — their accrued figures are kept.',
       lcClosingNote: 'Sales have already stopped. The moment the last open order is delivered or cancelled, the store closes by itself — no need to come back here.',
-      lcClosedNote: 'The store is off the site. All of its historical data was kept.',
+      lcClosedNote: 'The store is off the site and cannot be reopened. The monthly charge for it has stopped, and its products, orders and reports were kept in full and stay available to you.',
       lcPause: 'Pause the store',
       lcResume: 'Reopen the store',
       lcCancelClose: 'Cancel the closure',
@@ -3611,8 +3718,25 @@ export const translations = {
       repStockTitle: 'Stock',
       repStockDesc: 'A sheet for a stocktake or a supplier order. A snapshot of today.',
       repAllStoresChip: 'All stores',
-      repPayoutsTitle: 'Bank transfers',
-      repPayoutsDesc: 'Every transfer that reached your account, and how much platform commission was deducted from it. One transfer covers all of your stores.',
+      repFeesTitle: 'Fees and charges',
+      repFeesDesc: 'Everything charged to you in the period — sale commission, clearing fee and the monthly subscription. Amount, VAT and total on every row, as on an invoice.',
+      repColFeeKind: 'Type',
+      repColFeePayee: 'Charged by',
+      repColFeeRef: 'Reference',
+      repColFeeBase: 'Calculated on',
+      repColFeeAmount: 'Amount',
+      repColFeeVat: 'VAT',
+      repColFeeTotal: 'Total',
+      repFeeKindCommission: 'Sale commission',
+      repFeeKindClearing: 'Clearing fee',
+      repFeeKindSubscription: 'Monthly subscription',
+      repFeePayeePlatform: 'The mall',
+      repFeePayeeProcessor: 'The processor',
+      repSumFeesNet: 'Fees before VAT:',
+      repSumFeesVat: 'VAT:',
+      repSumFeesTotal: 'Total paid:',
+      repFeesPartial: 'Clearing fees are shown from the most recent charges only — a long period may hold more.',
+      repFeesNoProcessor: 'We could not read the clearing fees from the processor just now.',
 
       repColDate: 'Date',
       repColCustomer: 'Customer',
@@ -3680,23 +3804,35 @@ export const translations = {
       glStepApproval: 'Processor approval',
       glStepApprovalNote: 'The review takes up to 7 business days. Nothing to do meanwhile.',
       glStepApprovalAfterCard: 'Takes up to 7 business days, once your details and payment method are saved.',
-      glStepApprovalWaiting: 'Starts once your business details are sent, and takes up to 7 business days.',
+      glStepApprovalWaiting: 'Starts once your business details are sent, takes up to 7 business days.',
+      glStepApprovalRejected: 'The processor did not approve the business, so the store cannot sell. Only they can give the reason — you can reach them at the link below, and we are here if you need help.',
+      glStateRejected: 'The processor did not approve the business',
       glStepSubscription: 'Plan and payment method',
       glStepSubscriptionNote: 'Pick a plan and save a card. Nothing is charged until the store goes live.',
       glPlanTitle: "This store's plan",
-      glPlanSwitchable: 'You can change plan any time, including after the store is live.',
+      glPlanSwitchable: 'The plan can be changed later, including after the store is live.',
       glPlanCompare: 'Compare the plans',
       glAutomatic: 'When the steps are done the store goes live automatically. You get a notification, and we email you.',
       pubTitle: 'This store is not live yet',
-      pubBuildOn: 'You can carry on building the store — products, design, categories and sales. It goes live once your business details and payment are settled.',
-      pubHoldSubscription: 'No monthly subscription yet',
-      pubHoldSubscriptionNote: 'The store goes live as soon as the subscription starts.',
+      stageNoStore: 'Registered, no store yet',
+      stageBuilding: 'Building the store, no payment details yet',
+      stageCardOnly: 'Card on file, business details missing',
+      stageDetailsOnly: 'Business details in, no card yet',
+      stageAwaitingApproval: 'Waiting for the processor to approve',
+      stageRejected: 'The processor did not approve the business',
+      stageGoingLive: 'Everything done, the store is going live',
+      stageLive: 'Live and selling',
+      stagePaused: 'On hold',
+      stageClosed: 'Closed',
       pubHoldSubscriptionCta: 'Put my store live',
-      pubHoldDetails: 'Details are missing to open a clearing account',
-      pubHoldDetailsNote: 'These are what the processor needs to open the account your buyers\' money goes into.',
+      pubToGoLive: 'To put the store live, complete {items}.',
+      pubNeedDetails: 'your business details',
+      pubNeedPayment: 'a payment method',
+      pubNeedJoin: ' and ',
+      pubLiveNote: '{store} now appears in the mall, in search and on Google, and people can buy from it.',
+      pubRejectedNote: 'The store cannot sell until this is resolved. The explanation and how to reach them are on the Payments tab.',
+      pubRejectedCta: 'See the details on Payments',
       pubHoldDetailsCta: 'Complete the details',
-      pubHoldApproval: 'The processor is reviewing your business',
-      pubHoldApprovalWaiting: 'Waiting for the processor to approve your business',
       pubHoldApprovalNote: 'The review takes up to seven business days and there is nothing to do meanwhile. The store goes live by itself the moment approval arrives, and we will email you.',
       pubGoesLive: 'Going live is automatic — there is no button to press.',
       mkTitle: 'Business details',
@@ -3727,7 +3863,8 @@ export const translations = {
       mkErrSocialId: 'An Israeli ID number is nine digits.',
       mkErrPhone: 'An Israeli phone number, starting 0.',
       mkErrDate: 'That date is not valid.',
-      mkStillMissing: 'Saved. {n} fields are still missing — you can finish any time.',
+      mkStillMissing: 'Saved, but not yet sent to the processor — {n} fields are marked on the form.',
+      mkErrIdMismatch: 'For an עוסק פטור or an עוסק מורשה the business number is the ID number — the two must match.',
       mkOnFile: 'The details were sent to the processor.',
       mkFilledNotSent: 'Your details are saved. They go to the processor when you save your card, and you can edit them until then.',
       mkEdit: 'Edit',
@@ -3746,6 +3883,8 @@ export const translations = {
       subPerMonth: 'per month',
       subCommission: 'Commission per sale',
       subVat: 'Prices exclude VAT',
+      subVatTotal: 'Total charged, VAT included: {amount}',
+      subVatRow: 'VAT',
       subStart: 'Start the subscription',
       subGoingToProcessor: "Taking you to the processor's payment page.",
       subActive: 'The subscription is active.',
@@ -3756,6 +3895,15 @@ export const translations = {
       subCancelTitle: 'Before you cancel',
       subCancelWhen: 'Cancelling stops the next charge. The store stays live to the end of the period you have paid for, then comes off the site — products, settings and orders are kept, and renewing brings it back.',
       subCancelWhenDated: 'Cancelling stops the next charge. The store stays live until {date}, then comes off the site — products, settings and orders are kept, and renewing brings it back.',
+      subCancelAfter: 'At the end of the period the store comes off the site and stops selling. Products, orders, reports and settings stay exactly as they are, and renewing puts the store back live.',
+      subCancelWhy: 'Why are you cancelling?',
+      subCancelReasonExpensive: 'Too expensive',
+      subCancelReasonNoSales: 'Not enough sales',
+      subCancelReasonTooComplex: 'Too complicated to run',
+      subCancelReasonMoving: 'Moving to another platform',
+      subCancelReasonOther: 'Another reason',
+      subCancelNote: 'Anything to add? (optional)',
+      subCancelNotePlaceholder: 'What was missing for you',
       subCancelCheaper: 'Move to a cheaper plan',
       subCancelOneStore: 'You can also take a single store off the site and lower the charge instead.',
       subCancelConfirm: 'Cancel the subscription',
@@ -3763,7 +3911,11 @@ export const translations = {
       subEnding: 'Cancelled. The store stays live until {date}.',
       subEndingNote: 'You will not be charged again. You can renew any time before that date and continue without a break.',
       subFailed: 'That did not work, try again.',
-      subGatewayFailed: 'The processor did not accept the change. Your plan has not changed.',
+      subPlanConfirmTitle: 'Move to {plan}?',
+      subPlanConfirmBodyDated: 'The monthly fee is collected by a standing order at the processor, so the move is an amendment to the amount on that instruction. Your card and the charge date stay as they are, and the new amount is taken on the next charge, {date}. The sale commission changes straight away.',
+      subPlanConfirmBody: 'The monthly fee is collected by a standing order at the processor, so the move is an amendment to the amount on that instruction. Your card and the charge date stay as they are, and the new amount is taken on your next monthly charge. The sale commission changes straight away.',
+      subPlanConfirmOk: 'Confirm the move',
+      subGatewayFailed: 'The processor did not put the new amount on your standing order. Your plan has not changed and you stay on your current one — you can try again.',
       subPlanSaved: 'Plan saved.',
       subPlanFromNextCharge: 'Plan changed. The new amount applies from your next charge.',
       subNoStore: 'There is no store ready to go live yet.',
@@ -3774,13 +3926,16 @@ export const translations = {
       subCardPhone: 'Phone',
       subCardPhoneHint: "The clearing provider requires the cardholder's phone number. It is saved with your business details too, so you will not be asked for it again.",
       subCardPhoneMissing: 'Enter an Israeli phone number before saving the card.',
-      subCardNoCharge: 'Nothing is charged now. The first charge is taken on the day the store goes live, and you can cancel before then at no cost.',
+      subCardNoCharge: 'The first charge is taken when the processor approves your business.',
       subCardSavedIncomplete: 'Card saved. Some details are still needed before the clearing account can be opened — they are marked above.',
       subCardSaved: 'Card saved. Nothing was charged.',
       subCardRefused: 'The card was not accepted. Check the details and try again.',
       subCardOnFile: 'Your card is on file and nothing has been charged.',
       subCardWhen: 'The first charge, {amount}, is taken on the day the store goes live — as soon as the processor approves you.',
       subCardReplace: 'Replace the card',
+      subMethodTitle: 'Payment method',
+      subMethodOnFile: 'Card on file',
+      subMethodOnFileSince: 'Card on file since {date}',
       subCardRemove: 'Remove card',
       subCardRemoveTitle: 'Remove the card?',
       subCardRemoveBody: 'Nothing was charged and nothing will be. Your store stays off the site until a card is saved, and everything you have built stays where it is.',
@@ -3795,20 +3950,25 @@ export const translations = {
       payBankCancel: 'Cancel',
       payBusinessOnFile: 'Business:',
       payBusinessMissing: 'Not set',
-      payTransferTitle: 'Money on its way to you',
-      payTransferPending: 'Awaiting transfer',
+      payTransferTitle: 'Balance for the next payout',
       payTransferNext: 'Next transfer',
       payTransferNextUnknown: 'On the processor\'s next payment date',
       payTransferPast: 'Transferred to you',
       payTransferUnavailable: 'We could not read the processor\'s figures just now. Try again in a moment.',
-      payTransferSource: 'These figures come straight from the processor. There is no other system to sign into.',
-      payChargesTitle: 'The fees on your sales',
-      payChargesNone: 'No sale yet.',
-      payChargeClearing: 'Clearing fee',
-      payChargeCommission: 'Marketplace commission',
-      payChargeNet: 'Reached you',
-      payChargeNetPending: 'Set at transfer',
-      payChargesHint: 'The processor\'s own figures, net of VAT on the fees. Monthly account charges appear on their side.',
+      payTransferSchedule: 'Paid into your bank account on the 10th of each month, for the previous month\'s activity. The figures come straight from the processor.',
+      feeSchedTitle: 'Your pricing',
+      feeSchedPlan: 'Monthly subscription',
+      feeSchedPlanValue: '{name} · {amount}',
+      feeSchedCommission: 'Sale commission',
+      feeSchedCommissionValue: '{percent}% of every sale',
+      feeSchedPlusVat: '+ VAT',
+      feeSchedGross: '{net} + VAT · {gross} in total',
+      feeSchedClearing: 'Clearing fee',
+      feeSchedClearingValue: '\u20aa1 fixed on every shekel transaction, plus a percentage set with the processor. There is also a \u20aa50 monthly minimum, which tops that month\'s clearing fees up rather than being added to them.',
+      feeSchedSetup: 'Setup fee, one-off',
+      feeSchedInvoicing: 'Automatic invoice for the buyer',
+      feeSchedInvoicingValue: 'At the processor\'s own rate, as shown on the service card above. We add nothing to it.',
+      feeSchedToReport: 'Open the fee report',
       payInvoiceAutoTitle: 'Automatic buyer invoice',
       payInvoiceAutoBody: 'The processor issues the invoice in your name on every sale, and you mark nothing.',
       payInvoiceAutoPrice: 'Their cost: {monthly} a month plus {doc} per document. We add nothing to it.',
@@ -3817,15 +3977,6 @@ export const translations = {
       payInvoiceAutoDisable: 'Turn off',
       payInvoiceAutoBusy: 'One moment…',
       payInvoiceAutoFailed: 'We could not change the service. Try again.',
-      payHowTitle: 'How this works',
-      payHowWhenQ: 'When is the money transferred?',
-      payHowWhenA: 'The processor credits your bank account on the 10th of each month, for the previous month\'s activity.',
-      payHowFeeQ: 'Where is the commission taken?',
-      payHowFeeA: 'Inside the transaction itself. What reaches you is already net of the platform commission, and there is no separate charge for it.',
-      payHowRefundQ: 'What happens on a refund?',
-      payHowRefundA: 'It goes back to the buyer from the same transaction they paid on, and is offset against that month\'s activity.',
-      payHowInvoiceQ: 'And who issues the buyer\'s invoice?',
-      payHowInvoiceA: 'You do, from your own system. On the Orders tab, inside the order card, mark it provided — upload the file or mark it as in the parcel.',
       ordersFromUnshipped: 'Showing only orders that have not shipped — these are the ones holding the payment up.',
       ordersFromPayment: 'Showing only orders that shipped and have not been marked delivered.',
       ordersShowAll: 'Show all orders',
