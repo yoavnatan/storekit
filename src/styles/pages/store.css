@@ -497,49 +497,46 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   margin-bottom: 1rem;
 }
 
-/* Frosted glass appears ONLY once the bar pins to the header (.is-stuck,
-   toggled from JS via an IntersectionObserver sentinel). At rest — sitting
-   under the banner with nothing scrolling behind it — glass is meaningless, so
-   the bar is just its controls on the page. A subtle, near-page-bg tint (not a
-   heavy dark panel): it should barely separate from the background, only enough
-   to keep the chips legible over the blurred cards dissolving underneath.
-   Lives on ::before at z-index:-1 within .store-controls' existing sticky
-   stacking context, so the backdrop-filter never lands on .store-controls
-   itself — see the containing-block note above. */
+/* The band appears ONLY once the bar pins to the header (.is-stuck, toggled from JS via an
+   IntersectionObserver sentinel). At rest — sitting under the banner with nothing scrolling behind
+   it — there is nothing for it to separate the controls FROM, so the bar is just its controls on
+   the page.
+
+   It is a separate ::before rather than a background on .store-controls because the appearance is a
+   FADE: the element carries `opacity` and transitions it, and animating the parent's opacity would
+   take the chips with it. z-index:-1 keeps it behind them within the sticky stacking context the
+   bar already has.
+
+   (This used to host a backdrop-filter, which is why it was described as glass. It no longer does —
+   see the block below.) */
 .store-controls::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
-  /* 50%, and RAISING IT HAS BEEN TRIED AND REJECTED — 2026-08-21. Read this before "fixing"
-     the flicker below, because the fix looks obvious and the owner has already seen it.
+  /* ── OPAQUE. No glass anywhere on a shopper's page (owner, 2026-08-26) ──
+     *"מה זה הגלאס מורפיזם בחנויות נהיה שקוף מדי?!?!?"* — and then, unambiguously, *"בלי שום אפקט
+     של גלאס"*. The whole approach is retired here, not tuned.
 
-     Chrome rasterises a backdrop-filter on the compositor and, during a fast flick over a band
-     this wide, stops re-rastering and draws the raw backdrop instead, catching up when the
-     scroll stops. It is visible in the owner's own screen recording: consecutive frames where
-     the prices behind the chips are razor-sharp *through* the bar. It is not this page's bug and
-     it cannot be forced — promotion and `will-change` were both measured and neither held it.
-     Nor is it caused by the class that switches the band on, which was measured stable over a
-     full scroll at 1x/4x/6x CPU, at three widths, in Chromium and WebKit.
+     The history is worth keeping, because it says why tuning was never going to end it. This was
+     50% tint over a 14px backdrop-blur. Chrome rasterises a backdrop-filter on the compositor and,
+     during a fast flick over a band this wide, stops re-rastering and draws the raw backdrop
+     instead — visible in the owner's own screen recording as consecutive frames where the prices
+     behind the chips are razor-sharp THROUGH the bar. Promotion and `will-change` were both
+     measured and neither held it. Then the tint was raised to 78% to make losing the blur cost
+     only depth; he rejected that on sight too, because the band still changed character frame to
+     frame and the bar had become heavy.
 
-     The apparent answer is to stop depending on the blur: tint the band enough that losing it
-     costs only depth. Four levels were rendered on the live page over real photos with the blur
-     forced off, the owner picked 78%, it shipped — and he rejected it on sight: it did not stop
-     the flicker being noticeable (the band still changes character frame to frame, just from
-     "frosted" to "flat" instead of to "gone") and it made the bar heavy and opaque. Reverted the
-     same day, on his instruction, and the guard test that pinned the floor went with it.
-
-     So: 50% is a decision, not a default. If the flicker is worth another attempt, it has to be
-     an attempt at the BLUR — not at the tint, and not at a number between these two. */
-  background: color-mix(in srgb, var(--color-bg) 50%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
-  backdrop-filter: blur(14px) saturate(1.05);
-  -webkit-backdrop-filter: blur(14px) saturate(1.05);
-  /* NO SHADOW, deliberately (2026-08-02, and the reasoning is on the deleted --shadow-bar
-     in base/tokens.css). The blur IS the depth cue here — content behind this row visibly
-     goes out of focus, which says "in front" far louder than a 10% shadow, and the
-     border-bottom above draws the edge. Glass plus a drop shadow is the ~2020 Dribbble
-     take; system glass (iOS nav bars, macOS toolbars) is hairline-only. */
+     A solid band ends both complaints at once: there is nothing to re-raster, so no flicker, and
+     nothing is see-through, so nothing reads as too transparent. What it costs is the depth cue,
+     and the hairline below is what replaces it — the same thing every non-glass sticky bar on this
+     site already does. Do not reintroduce a backdrop-filter here; two attempts have now been
+     rejected by the person who has to look at it. */
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  /* NO SHADOW, deliberately (2026-08-02, reasoning on the deleted --shadow-bar in base/tokens.css).
+     An in-flow band draws its edge with a line, not with a glow — memory
+     `project_tactile_depth_expansion`: a shadow only if it floats. */
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -790,8 +787,9 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   height: 26px;
   border-radius: var(--radius-icon);
   border: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
-  backdrop-filter: blur(3px);
+  /* Solid, not 55% over a blur — no glass on a shopper's page (owner, 2026-08-26). A translucent
+     control over a photograph is also the one that loses its contrast on the wrong picture. */
+  background: var(--color-surface);
   color: var(--color-text);
   display: flex;
   align-items: center;
@@ -1450,10 +1448,12 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   gap: 4px;
   padding: 4px 8px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 0.75px solid rgba(255, 255, 255, 0.2);
+  /* A dark scrim, not frosted white (owner, 2026-08-26 — no glass). These dots sit over a
+     photograph whose colour is unknown, so they need contrast from something that does not depend
+     on what is behind them: 15% white plus a blur is legible over a dark photo and invisible over
+     a pale one, which is exactly the case a catalogue is full of. */
+  background: rgba(0, 0, 0, 0.45);
+  border: 0.75px solid rgba(255, 255, 255, 0.25);
   z-index: 3;
   pointer-events: none;
 }
@@ -1591,9 +1591,9 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   display: flex; align-items: center; justify-content: center;
   gap: 4px; padding: 4px 8px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  border: 0.75px solid rgba(255, 255, 255, 0.2);
+  /* The twin of the pill above, and changed with it — memory `project_brand_boost_twin_drift`. */
+  background: rgba(0, 0, 0, 0.45);
+  border: 0.75px solid rgba(255, 255, 255, 0.25);
   z-index: 3;
   pointer-events: none;
 }
