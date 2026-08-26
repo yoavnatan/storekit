@@ -1,4 +1,5 @@
 import { buildAdminUrl, swapPanel, wirePanelLinks } from '../../lib/admin-nav.js';
+import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../dashboard/select-dropdown.js';
 
 const PANEL_ID = 'dash-panel-statement';
 
@@ -22,6 +23,21 @@ export function initAdminStatementPanel(): void {
   if (!root) return;
 
   const monthSelect = document.getElementById('admin-statement-month') as HTMLSelectElement | null;
+  /**
+   * The site's own dropdown, not the operating system's.
+   *
+   * This one was missed (2026-08-26). Every other list control in the admin — the money log's
+   * filters, the reviews panel's three, the messages panel's two, every select in the boost form —
+   * is upgraded by `initSelectDropdown`, so the month picker was the single place in the admin
+   * where a browser's native menu opened: a different typeface, a different arrow on the wrong side
+   * in RTL, and a popup that ignores the page's own scrolling. Beside the pill-shaped period
+   * controls next to it, it read as a piece of an unfinished screen.
+   *
+   * `initSelectDropdown` hides the `<select>` and mirrors it, so everything above keeps reading
+   * `monthSelect.value` and the `change` listener below still fires — the element remains the state,
+   * only the popup changes. `COMPACT_TRIGGER_CLASS` is what the other admin filters use.
+   */
+  if (monthSelect) initSelectDropdown(monthSelect, { triggerClassName: COMPACT_TRIGGER_CLASS, menuAutoWidth: true });
   const rangeWrap = document.getElementById('admin-statement-range');
   const fromInput = document.getElementById('admin-statement-from') as HTMLInputElement | null;
   const toInput = document.getElementById('admin-statement-to') as HTMLInputElement | null;

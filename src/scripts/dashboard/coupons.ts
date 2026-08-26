@@ -14,6 +14,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { fromAgorot } from '../../lib/money.js';
 import { isScheduleOpen } from '../../lib/discounts.js';
 import type { StoreCoupon } from '../../lib/coupons.js';
+import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
 
 interface CouponView extends StoreCoupon { live: boolean }
 interface CouponsResponse { ok: boolean; coupons?: CouponView[]; error?: string; field?: string }
@@ -135,6 +136,26 @@ export function initCouponsCard(): void {
   const saveBtn = el<HTMLButtonElement>('coupon-save-btn');
   if (!form || !list) return;
 
+  /**
+   * The site's own dropdown for אחוז/סכום, not the operating system's (2026-08-26).
+   *
+   * The identical choice, on the identical dashboard, was already drawn correctly one card away:
+   * `discount-field.ts` upgrades the sale form's type select for exactly this reason. The coupon
+   * form was the copy that never got it, so a seller setting up a discount met the site's dropdown
+   * and a seller setting up a coupon met the browser's — same decision, two different controls,
+   * a few centimetres apart. That is the twin-drift shape memory `project_brand_boost_twin_drift`
+   * names, and it is why this is a fix rather than a preference.
+   *
+   * The `<select>` is hidden and MIRRORED, which is the part that needs care rather than the
+   * upgrade itself: `showForm` below opens an edit by assigning `.value` straight onto the element,
+   * and a programmatic assignment fires no `change` — so the visible trigger would keep whatever it
+   * last displayed. Editing a ₪-off coupon would have opened a form reading "אחוז" over a select
+   * holding `amount`, and the seller would have had to notice a control disagreeing with itself.
+   * `refreshSelectDropdown` there is what makes the mirror follow.
+   */
+  const kindSelect = el<HTMLSelectElement>('coupon-kind');
+  if (kindSelect) initSelectDropdown(kindSelect);
+
   /** Which row the open form is editing; empty string = a new code. */
   let editingId = '';
   /** The last list the server returned — what an "edit" press reads its values from, so opening the
@@ -151,6 +172,9 @@ export function initCouponsCard(): void {
     editingId = c?.id ?? '';
     (el<HTMLInputElement>('coupon-code'))!.value = c?.code ?? '';
     (el<HTMLSelectElement>('coupon-kind'))!.value = c?.kind ?? 'percent';
+    // The assignment above fires no `change`, so the mirrored trigger has to be told (see the
+    // upgrade at the top of this function).
+    refreshSelectDropdown(el<HTMLSelectElement>('coupon-kind'));
     (el<HTMLInputElement>('coupon-value'))!.value = c ? String(c.value) : '';
     (el<HTMLInputElement>('coupon-min'))!.value = c && c.minSubtotalAgorot > 0 ? String(fromAgorot(c.minSubtotalAgorot)) : '';
     (el<HTMLInputElement>('coupon-uses'))!.value = c?.maxUses !== undefined ? String(c.maxUses) : '';
