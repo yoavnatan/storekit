@@ -176,6 +176,42 @@ export function parseBusinessFields(
 }
 
 /**
+ * Does the business number agree with the owner's ת.ז — and must it?
+ *
+ * ── The question (owner, סשן א׳ §13, 2026-08-26) ──
+ * *"במקרה של עוסק פטור, אם אני מקליד מספר עוסק/ח״פ שלא תואם לת״ז צריך שם ולידציה?"* Yes, and it is
+ * PayMe who make it necessary rather than us: an **עוסק פטור** and an **עוסק מורשה** are individuals
+ * trading under their own name, so their business number IS their ת.ז — and PayMe enforce exactly
+ * that when they open the account (GO_LIVE §3.1.0, and the sandbox note that records their refusal).
+ * A **חברה** has a ח״פ, which is a different number by definition, so the rule must not be applied
+ * to it.
+ *
+ * Without this the mismatch surfaces days later as a refusal from a processor, worded for a
+ * merchant, about a form the seller filled in correctly as far as anything on screen said.
+ *
+ * ── It is a WARNING and never a refusal, and that is the whole shape ──
+ * It returns a reason; it does not reject. The route saves everything first and reports this beside
+ * the save, exactly the way an outstanding field is reported — because the two ways this can be
+ * "wrong" are (a) he mistyped one of them, in which case losing the other nine fields is a
+ * punishment for a typo, and (b) **we are wrong**, which the check-digit note above spends a
+ * paragraph on: a false rejection is unrecoverable from the seller's side. Marking the field says
+ * what PayMe will say, early enough to matter, without staking his account on our being right.
+ *
+ * Pure, so both surfaces that ask can ask it the same way.
+ */
+export function businessIdMatchesOwner(input: {
+  businessType?: string | null;
+  businessId?: string | null;
+  ownerSocialId?: string | null;
+}): boolean {
+  // Only for the two types that trade under a person. Anything not yet answered is not a mismatch:
+  // an incomplete form is the normal state of this screen.
+  if (input.businessType !== 'exempt' && input.businessType !== 'licensed') return true;
+  if (!input.businessId || !input.ownerSocialId) return true;
+  return digits(input.businessId) === digits(input.ownerSocialId);
+}
+
+/**
  * Did this submission carry ANYTHING at all?
  *
  * Separate from `parsePayoutDetails` on purpose. An all-empty result is legitimate — it is how a

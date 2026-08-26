@@ -2,8 +2,8 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { saveMerchantKyc, clearingStatusFor, missingForClearingAccount } from '../../../lib/seller-merchant.js';
-import { parseBusinessFields } from '../../../lib/payout-details.js';
+import { saveMerchantKyc, merchantKycFor, clearingStatusFor, missingForClearingAccount } from '../../../lib/seller-merchant.js';
+import { parseBusinessFields, businessIdMatchesOwner } from '../../../lib/payout-details.js';
 import { updateSellerBusinessFields } from '../../../lib/seller-auth.js';
 
 import { syncStorePublication, publishHoldsFor } from '../../../lib/store-publication.js';
@@ -96,8 +96,31 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // shop may be free to go.
   const published = await syncStorePublication(sellerId);
 
+  /**
+   * ── The one cross-field rule PayMe enforce and we did not (owner, §13, 2026-08-26) ──
+   *
+   * An עוסק פטור and an עוסק מורשה trade under their own name, so their business number IS their
+   * ת.ז. PayMe check it when the account is opened; nothing here did, so a mismatch came back days
+   * later as a refusal worded for a merchant, about a form the seller had filled in as instructed.
+   *
+   * Reported AFTER the save and never instead of it. It is a warning on one field, in the same
+   * shape as an outstanding one, for the reason `businessIdMatchesOwner`'s header gives: a typo
+   * must not cost him the other nine fields, and a rule of ours must not be able to lock a seller
+   * out of an account over a number that is correct.
+   *
+   * Read back from STORAGE rather than from the request: the two halves live on two tables and can
+   * be filled in on two different days, so the only place they are ever both present is the record.
+   */
+  const stored = await merchantKycFor(sellerId);
+  const idMatches = businessIdMatchesOwner({
+    businessType: business.businessType,
+    businessId: business.businessId,
+    ownerSocialId: stored.ownerSocialId,
+  });
+
   return json({
     ok: true,
+    ...(idMatches ? {} : { conflicts: [{ field: 'businessId', reason: 'social-id-mismatch' }] }),
     // What is still missing, from the SAME function the account path asks — so the form can never
     // disagree with the thing that decides whether an account may be opened.
     // **Everything PayMe require**, not just this column's ten fields. The narrow version is what

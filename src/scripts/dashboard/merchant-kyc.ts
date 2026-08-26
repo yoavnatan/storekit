@@ -27,6 +27,11 @@ interface SaveResponse {
   holds?: string[];
   /** Slugs that went live in this save — usually empty, and worth a sentence when it is not. */
   published?: string[];
+  /** Fields that were SAVED and that the processor will refuse — today only the ת.ז/ח״פ rule
+   *  (`payout-details.ts#businessIdMatchesOwner`). Separate from `missing` because it is a
+   *  different mistake with a different sentence: the field is filled in, and it disagrees with
+   *  another one. */
+  conflicts?: { field: string; reason: string }[];
 }
 
 /**
@@ -47,6 +52,12 @@ const REJECTED_KEY: Record<string, string> = {
   ownerBirthdate: 'mkErrDate',
   ownerSocialIdIssued: 'mkErrDate',
   businessRegisteredOn: 'mkErrDate',
+};
+
+/** A cross-field conflict → the sentence that names BOTH fields. Keyed by the server's reason so
+ *  the wording lives here and the rule lives there. */
+const CONFLICT_KEY: Record<string, string> = {
+  'social-id-mismatch': 'mkErrIdMismatch',
 };
 
 function i18n(): Record<string, string> {
@@ -93,11 +104,20 @@ export function initMerchantKycForm(): void {
   const genderValue = document.getElementById('mk-gender-value') as HTMLInputElement | null;
 
   /** Paint the buttons FROM the field. The one direction, used on a click and on a restore, so the
-   *  two can never disagree about which is pressed. */
+   *  two can never disagree about which is pressed.
+   *
+   *  **The FILL as well as the attribute** (owner, 2026-08-26: *"אי אפשר לבחור מין"*). The click
+   *  always landed — the hidden field took the value and the save carried it — but `aria-pressed`
+   *  is the only mark this widget had, and nothing in this project's CSS styles `[aria-pressed]` on
+   *  a `.btn`. So both buttons looked identical before and after the press, which is the no-op the
+   *  site bans and reads as a field that does not work. */
   const paintGender = (): void => {
     if (!genderGroup || !genderValue) return;
     for (const b of genderGroup.querySelectorAll<HTMLButtonElement>('[data-gender]')) {
-      b.setAttribute('aria-pressed', String(b.dataset.gender === genderValue.value && genderValue.value !== ''));
+      const mine = b.dataset.gender === genderValue.value && genderValue.value !== '';
+      b.setAttribute('aria-pressed', String(mine));
+      b.classList.toggle('btn--accent', mine);
+      b.classList.toggle('btn--ghost', !mine);
     }
   };
 
@@ -163,8 +183,17 @@ export function initMerchantKycForm(): void {
        * previously undiscoverable at all.
        */
       const missingNames = new Set(data.missing ?? []);
+      // A conflict is a field that IS filled in and disagrees with another one, so it needs its own
+      // sentence rather than "this value was not accepted" — which would send the seller checking
+      // digits that are individually fine.
+      const conflicts = new Map((data.conflicts ?? []).map((c) => [c.field, c.reason]));
       for (const field of form.querySelectorAll<ValidatableField>('[name]')) {
         clearFieldError(field);
+        const conflict = conflicts.get(field.name);
+        if (conflict) {
+          showFieldError(field, t[CONFLICT_KEY[conflict] ?? ''] ?? t['mkFieldRejected'] ?? '');
+          continue;
+        }
         if (!missingNames.has(field.name)) continue;
         showFieldError(field, field.value.trim()
           ? (t[REJECTED_KEY[field.name] ?? ''] ?? t['mkFieldRejected'] ?? 'This value was not accepted.')
@@ -177,6 +206,21 @@ export function initMerchantKycForm(): void {
       // What is still outstanding is the SERVER's count, so the sentence can never disagree with the
       // thing that decides whether an account may be opened. Nothing was refused either way — the
       // partial save landed.
+      /**
+       * ── What the toast may claim (owner, סשן א׳ §14, 2026-08-26) ──
+       *
+       * *"הקלדתי שם הכל (חוץ ממין) ואני רואה שזה אומר לי 'נשמר, עדיין חסרים 3 שדות, ניתן להשלים
+       * בכל רגע'. אז קודם כל זה טוסט לא נכון: כי זה אובייסלי לא נשלח לחברת הסליקה, לא ברור איזה
+       * שדות חסרים."* Two faults in one sentence. It read as a friendly "you can finish whenever",
+       * which is the wording of an optional form — and this one is the gate on his ability to sell;
+       * and "3 fields" named a COUNT for fields that are marked on screen, so the number was the
+       * only thing he could act on and it pointed nowhere.
+       *
+       * So it says the consequence — nothing has gone to the processor — and points at the marks
+       * rather than restating the count as if it were the news. `mkSaved` covers the other
+       * direction, and the count is still interpolated because "3 fields are marked" is how you
+       * find three marks on a long form.
+       */
       const missing = data.missing?.length ?? 0;
       showToast(missing
         ? (t['mkStillMissing'] ?? 'Saved.').replace('{n}', String(missing))

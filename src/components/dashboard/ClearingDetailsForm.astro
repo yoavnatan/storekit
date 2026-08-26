@@ -146,9 +146,20 @@ const v = (x: string | number | undefined): string => (x === undefined ? '' : St
           `announceValueChange`, which takes an input and is the one sanctioned way to say so
           (guarded by `tests/unsaved-notice.test.ts`). */}
       <input type="hidden" name="ownerGender" id="mk-gender-value" value={v(kyc.ownerGender)} />
+      {/* ── The CHOICE has to be visible, and for a day it was not (owner, 2026-08-26) ──
+          *"אי אפשר לבחור מין בפרטי בעל העסק"* — and pressing them did work: the hidden field took
+          the value and the save carried it. What was missing was the picture. `aria-pressed` was
+          the only mark, and nothing in this project's CSS styles `[aria-pressed]` on a `.btn`, so
+          both buttons looked identical before and after the click. A control whose press moves
+          nothing on screen is the no-op this site bans (`feedback_noop_interactions_invisible`),
+          and here it read as a broken field rather than a missing style.
+
+          The fill is the same one the plan pills use for the same job — chosen = `btn--accent`,
+          the rest `btn--ghost` — so the two choosers on this screen say "picked" the same way.
+          `aria-pressed` stays: colour alone is never a state (Hard rules → accessibility). */}
       <div class="flex gap-2" id="mk-gender">
-        <button type="button" class="btn btn--ghost btn--sm" data-gender="0" aria-pressed={kyc.ownerGender === 0}>{d.mkMale}</button>
-        <button type="button" class="btn btn--ghost btn--sm" data-gender="1" aria-pressed={kyc.ownerGender === 1}>{d.mkFemale}</button>
+        <button type="button" class:list={['btn btn--sm', kyc.ownerGender === 0 ? 'btn--accent' : 'btn--ghost']} data-gender="0" aria-pressed={kyc.ownerGender === 0}>{d.mkMale}</button>
+        <button type="button" class:list={['btn btn--sm', kyc.ownerGender === 1 ? 'btn--accent' : 'btn--ghost']} data-gender="1" aria-pressed={kyc.ownerGender === 1}>{d.mkFemale}</button>
       </div>
     </fieldset>
 
