@@ -37,7 +37,9 @@
     "brand:wordmark": "node scripts/generate-wordmark.mjs",
     "showcase:prompts": "node ./scripts/export-showcase-prompts.mjs",
     "audit:drift": "node scripts/audit-drift.mjs",
-    "showcase:check": "node --env-file-if-exists=.env ./scripts/showcase-seed-check.mjs"
+    "showcase:check": "node --env-file-if-exists=.env ./scripts/showcase-seed-check.mjs",
+    "seed:portfolio": "node --env-file-if-exists=.env ./scripts/seed-portfolio.mjs",
+    "demo:claim": "node --env-file-if-exists=.env ./scripts/seed-portfolio.mjs --claim"
   },
   "dependencies": {
     "@astrojs/node": "^11.0.2",

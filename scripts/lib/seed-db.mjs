@@ -93,10 +93,36 @@ const DISPOSABLE_SELLER = `(email LIKE '%' || ${lit(DEMO_EMAIL_SUFFIX)} OR email
 const DISPOSABLE_STORE = `(demo = true OR seller_id IN (SELECT id FROM sellers WHERE ${DISPOSABLE_SELLER}))`;
 
 /**
- * The only two scopes that exist. Each is a NARROWING of the disposable predicates above: a run of
- * `seed:demo` must not remove the showcase stores and a run of `seed:showcase` must not remove the
- * demo ones, which is the whole reason there are two rather than one.
+ * ── The third scope, and why it is not like the other two ───────────────────
+ *
+ * `demo` and `showcase` are NARROWINGS of the disposable predicates above: each names a subset of
+ * what a seeder made, and layer 2 refuses anything wider. `portfolio` is the opposite shape — it is
+ * **everything that is not a showcase store**, including a shop a real visitor registered and built
+ * during the demonstration, which no seeder made and which the disposable predicate correctly does
+ * not cover.
+ *
+ * That is a genuinely dangerous scope and it is stated as one. What makes it safe is not a narrower
+ * predicate — there isn't one, that IS the requirement (owner, 2026-08-26: the demonstration holds
+ * four stores and nothing else) — but a property of the DATABASE. A database must have declared
+ * itself the portfolio demonstration before this scope will delete anything, and that declaration
+ * is a row somebody wrote deliberately against one connection (`isDemoDatabase` below). A
+ * development database has never been declared and cannot be by accident: `seed-portfolio.mjs`
+ * refuses to write the row on any database holding a store a seeder did not make.
+ *
+ * So the safety is still a property of the data rather than of remembering something — the same
+ * principle as layer 2, applied one level up. The variable that travels with a shell (`DEMO_MODE`)
+ * is deliberately NOT what is consulted here: an environment follows the person, and the danger
+ * follows the connection string.
  */
+export const DEMO_CLAIM_KEY = 'demo_database';
+
+/** Has this database declared itself the portfolio demonstration? The gate on the `portfolio` scope
+ *  and on nothing else. Written by `seed-portfolio.mjs --claim`, never by an application path. */
+export async function isDemoDatabase(db) {
+  const { rows } = await db.query('SELECT 1 FROM app_settings WHERE key = $1', [DEMO_CLAIM_KEY]);
+  return rows.length > 0;
+}
+
 export const SEED_SCOPES = {
   demo: {
     stores: `seller_id IN (SELECT id FROM sellers WHERE email LIKE '%' || ${lit(DEMO_EMAIL_SUFFIX)})`,
@@ -105,6 +131,12 @@ export const SEED_SCOPES = {
   showcase: {
     stores: `demo = true OR seller_id IN (SELECT id FROM sellers WHERE email = ${lit(SHOWCASE_OWNER_EMAIL)})`,
     sellers: `email = ${lit(SHOWCASE_OWNER_EMAIL)}`,
+  },
+  portfolio: {
+    stores: `NOT (demo = true OR seller_id IN (SELECT id FROM sellers WHERE email = ${lit(SHOWCASE_OWNER_EMAIL)}))`,
+    // The showcase owner keeps his account; so does an account with a store still standing, which
+    // `stores.seller_id ON DELETE RESTRICT` would refuse to orphan anyway.
+    sellers: `email <> ${lit(SHOWCASE_OWNER_EMAIL)} AND NOT EXISTS (SELECT 1 FROM stores st WHERE st.seller_id = sellers.id)`,
   },
 };
 
@@ -148,8 +180,22 @@ async function assertSubsetOfDisposable(db, table, where, disposable) {
 export async function purge(db, scopeName, opts = {}) {
   const { includeSellers = true } = opts;
   const scope = scopeOf(scopeName);
-  await assertSubsetOfDisposable(db, 'stores', scope.stores, DISPOSABLE_STORE);
-  if (includeSellers) await assertSubsetOfDisposable(db, 'sellers', scope.sellers, DISPOSABLE_SELLER);
+  if (scopeName === 'portfolio') {
+    // The `portfolio` scope's gate, and its ONLY one — layer 2 below cannot help here, because this
+    // scope is deliberately wider than the disposable set (see SEED_SCOPES). A database that has
+    // not declared itself the demonstration gets nothing deleted, and the throw names the reason
+    // rather than the rule: whoever is reading it has almost certainly got the wrong DATABASE_URL.
+    if (!(await isDemoDatabase(db))) {
+      throw new Error(
+        'purge refused: the "portfolio" scope deletes every store that is not a showcase store, and '
+        + 'this database has not been claimed as the demonstration one. Check DATABASE_URL, then '
+        + '`npm run demo:claim` against the DEMO connection (seed-db.mjs → SEED_SCOPES).',
+      );
+    }
+  } else {
+    await assertSubsetOfDisposable(db, 'stores', scope.stores, DISPOSABLE_STORE);
+    if (includeSellers) await assertSubsetOfDisposable(db, 'sellers', scope.sellers, DISPOSABLE_SELLER);
+  }
 
   const storeRes = await db.query(`DELETE FROM stores WHERE ${scope.stores}`);
   let sellers = 0;
@@ -293,12 +339,30 @@ async function purgeOrderLedger(db, ids) {
 
 export async function purgeOrdersOfStores(db, scopeName) {
   const scope = scopeOf(scopeName);
-  await assertSubsetOfDisposable(db, 'stores', scope.stores, DISPOSABLE_STORE);
+  const portfolio = scopeName === 'portfolio';
+  if (portfolio) {
+    if (!(await isDemoDatabase(db))) {
+      throw new Error(
+        'purge refused: the "portfolio" scope deletes every order that is not a showcase store\'s, '
+        + 'and this database has not been claimed as the demonstration one (seed-db.mjs → SEED_SCOPES).',
+      );
+    }
+  } else {
+    await assertSubsetOfDisposable(db, 'stores', scope.stores, DISPOSABLE_STORE);
+  }
 
   const touchesScope = `SELECT DISTINCT order_id FROM order_stores
       WHERE store_slug IN (SELECT slug::text FROM stores WHERE ${scope.stores})`;
-  const touchesKeeper = `SELECT DISTINCT order_id FROM order_stores
-      WHERE store_slug NOT IN (SELECT slug::text FROM stores WHERE ${DISPOSABLE_STORE})`;
+  /* An order is KEPT when it touches a store this scope is not deleting — the multi-store rule the
+     header explains. For `demo`/`showcase` that is "a store no seeder made"; for `portfolio` it is
+     the showcase set, which is the only thing surviving at all. Stated per scope rather than always
+     as `DISPOSABLE_STORE`, because on a claimed demonstration database the disposable set is not
+     the question — what survives is. */
+  const touchesKeeper = portfolio
+    ? `SELECT DISTINCT order_id FROM order_stores
+        WHERE store_slug IN (SELECT slug::text FROM stores WHERE NOT (${scope.stores}))`
+    : `SELECT DISTINCT order_id FROM order_stores
+        WHERE store_slug NOT IN (SELECT slug::text FROM stores WHERE ${DISPOSABLE_STORE})`;
 
   const { rows } = await db.query(
     `SELECT order_id, order_id IN (${touchesKeeper}) AS shared FROM (${touchesScope}) s`,
