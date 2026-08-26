@@ -1,0 +1,67 @@
+---
+/**
+ * The admin's notification bell.
+ *
+ * **Deliberately the SAME bell as the site's, down to the class names** (owner, 2026-08-26:
+ * *"שעובד באורך שלו ובמכניקה שלו בדיוק כמו זה של האתר הרגיל שבנינו"*). Every rule in
+ * `styles/utilities/utils.css` — the dropdown's width and its 300px scroller, the unread tint, the
+ * row's three lines, the fade-in — is written against `notif-dropdown`, `notif-item` and their
+ * siblings. Reusing the markup means the admin's bell inherits all of it, including the parts
+ * nobody would remember to copy, and a change to any of it moves both at once. A second stylesheet
+ * for "the same thing, in the admin" is exactly the twin drift
+ * (memory `project_brand_boost_twin_drift`) that this project keeps paying for.
+ *
+ * ── The two places it is deliberately NOT the same ───────────────────────────
+ *
+ * **No delete, and no "clear all".** The site's notifications are rows in a table, so removing one
+ * is a real act with a real endpoint behind it. The admin's are DERIVED from the five sources that
+ * put a number on a tab (`lib/admin-notifications.ts`) — there is nothing to delete, and a cross on
+ * a row would either lie or invent a table to make itself true. What clears an item is opening the
+ * tab it came from, which is the vocabulary the tab strip already uses. The head says so, once,
+ * instead of offering a control that cannot work.
+ *
+ * **A click SWAPS a panel, it does not navigate.** The dashboard is one page whose tabs never
+ * navigate, so `href` would be wrong here in a way it is not on the site; the target is carried as
+ * a panel id and `scripts/admin/notifications.ts` hands it to `swapPanel`.
+ *
+ * Rendered inside the dashboard's own header row rather than in `Header.astro`: the site header on
+ * this page is in `sellerMode`, which is what strips the cart, the wishlist and the account menu
+ * from an admin session, and putting an admin-only control into the shared header would be the
+ * first exception to that rule.
+ */
+---
+
+<div class="notif-bell-wrap" style="position:relative">
+  <button
+    id="admin-notif-bell-btn"
+    class="cart-btn"
+    aria-label="התראות"
+    aria-haspopup="true"
+    aria-expanded="false"
+    aria-controls="admin-notif-dropdown"
+    style="position:relative"
+  >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    {/* Seeded EMPTY and filled by the first fetch, unlike the site's, which is server-rendered from
+        a count the page already had. This page has the same five counts in hand — but they are the
+        TAB badges, and seeding the bell from them would put a number on it a moment before the
+        fetch replaces it with the same number, which is the badge flicker
+        `project_injected_overlay_flash` is about in its other form. */}
+    <span id="admin-notif-count-badge" class="cart-count cart-count--alert" hidden aria-live="polite" aria-atomic="true" aria-label="התראות שלא נקראו"></span>
+  </button>
+
+  <div id="admin-notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
+    <div class="notif-panel-head">
+      <span style="display:inline-flex;align-items:center;gap:0.4rem">
+        התראות
+        <span id="admin-notif-loading-dot" class="dot-pulse" hidden aria-hidden="true"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>
+      </span>
+      <button id="admin-notif-close-btn" class="notif-close-btn" type="button" aria-label="סגירה">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="admin-notif-list" class="notif-list">
+      <p class="notif-empty">אין התראות חדשות</p>
+    </div>
+  </div>
+</div>
