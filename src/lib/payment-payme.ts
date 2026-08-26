@@ -43,6 +43,8 @@ import { agorotToDecimalString } from './money.js';
 import { commissionOnAgorot } from './pricing.js';
 import { outboundFetch } from './outbound-fetch.js';
 import { serverEnv } from './runtime-env.js';
+import { isDemoMode } from './demo-mode.js';
+import { answerDemoPayme, DEMO_PAYME_BASE_URL, DEMO_PAYME_CLIENT_KEY, DEMO_PAYME_OWN_MERCHANT } from './payme-demo.js';
 
 /** PayMe answers every call with JSON carrying its own status. `0` is success — and it can arrive
  *  under an HTTP 500 as easily as under a 200, so the HTTP status is never the answer. */
@@ -119,6 +121,18 @@ export interface PaymeCredentials {
  */
 export function paymeCredentials(): PaymeCredentials | null {
   const clientKey = serverEnv('PAYME_CLIENT_KEY');
+  // The portfolio demonstration, and it is checked BEFORE the real key rather than after: a
+  // deployment that says `DEMO_MODE=1` must never reach a real gateway, not even one whose
+  // credentials happen to be sitting in its environment from a copied `.env`. Answering with the
+  // sentinel base URL is what makes `sendPayme` route locally (`lib/payme-demo.ts`).
+  if (isDemoMode()) {
+    return {
+      clientKey: DEMO_PAYME_CLIENT_KEY,
+      ownMerchantId: DEMO_PAYME_OWN_MERCHANT,
+      ownPublicKey: '',
+      baseUrl: DEMO_PAYME_BASE_URL,
+    };
+  }
   if (!clientKey) return null;
   const ownMerchantId = serverEnv('PAYME_DELIVERY_MERCHANT_ID');
   const ownPublicKey = serverEnv('PAYME_OWN_PUBLIC_KEY');
@@ -134,7 +148,11 @@ export function paymeCredentials(): PaymeCredentials | null {
  *  environment a call is about to hit is what stops a test run creating merchants in production —
  *  and it is derived from the base URL we deliberately configured, never guessed from an id. */
 export function isSandbox(creds: PaymeCredentials): boolean {
-  return creds.baseUrl.includes('sandbox.payme.io');
+  // The demo counts as a sandbox, deliberately. Every caller that asks this question is asking "is
+  // it safe to do something irreversible here" — `demo-clearing.mjs` refuses to run outside one,
+  // the probe scripts refuse to write outside one — and the answer for a gateway that does not
+  // exist is the same as for the sandbox, never the same as for production.
+  return creds.baseUrl === DEMO_PAYME_BASE_URL || creds.baseUrl.includes('sandbox.payme.io');
 }
 
 /**
@@ -156,6 +174,11 @@ export function isSandbox(creds: PaymeCredentials): boolean {
  */
 export function paymeIsActive(): boolean {
   if (!paymeCredentials()) return false;
+  // Demo mode is active in DEVELOPMENT too, and the exception is the point rather than a
+  // convenience. `PAYME_DEV_LIVE` guards the developer's clicks against reaching a shared sandbox
+  // that has no delete; there is no such hazard when the gateway is a local function, and requiring
+  // a second flag would mean the demonstration cannot be walked on the machine that builds it.
+  if (isDemoMode()) return true;
   if (import.meta.env.PROD) return true;
   return serverEnv('PAYME_DEV_LIVE') === '1';
 }
@@ -211,6 +234,18 @@ async function sendPayme(
   body: Record<string, unknown>,
   creds: PaymeCredentials,
 ): Promise<PaymeResponse> {
+  // The portfolio demonstration answers here, before the network exists. `label` and not `path`,
+  // because `set-price` is the one call whose path carries an id — the demo is taught endpoints,
+  // not URLs. Everything below this line is untouched by demo mode: the same body was built by the
+  // same caller, and the same status rules read the same answer.
+  if (creds.baseUrl === DEMO_PAYME_BASE_URL) {
+    const demo = await answerDemoPayme(label, body);
+    const demoStatus = Number(demo.status_code ?? -1);
+    if (demoStatus !== PAYME_OK) {
+      throw new PaymeError(label, Number(demo.status_error_code ?? demoStatus), String(demo.status_error_details ?? ''));
+    }
+    return demo;
+  }
   const res = await outboundFetch(`${creds.baseUrl}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json' },

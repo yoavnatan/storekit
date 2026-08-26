@@ -148,17 +148,33 @@ function loadManifest() {
   try { return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')); } catch { return {}; }
 }
 
+/**
+ * `--live` — write these stores WITHOUT the `demo` flag.
+ *
+ * Only the portfolio deployment passes it (`PORTFOLIO_DEMO_PLAN.md`). On the real site the flag is
+ * the whole point of a showcase store: `lib/demo-stores.ts` keeps it out of the index, out of the
+ * feeds, out of every store-count threshold and — the one that matters here — out of checkout,
+ * with a per-item 403. That is correct for a shop window on a commercial site and fatal for a
+ * demonstration, where the entire purchase flow is the thing being demonstrated.
+ *
+ * It stays a flag on this seeder rather than a demo-mode branch in `demo-stores.ts` deliberately.
+ * The refusal is a property of the DATA — this store is not a real business — and moving it into a
+ * runtime flag would mean the live site is one environment variable away from selling from its own
+ * shop window. Purging is unaffected either way: `DISPOSABLE_STORE` matches these through their
+ * owner's account, not through the flag.
+ */
 async function main() {
   const clean = process.argv.includes('--clean');
+  const live = process.argv.includes('--live');
   const db = await openSeedClient();
   try {
-    await seed(db, clean);
+    await seed(db, clean, live);
   } finally {
     await db.end();
   }
 }
 
-async function seed(db, clean) {
+async function seed(db, clean, live = false) {
   const STALE_STORES = SEED_SCOPES.showcase.stores;
 
   if (clean) {
@@ -195,7 +211,7 @@ async function seed(db, clean) {
   const categories = [];
   let missingImages = 0;
 
-  console.log(`\n🏬 Seeding ${SHOWCASE_STORES.length} showcase stores (demo: true), ${manifestCount} images in the manifest…`);
+  console.log(`\n🏬 Seeding ${SHOWCASE_STORES.length} showcase stores (demo: ${!live}${live ? ' — --live: sellable, indexable, counted' : ''}), ${manifestCount} images in the manifest…`);
 
   for (const spec of SHOWCASE_STORES) {
     if (taken.has(spec.slug)) {
@@ -329,7 +345,7 @@ async function seed(db, clean) {
       description: spec.description,
       colors: spec.colors,
       categories: [spec.tag],
-      demo: true,
+      demo: !live,
       // Both are ordinary image URLs, exactly like a real seller's upload — which is the property
       // that makes a showcase store editable from the dashboard rather than a special case. The
       // store's NAME is not baked into the banner picture; it is drawn over it as vector text by

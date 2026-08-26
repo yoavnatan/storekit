@@ -37,6 +37,7 @@ import { runReturnsSweep } from '../returns-run.js';
 import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { runInboxDigest } from '../inbox-digest.js';
 import { runStorePublicationSweep } from '../store-publication-run.js';
+import { isDemoMode, DEMO_PUBLICATION_INTERVAL_SEC } from '../demo-mode.js';
 import { runSubscriptionLapseSweep } from '../subscription-lapse.js';
 import { resyncAllSubscriptionPrices } from '../seller-subscription.js';
 import { runPaymeInvoiceSync } from '../payme-invoice-sync.js';
@@ -498,7 +499,12 @@ const inboxDigest: Job = {
  */
 const storePublication: Job = {
   name: 'store-publication',
-  intervalSec: 30 * MINUTE,
+  // Half a minute in the portfolio demonstration, where the wait this sweep ends is twenty seconds
+  // rather than a week (`lib/demo-mode.ts`). Thirty minutes there would mean a visitor fills in the
+  // business details, is told the shop goes up on approval, and never sees it happen — which is
+  // the one moment in the whole flow worth demonstrating. The sweep is one statement when nothing
+  // is pending, so the cost of asking often is a demo-sized cost.
+  intervalSec: isDemoMode() ? DEMO_PUBLICATION_INTERVAL_SEC : 30 * MINUTE,
   leaseSec: 10 * MINUTE,
   async run() {
     return runStorePublicationSweep();
