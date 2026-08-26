@@ -38,7 +38,7 @@ import {
   paymeIncorporation,
   type MerchantKyc, type MerchantKycField,
 } from './merchant-kyc.js';
-import { DEFAULT_TIER, commissionPercentForTier } from './pricing.js';
+import { DEFAULT_TIER, commissionPercentForTier, feeWithVatPercent } from './pricing.js';
 import { paymeCategoryForStore } from './merchant-category.js';
 import { getStoresBySellerId } from './stores.js';
 import { activePaymeCredentials, createSeller, isSandbox, PaymeError, type PaymeCredentials } from './payment-payme.js';
@@ -58,6 +58,11 @@ export interface MerchantAccount {
   /** ⚠️ False until PayMe approve the business, and they may refuse one at their sole discretion
    *  (agreement §11). "The account exists" is not "the account may sell". */
   approved: boolean;
+  /** ⚠️ **False means the processor REFUSED or suspended this business**, which is a different
+   *  state from `approved: false` — that one only means the review has not finished. PayMe answer
+   *  the two as separate flags and we store them the same way, so a refusal is visible as itself
+   *  rather than as a wait that never ends (owner, סשן א׳ §20, 2026-08-26). */
+  active: boolean;
   createdAt: string;
 }
 
@@ -68,12 +73,13 @@ interface AccountRow {
   public_key: string;
   signup_link: string;
   approved: boolean;
+  active: boolean;
   created_at: Date | string | null;
 }
 
 /** Every read names its columns, and `callback_secret` is not among them — a `SELECT *` here is
  *  how the secret would reach a caller that never asked for it. */
-const ACCOUNT_COLUMNS = 'seller_id, provider, provider_ref, public_key, signup_link, approved, created_at';
+const ACCOUNT_COLUMNS = 'seller_id, provider, provider_ref, public_key, signup_link, approved, active, created_at';
 
 function toAccount(row: AccountRow): MerchantAccount {
   return {
@@ -83,6 +89,9 @@ function toAccount(row: AccountRow): MerchantAccount {
     publicKey: row.public_key,
     signupLink: row.signup_link,
     approved: row.approved,
+    // Defensive against a row read by code deployed before the column existed — `?? true` is the
+    // same answer the column's own DEFAULT gives, i.e. "live and pending".
+    active: row.active ?? true,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ''),
   };
 }
@@ -310,7 +319,10 @@ export async function ensureMerchantAccount(
       // there is no single rate here that would be true. It costs nothing to be conservative:
       // every sale passes its own store's percent explicitly (`payment-split.ts`), and this only
       // decides what happens if one ever does not.
-      marketFeePercent: commissionPercentForTier(DEFAULT_TIER),
+      // Through `feeWithVatPercent` for the same reason every sale's own rate goes through it: a
+      // `market_fee` is what is DEDUCTED, and our fee is quoted before VAT. A bare percent here
+      // would make the fallback quietly cheaper than every real sale (2026-08-26).
+      marketFeePercent: feeWithVatPercent(commissionPercentForTier(DEFAULT_TIER)),
     }, creds);
 
     const row = await firstRow<AccountRow>(
@@ -421,10 +433,22 @@ export async function merchantBlockFor(sellerId: string, creds: PaymeCredentials
  *
  * The seller must not learn from a shopper that his shop cannot take an order.
  */
+/**
+ * What the seller's own screens say about his ability to sell.
+ *
+ * Exported as a type because three components render it and each used to declare its own copy of
+ * the union — which is how `'rejected'` was added on 2026-08-26 and two of the three kept type-
+ * checking against a state they could never receive.
+ */
+export interface ClearingStatus {
+  state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval' | 'rejected';
+  signupLink?: string;
+}
+
 export async function clearingStatusFor(
   sellerId: string,
   creds: PaymeCredentials | null = activePaymeCredentials(),
-): Promise<{ state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval'; signupLink?: string } | null> {
+): Promise<ClearingStatus | null> {
   if (!creds) return null;
   const account = await merchantAccountFor(sellerId);
   if (account) {
@@ -437,6 +461,11 @@ export async function clearingStatusFor(
     // The SAME rule as `merchantBlockFor`, and it has to be: this sentence is what a seller reads
     // to find out whether his shop can sell, so a screen saying "waiting for approval" while the
     // checkout happily takes orders would be the worse half of a disagreement nobody could see.
+    // **Refused first**, because it is the answer that stops being a wait. A deactivated merchant
+    // read as `awaiting-approval` is a seller told to keep waiting for a decision that has already
+    // been made against him (owner, §20). The link travels with it: their own page is where a
+    // refused business is discussed, and it is the only door we have.
+    if (!account.active) return { state: 'rejected', ...(link ? { signupLink: link } : {}) };
     return (account.approved || isSandbox(creds))
       ? { state: 'ready' }
       : { state: 'awaiting-approval', ...(link ? { signupLink: link } : {}) };
@@ -486,15 +515,52 @@ export function safeMerchantLink(raw: string | undefined | null): string | null 
  * answer, the way it is for `decrementStock`: a read-then-write here would announce twice under
  * exactly the concurrency it is meant to survive.
  */
-export async function setMerchantApproval(providerRef: string, approved: boolean): Promise<void> {
+export async function setMerchantApproval(providerRef: string, approved: boolean, active = true): Promise<void> {
   const changed = await rows<{ seller_id: string }>(
-    `UPDATE seller_merchant_accounts SET approved = $2, updated_at = now()
-      WHERE provider_ref = $1 AND approved IS DISTINCT FROM $2
+    `UPDATE seller_merchant_accounts SET approved = $2, active = $3, updated_at = now()
+      WHERE provider_ref = $1 AND (approved IS DISTINCT FROM $2 OR active IS DISTINCT FROM $3)
       RETURNING seller_id`,
-    [providerRef, approved],
+    [providerRef, approved, active],
   );
   const sellerId = changed[0]?.seller_id;
-  if (!sellerId || !approved) return;
+  if (!sellerId) return;
+
+  /**
+   * ── A REFUSAL is an event, and until 2026-08-26 it was silence (owner, §20) ──
+   *
+   * *"מה קורה אם יש סירוב מחברת הסליקה לעסק? מה היוזר רואה? הטוסטים הקטנים האלו לא מספיקים. זה
+   * נרשם לי גם באדמין איפשהו?"* Nothing did. A refusal and an unfinished review were one boolean,
+   * so the seller's screen went on saying "up to seven business days" for ever and nothing reached
+   * us at all.
+   *
+   * Both audiences, because they are different people with different next moves. **The seller**
+   * gets a notification, and his screens now say he was refused rather than that he is waiting —
+   * that is `clearingStatusFor`'s `'rejected'`. **We** get an error-log row, which is the admin's
+   * own surface for things a person must look at (`lib/error-log.ts`), with the resolution hint
+   * spelled out: this is not a bug to fix, it is a seller to talk to. Agreement §11 lets PayMe
+   * refuse at their sole discretion and gives no reason on the wire, so the hint says where the
+   * reason has to come from.
+   */
+  if (!active) {
+    await logError({
+      source: 'server',
+      route: 'payme:seller-status',
+      message: `PayMe deactivated or refused merchant ${providerRef} (seller ${sellerId})`,
+      actorRole: 'seller',
+      actorId: sellerId,
+      resolutionHint: 'חברת הסליקה סירבה לבית העסק או השביתה אותו. החנות לא תוכל למכור. אין סיבה ב-API — צריך לפנות אליהם ואז לחזור למוכר.',
+    }).catch(() => { /* the state is recorded either way */ });
+    await createNotification({
+      userId: sellerId,
+      role: 'seller',
+      type: 'merchant_rejected',
+      title: 'חברת הסליקה לא אישרה את העסק',
+      body: 'החנות לא תוכל למכור עד שזה ייפתר. הפרטים והדרך להמשך נמצאים בלשונית תשלומים.',
+    }).catch(() => { /* the state is recorded either way */ });
+    return;
+  }
+
+  if (!approved) return;
   await createNotification({
     userId: sellerId,
     role: 'seller',

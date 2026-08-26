@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { commissionPercentForStore } from '../../../lib/store-plan.js';
+import { chargedCommissionPercentForStore } from '../../../lib/store-plan.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlugInRange } from '../../../lib/orders.js';
 import { getProductById } from '../../../lib/store-products.js';
@@ -72,6 +72,6 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     getOrdersByStoreSlugInRange(storeSlug, from, to),
     getViewStatsForStore(store.id, from, to, granularity),
   ]);
-  const summary = buildPerformanceSummary(orders, views, storeSlug, from, to, granularity, commissionPercentForStore(store), topLimit);
+  const summary = buildPerformanceSummary(orders, views, storeSlug, from, to, granularity, chargedCommissionPercentForStore(store), topLimit);
   return json({ ok: true, summary });
 }

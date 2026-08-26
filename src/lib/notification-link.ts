@@ -92,6 +92,10 @@ export function notificationHref(n: Linkable): string {
     // other half is.
     case 'merchant_approved':
       return '/seller/dashboard';
+    // A refusal, on the other hand, goes straight to Payments: that is where the explanation and
+    // the processor's own link are, and the overview would only repeat the headline he just read.
+    case 'merchant_rejected':
+      return '/seller/dashboard?panel=payouts';
     default:
       return '/seller/dashboard';
   }

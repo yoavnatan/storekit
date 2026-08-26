@@ -62,6 +62,9 @@ export function buildPlatformStoreInputs(
     // owning seller, which is why this function needed the whole seller roster passed in and no
     // longer does — two shops of one seller can sit on two plans, and the breakdown-by-store table
     // is precisely where a single account-wide rate would be visibly wrong.
+    // The QUOTED rate — this table is the platform's revenue by store, not the seller's expense.
+    // `chargedCommissionPercentForStore` (the rate plus VAT) is the seller-facing one; using it
+    // here would report 18% of our income that belongs to the state (2026-08-26).
     commissionPercent: commissionPercentForStore(s),
   }));
 }

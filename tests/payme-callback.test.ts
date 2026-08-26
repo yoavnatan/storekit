@@ -13,11 +13,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const state = vi.hoisted(() => ({
-  account: null as null | { sellerId: string; providerRef: string; approved: boolean },
+  account: null as null | { sellerId: string; providerRef: string; approved: boolean; active: boolean },
   secret: null as string | null,
   upstream: null as null | { approved: boolean; active: boolean },
   upstreamThrows: false,
-  approvalWrites: [] as { providerRef: string; approved: boolean }[],
+  approvalWrites: [] as { providerRef: string; approved: boolean; active: boolean }[],
   moneyEvents: [] as Record<string, unknown>[],
   errors: [] as Record<string, unknown>[],
   credsConfigured: true,
@@ -27,8 +27,8 @@ vi.mock('../src/lib/seller-merchant.js', () => ({
   merchantAccountByProviderRef: async (ref: string) =>
     state.account && state.account.providerRef === ref ? state.account : null,
   merchantCallbackSecret: async () => state.secret,
-  setMerchantApproval: async (providerRef: string, approved: boolean) => {
-    state.approvalWrites.push({ providerRef, approved });
+  setMerchantApproval: async (providerRef: string, approved: boolean, active = true) => {
+    state.approvalWrites.push({ providerRef, approved, active });
   },
 }));
 
@@ -70,7 +70,7 @@ async function received(res: Response): Promise<string> {
 }
 
 beforeEach(() => {
-  state.account = { sellerId: '11111111-1111-4111-8111-111111111111', providerRef: 'MPL-A', approved: false };
+  state.account = { sellerId: '11111111-1111-4111-8111-111111111111', providerRef: 'MPL-A', approved: false, active: true };
   state.secret = 'SELLER-SECRET';
   state.upstream = { approved: true, active: true };
   state.upstreamThrows = false;
@@ -99,28 +99,36 @@ describe('seller notifications — no signature, so nothing in the body is belie
     // callback has no signature field at all, so this is the only thing standing in the way.
     state.upstream = { approved: false, active: true };
     await post({ notify_type: 'seller-update', seller_payme_id: 'MPL-A', seller_approved: '1' });
-    // What was written is what PayMe told US over our own call — false — not what arrived.
+    // What was written is what PayMe told US over our own call — nothing, because their answer
+    // (`approved: false, active: true`) is exactly what is already stored. The body shouted
+    // `seller_approved=1` and moved nothing at all.
     expect(state.approvalWrites).toEqual([]);
   });
 
   it('writes approval that our OWN authenticated call confirms', async () => {
     state.upstream = { approved: true, active: true };
     expect(await received(await post({ notify_type: 'seller-create', seller_payme_id: 'MPL-A' }))).toBe('seller-updated');
-    expect(state.approvalWrites).toEqual([{ providerRef: 'MPL-A', approved: true }]);
+    expect(state.approvalWrites).toEqual([{ providerRef: 'MPL-A', approved: true, active: true }]);
   });
 
   it('treats an approved-but-INACTIVE merchant as unable to sell', async () => {
     // He cannot take money either way, and calling him sellable would produce a refused charge in
     // the middle of a buyer's checkout instead of a store that says why.
+    // ── The two flags travel SEPARATELY since 2026-08-26 (owner, סשן א׳ §20) ──
+    // They used to be folded into one boolean here, and that is exactly why a refusal was
+    // indistinguishable from a review that had not finished: the seller's screen said "up to seven
+    // business days" for ever. `approved` is still their approval; `active: false` is the refusal,
+    // and it is what `clearingStatusFor` turns into a `rejected` state and what raises the
+    // error-log row a person reads.
     state.upstream = { approved: true, active: false };
     await post({ notify_type: 'seller-create', seller_payme_id: 'MPL-A' });
-    expect(state.approvalWrites).toEqual([{ providerRef: 'MPL-A', approved: false }]);
+    expect(state.approvalWrites).toEqual([{ providerRef: 'MPL-A', approved: true, active: false }]);
   });
 
   it('never turns a failed lookup into a verdict', async () => {
     // Null from `get-sellers` means "PayMe do not know him", which is NOT "not approved". Writing
     // false here would close a working seller's shop because a query came back empty.
-    state.account = { sellerId: '11111111-1111-4111-8111-111111111111', providerRef: 'MPL-A', approved: true };
+    state.account = { sellerId: '11111111-1111-4111-8111-111111111111', providerRef: 'MPL-A', approved: true, active: true };
     state.upstream = null;
     expect(await received(await post({ notify_type: 'seller-create', seller_payme_id: 'MPL-A' }))).toBe('seller-not-found-upstream');
     expect(state.approvalWrites).toEqual([]);

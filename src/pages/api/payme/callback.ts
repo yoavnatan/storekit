@@ -107,11 +107,14 @@ async function handleSellerNotification(body: URLSearchParams): Promise<Response
     // Null means PayMe do not know him, which is NOT "not approved" — writing `false` here would
     // turn a failed lookup into a verdict that closes a working seller's shop.
     if (!status) return ack('seller-not-found-upstream');
-    if (status.approved !== account.approved) {
-      // `active` is folded in: an approved-but-deactivated merchant cannot take money either, and
-      // treating that as "may sell" would produce a refused charge mid-checkout instead of a store
-      // that says why.
-      await setMerchantApproval(providerRef, status.approved && status.active);
+    // **Both flags, carried separately** (2026-08-26). They used to be folded into one boolean, and
+    // that boolean is why a REFUSAL was indistinguishable from a review that had not finished: the
+    // seller's screen said "up to seven business days" for ever and nothing reached us at all
+    // (owner, סשן א׳ §20). `setMerchantApproval` writes them apart, tells the seller, and logs a
+    // refusal where a person will read it. The comparison is against both, or a business PayMe
+    // deactivated after approving would never be written down.
+    if (status.approved !== account.approved || status.active !== account.active) {
+      await setMerchantApproval(providerRef, status.approved, status.active);
     }
     // **This is what puts the shop on the site.** A seller who built his store and started paying
     // has been waiting on PayMe's examination — up to seven business days he can do nothing about —

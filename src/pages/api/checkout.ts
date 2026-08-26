@@ -35,8 +35,8 @@ import { getSellerById } from '../../lib/seller-auth.js';
 import { merchantAccountsFor } from '../../lib/seller-merchant.js';
 import { activePaymeCredentials, type PaymeCredentials } from '../../lib/payment-payme.js';
 import { planSplit, authorizeCart, captureSlices, type SplitInput, type SplitPlan } from '../../lib/payment-split.js';
-import { commissionOnAgorot, commissionPercentForTier, DEFAULT_TIER } from '../../lib/pricing.js';
-import { commissionPercentForStore } from '../../lib/store-plan.js';
+import { commissionOnAgorot, commissionPercentForTier, feeWithVatPercent, DEFAULT_TIER } from '../../lib/pricing.js';
+import { chargedCommissionPercentForStore } from '../../lib/store-plan.js';
 import { store as platform } from '../../config/store.config.js';
 import { serverEnv } from '../../lib/runtime-env.js';
 
@@ -647,7 +647,13 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // Off the store row this loop already holds. It used to be a `getSellerById` per seller further
     // down, which was both a second source for the rate and a serial round trip on the one request
     // a buyer is watching a spinner through.
-    storeCommission.set(store.slug, commissionPercentForStore(store));
+    //
+    // **The CHARGED rate, not the quoted one** (2026-08-26). `market_fee` is what PayMe really
+    // deduct from the seller's sale, and our commission is a B2B fee quoted before VAT
+    // (`pricing.ts`), so the tax rides inside the same deduction: 12% quoted is 14.16% taken. The
+    // platform's own income keeps the quoted rate — `commissionPercentForStore` — and mixing the
+    // two would overstate our revenue by exactly the VAT we are collecting for the state.
+    storeCommission.set(store.slug, chargedCommissionPercentForStore(store));
   }
 
   // Delivery method + shipping price per store — server-authoritative. The buyer's chosen
@@ -781,7 +787,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           // to name a direction, and `?? 0` names "take no commission at all", silently, on a real
           // sale. Falling back to the entry plan is the same convention `resolveTier` applies to
           // every other unreadable plan value.
-          marketFeePercent: storeCommission.get(storeSlug) ?? commissionPercentForTier(DEFAULT_TIER),
+          marketFeePercent: storeCommission.get(storeSlug) ?? feeWithVatPercent(commissionPercentForTier(DEFAULT_TIER)),
           productName: `${sub.storeName} · ${checkoutRef}`,
         };
       }),

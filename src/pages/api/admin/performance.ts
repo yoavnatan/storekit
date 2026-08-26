@@ -8,7 +8,7 @@ import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type
 import { getViewStatsForStore } from '../../../lib/store-pageviews.js';
 import { getProductViewStats } from '../../../lib/product-pageviews.js';
 import { isDayISO } from '../../../lib/business-day.js';
-import { commissionPercentForStore } from '../../../lib/store-plan.js';
+import { chargedCommissionPercentForStore } from '../../../lib/store-plan.js';
 
 // Admin-facing twin of /api/seller/performance: identical validation and
 // PerformanceSummary shape, but gated by the admin cookie (requireAdmin) and
@@ -76,6 +76,6 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     getOrdersByStoreSlugInRange(storeSlug, from, to),
     getViewStatsForStore(store.id, from, to, granularity),
   ]);
-  const summary = buildPerformanceSummary(orders, views, storeSlug, from, to, granularity, commissionPercentForStore(store), topLimit);
+  const summary = buildPerformanceSummary(orders, views, storeSlug, from, to, granularity, chargedCommissionPercentForStore(store), topLimit);
   return json({ ok: true, summary });
 }

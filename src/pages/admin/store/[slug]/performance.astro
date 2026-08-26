@@ -16,7 +16,7 @@ import { VISITOR_RETENTION_DAYS } from '../../../../lib/visitor-retention.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../../../lib/chart-svg.js';
 import { formatAgorot } from '../../../../lib/money.js';
 import { getLang, getDir, getT } from '../../../../i18n/index.js';
-import { commissionPercentForStore } from '../../../../lib/store-plan.js';
+import { chargedCommissionPercentForStore } from '../../../../lib/store-plan.js';
 import { jsonForScript } from '../../../../lib/json-script.js';
 
 if (!isAdminRequest(Astro.cookies)) {
@@ -62,7 +62,7 @@ const [storeOrders, storeProductsList, views] = await Promise.all([
   getProductsByStoreId(store.id),
   getViewStatsForStore(store.id, fromISO, toISO, granularity),
 ]);
-const summary = buildPerformanceSummary(storeOrders, views, store.slug, fromISO, toISO, granularity, commissionPercentForStore(store));
+const summary = buildPerformanceSummary(storeOrders, views, store.slug, fromISO, toISO, granularity, chargedCommissionPercentForStore(store));
 
 // This blob is injected via set:html into a <script type="application/json">.
 // Unlike the seller's own dashboard (where the product names are the viewer's

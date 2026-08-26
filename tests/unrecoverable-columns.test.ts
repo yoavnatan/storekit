@@ -111,9 +111,12 @@ describe('the columns this project cannot recover', () => {
     // freshly-created account instead, loudly.
     const lib = readFileSync(join(process.cwd(), 'src', 'lib', 'seller-merchant.ts'), 'utf8');
     const writes = lib.match(/INSERT INTO seller_merchant_accounts|UPDATE seller_merchant_accounts/g) ?? [];
-    // One INSERT, plus `setMerchantApproval`'s UPDATE — which touches `approved` and `updated_at`
-    // and must never learn to touch anything in the list above.
+    // One INSERT, plus `setMerchantApproval`'s UPDATE — which touches `approved`, `active` and
+    // `updated_at` and must never learn to touch anything in the list above. `active` joined it on
+    // 2026-08-26, when a refusal stopped being indistinguishable from an unfinished review; it is
+    // in the same class as `approved` (a verdict PayMe tell us) and in the opposite class from the
+    // columns this file guards (values they hand over exactly once).
     expect(writes).toHaveLength(2);
-    expect(lib).toMatch(/SET approved = \$2, updated_at = now\(\)/);
+    expect(lib).toMatch(/SET approved = \$2, active = \$3, updated_at = now\(\)/);
   });
 });

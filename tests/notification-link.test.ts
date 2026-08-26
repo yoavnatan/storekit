@@ -10,7 +10,7 @@ import type { NotificationType } from '../src/lib/notifications.js';
 const SELLER_TYPES: NotificationType[] = [
   'new_message', 'new_order', 'order_update', 'return_update', 'low_stock', 'out_of_stock',
   'admin_message', 'domain_status', 'feed_status', 'payout_status', 'store_live', 'store_unpublished',
-  'merchant_approved',
+  'merchant_approved', 'merchant_rejected',
 ];
 const BUYER_TYPES: NotificationType[] = ['seller_reply', 'new_message', 'order_update'];
 
@@ -64,6 +64,9 @@ describe('notificationHref', () => {
       // him hunt for it.
       store_unpublished: '/seller/dashboard?panel=payouts',
       merchant_approved: '/seller/dashboard',
+      // A refusal goes to Payments and not to the overview: that tab holds the explanation and the
+      // processor's own link, and the overview would repeat the headline he has just read.
+      merchant_rejected: '/seller/dashboard?panel=payouts',
     };
     for (const type of SELLER_TYPES) {
       expect(notificationHref({ role: 'seller', type })).toBe(expected[type]);
