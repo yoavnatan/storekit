@@ -15,18 +15,27 @@ method does not change with it.
 
 One `AskUserQuestion` card, at most four questions, then stop asking. A long interview is a barrier
 (`rules/communication.md`, and the same rule that says never burden a user with a form he cannot
-answer). What you need:
+answer).
+
+**Assume the person cannot answer a technical question, and phrase every option so they do not have
+to.** Not "Postgres or SQLite" — "should the data survive if the computer restarts?". Not "SSR or
+static" — "will other people visit this on the internet?". If an answer genuinely requires knowing
+something they will not know, do not ask it: decide, and say in one line what you decided and why.
+A question somebody cannot answer is not consultation, it is an obstacle.
+
+What you need:
 
 **What is it** — free text is fine, one line. What the thing does and who uses it.
 
-**Stack** — offer three concrete options with a recommendation first, based on what he described.
-If he does not care, pick and say you picked. Never leave this open.
+**What it should be built with** — three concrete options, recommendation first, each described by
+what it means for HIM rather than by its name: how common it is, whether he could hire help for it,
+what it is normally used for. If he does not care, pick and say you picked.
 
-**Where it runs** — his machine only, a server, a phone, someone else's browser. This decides more
-than the stack does.
+**Where it runs** — his machine only, a server, a phone, someone else's browser. Ask it in exactly
+those words. This decides more than the language does.
 
-**What must be true to call it working** — the first thing that has to pass. This becomes the first
-check in `checks.json`, so it must be something a machine can decide.
+**What has to work for him to call it finished** — in his words. You translate that into the first
+check in `checks.json`; never ask him to phrase it as a test.
 
 Anything else he wants you to know, he will say. Do not ask a fifth question.
 

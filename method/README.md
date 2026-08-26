@@ -1,69 +1,56 @@
 # method/
 
-The working method, as a folder. Portable to any project, any stack.
+Copy this folder into any project and Claude will work the way you want it to, without you having
+to say so again.
 
-Install it somewhere else:
+    node method/install.mjs /path/to/your-project
 
-    node method/install.mjs /path/to/new-project
+You do not need to know what is inside. Two things change, and you will notice both.
 
-That copies this folder, wires the style gate into that project's `.claude/settings.json` without
-touching hooks it already has, and writes `~/.claude/CLAUDE.md` if it is missing — the file Claude
-loads automatically in every folder on this machine, with no command to remember.
+**Claude answers the way you asked.** Not "tries to". Every reply is measured before it reaches you,
+and one that is too long or too full of jargon is thrown away and rewritten. The rules it is measured
+against are in `rules/communication.md` — that file is yours. Open it, change any line, and the next
+reply obeys the new version.
 
-## The one idea this folder is built on
+**Claude cannot tell you something works when it doesn't.** Before it is allowed to finish a reply,
+it runs the project. If anything is broken, it is sent back to fix it and you never see the "all
+done" that wasn't true.
 
-A rule that is written down is a preference. A rule that is enforced by a hook is a rule.
+Everything else here is Claude reading its own notes.
 
-The evidence is this project. The owner asked for shorter, plainer answers hundreds of times over a
-month. It was written into memory and into the instructions file, both read at the start of every
-session, and it never held. Over the same month not one session ended on failing code — because a
-Stop hook blocks that, and there is nothing to remember.
+---
 
-So every rule here either names its enforcer or is explicitly labelled unenforced. Nothing is
-allowed to sit in between, pretending.
+## Starting something new
 
-## What is here
+Make an empty folder, open Claude in it, and say what you want to build. Claude asks four questions —
+what it is, what it should be written in, where it will run, and what has to work for you to call it
+finished — and then builds it. Any language.
 
-`rules/communication.md` — how replies are written. Yoav's file, in Hebrew, meant to be edited.
-Enforced by `enforce/style-check.mjs`.
+If you do not know the answer to the language question, say so and it will pick one and tell you why.
 
-`rules/optimization.md` — every speed mechanism this project built, with the measurement that
-justified it and the attempts that were tried and measured worse.
+## When something feels wrong
 
-`rules/parallel.md` — one session per tree, why it deadlocks otherwise, how a worktree is opened and
-closed.
+If the answers get long and technical again, open `rules/communication.md` and look at the numbers in
+it. They are plain and you can change them.
 
-`rules/accrual.md` — how a project learns: closing a bug CLASS, guards proved to fail, a ✅ that
-expires, memory that is budgeted.
+If Claude says something is finished and it is not, that is a real failure and worth saying out loud
+— the whole point of this folder is that it cannot happen quietly.
 
-`rules/bug-classes.md` — the failures that are not specific to any project. Check a diff against this
-before saying done.
+---
 
-`user-contract.md` — the always-loaded version, installed to `~/.claude/CLAUDE.md`.
+## For Claude, not for the owner
 
-`enforce/style-check.mjs` — the Stop hook. Reads the last reply, measures it against
-`rules/communication.md`, blocks the turn with the specific violations. Bounded at three blocks, then
-it warns and lets the turn end; a gate with no escape hatch gets switched off.
+`kickoff.md` — what to do in an empty folder.
+`rules/communication.md` — the reply rules. Enforced by `enforce/style-check.mjs`.
+`rules/optimization.md` — every speed mechanism the original project built, with the measurement that
+bought it and the two attempts that were tried and measured worse.
+`rules/parallel.md` — one session per working tree, and why two in one deadlock.
+`rules/accrual.md` — how a project keeps what it learns instead of relearning it.
+`rules/bug-classes.md` — the failures that repeat in every project. Check a diff against it.
+`enforce/verify.mjs` — the one command that runs the project's checks, declared in `checks.json`.
+`enforce/require-green.mjs` — refuses to end a turn while those are failing.
+`enforce/one-way-to-verify.mjs` — refuses a check run any other way.
+`user-contract.md` — installed to `~/.claude/CLAUDE.md`, loaded in every folder.
 
-## What is NOT here, on purpose
-
-This project's other hooks and its `verify` script. They are coupled to this stack, and a checker
-written for one stack does not merely fail in another — it looks correct while checking nothing.
-They are carried as rules in `rules/optimization.md` for the next project to implement in its own
-terms, and re-measured there.
-
-The numbers throughout are from this machine and this stack. Carry the shape, re-take the number. A
-copied measurement nobody re-took is the same failure as a ✅ over code that has moved.
-
-## Trying a rule out
-
-    node method/enforce/style-check.mjs --text "some reply"
-    node method/enforce/style-check.mjs --file draft.md
-
-Exit 1 and a list of violations, or `style: ok`.
-
-## What this cannot do
-
-It carries the machinery, not the knowledge. A new project starts with working gates and an empty
-failure log. `rules/accrual.md` is how that log fills — it is the most important file here and the
-slowest to pay off.
+The numbers in `rules/` were measured on one machine and one stack. Carry the shape and re-measure;
+a copied number nobody re-took is a claim, not a measurement.
