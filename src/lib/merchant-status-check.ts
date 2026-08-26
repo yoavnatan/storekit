@@ -295,7 +295,7 @@ async function notifySellers(
       type: 'feed_status',
       title: 'מוצר שלך לא מתפרסם',
       // No count and no id in the sentence — the seller needs the product and the fix, and a
-      // number next to a Latin name reads backwards in RTL (memory feedback_seller_copy_brevity).
+      // number next to a Latin name reads backwards in RTL (memory feedback_seller_copy_register).
       body: `${entry.product.name} נדחה על ידי ${label} ולכן לא מופיע במודעות.${reason} תקן את המוצר והוא ייבדק מחדש אוטומטית.`,
       relatedId: entry.relatedId,
       storeSlug: entry.store.slug,

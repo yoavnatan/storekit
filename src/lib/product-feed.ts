@@ -126,7 +126,7 @@ function clampText(s: string, max: number): string {
  * FETCHED on Google's schedule, so between the hour a seller's sale expires and the next fetch,
  * the feed advertises a price the landing page has already stopped honouring. That is a
  * feed/landing mismatch, the one family that gets accounts suspended (memory
- * `project_merchant_brand_mismatch_verified`) — and the seller never did anything wrong: they set
+ * `project_ad_platform_account_risk`) — and the seller never did anything wrong: they set
  * an end date and it arrived. This attribute is Google holding the expiry itself, so the gap
  * closes without depending on how fast anyone re-crawls.
  *

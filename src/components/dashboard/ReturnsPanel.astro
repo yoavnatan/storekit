@@ -945,7 +945,7 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
           `has-[textarea[hidden]]:!hidden` on the wrapper, driven off the field's own `hidden` —
           the same one piece of state `returns.ts` reads to tell a first press from a second, rather
           than a second flag two files would have to agree about. `!hidden` because the wrapper is
-          `flex` (memory `project_tailwind_hidden_vs_flex`). */}
+          `flex` (memory `project_css_cascade_traps`). */}
       {movesFor(r).some((m) => m.to === 'disputed') && (
         <div class="flex flex-col gap-2 has-[textarea[hidden]]:!hidden" data-dispute-wrap>
           <label class="flex flex-col gap-1 text-[0.85rem]">
@@ -979,7 +979,7 @@ const MORE = 'hidden group-has-[.ret-toggle:checked]/retcard:block @[560px]/retc
           own `hidden` rather than a second flag the script also toggles — that attribute is already
           the one piece of state saying whether an offer has been asked for, and `returns.ts` reads
           it to tell a first press from a second. `!hidden`, because this label is `flex` and an
-          unimportant `hidden` utility loses to it (memory `project_tailwind_hidden_vs_flex`). */}
+          unimportant `hidden` utility loses to it (memory `project_css_cascade_traps`). */}
       {movesFor(r).some((m) => m.to === 'offered') && (
         <div class="flex flex-wrap items-center gap-2 text-[0.85rem] has-[input[hidden]]:!hidden" data-offer-wrap>
           <label class="flex items-center gap-2">

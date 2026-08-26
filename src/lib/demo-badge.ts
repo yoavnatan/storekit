@@ -44,7 +44,7 @@ export type DemoBadgeVariant = 'chip' | 'inline';
  * logical-property utility and mirrors under `dir=rtl` for free.
  *
  * Opaque-ish white rather than a blurred glass chip, matching the heart's own treatment (memory
- * `feedback_wishlist_heart_no_glass`), and `pointer-events:none` so it can never swallow a click
+ * `feedback_no_stacked_hover_effects`), and `pointer-events:none` so it can never swallow a click
  * meant for the card behind it.
  */
 // `product-demo-chip` carries no styles of its own — it is the hook the image dots need in order

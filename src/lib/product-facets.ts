@@ -21,7 +21,7 @@
  * which is the one thing free text cannot do by itself.
  *
  * **Variants are deliberately NOT a source here.** Colour/size facets were designed and deferred on
- * 2026-08-14 (memory `project_variant_facets_deferred`) because their numeric bounds would be
+ * 2026-08-14 (memory `project_variant_values_searchable`) because their numeric bounds would be
  * calibrated against an invented catalogue; that trigger — a real store with a deep category — has
  * not fired, and building this for `specs` does not fire it either. `productFacetPairs` below is
  * the single extraction point, so adding `variants` as a second source later is a change to one
@@ -89,7 +89,7 @@ const MAX_PARAM_LENGTH = 300;
  * round-trip to get wrong — the parser compares keys and never has to reverse one.
  *
  * Splitting only, no backtracking regex: this runs over untrusted URL text
- * (memory `project_redos_regex_class`).
+ * (memory `project_attribute_escaping_xss`).
  */
 export function facetKey(raw: string): string {
   if (!raw) return '';

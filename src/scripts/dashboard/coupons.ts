@@ -42,7 +42,7 @@ function statusLabel(c: CouponView, i: Record<string, string>): { text: string; 
 }
 
 /** The discount itself, in the unit the seller typed it in. `dir="ltr"` on the number so a percent
- *  sign or a ₪ does not jump to the far side of an RTL row (memory `feedback_seller_copy_brevity`
+ *  sign or a ₪ does not jump to the far side of an RTL row (memory `feedback_seller_copy_register`
  *  — no digits stranded beside Latin text). */
 function valueLabel(c: CouponView): string {
   return c.kind === 'percent' ? `-${c.value}%` : `-${formatPrice(c.value)}`;

@@ -14,7 +14,7 @@
  * or the catalog stops looking like one shop.
  *
  * This file is over the 200-line guideline and that is deliberate (memory
- * `feedback_line_limit_guideline`): it is one flat data table, and splitting it
+ * `feedback_architecture`): it is one flat data table, and splitting it
  * by category would mean five files to keep the count balanced across.
  *
  * Not every product has variants. A showcase store where every single item pops a

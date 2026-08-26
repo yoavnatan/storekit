@@ -43,7 +43,7 @@ function triggers(): Array<{ file: string; classes: string }> {
   for (const file of walk('src')) {
     const src = readFileSync(join(ROOT, file), 'utf8');
     // The class attribute of any element naming the trigger. Bounded, non-backtracking: one
-    // character class, no nested quantifier (memory `project_redos_regex_class`).
+    // character class, no nested quantifier (memory `project_attribute_escaping_xss`).
     for (const match of src.matchAll(/class="([^"]*category-picker__trigger[^"]*)"/g)) {
       found.push({ file, classes: match[1]! });
     }

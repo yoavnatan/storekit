@@ -280,7 +280,7 @@ const canReview = !!reviewableOrderId;
  */
 const reviewsWithText = productReviews.filter((r) => r.body.trim());
 // Constructed ONCE, not per row. Building an `Intl` formatter inside a loop is what took the admin
-// dashboard from 700ms to 80ms when it was removed (memory `project_admin_dashboard_render_cost`);
+// dashboard from 700ms to 80ms when it was removed (memory `project_dashboard_html_weight`);
 // eight rows is not that page, but the shape is how it got there.
 // Where this product's reviewer colours begin. Stable per product, arbitrary between
 // products — which is what makes two product pages look different rather than identical.

@@ -12,7 +12,7 @@
  * are revealed BY add-to-cart, so they were always stamped with the empty basket the shopper landed
  * with. Land → add → pay → arrive at a checkout with nothing on it, and no error anywhere, because
  * every piece was individually correct — the external-seam class (memory
- * `project_external_seam_contract`).
+ * `project_feed_silent_rejection_class`).
  *
  * These tests are about the JOIN, so they assert on what the link would actually navigate to.
  */

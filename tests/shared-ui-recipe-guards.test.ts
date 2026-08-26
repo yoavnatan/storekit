@@ -88,7 +88,7 @@ describe('.img-badge is the only box a corner mark may have', () => {
 
   it('never puts an endless animation on one — nothing on this site loops forever', () => {
     // `.badge--new` pulsed on a 2.5s `infinite` for months. The rule is site-wide (memory
-    // `feedback_no_ambient_looping_motion`); this holds it for the corner marks specifically,
+    // `feedback_noop_interactions_invisible`); this holds it for the corner marks specifically,
     // where it actually happened.
     const css = readFileSync(fileURLToPath(new URL('../src/styles/utilities/utils.css', import.meta.url)), 'utf8');
     const badgeRules = css.slice(css.indexOf('.img-badge {'), css.indexOf('/* ── Edge fade'));

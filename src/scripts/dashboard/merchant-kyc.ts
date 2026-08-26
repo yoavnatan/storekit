@@ -64,7 +64,7 @@ export function initMerchantKycForm(): void {
   // first paint is already right — the same shape the bank block uses, and for the same reason
   // (`project_injected_overlay_flash`). `hidden` rather than a class because `reset.css` gives it an
   // `!important` display:none, the one rule a `display:flex` further up cannot beat
-  // (`project_tailwind_hidden_vs_flex`).
+  // (`project_css_cascade_traps`).
   const summary = document.getElementById('mk-summary');
   const fields = document.getElementById('mk-fields');
   const open = (yes: boolean): void => {

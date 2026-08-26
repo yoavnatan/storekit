@@ -59,7 +59,7 @@ export function sitemapShardUrl(baseUrl: string, shard: number): string {
  * document was built per request (age 0) and cached for an hour: worst case one hour stale. Half an
  * hour on each side keeps that same hour, which matters because the feed's staleness is not
  * cosmetic — a price or availability that disagrees with the landing page is the one feed mismatch
- * that is a Merchant Center *account* risk (memory `project_merchant_brand_mismatch_verified`), and
+ * that is a Merchant Center *account* risk (memory `project_ad_platform_account_risk`), and
  * the account is shared by every seller on the platform.
  *
  * It is also as fast as is worth rebuilding: Merchant Center fetches a scheduled feed daily and

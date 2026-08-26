@@ -835,7 +835,7 @@ const STORES_NAMED = 2;
        `.o-pagination-info` is gone with it.
 
        Both remaining rules stay CSS rather than becoming utilities on the element, and for the
-       same reason in both cases (memory `project_unlayered_css_beats_utility`): this block is
+       same reason in both cases (memory `project_css_cascade_traps`): this block is
        UNLAYERED and Tailwind's utilities are in `@layer utilities`, so an unlayered rule here wins
        over any utility no matter how specific. `:empty` therefore has to live beside the `display`
        it is overriding — the `hidden` attribute alone loses to `display:flex` — and the top pager's

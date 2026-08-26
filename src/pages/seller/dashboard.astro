@@ -1981,7 +1981,7 @@ const orderStatusColors: Record<string, string> = {
                 it did before the pager moved into it.
 
                 `empty:hidden` is load-bearing rather than tidy: the `hidden` ATTRIBUTE loses to a
-                `flex` class (memory `project_tailwind_hidden_vs_flex`, and
+                `flex` class (memory `project_css_cascade_traps`, and
                 .home-spotlight-arrow[hidden] in home.css is the same fix), so `hidden` alone left a
                 padded flex row for every store with one page. `:empty` adds a pseudo-class to the
                 selector, so it beats `.flex` whatever the source order — and the pager is emptied
@@ -3153,7 +3153,7 @@ const orderStatusColors: Record<string, string> = {
               and because it renders one of them: the "name" preview shows the avatar the seller has
               just uploaded. Inside the settings form, so it saves with the same button as
               everything else on this tab — a per-card save here would be the split this project has
-              already been burned by (memory `feedback_save_model_clarity`). */}
+              already been burned by (memory `feedback_ajax_forms`). */}
           <HeaderStyleCard store={store} d={d} />
 
           {/* **These fields stop at 420px, and the number is not a new one** (owner, 2026-08-25:

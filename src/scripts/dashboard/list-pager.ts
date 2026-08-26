@@ -105,7 +105,7 @@ function buildPager(nav: HTMLElement, labels: PagerLabels): void {
  *
  * Below two pages there is nothing to page through, so the nav is emptied: its `:empty` rule is
  * what hides it (the `hidden` ATTRIBUTE loses to a `flex` class — memory
- * `project_tailwind_hidden_vs_flex`), and emptying it is also what lets the pager be rebuilt with
+ * `project_css_cascade_traps`), and emptying it is also what lets the pager be rebuilt with
  * a fresh dropdown if the list later grows.
  */
 export function renderListPagers(name: string, page: number, totalPages: number, labels: PagerLabels): void {

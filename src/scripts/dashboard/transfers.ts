@@ -41,7 +41,7 @@ function tt(key: string): string {
 }
 
 /** One `label: value` line. The whole strip is this shape — a labelled grid rather than prose, so a
- *  seller looking for one figure finds it by its label (`feedback_labelled_grid_over_prose`). */
+ *  seller looking for one figure finds it by its label (`feedback_no_standing_screen_prose`). */
 function row(label: string, value: string, strong = false): string {
   return (
     '<div class="flex items-baseline justify-between gap-3 py-1">' +

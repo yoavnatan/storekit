@@ -26,7 +26,7 @@
  * את הכותרת, תוכן ואיקס לידה"*). `.input` in `components/forms.css` declares `width: 100%`, and
  * that sheet is imported UNLAYERED while every Tailwind utility lives in `@layer utilities` — an
  * unlayered rule beats a layered one whatever its specificity or source order (memory
- * `project_unlayered_css_beats_utility`). So the phone was right by accident: `flex-[1_1_…]` sets
+ * `project_css_cascade_traps`). So the phone was right by accident: `flex-[1_1_…]` sets
  * a flex-BASIS, which wins over `width` for a flex item's main size. `flex-none` handed the sizing
  * back to `width`, and `width` was `.input`'s 100%, never the 170px written beside it — so every
  * field took a whole row and the three-part row became three stacked rows, on wide screens only.

@@ -152,7 +152,7 @@ export const translations = {
       // The one thing a seller cannot open a shop without, and the only item on this list that was
       // missing from it. "מובנית" is the same claim the other three make and no more: the platform
       // carries the integration, the checkout and the split — the processor's own clearing fee is
-      // still the processor's (lib/pricing.ts, memory `project_never_quote_a_monthly_total`), the
+      // still the processor's (lib/pricing.ts, memory `project_business_model_pricing`), the
       // way ad SPEND sits outside `builtInAds` above.
       builtInPayments: 'סליקה מובנית',
     },

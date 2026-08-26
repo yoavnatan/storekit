@@ -25,7 +25,7 @@ export function initHelpSearch(): void {
     for (const card of cards) {
       // `!hidden` and not plain `hidden`: an unlayered legacy rule beats `@layer utilities`, and a
       // `hidden` on a flex/grid child loses to the container's `display` outright
-      // (memory `project_tailwind_hidden_vs_flex`).
+      // (memory `project_css_cascade_traps`).
       const match = !q || (card.dataset['helpText'] ?? '').toLowerCase().includes(q);
       card.classList.toggle('!hidden', !match);
       if (match) shown++;

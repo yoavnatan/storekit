@@ -42,7 +42,7 @@ describe('the half star is CLIPPED, not shrunk', () => {
   // `svg { max-width:100%; height:auto }` site-wide, and that beats the width/height ATTRIBUTES.
   // Inside the 50%-wide clipping box the overlay obeyed `max-width` and became a small whole star
   // sitting on top of a big one — a half star that was not half of anything. Memory
-  // `project_svg_height_auto_trap` already described the class; this is the guard it never had.
+  // `project_css_cascade_traps` already described the class; this is the guard it never had.
   const half = starRowHtml(3.5, { px: 15 });
 
   it('pins width, height AND max-width inline on every star svg', () => {

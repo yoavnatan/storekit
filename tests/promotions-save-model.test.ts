@@ -6,7 +6,7 @@
  * panel-head button is `type="submit" form="store-sale-form"` — scoped to the store sale and only
  * it — and that was unambiguous for as long as the tab held one form. The coupon card arrived below
  * it with a save of its own, and a generic "שמור שינויים" at the top of a screen with two save
- * models is the exact shape memory `feedback_save_model_clarity` names: the seller fills in a
+ * models is the exact shape memory `feedback_ajax_forms` names: the seller fills in a
  * coupon, presses the button at the top because that is the one that looks like it means the page,
  * and the code is gone with no error and nothing to recover.
  *

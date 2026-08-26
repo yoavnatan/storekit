@@ -9,7 +9,7 @@
  * and `?ad=1` stands it down for exactly the request that carries it. So the exemption used to
  * cover the landing and nothing after it: every in-store link on that page pointed at an unmarked
  * platform path, and the first click 301'd the shopper to a second origin — where the localStorage
- * cart and the session cookie do not exist (memory `project_custom_domain_origin_split`). A paid
+ * cart and the session cookie do not exist (memory `project_custom_domain_host_surfaces`). A paid
  * click could add to cart and lose it on the next navigation.
  *
  * Both halves are asserted here, because they are opposites that share a module and must not be

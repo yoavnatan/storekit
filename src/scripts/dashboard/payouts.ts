@@ -138,7 +138,7 @@ export function initPayoutsTab(): void {
    *
    * `hidden` and not a class: `reset.css` gives `[hidden]` an `!important` display:none, which is
    * the one rule that cannot be lost to a `display:flex` further up the cascade — the
-   * `project_tailwind_hidden_vs_flex` trap, on markup that is inside a `.card` (a flex column).
+   * `project_css_cascade_traps` trap, on markup that is inside a `.card` (a flex column).
    */
   const summary = document.getElementById('pay-bank-summary');
   const fields = document.getElementById('pay-bank-fields');

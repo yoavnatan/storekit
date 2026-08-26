@@ -67,7 +67,7 @@ export const STAR_PATH = 'M12 2.6l2.9 5.88 6.5.95-4.7 4.58 1.11 6.47L12 17.43 6.
  * ATTRIBUTES — so inside the 50%-wide clipping box the overlay SVG obeyed `max-width` and shrank to
  * half size, then `height:auto` scaled it down to match. The half star rendered as a small whole
  * star sitting on top of a big one, which is exactly what the owner reported (2026-08-17) and
- * exactly what memory `project_svg_height_auto_trap` already describes. `max-width:none` is the
+ * exactly what memory `project_css_cascade_traps` already describes. `max-width:none` is the
  * half of the fix that is easy to leave out.
  */
 function starHtml(fill: 'full' | 'half' | 'empty', px: number, tint: string): string {

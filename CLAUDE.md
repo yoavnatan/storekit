@@ -7,7 +7,7 @@ anything — and read it the way its own first line says to, with `grep`/offset 
 because the middle of it is a reference index and not session-start reading.
 
 Nothing else belongs in this file, and that is a rule rather than a preference. `AI_INSTRUCTIONS.md`
-is one file on purpose (memory `feedback_ai_instructions_no_split`) and its always-read part is
+is one file on purpose (memory `feedback_session_close`) and its always-read part is
 ratcheted against a character budget that `tests/instructions-budget.test.ts` enforces. Splitting
 guidance across two always-read files would quietly reopen both. This file exists for exactly one
 thing the other cannot do: **be read when nothing else has been.**
@@ -43,7 +43,7 @@ He should not have to know any command for this. Do the work, then tell him only
    `PUBLIC_CLOUDINARY_CLOUD_NAME`, `PUBLIC_CLOUDINARY_UPLOAD_PRESET` — and `.env.example` names the
    console each one comes from. Everything else in that file works empty.
 5. **Report in Hebrew, short.** What is already working, then the list of what only he can supply,
-   with where to get each. `⚠️ דורש אותך` on top, per memory `feedback_language`.
+   with where to get each. `⚠️ דורש אותך` on top, per memory `feedback_concise_summaries`.
 
 **Never**, in this flow or any other: invent or guess an `.env` value, or commit `.env`. And in THIS
 flow specifically, do not push — a half-restored state is the one thing that must not reach the

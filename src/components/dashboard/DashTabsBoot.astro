@@ -183,7 +183,7 @@
       tab.setAttribute('aria-selected', 'true');
       tab.setAttribute('tabindex', '0');
       // Keep the just-activated tab in view when the strip overflows, without
-      // ever yanking the page vertically (feedback_subtle_scroll).
+      // ever yanking the page vertically (feedback_noop_interactions_invisible).
       window.__dashTabReveal(tab);
 
       var panel = document.getElementById('dash-panel-' + name);

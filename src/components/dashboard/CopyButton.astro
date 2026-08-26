@@ -46,7 +46,7 @@ const { target, label, copiedLabel, class: klass } = Astro.props;
 >
   {/* Which icon shows is a CLASS, not the `hidden` attribute: `hidden` is not in Astro's
       SVGAttributes and does not type-check on an <svg>. `.hidden` is safe here — the flex
-      display that beats it (memory `project_tailwind_hidden_vs_flex`) would have to be on
+      display that beats it (memory `project_css_cascade_traps`) would have to be on
       the icon itself, and nothing sets one; the button is the flex container. */}
   <svg data-copy-icon="idle" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
   <svg data-copy-icon="done" class="hidden" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>

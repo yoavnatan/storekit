@@ -65,7 +65,7 @@ const {
  * The email rides along only where it has to: two sellers registered under one name are two
  * indistinguishable rows otherwise, and that ambiguity is worse on this menu than anywhere else —
  * ticking the wrong one silently shows the wrong account's money. Everyone else is just their name
- * (memory `feedback_seller_copy_brevity`).
+ * (memory `feedback_seller_copy_register`).
  */
 const sellerNameCounts = new Map<string, number>();
 for (const s of sellers) sellerNameCounts.set(s.name, (sellerNameCounts.get(s.name) ?? 0) + 1);

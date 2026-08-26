@@ -60,7 +60,7 @@ export function initSubscriptionCard(): void {
     planPicker?.classList.remove('!hidden');
     planToggle?.setAttribute('aria-expanded', 'true');
     // `block: 'nearest'` — the smallest scroll that makes it visible, never a jump to the top of
-    // the viewport (`feedback_subtle_scroll`).
+    // the viewport (`feedback_noop_interactions_invisible`).
     planPicker?.scrollIntoView({ block: 'nearest' });
   };
   // The retention step's "move to a cheaper plan" is the same action as the toggle, reached from
@@ -68,7 +68,7 @@ export function initSubscriptionCard(): void {
   for (const btn of document.querySelectorAll('[data-open-plans]')) btn.addEventListener('click', openPlans);
   planToggle?.addEventListener('click', () => {
     // `!hidden` and not `hidden`: the picker sits in a flex context, where Tailwind's `hidden`
-    // loses to `display:flex` on specificity (`project_tailwind_hidden_vs_flex`).
+    // loses to `display:flex` on specificity (`project_css_cascade_traps`).
     const opening = planPicker?.classList.contains('!hidden') ?? false;
     planPicker?.classList.toggle('!hidden', !opening);
     planToggle.setAttribute('aria-expanded', String(opening));
@@ -245,7 +245,7 @@ export function initSubscriptionCard(): void {
     fieldsBox?.classList.remove('!hidden');
     cardReplace.setAttribute('aria-expanded', 'true');
     // `block: 'nearest'` — the smallest scroll that brings it into view, never a jump
-    // (`feedback_subtle_scroll`).
+    // (`feedback_noop_interactions_invisible`).
     fieldsBox?.scrollIntoView({ block: 'nearest' });
   });
 
