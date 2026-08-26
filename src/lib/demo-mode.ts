@@ -63,3 +63,18 @@ export const DEMO_PUBLICATION_INTERVAL_SEC = 15;
  * this; they are the exhibit.
  */
 export const DEMO_VISITOR_STORE_HOURS = 24;
+
+/**
+ * The two accounts `/demo`'s quick-login buttons sign a visitor into.
+ *
+ * The seller is the platform account that owns the four showcase stores, so "log in as a seller"
+ * lands on a dashboard with months of trading behind it rather than on an empty one. The buyer is
+ * created by the portfolio seeder and given the orders, the returns and the reviews.
+ *
+ * **These strings also exist in `scripts/lib/seed-db.mjs`**, which cannot import a `.ts` module and
+ * is run by plain Node. Rather than let two spellings drift apart silently — the failure being a
+ * quick-login button that lands on a login form — `tests/demo-identities.test.ts` reads both files
+ * and asserts they still agree. That is the guard; this comment is only the reason for it.
+ */
+export const DEMO_SELLER_EMAIL = 'showcase@dezabin.co.il';
+export const DEMO_BUYER_EMAIL = 'buyer@demo.local';
