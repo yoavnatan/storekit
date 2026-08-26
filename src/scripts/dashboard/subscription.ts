@@ -173,15 +173,36 @@ export function initSubscriptionCard(): void {
             // what the standing order will charge, so a card issuer's own confirmation screen shows
             // the seller the same figure the card page does. Read off the box's own data, which the
             // plan pills rewrite when the choice changes.
+            /**
+             * The phone the tokenizer must be given, from the clearing details when we hold them
+             * and from the one field beside the card when we do not (`SubscriptionCard.astro`).
+             *
+             * **Checked here rather than left to PayMe.** An empty `payerPhone` comes back from
+             * them as *"Please provide \"payerPhone\" value"* — English, addressed to a merchant,
+             * and shown to a seller who was looking at three card boxes and had no way to know
+             * which of them was wrong (owner, 2026-08-26). Their message is carried on purpose by
+             * `checkout-card.ts` so the caller can decide; this is the caller deciding that on the
+             * one failure we can predict, our own sentence is the honest one.
+             */
+            const phoneInput = document.getElementById('sub-card-phone') as HTMLInputElement | null;
+            const phone = (phoneInput?.value.trim() || fieldsBox.dataset['phone'] || '');
+            if (!phone) { fail(t['subCardPhoneMissing']); phoneInput?.focus(); return; }
             const token = await fields.tokenize({
               firstName: fieldsBox.dataset['firstName'] ?? '',
               lastName: fieldsBox.dataset['lastName'] ?? '',
               email: fieldsBox.dataset['email'] ?? '',
-              phone: fieldsBox.dataset['phone'] ?? '',
+              phone,
               label: fieldsBox.dataset['label'] ?? '',
               amountIls: fieldsBox.dataset['amount'] ?? '0',
             });
-            const data = await post({ action: 'save-card', token, storeId: saveCard.dataset['store'] ?? '' });
+            // The phone travels with the card so it lands in `merchant_kyc.ownerPhone` — typed once,
+            // and step 1's form opens with it already there. Sent only when it came from this box;
+            // a value read back out of the dataset is already stored and re-sending it would be a
+            // write with nothing behind it.
+            const data = await post({
+              action: 'save-card', token, storeId: saveCard.dataset['store'] ?? '',
+              ...(phoneInput ? { phone } : {}),
+            });
             if (!data.ok) { fail(data.error === 'no-store-to-bill' ? t['subNoStore'] : undefined); return; }
             /**
              * The card saved — and, sometimes, that is not the whole story. PayMe cannot be asked

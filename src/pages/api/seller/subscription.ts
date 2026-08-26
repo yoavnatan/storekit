@@ -6,6 +6,7 @@ import { startSubscription, endSubscription, subscriptionFor } from '../../../li
 import { armSubscriptionCard, removeArmedCard } from '../../../lib/subscription-arm.js';
 import { syncStorePublication, publishHoldsFor } from '../../../lib/store-publication.js';
 import { store as platform } from '../../../config/store.config.js';
+import { saveMerchantKyc } from '../../../lib/seller-merchant.js';
 
 /**
  * The seller's monthly subscription — start it, or stop it.
@@ -40,7 +41,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
-  const read = await readJsonBody<{ action?: string; storeId?: unknown; token?: unknown }>(request, BODY_LIMIT.form);
+  const read = await readJsonBody<{ action?: string; storeId?: unknown; token?: unknown; phone?: unknown }>(request, BODY_LIMIT.form);
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
 
   /**
@@ -58,6 +59,22 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   if (read.value.action === 'save-card') {
     const token = typeof read.value.token === 'string' ? read.value.token.trim() : '';
     if (!token || token.length > 200) return json({ ok: false, error: 'missing-card' }, 400);
+    /**
+     * ── The phone, when the card box had to ask for it ──
+     *
+     * PayMe refuse a tokenisation with no `payerPhone`, and a seller who has not filled the
+     * business form yet has no phone anywhere in his record — so the card box asks for one
+     * (`SubscriptionCard.astro` carries the whole finding). It is stored here rather than kept for
+     * the tokenizer alone, because it is the same fact `merchant_kyc.ownerPhone` holds: writing it
+     * means step 1 opens with it filled in, and one seller can never end up with two phone numbers.
+     *
+     * `saveMerchantKyc` MERGES and normalises — a value that is not an Israeli number is dropped
+     * rather than stored, and nothing else in the record is touched. Before the arm, so
+     * `stillMissing` below reports what is actually left.
+     */
+    if (typeof read.value.phone === 'string' && read.value.phone.trim()) {
+      await saveMerchantKyc(sellerId, { ownerPhone: read.value.phone });
+    }
     const armed = await armSubscriptionCard(sellerId, token, {
       ...(typeof read.value.storeId === 'string' ? { including: read.value.storeId } : {}),
     });

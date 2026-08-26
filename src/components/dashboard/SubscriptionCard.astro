@@ -79,7 +79,17 @@ interface Props {
    *  **`phone` is not optional to them.** The script has always passed one and this component never
    *  rendered it, so every tokenisation went out with an empty string and came back refused
    *  (owner, 2026-08-25: *"הכרטיס לא התקבל"*). It comes from the clearing details he has already
-   *  given — `merchant_kyc.ownerPhone` — which is why the card asks him for nothing. */
+   *  given — `merchant_kyc.ownerPhone` — which is why the card usually asks him for nothing.
+   *
+   *  **Usually, not always, and that was the second half of the same bug.** Step 3 is open from the
+   *  first minute on purpose (`GoLiveSteps.astro`: the plan is ours and the card is charged to OUR
+   *  merchant, so it waits on PayMe for nothing) — which means a seller who has typed nothing into
+   *  step 1 reaches these fields with no phone anywhere, and the refusal came back as PayMe's own
+   *  merchant-facing English: *"Please provide \"payerPhone\" value"* (owner, 2026-08-26). Blocking
+   *  the card behind ten KYC fields would undo exactly what step 3 being open buys, so when we hold
+   *  no phone the card asks for that ONE field and `/api/seller/subscription` writes it into
+   *  `merchant_kyc.ownerPhone` — so step 1 comes back with it already filled in, and the number a
+   *  seller gives can never be two different numbers. */
   payer: { name: string; email: string; phone: string };
   /** Rendered INSIDE a go-live step, which already carries the title and the one-line reason. Drops
    *  its own heading and its own frame, so the step is one thing rather than a box in a box saying
@@ -212,6 +222,19 @@ const showBreakdown = paying && lines.length > 1;
 
             Each frame is given an explicit height too: an empty iframe is zero pixels tall until
             PayMe paint into it, which is what made the boxes different sizes from each other. */}
+        {/* Ours, not PayMe's — the three boxes below are iframes and nothing can be put inside
+            them. Rendered only while we hold no phone: a seller who filled step 1 has already
+            answered this and asking twice is the burden `feedback_seller_form_burden` forbids.
+            `inputmode="tel"` for the numeric keypad; the value is normalised server-side by
+            `normalizeMerchantKyc`, which accepts +972 and landlines alike, so nothing here
+            rejects a number the clearing form would have taken. */}
+        {!payer.phone && (
+          <div class="field m-0 mb-3 max-w-[22ch]">
+            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardPhone}</span>
+            <input type="tel" inputmode="tel" autocomplete="tel" class="input h-[2.6rem]" id="sub-card-phone" name="subCardPhone" />
+            <p class="muted m-0 mt-1 text-[0.78rem]">{d.subCardPhoneHint}</p>
+          </div>
+        )}
         <div class="grid gap-3 sm:grid-cols-[minmax(0,22ch)_9ch_7ch]">
           <div class="field m-0">
             <span class="text-[0.8rem] whitespace-nowrap">{d.subCardNumber}</span>
