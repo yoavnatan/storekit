@@ -19,6 +19,7 @@
     "showcase:images": "node --env-file-if-exists=.env ./scripts/generate-showcase-images.mjs",
     "seed:demo": "node --env-file-if-exists=.env ./scripts/seed-demo-data.mjs",
     "demo:clearing": "node --env-file-if-exists=.env ./scripts/demo-clearing.mjs",
+    "demo:fresh-seller": "node --env-file-if-exists=.env ./scripts/demo-fresh-seller.mjs",
     "seed:reviews": "node --env-file-if-exists=.env ./scripts/seed-reviews.mjs",
     "seed:returns": "node --env-file-if-exists=.env ./scripts/seed-returns.mjs",
     "demo:feed": "node --env-file-if-exists=.env ./scripts/demo-feed.mjs",
