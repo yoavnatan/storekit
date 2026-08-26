@@ -181,6 +181,12 @@ export default tseslint.config(
     rules: {
       'sonarjs/no-hardcoded-passwords': 'off',
       'sonarjs/pseudo-random': 'off',
+      // Off for developer tooling only. The rule wants every binary named by absolute path, which is
+      // right for a server and wrong for `method/`: it has to invoke whatever `git`, `npm`, `go` or
+      // `cargo` the developer's own PATH resolves, on a machine it knows nothing about. Hardcoding
+      // paths there would make it work on exactly one setup. Nothing under these globs runs in
+      // production or handles a request.
+      'sonarjs/no-os-command-from-path': 'off',
     },
   },
 
