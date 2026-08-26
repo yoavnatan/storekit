@@ -56,6 +56,7 @@ import { ensureMerchantAccount, clearingStatusFor, merchantKycFor, missingForCle
 
 import { paymeCategoryForStore } from '../../lib/merchant-category.js';
 import { publishHoldsFor, syncStorePublication } from '../../lib/store-publication.js';
+import { sellerStage } from '../../lib/seller-stage.js';
 import { subscriptionFor, subscriptionRunning } from '../../lib/seller-subscription.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
@@ -105,7 +106,7 @@ import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
 import { getStoreIdsWithStalledCampaigns } from '../../lib/ad-campaigns.js';
 import { boostFeePercent, resolveTier, type SellerTierId } from '../../lib/pricing.js';
-import { commissionPercentForStore } from '../../lib/store-plan.js';
+import { chargedCommissionPercentForStore } from '../../lib/store-plan.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote } from '../../lib/ad-scope-label.js';
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
 import { shortDate } from '../../lib/date-range.js';
@@ -514,6 +515,23 @@ const queryStoreId = Astro.url.searchParams.get('store');
 const lastStoreId = Astro.cookies.get(LAST_STORE_COOKIE)?.value ?? '';
 const activeStoreId = hasNoStore ? '' : (queryStoreId ?? lastStoreId);
 const store = hasNoStore ? undefined : (allStores.find((s) => s.id === activeStoreId) ?? allStores[0]);
+
+/**
+ * ── Where this seller stands, in one word (owner, סשן א׳ §17) ──
+ *
+ * Derived once, from facts this page already holds, and handed to the overview card so that screen
+ * describes a STATE rather than deriving a fourth reading of it (`lib/seller-stage.ts` carries why
+ * the four readings had already disagreed twice). It is a description and never a gate: publication
+ * is still `publishHoldsFor` and a sale is still `merchantBlockFor`.
+ */
+const cardArmed = !!subscription?.cardSavedAt && !subscription.providerRef;
+const stage = sellerStage({
+  lifecycle: store ? storeLifecycle(store) : null,
+  holds: publishHolds,
+  cardOnFile: cardArmed,
+  clearingReady: clearingStatus?.state === 'ready',
+  clearingRejected: clearingStatus?.state === 'rejected',
+});
 if (store && store.id !== lastStoreId) {
   Astro.cookies.set(LAST_STORE_COOKIE, store.id, {
     httpOnly: true,
@@ -739,7 +757,7 @@ const [perfViews, perfOrders] = (store && perfIsInitial)
       getOrdersByStoreSlugInRange(store.slug, perfFromISO, perfToISO),
     ])
   : [EMPTY_VIEW_STATS, [] as Order[]];
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForStore(store)) : undefined;
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(perfOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, chargedCommissionPercentForStore(store)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
@@ -1444,7 +1462,7 @@ const orderStatusColors: Record<string, string> = {
         </div>
         {/* Above the checklist, because it outranks it: a seller whose shop cannot go live is not
             helped by being told to upload a banner first. */}
-        <PublishStatusCard holds={publishHolds} storeIsLive={!!store && storeLifecycle(store) !== 'unpublished'} d={d} />
+        <PublishStatusCard stage={stage} holds={publishHolds} store={store ?? null} d={d} />
         <OnboardingChecklist steps={onboardingSteps} published={!!store && storeLifecycle(store) !== 'unpublished'} />
         {/* Each card jumps to its tab (data-goto-panel, initGotoPanelLinks() in ui.ts) — same pattern as AdminOverviewPanel.astro. favoritedBy has no dedicated tab of its own, so it stays a plain (non-button) stat. Box style matches the performance tab's KPI cards (perf-kpis below) for visual consistency between the two stat grids. */}
         <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -3408,10 +3426,23 @@ const orderStatusColors: Record<string, string> = {
               {d.settingsAutoSaved}
             </span>
           </div>
-          <p class="muted text-[0.8rem] leading-[1.5] mt-1 mb-3">{d.lcHint}</p>
+          {/* ── The STATE first, then what the buttons do (owner, סשן א׳ §7, 2026-08-26) ──
+              *"קודם כל צריך להיות מצב פעילות החנות (למשל: החנות פעילה ומוכרת), ואח״כ ההודעה על
+              ההקפאה או סגירה."* The section opened on a paragraph about two actions, so a seller
+              who came to check whether his shop was selling read a description of pausing first
+              and found the answer two lines down. It is also the site's own rule
+              (`feedback_no_standing_screen_prose`): say it on the row it is about.
 
+              And the paragraph itself was wrong, which is the other half of §7 — see `lcHint`. */}
           <p id="lc-state" class="m-0 text-[0.9rem] font-semibold">{lifecycleStateLabel}</p>
           <p id="lc-note" class="muted text-[0.8rem] leading-[1.55] mt-1 mb-3 max-w-[60ch]">{lifecycleNote}</p>
+
+          {/* What the two buttons below actually do, directly above them — and only while there is
+              something to press. On a closed or blocked shop there are no buttons, and a sentence
+              about pausing would describe an option that is not there. */}
+          {(lifecycleState === 'active' || lifecycleState === 'paused' || lifecycleState === 'closing') && (
+            <p class="muted text-[0.8rem] leading-[1.5] mt-1 mb-3 max-w-[60ch]">{d.lcHint}</p>
+          )}
           <p id="lc-open-orders" class="muted text-[0.8rem] m-0 mb-3" hidden={lifecycleOpenOrders === 0}>
             {d.lcOpenOrders.replace('{n}', String(lifecycleOpenOrders))}
           </p>

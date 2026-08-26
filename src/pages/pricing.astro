@@ -74,7 +74,15 @@ const pillars = [
   storeMode={true}
   showSearch={true}
 >
-  <div class="container py-8 max-w-[64rem] pricing-page">
+  {/* ── The page's own frame, and it is the SITE's frame (owner, 2026-08-26) ──
+      *"כשעוברים מתשלומים להשוואת מסלולים צריך שהדף כולו יהיה עם מרג׳ין פחות גדול, יותר צמוד להדר,
+      כמו שאר האתר באופן נורמלי."* It carried a `max-w-[64rem]` cap of its own — 1024px inside a
+      site whose container is 1160 — so a seller arriving from a full-width dashboard met a column
+      that had visibly stepped in from both edges, and 2rem of air above the heading on top of it.
+      Neither was a decision this page needed: the plan grid reads the same at either width, and the
+      cap was the only thing making it look like a different site. `.container` alone now, with the
+      top gap trimmed to the ordinary one. */}
+  <div class="container pt-5 pb-10 pricing-page">
     {/* ── The page head, and nothing else in it (2026-08-24) ──
         It was a tinted band holding the heading, the lede, a line about building before you pay and
         the register button. Two things were wrong with it. The band was the loosest element on a
