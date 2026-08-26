@@ -90,6 +90,12 @@ export function buildSellerBalances(
       // The rate of the STORE's own plan, not the account's — a seller may hold two shops on two
       // plans since 2026-08-24 (`store-plan.ts`), and a single rate applied across them would
       // report one of the two wrong in every figure derived from here.
+      //
+      // **The QUOTED rate, deliberately, and not the charged one** (2026-08-26). This figure is the
+      // platform's own income — it is what the admin's seller roster prints and what the income
+      // statement is built from — so it must not carry the VAT collected inside the same deduction,
+      // which is the state's and not ours. `chargedCommissionPercentForStore` is the other question
+      // ("what did the seller pay"), and it belongs to his reports, not to this table.
       const commissionAgorot = commissionOnAgorot(grossRevenueAgorot, commissionPercentForStore(store));
       return {
         storeId: store.id,

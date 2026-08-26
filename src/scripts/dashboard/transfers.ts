@@ -1,8 +1,7 @@
 import { formatAgorot } from '../../lib/money.js';
 import { formatDayShort } from '../../lib/format-date.js';
 import { escapeHtml as esc } from '../../lib/html-escape.js';
-import { paymeDay, type SellerTransfers } from '../../lib/seller-transfers.js';
-import type { PaymeTransaction } from '../../lib/payment-payme.js';
+import type { SellerTransfers } from '../../lib/seller-transfers.js';
 import type { InvoiceOffer } from '../../lib/seller-invoicing.js';
 import { busyButton } from './btn-busy.js';
 import { showErrorToast } from '../../lib/toast.js';
@@ -30,7 +29,7 @@ import { showErrorToast } from '../../lib/toast.js';
  * `project_client_renderer_i18n_drift`, guarded by `tests/transfers-i18n.test.ts`.
  */
 type TransfersResponse =
-  | ({ state: 'ok'; charges: PaymeTransaction[]; invoicing: InvoiceOffer | null } & SellerTransfers)
+  | ({ state: 'ok'; invoicing: InvoiceOffer | null } & SellerTransfers)
   | { state: 'no-provider' | 'no-account' | 'unavailable' };
 
 function tt(key: string): string {
@@ -55,7 +54,9 @@ function bodyHtml(data: TransfersResponse): string {
   if (data.state === 'unavailable') return `<p class="muted m-0">${esc(tt('payTransferUnavailable'))}</p>`;
   if (data.state !== 'ok') return '';
 
-  const lines: string[] = [row(tt('payTransferPending'), formatAgorot(data.pendingAgorot), true)];
+  // The balance itself is no longer a row here — it is the headline above this list
+  // (`PayoutsPanel.astro`, owner סשן א׳ §2). What is left is everything that needs a label.
+  const lines: string[] = [];
 
   // The date, only when PayMe have really set one. Their own measurement (`seller-transfers.ts`)
   // is that money accrues into an OPEN window with no payment date, so this is normally the
@@ -91,64 +92,12 @@ function bodyHtml(data: TransfersResponse): string {
 }
 
 /**
- * The fee breakdown of each recent charge — the owner's *"איפה הוא רואה עמלת סליקה"* (2026-08-25).
- *
- * **Three numbers per charge and never one "fees" total**, because they belong to different
- * parties: PayMe's clearing fee, the mall's commission, and what actually reached him. A seller
- * shown a single deduction concludes the platform took all of it, and he would be right to.
- *
- * `netAgorot` is PayMe's own `transaction_price_after_fees` and is not recomputed from the other
- * two: it also carries VAT on the fees and their fixed per-transaction charge, so a figure we
- * derived would disagree with the one on his statement — the only one he can check.
+ * ── The per-charge fee breakdown left this file on 2026-08-26 (owner, סשן א׳ §1) ──
+ * It rendered the last six charges with PayMe's own fee split. That is a RECORD, not a strip, and
+ * it now lives where a period can be chosen and a CSV exported — the `fees` report on the Reports
+ * tab (`lib/seller-reports.ts#buildFeesReport`), which reads the same `get-transactions` figures
+ * server-side and applies the same `paymeDay` rule that keeps a malformed date out of a money row.
  */
-const dayLabel = (at: string): string => {
-  const day = paymeDay(at);
-  return day ? formatDayShort(day) : '';
-};
-
-function chargesHtml(charges: readonly PaymeTransaction[]): string {
-  if (!charges.length) return `<p class="muted m-0 text-[0.85rem]">${esc(tt('payChargesNone'))}</p>`;
-  const line = (label: string, value: string, tone = '') =>
-    '<div class="flex items-baseline justify-between gap-3">' +
-      `<dt class="muted m-0">${esc(label)}</dt>` +
-      `<dd class="m-0 font-semibold ${tone}">${esc(value)}</dd>` +
-    '</div>';
-  // Six, not the ten the server may hold: this is a strip that answers "where do I see my fee",
-  // and ten near-identical rows is a table nobody asked for. The full history is the processor's
-  // own reporting.
-  return charges.slice(0, 6).map((c) => (
-    '<dl class="py-3 border-b last:border-b-0 [border-color:var(--color-border)] text-[0.82rem] grid gap-1">' +
-      '<div class="flex items-baseline justify-between gap-3 mb-1">' +
-        // `paymeDay` and not a second prefix test written here — it validates through `isDayISO`,
-        // so `2026-99-99` becomes an empty string rather than reaching `formatDayShort` and
-        // rendering "Invalid Date" on a money row. The first version of this file had its own
-        // `/^\d{4}/` check and would have done exactly that.
-        // **A `<dt>`/`<dd>` pair, not two spans.** A `<div>` inside a `<dl>` must hold one or more
-        // `<dt>` followed by one or more `<dd>`; the first version put a bare pair of spans here
-        // and was invalid — the same mistake the transfer strip above made and had corrected hours
-        // earlier, which is what a shape copied by eye between two renderers looks like.
-        `<dt class="muted m-0">${esc(dayLabel(c.at))}</dt>` +
-        `<dd class="m-0 font-bold text-[0.95rem]">${esc(formatAgorot(c.priceAgorot))}</dd>` +
-      '</div>' +
-      // **No minus sign on the deductions, and it was tried and rendered first.** A `−` before an
-      // amount is a NEUTRAL character opening a left-to-right run inside a right-to-left line, so
-      // the bidi algorithm places it at the run's far end and it comes out looking like a trailing
-      // dash on the price ("₪ 1.50−" — measured in Chromium). `dir="ltr"` would fix it and would
-      // make these the only prices on the site rendered the other way round. The labels already say
-      // which way each number goes — a fee is a fee — and the net is the only one that needs a
-      // mark, which it gets in colour.
-      line(tt('payChargeClearing'), formatAgorot(c.processingAgorot)) +
-      line(tt('payChargeCommission'), formatAgorot(c.marketFeeAgorot)) +
-      // **The net is printed only once the processor has computed it.** Until then their field
-      // repeats the GROSS (measured — `payment-payme.ts#netIsFinal`), and printing that under
-      // "נכנס אליכם" tells a seller he keeps the whole sale. The two fee lines above are final from
-      // the first second, so the row that is not yet knowable is the only one that waits.
-      line(tt('payChargeNet'),
-        c.netIsFinal ? formatAgorot(c.netAgorot) : tt('payChargeNetPending'),
-        c.netIsFinal ? '[color:var(--color-success)]' : 'muted font-normal') +
-    '</dl>'
-  )).join('');
-}
 
 /**
  * The one add-on a seller may switch on for himself: PayMe issuing the buyer's invoice in his name.
@@ -201,25 +150,33 @@ export async function initTransfersStrip(): Promise<void> {
     data = { state: 'unavailable' };
   }
 
-  const html = bodyHtml(data);
   // Nothing to say - no gateway, or no clearing account yet. The strip stays out of the DOM's way
   // rather than rendering an empty card: the go-live screen further down already owns "you have no
   // account", and two screens saying it is one more than the seller needs.
-  if (!html) { strip.hidden = true; return; }
-  body.innerHTML = html;
+  //
+  // **Keyed off the STATE, not off the rendered rows.** It used to return early on an empty
+  // `bodyHtml`, which was the same test while the balance was one of those rows; it is not any
+  // more (the balance is the headline since 2026-08-26), so a seller with ₪0 waiting and no history
+  // would have had the whole strip vanish — an absence where a real, correct zero belongs.
+  if (data.state === 'no-provider' || data.state === 'no-account') { strip.hidden = true; return; }
+
+  // The headline figure, written straight rather than through `bodyHtml` — it is the one value on
+  // this strip that is not a labelled row, and the `<dl>` below has no shape for a bare number.
+  // Hidden rather than emptied when there is nothing to print: an empty `<p>` still carries its
+  // own top margin, which would open a gap above the sentence that replaced it.
+  const amount = document.getElementById('pay-transfers-amount');
+  if (amount) {
+    amount.textContent = data.state === 'ok' ? formatAgorot(data.pendingAgorot) : '';
+    amount.hidden = data.state !== 'ok';
+  }
+  // The schedule line under the headline is server-rendered and stays in every state: it states a
+  // rule ("the 10th of the month"), not a figure, so it is still true when the figure is not there.
+  body.innerHTML = bodyHtml(data);
   strip.hidden = false;
 
-  // The two blocks below exist only in the `ok` state. Each is hidden independently: a seller can
-  // have money on its way and no charges yet, or charges and no invoicing service - and a card
-  // rendered empty is furniture.
+  // The invoicing card exists only in the `ok` state, and only when PayMe have provisioned the
+  // service at all - a card rendered empty is furniture.
   if (data.state !== 'ok') return;
-
-  const charges = document.getElementById('pay-charges');
-  const chargesBody = document.getElementById('pay-charges-body');
-  if (charges && chargesBody) {
-    chargesBody.innerHTML = chargesHtml(data.charges ?? []);
-    charges.hidden = false;
-  }
 
   const inv = document.getElementById('pay-invoicing');
   if (inv && data.invoicing) {

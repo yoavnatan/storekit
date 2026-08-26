@@ -36,7 +36,11 @@ describe('transfer strip i18n', () => {
   it('defines the panel\'s server-rendered strings in both languages too', () => {
     const he = translations.he.dashboard as unknown as Record<string, string>;
     const en = translations.en.dashboard as unknown as Record<string, string>;
-    for (const key of ['payTransferTitle', 'payTransferSource', 'payChargesTitle', 'payChargesHint']) {
+    // `payChargesTitle`/`payChargesHint` left this list on 2026-08-26 with the per-charge fee card
+    // they labelled — it moved to the `fees` report (owner, סשן א׳ §1), whose own strings are
+    // covered by `reports-i18n`-style checks on that tab. `payTransferSchedule` replaced
+    // `payTransferSource`: same slot under the balance, and it now carries the payout date too.
+    for (const key of ['payTransferTitle', 'payTransferSchedule']) {
       expect(he[key], `he.dashboard.${key}`).toBeTruthy();
       expect(en[key], `en.dashboard.${key}`).toBeTruthy();
     }

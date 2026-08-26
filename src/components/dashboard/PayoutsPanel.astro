@@ -36,10 +36,12 @@ import { maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../l
 import { ISRAELI_BANKS, bankName } from '../../lib/israeli-banks.js';
 import GoLiveSteps from './GoLiveSteps.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
+import FeeScheduleCard from './FeeScheduleCard.astro';
 import type { PublishHold } from '../../lib/store-publication.js';
 import type { SellerTierId } from '../../lib/pricing.js';
 import type { StoreFeeLine } from '../../lib/store-plan.js';
 import type { MerchantKyc } from '../../lib/merchant-kyc.js';
+import type { ClearingStatus } from '../../lib/seller-merchant.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -51,7 +53,7 @@ interface Props {
    *  **`null` means no clearing provider is configured**, which is dev and the pre-gateway window
    *  GO_LIVE §7 plans — nothing is blocked, so a line about being blocked would describe a rule
    *  that is not in force. The block renders only when there is really something to say. */
-  clearing: { state: 'ready' | 'missing-details' | 'not-opened' | 'awaiting-approval'; signupLink?: string } | null;
+  clearing: ClearingStatus | null;
   /** What PayMe require about the business, as far as it has been filled in. Rendered under the
    *  bank block (owner, 2026-08-23) — one screen owns everything to do with money, and the
    *  "your shop is not live" card on the overview links straight here. */
@@ -144,32 +146,38 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
   {clearing && (
     <section class="card card--flat p-4 md:p-5 mb-4" id="pay-transfers" aria-live="polite" hidden>
       <h3 class="text-[1.05rem] font-bold m-0">{d.payTransferTitle}</h3>
+      {/* ── The figure IS the answer, so it is not a labelled row (owner, סשן א׳ §2, 2026-08-26) ──
+          The card was titled *"הכסף שבדרך אליכם"* over a row labelled *"ממתין להעברה"* — the same
+          fact stated twice, once in the heading and once beside the number. The heading is now
+          *"יתרה לתשלום הקרוב"* and the amount stands under it as an amount, with the label gone.
+
+          Empty and filled by `scripts/dashboard/transfers.ts`; the skeleton-free empty string is
+          deliberate — the whole section is `hidden` until the figure arrives. */}
+      <p class="m-0 mt-2 text-[1.35rem] font-bold tabular-nums" id="pay-transfers-amount"></p>
+      {/* ── §3: the schedule, here, instead of an "איך זה עובד" section ──
+          *"החלק של איך זה עובד לא צריך להיות שם בכלל. אפשר לרשום את היועבר בעשירי לכל חודש תחת
+          היתרה לתשלום הקרוב, בקצרה."* One line, under the number it is about. */}
+      <p class="muted m-0 mt-1 text-[0.78rem]">{d.payTransferSchedule}</p>
       {/* `max-w`, because each row is `justify-between`: on a 1100px panel that puts the label
           against one edge and the figure against the other, and a label a seller has to travel the
           width of the screen to attach to its number is not a labelled grid any more. 22rem is the
           widest row this list can produce (the undated sentence) plus its label. */}
       <dl class="mt-3 text-[0.85rem] max-w-[22rem]" id="pay-transfers-body"></dl>
-      <p class="muted m-0 mt-3 text-[0.76rem]">{d.payTransferSource}</p>
     </section>
   )}
 
-  {/* ── Where the clearing fee actually shows up (owner, 2026-08-25: *"לא הבנתי אז איפה הוא רואה
-      עמלת סליקה, מינימום חודשי, הכחשת עסקה"*) ──
-      PayMe publish the fee split per charge and nothing had ever read it. Three numbers per sale —
-      THEIR clearing fee, OUR commission, and what reached him — never one "fees" total, because a
-      seller shown a single deduction concludes the platform took all of it.
+  {/* ── The per-sale fee card LEFT this tab on 2026-08-26 (owner, סשן א׳ §1) ──
+      *"העמלות על המכירות לא צריכות להופיע שם, אלא בלשונית דוח״ות, כדו״ח עמלות. כולל כל העמלות
+      שהיוזר משלם."* It listed the last six charges with their fee split, which is the right
+      information twice in the wrong place: this tab answers *"how much money is coming to me"*, and
+      six rows is a sample rather than a record. A fee is an EXPENSE, and an expense belongs where a
+      period can be chosen and a CSV exported — `ReportsPanel.astro`, report `fees`.
 
-      **What this deliberately does NOT claim to cover:** the account-level charges (the ₪50 monthly
-      minimum top-up, a ₪59 chargeback, the terminal). We have not found them in any endpoint —
-      question 4 in `docs/payme-questions-open.md` — so the heading says "on your sales" rather than
-      "your fees", which would be a total that is quietly missing rows. */}
-  {clearing && (
-    <section class="card card--flat p-4 md:p-5 mb-4" id="pay-charges" hidden>
-      <h3 class="text-[1.05rem] font-bold m-0">{d.payChargesTitle}</h3>
-      <div class="mt-2 max-w-[26rem]" id="pay-charges-body"></div>
-      <p class="muted m-0 mt-3 text-[0.76rem]">{d.payChargesHint}</p>
-    </section>
-  )}
+      Its hint went with it, and was the owner's §4 in the same breath (*"מיותר ולא מובן"*): it read
+      *"המספרים של חברת הסליקה, אחרי מע״מ על העמלות. חיובים חודשיים על החשבון עצמו מופיעים אצלה"* —
+      two disclaimers about a table, above the table, in the vocabulary of the processor's back
+      office rather than the seller's. What was true in it (which fees this covers and which it
+      cannot) is said by the fee report's own summary, where it describes a document. */}
 
   {/* ── The one add-on a seller may switch on for himself ──
       Owner, 2026-08-25: *"אני רוצה שהמוכר יוכל לבחור אם להפעיל את זה, ושזה יהיה בתשלום שלו"* —
@@ -220,6 +228,7 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
       storeInPlan={storeInPlan}
       cardOnFile={cardOnFile}
       payer={payer}
+      businessType={seller.businessType}
       d={d}
     />
   )}
@@ -369,35 +378,29 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     </div>
   </form>
 
-  {/* ── The rules, once, at the end ──────────────────────────────────────────────────────────
-      Three questions in the order a seller asks them, each with one short answer. There is no
-      fourth about a hold, a release date or a minimum transfer: under the split model none of
-      those is a thing that happens to his money.
+  {/* ── §8: the tariff, closed, where the Q&A block used to be ──
+      *"אולי צריך סקשן בסוף של מחירים (שלדעתי צריך להיות בתוך אקורדיון סגור)."* It answers a
+      different question from the fee report on the Reports tab — what he IS charged, not what he
+      HAS been — and it is the one thing at the foot of this screen worth keeping, because a tariff
+      is reference material a seller comes back to twice a year. `invoicingActive` is false until
+      PayMe provision the service, and the row simply does not render. */}
+  {clearing && store && (
+    <FeeScheduleCard
+      tier={store.tier as SellerTierId | undefined}
+      planName={planName}
+      paying={subscriptionPaying}
+      businessType={seller.businessType}
+      invoicingActive={false}
+      d={d}
+    />
+  )}
 
-      A `<dl>` and not prose: a seller scanning for one of them finds it by its question,
-      which is not true of a paragraph containing the same words.
-
-      **A fourth arrived on 2026-08-25** — who issues the buyer's invoice. It is asked here because
-      this is the money screen a seller is standing on when the question occurs to him (owner:
-      *"לא הבנתי כל כך את העניין"*, about a feature that was built), and the answer NAMES THE DOOR:
-      the tab, the card and what the two buttons do. The long version is `/help/sale-invoices`. */}
-  <h3 class="text-[1.05rem] font-bold m-0 mt-8 mb-2" id="pay-how">{d.payHowTitle}</h3>
-  <dl class="card card--flat p-4 md:p-5 gap-3 text-[0.85rem]">
-    <div>
-      <dt class="font-semibold m-0">{d.payHowWhenQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowWhenA}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold m-0">{d.payHowFeeQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowFeeA}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold m-0">{d.payHowRefundQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowRefundA}</dd>
-    </div>
-    <div>
-      <dt class="font-semibold m-0">{d.payHowInvoiceQ}</dt>
-      <dd class="muted m-0 mt-0.5">{d.payHowInvoiceA}</dd>
-    </div>
-  </dl>
+  {/* ── "איך זה עובד" was removed on 2026-08-26 (owner, סשן א׳ §3) ──
+      *"החלק של איך זה עובד לא צריך להיות שם בכלל. אפשר לרשום את היועבר בעשירי לכל חודש תחת היתרה
+      לתשלום הקרוב, בקצרה."* Four question-and-answer pairs at the foot of a money screen is a help
+      article that has wandered onto a dashboard: the one fact a seller actually came back for — WHEN
+      the money moves — is now the line under the balance itself (`payTransferSchedule`), where it
+      is read at the moment the question occurs. What each fee IS, and how much of it there is, is
+      the pricing section below and the fee report on the Reports tab; those are the two screens
+      that can answer it with numbers rather than with prose. */}
 </div>

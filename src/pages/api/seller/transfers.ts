@@ -4,7 +4,7 @@ import { getSellerSession } from '../../../lib/seller-auth.js';
 import { merchantAccountFor } from '../../../lib/seller-merchant.js';
 import {
   activePaymeCredentials, getFutureWithdrawals, getPastWithdrawals,
-  getSellerServices, getSellerTransactions, setSellerServiceActive,
+  getSellerServices, setSellerServiceActive,
 } from '../../../lib/payment-payme.js';
 import { summarizeTransfers } from '../../../lib/seller-transfers.js';
 import { invoiceOffer } from '../../../lib/seller-invoicing.js';
@@ -49,22 +49,22 @@ export async function GET({ cookies }: APIContext): Promise<Response> {
   if (!account?.providerRef) return json({ state: 'no-account' });
 
   try {
-    // Four independent reads, one round trip's worth of waiting — AI_INSTRUCTIONS → Scalability.
-    // Sequential `await`s here would be four sequential round trips to a third party on a tab the
+    // Three independent reads, one round trip's worth of waiting — AI_INSTRUCTIONS → Scalability.
+    // Sequential `await`s here would be three sequential round trips to a third party on a tab the
     // seller has just opened.
-    const [future, past, txs, services] = await Promise.all([
+    //
+    // **It was four until 2026-08-26.** `get-transactions` was read here to draw the per-charge fee
+    // card, and that card moved to the `fees` report (owner, סשן א׳ §1), which fetches its own over
+    // a window the seller chose. Left in place it would have been a call to a third party on every
+    // open of this tab, serving markup that no longer exists.
+    const [future, past, services] = await Promise.all([
       getFutureWithdrawals(account.providerRef, creds),
       getPastWithdrawals(account.providerRef, creds),
-      getSellerTransactions(account.providerRef, creds),
       getSellerServices(account.providerRef, creds),
     ]);
     return json({
       state: 'ok',
       ...summarizeTransfers(future, past),
-      // The fee breakdown the owner asked for (2026-08-25): *"איפה הוא רואה עמלת סליקה"*. PayMe's
-      // own per-charge arithmetic, passed through — the clearing fee and OUR commission as two
-      // separate numbers, because a seller shown one total believes the platform took all of it.
-      charges: txs,
       // `null` when PayMe have not provisioned an invoicing service on this merchant, which is
       // every merchant today. The card then does not render at all rather than offering a switch
       // that cannot be thrown (`seller-invoicing.ts`).
