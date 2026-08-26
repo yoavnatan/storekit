@@ -1515,6 +1515,12 @@ export const translations = {
       subVatRow: 'מע״מ',
       subStart: 'התחל מנוי',
       subGoingToProcessor: 'מעבירים אותך לדף התשלום של חברת הסליקה.',
+      // ── The portfolio demonstration (lib/demo-mode.ts) ──
+      // Replaces the line above, never joins it. There is no processor and no page to be taken to,
+      // so promising one is the single dead end the demonstration must not contain — the seller
+      // would press the button, the page would reload, and the sentence he had just read would be
+      // visibly untrue. This says what actually happens instead.
+      subDemoCard: 'זו הדגמה, לכן לא נאספים פרטי אשראי ולא מתבצע חיוב. לחיצה כאן מפעילה את המנוי מיד.',
       subActive: 'המנוי פעיל.',
       subNextCharge: 'החיוב הבא',
       subAwaitingPayment: 'המנוי נוצר וממתין לתשלום. אם סגרת את דף התשלום, אפשר לפתוח אותו שוב.',
@@ -3895,6 +3901,7 @@ export const translations = {
       subVatRow: 'VAT',
       subStart: 'Start the subscription',
       subGoingToProcessor: "Taking you to the processor's payment page.",
+      subDemoCard: 'This is a demonstration: no card details are collected and nothing is charged. Pressing this activates the subscription immediately.',
       subActive: 'The subscription is active.',
       subNextCharge: 'Next charge',
       subAwaitingPayment: 'The subscription was created and is waiting to be paid. If you closed the payment page, you can open it again.',

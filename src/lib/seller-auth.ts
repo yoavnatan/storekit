@@ -375,7 +375,7 @@ export async function updateSeller(
    */
   if (isDemoMode() && (fields.email !== undefined || fields.newPassword)
       && (seller.email === DEMO_SELLER_EMAIL || seller.email === DEMO_BUYER_EMAIL)) {
-    return { ok: false, error: 'זהו חשבון הדגמה משותף, ולכן המייל והסיסמה שלו נעולים. ניתן לפתוח חשבון משלכם דרך "פתח חנות".' };
+    return { ok: false, error: 'זהו חשבון הדגמה משותף, לכן המייל והסיסמה שלו נעולים. ניתן לפתוח חשבון משלכם דרך "פתח חנות".' };
   }
 
   // null unless this request is actually changing it — see the COALESCE below.

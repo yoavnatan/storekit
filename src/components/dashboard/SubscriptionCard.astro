@@ -38,6 +38,7 @@ import { formatAgorot, fromAgorot, toAgorot } from '../../lib/money.js';
 import { chargesVat, platformVatPercent } from '../../lib/vat.js';
 import { CANCEL_REASONS, cancelReasonKey } from '../../lib/subscription-cancel.js';
 import type { getT } from '../../i18n/index.js';
+import { isDemoMode } from '../../lib/demo-mode.js';
 
 interface Props {
   /** The shop this card is about — every action it takes names it, because the plan and the line on
@@ -113,6 +114,10 @@ interface Props {
   d: ReturnType<typeof getT>['dashboard'];
 }
 const { storeId, tier, planName, planNames, subscription, paying, storeInPlan = false, cardOnFile = false, payer, businessType, bare = false, d } = Astro.props;
+
+/** Read here rather than passed in: it is a fact about the SERVER, not about this card, and a
+ *  prop would be one more thing every caller has to remember to thread through correctly. */
+const demoMode = isDemoMode();
 const plan = resolveTier(tier);
 const created = !!subscription;
 /** A cancelled subscription still inside the period he paid for. Not the same as "not paying": he
@@ -528,9 +533,22 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
           {created ? d.subResume : d.subStart}
         </button>
         {/* Said BEFORE the click, not after it: a redirect nobody was expecting is where a payment
-            gets abandoned. */}
-        <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
-        <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+            gets abandoned.
+
+            **In the portfolio demonstration it is REPLACED, not joined** (`lib/demo-mode.ts`).
+            There is no processor and no page to be taken to: `payme-demo.ts` answers
+            `generate-subscription` active with no `sub_url`, so the handler falls through to its
+            reload and the subscription is simply on. Leaving the sentence would make the button
+            promise a redirect that visibly never happens — the one dead end this demonstration must
+            not contain. The setup-fee line goes with it, for the same reason: nothing is charged. */}
+        {demoMode
+          ? <p class="muted m-0 mt-2 text-[0.78rem]">{d.subDemoCard}</p>
+          : (
+            <>
+              <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
+              <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+            </>
+          )}
       </div>
 
     </div>
