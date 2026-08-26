@@ -22,6 +22,8 @@
  * unused in anger — which is exactly the window in which to confirm it.
  */
 
+import { serverEnv } from './runtime-env.js';
+
 /** ⚠️ Unverified — see the header. Percent, not a fraction. */
 export const VAT_PERCENT = 18;
 
@@ -49,4 +51,36 @@ export function vatWithinAgorot(grossAgorot: number, vatPercent: number = VAT_PE
  */
 export function chargesVat(businessType: string | undefined | null): boolean {
   return businessType === 'licensed' || businessType === 'company';
+}
+
+/**
+ * Does the PLATFORM charge VAT on what it bills a seller — and if so, at what rate?
+ *
+ * ── Why this is a switch and not the constant above ──
+ * The owner mapped the flow himself (2026-08-26) and the top of it is us: *"אני כרגע עוסק מורשה עם
+ * אופציה שאהיה עוסק פטור בהתחלה"*. An **עוסק פטור** does not charge VAT at all — so if the platform
+ * starts that way, the commission and the subscription are billed net, the `+ מע״מ` line must not
+ * appear anywhere, and `market_fee` must go to PayMe as the bare percent. That is not a copy
+ * change: it is the arithmetic of every fee the platform takes.
+ *
+ * **Three planes, three different answers, and only this one is about US** (his diagram):
+ *  1. PayMe → the platform. They charge us VAT whatever we are; we reclaim it or absorb it.
+ *  2. the platform → the seller. **This function.** Our status decides it, never his.
+ *  3. the seller → the buyer. HIS status decides it — `chargesVat(seller.businessType)` — and it is
+ *     already what `planBuyerInvoice` asks.
+ * Conflating 2 and 3 is the mistake that would put VAT on a fee because the SELLER is registered,
+ * or take it off because he is not. The seller's status changes what he is SHOWN
+ * (`SubscriptionCard.astro` — an עוסק פטור deducts nothing, so he is also given the gross), never
+ * what he is charged.
+ *
+ * ⚠️ **The ceiling that decides which we are is about OUR income, not the mall's turnover** — the
+ * exemption is measured on commissions and subscriptions we collect, not on what sellers sell
+ * through us. GO_LIVE §3.1.2 carries it; it is the number that decides when this variable flips.
+ *
+ * Runtime, never `import.meta.env`: it is a server-side fact that must change with a restart rather
+ * than a rebuild (`runtime-env.ts`). Unset answers "registered", which is the safe default — over-
+ * collecting is a refund, under-collecting is a debt to רשות המסים on money already spent.
+ */
+export function platformVatPercent(): number {
+  return serverEnv('PLATFORM_BUSINESS_TYPE') === 'exempt' ? 0 : VAT_PERCENT;
 }

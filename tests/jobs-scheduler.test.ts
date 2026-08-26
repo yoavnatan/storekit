@@ -253,10 +253,21 @@ describe('the registry itself', () => {
     // changes nothing a screen can see. Everything before the write is read-only. What it must
     // never do is attach a link that is not the processor's — that is `isProcessorDocumentUrl`,
     // pinned in `tests/payme-invoice-sync.test.ts` against a lookalike domain.
+    // And `subscription-price-sync` (2026-08-26) — the only job that changes what a card is
+    // CHARGED, which is why its idempotency is not a matter of its own control flow either.
+    // `syncSubscriptionPrice` compares the price computed from the seller's shops with the price
+    // already stored, and calls PayMe only when they differ — so a second pass over an unchanged
+    // seller makes no outbound call and writes only the breakdown it just wrote. It exists because
+    // a standing order at the processor holds a fixed amount: when what a shop costs moves — the
+    // platform's own VAT status flipping, a plan's price changing, a `set-price` that failed and
+    // was never retried — nothing at PayMe would ever learn of it. What it must never do is invent
+    // a price, and it cannot: it re-derives from the shops through the one function the tier route
+    // uses, gateway first and our row second, so a refusal leaves the seller on the arrangement his
+    // card actually pays for.
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'payme-invoices', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact', 'store-publication', 'subscription-lapse'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-artifact', 'feed-sync', 'inbox-digest', 'merchant-status', 'order-sla', 'payme-invoices', 'purge-auth-attempts', 'purge-checkouts', 'purge-reset-tokens', 'purge-visitor-detail', 'returns-sweep', 'review-feed-artifact', 'review-invites', 'sitemap-artifact', 'store-publication', 'subscription-lapse', 'subscription-price-sync'],
     );
   });
 });

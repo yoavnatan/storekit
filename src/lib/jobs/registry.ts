@@ -38,6 +38,7 @@ import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { runInboxDigest } from '../inbox-digest.js';
 import { runStorePublicationSweep } from '../store-publication-run.js';
 import { runSubscriptionLapseSweep } from '../subscription-lapse.js';
+import { resyncAllSubscriptionPrices } from '../seller-subscription.js';
 import { runPaymeInvoiceSync } from '../payme-invoice-sync.js';
 
 export interface Job {
@@ -551,4 +552,40 @@ const paymeInvoices: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse, paymeInvoices];
+/**
+ * Keep every standing order level with what its shops actually cost.
+ *
+ * ── Why a job and not a one-off script (owner, 2026-08-26) ──
+ * *"אם אתחיל כעוסק פטור ואז אעבור לעוסק מורשה איך זה ישתקף בפלטפורמה, צריך לפשט את זה."* Flipping
+ * `PLATFORM_BUSINESS_TYPE` changes every new charge immediately — the price quoted, the `market_fee`
+ * on the next sale, every line of copy — but a standing order already at PayMe holds a fixed amount
+ * and would go on charging the old figure for ever. That is the only part of the switch that needs
+ * an action, and a one-off command is an action somebody has to remember at the exact moment they
+ * are busy with an accountant.
+ *
+ * So it levels itself. The same is true of anything else that moves what a shop costs and does not
+ * pass through the tier route — a plan's price changing in `pricing.ts`, a shop closing while PayMe
+ * were unreachable, a `set-price` that failed and was never retried.
+ *
+ * **Idempotent by construction**, which this list requires: `syncSubscriptionPrice` compares the
+ * computed price with the stored one and only calls PayMe when they differ, so a steady state costs
+ * two indexed reads per paying seller and no outbound call at all.
+ *
+ * *Daily:* the thing it corrects is measured in months, and a wrong monthly charge is caught long
+ * before the next one. Nightly rather than hourly so that a mass re-price — the one day this really
+ * does something — is one burst against the processor instead of one every hour.
+ */
+const subscriptionPriceSync: Job = {
+  name: 'subscription-price-sync',
+  intervalSec: 24 * HOUR,
+  leaseSec: 30 * MINUTE,
+  async run() {
+    const { checked, updated, failed } = await resyncAllSubscriptionPrices();
+    // The failures are NAMED and not counted away: each one is a seller whose card is charging a
+    // figure our own records disagree with, which is the exact divergence the write order exists to
+    // prevent and the one thing a person has to see.
+    return `${checked} standing order(s) checked · ${updated} re-priced${failed.length ? ` · failed: ${failed.join(', ')}` : ''}`;
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse, subscriptionPriceSync, paymeInvoices];

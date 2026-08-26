@@ -71,7 +71,50 @@ export type SellerTierId = 'starter' | 'growth' | 'pro' | 'enterprise';
  * "99₪ לחודש" and is then invoiced 116.82₪ has been surprised by us on the one screen where trust
  * is being established; and if we instead absorb it to avoid that, the fee was silently 84₪ all
  * along.
+ *
+ * ── The seller who CANNOT reclaim it, and the amendment of 2026-08-26 ──
+ * *"אבל גם לקוח שלי יכול להיות עוסק פטור, זה העניין."* And he is right: an **עוסק פטור** is not
+ * registered for VAT, so he deducts no input tax — the 18% is a real 18% for him, on exactly the
+ * smallest seller this platform is built for. The convention did not change (owner, same day:
+ * *"לא, המחירים לא כוללים מע״מ"*); what changed is what he is SHOWN. A seller who cannot reclaim
+ * is given the gross alongside the net — *"שלעוסק פטור יהיה כתוב גם הסה״כ… בצורה עדינה"* — and a
+ * seller who can is not, because for him it is noise. `vat.ts#chargesVat` is the test, and it is
+ * the same one that decides whether HIS invoice to a buyer carries VAT.
+ *
+ * ── And what is actually CHARGED had to catch up ──
+ * Until 2026-08-26 the standing order was created at the bare fee and `market_fee` was sent as the
+ * bare percent, so a screen saying "99 ₪ + מע״מ" sat over a card debited 99 ₪ — the promise and the
+ * charge were two different numbers, in our favour on the screen and against us in the bank. The
+ * two helpers below are the single definition of "what this fee really costs", and every boundary
+ * that hands a figure to the processor goes through one of them.
  */
+import { platformVatPercent } from './vat.js';
+
+/** A fee quoted in this file, as the seller is actually billed for it.
+ *
+ *  The rate is the PLATFORM's (`vat.ts#platformVatPercent`) and never the seller's: what he is
+ *  charged is decided by what WE are, and an עוסק פטור platform charges none at all. It is a
+ *  parameter so the arithmetic stays pure and testable at any rate. */
+export function feeWithVatAgorot(agorot: number, vatPercent: number = platformVatPercent()): number {
+  if (!Number.isFinite(agorot) || agorot <= 0) return 0;
+  return Math.round(agorot * (1 + vatPercent / 100));
+}
+
+/**
+ * A commission RATE, as the percentage really deducted from a sale.
+ *
+ * The commission is taken inside the transaction as PayMe's `market_fee`, which is a percentage —
+ * so charging VAT on it means sending a bigger percentage, not adding a line. 12% becomes 14.16%.
+ *
+ * **Not rounded to two places here.** `market_fee` is sent as a JSON number and PayMe apply it to
+ * the sale price; rounding the rate would shift every commission by a fraction of an agora in one
+ * direction, and `commission-check.ts` compares our figure against theirs at a one-agora tolerance.
+ * Both sides now compute from the same rate, so the only rounding left is the one on the amount.
+ */
+export function feeWithVatPercent(percent: number, vatPercent: number = platformVatPercent()): number {
+  if (!Number.isFinite(percent) || percent <= 0) return 0;
+  return percent * (1 + vatPercent / 100);
+}
 export interface SellerTier {
   id: SellerTierId;
   /** Fixed platform fee, ILS per month, BEFORE VAT, charged regardless of sales. */
