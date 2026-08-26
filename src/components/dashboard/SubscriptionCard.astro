@@ -32,9 +32,11 @@
  * the month he already paid for (owner, 2026-08-24). A seller who knows that is a seller who is not
  * cancelling in a hurry to avoid being charged again.
  */
-import { resolveTier, SELLER_SETUP_FEE, type SellerTierId } from '../../lib/pricing.js';
+import { resolveTier, SELLER_SETUP_FEE, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
 import PlanPills from './PlanPills.astro';
-import { formatAgorot } from '../../lib/money.js';
+import { formatAgorot, fromAgorot, toAgorot } from '../../lib/money.js';
+import { chargesVat, platformVatPercent } from '../../lib/vat.js';
+import { CANCEL_REASONS, cancelReasonKey } from '../../lib/subscription-cancel.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -64,6 +66,9 @@ interface Props {
     endsAt?: string;
     priceAgorot?: number;
     storeFees?: { storeId: string; storeName: string; tier: string; feeAgorot: number }[];
+    /** When the card was put on file. The only fact about it we hold — no PAN is ever stored — and
+     *  it is what makes "a card is on file" a statement rather than a reassurance. */
+    cardSavedAt?: string;
   } | null;
   paying: boolean;
   /** Whether THIS shop is one of the lines in the standing order. A paying seller who has just
@@ -91,13 +96,23 @@ interface Props {
    *  `merchant_kyc.ownerPhone` — so step 1 comes back with it already filled in, and the number a
    *  seller gives can never be two different numbers. */
   payer: { name: string; email: string; phone: string };
+  /** The seller's registered business type — `exempt` | `licensed` | `company`, or nothing yet.
+   *
+   *  **It decides one line and nothing else** (owner, 2026-08-26). Our fees are quoted before VAT
+   *  and an **עוסק פטור** cannot reclaim it, so for him the gross is the only figure that describes
+   *  what leaves his account — *"שלעוסק פטור יהיה כתוב גם הסה״כ, ולעוסק מורשה ומעלה לא. בצורה
+   *  עדינה."* `chargesVat` is the same test that decides whether HIS invoice to a buyer carries
+   *  VAT, so the two can never disagree about what kind of business he is. Absent answers "cannot
+   *  reclaim", for the reason `vat.ts` gives: we do not know, and the extra line is the safer of
+   *  the two mistakes. */
+  businessType?: string;
   /** Rendered INSIDE a go-live step, which already carries the title and the one-line reason. Drops
    *  its own heading and its own frame, so the step is one thing rather than a box in a box saying
    *  "מנוי חודשי" twice (owner, 2026-08-24). */
   bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { storeId, tier, planName, planNames, subscription, paying, storeInPlan = false, cardOnFile = false, payer, bare = false, d } = Astro.props;
+const { storeId, tier, planName, planNames, subscription, paying, storeInPlan = false, cardOnFile = false, payer, businessType, bare = false, d } = Astro.props;
 const plan = resolveTier(tier);
 const created = !!subscription;
 /** A cancelled subscription still inside the period he paid for. Not the same as "not paying": he
@@ -106,6 +121,32 @@ const endingOn = subscription?.endsAt;
 const lines = subscription?.storeFees ?? [];
 /** Only worth showing when the total is not simply this shop's plan. */
 const showBreakdown = paying && lines.length > 1;
+/** Do we charge VAT at all? Our own status, not his (`vat.ts#platformVatPercent`) — an עוסק פטור
+ *  platform bills net, and then neither the "+ מע״מ" line nor the gross beside it is true. */
+const platformVat = platformVatPercent() > 0;
+/** A seller who deducts no input tax, so the gross is the number that describes his month. Only
+ *  meaningful while there IS a tax on the fee. */
+const seesGross = platformVat && !chargesVat(businessType);
+/** Is there a card on file at all — armed, or being charged? It decides three things at once: the
+ *  card form opens collapsed, "ביטול" has somewhere to go back to, and the two first-charge
+ *  sentences under the save button are suppressed. */
+const hasCard = cardOnFile || (paying && storeInPlan);
+const cardSavedAt = subscription?.cardSavedAt;
+/** A reason's label, by its key. The cast is the narrow one this needs: `d` is a frozen literal
+ *  type, so indexing it with a computed key is an error however real the key is — and computing it
+ *  (`cancelReasonKey`) is the whole point, since it is what stops the id list and the copy from
+ *  being maintained in step by hand. */
+const reasonLabel = (reason: string): string =>
+  (d as unknown as Record<string, string>)[cancelReasonKey(reason as never)] ?? '';
+/** This shop's plan as it is really billed. Through `feeWithVatAgorot` and never `× 1.18` written
+ *  out here: it is the same function the standing order's price goes through
+ *  (`store-plan.ts#billedTotalAgorot`), so the sentence and the debit are one arithmetic. */
+const planGrossAgorot = feeWithVatAgorot(toAgorot(plan.monthlyFee));
+/** What the plans add up to before tax — the breakdown's own subtotal. `priceAgorot` is the charge,
+ *  VAT included, so the difference between them is the VAT row and the three figures agree by
+ *  construction rather than by two roundings happening to match. */
+const linesNetAgorot = lines.reduce((sum, l) => sum + l.feeAgorot, 0);
+const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot);
 ---
 
 <section class={bare ? '' : 'card card--flat p-4 md:p-5 mt-4'} id="sub-card" data-paying={String(paying)} data-store={storeId}>
@@ -153,6 +194,15 @@ const showBreakdown = paying && lines.length > 1;
             so this cannot disagree with his card statement. */}
         <dt class="muted">{d.subTotal}</dt>
         <dd class="m-0 font-semibold">{formatAgorot(subscription?.priceAgorot ?? 0)}</dd>
+        {/* The VAT is a ROW of the breakdown rather than a note beside it, because without it the
+            list of shops does not add up to the total above and the seller is left doing the
+            arithmetic on a figure he is being charged (2026-08-26). */}
+        {vatAgorot > 0 && (
+          <>
+            <dt class="muted">{d.subVatRow}</dt>
+            <dd class="m-0 font-semibold">{formatAgorot(vatAgorot)}</dd>
+          </>
+        )}
         <dt class="muted">{d.subTotalOf}</dt>
         {/* `justify-self-start` and a width of its own, because the value column is `1fr`: a
             `justify-between` row inside it pushed every price to the far edge of the card, a hand's
@@ -176,17 +226,34 @@ const showBreakdown = paying && lines.length > 1;
         <dt class="muted">{d.subNextCharge}</dt>
         {/* PayMe's own string, passed through unparsed — it is theirs, and re-formatting it is how
             a displayed date and a billed date start disagreeing. */}
-        <dd class="m-0 font-semibold justify-self-start" dir="ltr">{subscription.nextCharge}</dd>
+        {/* Named, because the plan-change dialog reads the date off it — one figure on the page, so
+            the sentence in the dialog and the row on the card cannot name two different days. */}
+        <dd class="m-0 font-semibold justify-self-start" id="sub-next-charge" dir="ltr">{subscription.nextCharge}</dd>
       </>
     )}
   </dl>
   {/* Every number above is before VAT, and `pricing.ts`'s header argues at length why saying so is
       not optional: a seller who reads 99 and is invoiced 116.82 has been surprised by us on the one
       screen where trust is being established. */}
-  <p class="muted m-0 mt-2 text-[0.76rem]">{d.subVat}</p>
+  {platformVat && <p class="muted m-0 mt-2 text-[0.76rem]">{d.subVat}</p>}
+  {/* The second line, for a seller who cannot reclaim it. Same muted size and directly under the
+      first — a statement, not a warning (owner: *"בצורה עדינה"*). Never rendered for an עוסק מורשה
+      or a חברה, for whom it is noise about money that costs them nothing. */}
+  {seesGross && (
+    <p class="muted m-0 mt-0.5 text-[0.76rem]">{d.subVatTotal.replace('{amount}', formatAgorot(showBreakdown ? (subscription?.priceAgorot ?? 0) : planGrossAgorot))}</p>
+  )}
 
-  {(!paying || !storeInPlan) && (
-    <div class:list={[cardOnFile ? 'mt-2' : 'mt-4']}>
+  {/* ── Rendered in every state since 2026-08-26 (owner, סשן א׳ §9) ──
+      *"לא רואה בכלל סקשן של אמצעי תשלום והחלפת אמצעי תשלום."* And there was none: this block was
+      gated on `!paying || !storeInPlan`, so the moment a seller's subscription started running, the
+      card form left the page — and with it the only way to replace an expiring card without
+      cancelling the subscription. The one state where a seller is CERTAIN to need it was the one
+      state that did not have it.
+
+      It is `data-collapsed` whenever a card is already on file, so nothing changes on screen until
+      "החלפת כרטיס" is pressed; `scripts/dashboard/subscription.ts` still mounts the iframes either
+      way, because mounting them is what proves the SDK works at all. */}
+  <div class:list={[cardOnFile ? 'mt-2' : 'mt-4']}>
       {/* ── PayMe's own card fields, drawn on OUR page ───────────────────────────────────────
           Three iframes served by PayMe and mounted here, so the seller commits at the moment he
           decides instead of a week later on somebody else's page. The container ids are the ones
@@ -199,17 +266,21 @@ const showBreakdown = paying && lines.length > 1;
           one this card already rendered, so the figure on the card issuer's own confirmation and
           the figure on this screen come from the same place. `firstName`/`lastName` is PayMe's
           split of a single Hebrew name — the first word and the rest, which is the honest reading
-          of a name we hold as one string. */}
+          of a name we hold as one string.
+
+          `data-amount` is the GROSS — what the standing order really debits — because it is what
+          the card issuer's own confirmation screen will show. Quoting the net there would put one
+          number on the seller's phone and take another from the card (2026-08-26). */}
       <div
         class="!hidden mt-1"
         id="sub-card-fields"
-        {...(cardOnFile ? { 'data-collapsed': 'true' } : {})}
+        {...(hasCard ? { 'data-collapsed': 'true' } : {})}
         data-first-name={payer.name.trim().split(/\s+/)[0] ?? ''}
         data-last-name={payer.name.trim().split(/\s+/).slice(1).join(' ')}
         data-email={payer.email}
         data-phone={payer.phone}
         data-label={d.subTitle}
-        data-amount={(plan.monthlyFee).toFixed(2)}
+        data-amount={fromAgorot(planGrossAgorot).toFixed(2)}
       >
         {/* ── Fixed tracks, because these boxes contain IFRAMES ──
             An iframe has no intrinsic width to measure, so `auto` columns collapsed to nothing and
@@ -249,15 +320,27 @@ const showBreakdown = paying && lines.length > 1;
             <div id="payme-card-cvc" class="input flex items-center h-[2.6rem] py-0"></div>
           </div>
         </div>
-        <button type="button" class="btn btn--accent btn--sm mt-3" id="sub-card-save" data-store={storeId}>{d.subCardSave}</button>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <button type="button" class="btn btn--accent btn--sm" id="sub-card-save" data-store={storeId}>{d.subCardSave}</button>
+          {/* ── §16: the way back (owner, 2026-08-26) ──
+              *"בעת החלפת הכרטיס, צריך שם אפשרות ביטול כדי להשאיר את הכרטיס הקיים על מקומו. כרגע אין
+              דרך פשוט לחזור אחורה, זה כמו מסיר את הכרטיס."* Opening the form over a saved card left
+              him staring at three empty boxes with no exit but a page reload, which reads as having
+              thrown the card away. Rendered only when there IS a card to go back to — with none,
+              closing the form would close it over nothing. */}
+          {hasCard && <button type="button" class="btn btn--ghost btn--sm" id="sub-card-cancel">{d.payBankCancel}</button>}
+        </div>
         {/* The sentence that makes the whole step acceptable, and it is the first thing under the
-            button rather than the last thing on the card. */}
-        <p class="m-0 mt-2 text-[0.8rem] font-semibold">{d.subCardNoCharge}</p>
-        <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
+            button rather than the last thing on the card.
+
+            Both lines are about the FIRST charge, so they are absent once there is a card being
+            billed — on a REPLACEMENT they would promise a seller who is already paying that nothing
+            will be taken, which is the opposite of true. */}
+        {!hasCard && <p class="m-0 mt-2 text-[0.8rem] font-semibold">{d.subCardNoCharge}</p>}
+        {!hasCard && <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>}
       </div>
 
-    </div>
-  )}
+  </div>
 
   <p class="hidden text-sm [color:var(--color-danger)] mt-3 mb-0" id="sub-error" role="alert"></p>
 
@@ -292,6 +375,21 @@ const showBreakdown = paying && lines.length > 1;
         </div>
       </div>
 
+      {/* ── The payment method, on the one screen that never had one (owner, §9) ──
+          There is no PAN to print — PayMe hold a token and we deliberately store no card digits —
+          so the honest statement is that a card is on file and when it was given. The button is the
+          same `#sub-card-replace` the armed state uses, opening the same form: two controls that
+          did the same thing differently is how two paths to one outcome start disagreeing. */}
+      <div class="mt-3 pt-3 border-t [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
+        <div class="min-w-0">
+          <p class="muted m-0 text-[0.76rem] font-medium">{d.subMethodTitle}</p>
+          <p class="m-0 mt-0.5 text-[0.86rem] font-semibold">
+            {cardSavedAt ? d.subMethodOnFileSince.replace('{date}', cardSavedAt.slice(0, 10)) : d.subMethodOnFile}
+          </p>
+        </div>
+        <button type="button" class="btn btn--ghost btn--sm shrink-0" id="sub-card-replace" aria-controls="sub-card-fields" aria-expanded="false">{d.subCardReplace}</button>
+      </div>
+
       <div class="!hidden mt-3" id="sub-plan-picker">
         <PlanPills storeId={storeId} tier={tier} planNames={planNames} showNote={false} d={d} />
         {/* The date, not "your next charge" — he is deciding whether to switch, and the one thing he
@@ -321,6 +419,41 @@ const showBreakdown = paying && lines.length > 1;
             ? d.subCancelWhenDated.replace('{date}', subscription.nextCharge.slice(0, 10))
             : d.subCancelWhen}
         </p>
+        {/* ── What actually happens after, spelled out (owner, סשן א׳ §6, 2026-08-26) ──
+            *"מה קורה אחרי ביטול המנוי? זה גם צריך הסבר ברור."* The line above says WHEN; this says
+            what the shop and the data do — it comes down from the site at the end of the paid
+            period, everything stays, and renewing brings it back. Three facts, because those are
+            the three things a seller is actually afraid of. */}
+        <p class="muted m-0 mt-2 text-[0.82rem]">{d.subCancelAfter}</p>
+
+        {/* ── The question (owner, §6) ──
+            *"למה אתה רוצה לבטל את המנוי? אפשרות לכתוב מלל חופשי."* Asked here rather than after the
+            fact, because this is the one moment a seller is both motivated and specific.
+
+            **Nothing here is required**, and the confirm button below does not wait for it: a
+            cancellation gated on answering a survey is the dark pattern this panel is built not to
+            be. `parseCancelReason` treats an empty answer as "he did not say", which is a real and
+            permitted state (`lib/subscription-cancel.ts`).
+
+            Buttons and a hidden input rather than radios: it is the same widget as the gender pair
+            on the clearing form and the same one `subscription.ts` paints — a fill for the chosen
+            one and `aria-pressed` beside it, never colour alone. */}
+        <fieldset class="border-0 p-0 m-0 mt-3">
+          <legend class="text-[0.84rem] font-semibold p-0 mb-2">{d.subCancelWhy}</legend>
+          <input type="hidden" id="sub-cancel-reason" value="" />
+          <div class="flex flex-wrap gap-2" id="sub-cancel-reasons">
+            {CANCEL_REASONS.map((reason) => (
+              <button type="button" class="btn btn--ghost btn--sm" data-reason={reason} aria-pressed="false">{reasonLabel(reason)}</button>
+            ))}
+          </div>
+          <label class="field mt-3">
+            <span class="text-[0.82rem]">{d.subCancelNote}</span>
+            {/* `resize:none` is site-wide (Hard rules) and comes from the class; three rows is a
+                paragraph without being an invitation to write an essay nobody will read. */}
+            <textarea class="input" id="sub-cancel-note" rows="3" maxlength="600" placeholder={d.subCancelNotePlaceholder}></textarea>
+          </label>
+        </fieldset>
+
         <div class="flex flex-wrap items-center gap-2 mt-3">
           {/* The retention offer now DOES the thing instead of linking to a page about it. It was
               an `<a href="/pricing">` because a cheaper plan could not be chosen from this card at

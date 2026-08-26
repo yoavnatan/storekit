@@ -19,7 +19,8 @@
  * `#go-live-plans` is what `scripts/dashboard/subscription.ts` binds, and exactly one instance ever
  * renders: the two states are complementary — a shop is either being taken live or is live.
  */
-import { SELLER_TIERS, type SellerTierId } from '../../lib/pricing.js';
+import { SELLER_TIERS, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
+import { fromAgorot, toAgorot } from '../../lib/money.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -39,6 +40,10 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === tier)?.id ?? SELLER_TIERS[
 ---
 
 <div class="flex flex-wrap gap-2" id="go-live-plans" data-store={storeId}>
+  {/* `data-fee-gross` beside `data-fee`, because the click handler rewrites TWO different figures
+      from these pills: the price printed on the card (quoted, before VAT) and the amount the
+      tokenizer quotes to the card issuer, which is what is really debited. Carried rather than
+      computed in the browser — `feeWithVatAgorot` is the server's one definition of it. */}
   {SELLER_TIERS.map((plan) => (
     <button
       type="button"
@@ -47,6 +52,7 @@ const activeTier = (SELLER_TIERS.find((t) => t.id === tier)?.id ?? SELLER_TIERS[
       data-tier={plan.id}
       data-commission={String(plan.commissionPercent)}
       data-fee={String(plan.monthlyFee)}
+      data-fee-gross={fromAgorot(feeWithVatAgorot(toAgorot(plan.monthlyFee))).toFixed(2)}
     >
       {/* `99 ₪`, the shape `formatAgorot` produces and every other figure on this screen uses.
           `₪99` put the sign on the wrong side of the number in an RTL line and made the pills the

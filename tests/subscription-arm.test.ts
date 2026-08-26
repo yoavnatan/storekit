@@ -134,7 +134,9 @@ describe('putting a card on file', () => {
   /** **The assertion this file exists for.** */
   it('reaches PayMe with nothing at all', async () => {
     const res = await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
-    expect(res).toEqual({ status: 'armed', priceAgorot: 9900 });
+    // 11,682 and not 9,900: the armed row records what the card will be DEBITED, VAT included,
+    // because that figure is printed to the seller before anything is charged (2026-08-26).
+    expect(res).toEqual({ status: 'armed', priceAgorot: 11682 });
     // A `generate-subscription` here would charge the first iteration on the spot, which is exactly
     // the review week this whole change exists to stop charging for.
     expect(rig.generated).toEqual([]);
@@ -217,8 +219,8 @@ describe('putting a card on file', () => {
       { storeId: 'b', storeName: 'ב', tier: 'starter', feeAgorot: 9900 },
     ];
     const res = await armSubscriptionCard('seller-1', 'TOKEN-1', {}, CREDS);
-    expect(res).toMatchObject({ status: 'armed', priceAgorot: 22400 });
-    expect((await subscriptionFor('seller-1'))?.priceAgorot).toBe(22400);
+    expect(res).toMatchObject({ status: 'armed', priceAgorot: 26432 });
+    expect((await subscriptionFor('seller-1'))?.priceAgorot).toBe(26432);
   });
 
   // He is committed, not paying. Anything that reads this as "paying" would put his shop on the
@@ -255,7 +257,7 @@ describe('the approval landing', () => {
     expect(await startArmedSubscription('seller-1', CREDS)).toEqual(['shop']);
     expect(rig.generated).toHaveLength(1);
     // The stored token, not one from a request — the seller has been gone for a week.
-    expect(rig.generated[0]).toMatchObject({ buyerKey: 'TOKEN-1', priceAgorot: 9900 });
+    expect(rig.generated[0]).toMatchObject({ buyerKey: 'TOKEN-1', priceAgorot: 11682 });
   });
 
   it('does nothing for a seller who never put a card on file', async () => {

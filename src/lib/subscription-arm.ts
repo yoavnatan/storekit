@@ -31,7 +31,7 @@
  */
 import { firstRow, isUuid, query } from './db.js';
 import { activePaymeCredentials, type PaymeCredentials } from './payment-payme.js';
-import { billedStoresFor, totalFeeAgorot } from './store-plan.js';
+import { billedStoresFor, billedTotalAgorot } from './store-plan.js';
 import { ensureMerchantAccount, merchantBlockFor } from './seller-merchant.js';
 import { getStoresBySellerId } from './stores.js';
 import { store as platform } from '../config/store.config.js';
@@ -79,7 +79,10 @@ export async function armSubscriptionCard(
   if (existing?.providerRef && existing.status !== null) return { status: 'already' };
 
   const storeFees = await billedStoresFor(sellerId, options.including);
-  const priceAgorot = totalFeeAgorot(storeFees);
+  // The BILLED figure, VAT included — the same one `seller-subscription.ts` sends PayMe, so the
+  // armed row and the standing order it becomes cannot hold two different prices
+  // (`store-plan.ts#billedTotalAgorot`).
+  const priceAgorot = billedTotalAgorot(storeFees);
   if (!storeFees.length || priceAgorot <= 0) return { status: 'no-store-to-bill' };
 
   await query(

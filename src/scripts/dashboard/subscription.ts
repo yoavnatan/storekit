@@ -80,9 +80,33 @@ export function initSubscriptionCard(): void {
   // the plan the card is actually paying for, and the button simply springs back.
   const plans = document.getElementById('go-live-plans');
   const storeId = plans?.dataset['store'] ?? document.getElementById('sub-start')?.dataset['store'] ?? '';
+  /**
+   * ── A plan change is explained BEFORE it happens (owner, סשן א׳ §5, 2026-08-26) ──
+   *
+   * *"כשיוזר רוצה להחליף מסלול צריכה להיפתח לו הודעה במודל שמסבירה לו על השינוי, מתי יבוצע השינוי,
+   * במה זה כרוך."* Until now one click on a pill moved the money silently and the only feedback was
+   * a toast afterwards — and when it FAILED, the toast said the clearing company had refused,
+   * which he could not make sense of either: *"למה חברת הסליקה היא זו שאמורה לאשר את שינוי המסלול
+   * בכלל?"*
+   *
+   * The honest answer is the sentence this dialog now carries. The monthly fee is collected by a
+   * standing order held at the processor, so changing the plan means changing the AMOUNT of that
+   * standing order — one `set-price` call to them. They are not approving a business decision of
+   * ours; they are being asked to amend an instruction on his card, and that request can fail like
+   * any other. Because it goes to them FIRST and our row follows only on success
+   * (`api/seller/tier.ts`), a refusal leaves him on the plan his card is actually paying — which is
+   * the one state that is never a lie, and is why the wording says the plan did not change rather
+   * than that something went wrong.
+   *
+   * **Only when there is a standing order to amend.** A seller still choosing his first plan has
+   * nothing at the processor and nothing is charged, so a dialog about a next charge would be a
+   * ceremony in front of a decision he is allowed to change freely.
+   */
+  const subCard = document.getElementById('sub-card');
+  const isPaying = subCard?.dataset['paying'] === 'true';
+
   plans?.querySelectorAll<HTMLButtonElement>('[data-role="plan"]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (btn.classList.contains('btn--accent')) return;  // already on it: a no-op click moves nothing
+    const apply = async (): Promise<void> => {
       const busy = busyButton(btn, btn.textContent?.trim() ?? '');
       try {
         const res = await fetch('/api/seller/tier', {
@@ -93,6 +117,10 @@ export function initSubscriptionCard(): void {
         if (!res.ok) {
           // 502 is the gateway refusing to move a standing order; anything else is ours. Both mean
           // the same thing to the seller — the plan did not change — so both say it.
+          // 502 is the gateway refusing to amend the standing order; anything else is ours. Both
+          // mean the same thing to the seller — the plan did not change and he is still on the one
+          // his card pays for — so both say that, and the 502 additionally names WHO refused,
+          // because "try again" is the right next move for one and not for the other.
           showErrorToast(res.status === 502 ? (t['subGatewayFailed'] ?? '') : (t['subFailed'] ?? ''));
           return;
         }
@@ -123,8 +151,11 @@ export function initSubscriptionCard(): void {
         // Looked up at click time rather than closed over: the card box is declared further down
         // this file, and a handler that reaches backwards for it would depend on the order two
         // unrelated blocks happen to sit in.
+        // The GROSS, from the pill's own `data-fee-gross` — the figure the standing order really
+        // debits, and the one the card issuer's confirmation will show. `data-fee` is the quoted
+        // price and belongs to the label, not to the charge (2026-08-26).
         const box = document.getElementById('sub-card-fields');
-        if (box && btn.dataset['fee']) box.dataset['amount'] = Number(btn.dataset['fee']).toFixed(2);
+        if (box && btn.dataset['feeGross']) box.dataset['amount'] = btn.dataset['feeGross'];
 
         showToast(body.fromNextCharge ? (t['subPlanFromNextCharge'] ?? '') : (t['subPlanSaved'] ?? ''));
       } catch {
@@ -132,6 +163,25 @@ export function initSubscriptionCard(): void {
       } finally {
         busy.done();
       }
+    };
+
+    btn.addEventListener('click', () => {
+      if (btn.classList.contains('btn--accent')) return;  // already on it: a no-op click moves nothing
+      if (!isPaying) { void apply(); return; }
+      const next = document.getElementById('sub-next-charge')?.textContent?.trim().slice(0, 10) ?? '';
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: (t['subPlanConfirmTitle'] ?? '').replace('{plan}', btn.textContent?.trim() ?? ''),
+          // Dated when we know the date, and the rule when we do not — the same pair the cancel
+          // dialog uses, because a seller deciding about money wants the day and not the policy.
+          message: next
+            ? (t['subPlanConfirmBodyDated'] ?? '').replace('{date}', next)
+            : (t['subPlanConfirmBody'] ?? ''),
+          okLabel: t['subPlanConfirmOk'] ?? '',
+          tone: 'primary',
+          onConfirm: () => void apply(),
+        },
+      }));
     });
   });
 
@@ -271,6 +321,26 @@ export function initSubscriptionCard(): void {
   });
 
   /**
+   * ── And the way back out (owner, סשן א׳ §16, 2026-08-26) ──
+   *
+   * *"בעת החלפת הכרטיס, צריך שם אפשרות ביטול… כרגע אין דרך פשוט לחזור אחורה, זה כמו מסיר את
+   * הכרטיס."* Opening the form over a saved card left three empty boxes and no exit but a reload,
+   * which is indistinguishable from having thrown the card away.
+   *
+   * It closes the form and nothing else — the saved card was never touched, because a card is only
+   * replaced by `tokenize` succeeding and the server writing the new token. So there is nothing to
+   * undo, which is exactly what makes this safe to be a plain hide. The error line goes with it:
+   * a refusal from the attempt he just abandoned must not sit under a closed form.
+   */
+  document.getElementById('sub-card-cancel')?.addEventListener('click', () => {
+    fieldsBox?.classList.add('!hidden');
+    error?.classList.add('hidden');
+    cardReplace?.setAttribute('aria-expanded', 'false');
+    // Something moves in both directions, and the control that opened it is where the eye returns.
+    (cardReplace as HTMLElement | null)?.focus();
+  });
+
+  /**
    * ── Taking the card away again ──
    *
    * Only ever offered on a card that has NOT been charged (`SubscriptionCard.astro` renders the
@@ -352,11 +422,40 @@ export function initSubscriptionCard(): void {
     cancel.setAttribute('aria-expanded', String(!panel?.classList.contains('!hidden')));
   });
 
+  /**
+   * ── The one question, asked at the one moment it gets an honest answer (owner, §6) ──
+   *
+   * Same widget as the gender pair on the clearing form: the value lives in a hidden input and the
+   * picture is the fill plus `aria-pressed`, never colour alone. Pressing the chosen one again
+   * clears it — the field is optional, so "I changed my mind about answering" has to be reachable
+   * or the first click is a trap.
+   */
+  const reasonField = document.getElementById('sub-cancel-reason') as HTMLInputElement | null;
+  const reasons = document.getElementById('sub-cancel-reasons');
+  reasons?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-reason]');
+    if (!btn || !reasonField) return;
+    reasonField.value = reasonField.value === btn.dataset['reason'] ? '' : (btn.dataset['reason'] ?? '');
+    for (const other of reasons.querySelectorAll<HTMLButtonElement>('[data-reason]')) {
+      const mine = other.dataset['reason'] === reasonField.value && reasonField.value !== '';
+      other.setAttribute('aria-pressed', String(mine));
+      other.classList.toggle('btn--accent', mine);
+      other.classList.toggle('btn--ghost', !mine);
+    }
+  });
+
   const confirm = document.getElementById('sub-cancel-confirm') as HTMLButtonElement | null;
   confirm?.addEventListener('click', async () => {
     const busy = busyButton(confirm, confirm.textContent?.trim() ?? '');
     try {
-      const data = await post({ action: 'cancel' });
+      // Sent when he answered, absent when he did not — the server records the absence as an
+      // absence rather than as a reason nobody chose. Nothing here blocks on either field.
+      const note = (document.getElementById('sub-cancel-note') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+      const data = await post({
+        action: 'cancel',
+        ...(reasonField?.value ? { cancelReason: reasonField.value } : {}),
+        ...(note ? { cancelNote: note } : {}),
+      });
       if (!data.ok) { fail(); return; }
       // The toast says the one thing he needs: nothing more will be charged, and he keeps what he
       // paid for until the date. The page then re-reads and the card shows that date standing.

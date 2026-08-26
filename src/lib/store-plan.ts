@@ -27,7 +27,7 @@
  * `tests/store-plan.test.ts` can drive it with no database at all.
  */
 import { firstRow, isUuid, query, rows } from './db.js';
-import { monthlyFeeForTier, resolveTier, type SellerTierId } from './pricing.js';
+import { feeWithVatAgorot, feeWithVatPercent, monthlyFeeForTier, resolveTier, type SellerTierId } from './pricing.js';
 import { toAgorot } from './money.js';
 
 /** One line of the monthly charge: a store, the plan it is on, and what that costs per month. */
@@ -45,10 +45,28 @@ export function storeTier(store: { tier?: string }): SellerTierId {
   return resolveTier(store.tier).id;
 }
 
-/** The commission rate a sale in THIS store is charged at. Every sale belongs to exactly one store,
- *  so this is the only commission question the platform ever has to answer. */
+/** The commission rate a sale in THIS store is QUOTED at — the plan's headline percent, before
+ *  VAT. Every sale belongs to exactly one store, so this is the only commission question the
+ *  platform ever has to answer.
+ *
+ *  **This is the platform's REVENUE rate, and it is not what is deducted.** Use
+ *  `chargedCommissionPercentForStore` for anything the seller is billed by or shown as an expense;
+ *  the two differ by VAT and confusing them overstates our own income by 18%. */
 export function commissionPercentForStore(store: { tier?: string }): number {
   return resolveTier(store.tier).commissionPercent;
+}
+
+/**
+ * The rate really taken out of a sale in this store — the quoted percent plus VAT.
+ *
+ * **Two rates, two questions, and keeping them apart is the whole point** (2026-08-26). What we
+ * EARN is `commissionPercentForStore`; what the SELLER PAYS is that plus VAT, because our fee is a
+ * B2B charge quoted before VAT (`pricing.ts`) and the tax is collected inside the same deduction.
+ * PayMe's `market_fee`, the seller's reports and his Performance expense line all mean the second;
+ * the platform's own income statement means the first.
+ */
+export function chargedCommissionPercentForStore(store: { tier?: string }): number {
+  return feeWithVatPercent(commissionPercentForStore(store));
 }
 
 /**
@@ -62,10 +80,27 @@ export function buildStoreFeeLines(stores: { id: string; name: string; tier?: st
   });
 }
 
-/** What the card is charged. A sum of agorot integers — never a sum of shekel floats, which is the
- *  rounding the `money.ts` rules exist to prevent. */
+/** The plans, added up, BEFORE VAT — the figure the breakdown on the subscription card is made of.
+ *  A sum of agorot integers, never a sum of shekel floats, which is the rounding the `money.ts`
+ *  rules exist to prevent. */
 export function totalFeeAgorot(lines: StoreFeeLine[]): number {
   return lines.reduce((sum, l) => sum + l.feeAgorot, 0);
+}
+
+/**
+ * **What the card is actually charged** — the plans plus VAT.
+ *
+ * Until 2026-08-26 the standing order was created at `totalFeeAgorot`, i.e. at the bare fee, while
+ * every screen said "99 ₪ + מע״מ". The promise and the debit were two different numbers. This is
+ * the one place the difference is applied, so the price sent to PayMe, the price stored on the
+ * subscription row and the total printed on the card are one figure by construction.
+ *
+ * VAT is added to the SUM rather than to each line, which is what makes the printed breakdown add
+ * up: three shops at 99 ₪ are 297 ₪ and 350.46 ₪ charged, not three separately-rounded grosses that
+ * miss the total by an agora.
+ */
+export function billedTotalAgorot(lines: StoreFeeLine[]): number {
+  return feeWithVatAgorot(totalFeeAgorot(lines));
 }
 
 /**

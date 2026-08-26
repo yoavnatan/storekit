@@ -135,7 +135,11 @@ describe('starting one', () => {
     expect(res.status).toBe('ok');
     // One shop on `growth` — 125₪, read from the store row, never from the caller. A plan id
     // arriving in a request would be a client-sent price by another name.
-    expect(rig.generated[0]).toMatchObject({ ownMerchantId: 'MPL-OURS', priceAgorot: 12500, correlationId: 'seller-1' });
+    // **14,750 and not 12,500: the standing order carries VAT** (2026-08-26). Our fees are quoted
+    // before it and charged with it, so the debit is 125 × 1.18. The literal is written out rather
+    // than computed from `billedTotalAgorot`, which would make the assertion agree with the code by
+    // construction and pass just as happily if both were wrong.
+    expect(rig.generated[0]).toMatchObject({ ownMerchantId: 'MPL-OURS', priceAgorot: 14750, correlationId: 'seller-1' });
   });
 
   // **The ruling of 2026-08-24, as arithmetic**: *"כל חנות צריכה לעלות כסף בנפרד"*. Before it, a
@@ -147,7 +151,9 @@ describe('starting one', () => {
       { storeId: 'store-2', storeName: 'ב', tier: 'starter', feeAgorot: 9900 },
     ];
     await startSubscription('seller-1', {}, CREDS);
-    expect(rig.generated[0]).toMatchObject({ priceAgorot: 22400 });
+    // 125 + 99 = 224, and 264.32 charged. VAT is added to the SUM and not per line, which is what
+    // makes the breakdown the seller reads add up to the figure on his card statement.
+    expect(rig.generated[0]).toMatchObject({ priceAgorot: 26432 });
   });
 
   // A ₪0 standing order is not a thing PayMe would accept, and it would mean nothing if they did.
@@ -222,7 +228,9 @@ describe('starting one', () => {
 
   it('journals the charge, so a subscription is comparable with PayMe\'s own record', async () => {
     await startSubscription('seller-1', {}, CREDS);
-    expect(rig.events[0]).toMatchObject({ type: 'payment_attempted', amountAgorot: 12500 });
+    // The journal records what was CHARGED, VAT included — it exists to be reconciled against
+    // PayMe's own statement, which is the gross.
+    expect(rig.events[0]).toMatchObject({ type: 'payment_attempted', amountAgorot: 14750 });
   });
 
   // Never throws — it runs behind a button, and an unhandled gateway error there is an error page in
@@ -364,8 +372,9 @@ describe('changing what a paying seller is charged', () => {
     const res = await syncSubscriptionPrice('seller-1', {}, CREDS);
 
     expect(res.status).toBe('updated');
-    // 199₪ — read from `pricing.ts` through the tier, exactly as `startSubscription` reads it.
-    expect(rig.priced).toEqual([{ subId: 'SUB1', agorot: 19900 }]);
+    // 199₪ — read from `pricing.ts` through the tier, exactly as `startSubscription` reads it, and
+    // patched to PayMe as the gross for the same reason it is created as one.
+    expect(rig.priced).toEqual([{ subId: 'SUB1', agorot: 23482 }]);
     // The card the seller already gave us stays where it is. A cancel-and-recreate would ask him to
     // authorise it again for a change he made in one click.
     expect(rig.cancelled).toEqual([]);
@@ -380,11 +389,13 @@ describe('changing what a paying seller is charged', () => {
     const update = rig.queries.find((q) => q.sql.includes('UPDATE seller_subscriptions'));
     // The breakdown travels with the figure: a price with no explanation is what made "why am I
     // charged ₪224" unanswerable on the seller's own screen.
-    expect(update?.params).toEqual(['seller-1', JSON.stringify(rig.stores), 19900]);
+    // The stored price is the CHARGE, and `store_fees` beside it is the plans it is made of, before
+    // VAT — so the card can print סכום · מע״מ · סה״כ from one row without re-deriving anything.
+    expect(update?.params).toEqual(['seller-1', JSON.stringify(rig.stores), 23482]);
     // And the journal carries it, because a monthly charge that changed size is exactly what
     // reconciliation is later asked to explain.
     expect(rig.events).toHaveLength(1);
-    expect(rig.events[0]).toMatchObject({ amountAgorot: 19900, actor: 'seller' });
+    expect(rig.events[0]).toMatchObject({ amountAgorot: 23482, actor: 'seller' });
   });
 
   it('reports failure and writes NOTHING when PayMe refuse', async () => {

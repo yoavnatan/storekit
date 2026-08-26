@@ -25,9 +25,9 @@
  * never believed: `sub_callback_url` is a public address, so a notification is a hint that something
  * changed and the answer is fetched over a call we make with our own key.
  */
-import { firstRow, isUuid, query } from './db.js';
+import { firstRow, isUuid, query, rows } from './db.js';
 import { getSellerById } from './seller-auth.js';
-import { billedStoresFor, totalFeeAgorot, type StoreFeeLine } from './store-plan.js';
+import { billedStoresFor, billedTotalAgorot, type StoreFeeLine } from './store-plan.js';
 import {
   activePaymeCredentials, cancelSubscription as cancelAtPayme, generateSubscription,
   getSubscriptionStatus, PaymeError, PAYME_SUB_STATUS, setSubscriptionPrice, subscriptionIsPaying,
@@ -37,6 +37,13 @@ import { logError } from './error-log.js';
 import { recordMoneyEvent } from './money-events.js';
 import { formatAgorot } from './money.js';
 import { businessDayISO } from './business-day.js';
+
+/** The `money_events.from` value every subscription charge carries.
+ *
+ *  Exported so the fee report selects on a constant rather than on a string typed twice
+ *  (`seller-reports.ts` → `getSellerSubscriptionCharges`). A journal row's identity must be a
+ *  column, never a phrase inside `detail`. */
+export const SUBSCRIPTION_EVENT_STREAM = 'seller-subscription';
 
 /** What a caller may see. **No `buyer_key`** — it is a chargeable token, and the reason it is absent
  *  from this shape is the same one that keeps `callback_secret` off `MerchantAccount`: a secret on
@@ -279,7 +286,11 @@ export async function startSubscription(
    * (`PAYME_MIN_SALE_AGOROT`). It is answered before a single call goes out.
    */
   const storeFees = await billedStoresFor(sellerId, input.including);
-  const priceAgorot = totalFeeAgorot(storeFees);
+  // **The BILLED figure, VAT included** — what the card is really debited. The plans themselves
+  // (`totalFeeAgorot`) are what the printed breakdown is made of; the difference between the two is
+  // the tax, and sending the smaller number is what made the screen and the bank disagree until
+  // 2026-08-26 (`store-plan.ts#billedTotalAgorot`).
+  const priceAgorot = billedTotalAgorot(storeFees);
   if (!storeFees.length || priceAgorot <= 0) return { status: 'no-store-to-bill' };
 
   try {
@@ -320,6 +331,13 @@ export async function startSubscription(
     if (subscriptionIsPaying(created.subStatus)) {
       await recordMoneyEvent({
         type: 'payment_attempted',
+        // **`sellerId` and `from` are what the fee report reads this row BY** (2026-08-26). It used
+        // to carry the seller only inside a Hebrew sentence in `detail`, so the one place that
+        // wants "this seller's subscription charges" would have had to pattern-match prose — a
+        // second definition of the row's identity, in a query, over free text somebody may reword.
+        // `from` is the stream name and `seller_id` is the party; both are columns.
+        sellerId,
+        from: SUBSCRIPTION_EVENT_STREAM,
         amountAgorot: priceAgorot,
         actor: 'system',
         detail: `מנוי חודשי · מוכר ${sellerId} · אסמכתה ${created.subPaymeId}`,
@@ -444,7 +462,11 @@ export async function syncSubscriptionPrice(
   if (!subscriptionRunning(sub)) return { status: 'not-paying' };
 
   const storeFees = await billedStoresFor(sellerId, options.including);
-  const priceAgorot = totalFeeAgorot(storeFees);
+  // **The BILLED figure, VAT included** — what the card is really debited. The plans themselves
+  // (`totalFeeAgorot`) are what the printed breakdown is made of; the difference between the two is
+  // the tax, and sending the smaller number is what made the screen and the bank disagree until
+  // 2026-08-26 (`store-plan.ts#billedTotalAgorot`).
+  const priceAgorot = billedTotalAgorot(storeFees);
 
   /**
    * **A seller who closed his last shop is not "charged ₪0" — he is not charged.** PayMe have a
@@ -535,6 +557,10 @@ export async function syncSubscriptionPrice(
 export async function endSubscription(
   sellerId: string,
   creds: PaymeCredentials | null = activePaymeCredentials(),
+  /** Why he left, as far as he chose to say (owner, סשן א׳ §6). Both halves are optional and
+   *  `null` is a permitted answer: a cancellation that is refused until a reason is picked is the
+   *  retention dark pattern this panel exists not to be (`lib/subscription-cancel.ts`). */
+  why: { reason?: string | null; note?: string | null } = {},
 ): Promise<boolean> {
   const sub = await subscriptionFor(sellerId);
   if (!sub) return false;
@@ -564,9 +590,10 @@ export async function endSubscription(
   await query(
     `UPDATE seller_subscriptions
         SET status = $2, canceled_at = COALESCE(canceled_at, now()), ends_at = $3,
+            cancel_reason = $4, cancel_note = $5,
             buyer_key = NULL, updated_at = now()
       WHERE seller_id = $1`,
-    [sellerId, PAYME_SUB_STATUS.canceled, paidUntil.toISOString()],
+    [sellerId, PAYME_SUB_STATUS.canceled, paidUntil.toISOString(), why.reason ?? null, why.note ?? null],
   );
 
   // The journal, because a subscription ending is a money fact: it is the last charge this seller
@@ -579,7 +606,10 @@ export async function endSubscription(
     // The Israeli business calendar, not a UTC slice: this line is read by a person, and a paid-
     // until date that says the 31st to us and the 1st to him is the class `business-day.ts` exists
     // for (and `tests/money-guards.test.ts` refuses the slice outright).
-    detail: `ביטול מנוי · מוכר ${sellerId} · שולם עד ${businessDayISO(paidUntil)} · אסמכתה ${sub.providerRef ?? '—'}`,
+    // The reason rides on the journal line as well as on the row, because the row is overwritten
+    // if he comes back and cancels again and the journal is not — and "why did sellers leave in
+    // March" is a question about history, not about the current state of five columns.
+    detail: `ביטול מנוי · מוכר ${sellerId} · שולם עד ${businessDayISO(paidUntil)} · אסמכתה ${sub.providerRef ?? '—'}${why.reason ? ` · סיבה ${why.reason}` : ''}`,
   }).catch(() => { /* a lost journal row must not undo a cancellation PayMe already accepted */ });
   return true;
 }
@@ -614,4 +644,45 @@ export async function refreshSubscription(
     [sellerId, upstream.subStatus, upstream.nextDate ?? null],
   );
   return upstream.subStatus;
+}
+
+/**
+ * Re-price every standing order that is running — the one operation the platform's own tax status
+ * changing needs.
+ *
+ * ── Why it exists (owner, 2026-08-26) ──
+ * *"אם אתחיל כעוסק פטור ואז אעבור לעוסק מורשה איך זה ישתקף בפלטפורמה, צריך לפשט את זה."* Flipping
+ * `PLATFORM_BUSINESS_TYPE` changes what every NEW charge is, immediately and everywhere — the price
+ * quoted, the `market_fee` sent with the next sale, every line of copy. What it cannot change by
+ * itself is a standing order that already exists at PayMe: it holds a fixed amount, and until
+ * somebody asks them to amend it, sellers who signed up before the switch go on being charged the
+ * old figure for ever. That is the whole of the complication, and this is the whole of the answer:
+ * flip the variable, restart, run this once.
+ *
+ * **It is `syncSubscriptionPrice` per seller and nothing else.** Not a second definition of the
+ * price, not a bulk UPDATE — the same function the tier route calls, so PayMe are asked first and
+ * our row follows only on success, one seller at a time. A refusal on one seller leaves that seller
+ * on the arrangement his card actually pays and does not stop the rest.
+ *
+ * Sequential on purpose: it runs from a command line or a job, never on a request, and firing
+ * hundreds of concurrent calls at a payment processor is how an integration gets rate-limited.
+ */
+export async function resyncAllSubscriptionPrices(
+  creds: PaymeCredentials | null = activePaymeCredentials(),
+): Promise<{ checked: number; updated: number; failed: string[] }> {
+  const found = await rows<{ seller_id: string }>(
+    // Only what PayMe are really carrying. A cancelled or never-started row has no instruction to
+    // amend, and the next subscription is generated from the shops at the time — at whatever the
+    // rate is then, which is already right.
+    `SELECT seller_id FROM seller_subscriptions WHERE provider_ref IS NOT NULL AND status = $1`,
+    [PAYME_SUB_STATUS.active],
+  );
+  const failed: string[] = [];
+  let updated = 0;
+  for (const row of found) {
+    const moved = await syncSubscriptionPrice(row.seller_id, {}, creds);
+    if (moved.status === 'updated') updated += 1;
+    else if (moved.status === 'failed') failed.push(row.seller_id);
+  }
+  return { checked: found.length, updated, failed };
 }

@@ -1,5 +1,6 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
+import { parseCancelReason, normalizeCancelNote } from '../../../lib/subscription-cancel.js';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { startSubscription, endSubscription, subscriptionFor } from '../../../lib/seller-subscription.js';
@@ -7,6 +8,7 @@ import { armSubscriptionCard, removeArmedCard } from '../../../lib/subscription-
 import { syncStorePublication, publishHoldsFor } from '../../../lib/store-publication.js';
 import { store as platform } from '../../../config/store.config.js';
 import { saveMerchantKyc } from '../../../lib/seller-merchant.js';
+import { activePaymeCredentials } from '../../../lib/payment-payme.js';
 
 /**
  * The seller's monthly subscription — start it, or stop it.
@@ -41,7 +43,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
-  const read = await readJsonBody<{ action?: string; storeId?: unknown; token?: unknown; phone?: unknown }>(request, BODY_LIMIT.form);
+  const read = await readJsonBody<{ action?: string; storeId?: unknown; token?: unknown; phone?: unknown; cancelReason?: unknown; cancelNote?: unknown }>(request, BODY_LIMIT.form);
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
 
   /**
@@ -115,7 +117,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // effect at the END of the period already paid for (owner, 2026-08-24), so what this records is
     // a date. `lib/subscription-lapse.ts` acts on it, on a timer, through the lifecycle module —
     // un-publishing a live shop has a shopper mid-cart on the other side of it.
-    const stopped = await endSubscription(sellerId);
+    // Why he is leaving, as far as he chose to say. Narrowed by `parseCancelReason`, which answers
+    // null for anything it does not recognise — a tampered body must not invent a churn statistic —
+    // and the note is trimmed and capped rather than refused, because a seller who typed too much
+    // should still have his subscription cancelled (`lib/subscription-cancel.ts`).
+    const stopped = await endSubscription(sellerId, activePaymeCredentials(), {
+      reason: parseCancelReason(read.value.cancelReason),
+      note: normalizeCancelNote(read.value.cancelNote),
+    });
     const subscription = await subscriptionFor(sellerId);
     return json({
       ok: stopped,
