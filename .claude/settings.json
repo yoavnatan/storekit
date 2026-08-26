@@ -135,6 +135,16 @@
             "command": "bash .claude/hooks/decision-drift.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node method/enforce/style-check.mjs",
+            "timeout": 15,
+            "statusMessage": "Checking the reply against method/rules/communication.md..."
+          }
+        ]
       }
     ]
   }

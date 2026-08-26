@@ -176,7 +176,7 @@ export default tseslint.config(
 
   {
     // Node scripts and config files, not browser code.
-    files: ['scripts/**', '*.config.{js,mjs,ts}'],
+    files: ['scripts/**', 'method/**', '*.config.{js,mjs,ts}'],
     languageOptions: { globals: globals.node },
     rules: {
       'sonarjs/no-hardcoded-passwords': 'off',
