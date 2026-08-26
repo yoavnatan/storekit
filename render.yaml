@@ -1,0 +1,98 @@
+# The portfolio demonstration's host. See PORTFOLIO_DEMO_PLAN.md.
+#
+# This file describes the deployment; it does NOT carry a single secret. Everything marked
+# `sync: false` is typed into Render's dashboard once and never appears in the repository, and the
+# two generated values are minted by Render itself. A blueprint with a real key in it is a key in
+# the git history for ever.
+#
+# ── Read this before changing a value ────────────────────────────────────────
+#
+# Four of the variables below are the difference between a working demonstration and a dead URL,
+# and each was found by reading the code rather than by deploying and guessing:
+#
+#   PUBLIC_SITE_URL   The Host header is checked against this (`custom-domain.ts#isPlatformHost`).
+#                     Wrong or absent → every page 404s, because an unrecognised host is treated as
+#                     an unclaimed custom domain. It is BUILD-time, so it must be set before the
+#                     first build, not after.
+#   PLATFORM_HOSTS    The runtime half of the same check. Set both.
+#   TRUST_PROXY_IP    Render terminates TLS in front of the app, so without this every visitor
+#                     shares one IP address — and the limits are 30 registrations and 5 admin login
+#                     attempts per 15 minutes (`rate-limit.ts`). The sixth wrong password would lock
+#                     out every visitor at once.
+#   ALLOW_MOCK_CHECKOUT  A production server whose provider cannot take money refuses to sell, by
+#                     design and not by flag (`site-mode.ts`). Without this nobody can complete a
+#                     purchase, which is the flow being demonstrated.
+#
+# ── Deliberately absent ──────────────────────────────────────────────────────
+#
+#   RESEND_API_KEY    Unset, so `sendEmail` falls to the console adapter and nothing leaves the
+#                     server. A demonstration that mails addresses strangers type into it is a spam
+#                     complaint waiting to happen.
+#   PAYME_*           Unset. DEMO_MODE answers those calls locally; setting them would point a
+#                     portfolio site at a real gateway.
+#   GOOGLE_CLIENT_*   Unset until the Render hostname is added to the authorised redirect URIs in
+#                     the Google console. With them set and the URI missing, the sign-in button
+#                     renders and then fails on the way back — worse than not offering it.
+#
+# ── Two things that must NOT point at the owner's own accounts ───────────────
+#
+#   DATABASE_URL      A separate Neon branch. The seeder deletes every store that is not a showcase
+#                     store; against the development database that would destroy real work.
+#   PUBLIC_CLOUDINARY_*  A separate Cloudinary account. The upload preset is UNSIGNED and ships in
+#                     the browser bundle, so on a public URL anybody who reads the page source can
+#                     upload arbitrary files to whichever account these name — with no login. A
+#                     spent quota blocks every upload platform-wide.
+
+services:
+  - type: web
+    name: dezabin-demo
+    runtime: node
+    # Frankfurt: the audience is Israeli and it is the nearest region Render offer.
+    region: frankfurt
+    # NOT `free`. The free instance sleeps after inactivity and cold-starts in about a minute, which
+    # to somebody opening a link from a portfolio is indistinguishable from a broken site.
+    plan: starter
+    buildCommand: npm ci && npm run build
+    # Migrations run BEFORE the new instance takes traffic, and a failure here aborts the deploy
+    # rather than putting up a server whose every query hits a missing relation.
+    preDeployCommand: npm run db:migrate
+    startCommand: npm start
+    # `prestart` refuses to boot without AUTH_SECRET / ADMIN_SECRET / DATABASE_URL, so a missing
+    # secret is a failed deploy and never a site that looks healthy and 500s on the first login.
+    healthCheckPath: /api/health
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_VERSION
+        value: 22.21.0
+
+      # ── The four that decide whether it works at all ──
+      - key: PUBLIC_SITE_URL
+        sync: false          # https://<the service's hostname>, no trailing slash
+      - key: PLATFORM_HOSTS
+        sync: false          # the same hostname, without the scheme
+      - key: TRUST_PROXY_IP
+        value: "1"
+      - key: ALLOW_MOCK_CHECKOUT
+        value: "1"
+
+      # ── What kind of deployment this is ──
+      - key: DEMO_MODE
+        value: "1"
+      - key: SITE_NOINDEX
+        value: "1"           # a demonstration indexed as a real Israeli marketplace is its own problem
+      - key: SCHEDULER_ENABLED
+        value: "1"           # the reset job and the publication sweep both live in it
+
+      # ── Secrets: minted here, never in the repository ──
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: ADMIN_SECRET
+        generateValue: true
+
+      # ── The two that must point somewhere disposable ──
+      - key: DATABASE_URL
+        sync: false          # the DEMO Neon branch — see the header
+      - key: PUBLIC_CLOUDINARY_CLOUD_NAME
+        sync: false          # the DEMO Cloudinary account — see the header
+      - key: PUBLIC_CLOUDINARY_UPLOAD_PRESET
+        sync: false

@@ -4,6 +4,7 @@ import { activePaymeCredentials, isSandbox } from '../../../lib/payment-payme.js
 import { getStoreBySlugOrPrevious } from '../../../lib/stores.js';
 import { merchantAccountFor } from '../../../lib/seller-merchant.js';
 import { getSellerSession } from '../../../lib/seller-auth.js';
+import { isDemoMode } from '../../../lib/demo-mode.js';
 
 /**
  * What the browser needs to draw PayMe's card fields — and nothing else.
@@ -33,6 +34,23 @@ function json(data: Record<string, unknown>, status = 200): Response {
 }
 
 export async function GET({ url, cookies }: APIContext): Promise<Response> {
+  /**
+   * ── The portfolio demonstration, answered before anything else ──
+   *
+   * `active: false` because there is nothing to mount: PayMe's SDK is fetched from THEIR CDN and
+   * initialised with a real publishable key, and the demo's merchants carry a key that is a
+   * plausible-looking string and nothing more. Left to reach this route's normal path, a demo
+   * seller's account has a `public_key` and is approved, so it would answer `active: true` — the
+   * SDK would load, fail to initialise against a key PayMe never issued, and the buyer would be
+   * told the card form is broken. Which it is not; it is absent, and those are different sentences.
+   *
+   * `demo: true` alongside it, because "no gateway" and "a gateway on purpose" want different
+   * screens. The first is a pre-launch state nobody should see, and the checkout says so quietly.
+   * The second is the demonstration working as intended, and the checkout says THAT instead — a
+   * labelled panel where the iframes would be, and a pay button that still completes the order.
+   */
+  if (isDemoMode()) return json({ active: false, demo: true });
+
   const creds = activePaymeCredentials();
   // `{ active: false }` rather than a 404 or a 503. The caller's correct behaviour is identical for
   // "no gateway configured" and "this seller cannot take cards": show no card fields and let the

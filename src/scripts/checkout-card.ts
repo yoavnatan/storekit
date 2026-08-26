@@ -61,6 +61,10 @@ export interface CardConfig {
   active: boolean;
   publicKey?: string;
   testMode?: boolean;
+  /** The portfolio demonstration (`lib/demo-mode.ts`). Always arrives WITH `active: false`, and the
+   *  distinction is the point: `active: false` alone is "no gateway here", which the checkout
+   *  reports as a problem, while this is "no gateway here on purpose", which it explains instead. */
+  demo?: boolean;
 }
 
 /** Only what this file uses. Typed narrowly on purpose: a wide `any` for a third-party global is

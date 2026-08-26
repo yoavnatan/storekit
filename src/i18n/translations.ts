@@ -2631,6 +2631,14 @@ export const translations = {
       cardUnavailable: 'לא ניתן לשלם בכרטיס על ההזמנה הזאת כרגע. נסו להסיר פריטים מחנויות אחרות, או לפנות אלינו.',
       cardLoadFailed: 'טופס הכרטיס לא נטען. רעננו את הדף ונסו שוב.',
       cardDeclined: 'הכרטיס לא התקבל. בדקו את הפרטים או נסו כרטיס אחר.',
+      // ── The portfolio demonstration (lib/demo-mode.ts) ──
+      // Shown INSTEAD of the three card boxes, never beside them, and it is deliberately not
+      // phrased as a failure: `cardUnavailable` above is a state nobody should meet and says what
+      // to do about it; this one is the demonstration behaving exactly as intended and says what is
+      // true instead. The second line is the one that matters to somebody evaluating the site —
+      // the purchase really completes, so the flow being demonstrated is the whole flow.
+      cardDemoTitle: 'טופס הכרטיס מושבת בהדגמה',
+      cardDemoNote: 'באתר האמיתי פרטי הכרטיס נמסרים ישירות לחברת הסליקה, בתוך שדות משלה. כאן לא נאסף שום פרט אשראי. ההזמנה נרשמת במלואה, בלי חיוב.',
       // A single charge per חנות ועוד אחד למשלוח — הקונה יראה כמה שורות בדף האשראי, וזה בדיוק
       // הסוג של הפתעה ששווה משפט אחד מראש.
       cardSplitNote: 'החיוב מתבצע בנפרד לכל חנות, ולכן יופיעו כמה שורות בדף האשראי.',
@@ -4749,6 +4757,8 @@ export const translations = {
       cardUnavailable: 'This order cannot be paid by card right now. Try removing items from other shops, or contact us.',
       cardLoadFailed: 'The card form could not be loaded. Refresh the page and try again.',
       cardDeclined: 'The card was not accepted. Check the details or try another card.',
+      cardDemoTitle: 'Card form disabled in the demo',
+      cardDemoNote: 'On the real site the card is typed into the payment processor’s own fields. Nothing about a card is collected here. The order is recorded in full, with no charge.',
       cardSplitNote: 'Each store is charged separately, so you will see several lines on your statement.',
       changeShipping: 'Change',
       changeShippingMethod: 'Change method',

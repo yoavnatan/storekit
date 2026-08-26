@@ -8,9 +8,11 @@ import { isDemoStore } from '../lib/demo-stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { SHIPPING_RATES, availableDeliveryMethods, offersSelfPickup, type DeliveryMethod } from '../lib/shipping.js';
 import { checkoutIsOpen } from '../lib/site-mode.js';
+import { isDemoMode } from '../lib/demo-mode.js';
 import { CARD_CONTAINERS } from '../scripts/checkout-card.js';
 
 const checkoutOpen = checkoutIsOpen();
+const demoMode = isDemoMode();
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
@@ -287,6 +289,23 @@ for (const s of await getVisibleStores()) {
                 not have (`feedback_no_standing_screen_prose`). */}
             <p id="payme-split-note" class="text-[.8rem] [color:var(--color-muted)] m-0 mt-4" hidden>{c.cardSplitNote}</p>
           </div>
+
+          {/* ── The same box, in the portfolio demonstration ───────────────────────────────────
+              Where PayMe's three iframes would be. It is a SEPARATE element rather than a state of
+              the one above, because that one's whole contract is "these divs belong to PayMe and
+              nothing may be put inside them" — dressing it up with our own content would be the
+              first exception to a rule that is load-bearing.
+
+              Hidden on the server and revealed by the same code path that would have revealed the
+              real form, so a demo visitor sees exactly the sequence a buyer sees: press "continue
+              to payment", the payment step opens, and what is inside it is honest about itself.
+              Never rendered at all outside demo mode. */}
+          {demoMode && (
+            <div id="payme-card-demo" class="bg-[color:var(--color-surface)] rounded-[var(--radius)] p-5 border-[1.5px] [border-color:var(--color-border)] mb-5" hidden>
+              <h3 class="text-[.9375rem] font-semibold [color:var(--color-text)] mb-1">{c.cardDemoTitle}</h3>
+              <p class="text-[.8rem] [color:var(--color-muted)] m-0">{c.cardDemoNote}</p>
+            </div>
+          )}
 
           {/* The platform is live but not selling yet (lib/site-mode.ts). Rendered on the SERVER,
               above the pay button, so the shopper reads it before filling anything in rather than
@@ -1139,6 +1158,18 @@ for (const s of await getVisibleStores()) {
            The old code returned here too, which left a buyer looking at an opened payment step
            with no card form, no message and a pay button that would refuse — the exact shape row
            11 of the area audit is about. Silence is only correct when nothing is wrong. */
+        /* ── The portfolio demonstration, before the failure branch ────────────────────────────
+           `demo: true` also carries `active: false`, so the order of these two blocks is the whole
+           behaviour: read the other way round, a demo visitor would be shown "this order cannot be
+           paid by card" — a refusal, about an order that is about to complete perfectly well.
+           Checked across ALL the configs for the same reason `config` is: any shop answering is
+           enough, and in demo mode every shop answers the same way. */
+        if (configs.some((c) => 'demo' in c && (c as { demo?: boolean }).demo)) {
+          document.getElementById('payme-card-demo')?.removeAttribute('hidden');
+          // `cardRequired` stays false: the submit below sends no token, which is the mock path,
+          // which is the path that actually records the order.
+          return;
+        }
         if (!config?.active) {
           const noneEl = document.getElementById('form-global-error');
           if (noneEl) { noneEl.textContent = i18n['cardUnavailable'] ?? ''; noneEl.classList.remove('hidden'); }

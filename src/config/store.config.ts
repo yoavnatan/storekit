@@ -1,3 +1,5 @@
+import { stripTrailingSlashes } from '../lib/url-base.js';
+
 interface NavLink {
   label: string;
   href: string;
@@ -75,9 +77,47 @@ interface PlatformConfig {
   seo?: SeoConfig;
 }
 
+/**
+ * `PUBLIC_SITE_URL`, read from wherever this module happens to be evaluated.
+ *
+ * Three contexts, and a single expression cannot serve all three. Inside the app it is
+ * `import.meta.env`, inlined at build time. Inside `astro.config.mjs` — which imports this file to
+ * fill `site` — the module is plain Node ESM and `import.meta.env` is UNDEFINED, so reading a
+ * property off it throws before Astro prints anything. In a browser bundle `process` does not
+ * exist. Each access is therefore guarded, and the constant is the answer when none of them has a
+ * value, which is every developer's machine.
+ */
+function siteUrl(): string {
+  const fromImport = typeof import.meta.env === 'object' ? import.meta.env?.PUBLIC_SITE_URL : undefined;
+  const fromProcess = typeof process !== 'undefined' ? process.env?.PUBLIC_SITE_URL : undefined;
+  // Through `url-base.ts` rather than a regex here — a hand-rolled trailing-slash strip is exactly
+  // what `tests/url-base.test.ts` scans the tree for, and it is right to: one canonical URL shape
+  // site-wide is the rule, and a second definition of it is how two of them appear.
+  return stripTrailingSlashes(String(fromImport || fromProcess || 'https://dezabin.co.il'));
+}
+
 export const store: PlatformConfig = {
   name: 'Dezabin',
-  url: 'https://dezabin.co.il',
+  /**
+   * Where this deployment lives. `PUBLIC_SITE_URL` when a host says so, the real domain otherwise.
+   *
+   * **This is the value that decides whether the site answers at all**, and that is not an
+   * overstatement. `astro.config.mjs` passes it to `site`, so it is every canonical tag, every
+   * absolute OG URL and the sitemap — but `custom-domain.ts#isPlatformHost` also compares the
+   * incoming `Host` header against its hostname, and anything that does not match is treated as a
+   * seller's custom domain. On a host this constant has never heard of, that means an unclaimed
+   * custom domain, which means **404 on every page of the site**. A deployment to a hosting
+   * provider's own hostname with this left hard-coded comes up completely dead, with nothing in the
+   * logs that says why.
+   *
+   * `PUBLIC_` and therefore inlined at BUILD time, which is correct here and only here: `site` is
+   * consumed while the static pages are generated, so a runtime variable would arrive too late for
+   * the canonicals it is meant to fix. The runtime half of the same problem is `PLATFORM_HOSTS`
+   * (comma-separated, read through `serverEnv`), and a deployment on an unusual hostname should set
+   * BOTH — this one so the generated URLs are right, that one so a request is recognised even if
+   * the build was made elsewhere.
+   */
+  url: siteUrl(),
   tagline: 'Your store, open today',
   // The platform's own one-line self-description, and it reaches further than it looks: it is the
   // default meta description, the Organization JSON-LD `description`, the OG description, and the
