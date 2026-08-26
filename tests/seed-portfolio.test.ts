@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { query, getDatabase } from '../src/lib/db.js';
 import { DEMO_BUYER_EMAIL, DEMO_SELLER_EMAIL } from '../src/lib/demo-mode.js';
+import { GUEST_SENDER_PREFIX } from '../src/lib/guest-sender.js';
 // The seeder is plain Node with no types; `allowJs` resolves it, and driving the real functions
 // against the real schema is the whole point of this file.
 import { buildTrading, seedClearing, claim, purgeEverythingButShowcase } from '../scripts/seed-portfolio.mjs';
@@ -182,6 +183,63 @@ describe('what the demonstration looks like', () => {
   });
 });
 
+describe('the two inboxes', () => {
+  beforeEach(async () => {
+    await seedOneShowcaseStore();
+    await buildTrading(getDatabase());
+  });
+
+  it('fills the shop inbox, and leaves one thread waiting', async () => {
+    // An inbox where everything has been answered shows the seller nothing to do, which is the one
+    // state that screen exists for. The owner noticed the empty version immediately.
+    const { rows } = await query<{ total: number; unread: number }>(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE NOT read_by_seller AND reply_to_id IS NULL)::int AS unread
+         FROM messages`);
+    expect(rows[0]!.total).toBeGreaterThan(0);
+    expect(rows[0]!.unread).toBeGreaterThan(0);
+  });
+
+  it('sends some threads from a signed-in buyer and some from a guest', async () => {
+    // The two behave differently — `guest-sender.ts` decides whether a reply can become an in-app
+    // notification or has to be a letter — so a demo carrying only one hides half the mechanism.
+    const { rows } = await query<{ guests: number; accounts: number }>(
+      `SELECT count(*) FILTER (WHERE from_user_id LIKE $1 || '%')::int AS guests,
+              count(*) FILTER (WHERE from_user_id NOT LIKE $1 || '%')::int AS accounts
+         FROM messages WHERE reply_to_id IS NULL`, [GUEST_SENDER_PREFIX]);
+    expect(rows[0]!.guests).toBeGreaterThan(0);
+    expect(rows[0]!.accounts).toBeGreaterThan(0);
+  });
+
+  it('writes a reply as a row in the thread, not as a field on the first message', async () => {
+    const { rows } = await query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM messages r
+        WHERE r.reply_to_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM messages root WHERE root.id = r.reply_to_id)`);
+    expect(rows[0]!.n, 'every reply points at a root that exists').toBe(0);
+    const replies = await query<{ n: number }>('SELECT count(*)::int AS n FROM messages WHERE reply_to_id IS NOT NULL');
+    expect(replies.rows[0]!.n).toBeGreaterThan(0);
+  });
+
+  it('fills the platform inbox with some unread, so the tab and the bell carry a number', async () => {
+    const { rows } = await query<{ total: number; unread: number }>(
+      `SELECT count(*)::int AS total, count(*) FILTER (WHERE NOT read_by_admin)::int AS unread
+         FROM admin_messages`);
+    expect(rows[0]!.total).toBeGreaterThan(0);
+    expect(rows[0]!.unread).toBeGreaterThan(0);
+  });
+
+  it('does not multiply the platform inbox on a rebuild', async () => {
+    // `messages` cascades away with its store; `admin_messages` hangs off a SELLER, and the
+    // showcase owner is deliberately kept by the purge — so without an explicit clear the admin
+    // inbox grew by four every hour the reset job ran.
+    const before = await query<{ n: number }>('SELECT count(*)::int AS n FROM admin_messages');
+    await buildTrading(getDatabase());
+    const after = await query<{ n: number }>('SELECT count(*)::int AS n FROM admin_messages');
+    expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
+  });
+});
+
 describe('the clearing account behind the Payments tab', () => {
   it('back-dates the merchant so a shop trading for a quarter is not stuck in review', async () => {
     await seedOneShowcaseStore();
@@ -229,5 +287,9 @@ describe('the identities that live in two files', () => {
     expect(seeder).toContain(`'${DEMO_BUYER_EMAIL}'`);
     const seedDb = readFileSync(new URL('../scripts/lib/seed-db.mjs', import.meta.url), 'utf8');
     expect(seedDb).toContain(`'${DEMO_SELLER_EMAIL}'`);
+    // The guest-sender prefix is the third of these, and the one with teeth: it decides whether a
+    // reply becomes an in-app notification or a letter, and `tests/guest-sender.test.ts` scans
+    // `src/` only — so the seeder's copy is outside that net and needs this.
+    expect(seeder).toContain(`const GUEST_PREFIX = '${GUEST_SENDER_PREFIX}'`);
   });
 });
