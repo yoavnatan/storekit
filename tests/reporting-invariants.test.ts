@@ -33,9 +33,11 @@ import { summarizeTransfers } from '../src/lib/seller-transfers.js';
 const platformTotals = (bs: readonly SellerBalance[]) => ({
   grossRevenueAgorot: bs.reduce((a, b) => a + b.grossRevenueAgorot, 0),
   commissionAgorot: bs.reduce((a, b) => a + b.commissionAgorot, 0),
+  commissionVatAgorot: bs.reduce((a, b) => a + b.commissionVatAgorot, 0),
   totalEarnedAgorot: bs.reduce((a, b) => a + b.totalEarnedAgorot, 0),
 });
 import { commissionOnAgorot, commissionPercentForTier } from '../src/lib/pricing.js';
+import { chargedCommissionPercentForStore } from '../src/lib/store-plan.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
 import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
@@ -607,19 +609,48 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     ['inv-third', { totalRevenueAgorot: 250_000, monthRevenueAgorot: 5_000 }],
   ]);
 
+  /**
+   * ── THREE parts, not two (2026-08-26) ──
+   *
+   * A sale's gross splits into what we earn, the VAT charged on top of it, and what the seller
+   * keeps — and the middle one is the state's, so it is neither of the other two. It closes on the
+   * gross exactly because `buildSellerBalances` rounds each rate once and takes the tax as the
+   * difference between them.
+   *
+   * Written as a two-way close until this date, which is why nothing noticed when `market_fee`
+   * started carrying VAT and the seller's takings here stopped matching the money PayMe sent him.
+   */
   it('the parts sum to the whole, at every level', () => {
     const balances = buildSellerBalances(SELLERS, STORES, REVENUE);
     for (const b of balances) {
-      expectSameMoney(b.commissionAgorot + b.totalEarnedAgorot, b.grossRevenueAgorot, `${b.sellerId}: commission + earned vs gross`);
+      expectSameMoney(b.commissionAgorot + b.commissionVatAgorot + b.totalEarnedAgorot, b.grossRevenueAgorot, `${b.sellerId}: commission + vat + earned vs gross`);
       expectSameMoney(b.stores.reduce((a, s) => a + s.totalEarnedAgorot, 0), b.totalEarnedAgorot, `${b.sellerId}: stores vs seller total`);
+      expectSameMoney(b.stores.reduce((a, s) => a + s.commissionVatAgorot, 0), b.commissionVatAgorot, `${b.sellerId}: store vat vs seller vat`);
       expectSameMoney(b.stores.reduce((a, s) => a + s.grossRevenueAgorot, 0), b.grossRevenueAgorot, `${b.sellerId}: store gross vs seller gross`);
       for (const store of b.stores) {
-        expectSameMoney(store.commissionAgorot + store.totalEarnedAgorot, store.grossRevenueAgorot, `${store.storeSlug}: closes`);
+        expectSameMoney(store.commissionAgorot + store.commissionVatAgorot + store.totalEarnedAgorot, store.grossRevenueAgorot, `${store.storeSlug}: closes`);
       }
     }
     const totals = platformTotals(balances);
     expectSameMoney(balances.reduce((a, b) => a + b.totalEarnedAgorot, 0), totals.totalEarnedAgorot, 'platform total vs seller rows');
-    expectSameMoney(totals.commissionAgorot + totals.totalEarnedAgorot, totals.grossRevenueAgorot, 'platform totals close');
+    expectSameMoney(totals.commissionAgorot + totals.commissionVatAgorot + totals.totalEarnedAgorot, totals.grossRevenueAgorot, 'platform totals close');
+  });
+
+  it('the VAT is a real part of the split, and it is not ours', () => {
+    // Non-vacuous on purpose: a zero here would let the three-way close above pass as the old
+    // two-way one and hide exactly the regression it was rewritten for.
+    const balances = buildSellerBalances(SELLERS, STORES, REVENUE);
+    const withRevenue = balances.filter((b) => b.grossRevenueAgorot > 0);
+    expect(withRevenue.length).toBeGreaterThan(0);
+    for (const b of withRevenue) {
+      expect(b.commissionVatAgorot).toBeGreaterThan(0);
+      // Our income never carries it: the VAT is exactly the gap between the quoted rate and the
+      // rate PayMe deduct, and `chargedCommissionPercentForStore` is the only definition of that.
+      const expected = b.stores.reduce((a, st) => a
+        + commissionOnAgorot(st.grossRevenueAgorot, chargedCommissionPercentForStore({ tier: STORES.find((x) => x.id === st.storeId)!.tier }))
+        - commissionOnAgorot(st.grossRevenueAgorot, commissionPercentForTier(STORES.find((x) => x.id === st.storeId)!.tier as 'starter')), 0);
+      expectSameMoney(b.commissionVatAgorot, expected, `${b.sellerId}: vat is the gap between the two rates`);
+    }
   });
 
   it('never reports a seller more than the mall took, or less than nothing', () => {
@@ -676,7 +707,13 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
   it('is the same number the seller\'s own performance tab shows', () => {
     // Two surfaces, one fact: the admin's "יתרה למוכר/ת" and the seller's "net profit" are the
     // same subtraction, so they must not be able to disagree by an agora of rounding.
-    const rate = commissionPercentForTier('starter');
+    // **The rates production actually passes, and they are not the same one.** The seller's
+    // Performance tab is built with `chargedCommissionPercentForStore` (his expense, VAT included —
+    // `api/seller/performance.ts`), and the admin balance keeps the quoted rate for our own income.
+    // Passing one rate to both, which this test did until 2026-08-26, made the two surfaces agree
+    // in the test and differ by the VAT on every real screen.
+    const tier = 'starter';
+    const rate = chargedCommissionPercentForStore({ tier });
     const sales = [
       makeOrder('bal-1', { items: [{ productId: 'p1', priceAgorot: 1999, qty: 3 }], shippingAgorot: 2500 }),
       makeOrder('bal-2', { items: [{ productId: 'p1', priceAgorot: 10000, qty: 1 }], shippingAgorot: 0, discount: { type: 'percent', value: 25, appliedAgorot: 2500 } }),
@@ -684,7 +721,7 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     const summary = buildPerformanceSummary(sales, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', rate);
     const balances = buildSellerBalances(
       [SELLERS[0]!],
-      [{ id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a' }],
+      [{ id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a', tier }],
       new Map([[STORE, { totalRevenueAgorot: summary.totalRevenueAgorot, monthRevenueAgorot: 0 }]]),
     );
     // Non-vacuous: two surfaces agreeing on zero would prove nothing, and the commission on this
@@ -692,7 +729,46 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     expect(summary.totalRevenueAgorot).toBeGreaterThan(0);
     expect((summary.totalRevenueAgorot * rate) % 100).not.toBe(0);
     expectSameMoney(balances[0]!.totalEarnedAgorot, summary.netProfitAgorot, 'admin balance vs seller net profit');
-    expectSameMoney(balances[0]!.commissionAgorot, summary.platformCommissionAgorot, 'admin commission vs seller commission');
+    // The seller's tab states the whole deduction; the admin card splits it into our income and the
+    // tax. Same money, named twice — so the two must add back up to the one number he was charged.
+    expectSameMoney(balances[0]!.commissionAgorot + balances[0]!.commissionVatAgorot, summary.platformCommissionAgorot, 'admin commission + vat vs seller commission');
+  });
+
+  /**
+   * ── The admin's two platform lines, against the seller rows underneath them ──
+   *
+   * `AdminPerformancePanel.astro` prints "הכנסות מעמלות" from `platformCommissionAgorot` and
+   * "תשלום למוכרים" from `netProfitAgorot`, and the seller cards on the same dashboard print the
+   * per-seller halves of exactly those two figures. They are computed by two different modules
+   * from two different queries, which is the shape this whole file exists for — and until
+   * 2026-08-26 the platform line subtracted our own cut rather than the fee PayMe deduct, so it
+   * overstated what the sellers were paid by the VAT on every commission.
+   */
+  it('the platform panel\'s income and payout lines are the seller rows added up', () => {
+    const stores = [
+      { id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a', tier: 'starter' },
+      { id: 'st-2', slug: OTHER, name: 'S2', sellerId: 'sel-a', tier: 'enterprise' },
+    ];
+    const sales = [
+      makeOrder('pp-1', { items: [{ productId: 'p1', priceAgorot: 1999, qty: 3 }], shippingAgorot: 2500 }),
+      makeOrder('pp-2', { items: [{ productId: 'p1', priceAgorot: 10000, qty: 1, storeSlug: OTHER }], shippingAgorot: 0 }),
+    ];
+    const from = '2026-07-01', to = '2026-07-31';
+    const perf = buildPlatformPerformance(
+      buildPlatformSales(sales, [STORE, OTHER], from, to, 'day'),
+      buildPlatformStoreInputs(stores), NO_VIEWS, from, to, 'day',
+    );
+    const revenueBySlug = new Map(perf.stores.map((r) => [r.slug, { totalRevenueAgorot: r.revenueAgorot, monthRevenueAgorot: 0 }]));
+    const balances = buildSellerBalances([SELLERS[0]!], stores, revenueBySlug);
+    const totals = platformTotals(balances);
+
+    // Non-vacuous: zero on both sides would prove nothing, and the VAT has to be a real figure or
+    // this passes just as well against the bug it was written for.
+    expect(perf.summary.totalRevenueAgorot).toBeGreaterThan(0);
+    expect(totals.commissionVatAgorot).toBeGreaterThan(0);
+
+    expectSameMoney(perf.summary.platformCommissionAgorot, totals.commissionAgorot, 'platform commission income vs seller rows');
+    expectSameMoney(perf.summary.netProfitAgorot, totals.totalEarnedAgorot, 'platform seller payout vs seller rows');
   });
 });
 

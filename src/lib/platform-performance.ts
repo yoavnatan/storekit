@@ -11,8 +11,8 @@ import {
 } from './seller-performance.js';
 import { EMPTY_STORE_SALES, PRODUCT_QUERY_MAX, type PlatformSales, type StoreSales } from './order-reporting.js';
 import { EMPTY_VIEW_STATS, type StoreViewStats } from './store-pageviews.js';
-import { blendedCommissionRate } from './pricing.js';
-import { commissionPercentForStore } from './store-plan.js';
+import { blendedCommissionRate, commissionOnAgorot } from './pricing.js';
+import { chargedCommissionPercentForStore, commissionPercentForStore } from './store-plan.js';
 
 // Platform-wide ("app-wide") twin of seller-performance.ts's per-store summary,
 // for the ADMIN performance tab. It does NOT re-implement any of the bucketing/
@@ -44,6 +44,12 @@ export interface PlatformStoreInput {
    *  Passed in per store rather than as one platform-wide rate: sellers sit on different tiers,
    *  so a single number would silently misreport the moment the second tier is sold. Absent = 0. */
   commissionPercent?: number;
+  /** The same store's rate as PayMe really DEDUCT it — the quoted percent plus VAT
+   *  (`store-plan.ts#chargedCommissionPercentForStore`). Carried beside the quoted one because the
+   *  panel above prints both questions: our income comes off `commissionPercent`, and the seller
+   *  payout line is the gross less THIS. Absent falls back to `commissionPercent`, which is the
+   *  right answer for an עוסק פטור platform and the old behaviour for an older caller. */
+  chargedCommissionPercent?: number;
 }
 
 /** Attaches each store's commission rate, resolved from its OWNER's pricing tier — the one place
@@ -66,6 +72,7 @@ export function buildPlatformStoreInputs(
     // `chargedCommissionPercentForStore` (the rate plus VAT) is the seller-facing one; using it
     // here would report 18% of our income that belongs to the state (2026-08-26).
     commissionPercent: commissionPercentForStore(s),
+    chargedCommissionPercent: chargedCommissionPercentForStore(s),
   }));
 }
 
@@ -93,8 +100,9 @@ export interface PlatformPerformance {
   // so the exact same charts / KPI markup / client script (performance.ts) can
   // render it unchanged. `platformCommissionAgorot`/`netProfitAgorot` are re-purposed by the
   // admin panel's LABELS: at platform level the commission is the platform's own
-  // income and netProfitAgorot is what gets paid out to sellers (the numbers are the
-  // same, only the framing differs from the seller's expense view).
+  // income and netProfitAgorot is what gets paid out to sellers. Since 2026-08-26 those are
+  // genuinely two subtractions rather than one framed twice — the payout is net of the VAT
+  // charged on the commission as well, because PayMe deduct both inside one `market_fee`.
   summary: PerformanceSummary;
   /** EVERY store, revenue-desc, each flagged `active` or not. Never rendered as-is —
    *  the breakdown table is a searchable, paginated view over this (selectStoreRows),
@@ -305,6 +313,11 @@ export function buildPlatformPerformance(
   let totalUniqueVisitors = 0;
   // Summed from each store's OWN tier rate — never one rate applied to the platform total.
   let totalCommission = 0;
+  // And the same sum at the rate that is actually deducted. **Two totals, because the panel asks
+  // two questions** (2026-08-26): our income is the commission before VAT, and what the sellers
+  // are paid is the gross less the whole `market_fee`, tax included. One total answering both
+  // reported a payout 18% of the commission higher than the money PayMe sent.
+  let totalCharged = 0;
 
   for (const store of stores) {
     const s = assemblePerformanceSummary(
@@ -314,6 +327,7 @@ export function buildPlatformPerformance(
     );
     totalRevenueAgorot += s.totalRevenueAgorot;
     totalCommission += s.platformCommissionAgorot;
+    totalCharged += commissionOnAgorot(s.totalRevenueAgorot, store.chargedCommissionPercent ?? store.commissionPercent ?? 0);
     totalOrders += s.totalOrders;
     totalViews += s.totalViews;
     totalUniqueVisitors += s.totalUniqueVisitors;
@@ -361,7 +375,10 @@ export function buildPlatformPerformance(
   // sums per-store figures rather than applying one blended rate to the platform total), so the
   // sum is already whole.
   const platformCommissionAgorot = totalCommission;
-  const netProfitAgorot = totalRevenueAgorot - platformCommissionAgorot;
+  // **Less the CHARGED deduction, not our own cut.** At platform level this field is labelled
+  // "תשלום למוכרים" (`AdminPerformancePanel.astro`), and what reaches a seller is the gross minus
+  // PayMe's `market_fee` — which carries the VAT on our commission along with it.
+  const netProfitAgorot = totalRevenueAgorot - totalCharged;
   // Conversion = orders / unique visitors (matches the seller tab's definition),
   // falling back to total views when no visitor ids exist (legacy/demo data).
   // This is the reason the de-dup above is worth a second query: an inflated denominator here is a

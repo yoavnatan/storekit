@@ -105,10 +105,16 @@ const sortLabels: Record<string, string> = {
               <span class="admin-seller-card__stat-value">{formatAgorot(revenue.monthRevenueAgorot)}</span>
             </span>
             {/* The tile the other four do not answer: "הכנסות" is what the shopper paid, this is
-                what the seller is left with once the platform's commission comes out. Deliberately
+                what the seller is left with once the platform's deduction comes out. Deliberately
                 the last tile — it is a consequence of the one before it, and reading them in that
-                order is what makes the pair legible. */}
-            <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`סך הכל מאז שנפתחה החנות, אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)}). דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
+                order is what makes the pair legible.
+
+                The tooltip names the commission AND the VAT charged on it, because the figure
+                beside it is net of both: PayMe deduct one `market_fee` and that fee is the rate
+                plus tax (`store-plan.ts#chargedCommissionPercentForStore`). Quoting the bare rate
+                over a number that had more than the bare rate taken out is the arithmetic a reader
+                cannot reproduce. */}
+            <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`סך הכל מאז שנפתחה החנות, אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)})${(balance?.commissionVatAgorot ?? 0) > 0 ? ` ומע״מ עליה (${formatAgorot(balance!.commissionVatAgorot)})` : ''}. דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
               <span class="admin-seller-card__stat-label">רווח מצטבר</span>
               <span class="admin-seller-card__stat-value">{formatAgorot(balance?.totalEarnedAgorot ?? 0)}</span>
             </span>

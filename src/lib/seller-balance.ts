@@ -1,7 +1,7 @@
 import type { Seller } from './seller-auth.js';
 import type { StoreRevenue } from './order-reporting.js';
 import { blendedCommissionRate, commissionOnAgorot } from './pricing.js';
-import { commissionPercentForStore } from './store-plan.js';
+import { chargedCommissionPercentForStore, commissionPercentForStore } from './store-plan.js';
 
 /**
  * What each seller has EARNED — the reporting view named in AI_INSTRUCTIONS.md's data models and in
@@ -23,7 +23,8 @@ import { commissionPercentForStore } from './store-plan.js';
  * **What it is NOT net of: the monthly subscription fee.** The tier model is a fixed monthly fee
  * PLUS a per-sale commission, charged additively and never offset (lib/pricing.ts). The fee is
  * billed to the seller's card, not withheld from their sales, so subtracting it here would report a
- * balance the processor will not pay. Only the commission comes out.
+ * balance the processor will not pay. Only the per-sale deduction comes out — the commission and
+ * the VAT charged on it, which travel together inside PayMe's one `market_fee`.
  *
  * Every figure is integer agorot, like every other sum in this codebase (§7.7). The canonical model
  * line writes `totalEarned`; the field is `totalEarnedAgorot` for the same reason
@@ -38,9 +39,12 @@ export interface SellerStoreBalance {
   /** Net subtotals of this store's revenue-counting orders, all time — the same basis and the same
    *  query every other per-store revenue figure on the platform reads (`order-reporting.ts`). */
   grossRevenueAgorot: number;
-  /** The platform's cut, at the OWNING SELLER's tier rate. */
+  /** The platform's OWN income from this store, at the store's plan rate, before VAT. */
   commissionAgorot: number;
-  /** gross − commission: what the processor pays the seller for this store. */
+  /** The VAT collected inside the same deduction. Ours to pass on, never ours to keep, and never
+   *  part of `commissionAgorot` — see `buildSellerBalances`. Zero when the platform is עוסק פטור. */
+  commissionVatAgorot: number;
+  /** gross − (commission + its VAT): what the processor actually pays the seller for this store. */
   totalEarnedAgorot: number;
 }
 
@@ -54,6 +58,7 @@ export interface SellerBalance {
   commissionRate: number;
   grossRevenueAgorot: number;
   commissionAgorot: number;
+  commissionVatAgorot: number;
   totalEarnedAgorot: number;
   /** Per store, in the order the caller supplied the stores. */
   stores: SellerStoreBalance[];
@@ -96,19 +101,34 @@ export function buildSellerBalances(
       // statement is built from — so it must not carry the VAT collected inside the same deduction,
       // which is the state's and not ours. `chargedCommissionPercentForStore` is the other question
       // ("what did the seller pay"), and it belongs to his reports, not to this table.
+      //
+      // **Both rates, because they answer two different questions and only one of them is ours.**
+      // `commissionAgorot` is the platform's own income and stays at the QUOTED percent — the income
+      // statement must not carry the VAT collected inside the same deduction, which is the state's.
+      // What the SELLER is left with is a different subtraction: PayMe deduct `market_fee`, and
+      // `market_fee` is the charged rate (`api/checkout.ts`, 2026-08-26), so the money that reaches
+      // him is short by the tax too. Subtracting only our own cut here printed a seller's takings
+      // 18% of the commission too high, and disagreed with the same figure on his own Performance
+      // tab and on his sales report, both of which already use the charged rate.
+      //
+      // Each rounded once at its own rate and the VAT taken as the difference, so the three numbers
+      // close on the gross exactly: commission + VAT + earned === gross, by construction.
       const commissionAgorot = commissionOnAgorot(grossRevenueAgorot, commissionPercentForStore(store));
+      const chargedAgorot = commissionOnAgorot(grossRevenueAgorot, chargedCommissionPercentForStore(store));
       return {
         storeId: store.id,
         storeSlug: store.slug,
         storeName: store.name,
         grossRevenueAgorot,
         commissionAgorot,
-        totalEarnedAgorot: grossRevenueAgorot - commissionAgorot,
+        commissionVatAgorot: chargedAgorot - commissionAgorot,
+        totalEarnedAgorot: grossRevenueAgorot - chargedAgorot,
       };
     });
 
     const grossRevenueAgorot = storeBalances.reduce((sum, s) => sum + s.grossRevenueAgorot, 0);
     const commissionAgorot = storeBalances.reduce((sum, s) => sum + s.commissionAgorot, 0);
+    const commissionVatAgorot = storeBalances.reduce((sum, s) => sum + s.commissionVatAgorot, 0);
     return {
       sellerId: seller.id,
       // **Revenue-weighted actual, not one plan's rate.** A seller may hold two shops on two plans
@@ -119,6 +139,7 @@ export function buildSellerBalances(
       commissionRate: blendedCommissionRate(grossRevenueAgorot, commissionAgorot),
       grossRevenueAgorot,
       commissionAgorot,
+      commissionVatAgorot,
       totalEarnedAgorot: storeBalances.reduce((sum, s) => sum + s.totalEarnedAgorot, 0),
       stores: storeBalances,
     };
