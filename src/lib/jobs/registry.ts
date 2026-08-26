@@ -37,6 +37,8 @@ import { runReturnsSweep } from '../returns-run.js';
 import { runReviewInvites, reviewInviteRunLine } from '../review-invite-run.js';
 import { runInboxDigest } from '../inbox-digest.js';
 import { runStorePublicationSweep } from '../store-publication-run.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { isDemoMode, DEMO_PUBLICATION_INTERVAL_SEC } from '../demo-mode.js';
 import { runSubscriptionLapseSweep } from '../subscription-lapse.js';
 import { resyncAllSubscriptionPrices } from '../seller-subscription.js';
@@ -54,6 +56,8 @@ export interface Job {
   /** Does the work and returns the one line recorded on the row. Must not throw. */
   run(): Promise<string>;
 }
+
+const execFileAsync = promisify(execFile);
 
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
@@ -594,4 +598,49 @@ const subscriptionPriceSync: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse, subscriptionPriceSync, paymeInvoices];
+/**
+ * Put the portfolio demonstration back the way it was — hourly, and only there.
+ *
+ * A public demonstration is a shared exhibit: anybody can delete a product, cancel an order, close
+ * a shop or empty a catalogue, and within a day the thing the owner is showing people is a broken
+ * version of itself. The answer is not a permission system — a demonstration nobody may change
+ * demonstrates nothing — it is that damage does not last.
+ *
+ * **It shells out to `scripts/seed-portfolio.mjs` rather than reimplementing it.** That script owns
+ * what the demonstration IS, and a second copy of that answer living inside the server is exactly
+ * the drift `feedback_bug_defence_layers` is about. It also means the reset a visitor triggers and
+ * the reset the owner runs by hand are literally the same code.
+ *
+ * The script refuses on any database that has not been claimed as the demonstration one, so this
+ * job is harmless even if `DEMO_MODE` is ever set somewhere it should not be — the gate is the
+ * database, not the flag (`seed-db.mjs` → SEED_SCOPES).
+ *
+ * Never throws: `execFile` is promisified and its rejection is caught into the run line, because a
+ * job that throws is a job the scheduler records as failed and retries in a loop.
+ */
+const demoReset: Job = {
+  name: 'demo-reset',
+  intervalSec: HOUR,
+  // Generously above the realistic worst case: the script reseeds four stores and 400 products.
+  leaseSec: 15 * MINUTE,
+  async run() {
+    try {
+      const { stdout } = await execFileAsync(process.execPath, ['scripts/seed-portfolio.mjs'], {
+        cwd: process.cwd(),
+        timeout: 10 * 60_000,
+        maxBuffer: 4 * 1024 * 1024,
+      });
+      const last = stdout.trim().split('\n').filter(Boolean).at(-1) ?? '';
+      return `demo rebuilt — ${last.trim()}`;
+    } catch (err) {
+      return `demo reset FAILED — ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`;
+    }
+  },
+};
+
+const ALWAYS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse, subscriptionPriceSync, paymeInvoices];
+
+/** The demo reset is REGISTERED conditionally rather than made a no-op when the flag is off. A job
+ *  that exists and returns "nothing to do" still claims a row, writes a run and appears in the
+ *  admin's job list on the real site — advertising a scheduled task that empties the database. */
+export const JOBS: readonly Job[] = isDemoMode() ? [...ALWAYS, demoReset] : ALWAYS;
