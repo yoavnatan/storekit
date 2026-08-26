@@ -49,9 +49,18 @@ services:
     runtime: node
     # Frankfurt: the audience is Israeli and it is the nearest region Render offer.
     region: frankfurt
-    # NOT `free`. The free instance sleeps after inactivity and cold-starts in about a minute, which
-    # to somebody opening a link from a portfolio is indistinguishable from a broken site.
-    plan: starter
+    # `free` — chosen 2026-08-26, and the trade-off is stated rather than hidden.
+    #
+    # A free instance SLEEPS after inactivity and cold-starts in about a minute, which to somebody
+    # opening a link from a portfolio is hard to tell from a broken site. `starter` avoids that for
+    # $7 a month and is the right plan the day this link is being sent to people who matter.
+    #
+    # It starts free because a blueprint naming a paid plan makes Render ask for a card before the
+    # demonstration has been seen working even once, and paying to find out whether a thing works is
+    # the wrong order. Changing it is a dropdown in the Render dashboard (Settings → Instance Type)
+    # and needs no deploy — so this line is the starting point, not a decision that has to be got
+    # right now.
+    plan: free
     buildCommand: npm ci && npm run build
     # Migrations run BEFORE the new instance takes traffic, and a failure here aborts the deploy
     # rather than putting up a server whose every query hits a missing relation.
