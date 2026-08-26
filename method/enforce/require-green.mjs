@@ -27,7 +27,21 @@ const MAX_BLOCKS = 2
 
 try { readFileSync(0, 'utf8') } catch { /* drain the hook payload; nothing here needs it */ }
 
-if (!existsSync(join(ROOT, 'method', 'checks.json'))) process.exit(0)
+const checksFile = join(ROOT, 'method', 'checks.json')
+if (!existsSync(checksFile)) process.exit(0)
+
+// An empty checks file is the one state this gate cannot enforce its way out of: blocking here would
+// deadlock the very session that is meant to create the project. So it passes — but never silently.
+// A project whose gate declares nothing prints green forever, and that green means nothing.
+try {
+  if (!(JSON.parse(readFileSync(checksFile, 'utf8')).checks || []).length) {
+    console.error(
+      'method/checks.json declares no checks, so there is no gate on this project yet. ' +
+      'Say so in the summary rather than reporting anything as verified.',
+    )
+    process.exit(0)
+  }
+} catch { process.exit(0) }
 
 /** What the working tree looks like right now — the key the block counter is stored against. */
 function diffFingerprint() {

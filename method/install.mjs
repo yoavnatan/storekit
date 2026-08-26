@@ -119,10 +119,28 @@ const checksJson = JSON.stringify({
   checks: detected.checks,
 }, null, 2) + '\n'
 
-if (writeIfAbsent('method/checks.json', checksJson,
-  detected.checks.length
-    ? `method/checks.json written — ${detected.stack}: ${detected.checks.map(c => c.name).join(', ')}`
-    : 'method/checks.json written — EMPTY, no stack detected; declare the checks by hand')) { /* noted */ }
+// An EMPTY folder has no stack to detect — nothing has been created yet, and the stack comes from
+// the conversation, not from the disk (`kickoff.md` step 1). So the empty file this writes on the
+// first pass is a placeholder, and it must be REPLACEABLE: writeIfAbsent alone would leave a project
+// with a permanently empty gate, which is worse than no gate because verify still prints green.
+// Re-running install after the skeleton exists refills it.
+const checksPath = 'method/checks.json'
+let existingChecks = null
+if (has(checksPath)) {
+  try { existingChecks = JSON.parse(read(checksPath)).checks || [] } catch { existingChecks = [] }
+}
+
+if (existingChecks === null) {
+  writeFileSync(join(root, checksPath), checksJson)
+  done.push(detected.checks.length
+    ? `${checksPath} written — ${detected.stack}: ${detected.checks.map(c => c.name).join(', ')}`
+    : `${checksPath} written — EMPTY, nothing to detect yet`)
+} else if (!existingChecks.length && detected.checks.length) {
+  writeFileSync(join(root, checksPath), checksJson)
+  done.push(`${checksPath} was empty — refilled from ${detected.stack}: ${detected.checks.map(c => c.name).join(', ')}`)
+} else {
+  done.push(`${checksPath} exists — left alone`)
+}
 
 // ── 3. the three files a session reads ──────────────────────────────────────────────────────────
 
@@ -251,8 +269,18 @@ if (!existing.includes(ignoreLine)) {
 }
 
 console.log(done.map(d => `  ${d}`).join('\n'))
-console.log(`\nNext: node method/enforce/verify.mjs --all`)
-if (!detected.checks.length) {
-  console.log('⚠️  No checks were detected. Until method/checks.json declares at least one, the green')
-  console.log('    gate has nothing to enforce and the project has no gate at all.')
+
+const finalChecks = (() => {
+  try { return JSON.parse(read(checksPath)).checks || [] } catch { return [] }
+})()
+
+if (finalChecks.length) {
+  console.log(`\nNext: node method/enforce/verify.mjs --all`)
+} else {
+  console.log('\n⚠️  No checks yet — nothing on disk to detect them from.')
+  console.log('    That is normal for an empty folder: the stack comes from the conversation, not')
+  console.log('    from the files. Follow method/kickoff.md — decide the stack, create the skeleton')
+  console.log('    with the framework\'s own init command, then run this again to fill in the checks.')
+  console.log('    Until then verify prints green because it has nothing to run, and that green')
+  console.log('    means nothing.')
 }

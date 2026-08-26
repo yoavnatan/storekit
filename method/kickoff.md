@@ -63,8 +63,14 @@ gate.
 
     node method/install.mjs .
 
-Style gate, green gate, and the one-way-to-verify block, merged into `.claude/settings.json` without
-disturbing anything already there. Then run `node method/enforce/verify.mjs --all` and see green.
+Run it AGAIN here even if it was run before the project existed. On an empty folder there is nothing
+on disk to detect a stack from, so the first pass leaves `method/checks.json` empty on purpose; this
+pass fills it in from the skeleton that now exists. Skipping it leaves the project with an empty gate
+that prints green forever — the worst of the three states, because it looks like the other two.
+
+Style gate, green gate, and the one-way-to-verify block are merged into `.claude/settings.json`
+without disturbing anything already there. Then run `node method/enforce/verify.mjs --all` and see
+green.
 
 ## 6. Tell him what he has
 
