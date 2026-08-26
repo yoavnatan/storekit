@@ -67,10 +67,28 @@ services:
     # `prestart` refuses to boot without AUTH_SECRET / ADMIN_SECRET / DATABASE_URL, so a missing
     # secret is a failed deploy and never a site that looks healthy and 500s on the first login.
     healthCheckPath: /api/health
-    autoDeployTrigger: off
+    # ON, and the gate that makes it safe is the one already in the repository: `pre-push` runs the
+    # full verify and refuses a red tree, so nothing reaches `main` that has not passed. Left off,
+    # every fix to the demonstration needs somebody to remember to press Deploy — which is the step
+    # that gets forgotten, and the symptom is a demo quietly running last week's code.
+    autoDeployTrigger: commit
     envVars:
       - key: NODE_VERSION
         value: 22.21.0
+
+      # ── The one that decides whether the deploy is even NOTICED ──
+      #
+      # `@astrojs/node` in standalone mode binds to `localhost` unless `HOST` says otherwise, and a
+      # process listening on localhost inside a container is reachable by nothing outside it. The
+      # symptom is the confusing kind, because every part of it looks like a success: the build
+      # passes, the migrations run, `prestart` is satisfied, the server prints
+      # "Server listening on http://localhost:10000" — and then Render scans 0.0.0.0, finds no open
+      # port, and times the deploy out. Measured on the first deploy, 2026-08-26.
+      #
+      # PORT is deliberately not set: Render provides it, and naming a second number here is how the
+      # app ends up listening on one port while the platform routes to another.
+      - key: HOST
+        value: 0.0.0.0
 
       # ── The four that decide whether it works at all ──
       - key: PUBLIC_SITE_URL
