@@ -1,0 +1,115 @@
+---
+/**
+ * What this seller PAYS — the tariff, not the history.
+ *
+ * ── The ask (owner, סשן א׳ §8, 2026-08-26) ──
+ * *"אולי צריך סקשן בסוף של מחירים (שלדעתי צריך להיות בתוך אקורדיון סגור) של כמה הוא משלם עמלות,
+ * סליקה, חשבוניות וכו׳ וכו׳, מה שפעיל אצלו. לא כמה הוא שילם, אלא התמחור עצמו."*
+ *
+ * The distinction he drew is the whole design. **The fee REPORT answers "what did I pay"** — a
+ * period, one row per charge, exportable (Reports tab). This answers "what am I charged", which is
+ * a different question a seller asks once and comes back to twice a year, and which had no home at
+ * all: the plan's price was on this card, the setup fee was in a sentence under a button, the
+ * clearing tariff was in a contract, and the invoicing add-on was a card that only renders when
+ * PayMe have provisioned it.
+ *
+ * ── Closed by default, at the end, because that is what it is worth ──
+ * A tariff is reference material. Open, it is the longest thing on a screen whose job is to say
+ * how much money is coming; closed, it is one line that answers a question the moment it is asked.
+ * `<details>`, the same element and the same treatment the campaign history uses — the site already
+ * has an answer for this shape and inventing a second one fails the design line's first test.
+ *
+ * ── Only what is ACTUALLY his ──
+ * *"מה שפעיל אצלו."* The invoicing line renders only when PayMe have provisioned the service on his
+ * merchant (`seller-invoicing.ts`); the setup fee only while it is still ahead of him. A tariff
+ * listing charges a seller does not have is a tariff he stops trusting.
+ *
+ * ── What it will NOT invent ──
+ * **The processor's percentage rate is not ours to print.** Their schedule fixes ₪1 per shekel
+ * transaction and a ₪50 monthly minimum top-up, and the PERCENT is set per merchant in the clearing
+ * agreement — GO_LIVE §3.1.0: *"אנחנו קובעים את עמלת הסליקה לכל מוכר"*, and no number has been set
+ * yet. So the row says what is fixed and points at the fee report for what was actually deducted,
+ * which is the only figure that is his and true. Printing a guessed rate on the screen a seller
+ * checks us against is the exact failure this project has a rule about.
+ */
+import { resolveTier, SELLER_SETUP_FEE, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
+import { formatAgorot, toAgorot } from '../../lib/money.js';
+import { chargesVat, platformVatPercent } from '../../lib/vat.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  /** This shop's plan — the fee and the commission both come off it. */
+  tier: SellerTierId | undefined;
+  planName: string;
+  /** Is he already paying? Decides whether the one-off setup fee is still ahead of him. */
+  paying: boolean;
+  /** His registered business type. An עוסק פטור reclaims nothing, so he is given the gross beside
+   *  each figure — the same rule, and the same test, as the subscription card above
+   *  (`vat.ts#chargesVat`, and `pricing.ts`'s header for why it is shown at all). */
+  businessType?: string;
+  /** True only when the processor has provisioned automatic invoicing on this merchant. Absent is
+   *  the normal state today and the row simply does not render. */
+  invoicingActive: boolean;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { tier, planName, paying, businessType, invoicingActive, d } = Astro.props;
+const plan = resolveTier(tier);
+
+const platformVat = platformVatPercent() > 0;
+/** He cannot reclaim, so the gross is the number that describes his month. */
+const seesGross = platformVat && !chargesVat(businessType);
+
+/** A quoted fee and, for a seller who cannot deduct the tax, what it really costs. One helper, so
+ *  every row in this list makes the same promise in the same shape. */
+const withGross = (agorot: number): string =>
+  seesGross
+    ? d.feeSchedGross.replace('{net}', formatAgorot(agorot)).replace('{gross}', formatAgorot(feeWithVatAgorot(agorot)))
+    : formatAgorot(agorot);
+---
+
+<details id="fee-schedule" class="mt-6 border [border-color:var(--color-border)] rounded-[var(--radius)]">
+  <summary class="text-[0.85rem] font-semibold px-3 py-2.5 cursor-pointer select-none [color:var(--color-text)]">
+    {d.feeSchedTitle}
+  </summary>
+  <div class="px-3 pb-3">
+    {/* Label, colon, value, one per row — the shape facts take on this dashboard
+        (`feedback_no_standing_screen_prose`). */}
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[0.84rem] m-0 mt-1">
+      <dt class="muted">{d.feeSchedPlan}</dt>
+      <dd class="m-0 font-semibold">{d.feeSchedPlanValue.replace('{name}', planName).replace('{amount}', withGross(toAgorot(plan.monthlyFee)))}</dd>
+
+      <dt class="muted">{d.feeSchedCommission}</dt>
+      {/* A percentage, so the VAT cannot be shown as a second figure beside it without inventing a
+          sale to apply it to. The line says the rate and that tax is added — the fee report is
+          where a real deduction appears with its own מע״מ column. */}
+      <dd class="m-0 font-semibold">
+        {d.feeSchedCommissionValue.replace('{percent}', String(plan.commissionPercent))}
+        {platformVat && <span class="muted font-normal">{' '}{d.feeSchedPlusVat}</span>}
+      </dd>
+
+      <dt class="muted">{d.feeSchedClearing}</dt>
+      <dd class="m-0">{d.feeSchedClearingValue}</dd>
+
+      {!paying && (
+        <>
+          <dt class="muted">{d.feeSchedSetup}</dt>
+          <dd class="m-0 font-semibold">{withGross(toAgorot(SELLER_SETUP_FEE))}</dd>
+        </>
+      )}
+
+      {invoicingActive && (
+        <>
+          <dt class="muted">{d.feeSchedInvoicing}</dt>
+          {/* No number: the price is PayMe's, read live per merchant, and printing a second copy of
+              it here is how a tariff and a bill start disagreeing (`seller-invoicing.ts`). The card
+              above this one shows the figure he agreed to. */}
+          <dd class="m-0">{d.feeSchedInvoicingValue}</dd>
+        </>
+      )}
+    </dl>
+
+    {/* Where the actual money is. A tariff without a link to the record is a page a seller has to
+        take on trust; `data-goto-panel` is the dashboard's own tab switch. */}
+    <button type="button" class="btn btn--ghost btn--sm mt-3" data-goto-panel="reports">{d.feeSchedToReport}</button>
+  </div>
+</details>
