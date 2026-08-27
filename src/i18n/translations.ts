@@ -51,7 +51,7 @@ export const translations = {
          nothing on a shopper's path leads there. "סייר" rather than "היכנס" because a visitor is
          looking around, not signing in — and because the same two links appear on the login page
          for anyone who arrives there instead. */
-      tourTitle: 'סייר באתר',
+      tourTitle: 'סיור באתר',
       /* "עמוד הבית" and not the nav strip's 'בית' (owner, 2026-08-27). The same destination, and
          deliberately a different word: the strip is a compact row where one syllable is right, and
          this is a menu whose other two rows are two-word phrases — "בית" beside "דשבורד מוכרים"

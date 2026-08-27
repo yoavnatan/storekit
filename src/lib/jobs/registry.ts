@@ -40,6 +40,7 @@ import { runStorePublicationSweep } from '../store-publication-run.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isDemoMode, DEMO_PUBLICATION_INTERVAL_SEC } from '../demo-mode.js';
+import { serverEnv } from '../runtime-env.js';
 import { runSubscriptionLapseSweep } from '../subscription-lapse.js';
 import { resyncAllSubscriptionPrices } from '../seller-subscription.js';
 import { runPaymeInvoiceSync } from '../payme-invoice-sync.js';
@@ -599,7 +600,7 @@ const subscriptionPriceSync: Job = {
 };
 
 /**
- * Put the portfolio demonstration back the way it was — hourly, and only there.
+ * Put the portfolio demonstration back the way it was — on request, and only there.
  *
  * A public demonstration is a shared exhibit: anybody can delete a product, cancel an order, close
  * a shop or empty a catalogue, and within a day the thing the owner is showing people is a broken
@@ -614,6 +615,21 @@ const subscriptionPriceSync: Job = {
  * The script refuses on any database that has not been claimed as the demonstration one, so this
  * job is harmless even if `DEMO_MODE` is ever set somewhere it should not be — the gate is the
  * database, not the flag (`seed-db.mjs` → SEED_SCOPES).
+ *
+ * ── OFF unless asked for, and that is the owner's decision (2026-08-27) ──
+ *
+ * It ran hourly and it had to stop: the showcase stores are ORDINARY stores owned by the shared
+ * demo seller, so their names, taglines, descriptions and photographs are edited through the
+ * dashboard like any seller's — and a rebuild every hour threw those edits away. *"אבל שלא יימחק
+ * כל ארבע שעות"*. He wants to shape what the demonstration shows; a job that quietly reverts him is
+ * the opposite of that.
+ *
+ * What is given up is stated rather than glossed: the shared seller door has no password, so any
+ * visitor can edit those shops too, and with no timer nothing undoes it. `npm run seed:portfolio`
+ * is the button — the same code the job ran, so the manual path and the automatic one can never
+ * have drifted apart.
+ *
+ * `DEMO_RESET_HOURLY=1` puts the timer back, for a deployment nobody is curating.
  *
  * Never throws: `execFile` is promisified and its rejection is caught into the run line, because a
  * job that throws is a job the scheduler records as failed and retries in a loop.
@@ -640,7 +656,10 @@ const demoReset: Job = {
 
 const ALWAYS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse, subscriptionPriceSync, paymeInvoices];
 
-/** The demo reset is REGISTERED conditionally rather than made a no-op when the flag is off. A job
- *  that exists and returns "nothing to do" still claims a row, writes a run and appears in the
- *  admin's job list on the real site — advertising a scheduled task that empties the database. */
-export const JOBS: readonly Job[] = isDemoMode() ? [...ALWAYS, demoReset] : ALWAYS;
+/** REGISTERED conditionally rather than made a no-op when it is off. A job that exists and returns
+ *  "nothing to do" still claims a row, writes a run and appears in the admin's job list —
+ *  advertising a scheduled task that empties the database, which is the last thing a curated
+ *  demonstration should seem to have. */
+export const JOBS: readonly Job[] = isDemoMode() && serverEnv('DEMO_RESET_HOURLY') === '1'
+  ? [...ALWAYS, demoReset]
+  : ALWAYS;
