@@ -85,6 +85,23 @@ const t = getT(getLang(Astro.cookies));
 
     container.prepend(toast);
 
+    /**
+     * ── A ceiling on the stack (owner, 2026-08-26) ──
+     * *"אם יש כפילות של התראות זה לא צריך להיות טוסט מעל טוסט מעל טוסט. זה לא נראה טוב."*
+     *
+     * Nothing bounded this before. The notification poller sends at most three from one tick, but
+     * several sources can toast in the same second — the poller, a page's own action, a background
+     * save — and on a phone four cards fill the screen and cover the thing they are about.
+     *
+     * The OLDEST goes, not the newest: the newest is the one the person has not read yet, and
+     * dropping it to protect a card that has already been on screen for four seconds is backwards.
+     * Dismissed rather than removed, so it leaves with the same animation as any other and the
+     * stack does not jump.
+     */
+    const MAX_VISIBLE = 3;
+    const cards = container.querySelectorAll<HTMLElement>('.toast-card');
+    for (let i = MAX_VISIBLE; i < cards.length; i++) cards[i]?.dispatchEvent(new Event('toast:evict'));
+
     toast.animate(
       [{ opacity: 0, transform: 'translateY(12px) scale(0.96)' },
        { opacity: 1, transform: 'translateY(0) scale(1)' }],
@@ -99,6 +116,9 @@ const t = getT(getLang(Astro.cookies));
       ).onfinish = () => toast.remove();
     };
 
+    // Evicted by a newer toast when the stack is full — the same exit as any other, so the cards
+    // never jump.
+    toast.addEventListener('toast:evict', () => dismiss());
     toast.querySelector('button')!.addEventListener('click', (e) => { e.stopPropagation(); dismiss(); });
     toast.addEventListener('click', () => { dismiss(); if (href) window.location.href = href; });
     setTimeout(dismiss, duration);

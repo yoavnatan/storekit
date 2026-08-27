@@ -394,12 +394,26 @@ export async function buildTrading(db) {
 
   await db.query('BEGIN');
   try {
-    /* The platform inbox is the one thing here that SURVIVES the purge, so it is cleared by hand.
-       `messages` hangs off a store and the stores are recreated on every run, so those cascade
-       away — but `admin_messages` hangs off a SELLER, and the showcase owner is deliberately kept.
-       Without this the admin's inbox grew by four every hour the reset job ran. */
+    /* ── What the purge does NOT reach, cleared by hand ──────────────────────
+       Most of what this function writes is anchored to a store or a product, and the stores are
+       deleted and recreated on every run — so orders, reviews, page views, campaigns and the shops'
+       own message threads all cascade away by themselves. Two tables do not, and BOTH of them grew
+       by a fixed amount every hour the reset job ran until this was written:
+
+         `admin_messages` hangs off a SELLER, and the showcase owner is deliberately kept.
+         `notifications`  hangs off NOTHING — `user_id` is a plain text column with no foreign key,
+                          because a notification can belong to a guest. So nothing cascades it, and
+                          the owner met the result on the live demo: 52 unread, thirteen hours of
+                          four-per-run, and a toast for each new batch. The poller was right; the
+                          seeder was wrong.
+
+       `tests/seed-portfolio.test.ts` runs the build twice and asserts that no table it writes grows,
+       which is the check that catches the NEXT table with this property rather than this one. */
     await db.query(
       `DELETE FROM admin_messages WHERE seller_id IN (SELECT id FROM sellers WHERE email = $1)`,
+      [SHOWCASE_OWNER_EMAIL]);
+    await db.query(
+      `DELETE FROM notifications WHERE user_id IN (SELECT id::text FROM sellers WHERE email = $1)`,
       [SHOWCASE_OWNER_EMAIL]);
     await insertMany(db, 'orders', ['id', 'checkout_ref', 'buyer_id', 'buyer_name', 'buyer_email',
       'buyer_phone', 'buyer_city', 'buyer_street', 'buyer_zip', 'shipping_agorot', 'total_agorot',

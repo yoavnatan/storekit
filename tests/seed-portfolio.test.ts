@@ -6,7 +6,7 @@ import { GUEST_SENDER_PREFIX } from '../src/lib/guest-sender.js';
 // The seeder is plain Node with no types; `allowJs` resolves it, and driving the real functions
 // against the real schema is the whole point of this file.
 import { buildTrading, seedClearing, claim, purgeEverythingButShowcase } from '../scripts/seed-portfolio.mjs';
-import { isDemoDatabase } from '../scripts/lib/seed-db.mjs';
+import { isDemoDatabase, purge, purgeOrdersOfStores } from '../scripts/lib/seed-db.mjs';
 
 /**
  * The portfolio seeder, against the real schema.
@@ -28,20 +28,25 @@ import { isDemoDatabase } from '../scripts/lib/seed-db.mjs';
 const SELLER = '88888888-8888-4888-8888-000000000001';
 const STORE = '88888888-8888-4888-8888-000000000002';
 
+/** Re-runnable, like the real showcase seeder: it reuses the platform account rather than
+ *  recreating it, which is what lets the purge keep that row and the seed run again on top. */
 async function seedOneShowcaseStore(): Promise<void> {
-  await query('INSERT INTO sellers (id, name, email) VALUES ($1, $2, $3)', [SELLER, 'Showcase', DEMO_SELLER_EMAIL]);
+  await query('INSERT INTO sellers (id, name, email) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+    [SELLER, 'Showcase', DEMO_SELLER_EMAIL]);
   await query(
-    `INSERT INTO stores (id, seller_id, slug, name, demo) VALUES ($1, $2, 'showcase-test', 'חנות בדיקה', false)`,
+    `INSERT INTO stores (id, seller_id, slug, name, demo) VALUES ($1, $2, 'showcase-test', 'חנות בדיקה', false)
+       ON CONFLICT DO NOTHING`,
     [STORE, SELLER],
   );
   for (let i = 0; i < 12; i++) {
     const id = `88888888-8888-4888-8888-1000000000${String(i).padStart(2, '0')}`;
     await query(
       `INSERT INTO store_products (id, store_id, slug, name, price_agorot, stock)
-            VALUES ($1, $2, $3, $4, $5, 50)`,
+            VALUES ($1, $2, $3, $4, $5, 50) ON CONFLICT DO NOTHING`,
       [id, STORE, `p-${i}`, `מוצר ${i}`, 4900 + i * 1100],
     );
-    await query('INSERT INTO product_images (product_id, position, url) VALUES ($1, 0, $2)', [id, `https://example.invalid/${i}.jpg`]);
+    await query('INSERT INTO product_images (product_id, position, url) VALUES ($1, 0, $2) ON CONFLICT DO NOTHING',
+      [id, `https://example.invalid/${i}.jpg`]);
   }
 }
 
@@ -227,6 +232,51 @@ describe('the two inboxes', () => {
          FROM admin_messages`);
     expect(rows[0]!.total).toBeGreaterThan(0);
     expect(rows[0]!.unread).toBeGreaterThan(0);
+  });
+
+  it('grows NO table it writes when the build runs again', async () => {
+    /* The general form of the bug, and the reason this is not four separate assertions.
+       The reset job re-runs this every hour on the live demo. Most of what it writes hangs off a
+       store, and the stores are recreated, so it cascades away — but a table anchored to nothing
+       survives, and the seeder then ADDS to it every hour for ever. The owner met exactly that:
+       52 unread notifications, thirteen hours of four-per-run, and a toast for each new batch.
+
+       Counting every table before and after a second build catches the NEXT table with that
+       property, which is the one nobody will think of. */
+    const TABLES = ['orders', 'order_items', 'order_stores', 'product_reviews', 'money_events',
+      'store_page_views', 'product_page_views', 'ad_campaigns', 'notifications', 'messages',
+      'admin_messages'] as const;
+    const countAll = async (): Promise<Record<string, number>> => {
+      const out: Record<string, number> = {};
+      for (const t of TABLES) {
+        const { rows } = await query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t}`);
+        out[t] = rows[0]!.n;
+      }
+      return out;
+    };
+
+    // The REAL cycle, not two builds in a row: the reset job purges and reseeds, and almost
+    // everything this function writes is anchored to a store and cascades away when the stores go.
+    // Running `buildTrading` twice with no purge between would flag those too, which is not the bug
+    // and would make the test noise. `purgeEverythingButShowcase` is the actual purge, called here
+    // rather than imitated — an imitation would be a second definition of what gets deleted.
+    const before = await countAll();
+    // The real cycle in full. `purgeEverythingButShowcase` removes what visitors made; the
+    // showcase stores themselves are then deleted and rewritten by `seed:showcase`, which is the
+    // step that cascades away the orders, reviews, campaigns and threads hanging off them. Both are
+    // the actual functions rather than an imitation — an imitation would be a second definition of
+    // what gets deleted, which is the drift `seed-db.mjs` exists to prevent.
+    await claim(getDatabase());
+    await purgeEverythingButShowcase(getDatabase());
+    await purgeOrdersOfStores(getDatabase(), 'showcase');
+    await purge(getDatabase(), 'showcase', { includeSellers: false });
+    await seedOneShowcaseStore();
+    await buildTrading(getDatabase());
+    const after = await countAll();
+
+    const grew = TABLES.filter((t) => after[t]! > before[t]!)
+      .map((t) => `${t}: ${before[t]} → ${after[t]}`);
+    expect(grew, 'a table that survives the purge must be cleared by the seeder itself').toEqual([]);
   });
 
   it('does not multiply the platform inbox on a rebuild', async () => {
