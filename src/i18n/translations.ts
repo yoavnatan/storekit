@@ -52,6 +52,11 @@ export const translations = {
          looking around, not signing in — and because the same two links appear on the login page
          for anyone who arrives there instead. */
       tourTitle: 'סייר באתר',
+      /* "עמוד הבית" and not the nav strip's 'בית' (owner, 2026-08-27). The same destination, and
+         deliberately a different word: the strip is a compact row where one syllable is right, and
+         this is a menu whose other two rows are two-word phrases — "בית" beside "דשבורד מוכרים"
+         reads as a truncation rather than as a choice. */
+      tourHome: 'עמוד הבית',
       tourSeller: 'דשבורד מוכרים',
       tourAdmin: 'דשבורד אדמין',
       viewAllStores: 'כל החנויות',
@@ -3044,6 +3049,7 @@ export const translations = {
       searchFailed: 'Search is unavailable right now. Please try again.',
       allStores: 'All Stores',
       tourTitle: 'Take a tour',
+      tourHome: 'Home page',
       tourSeller: 'Seller dashboard',
       tourAdmin: 'Admin dashboard',
       viewAllStores: 'All stores',

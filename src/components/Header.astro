@@ -438,6 +438,11 @@ const strEmpty   = t.store.noProductsFound;
               `/seller/login` already owns this exact POST. */}
           <form method="POST" action="/seller/login" class="absolute z-50 top-full mt-2 end-0 min-w-[11rem] grid gap-0.5 p-1 rounded-[var(--radius)] border-[1.5px] [border-color:var(--color-border)] bg-[color:var(--color-surface)] [box-shadow:var(--shadow-overlay)]" data-native-submit>
             <CsrfField />
+            {/* A LINK, not a submit: going home changes nothing about who you are, and posting to
+                the login page to reach the front page would be a state change dressed as
+                navigation. It sits first because it is the way BACK — the other two take you
+                somewhere, this one returns you. */}
+            <a href="/" class="block w-full text-start whitespace-nowrap text-[.85rem] no-underline py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourHome}</a>
             <button type="submit" name="demoRole" value="seller" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourSeller}</button>
             <button type="submit" name="demoRole" value="admin" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourAdmin}</button>
           </form>

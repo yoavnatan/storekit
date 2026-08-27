@@ -15,7 +15,20 @@ import {
   checkAuthRate, clearAuthRate, countAuthAttempt, retryAfterMinutes, sellerLoginRules,
 } from '../../lib/rate-limit.js';
 
-if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
+/**
+ * Already signed in? There is nothing to do on a login page — except one thing.
+ *
+ * **A demo POST must reach its handler** (owner, 2026-08-27: *"גם דשבורד אדמין מגיע לדשבורד של
+ * המוכרים"*). This line ran before everything, so the moment a visitor had used the seller door
+ * once, every later press of the ADMIN door was swallowed here and bounced to the seller dashboard
+ * — two controls, one destination, and no error anywhere. It survived a browser drive because every
+ * run started from a clean session, which is the one state the bug cannot happen in.
+ *
+ * Narrowed to what it is actually for: a person who NAVIGATES to the login page while signed in.
+ * A POST is not that; it is a request to change something, and the handler below is what decides.
+ */
+const signedIn = getSellerSession(Astro.cookies);
+if (signedIn && Astro.request.method !== 'POST') return Astro.redirect('/seller/dashboard');
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -77,6 +90,10 @@ if (Astro.request.method === 'POST') {
     demoFailed = true;
     error = t.auth.demoAccountMissing.replace('{email}', DEMO_SELLER_EMAIL);
   }
+
+  // Everyone else who is already signed in gets the behaviour the guard at the top always gave:
+  // there is nothing for them here. Only the demo doors above needed to get past it.
+  if (signedIn) return Astro.redirect('/seller/dashboard');
 
   const email    = String(form.get('email')    || '');
   const password = String(form.get('password') || '');
