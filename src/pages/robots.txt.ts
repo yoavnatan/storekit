@@ -70,8 +70,27 @@ function body(sitemaps: readonly string[], feedAllowed: boolean): string {
  * reason. `Disallow` stops a crawl; `noindex` is what removes a page that was ALREADY taken, and a
  * page that is disallowed can never be re-read to discover it is now noindex. Both, always.
  */
+/**
+ * The preview fetchers, exempted on purpose — they are not search crawlers.
+ *
+ * LinkedIn, Slack, WhatsApp and the rest read a URL once, when a human pastes it, to render the
+ * card for that single post. Nothing of it enters an index. Under a blanket `Disallow: /`
+ * LinkedIn does not merely skip the preview, it refuses the address outright and tells the owner
+ * to enter a valid URL — which is what happened the first time the demo was put in a CV. Closing
+ * the site to search must not also make it unshareable.
+ */
+const PREVIEW_AGENTS = [
+  'LinkedInBot',
+  'Twitterbot',
+  'facebookexternalhit',
+  'Slackbot-LinkExpanding',
+  'WhatsApp',
+  'TelegramBot',
+] as const;
+
 function closedToCrawlers(): string {
-  return 'User-agent: *\nDisallow: /\n';
+  const previews = PREVIEW_AGENTS.map((a) => `User-agent: ${a}\nAllow: /\n`).join('\n');
+  return `${previews}\nUser-agent: *\nDisallow: /\n`;
 }
 
 export async function GET(ctx: APIContext): Promise<Response> {
