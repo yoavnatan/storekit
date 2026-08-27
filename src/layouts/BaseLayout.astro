@@ -406,15 +406,15 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
   // every later poll (even the first one of a fresh page load) toasts anything new.
   var CURSOR_KEY='__notifToastCursor_'+window.__sessionUserId;
   var lastCheck=localStorage.getItem(CURSOR_KEY)||null;
-  var isFirstEverCheck=!lastCheck;
-  // Without a since= cursor the API returns every recent notification (read
-  // and unread, up to 50) — on a first-ever check that's a real backlog we
-  // don't want to toast all at once. But a blanket suppression also swallowed
-  // a genuinely brand-new notification (e.g. the seller's own "new_order" that
-  // fires the instant their checkout redirects to /checkout/success, which is
-  // very often this browser's very first poll ever) — so only skip items older
-  // than a short recency window instead of skipping the whole first batch.
-  var FIRST_CHECK_RECENCY_MS=30000;
+  // The FIRST poll of every page load is silent. A toast is for something that arrives while you
+  // are watching (owner, 2026-08-27) - the bell's number is what reports a backlog, and a card
+  // about something five hours old is the site talking about its own past, which is exactly what
+  // he was shown. It still records what it found, so the next poll is about the seconds since.
+  var isFirstPollOfThisPage=true;
+  // A thirty-second recency window used to sit here, to let a brand-new notification through on a
+  // browser's very first check while suppressing the rest. It was a more complicated way of being
+  // wrong: on every visit AFTER the first, everything accumulated since the last one still arrived
+  // at once. Silence on the first poll of each page load covers both, with nothing to tune.
   function poll(){
     // The hidden-tab gate that lib/visible-poll.ts is for every other poll on the site, written
     // out by hand because this block is is:inline and can import nothing. Keep the two in step:
@@ -425,9 +425,7 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
       var notifs=d.notifications||[];
       var unreadCount=d.unreadCount||0;
       window.dispatchEvent(new CustomEvent('notifications:update',{detail:{unreadCount:unreadCount,notifications:notifs}}));
-      var toToast=isFirstEverCheck
-        ? notifs.filter(function(n){ return (Date.now()-new Date(n.createdAt).getTime())<FIRST_CHECK_RECENCY_MS; })
-        : notifs;
+      var toToast=isFirstPollOfThisPage?[]:notifs;
       if(toToast.length>0){
         toToast.slice(0,3).forEach(function(n){
           // Where the toast leads is decided server-side, per row, by notification-link.ts — the
@@ -438,7 +436,7 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
           window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:body,key:n.relatedId||n.id,href:href}}));
         });
       }
-      isFirstEverCheck=false;
+      isFirstPollOfThisPage=false;
       // Anchor the cursor to the newest notification's own createdAt (notifs is
       // sorted desc by the API) rather than the client's "now" — using wall-clock
       // time here missed any notification created server-side during the fetch's

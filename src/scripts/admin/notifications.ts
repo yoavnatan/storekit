@@ -59,9 +59,6 @@ const POLL_MS = 15_000;
 /** At most three toasts from one poll, like the site's. A burst of thirty covers the screen and
  *  the thirtieth is no more useful than the bell's own number. */
 const MAX_TOASTS_PER_POLL = 3;
-/** On the very first poll this browser ever runs, only something genuinely fresh is worth a toast —
- *  everything older is a backlog the bell's number already reports. */
-const FIRST_CHECK_RECENCY_MS = 30_000;
 const CURSOR_KEY = '__adminNotifToastCursor';
 /**
  * The ids this browser has already toasted — the half the cursor cannot cover.
@@ -115,28 +112,36 @@ function timeAgo(iso: string): string {
 /**
  * Which of a poll's items get a toast, and which are merely remembered.
  *
- * Pure, exported and tested (`tests/admin-toast-selection.test.ts`) because every past complaint
- * about toasts on this project has been about this decision and never about the drawing of them:
- * one arriving twice, one arriving from an hour ago, one that never arrived because a cap ate the
- * budget. Reasoning about it inside a poller with a DOM and a clock is how those shipped.
+ * **The rule, in one sentence (owner, 2026-08-27): a toast is for a notification that arrives while
+ * you are watching.** *"הרעיון הוא טוסט רק כאשר ההתראה נכנסת, בלייב."* Never a batch handed to
+ * somebody the moment they land — that is what the bell's number is for, and ten cards on arrival
+ * is the site telling you about its own past.
  *
- * `toasted` is what this browser has already shown, restored from `localStorage` — the half the
- * cursor cannot cover, since a reload empties the toast layer's own in-memory set and the cursor
- * still returns the row it points at (microseconds against milliseconds).
+ * So the FIRST poll of every page load shows nothing at all. It exists to set the cursor: from then
+ * on, anything the next poll returns arrived in the fifteen seconds since, with a person present to
+ * see it. This replaced a per-browser "first check ever" flag plus a thirty-second recency window,
+ * which was a more complicated way of being wrong — it still let a backlog through on any visit
+ * after the first.
  *
- * `show` is capped; `remember` is not, and the difference is deliberate — see the call site.
+ * `toasted` is what this browser has already shown, restored from `localStorage`. With a silent
+ * first poll it can no longer be the difference between one toast and two on a reload, and it is
+ * kept for the narrower case it still covers: a cursor set to a row's own `createdAt` returns that
+ * row again, because Postgres keeps microseconds and `toISOString()` keeps milliseconds.
+ *
+ * Pure, exported and tested (`tests/admin-toast-selection.test.ts`), because every complaint about
+ * toasts on this project has been about this decision and never about the drawing of them.
  */
 export function pickToasts(
   items: readonly { id: string; createdAt: string }[],
   toasted: ReadonlySet<string>,
-  opts: { firstEverCheck: boolean; now: number; cap: number; recencyMs: number },
+  opts: { firstPollOfThisPage: boolean; cap: number },
 ): { show: string[]; remember: string[] } {
-  const fresh = opts.firstEverCheck
-    ? items.filter((n) => opts.now - new Date(n.createdAt).getTime() < opts.recencyMs)
-    : items;
-  // Before the cap, never after: a poll returning three already-toasted rows would otherwise spend
-  // its whole budget on them and hide a genuinely new fourth.
-  const unseen = fresh.filter((n) => !toasted.has(n.id)).map((n) => n.id);
+  // Everything is remembered either way — including on the silent first poll, which is what stops
+  // the second poll treating the backlog it just recorded as news.
+  const unseen = items.filter((n) => !toasted.has(n.id)).map((n) => n.id);
+  if (opts.firstPollOfThisPage) return { show: [], remember: unseen };
+  // Filtered before the cap, never after: a poll returning three already-toasted rows would
+  // otherwise spend its whole budget on them and hide a genuinely new fourth.
   return { show: unseen.slice(0, opts.cap), remember: unseen };
 }
 
@@ -237,22 +242,6 @@ export function initAdminNotifications(): void {
   }
 
   /** The full list — what the dropdown shows and where the badge's number comes from. */
-  async function load(): Promise<void> {
-    loadingDot?.removeAttribute('hidden');
-    try {
-      const res = await fetch('/api/admin/notifications');
-      if (!res.ok) return;
-      const data = await res.json() as { notifications: AdminNotifItem[]; unreadCount: number };
-      render(data.notifications ?? []);
-      setBadge(data.unreadCount ?? 0);
-    } catch {
-      // silent: a background poll for a badge. Nothing is waiting on it, the last true number
-      // stays on screen, and the next tick retries. Same rule as the site's own bell poll.
-    } finally {
-      loadingDot?.setAttribute('hidden', '');
-    }
-  }
-
   /**
    * The toasting half — a separate, `since=`-filtered request, exactly as on the site.
    *
@@ -262,7 +251,19 @@ export function initAdminNotifications(): void {
    * shrink the badge to the size of the new window.
    */
   let cursor = localStorage.getItem(CURSOR_KEY);
-  let firstEverCheck = !cursor;
+  /**
+   * True only until the page has established what was ALREADY there.
+   *
+   * That happens in `load()` below, at t=0 — not on the first poll. `pollWhileVisible` fires on an
+   * interval and not immediately, so the first poll is fifteen seconds after the page opened, and
+   * treating THAT as the baseline silently swallowed anything arriving in the first fifteen seconds
+   * of a visit — which is exactly when somebody is looking. Measured: a notification raised four
+   * seconds after landing never appeared.
+   *
+   * It stays true if that initial load fails, so a failed baseline degrades into "the next poll is
+   * the quiet one" rather than into a burst.
+   */
+  let firstPollOfThisPage = true;
 
   /** Read defensively: a private window, cleared site data or a browser refusing storage all throw
    *  or answer null, and none of them is a reason for the bell to stop working. */
@@ -283,6 +284,43 @@ export function initAdminNotifications(): void {
     } catch { /* silent: storage is a convenience here, and the in-memory set still holds. */ }
   }
 
+  async function load(): Promise<void> {
+    loadingDot?.removeAttribute('hidden');
+    try {
+      const res = await fetch('/api/admin/notifications');
+      if (!res.ok) return;
+      const data = await res.json() as { notifications: AdminNotifItem[]; unreadCount: number };
+      const items = data.notifications ?? [];
+      render(items);
+      setBadge(data.unreadCount ?? 0);
+      /* The BASELINE, established the moment the page has an answer. Everything on screen now is
+         the past; the cursor moves to the newest of it and every id is recorded, so the first poll
+         fifteen seconds from now is about arrivals and nothing else. Doing this here rather than on
+         that poll is what closes the fifteen-second hole. */
+      if (firstPollOfThisPage) {
+        rememberToasted(items.map((n) => n.id));
+        if (items.length) {
+          cursor = items[0]!.createdAt;
+          try {
+            localStorage.setItem(CURSOR_KEY, cursor);
+          } catch {
+            // silent: storage is a convenience, not the mechanism. A private window or a browser
+            // that refuses site data throws here, and the in-memory cursor still carries this page
+            // through — the only cost is that a reload re-establishes the baseline, which is the
+            // behaviour anyway.
+          }
+        }
+        firstPollOfThisPage = false;
+      }
+    } catch {
+      // silent: a background poll for a badge. Nothing is waiting on it, the last true number
+      // stays on screen, and the next tick retries. Same rule as the site's own bell poll.
+    } finally {
+      loadingDot?.setAttribute('hidden', '');
+    }
+  }
+
+
   async function pollForToasts(): Promise<void> {
     try {
       const url = `/api/admin/notifications${cursor ? `?since=${encodeURIComponent(cursor)}` : ''}`;
@@ -292,8 +330,9 @@ export function initAdminNotifications(): void {
       const items = data.notifications ?? [];
 
       const { show, remember } = pickToasts(items, toasted, {
-        firstEverCheck, now: Date.now(), cap: MAX_TOASTS_PER_POLL, recencyMs: FIRST_CHECK_RECENCY_MS,
+        firstPollOfThisPage, cap: MAX_TOASTS_PER_POLL,
       });
+      firstPollOfThisPage = false;
       /* EVERYTHING unseen is remembered, not only the three that get shown, and that is deliberate
          rather than a slip: a burst is capped at three on purpose, and the rest are reported by the
          number on the bell. The site's poller reaches the same outcome by moving its cursor past
@@ -309,7 +348,6 @@ export function initAdminNotifications(): void {
           detail: { title: n.title, body: n.body, key: n.id },
         }));
       }
-      firstEverCheck = false;
       // The newest ROW's own timestamp, never `Date.now()` — see the header's point 2.
       if (items.length) {
         cursor = items[0]!.createdAt;
