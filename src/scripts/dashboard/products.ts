@@ -627,11 +627,17 @@ function chipImageBtnHtml(hasImage: boolean, i18n: Record<string, string>): stri
   return `<button type="button" class="variant-chip-image-btn" data-variant-chip-image aria-label="${esc(label)}" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;border:none;background:none;cursor:pointer;padding:0;color:${hasImage ? 'var(--color-accent)' : 'var(--color-muted)'};flex-shrink:0">${CHIP_IMAGE_ICON_SVG}</button>`;
 }
 
-function chipHtml(dimName: string, value: string, i18n: Record<string, string>, image = ''): string {
+/**
+ * `imageSlot` is the gallery position of a photo the seller has picked but not yet uploaded — see
+ * `currentGalleryImages`. It has to travel with the chip through every rebuild below, or renaming a
+ * colour (or retyping the rubric's name) silently drops the link the seller had just made.
+ */
+function chipHtml(dimName: string, value: string, i18n: Record<string, string>, image = '', imageSlot = ''): string {
   const isColor = isColorVariant(dimName);
   const display = isColor ? resolveVariantColor(value).display : value;
-  const imageBtn = isColor ? chipImageBtnHtml(!!image, i18n) : '';
-  return `<span class="variant-chip" data-variant-chip data-value="${esc(value)}" data-image="${esc(image)}" style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">${colorChipVisualHtml(dimName, value, i18n)}<span class="variant-chip-label">${esc(display)}</span>${imageBtn}${chipRemoveButtonHtml(i18n)}</span>`;
+  const imageBtn = isColor ? chipImageBtnHtml(!!image || imageSlot !== '', i18n) : '';
+  const slotAttr = imageSlot === '' ? '' : ` data-image-slot="${esc(imageSlot)}"`;
+  return `<span class="variant-chip" data-variant-chip data-value="${esc(value)}" data-image="${esc(image)}"${slotAttr} style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">${colorChipVisualHtml(dimName, value, i18n)}<span class="variant-chip-label">${esc(display)}</span>${imageBtn}${chipRemoveButtonHtml(i18n)}</span>`;
 }
 
 // A remove (×) click never deletes immediately — it swaps to a tiny inline
@@ -948,11 +954,29 @@ function readVariantDims(editor: HTMLElement): VariantDimension[] {
     });
 }
 
+/**
+ * The colour → photo map the form will save.
+ *
+ * **A pending slot is resolved HERE, and the ordering is what makes that correct.** The submit
+ * handler uploads the gallery first and only then collects this payload (`handleEditSubmit`:
+ * `resolveGalleryUrls` is awaited before `collectVariantsPayload`), so by the time this runs a slot
+ * the seller picked two minutes ago has a real URL in its input. Resolving any earlier would store
+ * a blob URL that means nothing on anyone else's screen.
+ *
+ * A slot that still has no URL is skipped rather than saved empty: the upload failed, the save is
+ * being aborted anyway, and a link to nothing is worse than no link.
+ */
 function readVariantImages(editor: HTMLElement): Record<string, string> {
+  const form = editor.closest('form');
+  const slotUrl = (index: number): string => {
+    const slot = form?.querySelectorAll<HTMLElement>('.gallery-slot')[index];
+    return slot?.querySelector<HTMLInputElement>('.gallery-slot__url')?.value.trim() ?? '';
+  };
   const out: Record<string, string> = {};
   editor.querySelectorAll<HTMLElement>('[data-variant-chip]').forEach((chip) => {
     const value = chip.dataset.value ?? '';
-    const image = chip.dataset.image ?? '';
+    const pending = chip.dataset.imageSlot ?? '';
+    const image = chip.dataset.image || (pending === '' ? '' : slotUrl(Number(pending)));
     if (value && image) out[value] = image;
   });
   return out;
@@ -960,32 +984,116 @@ function readVariantImages(editor: HTMLElement): Record<string, string> {
 
 // One shared floating popover (see toolbar-portal.ts) for picking which of the
 // product's own gallery images a color chip should point the storefront's
-// main image at. Reads the gallery's *current* slot URLs live off the same
-// form at open time, not a stale snapshot — a seller can upload a new photo
-// and immediately link it without saving the product first.
+// main image at. Reads the gallery live off the same form at open time, not a
+// stale snapshot — including the photos picked in this session that have not
+// been uploaded yet, which is what makes "add a photo and link a colour to it"
+// one continuous action instead of two separated by a save and a reload. That
+// sentence used to be written here as a claim and was not true: the picker read
+// only the URL fields, and a pending photo has no URL until the save uploads it
+// (`currentGalleryImages` / `readVariantImages` carry the whole story).
 const variantImagePortal = createFloatingPortal('variant-image-picker-portal');
 
-function currentGalleryImages(editor: HTMLElement): string[] {
-  const form = editor.closest('form');
-  if (!form) return [];
-  return [...form.querySelectorAll<HTMLInputElement>('.gallery-slot__url')]
-    .map((input) => input.value.trim())
-    .filter(Boolean);
+/**
+ * A picture the seller can point a colour at: one per FILLED gallery slot.
+ *
+ * **Why a slot and not a URL.** The gallery uploads to Cloudinary at SAVE time, not when a photo is
+ * picked (`gallery.ts#resolveGalleryUrls`, called from the submit handler) — deliberately, because
+ * uploading on pick spends the account's quota on every abandoned edit, and a spent quota blocks
+ * every upload on the platform. Until then the picked photo is an in-memory blob and its
+ * `.gallery-slot__url` input is EMPTY.
+ *
+ * So the old version of this function, which read those inputs and dropped the blanks, could not
+ * see the photo the seller had just added — and the picker said "upload product photos first" over
+ * a gallery that visibly had one. The comment below it claimed the opposite ("a seller can upload a
+ * new photo and immediately link it without saving the product first"); it had quietly stopped
+ * being true, which is why nobody noticed it was the bug (owner, 2026-08-27: *"אי אפשר לשייך את
+ * התמונה בטופס עריכה לגירסה... אבל זה לא הגיוני כי הכל נעשה בו זמנית"*).
+ *
+ * A pending slot is therefore offered by INDEX and resolved to its URL at read time — which is
+ * after the submit handler has uploaded it (`readVariantImages`). The thumbnail comes from the
+ * slot's own `<img>`, which already shows the local preview, so both kinds render identically and
+ * neither costs a request.
+ */
+interface GalleryChoice {
+  /** The saved URL, or '' for a slot whose photo has not been uploaded yet. */
+  url: string;
+  /** Position in the gallery — how a not-yet-uploaded photo is referred to until it has a URL. */
+  index: number;
+  /** The gallery slot's own on-screen preview — the only picture a pending photo has. */
+  preview: string;
 }
 
-function variantImagePickerHtml(images: string[], current: string, i18n: Record<string, string>): string {
-  const noneItem = `<button type="button" data-variant-image-pick data-url="" style="display:block;width:100%;text-align:start;padding:0.4rem 0.6rem;border-radius:var(--radius-sm);background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted)">${esc(i18n.variantImageNone ?? 'No linked image')}</button>`;
+function currentGalleryImages(editor: HTMLElement): GalleryChoice[] {
+  const form = editor.closest('form');
+  if (!form) return [];
+  const out: GalleryChoice[] = [];
+  [...form.querySelectorAll<HTMLElement>('.gallery-slot')].forEach((slot, index) => {
+    // **`.gallery-slot__filled` is what says a slot holds a photo — not its <img>, and not its url
+    // field.** An EMPTY slot's `<img>` still carries a src (the skeleton the widget paints while a
+    // thumbnail decodes), so testing the image would offer every empty slot in the picker as a
+    // broken thumbnail; and testing the url alone is the original bug, because a pending photo has
+    // no url yet. The `hidden` attribute on this element is the widget's own answer, toggled by
+    // every path that fills or clears a slot (`gallery.ts`).
+    const filled = slot.querySelector<HTMLElement>('.gallery-slot__filled');
+    if (!filled || filled.hasAttribute('hidden')) return;
+    const url = slot.querySelector<HTMLInputElement>('.gallery-slot__url')?.value.trim() ?? '';
+    const preview = slot.querySelector<HTMLImageElement>('.gallery-slot__img')?.src ?? '';
+    out.push({ url, index, preview });
+  });
+  return out;
+}
+
+/** What a chip points at today, in the same vocabulary the picker speaks. */
+function chipImageRef(chip: HTMLElement): { url: string; index: number } {
+  return { url: chip.dataset.image ?? '', index: Number(chip.dataset.imageSlot ?? '-1') };
+}
+
+/** Does this chip point at a picture at all — saved or still pending? */
+function chipHasImage(chip: HTMLElement): boolean {
+  return !!chip.dataset.image || (chip.dataset.imageSlot ?? '') !== '';
+}
+
+function variantImagePickerHtml(
+  images: GalleryChoice[],
+  current: { url: string; index: number },
+  i18n: Record<string, string>,
+): string {
+  const noneItem = `<button type="button" data-variant-image-pick data-url="" data-slot="" style="display:block;width:100%;text-align:start;padding:0.4rem 0.6rem;border-radius:var(--radius-sm);background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted)">${esc(i18n.variantImageNone ?? 'No linked image')}</button>`;
   if (!images.length) {
     return `${noneItem}<p class="muted" style="font-size:0.75rem;padding:0.3rem 0.6rem;margin:0">${esc(i18n.variantImageNoPhotos ?? 'Upload product photos first')}</p>`;
   }
-  const thumbs = images.map((url) => `<button type="button" data-variant-image-pick data-url="${esc(url)}" aria-label="${esc(url)}" style="display:block;padding:2px;border-radius:var(--radius-sm);border:2px solid ${url === current ? 'var(--color-accent)' : 'transparent'};background:none;cursor:pointer;line-height:0"><img src="${esc(thumbUrl(url, 64, 64))}" alt="" width="48" height="48" loading="lazy" decoding="async" style="width:48px;height:48px;object-fit:cover;border-radius:2px;display:block"></button>`).join('');
+  const thumbs = images.map((choice) => {
+    // A saved photo is matched by URL and a pending one by position, because that is the only
+    // handle each of them has. Never by position alone: removing a slot would re-point the chip at
+    // whatever slid into its place.
+    const chosen = choice.url ? choice.url === current.url : choice.index === current.index;
+    // **Every thumbnail here is assigned, none is rendered.** Half of these pictures have no URL at
+    // all — a photo the seller picked a minute ago exists only as a local preview until the save
+    // uploads it — so the markup cannot carry a source for them, and carrying one for the other
+    // half would mean two mechanisms for one row of thumbnails. `paintPickerThumbs` below fills
+    // both, the saved ones through `thumbUrl` exactly as before.
+    return `<button type="button" data-variant-image-pick data-url="${esc(choice.url)}" data-slot="${choice.index}" aria-label="${esc(choice.url || String(choice.index + 1))}" style="display:block;padding:2px;border-radius:var(--radius-sm);border:2px solid ${chosen ? 'var(--color-accent)' : 'transparent'};background:none;cursor:pointer;line-height:0"><img src="" alt="" width="48" height="48" loading="lazy" decoding="async" style="width:48px;height:48px;object-fit:cover;border-radius:2px;display:block"></button>`;
+  }).join('');
   return `<div style="display:flex;flex-wrap:wrap;gap:0.35rem;padding:0.3rem 0.3rem 0.5rem">${thumbs}</div>${noneItem}`;
+}
+
+/**
+ * Fills in the picker's thumbnails — the second half of `variantImagePickerHtml`.
+ *
+ * A saved photo gets its CDN thumbnail; a pending one gets the gallery slot's own on-screen
+ * preview, which is the only picture it has until the save uploads it.
+ */
+function paintPickerThumbs(portal: HTMLElement, gallery: readonly GalleryChoice[]): void {
+  for (const choice of gallery) {
+    const img = portal.querySelector<HTMLImageElement>(`[data-variant-image-pick][data-slot="${choice.index}"] img`);
+    if (img) img.src = choice.url ? thumbUrl(choice.url, 64, 64) : choice.preview;
+  }
 }
 
 function updateChipImageBtnState(chip: HTMLElement, i18n: Record<string, string>): void {
   const btn = chip.querySelector<HTMLButtonElement>('[data-variant-chip-image]');
   if (!btn) return;
-  const hasImage = !!chip.dataset.image;
+  const hasImage = chipHasImage(chip);
   const label = hasImage ? (i18n.variantImageAssigned ?? 'Change linked image') : (i18n.variantImageAssign ?? 'Link an image to this color');
   btn.style.color = hasImage ? 'var(--color-accent)' : 'var(--color-muted)';
   btn.setAttribute('aria-label', label);
@@ -1541,11 +1649,19 @@ export function initVariantEditors(): void {
       if (!chip) return;
       if (variantImagePortal.currentTrigger() === chipImageBtn) { variantImagePortal.close(); return; }
       const gallery = currentGalleryImages(editor);
-      const current = chip.dataset.image ?? '';
+      const current = chipImageRef(chip);
       variantImagePortal.open(chipImageBtn, '150px', () => variantImagePickerHtml(gallery, current, i18n), (portal) => {
+        paintPickerThumbs(portal, gallery);
         portal.querySelectorAll<HTMLButtonElement>('[data-variant-image-pick]').forEach((pickBtn) => {
           pickBtn.addEventListener('click', () => {
-            chip.dataset.image = pickBtn.dataset.url ?? '';
+            // Exactly one of the two is ever set. A saved photo is remembered by URL; one that has
+            // not been uploaded yet has no URL to remember, so it is remembered by slot and turned
+            // into a URL at save time (`readVariantImages`).
+            const url = pickBtn.dataset.url ?? '';
+            const slot = pickBtn.dataset.slot ?? '';
+            chip.dataset.image = url;
+            if (!url && slot !== '') chip.dataset.imageSlot = slot;
+            else delete chip.dataset.imageSlot;
             updateChipImageBtnState(chip, i18n);
             variantImagePortal.close();
           });
@@ -1665,7 +1781,8 @@ export function initVariantEditors(): void {
     const existingChips = [...chipsWrap.querySelectorAll<HTMLElement>('[data-variant-chip]')];
     const options = existingChips.map(c => c.dataset.value ?? '');
     const images = existingChips.map(c => c.dataset.image ?? '');
-    chipsWrap.innerHTML = options.map((o, idx) => chipHtml(target.value, o, i18n, images[idx])).join('');
+    const slots = existingChips.map(c => c.dataset.imageSlot ?? '');
+    chipsWrap.innerHTML = options.map((o, idx) => chipHtml(target.value, o, i18n, images[idx], slots[idx])).join('');
     chipsWrap.appendChild(adderEl ?? createValueAdderElement(i18n));
     refreshVariantCombos(editor, i18n);
   });
@@ -1695,7 +1812,7 @@ export function initVariantEditors(): void {
       const newValue = `${baseName} ${target.value}`;
       const i18n = getDashI18n();
       const wrapper = document.createElement('div');
-      wrapper.innerHTML = chipHtml(nameInput.value, newValue, i18n, chip.dataset.image ?? '');
+      wrapper.innerHTML = chipHtml(nameInput.value, newValue, i18n, chip.dataset.image ?? '', chip.dataset.imageSlot ?? '');
       chip.replaceWith(wrapper.firstElementChild as HTMLElement);
       refreshVariantCombos(editor, i18n);
       return;
