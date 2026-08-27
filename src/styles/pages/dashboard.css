@@ -2527,10 +2527,20 @@ html:has(#dash-main-card.dash-nav-side) {
      (2026-08-23: *"גם ההדר צריך להיות מותאם לרוחב של הקונטיינרים החדשים"*) — an application whose
      chrome stops 140px short of its own sidebar is two designs on one screen. */
   html:has(#dash-main-card.dash-nav-side) { --dash-rail-w: 15.5rem; }
-  .dash-section:has(> #dash-main-card.dash-nav-side),
-  html:has(#dash-main-card.dash-nav-side) .site-header > .container {
-    max-width: none;
-  }
+  .dash-section:has(> #dash-main-card.dash-nav-side) { max-width: none; }
+  /* **The header is matched by a CLASS, not by `:has()`, and that is the whole point of the split.**
+     This used to read `html:has(#dash-main-card.dash-nav-side) .site-header > .container`, and the
+     element it asks about is a thousand lines below the header in the document. While the page
+     streams, the ancestor cannot match yet — so the header painted at the storefront's 1160px and
+     then snapped to 1440px the moment the card arrived. Measured on the live build at 1440×900:
+     L140 W1160 at 422ms, L0 W1440 at 479ms — about three frames, which is exactly long enough to
+     read as a flicker and not long enough to see what moved (owner, 2026-08-27).
+
+     `Header.astro` already receives `dashNav`, the same fact the page computed on the server, so
+     the class is on the element from the first byte and the first paint is the final one. The
+     sibling above keeps its `:has()` because its subject is the card's own PARENT — the section is
+     open around the card, so there is no window in which one exists without the other. */
+  .site-header > .container.dash-bleed { max-width: none; }
   /* **Both ends, and the bottom one is not symmetry — it is the sticky bug** (measured
      2026-08-23). `.section` sets `padding-block: 3rem` and only the top was ever overridden, so
      the document ran 47.8px past the shell's bottom. A sticky element cannot leave its own

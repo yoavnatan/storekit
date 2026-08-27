@@ -27,6 +27,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { sourceGuard } from './helpers/source-guard.js';
 
 const PAGES_DIR = join(process.cwd(), 'src', 'pages');
 const SRC_DIR = join(process.cwd(), 'src');
@@ -121,5 +122,31 @@ describe('header stability', () => {
         'inside <main> and duplicates the id the skip link targets. Use a <div>. Found at:\n' +
         offenders.join('\n'),
     ).toEqual([]);
+  });
+
+  it('does not decide its own width from an element further down the document', () => {
+    /* The fourth way it stopped being still, and the only one that needed a stopwatch to see.
+       The dashboard header runs full bleed, and `dashboard.css` used to say so with
+       `html:has(#dash-main-card.dash-nav-side) .site-header > .container` — an ancestor selector
+       whose subject sits about a thousand lines BELOW the header in the document. While the page
+       streams, `:has()` has not met that element yet, so the header painted at the storefront's
+       1160px and snapped to 1440px when the card finally arrived.
+
+       Measured on a production build at 1440×900, sampling every frame: `L140 W1160` at 422ms,
+       `L0 W1440` at 479ms. Three frames — long enough to read as a flicker, short enough that
+       what moved is not identifiable, which is exactly how it was reported (owner, 2026-08-27:
+       *"קופץ למרכז לשבריר שניה ואז חוזר למקום"*). It reproduced on the LIVE site and NOT on the
+       dev server, where the shift lands at 1.6s from Astro's style injection and looks like a
+       different bug entirely.
+
+       The rule: the header's width comes from `dashNav`, which the page already computed on the
+       server, so the first paint is the final one. A `:has()` reaching down the tree for it is a
+       flicker every time, and the guard rejects the exact selector that was there. */
+    expect(sourceGuard({
+      file: 'src/styles/pages/dashboard.css',
+      rule: 'the site header does not size itself from a :has() that reaches down the document',
+      find: (text) => [...text.matchAll(/html:has\([^)]*\)\s*\.site-header[^{]*\{/g)].map((m) => m[0]),
+      mustReject: 'html:has(#dash-main-card.dash-nav-side) .site-header > .container { max-width: none; }',
+    })).toEqual([]);
   });
 });
