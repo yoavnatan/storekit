@@ -46,7 +46,11 @@ const BOX = 'block cursor-pointer rounded-[var(--radius)] border [border-color:v
 const CAPTION = 'block text-[0.85rem] font-semibold mb-1.5 text-start';
 ---
 
-<div class="card card--flat p-4 md:p-5 mt-4" id="header-style-card">
+{/* `data-slug`: the avatar's colour is derived from the SLUG and its letter from the NAME
+    (`lib/store-mark.ts`), and the live preview has to redraw the letter as the seller types. The
+    slug is the one half the client cannot read off the form, because the settings sheet edits it
+    somewhere else entirely. */}
+<div class="card card--flat p-4 md:p-5 mt-4" id="header-style-card" data-slug={store.slug}>
   <h3 class="text-[1.05rem] font-bold m-0">{d.headerStyleTitle}</h3>
   <p class="muted m-0 mt-1 mb-4 text-[0.82rem]">{d.headerStyleHint}</p>
 
@@ -57,8 +61,14 @@ const CAPTION = 'block text-[0.85rem] font-semibold mb-1.5 text-start';
         <span class={CAPTION}>{d.headerStyleName}</span>
         <span class={BAR} aria-hidden="true">
           <span class="store-header__logo-col">
+            {/* The avatar sits in a slot of its own because the live preview REPLACES it: uploading
+                a picture turns the initials plate into an <img> and removing it turns it back, and
+                the two are different elements rather than one element with a different src.
+                `header-preview.ts` owns what goes in here after the first paint. */}
             <span class="logo store-name-link">
-              <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={32} class="store-header__logo" />
+              <span id="header-preview-avatar">
+                <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={32} class="store-header__logo" />
+              </span>
               <span class="store-name-text">{store.name}</span>
             </span>
           </span>

@@ -4202,7 +4202,7 @@ const orderStatusColors: Record<string, string> = {
     settings: async () => {
       // No feed-sync here: its panel is rendered by `products`, which now wires it. Binding it from
       // both would answer every click twice, which is the documented cost of a second init.
-      const [img, tree, domain, lifecycle, url, storeCats, headerLogo] = await Promise.all([
+      const [img, tree, domain, lifecycle, url, storeCats, headerLogo, headerPreview] = await Promise.all([
         import('../../scripts/dashboard/store-image.js'),
         import('../../scripts/dashboard/category-tree.js'),
         import('../../scripts/dashboard/custom-domain.js'),
@@ -4210,6 +4210,7 @@ const orderStatusColors: Record<string, string> = {
         import('../../scripts/dashboard/store-url.js'),
         import('../../scripts/store-category-picker.js'),
         import('../../scripts/dashboard/header-logo.js'),
+        import('../../scripts/dashboard/header-preview.js'),
         imageEditors(),
       ]);
       return () => {
@@ -4246,6 +4247,9 @@ const orderStatusColors: Record<string, string> = {
       // shares that widget's uploader and background worker by import and none of its crop flow
       // (header-logo.ts's header says why in full).
       headerLogo.initHeaderLogoCard({ cloud: CLOUD, preset: PRESET, labels });
+      // AFTER the image widgets, so the hidden field it listens on is already wired and its
+      // first `announceValueChange` cannot arrive before there is a listener for it.
+      headerPreview.initHeaderPreview();
       tree.initCategoryTreeEditor();
       domain.initCustomDomain();
       lifecycle.initStoreLifecycle();
