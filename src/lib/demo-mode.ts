@@ -65,7 +65,17 @@ export const DEMO_PUBLICATION_INTERVAL_SEC = 15;
 export const DEMO_VISITOR_STORE_HOURS = 24;
 
 /**
- * The two accounts `/demo`'s quick-login buttons sign a visitor into.
+ * The accounts the demonstration's shortcuts sign a visitor into.
+ *
+ * The SELLER is reached from two places: the tour control on the home page, and the login page
+ * itself — both post to `/seller/login`, which owns the handler. There was a `/demo` page once and
+ * it is gone; a screen you pass through, made of its own buttons, read as detached from the
+ * application (owner, 2026-08-27).
+ *
+ * The BUYER has no door any more, by the same decision — the owner asked for two, and a shopper is
+ * what a signed-out visitor already is. The account still exists because a third of the seeded
+ * orders hang off it, which is what makes the buyer side of those orders real; it simply is not
+ * somewhere you can log in to.
  *
  * The seller is the platform account that owns the four showcase stores, so "log in as a seller"
  * lands on a dashboard with months of trading behind it rather than on an empty one. The buyer is

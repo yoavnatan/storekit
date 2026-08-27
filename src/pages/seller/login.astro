@@ -7,6 +7,9 @@ import { loginSeller, setSellerSession, getSellerSession } from '../../lib/selle
 import { getLang, getT } from '../../i18n/index.js';
 import { safeRedirectPath } from '../../lib/safe-redirect.js';
 import { isGoogleAuthEnabled } from '../../lib/google-oauth.js';
+import { isDemoMode, DEMO_SELLER_EMAIL } from '../../lib/demo-mode.js';
+import { getSellerByEmail } from '../../lib/seller-auth.js';
+import { setAdminCookie } from '../../lib/admin-auth.js';
 import { clientIp } from '../../lib/client-ip.js';
 import {
   checkAuthRate, clearAuthRate, countAuthAttempt, retryAfterMinutes, sellerLoginRules,
@@ -17,6 +20,7 @@ if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 const googleEnabled = isGoogleAuthEnabled();
+const demoMode = isDemoMode();
 
 // Only an in-site absolute path, and never back to this page itself (login → login loop).
 // The rule lives in lib/safe-redirect.ts — it used to be three lines copy-pasted here, in
@@ -34,14 +38,57 @@ let error = oauthErrorMsg;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
+
+  /**
+   * ── The portfolio demonstration's two shortcuts (`lib/demo-mode.ts`) ──
+   *
+   * Somebody evaluating this work has a couple of minutes, and most of what was built is behind the
+   * seller dashboard and the admin. Nothing on a shopper's path leads there, and a login form is a
+   * barrier rather than an invitation — so in demo mode this page offers the two doors directly.
+   *
+   * **Here, and not on a page of their own.** A separate landing screen was built first and thrown
+   * away: it was a screen you pass through once, made of its own buttons, and the owner's reaction
+   * was that it felt detached from the application. This is where a person already goes looking for
+   * a way in, so nothing new appears anywhere and the form below is untouched — a visitor who wants
+   * to register or sign in as a buyer still does exactly that.
+   *
+   * Answered BEFORE the rate limiter, deliberately: these carry no credential to guess, so metering
+   * them would only mean the demonstration locks itself after five clicks.
+   */
+  let demoFailed = false;
+  const demoRole = String(form.get('demoRole') ?? '');
+  if (isDemoMode() && (demoRole === 'seller' || demoRole === 'admin')) {
+    if (demoRole === 'admin') {
+      setAdminCookie(Astro.cookies);
+      return Astro.redirect('/admin');
+    }
+    const account = await getSellerByEmail(DEMO_SELLER_EMAIL);
+    if (account) {
+      setSellerSession(Astro.cookies, account.id);
+      return Astro.redirect('/seller/dashboard');
+    }
+    // Named rather than silently falling through to the form: the only way here is a database that
+    // has not been seeded, and "log in" quietly becoming "please log in" is the most confusing
+    // thing this page could do to somebody who has just followed a link.
+    //
+    // `demoFailed` and not a bare assignment: falling through from here runs the credential check
+    // below with two empty fields, which overwrites this sentence with "wrong email or password" —
+    // an answer about a form the visitor never filled in.
+    demoFailed = true;
+    error = t.auth.demoAccountMissing.replace('{email}', DEMO_SELLER_EMAIL);
+  }
+
   const email    = String(form.get('email')    || '');
   const password = String(form.get('password') || '');
 
   // Asked BEFORE the password is verified — the cost being defended against is bcrypt's, so a gate
   // that checks first and refuses afterwards has already paid it (lib/rate-limit.ts).
   const rules = sellerLoginRules(email, clientIp(Astro.request, Astro.clientAddress));
-  const gate = await checkAuthRate(rules);
-  if (!gate.allowed) {
+  const gate = demoFailed ? { allowed: true, retryAfterSec: 0 } : await checkAuthRate(rules);
+  if (demoFailed) {
+    // Nothing more to do: the sentence above is the answer, and metering or bcrypt-ing an empty
+    // form on top of it would only add a second, wrong one.
+  } else if (!gate.allowed) {
     Astro.response.status = 429;
     error = t.auth.tooManyAttempts.replace('{n}', String(retryAfterMinutes(gate.retryAfterSec)));
   } else {
@@ -88,6 +135,23 @@ if (Astro.request.method === 'POST') {
         </a>
 
         <div class="auth-divider"><span>{t.auth.orDivider}</span></div>
+        </Fragment>
+      )}
+
+      {/* ── Demo only. Above the form, because they are the reason most visitors are on this
+             page — and the form below is left exactly as it is for everyone who came to sign in. */}
+      {demoMode && (
+        <Fragment>
+          <form method="POST" class="grid gap-2">
+            <CsrfField />
+            <button class="btn btn--accent" type="submit" name="demoRole" value="seller">
+              {t.home.tourSeller}
+            </button>
+            <button class="btn" type="submit" name="demoRole" value="admin">
+              {t.home.tourAdmin}
+            </button>
+          </form>
+          <div class="auth-divider"><span>{t.auth.orDivider}</span></div>
         </Fragment>
       )}
 

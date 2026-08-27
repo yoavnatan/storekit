@@ -46,6 +46,14 @@ export const translations = {
        *  catalogue, and a request that did not arrive is not entitled to make it. */
       searchFailed: 'החיפוש אינו זמין כרגע. נסו שוב.',
       allStores: 'כל החנויות',
+      /* ── The portfolio demonstration's tour control (lib/demo-mode.ts) ──
+         One control, not two buttons: most of what was built is behind the two dashboards, and
+         nothing on a shopper's path leads there. "סייר" rather than "היכנס" because a visitor is
+         looking around, not signing in — and because the same two links appear on the login page
+         for anyone who arrives there instead. */
+      tourTitle: 'סייר באתר',
+      tourSeller: 'דשבורד מוכרים',
+      tourAdmin: 'דשבורד אדמין',
       viewAllStores: 'כל החנויות',
       shelfLiked: 'חנויות ששמרת',
       shelfBuyAgain: 'קנית כאן בעבר',
@@ -669,6 +677,10 @@ export const translations = {
       noStore: 'עדיין אין לך חשבון?',
       openOne: 'הצטרף',
       wrongCredentials: 'אימייל או סיסמה שגויים.',
+      /** The demo's seller account is absent — the database was never seeded. Named, because
+       *  a quick-login button that silently becomes a login form is the most confusing thing this
+       *  page could do to somebody who just followed a link. */
+      demoAccountMissing: 'חשבון ההדגמה {email} לא קיים — יש להריץ את זריעת תיק העבודות.',
       tooManyAttempts: 'יותר מדי ניסיונות התחברות. נסה שוב בעוד {n} דקות.',
       openStore: 'הצטרפות',
       createFree: 'חנות משלך, בתוך מתחם חנויות דיגיטלי.',
@@ -3031,6 +3043,9 @@ export const translations = {
       searchEmpty: 'No results found',
       searchFailed: 'Search is unavailable right now. Please try again.',
       allStores: 'All Stores',
+      tourTitle: 'Take a tour',
+      tourSeller: 'Seller dashboard',
+      tourAdmin: 'Admin dashboard',
       viewAllStores: 'All stores',
       shelfLiked: 'Stores you saved',
       shelfBuyAgain: 'Buy again',
@@ -3313,6 +3328,7 @@ export const translations = {
       noStore: "Don't have an account yet?",
       openOne: 'Join',
       wrongCredentials: 'Incorrect email or password.',
+      demoAccountMissing: 'The demo account {email} does not exist - run the portfolio seed.',
       tooManyAttempts: 'Too many sign-in attempts. Try again in {n} minutes.',
       openStore: 'Join',
       createFree: 'Your own store, in a home for independent stores.',

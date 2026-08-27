@@ -361,8 +361,8 @@ export async function updateSeller(
   /**
    * ── The shared exhibit's one locked door (`lib/demo-mode.ts`) ──
    *
-   * On the portfolio demonstration the seller and buyer accounts are SHARED: `/demo` signs every
-   * visitor into the same two, without credentials. So a visitor who changes the email or the
+   * On the portfolio demonstration the seller account is SHARED: the tour control and the login
+   * page both sign every visitor into the same one, without credentials. So a visitor who changes the email or the
    * password — idly, or to see what happens — locks every later visitor out of the account the
    * quick-login button points at, and the hourly reset is an hour too slow to be the answer when
    * the next person to follow the link is the one the owner sent it to.

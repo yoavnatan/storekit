@@ -538,7 +538,7 @@ async function main() {
     console.log(
       `\n✅ Portfolio demo ready.\n` +
       `   stores: ${built.stores}   orders: ${built.orders}   reviews: ${built.reviews}   campaigns: ${built.campaigns}   messages: ${built.messages}\n` +
-      `   Sign in at /demo — no credentials.\n`,
+      `   Sign in from the site's login page — the two demo doors are on it.\n`,
     );
   } finally {
     await db2.end();
