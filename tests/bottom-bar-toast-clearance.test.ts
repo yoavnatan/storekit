@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sourceGuard } from './helpers/source-guard.js';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 
@@ -53,5 +54,33 @@ describe('a fixed bottom bar declares itself so the toast can clear it', () => {
       'A fixed bar at the bottom edge shares the toast\'s corner on a phone. Add `data-bottom-bar` '
       + 'on the same line as its class so the toast lifts above it, or move the bar off the bottom.',
     ).toEqual([]);
+  });
+
+  it('the products bulk bar clears the cookie notice', () => {
+    /* The same collision, one layer down and with the loser reversed. The cookie notice is
+       `fixed bottom-0` at z-60; `.bulk-bar` is z-45 — so a seller who had not dismissed the notice
+       selected products and got the strip of actions UNDERNEATH a bar of legal text. On screen and
+       unreachable (owner, 2026-08-27). Measured at 1440×900 before the fix: the notice occupies
+       848–900 and the bar's bottom edge sat at 882, inside it.
+
+       `--consent-bar-h` is published on <html> by `scripts/consent.ts` and cleared on dismissal, so
+       the `0px` fallback is not a guess — it is the value for every visitor who has dismissed the
+       notice, and the bar returns to its own 1.1rem exactly as before, which is the half of the
+       request that is easy to lose ("אם העוגיות לא נמצאות אז שיהיה במקום הרגיל שלו").
+
+       A source guard because the failure is a missing term in one declaration, and a DOM test for
+       it needs a seller session, a products tab and an undismissed notice — three states, to assert
+       one string. The live drive that found it and the one that confirmed the fix are in the
+       commit; this is what stops it coming back. */
+    expect(sourceGuard({
+      file: 'src/styles/pages/dashboard.css',
+      rule: 'the bulk bar offsets itself by the cookie notice height',
+      find: (text) => {
+        const rule = /\.bulk-bar\s*\{[^}]*\}/.exec(text)?.[0] ?? '';
+        const bottom = /bottom:\s*([^;]+);/.exec(rule)?.[1] ?? '';
+        return bottom.includes('--consent-bar-h') ? [] : [`bottom: ${bottom.trim() || '(none)'}`];
+      },
+      mustReject: '.bulk-bar {\n  position: fixed;\n  z-index: 45;\n  bottom: 1.1rem;\n}',
+    })).toEqual([]);
   });
 });

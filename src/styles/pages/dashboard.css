@@ -70,7 +70,19 @@ textarea.input { resize: none; }
 .bulk-bar {
   position: fixed;
   z-index: 45;
-  bottom: 1.1rem;
+  /* **Above the cookie notice while there is one, and back down the moment there is not.**
+     The notice is `fixed bottom-0` at z-60 and this bar is z-45, so a seller who had not dismissed
+     it selected products and got a strip of buttons underneath a bar of legal text — the actions
+     were on screen and unreachable (owner, 2026-08-27: *"הפס של השליטה במוצרים מוחבא על ידי ההודעה
+     על העוגיות"*). Measured at 1440×900: the notice occupies 848–900 and the bar rises into it.
+
+     `--consent-bar-h` is published by `scripts/consent.ts` — set on `<html>` when the notice shows,
+     re-measured on resize as its text rewraps, and cleared on dismissal. So the `0px` fallback is
+     not a guess about the common case: it is what the variable IS for every visitor who has already
+     dismissed the notice, and the bar sits at its own 1.1rem exactly as before. `#sticky-cart-bar`
+     solves the same problem the same way (styles/pages/product.css), which is why this is a second
+     reader of one number rather than a second mechanism. */
+  bottom: calc(1.1rem + var(--consent-bar-h, 0px));
   inset-inline-start: var(--dash-rail-w, 0px);
   inset-inline-end: 0;
   width: max-content;
