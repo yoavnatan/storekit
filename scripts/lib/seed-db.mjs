@@ -75,6 +75,11 @@ export const DEMO_EMAIL_SUFFIX = '@demo.local';
 /** The single platform-owned account the showcase stores hang off (`seed-showcase-stores.mjs`). */
 export const SHOWCASE_OWNER_EMAIL = 'showcase@dezabin.co.il';
 
+/** The demonstration's "first day" seller — one nearly-empty shop, so the onboarding checklist has
+ *  something to show. Mirrors `DEMO_NEW_SELLER_EMAIL` in `src/lib/demo-mode.ts`, which this file
+ *  cannot import; `tests/demo-doors.test.ts` reads both and fails if the spellings drift. */
+export const NEW_SELLER_EMAIL = 'newseller@demo.local';
+
 /**
  * How long a shop somebody registered during the demonstration is left alone (the `visitor` scope).
  *

@@ -5,7 +5,7 @@ import { secretsEqual } from './secret-compare.js';
 import { requiredSecret } from './runtime-env.js';
 import { firstRow, isUuid, query, rows } from './db.js';
 import type { PayoutDetails } from './payout-details.js';
-import { isDemoMode, DEMO_SELLER_EMAIL, DEMO_BUYER_EMAIL } from './demo-mode.js';
+import { isDemoMode, isSharedDemoAccount } from './demo-mode.js';
 
 /** The shortest password the platform accepts, in ONE place. Registration and the forgot-password
  *  flow both read it — two independent numbers is how a reset ends up quietly weaker than signup. */
@@ -367,14 +367,14 @@ export async function updateSeller(
    * quick-login button points at, and the hourly reset is an hour too slow to be the answer when
    * the next person to follow the link is the one the owner sent it to.
    *
-   * Scoped to the two seeded accounts, and NOT to every account in demo mode: a visitor who
+   * Scoped to the shared demo accounts, and NOT to every account in demo mode: a visitor who
    * registers his own shop must be able to manage his own login like any seller, because that flow
    * is part of what is being demonstrated. This is the "refuse a write that would break the
    * demonstration for the next visitor" case demo-mode.ts names, and it is deliberately the only
    * one — it takes nothing away that protects money, stock or anybody's data.
    */
   if (isDemoMode() && (fields.email !== undefined || fields.newPassword)
-      && (seller.email === DEMO_SELLER_EMAIL || seller.email === DEMO_BUYER_EMAIL)) {
+      && isSharedDemoAccount(seller.email)) {
     return { ok: false, error: 'זהו חשבון הדגמה משותף, לכן המייל והסיסמה שלו נעולים. ניתן לפתוח חשבון משלכם דרך "פתח חנות".' };
   }
 

@@ -41,7 +41,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
-  SHOWCASE_OWNER_EMAIL, SEED_SCOPES, DEMO_CLAIM_KEY, isDemoDatabase,
+  SHOWCASE_OWNER_EMAIL, NEW_SELLER_EMAIL, SEED_SCOPES, DEMO_CLAIM_KEY, isDemoDatabase,
   openSeedClient, purge, purgeOrdersOfStores, purgeOrphanJournalRows,
 } from './lib/seed-db.mjs';
 
@@ -513,6 +513,62 @@ export async function seedClearing(db) {
      next.toISOString().slice(0, 19).replace('T', ' ')]);
 }
 
+/**
+ * The shop on its FIRST DAY — the one state the four showcase stores can never show.
+ *
+ * "שלבים ראשונים" is the screen that tells a new seller what to do, and `OnboardingChecklist`
+ * hides itself the moment every step is done. The showcase stores are finished, so the one screen
+ * built for a beginner was the one screen no visitor could reach: "פתח חנות" leads to a
+ * registration form, and the tour's seller door lands on a shop with a quarter of trading behind it
+ * (owner, 2026-08-27).
+ *
+ * So: one seller, one shop, one product, and nothing else — no pictures, no about, no categories,
+ * no address, no clearing and no card. The checklist opens with one step of eight done and both
+ * required go-live steps outstanding, which is what a real seller sees on the day they sign up.
+ *
+ * **`demo = true`, and that flag does two jobs.** It keeps the shop out of the `visitor` sweep and
+ * the `portfolio` purge, which both delete "every store that is not a showcase store" and would
+ * otherwise take this one every night. And it costs nothing on the storefront, because a shop with
+ * no clearing account and no subscription is unpublished — `isStoreDiscoverable` keeps it off the
+ * homepage and the directory whatever the flag says.
+ *
+ * Idempotent: a re-seed reuses the same rows rather than raising a second empty shop each run.
+ */
+export async function seedFirstDayShop(db) {
+  const { rows: sellerRows } = await db.query(
+    `INSERT INTO sellers (id, name, email) VALUES ($1, $2, $3)
+       ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+    [uuid(), 'ליאת', NEW_SELLER_EMAIL]);
+  const seller = sellerRows[0].id;
+
+  // **`published_at` is stated NULL, and it has to be.** The column DEFAULTS to now()
+  // (migration 20260823_210421) because every store the application creates is meant to go up —
+  // `createStore` is the one writer that says otherwise. A seeder writing a bare INSERT therefore
+  // gets a PUBLISHED shop by omission, which is how this one turned up in the directory on its
+  // first drive: an empty shop with one product, on the storefront, next to the four curated ones.
+  // Verified afterwards that nothing puts it back — `storePublication` runs every 15s in demo mode
+  // and derives publication from the two holds, and this seller has neither a clearing account nor
+  // a card, so it correctly leaves the shop down.
+  const { rows: storeRows } = await db.query(
+    `INSERT INTO stores (id, seller_id, slug, name, demo, created_at, published_at)
+          VALUES ($1, $2, 'liat-studio', 'הסטודיו של ליאת', true, now(), NULL)
+       ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, demo = true, published_at = NULL
+     RETURNING id`,
+    [uuid(), seller]);
+  const store = storeRows[0].id;
+
+  // One product, so the shop is a shop rather than an empty form — and so the checklist's first
+  // row is ticked, which is what makes the rest of it read as a list instead of a wall.
+  await db.query(
+    `INSERT INTO store_products (id, store_id, slug, name, description, price_agorot, stock)
+          VALUES ($1, $2, 'keramika-kos', 'כוס קרמיקה', '', 6500, 8)
+       ON CONFLICT (store_id, slug) DO NOTHING`,
+    [uuid(), store]);
+
+  return { store, seller };
+}
+
 async function main() {
   const db = await openSeedClient();
   try {
@@ -543,11 +599,12 @@ async function main() {
     console.log('\n📦 Building the trading history…');
     const built = await buildTrading(db2);
     await seedClearing(db2);
+    await seedFirstDayShop(db2);
     await purgeOrphanJournalRows(db2);
     console.log(
       `\n✅ Portfolio demo ready.\n` +
       `   stores: ${built.stores}   orders: ${built.orders}   reviews: ${built.reviews}   campaigns: ${built.campaigns}   messages: ${built.messages}\n` +
-      `   Sign in from the site's login page — the two demo doors are on it.\n`,
+      `   Sign in from the header's tour control — seller, new seller, admin.\n`,
     );
   } finally {
     await db2.end();

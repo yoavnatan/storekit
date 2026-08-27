@@ -83,3 +83,40 @@ export const DEMO_PUBLICATION_INTERVAL_SEC = 15;
  */
 export const DEMO_SELLER_EMAIL = 'showcase@dezabin.co.il';
 export const DEMO_BUYER_EMAIL = 'buyer@demo.local';
+
+/**
+ * The second seller door: a shop on its FIRST DAY.
+ *
+ * The showcase seller's four stores are finished, and "שלבים ראשונים" — the checklist that tells a
+ * new seller what to do — renders only while something is still undone (`OnboardingChecklist`
+ * hides itself at 100%). So the one screen built to explain the product to a beginner was the one
+ * screen no visitor to the demonstration could reach: pressing "פתח חנות" leads to a registration
+ * form, and the tour's seller door lands on a shop with months of trading behind it (owner,
+ * 2026-08-27: *"מה שהוא לא רואה זה את שלבים ראשונים שמסבירים מה הוא צריך לעשות"*).
+ *
+ * This account owns one nearly-empty store, so the door lands exactly where a real seller lands on
+ * the day they sign up — an open checklist, a partial progress bar, and every "לביצוע" pointing at
+ * the tab that does it. It is a shared demo account like the other two: read-only
+ * (`lib/demo-viewer.ts`) and locked out of changing its own credentials (`lib/seller-auth.ts`).
+ */
+export const DEMO_NEW_SELLER_EMAIL = 'newseller@demo.local';
+
+/**
+ * The accounts the tour hands out, as one list.
+ *
+ * Every rule about them — read-only, credentials locked, kept by the visitor sweep — has to name
+ * all of them, and each of those rules lived in a different module with its own `a === x || a === y`.
+ * Adding this third account meant editing three of those, which is the definition of a rule that
+ * will be missed the fourth time. One predicate, three readers.
+ */
+export const DEMO_SHARED_EMAILS: readonly string[] = [
+  DEMO_SELLER_EMAIL,
+  DEMO_NEW_SELLER_EMAIL,
+  DEMO_BUYER_EMAIL,
+];
+
+/** Is this one of the accounts anybody can walk into? Compared by ACCOUNT, never by "is demo mode
+ *  on": a visitor who registered has an account of their own and is an ordinary seller in it. */
+export function isSharedDemoAccount(email: string | null | undefined): boolean {
+  return !!email && DEMO_SHARED_EMAILS.includes(email);
+}

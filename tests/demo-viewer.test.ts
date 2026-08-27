@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { APIContext, AstroCookies } from 'astro';
 import { query } from '../src/lib/db.js';
 import { demoWriteRefusal, DEMO_WRITE_ALLOWED } from '../src/lib/demo-viewer.js';
-import { DEMO_SELLER_EMAIL, DEMO_BUYER_EMAIL } from '../src/lib/demo-mode.js';
+import { DEMO_SELLER_EMAIL, DEMO_BUYER_EMAIL, DEMO_NEW_SELLER_EMAIL } from '../src/lib/demo-mode.js';
 import { setAdminCookie } from '../src/lib/admin-auth.js';
 import { setSellerSession } from '../src/lib/seller-auth.js';
 
@@ -31,6 +31,7 @@ import { setSellerSession } from '../src/lib/seller-auth.js';
 
 const SHARED_SELLER = 'dddddddd-dddd-4ddd-8ddd-000000000001';
 const SHARED_BUYER = 'dddddddd-dddd-4ddd-8ddd-000000000002';
+const NEW_SELLER = 'dddddddd-dddd-4ddd-8ddd-000000000004';
 const OWN_ACCOUNT = 'dddddddd-dddd-4ddd-8ddd-000000000003';
 const ORIGINAL_DEMO_MODE = process.env.DEMO_MODE;
 
@@ -107,6 +108,7 @@ beforeEach(async () => {
   await query('DELETE FROM sellers');
   await query('INSERT INTO sellers (id, name, email) VALUES ($1, $2, $3)', [SHARED_SELLER, 'Showcase', DEMO_SELLER_EMAIL]);
   await query('INSERT INTO sellers (id, name, email) VALUES ($1, $2, $3)', [SHARED_BUYER, 'Buyer', DEMO_BUYER_EMAIL]);
+  await query('INSERT INTO sellers (id, name, email) VALUES ($1, $2, $3)', [NEW_SELLER, 'First day', DEMO_NEW_SELLER_EMAIL]);
   await query('INSERT INTO sellers (id, name, email) VALUES ($1, $2, $3)', [OWN_ACCOUNT, 'A visitor', 'visitor@example.test']);
   process.env.DEMO_MODE = '1';
 });
@@ -155,6 +157,16 @@ describe('the whole write surface, asked of the source tree', () => {
 });
 
 describe('what the rule must never touch', () => {
+  it('covers the FIRST-DAY seller, which is a shared account like the other two', async () => {
+    // Added with the "מוכר חדש" door (2026-08-27). It owns the nearly-empty shop the onboarding
+    // checklist renders on, anybody can walk into it, and it is therefore read-only like the rest —
+    // the case exists because that account was the third place the old `a === x || a === y` rule
+    // would have had to be edited by hand.
+    for (const path of ['/api/store', '/seller/dashboard', '/api/store-product/bulk']) {
+      expect((await demoWriteRefusal(ctx('POST', path, asSeller(NEW_SELLER))))?.status, path).toBe(403);
+    }
+  });
+
   it('lets the OWNER sign in while holding a viewer session', async () => {
     // The load-bearing case. A viewer session is what the tour door mints, the owner's browser has
     // one the moment he presses that button, and `/admin/login` is the only way to stop being a

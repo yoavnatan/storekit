@@ -7,7 +7,7 @@ import { loginSeller, setSellerSession, getSellerSession } from '../../lib/selle
 import { getLang, getT } from '../../i18n/index.js';
 import { safeRedirectPath } from '../../lib/safe-redirect.js';
 import { isGoogleAuthEnabled } from '../../lib/google-oauth.js';
-import { isDemoMode, DEMO_SELLER_EMAIL } from '../../lib/demo-mode.js';
+import { isDemoMode, DEMO_SELLER_EMAIL, DEMO_NEW_SELLER_EMAIL } from '../../lib/demo-mode.js';
 import { getSellerByEmail } from '../../lib/seller-auth.js';
 import { setAdminCookie } from '../../lib/admin-auth.js';
 import { clientIp } from '../../lib/client-ip.js';
@@ -70,7 +70,14 @@ if (Astro.request.method === 'POST') {
    */
   let demoFailed = false;
   const demoRole = String(form.get('demoRole') ?? '');
-  if (isDemoMode() && (demoRole === 'seller' || demoRole === 'admin')) {
+  const DEMO_DOORS: Record<string, string> = {
+    'seller': DEMO_SELLER_EMAIL,
+    // The same dashboard on a shop's first day — see `DEMO_NEW_SELLER_EMAIL`. A map rather than a
+    // second branch: the two seller doors differ only in which account they open, and a branch per
+    // door is how the admin one came to run before the POST handler and swallow it.
+    'new-seller': DEMO_NEW_SELLER_EMAIL,
+  };
+  if (isDemoMode() && (demoRole === 'admin' || demoRole in DEMO_DOORS)) {
     if (demoRole === 'admin') {
       // A VIEWER, never an owner. This door is pressed by anybody who follows the link, so the
       // session it hands out must not be able to block a store, clear the error log or delete a
@@ -79,7 +86,7 @@ if (Astro.request.method === 'POST') {
       setAdminCookie(Astro.cookies, 'viewer');
       return Astro.redirect('/admin');
     }
-    const account = await getSellerByEmail(DEMO_SELLER_EMAIL);
+    const account = await getSellerByEmail(DEMO_DOORS[demoRole]!);
     if (account) {
       setSellerSession(Astro.cookies, account.id);
       return Astro.redirect('/seller/dashboard');
@@ -92,7 +99,7 @@ if (Astro.request.method === 'POST') {
     // below with two empty fields, which overwrites this sentence with "wrong email or password" —
     // an answer about a form the visitor never filled in.
     demoFailed = true;
-    error = t.auth.demoAccountMissing.replace('{email}', DEMO_SELLER_EMAIL);
+    error = t.auth.demoAccountMissing.replace('{email}', DEMO_DOORS[demoRole]!);
   }
 
   // Everyone else who is already signed in gets the behaviour the guard at the top always gave:

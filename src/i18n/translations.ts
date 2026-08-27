@@ -58,6 +58,10 @@ export const translations = {
          reads as a truncation rather than as a choice. */
       tourHome: 'עמוד הבית',
       tourSeller: 'דשבורד מוכרים',
+      // The same dashboard, on a shop's first day. Named for the PERSON and not for the state
+      // ("חנות חדשה"), because the row is an offer to be somebody for a minute — and because the
+      // screen it opens on is the one that explains what a new seller has to do.
+      tourNewSeller: 'מוכר חדש',
       tourAdmin: 'דשבורד אדמין',
       viewAllStores: 'כל החנויות',
       shelfLiked: 'חנויות ששמרת',
@@ -3051,6 +3055,7 @@ export const translations = {
       tourTitle: 'Take a tour',
       tourHome: 'Home page',
       tourSeller: 'Seller dashboard',
+      tourNewSeller: 'A brand-new seller',
       tourAdmin: 'Admin dashboard',
       viewAllStores: 'All stores',
       shelfLiked: 'Stores you saved',

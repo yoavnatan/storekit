@@ -67,7 +67,7 @@
  * token: one place, before the request costs a database lookup, and impossible to route around.
  */
 import type { APIContext } from 'astro';
-import { isDemoMode, DEMO_SELLER_EMAIL, DEMO_BUYER_EMAIL } from './demo-mode.js';
+import { isDemoMode, isSharedDemoAccount } from './demo-mode.js';
 import { adminRole } from './admin-auth.js';
 import { getSellerSession, getSellerById } from './seller-auth.js';
 
@@ -157,7 +157,7 @@ async function isSharedDemoSession(context: APIContext): Promise<boolean> {
   const sellerId = getSellerSession(context.cookies);
   if (!sellerId) return false;
   const seller = await getSellerById(sellerId);
-  return !!seller && (seller.email === DEMO_SELLER_EMAIL || seller.email === DEMO_BUYER_EMAIL);
+  return isSharedDemoAccount(seller?.email);
 }
 
 /**
