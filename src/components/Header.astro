@@ -30,6 +30,7 @@ import { getLang, getT } from '../i18n/index.js';
 import { MARK_PATH, MARK_VIEW_BOX, STROKE_WIDTH } from '../lib/brand-lockup.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { sellerHasAnyAlert } from '../lib/seller-alerts.js';
+import { isDemoMode } from '../lib/demo-mode.js';
 
 interface Props {
   isLoggedIn?: boolean;
@@ -82,6 +83,7 @@ const loginUrl = `/seller/login?next=${encodeURIComponent(currentPath)}`;
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
+const demoMode = isDemoMode();
 
 type NavItem = { label: string; href: string };
 
@@ -407,6 +409,39 @@ const strEmpty   = t.store.noProductsFound;
         <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
           {t.nav.login}
         </a>
+      )}
+
+      {/* ── The tour, demo only (`lib/demo-mode.ts`) ──────────────────────────
+          Most of what this project is sits behind the seller dashboard and the admin, and nothing
+          on a shopper's path leads to either — so somebody sent this link browses a shop and leaves
+          having seen the least of it.
+
+          **In the header, beside the sign-in control** (owner, 2026-08-27), and that placement is
+          the point rather than a detail: it was tried on the home page first and was wrong there,
+          because a visitor who has already walked into a store has left it behind. Here it follows
+          them, and the header is `position: fixed`, so the menu overlays the page instead of being
+          clipped by whatever section it opens over — which is exactly what went wrong on the hero.
+
+          Shown regardless of `sellerMode` and of being signed in: somebody who has just looked at
+          the seller dashboard should be able to cross to the admin without going back anywhere.
+
+          A native `<details>`: keyboard-accessible, opens on its own summary, needs no script for
+          that. The one thing it does not do is close on an outside click — every other menu here
+          does, and the script at the bottom of this file adds it. */}
+      {demoMode && (
+        <details class="relative" id="hdr-tour">
+          <summary class="lang-toggle-btn list-none cursor-pointer select-none [&::-webkit-details-marker]:hidden">
+            {t.home.tourTitle}
+          </summary>
+          {/* A FORM, not two links. Signing somebody in is a state change, and a GET that creates a
+              session is both bad practice and outside the CSRF token's protection —
+              `/seller/login` already owns this exact POST. */}
+          <form method="POST" action="/seller/login" class="absolute z-50 top-full mt-2 end-0 min-w-[11rem] grid gap-0.5 p-1 rounded-[var(--radius)] border-[1.5px] [border-color:var(--color-border)] bg-[color:var(--color-surface)] [box-shadow:var(--shadow-overlay)]" data-native-submit>
+            <CsrfField />
+            <button type="submit" name="demoRole" value="seller" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourSeller}</button>
+            <button type="submit" name="demoRole" value="admin" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourAdmin}</button>
+          </form>
+        </details>
       )}
 
       {/* Notifications bell — shows seller replies to buyer */}
@@ -2005,4 +2040,26 @@ const strEmpty   = t.store.noProductsFound;
       });
     }
   }
+
+  /**
+   * The demo tour menu closes when you click away from it, and on Escape.
+   *
+   * `<details>` opens and closes on its own summary and does nothing else — every other menu on
+   * this site closes on an outside click, and one that stays open behind whatever you clicked next
+   * is the odd one out (owner, 2026-08-27).
+   *
+   * `composedPath()` rather than `target.contains()`: a click that re-renders part of the page can
+   * detach `e.target` mid-bubble, and `contains` then answers false for a click that really was
+   * inside — the trap `toolbar-portal.ts` records.
+   */
+  const hdrTour = document.getElementById('hdr-tour') as HTMLDetailsElement | null;
+  if (hdrTour) {
+    document.addEventListener('click', (e) => {
+      if (hdrTour.open && !e.composedPath().includes(hdrTour)) hdrTour.open = false;
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && hdrTour.open) hdrTour.open = false;
+    });
+  }
+
 </script>

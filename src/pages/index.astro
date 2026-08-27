@@ -21,10 +21,7 @@ import { parseRecentStores, mergeStoreSlugs } from '../lib/recent-stores.js';
 import { isLaunchMode, showShelfInvite, planLaunchShelf, launchInviteCount, MIN_SHELF_INVITES } from '../lib/launch-mode.js';
 import { getCategoryTranslations, resolveCategoryLabel } from '../lib/category-translations.js';
 import { getLang, getT } from '../i18n/index.js';
-import { isDemoMode } from '../lib/demo-mode.js';
-import CsrfField from '../components/CsrfField.astro';
 
-const demoMode    = isDemoMode();
 const sellerId    = getSellerSession(Astro.cookies);
 const sellerStore = sellerId ? await getStoreBySellerId(sellerId) : null;
 const isLoggedIn  = !!sellerId;
@@ -380,51 +377,6 @@ const jsonLd = {
         )}
       </div>
 
-      {/* ── The tour, demo only (`lib/demo-mode.ts`) ──────────────────────────
-          Most of what was built sits behind the two dashboards and nothing on a shopper's path
-          leads there, so somebody with two minutes browses a shop and leaves having seen the least
-          of it. This is the fix, and it is ONE control rather than two sign-in buttons: a visitor
-          is looking around, not signing in.
-
-          **Its own row, under the other two** (owner, 2026-08-27). Sitting inline with them made a
-          demo-only control look like a third permanent action of the product, and the row wrapped
-          awkwardly at narrow widths. Below, it reads as what it is: an aid for looking around.
-
-          A native `<details>`, like `CampaignHistory.astro` — keyboard-accessible and needing no
-          script to open. The one thing it does NOT do natively is close on an outside click, which
-          is the behaviour every other menu on this site has; the inline script below adds it, and
-          uses `composedPath()` rather than `contains()` for the reason `toolbar-portal.ts` records.
-
-          The same two destinations sit on the login page, for anyone who arrives there instead. */}
-      {demoMode && (
-        <div class="flex justify-center mt-[0.9rem]">
-          <details class="relative" id="home-tour">
-            {/* Plain underlined text — no border, no arrow (owner, 2026-08-27). A third bordered
-                button beside the two above read as a third permanent action of the product; an
-                arrow said "this takes you somewhere", which is a promise a menu does not keep.
-                Underlined text is the lightest thing that still reads as pressable, which is what
-                an aid for looking around should be. */}
-            <summary class="list-none cursor-pointer select-none text-[.85rem] underline underline-offset-4 [text-decoration-color:var(--color-border)] [color:var(--color-muted)] hover:[color:var(--color-text)] hover:[text-decoration-color:currentColor] transition-colors duration-150 [&::-webkit-details-marker]:hidden">
-              {t.home.tourTitle}
-            </summary>
-            {/* A FORM, not two links. Signing somebody in is a state change, and a GET that creates
-                a session is both bad practice and outside the CSRF token's protection —
-                `/seller/login` already handles exactly this POST, so the tour reuses that handler
-                rather than growing a second way in.
-
-                **Opens UPWARD.** The hero carries `overflow-hidden` — which is doing real work,
-                since the reveal animations translate their elements in and would otherwise put a
-                horizontal scrollbar on the page — so a menu hanging below the last row of the hero
-                is clipped in half (owner saw exactly that). Upward it stays inside the section, and
-                covering the buttons above while it is open is what a menu is supposed to do. */}
-            <form method="POST" action="/seller/login" class="absolute z-30 bottom-full mb-2 min-w-[11rem] start-1/2 -translate-x-1/2 rtl:translate-x-1/2 grid gap-0.5 p-1 rounded-[var(--radius)] border-[1.5px] [border-color:var(--color-border)] bg-[color:var(--color-surface)] [box-shadow:var(--shadow-overlay)]" data-native-submit>
-              <CsrfField />
-              <button type="submit" name="demoRole" value="seller" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourSeller}</button>
-              <button type="submit" name="demoRole" value="admin" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourAdmin}</button>
-            </form>
-          </details>
-        </div>
-      )}
     </div>
   </section>
 
@@ -1394,27 +1346,4 @@ const jsonLd = {
     const cards = Array.from(panel.querySelectorAll<HTMLElement>(REVEAL_SELECTOR));
     if (cards.length) playReveal(cards);
   });
-
-
-  /**
-   * The tour menu closes when you click away from it.
-   *
-   * `<details>` opens and closes on its own summary and does not do this — every other menu on the
-   * site does, and one that stays open behind whatever you clicked next is the odd one out (owner,
-   * 2026-08-27). Escape closes it too, for the same reason.
-   *
-   * `composedPath()` rather than `target.contains()`: a click that re-renders part of the page can
-   * detach `e.target` mid-bubble, and `contains` then answers false for a click that really was
-   * inside — the trap `toolbar-portal.ts` records.
-   */
-  const tour = document.getElementById('home-tour') as HTMLDetailsElement | null;
-  if (tour) {
-    document.addEventListener('click', (e) => {
-      if (tour.open && !e.composedPath().includes(tour)) tour.open = false;
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && tour.open) tour.open = false;
-    });
-  }
-
 </script>
