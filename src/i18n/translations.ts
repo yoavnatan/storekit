@@ -150,7 +150,7 @@ export const translations = {
       //
       // The English does not carry "מתחם" as a noun: per the note on `startSelling`, where the
       // Hebrew says "במתחם" mid-sentence the English names the other stores instead.
-      startSellingDesc: 'חנות עצמאית משלך, וחשיפה לקונים של שאר החנויות במתחם — הכל במקום אחד, ללא תוספים חיצוניים.',
+      startSellingDesc: 'חנות עצמאית משלך, עם חשיפה לקונים של שאר החנויות במתחם — הכל במקום אחד, ללא תוספים חיצוניים.',
       // "ממשק פרסום מובנה", never "פרסום מובנה" (owner, 2026-08-14). What is
       // built in is the SYSTEM that runs the campaigns — the ad SPEND is billed
       // separately, per actual spend, and is never inside the monthly fee (see
@@ -3079,7 +3079,7 @@ export const translations = {
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
       startSelling: 'A home for independent stores',
-      startSellingDesc: 'A store of your own, and exposure to the shoppers who came for all the other stores — all in one place, with no third-party add-ons.',
+      startSellingDesc: 'A store of your own, with exposure to the shoppers who came for all the other stores — all in one place, with no third-party add-ons.',
       // "ads manager", never bare "ads" — see the Hebrew twin above: the manager
       // is included, the ad spend is billed separately.
       builtInAds: 'Built-in ads manager',

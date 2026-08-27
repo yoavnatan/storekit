@@ -6,8 +6,8 @@ import StorePlaceholderCard from '../components/StorePlaceholderCard.astro';
 import CategoryIcon from '../components/CategoryIcon.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
-import { getStoreBySellerId, getVisibleStores, byPromoWeight } from '../lib/stores.js';
-import { countRealStores, filterShopperStores, isDemoStore, isLiveStore, realStores } from '../lib/demo-stores.js';
+import { getStoreBySellerId, getVisibleStores, byPromoWeight, shopperStoresFrom } from '../lib/stores.js';
+import { countRealStores, isDemoStore, isLiveStore, realStores } from '../lib/demo-stores.js';
 import { getStorePreviews, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
 import LoadingSweep from '../components/LoadingSweep.astro';
 import { isLaunchMode, showShelfInvite, launchInviteCount, LAUNCH_GRID_SLOTS } from '../lib/launch-mode.js';
@@ -41,9 +41,10 @@ const previewLimit = previewParam === 'launch' ? 2
   : null;
 
 // Admin-blocked stores/products (see admin-moderation.ts) are excluded from
-// the directory — same reasoning as the homepage feed. filterShopperStores() also
+// the directory — same reasoning as the homepage feed. shopperStoresFrom() also
 // drops the platform's own showcase stores once there are enough real ones
-// (lib/demo-stores.ts).
+// (lib/demo-stores.ts) — except on the demonstration, where they are pinned
+// (lib/stores.ts#shopperStoresFrom).
 const visibleStores = await getVisibleStores();
 const previewedStores = previewParam === 'blank'
   ? []
@@ -60,7 +61,7 @@ const previewedStores = previewParam === 'blank'
 // store-products.ts#getStorePreviews. This page draws the identical card.
 const previewsByStore = await getStorePreviews(previewedStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
 const liveRealCount = countRealStores(previewedStores.filter((s) => isLiveStore(previewsByStore.get(s.id))));
-const shopperStores = filterShopperStores(previewedStores, liveRealCount);
+const shopperStores = shopperStoresFrom(previewedStores, liveRealCount);
 const storesWithProducts = shopperStores
   .map((s) => ({ store: s, preview: previewsByStore.get(s.id) }))
   .filter((e) => !!e.preview?.hasProducts)

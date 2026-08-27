@@ -18,6 +18,7 @@
  */
 import crypto from 'node:crypto';
 import { filterShopperStores, isDemoStore } from './demo-stores.js';
+import { isDemoMode } from './demo-mode.js';
 import { isStoreReachable, isStoreDiscoverable } from './store-status.js';
 import type { StoreSale } from './discounts.js';
 import { toSlug } from './url-base.js';
@@ -926,11 +927,43 @@ export async function getVisibleStores(): Promise<Store[]> {
   return (await selectStores('NOT s.blocked')).filter(isStoreDiscoverable);
 }
 
+/**
+ * What a shopper-facing surface should list, with the demonstration's exception applied.
+ *
+ * **The rule this wraps, and the one place it must not apply.** `filterShopperStores` drops the
+ * showcase stores once five real LIVE stores exist, because on the real platform the showcase
+ * stores exist to cover exactly the window before that (`demo-stores.ts`). On the PORTFOLIO
+ * demonstration the same rule points the wrong way: anybody may press "פתח חנות", so five visitors
+ * with five products each would push the four curated shops off the homepage and the directory —
+ * the exhibit replaced by whatever strangers left behind, until the daily sweep clears them.
+ *
+ * So in demo mode the showcase stores are pinned. **Gated on `DEMO_MODE` and nothing else**, at the
+ * owner's own instruction (2026-08-27: *"שלא יהרוס את זה שאם כן מעלים את זה בסוף ונשכח מזה"*) — a
+ * real launch keeps the behaviour it was designed with, and the exception cannot be left switched
+ * on by accident because the variable is not set anywhere a real deployment reads.
+ *
+ * **Why the pin lives here and not in `demo-stores.ts`.** That module is imported by a client
+ * script (`checkout.astro` pulls `splitDemoCarts` from it), and `isDemoMode()` reads a server
+ * variable through `runtime-env.ts` — putting the two in one module is how server env-reading ends
+ * up in a browser bundle (memory `project_runtime_env_reading`). This file already only runs on the
+ * server, because it talks to Postgres.
+ *
+ * `tests/shopper-stores-pin.test.ts` fails if a page calls `filterShopperStores` directly again,
+ * which is the only way this exception can be lost.
+ */
+export function shopperStoresFrom<T extends { demo?: boolean }>(
+  stores: readonly T[],
+  liveRealCount?: number,
+): T[] {
+  if (isDemoMode()) return [...stores];
+  return filterShopperStores(stores, liveRealCount);
+}
+
 /** What a SHOPPER-facing discovery surface lists (homepage, /stores, site search):
  *  getVisibleStores() with the platform's own showcase stores dropped as soon as
  *  there are real stores to show instead. See lib/demo-stores.ts. */
 export async function getShopperStores(): Promise<Store[]> {
-  return filterShopperStores(await getVisibleStores());
+  return shopperStoresFrom(await getVisibleStores());
 }
 
 /** What a SEARCH ENGINE or an outbound feed may see: getVisibleStores() minus every

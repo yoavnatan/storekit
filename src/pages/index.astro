@@ -11,8 +11,8 @@ import HomeProductCard from '../components/HomeProductCard.astro';
 import DashTabsBoot from '../components/dashboard/DashTabsBoot.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
-import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
-import { countRealStores, filterShopperStores, isDemoStore, isLiveStore, realStores } from '../lib/demo-stores.js';
+import { getStoreBySellerId, getVisibleStores, shopperStoresFrom } from '../lib/stores.js';
+import { countRealStores, isDemoStore, isLiveStore, realStores } from '../lib/demo-stores.js';
 import { getStorePreviews, getVisibleProductsByStoreIds, STORE_PREVIEW_SLOTS, type StorePreview } from '../lib/store-products.js';
 import { getOrdersByBuyer } from '../lib/orders.js';
 import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
@@ -47,8 +47,10 @@ const previewLimit = previewParam === 'launch' ? 2
 // Admin-blocked stores/products (see admin-moderation.ts) never appear on the
 // discovery surfaces — a blocked store's card here would be a live link into
 // a page that immediately 404s, and defeats the point of blocking it.
-// filterShopperStores() then drops the platform's own showcase stores once there
-// are enough real ones; their pages stay reachable by link either way.
+// shopperStoresFrom() then drops the platform's own showcase stores once there
+// are enough real ones — except on the demonstration, where they are pinned so a
+// visitor's shop cannot displace the exhibit (lib/stores.ts). Their pages stay
+// reachable by link either way.
 const visibleStores = await getVisibleStores();
 const previewedStores = previewLimit === null || previewParam === 'blank'
   ? (previewParam === 'blank' ? [] : visibleStores)
@@ -58,14 +60,14 @@ const previewedStores = previewLimit === null || previewParam === 'blank'
     })();
 // **Previews first, then the demo decision** (owner, 2026-08-18). The two thresholds on this page
 // were counting different things: launch mode below asks how many real stores have PRODUCTS, and
-// `filterShopperStores` used to ask how many exist at all. Five empty real stores therefore dropped
+// the demo decision used to ask how many exist at all. Five empty real stores therefore dropped
 // the showcase stores — which are here to FILL a thin mall — while launch mode stayed on, leaving
 // exactly the state nobody wants. So the previews are read for every visible store, the real ones
 // that can actually sell are counted, and only then is it decided whether the showcase stores go.
 // The extra rows are the handful of showcase stores; `getStorePreviews` is one query either way.
 const allPreviews = await getStorePreviews(previewedStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
 const liveRealCount = countRealStores(previewedStores.filter((s) => isLiveStore(allPreviews.get(s.id))));
-const stores = filterShopperStores(previewedStores, liveRealCount);
+const stores = shopperStoresFrom(previewedStores, liveRealCount);
 
 // Applied before the feed is built, so every downstream surface (shelves,
 // spotlight, discovery) sees the same small catalog rather than a mixed picture.
