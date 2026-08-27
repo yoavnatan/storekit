@@ -351,9 +351,6 @@ export async function buildTrading(db) {
       'paused', iso(NOW - int(2, 15) * DAY), 'out-of-stock', null,
       iso(NOW - int(30, 90) * DAY), iso(NOW - int(2, 15) * DAY)]);
 
-    notifications.push([uuid(), store.seller_id, 'seller', 'order',
-      'הזמנה חדשה', `התקבלה הזמנה חדשה בחנות ${store.name}.`, false, null,
-      store.slug, store.name, iso(NOW - int(1, 40) * 3600_000)]);
 
     /* ── The shop's own inbox ──────────────────────────────────────────────
        Three threads a shop, and the third is deliberately left UNANSWERED and unread: an inbox
@@ -379,6 +376,25 @@ export async function buildTrading(db) {
           iso(askedAt + int(2, 20) * 3600_000)]);
       }
     }
+  }
+
+  /* ── The bell: TWO notifications, and the number is the point ─────────────
+     The first version wrote one per shop, and the reset job could not clear them — the owner met a
+     bell with 52 unread and a toast for every batch. Even once that was fixed, four was too many:
+     a bell exists to say something needs attention, and four identical "new order" lines say only
+     that a seeder ran (owner: *"ולא 8 התראות, מספיק 1-2"*).
+
+     The types are the application's real ones, from `notification-link.ts`, not descriptive
+     strings. The first draft used `order`, which that module does not know — so the row rendered
+     and the click went nowhere, which is worse than having no notification at all. */
+  if (stores.length) {
+    const shop = stores[0];
+    notifications.push([uuid(), shop.seller_id, 'seller', 'new_order',
+      'הזמנה חדשה', `התקבלה הזמנה חדשה בחנות ${shop.name}.`, false, null,
+      shop.slug, shop.name, iso(NOW - int(1, 6) * 3600_000)]);
+    notifications.push([uuid(), shop.seller_id, 'seller', 'new_message',
+      'פנייה חדשה מקונה', 'נשאלה שאלה על אחד המוצרים.', false, null,
+      shop.slug, shop.name, iso(NOW - int(7, 30) * 3600_000)]);
   }
 
   /* ── The PLATFORM's inbox ────────────────────────────────────────────────

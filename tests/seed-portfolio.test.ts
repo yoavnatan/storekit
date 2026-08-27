@@ -290,6 +290,37 @@ describe('the two inboxes', () => {
   });
 });
 
+describe('the bell a visitor first sees', () => {
+  beforeEach(async () => {
+    await seedOneShowcaseStore();
+    await buildTrading(getDatabase());
+  });
+
+  it('carries a couple of notifications, not a wall of them', async () => {
+    // The owner met 52 and then 4, and asked for 1-2. A bell exists to say something needs
+    // attention; four identical lines say only that a seeder ran.
+    const { rows } = await query<{ n: number }>('SELECT count(*)::int AS n FROM notifications');
+    expect(rows[0]!.n).toBeGreaterThan(0);
+    expect(rows[0]!.n).toBeLessThanOrEqual(2);
+  });
+
+  it('uses types the app can turn into a link', async () => {
+    // The first draft wrote `order`, which `notification-link.ts` does not know — the row rendered
+    // and the click went nowhere, which is worse than no notification at all. These are the real
+    // seller-side types from that module.
+    const { rows } = await query<{ type: string }>('SELECT DISTINCT type FROM notifications');
+    const known = new Set(['new_order', 'order_update', 'new_message', 'admin_message',
+      'return_update', 'payout_status', 'low_stock', 'out_of_stock', 'feed_status',
+      'domain_status', 'store_live']);
+    for (const { type } of rows) expect(known.has(type), `unknown notification type: ${type}`).toBe(true);
+  });
+
+  it('makes them different kinds, so the bell is not one line repeated', async () => {
+    const { rows } = await query<{ n: number }>('SELECT count(DISTINCT type)::int AS n FROM notifications');
+    expect(rows[0]!.n).toBeGreaterThan(1);
+  });
+});
+
 describe('the clearing account behind the Payments tab', () => {
   it('back-dates the merchant so a shop trading for a quarter is not stuck in review', async () => {
     await seedOneShowcaseStore();
