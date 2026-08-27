@@ -82,9 +82,17 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * entry here is one route somebody thought about.
  */
 export const DEMO_WRITE_ALLOWED: ReadonlySet<string> = new Set([
-  // The doors. `/admin/login` is how the OWNER stops being a viewer — refusing it locks him out.
+  // The doors, IN AND OUT. `/admin/login` is how the OWNER stops being a viewer — refusing it
+  // locks him out. `/seller/logout` is a POST, so the allow-list had to name it and did not: a
+  // visitor who took the tour could not leave it, and the sign-out button answered "this is a
+  // demonstration" with no way to act on that (owner, 2026-08-27). Logging out is the one write
+  // that can never damage anything — it removes the caller's own cookie and touches no row.
+  // `/admin/logout` is a GET and was never refused; it is named anyway, so the pair is visible
+  // together and a future change of method does not silently break one of them.
   '/admin/login',
+  '/admin/logout',
   '/seller/login',
+  '/seller/logout',
   '/seller/register',
   '/seller/forgot-password',
   '/seller/reset-password',

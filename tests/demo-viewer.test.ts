@@ -170,6 +170,18 @@ describe('what the rule must never touch', () => {
     }
   });
 
+  it('lets a visitor LEAVE — the door out is a write too', async () => {
+    // `/seller/logout` is a POST, so the allow-list had to name it and did not: somebody who took
+    // the tour was stuck in it, and the sign-out button answered "this is a demonstration" — a
+    // refusal with nothing the person could do about it. Logging out is the one write that can
+    // never damage anything: it clears the caller's own cookie and touches no row.
+    for (const cookies of [asSeller(SHARED_SELLER), asAdmin('viewer')]) {
+      expect(await demoWriteRefusal(ctx('POST', '/seller/logout', cookies))).toBeNull();
+      expect(await demoWriteRefusal(ctx('POST', '/admin/logout', cookies))).toBeNull();
+      expect(await demoWriteRefusal(ctx('GET', '/admin/logout', cookies))).toBeNull();
+    }
+  });
+
   it('lets anybody register, and switch doors', async () => {
     for (const path of ['/seller/register', '/seller/login', '/seller/forgot-password', '/seller/reset-password']) {
       expect(await demoWriteRefusal(ctx('POST', path, asSeller(SHARED_SELLER))), path).toBeNull();
