@@ -72,7 +72,11 @@ if (Astro.request.method === 'POST') {
   const demoRole = String(form.get('demoRole') ?? '');
   if (isDemoMode() && (demoRole === 'seller' || demoRole === 'admin')) {
     if (demoRole === 'admin') {
-      setAdminCookie(Astro.cookies);
+      // A VIEWER, never an owner. This door is pressed by anybody who follows the link, so the
+      // session it hands out must not be able to block a store, clear the error log or delete a
+      // conversation — `lib/demo-viewer.ts` is what enforces that, and this is where the two kinds
+      // of admin session are told apart.
+      setAdminCookie(Astro.cookies, 'viewer');
       return Astro.redirect('/admin');
     }
     const account = await getSellerByEmail(DEMO_SELLER_EMAIL);

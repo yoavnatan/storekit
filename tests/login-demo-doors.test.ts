@@ -22,6 +22,23 @@ import { sourceGuard } from './helpers/source-guard.js';
  * rule prove it can reject the exact line that was there before.
  */
 describe('the login page', () => {
+  it('hands the tour door a VIEWER session, never an owner one', () => {
+    /* The single line the whole read-only rule rests on. `setAdminCookie` defaults to `owner` —
+       correct for the password form on `/admin/login`, and catastrophic here: this door is pressed
+       by everybody who follows the link, and an owner session can block a store, clear the error
+       log and delete a conversation. Dropping the argument is a one-character edit that nothing
+       else would notice, which is exactly the kind this file exists to catch. */
+    expect(sourceGuard({
+      file: 'src/pages/seller/login.astro',
+      rule: "the demo admin door mints a 'viewer' session",
+      find: (text) => [...text.matchAll(/setAdminCookie\(([^)]*)\)/g)]
+        .filter((m) => !m[1]!.includes("'viewer'"))
+        .map((m) => m[0]),
+      mustReject: 'setAdminCookie(Astro.cookies);',
+    })).toEqual([]);
+  });
+
+
   it('does not bounce a POST away before its handler runs', () => {
     expect(sourceGuard({
       file: 'src/pages/seller/login.astro',
@@ -30,6 +47,22 @@ describe('the login page', () => {
       // condition is the shape that swallows every POST to this page.
       find: (text) => [...text.matchAll(/if\s*\(\s*getSellerSession\([^)]*\)\s*\)\s*return\s+Astro\.redirect/g)].map((m) => m[0]),
       mustReject: "if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');",
+    })).toEqual([]);
+  });
+
+  it('lets a VIEWER reach the admin password form — it is the only way to stop being one', () => {
+    /* The same bounce, the same page shape, and the consequence is the owner's. `/admin/login`
+       opened with `if (isAdminRequest(cookies)) return redirect('/admin')`, which was right while
+       every admin session came from the password. The tour door mints a viewer, so the owner's own
+       browser holds one the moment he takes the tour — and the bounce then sent his password POST
+       to /admin without reading the password. The sign-in appeared to work, the session stayed
+       read-only, and every save afterwards answered "this is a demonstration". Found by driving it,
+       not by reading it: a live login with the CORRECT password left the viewer cookie in place. */
+    expect(sourceGuard({
+      file: 'src/pages/admin/login.astro',
+      rule: 'the signed-in bounce checks for an OWNER, so a viewer can still sign in',
+      find: (text) => [...text.matchAll(/if\s*\(\s*isAdminRequest\([^)]*\)\s*\)\s*\{?\s*return\s+Astro\.redirect/g)].map((m) => m[0]),
+      mustReject: "if (isAdminRequest(Astro.cookies)) {\n  return Astro.redirect('/admin');\n}",
     })).toEqual([]);
   });
 });

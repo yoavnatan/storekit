@@ -3,7 +3,17 @@ import type { AstroCookies } from 'astro';
 import { secretsEqual } from './secret-compare.js';
 import { requiredSecret } from './runtime-env.js';
 
-const COOKIE_NAME = 'admin_token';
+/**
+ * `admin_token2`, and the rename is the migration.
+ *
+ * The token's payload gained a ROLE (below). A cookie minted before that carries only an expiry,
+ * and there is no honest way to read a role out of it: it might have come from the password or
+ * from the demonstration's tour door, which called the same function. Defaulting such a cookie
+ * either way is a guess about who is holding it. Changing the name retires every one of them at
+ * once — the cost is that anybody signed in has to sign in again, which is a login form, and the
+ * alternative is a guess about an admin session.
+ */
+const COOKIE_NAME = 'admin_token2';
 const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
 
 /**
@@ -42,25 +52,48 @@ function sign(value: string): string {
  * proxy log, a shared browser, a backup) had admin access indefinitely, and no session could be
  * expired without changing the password for everyone.
  */
-function makeToken(): string {
-  const payload = String(Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE);
+/**
+ * What an admin session is allowed to DO, carried inside the signature.
+ *
+ * `owner` came from the password. `viewer` came from the portfolio demonstration's tour door, which
+ * hands out an admin session to anybody who presses it — so it must not be able to block a store,
+ * clear the error log or delete a conversation. Enforced in `lib/demo-viewer.ts`, which is the one
+ * place that decides; this file's job is only to say, unforgeably, which kind of session this is.
+ *
+ * Inside the SIGNED payload rather than beside it: a role in a separate cookie, or in the same
+ * cookie outside the HMAC, is a role anybody can edit.
+ */
+export type AdminRole = 'owner' | 'viewer';
+
+function makeToken(role: AdminRole): string {
+  const payload = `${Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE}|${role}`;
   return `${payload}.${sign(payload)}`;
 }
 
-function verifyToken(token: string | undefined): boolean {
-  if (!token) return false;
+/** The session's role, or null when there is no valid session at all. */
+function readToken(token: string | undefined): AdminRole | null {
+  if (!token) return null;
   // lastIndexOf, not split('.'): with split, `123.abc.def` would be read as payload `123` plus
   // signature `abc` with the tail silently ignored. Same parsing as seller-auth.ts.
   const lastDot = token.lastIndexOf('.');
-  if (lastDot === -1) return false;
+  if (lastDot === -1) return null;
   const payload = token.slice(0, lastDot);
   const sig = token.slice(lastDot + 1);
-  if (!secretsEqual(sign(payload), sig)) return false;
-  return Number(payload) > Math.floor(Date.now() / 1000);
+  if (!secretsEqual(sign(payload), sig)) return null;
+  const [exp, role] = payload.split('|');
+  if (!(Number(exp) > Math.floor(Date.now() / 1000))) return null;
+  // Anything that is not the word `owner` is a viewer. The default leans to LESS power on an
+  // unreadable payload, which is the only direction a guess about an admin session may lean.
+  return role === 'owner' ? 'owner' : 'viewer';
 }
 
 export function isAdminRequest(cookies: AstroCookies): boolean {
-  return verifyToken(cookies.get(COOKIE_NAME)?.value);
+  return adminRole(cookies) !== null;
+}
+
+/** Which kind of admin session this is, or null for none. The one reader of the role. */
+export function adminRole(cookies: AstroCookies): AdminRole | null {
+  return readToken(cookies.get(COOKIE_NAME)?.value);
 }
 
 export function checkAdminPassword(password: string): boolean {
@@ -69,8 +102,8 @@ export function checkAdminPassword(password: string): boolean {
 
 // path:'/' (not '/admin') so the cookie is also sent with /api/admin/* requests —
 // a narrower path silently drops the cookie from any fetch() made off-page.
-export function setAdminCookie(cookies: AstroCookies): void {
-  cookies.set(COOKIE_NAME, makeToken(), {
+export function setAdminCookie(cookies: AstroCookies, role: AdminRole = 'owner'): void {
+  cookies.set(COOKIE_NAME, makeToken(role), {
     httpOnly: true,
     secure: import.meta.env.PROD,
     sameSite: 'lax',

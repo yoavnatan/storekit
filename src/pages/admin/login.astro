@@ -2,13 +2,20 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import CsrfField from '../../components/CsrfField.astro';
-import { isAdminRequest, checkAdminPassword, setAdminCookie } from '../../lib/admin-auth.js';
+import { adminRole, checkAdminPassword, setAdminCookie } from '../../lib/admin-auth.js';
 import { clientIp } from '../../lib/client-ip.js';
 import {
   adminLoginRules, checkAuthRate, clearAuthRate, countAuthAttempt, retryAfterMinutes,
 } from '../../lib/rate-limit.js';
 
-if (isAdminRequest(Astro.cookies)) {
+// An OWNER is already signed in and has nothing to do here. A VIEWER is a different person with a
+// different problem: the demonstration's tour door mints a viewer session for anybody who presses
+// it, so the owner's own browser holds one the moment he takes the tour — and this page is the only
+// way to stop being one. `isAdminRequest` cannot tell them apart, so it bounced the POST to /admin
+// without ever reading the password: the login looked like it worked, the session stayed read-only,
+// and every save afterwards answered "this is a demonstration". Measured, not reasoned about — a
+// live sign-in with the correct password left the viewer cookie in place.
+if (adminRole(Astro.cookies) === 'owner') {
   return Astro.redirect('/admin');
 }
 

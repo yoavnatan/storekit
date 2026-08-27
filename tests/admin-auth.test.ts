@@ -69,7 +69,7 @@ describe('the session cookie', () => {
   it('does not contain the secret', () => {
     const cookies = fakeCookies();
     setAdminCookie(cookies);
-    const value = cookies.jar.get('admin_token')!;
+    const value = cookies.jar.get('admin_token2')!;
     expect(value).toBeTruthy();
     expect(value).not.toContain(DEV_SECRET);
     expect(value).not.toBe(DEV_SECRET);
@@ -85,44 +85,49 @@ describe('the session cookie', () => {
   it('carries an expiry that is signed, so it cannot be extended by the holder', () => {
     const cookies = fakeCookies();
     setAdminCookie(cookies);
-    const [exp, sig] = cookies.jar.get('admin_token')!.split('.');
+    // `exp|role`, split at the LAST dot — the payload carries a role now (admin-auth.ts#AdminRole).
+    const token = cookies.jar.get('admin_token2')!;
+    const payload = token.slice(0, token.lastIndexOf('.'));
+    const sig = token.slice(token.lastIndexOf('.') + 1);
+    const [exp, role] = payload.split('|');
     expect(Number(exp)).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    expect(role).toBe('owner');
 
     // Push the expiry far into the future, keep the signature: must be rejected.
-    const forged = `${Number(exp) + 10_000_000}.${sig}`;
-    expect(isAdminRequest(fakeCookies({ admin_token: forged }))).toBe(false);
+    const forged = `${Number(exp) + 10_000_000}|${role}.${sig}`;
+    expect(isAdminRequest(fakeCookies({ admin_token2: forged }))).toBe(false);
   });
 
   it('rejects an expired token even though its signature is valid', () => {
-    const past = String(Math.floor(Date.now() / 1000) - 60);
+    const past = `${Math.floor(Date.now() / 1000) - 60}|owner`;
     const sig = crypto.createHmac('sha256', `${DEV_SECRET}::admin-session`).update(past).digest('hex');
-    expect(isAdminRequest(fakeCookies({ admin_token: `${past}.${sig}` }))).toBe(false);
+    expect(isAdminRequest(fakeCookies({ admin_token2: `${past}.${sig}` }))).toBe(false);
   });
 
   it('rejects a tampered signature, a missing signature and junk', () => {
     for (const value of ['', '.', 'nodot', '9999999999.', '9999999999.deadbeef', 'admin']) {
-      expect(isAdminRequest(fakeCookies({ admin_token: value })), value).toBe(false);
+      expect(isAdminRequest(fakeCookies({ admin_token2: value })), value).toBe(false);
     }
   });
 
   it('splits a multi-dot token at the LAST dot, so a valid token cannot carry a tail', () => {
-    const exp = String(Math.floor(Date.now() / 1000) + 100);
+    const exp = `${Math.floor(Date.now() / 1000) + 100}|owner`;
     const sig = crypto.createHmac('sha256', `${DEV_SECRET}::admin-session`).update(exp).digest('hex');
-    expect(isAdminRequest(fakeCookies({ admin_token: `${exp}.${sig}` }))).toBe(true);
+    expect(isAdminRequest(fakeCookies({ admin_token2: `${exp}.${sig}` }))).toBe(true);
 
     // Appending anything to a valid token must invalidate it. Under `split('.')` the payload
     // would still read as `exp` and the signature as `sig`, with the tail silently dropped —
     // so this exact value would have authenticated.
-    expect(isAdminRequest(fakeCookies({ admin_token: `${exp}.${sig}.anything` }))).toBe(false);
+    expect(isAdminRequest(fakeCookies({ admin_token2: `${exp}.${sig}.anything` }))).toBe(false);
     expect(SRC).toMatch(/lastIndexOf\('\.'\)/);
     expect(SRC).not.toMatch(/token\.split\('\.'\)/);
   });
 
   it('derives the signing key rather than signing with the password itself', () => {
     expect(SRC).toMatch(/createHmac\('sha256', `\$\{adminSecret\(\)\}::admin-session`\)/);
-    const payload = String(Math.floor(Date.now() / 1000) + 100);
+    const payload = `${Math.floor(Date.now() / 1000) + 100}|owner`;
     const naive = crypto.createHmac('sha256', DEV_SECRET).update(payload).digest('hex');
-    expect(isAdminRequest(fakeCookies({ admin_token: `${payload}.${naive}` }))).toBe(false);
+    expect(isAdminRequest(fakeCookies({ admin_token2: `${payload}.${naive}` }))).toBe(false);
   });
 
   it('is cleared on logout', () => {

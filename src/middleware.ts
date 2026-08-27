@@ -1,4 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
+import { demoWriteRefusal } from './lib/demo-viewer.js';
 import { resolveVisitorId } from './lib/visitor.js';
 import { gzipResponse } from './lib/http-compress.js';
 import { reportStreamErrors } from './lib/stream-errors.js';
@@ -67,6 +68,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
         && !verifyCsrfToken(await csrfTokenFromRequest(context.request), context.cookies)) {
       return csrfRejection();
     }
+
+    /* The demonstration's read-only rule, immediately after the token and for the same reasons the
+       CSRF gate gives: ONE place, before the request costs a lookup, and impossible to route
+       around. `lib/demo-viewer.ts` carries what it refuses and why — the short version is that the
+       two shared demo sessions are handed to anybody who presses a button, and a real application
+       behind them means a stranger could close a shop or delete four hundred products.
+
+       Outside demo mode and on every GET it returns before touching a cookie. */
+    const readOnly = await demoWriteRefusal(context);
+    if (readOnly) return readOnly;
 
     // `/api/health` skips the rest, and the reason is the outage it exists to report. Everything
     // below this line touches the database — the custom-domain lookup first, then the analytics
