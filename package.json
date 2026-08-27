@@ -39,7 +39,8 @@
     "audit:drift": "node scripts/audit-drift.mjs",
     "showcase:check": "node --env-file-if-exists=.env ./scripts/showcase-seed-check.mjs",
     "seed:portfolio": "node --env-file-if-exists=.env ./scripts/seed-portfolio.mjs",
-    "demo:claim": "node --env-file-if-exists=.env ./scripts/seed-portfolio.mjs --claim"
+    "demo:claim": "node --env-file-if-exists=.env ./scripts/seed-portfolio.mjs --claim",
+    "demo:sweep": "node --env-file-if-exists=.env ./scripts/sweep-visitor-content.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.0.2",

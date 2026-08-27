@@ -53,7 +53,13 @@
  *
  * Everything else — including writing a review, marking the exhibit's notifications read, and every
  * dashboard save on either side — is refused for the two shared accounts only. A visitor with an
- * account of their own is untouched by all of it, and so is the owner.
+ * account of their own is untouched by all of it.
+ *
+ * **And so is the owner, on every path, including the shared account's own dashboard.** That is not
+ * an exception bolted on: editing the showcase shops through the dashboard is why the hourly
+ * rebuild was turned off, and doing it means holding a session for the very account this rule
+ * recognises and refuses. His password at `/admin/login` is what tells the two apart, and it is the
+ * only thing that does.
  *
  * ── Where it is enforced ────────────────────────────────────────────────────
  *
@@ -125,9 +131,20 @@ function refusal(): Response {
  * checks already keep them away from the showcase shops.
  */
 async function isSharedDemoSession(context: APIContext): Promise<boolean> {
+  const admin = adminRole(context.cookies);
+
+  // The owner's password lifts the rule EVERYWHERE, including on a seller session for the showcase
+  // account. Without this the rule refused him too — it recognises that account by its address, and
+  // his browser is holding exactly that account when he edits the shops. Editing the showcase shops
+  // through the dashboard is the reason the hourly rebuild was turned off and the reason this file
+  // had to exist at all, so a rule that also locked HIM out would have removed the thing it exists
+  // to protect. His route in: the password once at /admin/login, then the tour's seller door, then
+  // edit normally.
+  if (admin === 'owner') return false;
+
   // A viewer, not "no admin session": an unauthenticated request is the routes' own 401 to answer,
   // and turning it into a 403 here would tell a stranger that admin exists and is merely busy.
-  if (adminRole(context.cookies) === 'viewer') return true;
+  if (admin === 'viewer') return true;
 
   const sellerId = getSellerSession(context.cookies);
   if (!sellerId) return false;

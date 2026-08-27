@@ -54,15 +54,10 @@ export const DEMO_APPROVAL_SECONDS = 20;
  *  sweep after a business is approved is never more than a moment behind it. */
 export const DEMO_PUBLICATION_INTERVAL_SEC = 15;
 
-/**
- * How long a store a visitor created lives before the reset job removes it.
- *
- * A day, so somebody who builds a shop in the evening can show it to a colleague in the morning —
- * and so that the demonstration does not slowly fill with hundreds of abandoned one-product stores
- * that make the mall look like a dumping ground. The four showcase stores are never touched by
- * this; they are the exhibit.
- */
-export const DEMO_VISITOR_STORE_HOURS = 24;
+/* How long a visitor's shop lives is deliberately NOT here. It is `VISITOR_CONTENT_HOURS` in
+   `scripts/lib/seed-db.mjs`, the one file allowed to delete anything, and the job that sweeps shells
+   out to a script — so no TypeScript module needs the number and there is no second copy to drift.
+   The constant sat here unused from the day it was written until the sweep was actually built. */
 
 /**
  * The accounts the demonstration's shortcuts sign a visitor into.

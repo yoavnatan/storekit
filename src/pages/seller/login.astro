@@ -159,22 +159,11 @@ if (Astro.request.method === 'POST') {
         </Fragment>
       )}
 
-      {/* ── Demo only. Above the form, because they are the reason most visitors are on this
-             page — and the form below is left exactly as it is for everyone who came to sign in. */}
-      {demoMode && (
-        <Fragment>
-          <form method="POST" class="grid gap-2">
-            <CsrfField />
-            <button class="btn btn--accent" type="submit" name="demoRole" value="seller">
-              {t.home.tourSeller}
-            </button>
-            <button class="btn" type="submit" name="demoRole" value="admin">
-              {t.home.tourAdmin}
-            </button>
-          </form>
-          <div class="auth-divider"><span>{t.auth.orDivider}</span></div>
-        </Fragment>
-      )}
+      {/* The two tour doors used to sit here as well as in the header, and they have been taken out
+          (owner, 2026-08-27). A sign-in page offering "admin dashboard" as a button reads as a
+          product with its back door open, which is the opposite of the impression this whole demo
+          exists to make — and the header's "סיור באתר" is on this page too, so nothing is lost.
+          The POST handler above still answers `demoRole`, because that is what the header posts. */}
 
       <form method="POST" class="auth-form">
         <CsrfField />

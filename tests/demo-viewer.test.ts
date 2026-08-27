@@ -190,6 +190,20 @@ describe('what the rule must never touch', () => {
     }
   });
 
+  it('lets the OWNER edit the showcase shops through the seller dashboard', async () => {
+    // The reason the whole demonstration exists in this shape. The owner edits the four showcase
+    // shops the way any seller edits theirs — that is why the hourly rebuild was turned off, and
+    // it means his browser holds a session for the SHARED account, the one this rule recognises by
+    // its address and refuses. Owner-plus-shared-seller is therefore the combination to test, and
+    // the first version of the rule failed it: it locked the owner out of the shops with the rule
+    // written to keep strangers out of them.
+    const cookies = asSeller(SHARED_SELLER);
+    setAdminCookie(cookies, 'owner');
+    for (const path of ['/api/store', '/api/store-product/bulk', '/api/product', '/seller/dashboard']) {
+      expect(await demoWriteRefusal(ctx('POST', path, cookies)), path).toBeNull();
+    }
+  });
+
   it('leaves an unauthenticated request to the routes themselves', async () => {
     // Not a 403 here: that would tell a stranger admin exists and is merely busy. A request with no
     // session is the route's own 401 to answer.

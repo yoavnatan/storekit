@@ -75,6 +75,16 @@ export const DEMO_EMAIL_SUFFIX = '@demo.local';
 /** The single platform-owned account the showcase stores hang off (`seed-showcase-stores.mjs`). */
 export const SHOWCASE_OWNER_EMAIL = 'showcase@dezabin.co.il';
 
+/**
+ * How long a shop somebody registered during the demonstration is left alone (the `visitor` scope).
+ *
+ * A full day, so it survives being built, shown to someone and come back to the next morning. It
+ * lives here rather than in `src/lib/demo-mode.ts` because this file is the only one that may
+ * delete anything, and the job that runs the sweep shells out to a script — so no TypeScript module
+ * ever needs the number, and there is no second copy of it to drift.
+ */
+export const VISITOR_CONTENT_HOURS = 24;
+
 
 
 /**
@@ -138,7 +148,49 @@ export const SEED_SCOPES = {
     // `stores.seller_id ON DELETE RESTRICT` would refuse to orphan anyway.
     sellers: `email <> ${lit(SHOWCASE_OWNER_EMAIL)} AND NOT EXISTS (SELECT 1 FROM stores st WHERE st.seller_id = sellers.id)`,
   },
+  /**
+   * ── The fourth scope: what a VISITOR left behind, once it has gone cold ──────
+   *
+   * The requirement in the owner's own words (2026-08-27): *"שהקיים יהיה זמני, יימחק לאחר זמן מה
+   * אבל שהשינויים שאני עורך כן יתפסו"* — what other people make is temporary and clears itself, and
+   * what he edits stays. `portfolio` cannot serve that: it deletes everything that is not a
+   * showcase store the moment it runs, which is right before a re-seed and wrong on a timer.
+   *
+   * So this is `portfolio` narrowed by AGE, and the age is what makes it safe to run unattended. A
+   * shop somebody registered during the demonstration is theirs for a full day — long enough to
+   * build it, show it to someone and come back to it — and then it goes. The showcase shops are
+   * excluded by the same clause `portfolio` uses, so no amount of waiting reaches the owner's work.
+   *
+   * `@demo.local` accounts are excluded HERE and not in `portfolio`, and the difference is the
+   * point: `portfolio` runs immediately before a re-seed that recreates them, while this scope runs
+   * on its own and must leave the seeded cast — the buyers behind the trading history — standing.
+   * Delete them and every seeded order loses the person who placed it.
+   *
+   * Gated on the demonstration claim row exactly like `portfolio`, in `purge` below. It is the same
+   * dangerous shape (a NOT over the showcase set) and it gets the same lock; an age clause is a
+   * narrowing, not a safety property.
+   */
+  visitor: {
+    stores: `NOT (demo = true OR seller_id IN (SELECT id FROM sellers WHERE email = ${lit(SHOWCASE_OWNER_EMAIL)}))`
+      + ` AND created_at < now() - ${lit(`${VISITOR_CONTENT_HOURS} hours`)}::interval`,
+    sellers: `email <> ${lit(SHOWCASE_OWNER_EMAIL)}`
+      + ` AND email NOT LIKE '%' || ${lit(DEMO_EMAIL_SUFFIX)}`
+      + ` AND created_at < now() - ${lit(`${VISITOR_CONTENT_HOURS} hours`)}::interval`
+      + ` AND NOT EXISTS (SELECT 1 FROM stores st WHERE st.seller_id = sellers.id)`,
+  },
 };
+
+/**
+ * The scopes whose safety is the demonstration claim row rather than the disposable subset check.
+ *
+ * Both are a NOT over the showcase set, so layer 2 cannot help: they match rows no seeder made,
+ * which is the requirement and not a mistake. Named as a set rather than compared by string in the
+ * three places that need it, because a fourth such scope added with one comparison updated and not
+ * the others would be a scope with NO gate at all — it would fall into the `else` and be refused
+ * by layer 2, which sounds safe until the day somebody "fixes" that refusal by widening the
+ * disposable predicate instead.
+ */
+const CLAIM_GATED_SCOPES = new Set(['portfolio', 'visitor']);
 
 /** Layer 1. */
 function scopeOf(name) {
@@ -173,21 +225,21 @@ async function assertSubsetOfDisposable(db, table, where, disposable) {
  * cascades. So the stores go first and take their categories, products, images, per-combo stock,
  * campaigns and analytics with them.
  *
- * @param {'demo'|'showcase'} scopeName
+ * @param {'demo'|'showcase'|'portfolio'|'visitor'} scopeName
  * @param {{ includeSellers?: boolean }} [opts] `false` keeps the accounts — what a re-seed wants
  *   when it is about to reuse the same owner row rather than recreate it.
  */
 export async function purge(db, scopeName, opts = {}) {
   const { includeSellers = true } = opts;
   const scope = scopeOf(scopeName);
-  if (scopeName === 'portfolio') {
-    // The `portfolio` scope's gate, and its ONLY one — layer 2 below cannot help here, because this
-    // scope is deliberately wider than the disposable set (see SEED_SCOPES). A database that has
-    // not declared itself the demonstration gets nothing deleted, and the throw names the reason
-    // rather than the rule: whoever is reading it has almost certainly got the wrong DATABASE_URL.
+  if (CLAIM_GATED_SCOPES.has(scopeName)) {
+    // Their ONLY gate — layer 2 below cannot help, because these scopes are deliberately wider than
+    // the disposable set (see SEED_SCOPES). A database that has not declared itself the
+    // demonstration gets nothing deleted, and the throw names the reason rather than the rule:
+    // whoever is reading it has almost certainly got the wrong DATABASE_URL.
     if (!(await isDemoDatabase(db))) {
       throw new Error(
-        'purge refused: the "portfolio" scope deletes every store that is not a showcase store, and '
+        `purge refused: the "${scopeName}" scope deletes stores that are not showcase stores, and `
         + 'this database has not been claimed as the demonstration one. Check DATABASE_URL, then '
         + '`npm run demo:claim` against the DEMO connection (seed-db.mjs → SEED_SCOPES).',
       );
@@ -249,7 +301,7 @@ export async function purge(db, scopeName, opts = {}) {
  * `duplicate_checkout_blocked`) carry only the ref, so an order-id sweep alone would strand exactly
  * the rows that describe a checkout that never became one.
  *
- * @param {'demo'|'showcase'} scopeName
+ * @param {'demo'|'showcase'|'portfolio'|'visitor'} scopeName
  * @returns {Promise<{ deleted: number, keptShared: number, journalRows: number }>}
  */
 /**
@@ -339,11 +391,11 @@ async function purgeOrderLedger(db, ids) {
 
 export async function purgeOrdersOfStores(db, scopeName) {
   const scope = scopeOf(scopeName);
-  const portfolio = scopeName === 'portfolio';
-  if (portfolio) {
+  const claimGated = CLAIM_GATED_SCOPES.has(scopeName);
+  if (claimGated) {
     if (!(await isDemoDatabase(db))) {
       throw new Error(
-        'purge refused: the "portfolio" scope deletes every order that is not a showcase store\'s, '
+        `purge refused: the "${scopeName}" scope deletes orders that are not a showcase store's, `
         + 'and this database has not been claimed as the demonstration one (seed-db.mjs → SEED_SCOPES).',
       );
     }
@@ -354,11 +406,12 @@ export async function purgeOrdersOfStores(db, scopeName) {
   const touchesScope = `SELECT DISTINCT order_id FROM order_stores
       WHERE store_slug IN (SELECT slug::text FROM stores WHERE ${scope.stores})`;
   /* An order is KEPT when it touches a store this scope is not deleting — the multi-store rule the
-     header explains. For `demo`/`showcase` that is "a store no seeder made"; for `portfolio` it is
-     the showcase set, which is the only thing surviving at all. Stated per scope rather than always
-     as `DISPOSABLE_STORE`, because on a claimed demonstration database the disposable set is not
-     the question — what survives is. */
-  const touchesKeeper = portfolio
+     header explains. For `demo`/`showcase` that is "a store no seeder made"; for the claim-gated
+     scopes it is whatever the scope is NOT deleting — the showcase set under `portfolio`, and under
+     `visitor` the showcase set plus every visitor shop still inside its day. Stated per scope
+     rather than always as `DISPOSABLE_STORE`, because on a claimed demonstration database the
+     disposable set is not the question — what survives is. */
+  const touchesKeeper = claimGated
     ? `SELECT DISTINCT order_id FROM order_stores
         WHERE store_slug IN (SELECT slug::text FROM stores WHERE NOT (${scope.stores}))`
     : `SELECT DISTINCT order_id FROM order_stores

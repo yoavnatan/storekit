@@ -654,12 +654,48 @@ const demoReset: Job = {
   },
 };
 
+/**
+ * Clear out what VISITORS left on the demonstration, and nothing the owner made.
+ *
+ * The other half of the answer `demo-reset` could not give. That job rebuilt everything, which threw
+ * away the owner's own edits to the showcase shops — so it was turned off, and nothing then cleared
+ * the shops strangers register through "פתח חנות". A month of that and the four curated stores sit
+ * among thirty called "test".
+ *
+ * *"שהקיים יהיה זמני, יימחק לאחר זמן מה אבל שהשינויים שאני עורך כן יתפסו"* (owner, 2026-08-27). So
+ * this sweeps by AGE and OWNERSHIP instead of rebuilding: a visitor's shop lives a full day and then
+ * goes, and the showcase shops are excluded by the same clause that has always excluded them.
+ *
+ * Registered unconditionally in demo mode, unlike `demo-reset`: there is no state in which the
+ * demonstration wants abandoned visitor shops kept forever, and nothing it deletes is ever the
+ * owner's. Daily rather than hourly because the thing it waits for takes a day.
+ *
+ * Never throws, for the reason `demo-reset` gives: a job that throws is retried in a loop.
+ */
+const demoSweep: Job = {
+  name: 'demo-sweep',
+  intervalSec: 24 * HOUR,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    try {
+      const { stdout } = await execFileAsync(process.execPath, ['scripts/sweep-visitor-content.mjs'], {
+        cwd: process.cwd(),
+        timeout: 5 * 60_000,
+        maxBuffer: 1024 * 1024,
+      });
+      return stdout.trim().split('\n').filter(Boolean).at(-1)?.trim() ?? 'swept — nothing to report';
+    } catch (err) {
+      return `demo sweep FAILED — ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`;
+    }
+  },
+};
+
 const ALWAYS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, purgeResetTokens, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, reviewFeedArtifact, sitemapArtifact, reviewInvites, orderSla, returnsSweep, inboxDigest, purgeVisitorDetail, storePublication, subscriptionLapse, subscriptionPriceSync, paymeInvoices];
 
 /** REGISTERED conditionally rather than made a no-op when it is off. A job that exists and returns
  *  "nothing to do" still claims a row, writes a run and appears in the admin's job list —
  *  advertising a scheduled task that empties the database, which is the last thing a curated
  *  demonstration should seem to have. */
-export const JOBS: readonly Job[] = isDemoMode() && serverEnv('DEMO_RESET_HOURLY') === '1'
-  ? [...ALWAYS, demoReset]
+export const JOBS: readonly Job[] = isDemoMode()
+  ? (serverEnv('DEMO_RESET_HOURLY') === '1' ? [...ALWAYS, demoSweep, demoReset] : [...ALWAYS, demoSweep])
   : ALWAYS;

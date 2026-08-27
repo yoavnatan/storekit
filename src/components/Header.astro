@@ -90,6 +90,9 @@ const demoMode = isDemoMode();
  *  one reason: the platform's own bell belongs where every other bell on this site is (owner,
  *  2026-08-27). Nothing else here branches on it. */
 const adminSession = isAdminRequest(Astro.cookies);
+/** The admin bell's rows all lead into an admin tab, so it belongs on the admin pages and nowhere
+ *  else. `/admin` exactly, or anything under it — `/administration` is not an admin page. */
+const onAdminPage = Astro.url.pathname === '/admin' || Astro.url.pathname.startsWith('/admin/');
 
 type NavItem = { label: string; href: string };
 
@@ -455,10 +458,13 @@ const strEmpty   = t.store.noProductsFound;
         </a>
       )}
 
-      {/* The PLATFORM's bell — admin sessions only, and never alongside the shopper's own: an
-          admin session is logically distinct from any buyer or seller session, and two bells in one
-          header would be two answers to "what needs my attention". */}
-      {adminSession && <AdminNotificationBell />}
+      {/* The PLATFORM's bell — on the admin pages, and only there. Gated on the SESSION alone it
+          followed the visitor out onto the storefront and sat next to the shopper's own bell: two
+          bells in one header, two answers to "what needs my attention", and the second one's rows
+          all lead into /admin (owner, 2026-08-27: *"למה באתר הראשי יש עכשיו שני פעמונים"*). The
+          session is still required — the path alone would render an empty bell to a stranger who
+          typed /admin. */}
+      {adminSession && onAdminPage && <AdminNotificationBell />}
 
       {/* Notifications bell — shows seller replies to buyer */}
       {isLoggedIn && (

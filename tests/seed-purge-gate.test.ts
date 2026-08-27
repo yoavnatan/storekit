@@ -30,6 +30,7 @@ import {
   purgeOrdersOfStores,
   purgeReturnDemo,
 } from '../scripts/lib/seed-db.mjs';
+import { sweep } from '../scripts/sweep-visitor-content.mjs';
 import { asDatabase, loadImage } from './helpers/test-db.js';
 
 /**
@@ -326,5 +327,116 @@ describe('a purge takes an order\u2019s money rows with it', () => {
 
     expect(await purgeReturnDemo(db)).toEqual({ orders: 0, requests: 0 });
     expect(await survivors()).toEqual({ requests: 1, adjustments: 1 });
+  });
+});
+
+/**
+ * The `visitor` scope — the sweep that keeps the demonstration curated.
+ *
+ * **The requirement it serves, and the one it must not break.** Anybody may press "פתח חנות" on the
+ * demonstration and build a real shop; a month of that and the four curated stores sit among thirty
+ * called "test". But the owner edits the showcase shops through the dashboard, which is why the
+ * hourly rebuild had to be turned off — so a sweep that reaches them is worse than no sweep at all
+ * (owner, 2026-08-27: what other people make is temporary, what he edits stays).
+ *
+ * Both halves are asserted below, and so is the third thing that would quietly break the exhibit:
+ * the seeded `@demo.local` cast must SURVIVE. `portfolio` deletes those accounts because a re-seed
+ * recreates them a second later; this scope runs alone on a timer, and taking them would leave
+ * every seeded order without the person who placed it.
+ */
+describe('the visitor scope', () => {
+  /** The claim row the scope is gated on — written by `demo:claim` in real life. Removed before
+   *  each case, because the file's own TRUNCATE does not reach `app_settings` and a claim left
+   *  standing would make the two refusal cases pass for the wrong reason. */
+  const claim = (): Promise<unknown> => db.query(
+    "INSERT INTO app_settings (key, value) VALUES ('demo_database', 'true') ON CONFLICT (key) DO NOTHING");
+
+  /** Backdate a row, which is the only thing this scope keys on besides ownership. */
+  const age = (table: 'stores' | 'sellers', ident: string, hours: number): Promise<unknown> =>
+    db.query(`UPDATE ${table} SET created_at = now() - ($1 || ' hours')::interval
+              WHERE ${table === 'stores' ? 'slug::text' : 'email::text'} = $2`, [String(hours), ident]);
+
+  beforeEach(async () => {
+    await db.query("DELETE FROM app_settings WHERE key = 'demo_database'");
+  });
+
+  it('takes a visitor shop that has gone cold, and leaves everything else standing', async () => {
+    await claim();
+    await threeWorlds();
+    await store(await seller('someone@gmail.com'), 'abandoned-test-shop');
+    await age('stores', 'abandoned-test-shop', 48);
+    await age('sellers', 'someone@gmail.com', 48);
+
+    const removed = await purge(db, 'visitor');
+
+    expect(removed).toEqual({ stores: 1, sellers: 1 });
+    expect(await slugs()).toEqual(['demo-shop', 'keramika', 'showcase-shop']);
+  });
+
+  it('leaves a shop still inside its day — somebody may be building it right now', async () => {
+    await claim();
+    await store(await seller('someone@gmail.com'), 'built-this-morning');
+    await age('stores', 'built-this-morning', 3);
+    await age('sellers', 'someone@gmail.com', 3);
+
+    expect(await purge(db, 'visitor')).toEqual({ stores: 0, sellers: 0 });
+    expect(await slugs()).toEqual(['built-this-morning']);
+  });
+
+  it("never takes a showcase shop, however old it is — that is the owner's own work", async () => {
+    await claim();
+    await store(await seller(SHOWCASE_OWNER_EMAIL), 'showcase-tech', true);
+    await age('stores', 'showcase-tech', 24 * 365);
+    await age('sellers', SHOWCASE_OWNER_EMAIL, 24 * 365);
+
+    expect(await purge(db, 'visitor')).toEqual({ stores: 0, sellers: 0 });
+    expect(await slugs()).toEqual(['showcase-tech']);
+  });
+
+  it('keeps the seeded @demo.local cast, which the portfolio scope would have taken', async () => {
+    await claim();
+    await seller(`buyer7${DEMO_EMAIL_SUFFIX}`);
+    await age('sellers', `buyer7${DEMO_EMAIL_SUFFIX}`, 24 * 90);
+
+    await purge(db, 'visitor');
+
+    expect(await emails()).toEqual([`buyer7${DEMO_EMAIL_SUFFIX}`]);
+  });
+
+  it('refuses entirely on a database that has not claimed itself the demonstration', async () => {
+    // The only thing between this scope and somebody's development database — every ordinary
+    // database is in exactly this state, so the refusal is the common case and not the edge one.
+    await store(await seller('someone@gmail.com'), 'abandoned-test-shop');
+    await age('stores', 'abandoned-test-shop', 48);
+
+    await expect(purge(db, 'visitor')).rejects.toThrow(/has not been claimed/);
+    expect(await slugs()).toEqual(['abandoned-test-shop']);
+  });
+
+  it('refuses the ORDER sweep on an unclaimed database too, not only the store one', async () => {
+    // Two entry points, two gates. `purgeOrdersOfStores` runs first in the sweep script, so a gate
+    // on `purge` alone would let it delete a development database's orders before anything refused.
+    await expect(purgeOrdersOfStores(db, 'visitor')).rejects.toThrow(/has not been claimed/);
+  });
+
+  it('and the script the job actually runs does all of it in one call', async () => {
+    // The cases above drive the SCOPE; this one drives `sweep()` itself, which is what the
+    // `demo-sweep` job shells out to. Without it the scope could be perfect and the runner could
+    // call it in the wrong order — orders after stores, which strands every order on a slug
+    // nothing answers to — and every test above would still be green.
+    await claim();
+    await threeWorlds();
+    await store(await seller('someone@gmail.com'), 'abandoned-test-shop');
+    await order(['abandoned-test-shop']);
+    await order(['showcase-shop']);
+    await age('stores', 'abandoned-test-shop', 48);
+    await age('sellers', 'someone@gmail.com', 48);
+
+    const result = await sweep(db);
+
+    expect(result).toMatchObject({ stores: 1, sellers: 1, orders: 1 });
+    expect(await slugs()).toEqual(['demo-shop', 'keramika', 'showcase-shop']);
+    const left = await db.query<{ n: string }>('SELECT count(*)::text AS n FROM orders');
+    expect(left.rows[0]!.n).toBe('1');
   });
 });
