@@ -266,7 +266,16 @@ export async function buildTrading(db) {
        charts come out as straight lines. `daysAgo` squared does the tilt in one expression. */
     for (let o = 0; o < 28; o++) {
       const daysAgo = Math.round(110 * rnd() * rnd());
-      const created = NOW - daysAgo * DAY;
+      /* Nothing is fresher than a few HOURS, and that is not cosmetic. The reset job rebuilds this
+         world every hour, so an order written at `NOW` is genuinely minutes old — and the admin
+         bell, which is derived from exactly these rows, then toasts it at whoever opens the
+         dashboard next. The owner met that: *"יש טוסטים שקופצים כשנכנסים לדשבורד אדמין, כאילו הם
+         מחכים שמישהו ייכנס"*. They were real notifications about the demo rebuilding itself.
+
+         A floor of three hours also reads better: a shop whose newest order arrived this morning is
+         a working shop, and one whose newest order arrived while you were looking at it is a
+         coincidence nobody believes twice. */
+      const created = NOW - daysAgo * DAY - int(3, 20) * 3600_000;
       const lines = shuffle(products).slice(0, int(1, 3));
       const orderId = uuid();
       let subtotal = 0;

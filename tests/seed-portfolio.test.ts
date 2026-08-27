@@ -108,6 +108,15 @@ describe('what the demonstration looks like', () => {
     expect(rows[0]!.n).toBe(0);
   });
 
+  it('dates no order to the last hour, so a rebuild is not mistaken for activity', async () => {
+    // The reset job rebuilds this world hourly. An order written at NOW is genuinely minutes old,
+    // and the admin bell — derived from these very rows — then toasts it at whoever opens the
+    // dashboard next, about the demo rebuilding itself. Three hours is the floor.
+    const { rows } = await query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM orders WHERE created_at > now() - interval '2 hours'`);
+    expect(rows[0]!.n).toBe(0);
+  });
+
   it('writes a money-journal entry for every order, so the ledger and the orders agree', async () => {
     // `reconcile.ts` compares the journal against the order tables. An order with no entry behind
     // it surfaces in the admin's money log as a gap — a bug report about the demonstration.

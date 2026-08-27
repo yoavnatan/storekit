@@ -2,7 +2,6 @@
 export const prerender = false;
 import '../../styles/pages/admin.css';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import AdminNotificationBell from '../../components/admin/AdminNotificationBell.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import DashNavDrawer from '../../components/dashboard/DashNavDrawer.astro';
 import DashRailToggle from '../../components/dashboard/DashRailToggle.astro';
@@ -657,15 +656,11 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
               seller's store name learned the same lesson. The utility stays as the wide default
               and dashboard.css overrides it under `.dash-nav-side`. */}
           <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">דשבורד ניהול</h1>
-          {/* The bell sits in the DASHBOARD's head, not in the site header: that header runs in
-              `sellerMode` on this page, which is what strips the cart, the wishlist and the account
-              menu from an admin session, and an admin-only control inside it would be the first
-              exception to that rule. Beside the logout because that is where the page's own
-              account-level controls already are. */}
-          <div style="display:inline-flex;align-items:center;gap:0.5rem;margin-inline-start:auto">
-            <AdminNotificationBell />
-            <a href="/admin/logout" class="btn btn--ghost btn--sm">התנתקות</a>
-          </div>
+          {/* The bell used to sit here. It moved to the site header (owner, 2026-08-27: *"בדשבורד
+              אדמין הפעמון הוא לא בהדר?!"*), which is where the shopper's own bell lives and
+              therefore where anybody looks for one. `Header.astro` renders it when the request
+              carries an admin session. */}
+          <a href="/admin/logout" class="btn btn--ghost btn--sm" style="margin-inline-start:auto">התנתקות</a>
         </div>
       </div>
 

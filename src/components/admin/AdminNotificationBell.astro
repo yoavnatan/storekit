@@ -50,7 +50,12 @@
     <span id="admin-notif-count-badge" class="cart-count cart-count--alert" hidden aria-live="polite" aria-atomic="true" aria-label="התראות שלא נקראו"></span>
   </button>
 
-  <div id="admin-notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
+  {/* `--notif-clamp` is set by the script from the button's own position, so the panel can never
+        run off the edge of the screen. Measured on the live demo before this existed: 340px wide,
+        ending at 1626 on a 1440 viewport — nearly 200px of it unreachable. The site's own bell does
+        not need this because it sits in a header whose end is the screen's end; this one sits
+        wherever the header puts it. */}
+    <div id="admin-notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות" style="max-width:calc(100vw - 1.5rem)">
     <div class="notif-panel-head">
       <span style="display:inline-flex;align-items:center;gap:0.4rem">
         התראות
@@ -60,8 +65,13 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+    {/* NOT "no notifications" (owner, 2026-08-27: *"ולמה הדרופדאון ריק?"*). The list is filled by
+        a fetch, so before that answer arrives this element knows nothing — and a screen that says
+        "there is nothing" while it is still asking is stating a fact it has not got. On a cold load
+        that sentence is what a person reads and believes. The empty state is written by the script
+        only once a response has actually come back. */}
     <div id="admin-notif-list" class="notif-list">
-      <p class="notif-empty">אין התראות חדשות</p>
+      <p class="notif-empty">טוען…</p>
     </div>
   </div>
 </div>

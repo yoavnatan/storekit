@@ -31,6 +31,8 @@ import { MARK_PATH, MARK_VIEW_BOX, STROKE_WIDTH } from '../lib/brand-lockup.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { sellerHasAnyAlert } from '../lib/seller-alerts.js';
 import { isDemoMode } from '../lib/demo-mode.js';
+import { isAdminRequest } from '../lib/admin-auth.js';
+import AdminNotificationBell from './admin/AdminNotificationBell.astro';
 
 interface Props {
   isLoggedIn?: boolean;
@@ -84,6 +86,10 @@ const loginUrl = `/seller/login?next=${encodeURIComponent(currentPath)}`;
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 const demoMode = isDemoMode();
+/** An admin session is a different thing from a seller's, and the header knows about it for exactly
+ *  one reason: the platform's own bell belongs where every other bell on this site is (owner,
+ *  2026-08-27). Nothing else here branches on it. */
+const adminSession = isAdminRequest(Astro.cookies);
 
 type NavItem = { label: string; href: string };
 
@@ -405,12 +411,6 @@ const strEmpty   = t.store.noProductsFound;
         </button>
       )}
 
-      {!isLoggedIn && !sellerMode && (
-        <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
-          {t.nav.login}
-        </a>
-      )}
-
       {/* ── The tour, demo only (`lib/demo-mode.ts`) ──────────────────────────
           Most of what this project is sits behind the seller dashboard and the admin, and nothing
           on a shopper's path leads to either — so somebody sent this link browses a shop and leaves
@@ -448,6 +448,17 @@ const strEmpty   = t.store.noProductsFound;
           </form>
         </details>
       )}
+
+      {!isLoggedIn && !sellerMode && (
+        <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
+          {t.nav.login}
+        </a>
+      )}
+
+      {/* The PLATFORM's bell — admin sessions only, and never alongside the shopper's own: an
+          admin session is logically distinct from any buyer or seller session, and two bells in one
+          header would be two answers to "what needs my attention". */}
+      {adminSession && <AdminNotificationBell />}
 
       {/* Notifications bell — shows seller replies to buyer */}
       {isLoggedIn && (

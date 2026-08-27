@@ -93,12 +93,23 @@ function tabLabel(tab: string): string {
     ?? '';
 }
 
+/**
+ * "לפני דקה", never "לפני 1 דקות".
+ *
+ * Hebrew has a singular form and the plural one reads as a bug to anybody who speaks it — which on
+ * a bell is the first line of the newest row, i.e. the most-read text on the control. The site's
+ * own copy rules are the same: the number is dropped entirely at one, rather than printed beside a
+ * plural noun.
+ */
 function timeAgo(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (diff < 60) return 'עכשיו';
-  if (diff < 3600) return `לפני ${Math.floor(diff / 60)} דקות`;
-  if (diff < 86400) return `לפני ${Math.floor(diff / 3600)} שעות`;
-  return `לפני ${Math.floor(diff / 86400)} ימים`;
+  const minutes = Math.floor(diff / 60);
+  if (diff < 3600) return minutes === 1 ? 'לפני דקה' : `לפני ${minutes} דקות`;
+  const hours = Math.floor(diff / 3600);
+  if (diff < 86400) return hours === 1 ? 'לפני שעה' : `לפני ${hours} שעות`;
+  const days = Math.floor(diff / 86400);
+  return days === 1 ? 'אתמול' : `לפני ${days} ימים`;
 }
 
 /**
@@ -155,6 +166,9 @@ export function initAdminNotifications(): void {
   }
 
   function render(items: AdminNotifItem[]): void {
+    // Only ever called with a SERVER ANSWER in hand, which is what makes the empty state honest:
+    // the markup ships "טוען…" instead, so nothing claims there is nothing to see before it has
+    // asked (the component says why).
     if (!items.length) {
       list!.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>';
       return;
@@ -189,9 +203,32 @@ export function initAdminNotifications(): void {
     });
   }
 
+  /**
+   * Keep the panel on screen.
+   *
+   * It hangs off a button that sits wherever the header puts it, and at 340px wide it ran nearly
+   * 200px past the right edge on a 1440 viewport — measured on the live demo. The CSS caps its
+   * WIDTH; this caps its POSITION, which is the other half: a panel narrow enough to fit can still
+   * be anchored somewhere it does not.
+   *
+   * Read at open rather than once at init, because the header reflows — a language switch, a
+   * resize, the tab strip pinning — and a value cached at load would be about a layout that has
+   * since moved.
+   */
+  function clampToViewport(): void {
+    drop!.style.removeProperty('inset-inline-end');
+    const r = drop!.getBoundingClientRect();
+    const overflowEnd = r.right - (window.innerWidth - 8);
+    const overflowStart = 8 - r.left;
+    const shift = overflowEnd > 0 ? -overflowEnd : overflowStart > 0 ? overflowStart : 0;
+    if (shift) drop!.style.transform = `translateX(${shift}px)`;
+    else drop!.style.removeProperty('transform');
+  }
+
   function open(): void {
     drop!.hidden = false;
     bellBtn!.setAttribute('aria-expanded', 'true');
+    clampToViewport();
     void load();
   }
   function close(): void {
