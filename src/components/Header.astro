@@ -454,6 +454,12 @@ const strEmpty   = t.store.noProductsFound;
                 navigation. It sits first because it is the way BACK — the other two take you
                 somewhere, this one returns you. */}
             <a href="/" class="block w-full text-start whitespace-nowrap text-[.85rem] no-underline py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourHome}</a>
+            {/* Under "עמוד הבית" alone (owner, 2026-08-28). It is the row that takes you OUT of the
+                tour, and everything below it takes you INTO a part of it — which is a real division
+                and the only one in this list worth a line. The pair of seller states below is
+                separated by its own heading instead; a second rule there made the panel long, which
+                is why the one added with that group came straight back out. */}
+            <hr class="my-1 mx-2.5 border-0 border-t [border-color:var(--color-border)]" />
             {/* **One heading, two states — and the heading is the fix, not decoration.** Both rows
                 open the same seller dashboard: one on a shop with a quarter of trading behind it,
                 one on a shop's first day, which is the only state where "שלבים ראשונים" renders at
