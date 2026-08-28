@@ -57,11 +57,14 @@ export const translations = {
          this is a menu whose other two rows are two-word phrases — "בית" beside "דשבורד מוכרים"
          reads as a truncation rather than as a choice. */
       tourHome: 'עמוד הבית',
-      tourSeller: 'דשבורד מוכרים',
-      // The same dashboard, on a shop's first day. Named for the PERSON and not for the state
-      // ("חנות חדשה"), because the row is an offer to be somebody for a minute — and because the
-      // screen it opens on is the one that explains what a new seller has to do.
-      tourNewSeller: 'מוכר חדש',
+      // **The two seller rows are one heading and two STATES**, and the wording is the whole fix.
+      // As "דשבורד מוכרים" and "מוכר חדש" they read as two different places, so a visitor picked
+      // one and never saw the other — which on a demonstration means half the screen goes unseen
+      // (owner, 2026-08-28: *"סתם כפילות מיותרת שעלולה לגרום למתרשם לא לראות את כל האתר"*). Named
+      // as states under a shared label, wanting both is the obvious reading.
+      tourSellerGroup: 'דשבורד מוכרים',
+      tourSeller: 'חנות פעילה',
+      tourNewSeller: 'יום ראשון',
       // A LINK, not a door: it opens a page rather than signing anybody in as anybody.
       tourEmails: 'מיילים ללקוח',
       tourAdmin: 'דשבורד אדמין',
@@ -3056,8 +3059,9 @@ export const translations = {
       allStores: 'All Stores',
       tourTitle: 'Take a tour',
       tourHome: 'Home page',
-      tourSeller: 'Seller dashboard',
-      tourNewSeller: 'A brand-new seller',
+      tourSellerGroup: 'Seller dashboard',
+      tourSeller: 'A running shop',
+      tourNewSeller: 'Day one',
       tourEmails: 'Customer emails',
       tourAdmin: 'Admin dashboard',
       viewAllStores: 'All stores',
