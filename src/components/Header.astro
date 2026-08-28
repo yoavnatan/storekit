@@ -469,11 +469,10 @@ const strEmpty   = t.store.noProductsFound;
             <p class="muted px-2.5 pt-1.5 pb-0.5 text-[.72rem] font-semibold" aria-hidden="true">{t.home.tourSellerGroup}</p>
             <button type="submit" name="demoRole" value="seller" aria-label={`${t.home.tourSellerGroup} — ${t.home.tourSeller}`} class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourSeller}</button>
             <button type="submit" name="demoRole" value="new-seller" aria-label={`${t.home.tourSellerGroup} — ${t.home.tourNewSeller}`} class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourNewSeller}</button>
-            {/* The rule separates the two seller states from the rows that are not states of the
-                same screen. Without it the group's own heading would be the only thing telling
-                them apart, and a heading reads as "everything below me" rather than "the two
-                immediately below me". */}
-            <hr class="my-1 mx-2.5 border-0 border-t [border-color:var(--color-border)]" />
+            {/* No divider under the group. One was added with it and taken straight back out: it
+                cost a row's worth of height on a panel that had just grown by two, and the whole
+                complaint was that the list had become long and hard to read (owner, 2026-08-28).
+                The heading's own spacing already separates the pair from what follows. */}
             <button type="submit" name="demoRole" value="admin" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourAdmin}</button>
             {/* A LINK like "עמוד הבית" and unlike the three above it: this one opens a page rather
                 than signing anybody in as anybody, so posting to the login route for it would be a

@@ -64,7 +64,10 @@ export const translations = {
       // as states under a shared label, wanting both is the obvious reading.
       tourSellerGroup: 'דשבורד מוכרים',
       tourSeller: 'חנות פעילה',
-      tourNewSeller: 'יום ראשון',
+      // NOT "יום ראשון", which was the first attempt and is the name of a weekday — the row read as
+      // an opening-hours setting rather than as a state of a shop (owner, 2026-08-28). "חנות חדשה"
+      // cannot be misread, and it is the same two words as its sibling with one changed.
+      tourNewSeller: 'חנות חדשה',
       // A LINK, not a door: it opens a page rather than signing anybody in as anybody.
       tourEmails: 'מיילים ללקוח',
       tourAdmin: 'דשבורד אדמין',
@@ -3061,7 +3064,7 @@ export const translations = {
       tourHome: 'Home page',
       tourSellerGroup: 'Seller dashboard',
       tourSeller: 'A running shop',
-      tourNewSeller: 'Day one',
+      tourNewSeller: 'A new shop',
       tourEmails: 'Customer emails',
       tourAdmin: 'Admin dashboard',
       viewAllStores: 'All stores',
