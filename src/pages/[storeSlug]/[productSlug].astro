@@ -21,7 +21,7 @@ import ShareMenu from '../../components/ShareMenu.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { mayPreviewStore } from '../../lib/store-publication.js';
 import { getLang, getT } from '../../i18n/index.js';
-import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
+import { resolveVariantColor, isColorVariant, variantSwatchBackground } from '../../lib/color-variants.js';
 import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { buildRelatedGroups } from '../../lib/related-products.js';
@@ -583,7 +583,14 @@ const pmI18n = {
                     </p>
                     <div class="flex flex-wrap gap-2" role="group" aria-label={v.name}>
                       {v.options.map((opt) => {
-                        const { display, hex } = resolveVariantColor(opt);
+                        const resolved = resolveVariantColor(opt);
+                        const { display, hex } = resolved;
+                        // The swatch may exist without a hex — "צבעוני" paints a rainbow. The
+                        // BORDER and the tint still key on `hex`, because a gradient cannot be a
+                        // border colour or an 18%-alpha wash; a multicolour option therefore takes
+                        // the neutral accent for its selected state, which is what every non-colour
+                        // dimension already does.
+                        const paint = variantSwatchBackground(resolved);
                         const isActive = isSingleOption || rendered === opt;
                         const activeBorder = hex ?? 'var(--color-primary)';
                         const activeBg = hex ? hex + '18' : 'transparent';
@@ -622,9 +629,9 @@ const pmI18n = {
                                     'transition:all 0.15s',
                                     'white-space:nowrap',
                                   ].join(';')}>
-                            {isColor && hex && (
+                            {isColor && paint && (
                               <span aria-hidden="true"
-                                    style={`width:14px;height:14px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block`}></span>
+                                    style={`width:14px;height:14px;border-radius:3px;background:${paint};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block`}></span>
                             )}
                             {display}
                           </button>

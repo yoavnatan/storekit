@@ -110,7 +110,7 @@ const strDemo      = t.demo.productBadge;
   import { demoProductBadgeHtml } from '../lib/demo-badge.js';
   import type { PriceView } from '../lib/discounts.js';
   import { escapeHtml as pqvEsc } from '../lib/html-escape.js';
-  import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
+  import { resolveVariantColor, isColorVariant, variantSwatchBackground } from '../lib/color-variants.js';
   import { initReadMore } from '../lib/read-more.js';
   import { initLiquidDots } from '../lib/carousel-dots.js';
   import { scrollBelowPinnedChrome } from '../scripts/dashboard/scroll-utils.js';
@@ -230,9 +230,13 @@ const strDemo      = t.demo.productBadge;
           <p class="text-[.8rem] font-semibold text-[color:var(--color-text)] mb-1.5">${pqvEsc(v.name)}</p>
           <div class="flex flex-wrap gap-1.5">
             ${v.options.map(opt => {
-              const { display, hex } = resolveVariantColor(opt);
-              const swatch = isCv && hex
-                ? `<span aria-hidden="true" style="width:12px;height:12px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block"></span>`
+              const resolved = resolveVariantColor(opt);
+              const display = resolved.display;
+              // Shared with the storefront and the dashboard, so a multicolour value draws the same
+              // rainbow in all three rather than a swatch here and a bare word there.
+              const paint = variantSwatchBackground(resolved);
+              const swatch = isCv && paint
+                ? `<span aria-hidden="true" style="width:12px;height:12px;border-radius:3px;background:${paint};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block"></span>`
                 : '';
               const selected = selectedVariants[v.name] === opt;
               return `<button type="button" class="pqv-variant-opt inline-flex items-center gap-[.35rem] py-[.3rem] px-3 border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius-sm)] text-[.8rem] font-[inherit] bg-transparent cursor-pointer text-[color:var(--color-text)] transition-colors duration-[130ms] data-[selected]:border-[color:var(--color-accent)] data-[selected]:bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] data-[selected]:text-[color:var(--color-accent)] data-[selected]:font-semibold" data-variant-name="${pqvEsc(v.name)}" data-variant-opt="${pqvEsc(opt)}"${selected ? ' data-selected' : ''}>${swatch}${pqvEsc(display)}</button>`;
@@ -314,9 +318,27 @@ const strDemo      = t.demo.productBadge;
         // the dots, we only track the settled index for the lightbox.
         const { setActive } = initLiquidDots(slidesEl, dots, (idx) => { pqvImgIdx = idx; });
 
+        /**
+         * A picked image LANDS; it does not travel there.
+         *
+         * The product page settled this rule in August (`[productSlug].astro#pickMainImage`, owner
+         * 2026-08-18): a smooth scroll across a snap carousel plays every slide in between, so
+         * jumping from photo 1 to photo 3 makes the shopper watch 2 flick past. One slide over it
+         * reads as a swipe; two or more it reads as the gallery doing something of its own.
+         *
+         * This carousel never got the rule and kept `behavior: 'smooth'` for every distance, which
+         * is what a colour chip two photos away looked like here (owner, 2026-08-28: *"התמונה
+         * עוברת דרך כל התמונות בדרך"*). The product page cross-fades through its hover overlay;
+         * this modal has no overlay, so it takes the page's own documented fallback for that case —
+         * the instant jump, never the smooth one.
+         */
         function scrollToIdx(idx: number): void {
+          const adjacent = Math.abs(idx - pqvImgIdx) === 1;
           pqvImgIdx = idx;
-          slidesEl!.scrollTo({ left: (isRtl ? -1 : 1) * idx * getSlideW(), behavior: 'smooth' });
+          slidesEl!.scrollTo({
+            left: (isRtl ? -1 : 1) * idx * getSlideW(),
+            behavior: adjacent ? 'smooth' : 'auto',
+          });
         }
         pqvGoToImage = scrollToIdx;
 

@@ -373,7 +373,17 @@ textarea.input { resize: none; }
     about 3px of air a side — enough that nothing touches an edge, little enough that the two
     read as one group. Measured at every width down to 660: neither is clipped. */
 .products-table .seo-col       { width: 1.7rem; padding-inline: 0.1rem; }
-.products-table .actions-col   { width: 2.1rem; padding-inline: 0.1rem; }
+/* **Wide enough for the button's own hover circle, which it was not.** Measured at 1440px: the cell
+   was 33.6px across with 7.92px of padding each side — a content box of 17.8px — while the kebab
+   button is 28px and its hover state paints a filled circle at that full size. So the circle sat
+   2.3px outside the cell's start edge and read as a smudge escaping the column on hover (owner,
+   2026-08-28: *"ההובר שלה יוצא, לא השלוש נקודות עצמם"*). 3rem gives 48px, i.e. 32px of content for
+   a 28px control, and nothing moves but this column's own width.
+
+   The `padding-inline: 0.1rem` that used to be here is dropped rather than kept: it was not in
+   force — the table's own cell padding wins — and a declaration that describes a layout the browser
+   is not using is worse than no declaration, because the next person sizes the column against it. */
+.products-table .actions-col   { width: 3rem; }
 
 /* ── THE SHARES ARE A BUDGET, AND IT WAS SPENT IN THE WRONG PLACE ──
    Owner, 2026-08-23, pointing at the end of a row: *"למה ה-SEO כל כך רחוק מהשלוש נקודות ועל

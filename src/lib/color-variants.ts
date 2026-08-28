@@ -77,19 +77,59 @@ const COLOR_MAP: Record<string, string> = {
   'magenta': '#d946ef',
 };
 
+/**
+ * The words that mean "more than one colour", and therefore cannot have a hex.
+ *
+ * Every other value in this file resolves to a single swatch. "צבעוני" resolved to nothing at all,
+ * so a seller who typed it got the fallback colour PICKER and had to invent a hex for a product
+ * that is deliberately not one colour — and whatever they picked then lied about it on the
+ * storefront (owner, 2026-08-28: *"אין לי שם כזה קשת או משהו מיוחד, לצבע מיוחד"*).
+ *
+ * Kept apart from `COLOR_MAP` rather than mapped to some representative hex, because the answer is
+ * not a colour: it is "draw the rainbow". A hex here would have every caller painting one arbitrary
+ * shade and no caller able to tell that it was arbitrary.
+ */
+const MULTICOLOR_NAMES = new Set([
+  'צבעוני', 'רב צבעוני', 'רב-צבעוני', 'מגוון', 'קשת', 'ססגוני',
+  'multicolor', 'multicolour', 'multi-color', 'multi-colour', 'multi', 'rainbow', 'assorted',
+]);
+
 export interface ResolvedColor {
   display: string;
+  /** A single colour, or null when there is none to show — including a multicolour value. */
   hex: string | null;
+  /** "Many colours" — paint `variantSwatchBackground()`'s rainbow rather than a swatch. */
+  multi: boolean;
 }
 
 export function resolveVariantColor(option: string): ResolvedColor {
   const hexMatch = option.match(/#([0-9a-fA-F]{3,6})\b/);
   if (hexMatch) {
     const display = option.replace(/#([0-9a-fA-F]{3,6})\b/, '').trim();
-    return { display: display || option, hex: '#' + hexMatch[1] };
+    return { display: display || option, hex: '#' + hexMatch[1], multi: false };
   }
   const key = option.trim().toLowerCase();
-  return { display: option, hex: COLOR_MAP[key] ?? null };
+  // A hex the seller typed WINS over the word, above — "צבעוני #ffffff" is somebody who wanted a
+  // specific shade and said so, and this branch must not overrule them.
+  if (MULTICOLOR_NAMES.has(key)) return { display: option, hex: null, multi: true };
+  return { display: option, hex: COLOR_MAP[key] ?? null, multi: false };
+}
+
+/**
+ * What to paint in a swatch — the ONE definition, so five renderers cannot disagree.
+ *
+ * `null` means "there is nothing to draw": the dashboard answers that with its colour picker, the
+ * storefront with a plain text chip. Both of those already existed; what did not was a value that
+ * has a swatch and no hex, which is why this returns a CSS background rather than a colour.
+ *
+ * The rainbow is a conic gradient, not a linear one: on a 14px circle a linear sweep reads as two
+ * colours with a smear between them, while a conic one reads as a colour wheel at any size — and
+ * these swatches are drawn at 14px in the dashboard and 24px on the storefront from the same call.
+ */
+export function variantSwatchBackground(color: ResolvedColor): string | null {
+  if (color.hex) return color.hex;
+  if (!color.multi) return null;
+  return 'conic-gradient(#e53e3e, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #e53e3e)';
 }
 
 // Exported (not just a local Set) so other variant-name logic — e.g. dashboard

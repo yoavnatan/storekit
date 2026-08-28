@@ -10,7 +10,7 @@ import { thumbUrl } from './cloudinary.js';
 import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.js';
 import { createFetchGate, initListPager, markListBusy, renderListPagers, type PagerLabels } from './list-pager.js';
 import { onPanelIntent } from './panel-intent.js';
-import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
+import { resolveVariantColor, isColorVariant, variantSwatchBackground } from '../../lib/color-variants.js';
 import { canonicalDimName, comboCount, LOW_STOCK_THRESHOLD, MAX_VARIANT_COMBOS, comboStockRows, remapComboKeys, type VariantDimension } from '../../lib/variant-combo.js';
 import { CSV_MAX_DIMENSIONS } from '../../lib/csv-bulk.js';
 import { COMBO_SKU_MAXLENGTH } from '../../lib/variant-sku-field.js';
@@ -166,8 +166,9 @@ function comboLabelHtml(dims: VariantDimension[], combo: Record<string, string>)
   return dims.map(d => {
     const raw = combo[d.name] ?? '';
     if (!isColorVariant(d.name)) return esc(raw);
-    const { display, hex } = resolveVariantColor(raw);
-    const swatch = hex ? `<span aria-hidden="true" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0"></span>` : '';
+    const { display, ...rest } = resolveVariantColor(raw);
+    const paint = variantSwatchBackground({ display, ...rest });
+    const swatch = paint ? `<span aria-hidden="true" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${paint};border:1px solid rgba(0,0,0,0.15);flex-shrink:0"></span>` : '';
     return `<span style="display:inline-flex;align-items:center;gap:0.3rem">${swatch}${esc(display)}</span>`;
   }).join(' · ');
 }
@@ -605,9 +606,11 @@ function specsEditorHtml(specs: Array<{ label: string; value: string }>, i18n: R
 
 function colorChipVisualHtml(dimName: string, value: string, i18n: Record<string, string>): string {
   if (!isColorVariant(dimName)) return '';
-  const { hex } = resolveVariantColor(value);
-  if (hex) {
-    return `<span class="variant-chip-swatch" aria-hidden="true" style="width:14px;height:14px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block"></span>`;
+  // Through the shared background, so "צבעוני" gets the rainbow here and on the storefront from one
+  // definition — rather than a hex the seller had to invent for a product that is not one colour.
+  const paint = variantSwatchBackground(resolveVariantColor(value));
+  if (paint) {
+    return `<span class="variant-chip-swatch" aria-hidden="true" style="width:14px;height:14px;border-radius:3px;background:${paint};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block"></span>`;
   }
   return `<input type="color" class="variant-chip-color-input" value="#9ca3af" aria-label="${esc(i18n.variantColorPicker ?? 'Pick exact color')}" style="width:16px;height:16px;padding:0;border:1px solid rgba(0,0,0,0.15);border-radius:3px;flex-shrink:0;cursor:pointer;background:none">`;
 }
@@ -845,8 +848,9 @@ function comboRowHtml(dims: VariantDimension[], combo: Record<string, string>, k
     if (!isColorVariant(d.name)) {
       return `<td style="padding:0.4rem 0.6rem;font-size:0.85rem;color:var(--color-text);white-space:nowrap;vertical-align:middle">${esc(raw)}</td>`;
     }
-    const { display, hex } = resolveVariantColor(raw);
-    const swatch = hex ? `<span aria-hidden="true" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0"></span>` : '';
+    const { display, ...rest } = resolveVariantColor(raw);
+    const paint = variantSwatchBackground({ display, ...rest });
+    const swatch = paint ? `<span aria-hidden="true" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${paint};border:1px solid rgba(0,0,0,0.15);flex-shrink:0"></span>` : '';
     return `<td style="padding:0.4rem 0.6rem;font-size:0.85rem;color:var(--color-text);white-space:nowrap;vertical-align:middle"><span style="display:inline-flex;align-items:center;gap:0.3rem">${swatch}${esc(display)}</span></td>`;
   }).join('');
   // An EMPTY input is the meaningful state, not a missing one: it says "this combo has no count of

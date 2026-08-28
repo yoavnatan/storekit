@@ -45,7 +45,12 @@ const { state, placement } = Astro.props;
 const COPY: Record<Exclude<ImageModerationState, 'ok'>, { title: string; means: string; todo: string }> = {
   off: {
     title: 'סינון תמונות אינו פעיל',
-    means: 'כל תמונה שמוכר מעלה עולה לאתר בלי שאף אחד בדק אותה. זה המצב מאז ומתמיד — לא תקלה.',
+    // ONE line, and the reassurance that used to follow it is gone (owner, 2026-08-28). "זה המצב
+    // מאז ומתמיד — לא תקלה" was written for a reader who might think something had broken; on a
+    // portfolio the reader is somebody being shown the product, and a paragraph explaining that
+    // nothing is checked reads as a confession rather than as a setting that is switched off.
+    // What is left is the fact and the switch, which is all an admin needs to act.
+    means: 'תמונות שמוכרים מעלים עולות לאתר ללא בדיקה.',
     todo: 'להפעלה: בקונסולה של Cloudinary → Settings → Add-ons → Amazon Rekognition AI Moderation (שכבה חינמית), ואז לשנות ב-.env את PUBLIC_IMAGE_MODERATION_ON ל-true.',
   },
   stopped: {
