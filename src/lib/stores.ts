@@ -396,6 +396,11 @@ export const RESERVED_SLUGS = new Set<string>([
   // A reserved word and a real page are two halves of one fix: reserving alone leaves the 404 that
   // Merchant Center reads as a shop with no published terms (contact.astro).
   'terms', 'contact', 'returns-policy',
+  // `/demo/emails`, the gallery of transactional letters the demonstration cannot send. Reserved
+  // for the same reason as the three above: the header links it from every page, and an unreserved
+  // first segment falls through to the store router — so a seller registering the slug `demo`
+  // would have the whole site linking "מיילים ללקוח" at their shop.
+  'demo',
   // The review link the order mail and the buyer's own order list both point at (`/review/<id>`).
   // Reserved for the same reason as the two above — an unreserved segment falls through to the
   // store router, so a seller registering the slug `review` would answer for everyone's review

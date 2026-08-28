@@ -62,6 +62,8 @@ export const translations = {
       // ("חנות חדשה"), because the row is an offer to be somebody for a minute — and because the
       // screen it opens on is the one that explains what a new seller has to do.
       tourNewSeller: 'מוכר חדש',
+      // A LINK, not a door: it opens a page rather than signing anybody in as anybody.
+      tourEmails: 'מיילים ללקוח',
       tourAdmin: 'דשבורד אדמין',
       viewAllStores: 'כל החנויות',
       shelfLiked: 'חנויות ששמרת',
@@ -3056,6 +3058,7 @@ export const translations = {
       tourHome: 'Home page',
       tourSeller: 'Seller dashboard',
       tourNewSeller: 'A brand-new seller',
+      tourEmails: 'Customer emails',
       tourAdmin: 'Admin dashboard',
       viewAllStores: 'All stores',
       shelfLiked: 'Stores you saved',

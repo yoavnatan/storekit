@@ -461,6 +461,12 @@ const strEmpty   = t.store.noProductsFound;
                 unreachable from anywhere in the demonstration (owner, 2026-08-27). */}
             <button type="submit" name="demoRole" value="new-seller" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourNewSeller}</button>
             <button type="submit" name="demoRole" value="admin" class="block w-full text-start whitespace-nowrap text-[.85rem] font-[inherit] bg-transparent border-0 cursor-pointer py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourAdmin}</button>
+            {/* A LINK like "עמוד הבית" and unlike the three above it: this one opens a page rather
+                than signing anybody in as anybody, so posting to the login route for it would be a
+                state change dressed as navigation. Last in the list because it is the only row that
+                shows a part of the product rather than putting you inside it — the transactional
+                emails, which the demonstration can never send (owner, 2026-08-28). */}
+            <a href="/demo/emails" class="block w-full text-start whitespace-nowrap text-[.85rem] no-underline py-1.5 px-2.5 rounded-[var(--radius-sm)] [color:var(--color-text)] hover:[background:var(--color-bg)]">{t.home.tourEmails}</a>
           </form>
         </details>
       )}

@@ -48,6 +48,11 @@ export const PLATFORM_PAGE_SEGMENTS: readonly string[] = [
   // a seller, so serving it from a shop's own domain would put our seller pricing in front of that
   // shop's customers, on the shop's brand, as if it were theirs.
   'pricing',
+  // 'demo' is the platform's for the plainest reason on this list: it exists only on the portfolio
+  // demonstration and shows the PLATFORM's transactional letters. Serving it from a seller's custom
+  // domain would put our internal gallery on their brand, and on a real deployment the route 404s
+  // anyway — so "whichever host answers" has no correct answer here.
+  'demo',
   // 'help' is the platform's for the same reason: the articles are about selling ON the platform,
   // addressed to a seller. Served from a shop's own domain they would be that shop instructing its
   // own customers on how to open a store.

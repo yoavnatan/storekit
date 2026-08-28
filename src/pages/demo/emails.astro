@@ -1,0 +1,154 @@
+---
+/**
+ * Every letter the platform sends, rendered from the real templates.
+ *
+ * **Why this page exists.** The demonstration deliberately has no mail provider — `RESEND_API_KEY`
+ * is unset, so `sendEmail` falls to the console adapter and nothing leaves the server (render.yaml
+ * says why: a demo that mails addresses strangers type into it is a spam complaint waiting to
+ * happen). The cost of that decision is that the transactional emails — which are a real piece of
+ * the product, designed and written — are the one part of it nobody visiting can see at all
+ * (owner, 2026-08-28).
+ *
+ * So this renders them instead of sending them. Every letter below comes from the SAME builder the
+ * application calls in production: no copy is duplicated here, no layout is re-created, and a
+ * template that changes changes on this page in the same commit. That is the whole point — a
+ * gallery drawn from a second source would be a brochure, and would be wrong within a week.
+ *
+ * The order-shaped letters are built from REAL seeded orders rather than from a fixture, for the
+ * same reason: a fixture is a fifth place the Order shape has to be kept correct, and the
+ * demonstration already holds a hundred of them.
+ *
+ * **Demo only, and 404 otherwise.** On a real deployment this is neither useful nor harmless: the
+ * letters carry buyer names and addresses, and this page has no session behind it.
+ */
+export const prerender = false;
+
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { isDemoMode } from '../../lib/demo-mode.js';
+import { getOrdersByStoreSlugInRange } from '../../lib/orders.js';
+import { buildBuyerOrderConfirmation, buildSellerOrderNotification } from '../../lib/email/order-emails.js';
+import { buildOrderStatusEmail } from '../../lib/email/order-status-email.js';
+import { buildReviewInviteEmail } from '../../lib/email/review-invite-email.js';
+import { buildPasswordResetEmail } from '../../lib/email/password-reset-email.js';
+import { buildStoreLiveEmail } from '../../lib/email/store-live-email.js';
+import { buildInvoiceReadyEmail } from '../../lib/email/invoice-email.js';
+import type { EmailMessage } from '../../lib/email/adapter.js';
+import { store } from '../../config/store.config.js';
+
+if (!isDemoMode()) return new Response(null, { status: 404 });
+
+/**
+ * Three orders, and the two constraints that shape how they are found.
+ *
+ * A RANGE and not the whole history, because `tests/public-route-unbounded-build.test.ts` refuses a
+ * public route that reads every order a store ever had — correctly, since this page needs three.
+ *
+ * And across the showcase stores rather than one, because the first version asked `showcase-tech`
+ * for the last thirty days and got nothing: the page then rendered two letters out of seven with no
+ * sign that five were missing. A gallery that quietly shrinks is worse than one that is empty, so it
+ * walks the shops until it has orders and only then stops.
+ */
+const SHOWCASE = ['showcase-tech', 'showcase-fashion', 'showcase-home', 'showcase-plants'];
+const day = (d: Date): string => d.toISOString().slice(0, 10);
+const today = day(new Date());
+const halfYearAgo = day(new Date(Date.now() - 180 * 24 * 3600_000));
+
+let orders: Awaited<ReturnType<typeof getOrdersByStoreSlugInRange>> = [];
+for (const slug of SHOWCASE) {
+  orders = await getOrdersByStoreSlugInRange(slug, halfYearAgo, today);
+  if (orders.length) break;
+}
+const paid = orders.find((o) => o.paymentStatus === 'paid') ?? orders[0];
+const shipped = orders.find((o) => o.shippingStatus === 'shipped') ?? paid;
+const delivered = orders.find((o) => o.shippingStatus === 'delivered') ?? paid;
+
+/** One card: what triggers the letter, and the letter. `null` builders are skipped, not faked. */
+type Card = { when: string; mail: EmailMessage | null };
+
+const cards: Card[] = [
+  {
+    when: 'הקונה סיים תשלום',
+    mail: paid ? buildBuyerOrderConfirmation([paid]) : null,
+  },
+  {
+    when: 'הזמנה חדשה נכנסה למוכר',
+    mail: paid ? buildSellerOrderNotification(paid, 'seller@example.com') : null,
+  },
+  {
+    when: 'המוכר סימן שההזמנה נשלחה',
+    mail: shipped ? buildOrderStatusEmail(shipped, 'shipped') : null,
+  },
+  {
+    when: 'ההזמנה נמסרה — הזמנה לכתוב ביקורת',
+    mail: delivered ? buildReviewInviteEmail(delivered) : null,
+  },
+  {
+    when: 'חשבונית נוצרה להזמנה',
+    // Built from the site's OWN origin rather than written out: a literal third-party origin in a
+    // page is what `tests/csp-allowlist.test.ts` catches, and it is right to — an origin the CSP
+    // does not name is blocked silently for a real visitor. These two are sample values inside a
+    // sandboxed iframe and are never fetched, but a rule that has to be argued with per case is a
+    // rule that stops being enforced.
+    mail: paid ? buildInvoiceReadyEmail({ order: paid, documentUrl: `${store.url}/invoice-example.pdf` }) : null,
+  },
+  {
+    when: 'החנות עלתה לאוויר',
+    mail: buildStoreLiveEmail({
+      to: 'seller@example.com',
+      storeName: 'טקלר',
+      storeSlug: 'showcase-tech',
+      chargedAgorot: 12500,
+    }),
+  },
+  {
+    when: 'מוכר ביקש איפוס סיסמה',
+    mail: buildPasswordResetEmail({
+      to: 'seller@example.com',
+      sellerName: 'רונה',
+      resetUrl: `${store.url}/seller/reset-password?token=example`,
+      expiresInMinutes: 60,
+    }),
+  },
+];
+
+const shown = cards.filter((c): c is { when: string; mail: EmailMessage } => c.mail !== null);
+---
+
+<BaseLayout title="מיילים ללקוח" noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
+  <div class="container" style="max-width:var(--max-width);padding-block:2rem 3rem">
+    <h1 class="!text-[1.4rem] !font-bold" style="margin:0">מיילים ללקוח</h1>
+    {/* One line, and it says the thing a reader cannot work out for themselves: these are not
+        pictures of emails. Everything below is rendered by the code that sends the real ones. */}
+    <p class="muted" style="margin:0.4rem 0 2rem;max-width:60ch">
+      כל מייל כאן נבנה על ידי אותו קוד ששולח אותו באתר האמיתי. בהדגמה השליחה מכובה, ולכן זו הדרך לראות אותם.
+    </p>
+
+    {shown.map(({ when, mail }) => (
+      <section style="margin-bottom:2.5rem">
+        <p class="muted" style="margin:0 0 0.15rem;font-size:0.78rem">{when}</p>
+        <p style="margin:0 0 0.6rem;font-weight:600">{mail.subject}</p>
+        {/* An IFRAME, and it is not a styling choice: these letters carry their own full document
+            with its own colours, fonts and table layout, and dropping that into the page would let
+            the site's stylesheet repaint it — showing the visitor something no mail client would.
+            `srcdoc` keeps it same-document-less: no request, no navigation, nothing to load. */}
+          {/* `allow-same-origin` and deliberately NOT `allow-scripts`. The letter's header logo is an
+              absolute URL on the site's own origin, and the page's CSP allows images from `'self'` —
+              which matches nothing from a frame whose origin is opaque, as an empty sandbox makes
+              it. Granting the origin back costs no capability here: scripts stay blocked and an
+              email has none.
+
+              (On a dev server the logo is broken anyway, and for an unrelated reason worth not
+              chasing twice: with `PUBLIC_SITE_URL` unset the templates address the real
+              `dezabin.co.il`, which serves nothing yet. On the demonstration that variable is the
+              Render host and the logo resolves.) */}
+        <iframe
+          srcdoc={mail.html}
+          title={mail.subject}
+          loading="lazy"
+          sandbox="allow-same-origin"
+          style="width:100%;height:520px;border:1.5px solid var(--color-border);border-radius:var(--radius);background:#fff;display:block"
+        ></iframe>
+      </section>
+    ))}
+  </div>
+</BaseLayout>
