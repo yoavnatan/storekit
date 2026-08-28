@@ -26,6 +26,7 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { isDemoMode } from '../../lib/demo-mode.js';
 import { getOrdersByStoreSlugInRange } from '../../lib/orders.js';
+import { getStoreBySlug } from '../../lib/stores.js';
 import { buildBuyerOrderConfirmation, buildSellerOrderNotification } from '../../lib/email/order-emails.js';
 import { buildOrderStatusEmail } from '../../lib/email/order-status-email.js';
 import { buildReviewInviteEmail } from '../../lib/email/review-invite-email.js';
@@ -54,10 +55,19 @@ const today = day(new Date());
 const halfYearAgo = day(new Date(Date.now() - 180 * 24 * 3600_000));
 
 let orders: Awaited<ReturnType<typeof getOrdersByStoreSlugInRange>> = [];
+let shopSlug = SHOWCASE[0]!;
 for (const slug of SHOWCASE) {
   orders = await getOrdersByStoreSlugInRange(slug, halfYearAgo, today);
-  if (orders.length) break;
+  if (orders.length) { shopSlug = slug; break; }
 }
+
+// **The shop's own name, read from the shop.** The "your shop is live" letter is the one card here
+// with no order behind it, so its inputs were typed by hand — and the name was typed in Hebrew for
+// a shop called Teklar, which put "טקלר באוויר" on the subject line of a letter about a store of
+// that name (owner, 2026-08-28). Everything else on this page comes from the database precisely so
+// it cannot say something the site does not; this was the one line that opted out of that.
+const shop = await getStoreBySlug(shopSlug);
+const shopName = shop?.name ?? shopSlug;
 const paid = orders.find((o) => o.paymentStatus === 'paid') ?? orders[0];
 const shipped = orders.find((o) => o.shippingStatus === 'shipped') ?? paid;
 const delivered = orders.find((o) => o.shippingStatus === 'delivered') ?? paid;
@@ -95,8 +105,8 @@ const cards: Card[] = [
     when: 'החנות עלתה לאוויר',
     mail: buildStoreLiveEmail({
       to: 'seller@example.com',
-      storeName: 'טקלר',
-      storeSlug: 'showcase-tech',
+      storeName: shopName,
+      storeSlug: shopSlug,
       chargedAgorot: 12500,
     }),
   },
