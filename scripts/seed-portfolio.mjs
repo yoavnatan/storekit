@@ -42,7 +42,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
   SHOWCASE_OWNER_EMAIL, NEW_SELLER_EMAIL, SEED_SCOPES, DEMO_CLAIM_KEY, isDemoDatabase,
-  openSeedClient, purge, purgeOrdersOfStores, purgeOrphanJournalRows,
+  openSeedClient, purge, purgeOrdersOfStores, purgeOrphanJournalRows, stampSeeded,
 } from './lib/seed-db.mjs';
 
 /** Kept in step with `src/lib/demo-mode.ts` by `tests/seed-portfolio.test.ts` — this file is run
@@ -600,6 +600,10 @@ async function main() {
     const built = await buildTrading(db2);
     await seedClearing(db2);
     await seedFirstDayShop(db2);
+    // The line the nightly sweep draws between "the history this demonstration is built on" and
+    // "somebody used the site" — see `purgeVisitorOrders`. Stamped LAST, so every row above it is
+    // on the seeded side of the line.
+    await stampSeeded(db2);
     await purgeOrphanJournalRows(db2);
     console.log(
       `\n✅ Portfolio demo ready.\n` +

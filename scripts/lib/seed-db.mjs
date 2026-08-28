@@ -478,6 +478,69 @@ export async function purgeOrdersOfStores(db, scopeName) {
 }
 
 /**
+ * The orders a VISITOR placed in the showcase shops, once they have gone cold.
+ *
+ * **The gap this closes.** `purgeOrdersOfStores` removes the orders of stores it is about to
+ * delete, so a shop a visitor registered takes its orders with it. A purchase a visitor makes IN a
+ * showcase shop belongs to a store that stays — so nothing ever removed it, and the demonstration's
+ * order list grew by every stranger who tried the checkout, for ever (owner, 2026-08-28: *"שלא
+ * ייכנס לי כל הזמן דברים אינסופיים ויגרום ל-1000 הזמנות"*).
+ *
+ * **What separates a visitor's order from the seeded history is a TIMESTAMP, not a shape.** Both
+ * are ordinary rows on the same stores, and both carry a `demo-` payment ref, because the visitor's
+ * really did go through the stand-in clearing company. So the seeder stamps `demo_seeded_at` when
+ * it finishes, and anything created after that mark was placed by somebody using the site. Nothing
+ * seeded is ever in range: the seeder's own rows are all written before its own stamp.
+ *
+ * The age condition is the same day the shops get, so an order stays visible long enough for the
+ * person who placed it to see it in the dashboard they were shown.
+ *
+ * Deletes through the same child-table cascade as `purgeOrdersOfStores` — every RESTRICT FK onto
+ * `orders` has to be listed once, and listing it twice is how the second copy comes to be missing
+ * the table that was added last.
+ */
+export async function purgeVisitorOrders(db) {
+  if (!(await isDemoDatabase(db))) {
+    throw new Error(
+      'purgeVisitorOrders refused: this database has not been claimed as the demonstration one.',
+    );
+  }
+  const { rows: stamp } = await db.query(
+    "SELECT value ->> 'at' AS at FROM app_settings WHERE key = 'demo_seeded_at'");
+  const seededAt = stamp[0]?.at;
+  // No stamp means the demonstration predates this and there is no way to tell a visitor's order
+  // from a seeded one. Deleting on a guess would take the trading history the demo is built on, so
+  // the honest answer is to do nothing and say so.
+  if (!seededAt) return { deleted: 0, reason: 'no demo_seeded_at stamp — nothing is safely visitor-made' };
+
+  const { rows } = await db.query(
+    `SELECT id FROM orders
+      WHERE created_at > $1::timestamptz
+        AND created_at < now() - ${lit(`${VISITOR_CONTENT_HOURS} hours`)}::interval`,
+    [seededAt]);
+  const ids = rows.map((r) => r.id);
+  if (!ids.length) return { deleted: 0 };
+
+  await db.query('DELETE FROM money_events WHERE order_id = ANY($1::text[])', [ids]);
+  await db.query('DELETE FROM product_reviews WHERE order_id = ANY($1::uuid[])', [ids]);
+  await db.query('DELETE FROM return_requests WHERE order_id = ANY($1::uuid[])', [ids]);
+  await purgeOrderLedger(db, ids);
+  await db.query('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [ids]);
+  await db.query('DELETE FROM order_stores WHERE order_id = ANY($1::uuid[])', [ids]);
+  const res = await db.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [ids]);
+  return { deleted: res.rowCount ?? 0 };
+}
+
+/** Stamped by the seeder when it finishes, and read by `purgeVisitorOrders` — everything created
+ *  after it was made by somebody using the site rather than by the seeder. */
+export async function stampSeeded(db) {
+  await db.query(
+    `INSERT INTO app_settings (key, value) VALUES ('demo_seeded_at', $1::jsonb)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [JSON.stringify({ at: new Date().toISOString() })]);
+}
+
+/**
  * Journal rows whose order is already gone — the wreckage of every purge that ran before the one
  * above learned to take them along.
  *

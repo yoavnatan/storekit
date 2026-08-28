@@ -31,6 +31,7 @@ import {
   purgeReturnDemo,
 } from '../scripts/lib/seed-db.mjs';
 import { sweep } from '../scripts/sweep-visitor-content.mjs';
+import { purgeVisitorOrders, stampSeeded } from '../scripts/lib/seed-db.mjs';
 import { asDatabase, loadImage } from './helpers/test-db.js';
 
 /**
@@ -357,7 +358,7 @@ describe('the visitor scope', () => {
               WHERE ${table === 'stores' ? 'slug::text' : 'email::text'} = $2`, [String(hours), ident]);
 
   beforeEach(async () => {
-    await db.query("DELETE FROM app_settings WHERE key = 'demo_database'");
+    await db.query("DELETE FROM app_settings WHERE key IN ('demo_database', 'demo_seeded_at')");
   });
 
   it('takes a visitor shop that has gone cold, and leaves everything else standing', async () => {
@@ -417,6 +418,60 @@ describe('the visitor scope', () => {
     // Two entry points, two gates. `purgeOrdersOfStores` runs first in the sweep script, so a gate
     // on `purge` alone would let it delete a development database's orders before anything refused.
     await expect(purgeOrdersOfStores(db, 'visitor')).rejects.toThrow(/has not been claimed/);
+  });
+
+  describe('and the orders a visitor placed in a shop that STAYS', () => {
+    /* The half the store-shaped purge cannot reach. A purchase in a showcase shop belongs to a
+       store nothing deletes, so nothing deleted the order either and the list grew by every
+       stranger who tried the checkout — 1000 orders was the owner's own arithmetic, and it was
+       right. What separates those from the seeded history is a TIMESTAMP and not a shape: both are
+       ordinary rows on the same stores carrying the same `demo-` refs, because the visitor's
+       purchase really did go through the stand-in clearing company. */
+    const aged = (id: string, hours: number) =>
+      db.query("UPDATE orders SET created_at = now() - ($1 || ' hours')::interval WHERE id = $2",
+        [String(hours), id]);
+
+    it('go once they are cold, and the seeded history never does', async () => {
+      await claim();
+      await threeWorlds();
+      // The real timeline: the seeder ran days ago and stamped itself; visitors have shopped since.
+      const seeded = await order(['showcase-shop']);
+      await aged(seeded, 200);
+      await stampSeeded(db);
+      await db.query(
+        "UPDATE app_settings SET value = jsonb_build_object('at', (now() - interval '150 hours')::text) WHERE key = 'demo_seeded_at'");
+      const visitorOld = await order(['showcase-shop']);
+      await aged(visitorOld, 50);
+      const visitorNew = await order(['showcase-shop']);
+      await aged(visitorNew, 2);
+
+      const removed = await purgeVisitorOrders(db);
+
+      expect(removed.deleted).toBe(1);
+      const { rows } = await db.query<{ id: string }>('SELECT id FROM orders ORDER BY created_at');
+      const left = rows.map((r) => r.id);
+      expect(left, 'the seeded order must survive').toContain(seeded);
+      expect(left, 'an order placed two hours ago is still the visitor\'s to look at').toContain(visitorNew);
+      expect(left, 'the cold visitor order should be gone').not.toContain(visitorOld);
+    });
+
+    it('does nothing at all without the stamp, rather than guessing', async () => {
+      // No stamp means there is no way to tell a visitor's order from a seeded one, and deleting on
+      // a guess would take the trading history the whole demonstration is built on.
+      await claim();
+      await threeWorlds();
+      const seeded = await order(['showcase-shop']);
+      await aged(seeded, 100);
+
+      const removed = await purgeVisitorOrders(db);
+
+      expect(removed.deleted).toBe(0);
+      expect(removed.reason).toMatch(/no demo_seeded_at/);
+    });
+
+    it('refuses on a database that has not claimed itself the demonstration', async () => {
+      await expect(purgeVisitorOrders(db)).rejects.toThrow(/has not been claimed/);
+    });
   });
 
   it('and the script the job actually runs does all of it in one call', async () => {

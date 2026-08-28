@@ -30,7 +30,7 @@
  * other three, and this file is a thin runner the job shells out to — the same shape `demo-reset`
  * uses, so the manual path and the automatic one cannot drift apart.
  */
-import { openSeedClient, isDemoDatabase, purge, purgeOrdersOfStores, VISITOR_CONTENT_HOURS } from './lib/seed-db.mjs';
+import { openSeedClient, isDemoDatabase, purge, purgeOrdersOfStores, purgeVisitorOrders, VISITOR_CONTENT_HOURS } from './lib/seed-db.mjs';
 import { pathToFileURL } from 'node:url';
 
 export async function sweep(db) {
@@ -48,7 +48,16 @@ export async function sweep(db) {
   // order pointing at a slug nothing answers to (seed-db.mjs → purgeOrdersOfStores).
   const orders = await purgeOrdersOfStores(db, 'visitor');
   const { stores, sellers } = await purge(db, 'visitor');
-  return { stores, sellers, orders: orders.deleted ?? 0, kept: orders.kept ?? 0 };
+  // And the other half, which the store-shaped purge above cannot reach: a purchase a visitor made
+  // in a SHOWCASE shop belongs to a store that stays, so nothing removed it and the order list grew
+  // by every stranger who tried the checkout.
+  const bought = await purgeVisitorOrders(db);
+  return {
+    stores, sellers,
+    orders: (orders.deleted ?? 0) + (bought.deleted ?? 0),
+    kept: orders.keptShared ?? 0,
+    note: bought.reason,
+  };
 }
 
 async function main() {
@@ -58,7 +67,8 @@ async function main() {
     console.log(
       `swept visitor content older than ${VISITOR_CONTENT_HOURS}h — `
       + `stores ${result.stores}, accounts ${result.sellers}, orders ${result.orders}`
-      + (result.kept ? `, kept ${result.kept} shared with a store that stays` : ''),
+      + (result.kept ? `, kept ${result.kept} shared with a store that stays` : '')
+      + (result.note ? ` — ${result.note}` : ''),
     );
   } finally {
     await db.end();
