@@ -25,12 +25,23 @@ import { serverEnv } from '../runtime-env.js';
 import { isDbConfigured } from '../db.js';
 import { logError } from '../error-log.js';
 import { claimJob, finishJob } from './job-runs.js';
+import { isDemoMode } from '../demo-mode.js';
 import { JOBS, type Job } from './registry.js';
 
 /** How often the process asks whether anything is due. Not the interval of any job — those are on
  *  the jobs, in the table — so this is only the resolution the schedule is honoured at. A minute is
- *  far below the shortest interval (15 min) and costs one small query per tick per instance. */
-const TICK_MS = 60_000;
+ *  far below the shortest interval (15 min) and costs one small query per tick per instance.
+ *
+ *  **The portfolio demonstration ticks hourly instead, and that is a billing decision.** Its database
+ *  is a Neon instance that suspends itself after a few idle minutes; a query every sixty seconds means
+ *  it never gets to, so the compute allowance drains around the clock whether or not anybody visits —
+ *  81% of the month's hours went that way with no traffic to show for it. An hourly tick leaves gaps
+ *  long enough to suspend, and the demonstration's own jobs are hourly anyway (`demo-reset`). What it
+ *  costs: the twenty-second store publication in `DEMO_PUBLICATION_INTERVAL_SEC` is no longer honoured
+ *  at twenty seconds, so a visitor who registers a shop sees it go up on the next tick rather than
+ *  while watching. Worth it — the demonstration exists to be browsed, and a dead database shows
+ *  nothing at all. */
+const TICK_MS = isDemoMode() ? 60 * 60_000 : 60_000;
 
 /** The first tick waits, so a boot burst (deploy, restart loop) does not fire jobs while the pool
  *  is still opening its first connection and the process is busiest. Nothing is lost by waiting:
