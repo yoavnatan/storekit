@@ -1,9 +1,22 @@
 .muted  { color: var(--color-muted); }
 .center { text-align: center; }
 
+/* **Hidden by CLIPPING, never by being parked off-canvas — and in Hebrew that is the difference
+   between a tidy page and a broken one.** `inset-inline-start: -999px` reads as `right: -999px`
+   under `dir="rtl"`, which puts this link 999px past the document's right edge; content on that
+   side is scrollable overflow, so every page could be dragged sideways and landed with its left
+   column cut off. In LTR the same declaration means `left: -999px`, where a browser clips instead
+   of scrolling — which is why the pattern is repeated everywhere and why this never showed up on an
+   English page or in any tool's default locale.
+   The clip-path/1px recipe is the one that has no direction: nothing is displaced, so nothing can
+   overflow either way, and the link still reaches the keyboard exactly as before. */
 .skip-link {
   position: absolute;
-  inset-inline-start: -999px;
+  inset-inline-start: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   top: 0;
   z-index: 9999;
   padding: 0.5rem 1rem;
@@ -16,6 +29,11 @@
   white-space: nowrap;
 }
 .skip-link:focus {
+  /* Back to a real box the moment it is reached. */
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
   inset-inline-start: 0.5rem;
   top: 0.5rem;
   outline: 2px solid #fff;

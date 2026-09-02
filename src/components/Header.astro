@@ -445,14 +445,13 @@ const strEmpty   = t.store.noProductsFound;
               store's own name was the thing that gave way — it rendered as "…klar" next to a
               control explaining the demonstration, which is the wrong thing to protect. Both spans
               are always in the markup so nothing has to run for the right one to show. */}
-          <summary class="lang-toggle-btn list-none cursor-pointer select-none [&::-webkit-details-marker]:hidden max-[399px]:!border-0 max-[399px]:!px-0 max-[399px]:!py-0 max-[399px]:!bg-transparent" aria-label={t.home.tourTitle}>
-            {/* Three widths, because the store's own NAME is what pays for this control and it must
-                stop paying first. Below 400px the label goes entirely and a compass takes its place
-                — at 320px the header had squeezed "Teklar" down to "…r", which is the demonstration
-                winning against the shop it exists to demonstrate (owner, 2026-08-28). The summary
-                keeps the full words in `aria-label`, so nothing is lost to a screen reader. */}
-            <svg class="min-[400px]:hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-            <span class="hidden min-[400px]:inline sm:hidden">{t.home.tourTitleShort}</span>
+          <summary class="lang-toggle-btn list-none cursor-pointer select-none [&::-webkit-details-marker]:hidden" aria-label={t.home.tourTitle}>
+            {/* A WORD at every width, never an icon. A compass was tried here for one commit and
+                rejected on sight: nobody can tell what it opens, and an unreadable control is worse
+                than a control that costs a few pixels (owner, 2026-08-28: *"אין דרך לאף אחד להבין
+                מה זה"*). Two lengths only — the full words above 640px, "סיור" below it, which is
+                what keeps a store's own name from being squeezed out beside it. */}
+            <span class="sm:hidden">{t.home.tourTitleShort}</span>
             <span class="hidden sm:inline">{t.home.tourTitle}</span>
           </summary>
           {/* A FORM, not two links. Signing somebody in is a state change, and a GET that creates a
