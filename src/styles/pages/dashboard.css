@@ -355,6 +355,15 @@ textarea.input { resize: none; }
 .prod-cq .products-table td { overflow: hidden; text-overflow: ellipsis; }
 .prod-cq .products-table .seo-col,
 .prod-cq .products-table .actions-col { overflow: visible; }
+/* **And the edit row's cell, which is a whole FORM and not a line of text.** `overflow: hidden`
+   here is for ellipsising long cell values; this cell has nothing to ellipsise, and the clipping
+   cost it the one thing it needs — a clipping box becomes the sticky containing block, so
+   `.edit-row-header`'s `position: sticky` had nothing to stick inside and scrolled straight off the
+   top with the form. Measured on a phone at 390×844: the header's top went 251 → −23 → −323 →
+   −899 as the page scrolled, i.e. it never pinned at all (owner, 2026-08-28: *"הכותרת... ממשיכה
+   להיגלל למעלה"*). The declaration above it says the cell IS the containing block, which was true
+   and was exactly the problem. */
+.prod-cq .products-table tr.edit-row > td { overflow: visible; }
 
 /* Fixed columns carry a control or a picture, so they do not scale with the table: a
    checkbox, a thumbnail, the SEO gauge and the kebab are the same size at every width.
@@ -1599,8 +1608,16 @@ textarea.input { resize: none; }
     position: sticky;
     top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
     z-index: 6;
-    /* No negative margin to reach the cell's padding: the form is this cell's only child, so
-       nothing can ever scroll through the 0.5rem strip on either side of it. */
+    /* **Out to the cell's own padding, which the sentence that used to be here said was
+       unnecessary.** It reasoned that the form is this cell's only child so nothing could scroll
+       through the 0.5rem strip on either side — true only while the cell CLIPPED, which is the very
+       thing that stopped the header sticking (see `.prod-cq .products-table tr.edit-row > td`). With
+       the clip gone the form really does scroll under those strips, and a pinned bar narrower than
+       the content behind it shows it passing at both edges: measured 348px against the panel's 390
+       (owner, 2026-08-28: *"צרה ממנה"*). The negative margin is repaid as padding, so the title
+       inside does not move. */
+    margin-inline: -0.5rem;
+    padding-inline: 0.5rem;
   }
 
   /* Stock number (and the other stacked-row fields below it) has no column
@@ -2836,6 +2853,15 @@ html:has(#dash-main-card.dash-nav-side) {
     transition: none;
     will-change: transform;
   }
+  /* **The tab list is NOT sticky inside the drawer**, and leaving it so is what made this panel
+     scroll in two pieces. The desktop rule pins it to `--site-header-h` because on a wide screen it
+     sits under the site header; inside a drawer that starts at `top: 0` there is no header above
+     it, so it simply stopped 54px down and let everything else slide past. Measured at 390×844:
+     scrolling the drawer 134px moved the tabs 91px, which reads as two scrolls fighting (owner,
+     2026-08-28: *"רק החלק שהוא לא הלשוניות נגלל והלשוניות כמו מקבלות גלילה אחרת"*). One scroller,
+     one motion — the drawer is the scroller here, as the block above already says. */
+  #dash-main-card.dash-nav-side > .dash-rail .dash-tabs { position: static; }
+
   [dir="rtl"] #dash-main-card.dash-nav-side > .dash-rail { transform: translateX(100%); }
   /* Open: slide in. `visibility` flips with no delay, which is what opening wants. */
   #dash-main-card.dash-nav-side[data-nav-open] > .dash-rail,
