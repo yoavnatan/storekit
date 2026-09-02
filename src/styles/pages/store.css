@@ -636,6 +636,18 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
     border-inline: 0;
   }
 
+  /* And the picture's own horizontal lines go with them, because full bleed puts both of its
+     edges flush against something that already draws one. Measured at 390px (owner, 2026-09-02:
+     *"באנר של חנות במובייל מקבל בורדר כפול, למעלה ולמטה"*): the wrap's top border sat at
+     117.4-118.4 directly under the demo strip's own border-bottom at 116.4-117.4, and its bottom
+     border at 246.4-247.4 directly above `.store-info`'s top border at 247.4-248.4 — two 2px
+     lines, one at each seam. Inset, those seams have white between them and each line belongs to
+     its own card; at full bleed the paddings are zero (see below) and the two meet.
+     The picture's line is the one to drop, not the neighbour's: `.store-info`'s pair carries the
+     details box on both edges, and the strip/header line above is not this page's to remove. Both
+     seams keep exactly one hairline, drawn by the element that still needs it. */
+  .store-banner__image-wrap { border-block: 0; }
+
   /* And the vertical space around them comes down with it. These paddings were tuned while both
      elements were INSET, and that is the whole reason they now read wrong: white above and below
      something inset is part of its framing, and the identical white around something that touches

@@ -316,7 +316,7 @@ const strDemo      = t.demo.productBadge;
 
         // Same "liquid" dot flow as the product-card carousel; the scroll drives
         // the dots, we only track the settled index for the lightbox.
-        const { setActive } = initLiquidDots(slidesEl, dots, (idx) => { pqvImgIdx = idx; });
+        initLiquidDots(slidesEl, dots, (idx) => { pqvImgIdx = idx; });
 
         /**
          * A picked image LANDS; it does not travel there.
@@ -344,30 +344,22 @@ const strDemo      = t.demo.productBadge;
 
         dots.forEach((dot, i) => dot.addEventListener('click', () => scrollToIdx(i)));
 
-        // Touch — one slide at a time, no momentum skip
-        let tStartX = 0, tStartScroll = 0;
-        slidesEl.addEventListener('touchstart', (e: TouchEvent) => {
-          tStartX = e.touches[0].clientX;
-          tStartScroll = slidesEl!.scrollLeft;
-          slidesEl!.style.scrollSnapType = 'none';
-        }, { passive: true });
-        slidesEl.addEventListener('touchend', (e: TouchEvent) => {
-          const slideW = getSlideW();
-          const dx = e.changedTouches[0].clientX - tStartX;
-          const cur = Math.round(Math.abs(tStartScroll) / slideW);
-          let tgt = cur;
-          if (dx < -(slideW * 0.08)) tgt = Math.min(cur + 1, slideEls.length - 1);
-          if (dx >  (slideW * 0.08)) tgt = Math.max(cur - 1, 0);
-          const left = (isRtl ? -1 : 1) * tgt * slideW;
-          slidesEl!.style.overflow = 'hidden';
-          requestAnimationFrame(() => {
-            slidesEl!.style.overflow = '';
-            slidesEl!.scrollLeft = left;
-            slidesEl!.style.scrollSnapType = '';
-            pqvImgIdx = tgt;
-            setActive(tgt);
-          });
-        }, { passive: true });
+            /* NO touch pager here — the CSS does it. `scroll-snap-type: x mandatory` plus
+           `scroll-snap-stop: always` on every slide already gives one-slide-at-a-time
+           paging with no momentum skip, which is the whole job the hand-written
+           touchstart/touchend pager that used to sit here was doing.
+
+           It was doing it wrong, on every phone, in three copies (owner, 2026-09-02:
+           *"או שזה לא נגלל או שזה נתקע או חוזר על עצמו"*). Measured at 390px on a
+           4-image card: the strip is `direction: rtl`, where a finger moving RIGHT is
+           what scrolls toward the NEXT slide — but the pager read `dx < 0` (finger
+           LEFT) as "next", so at slide 0 a leftward swipe moved nothing natively
+           (clamped at the edge) and was then thrown a slide forward by the script,
+           while a rightward swipe scrolled to -280 natively and was ordered back to 0,
+           landing on -175 — the slide it started on. Both symptoms he reported, and
+           the third: the forced `scrollLeft` write lands mid-fling, so the browser
+           carries on animating past it. Deleting it is the fix; the platform has done
+           this correctly since scroll-snap-stop shipped. */
       }
 
       slidesEl?.addEventListener('click', () => {
