@@ -792,11 +792,21 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 </svg>
                 <span id="fav-store-label">{isFavorited ? t.store.savedStore : t.store.saveStore}</span>
               </button>
+              {/* **Capped and wrapping, where it used to be `white-space: nowrap` with no cap.**
+                  This bubble is `position: absolute` and laid out even at `opacity: 0`, so on a
+                  phone its single unbreakable line ran 17px past the start edge of the page — and
+                  a right-to-left document counts that as horizontal overflow, so every store page
+                  could be dragged sideways and landed with its edge cut. That is the mismatch
+                  between "the width of the site and the width of the header" reported twice and
+                  photographed once (owner, 2026-08-28): the header was innocent. Isolated by
+                  measuring five pages signed in and signed out — only the two store pages, and
+                  only signed in, showed 17px, and only they carry this element. Two lines on a
+                  narrow screen is the right price for a page that stays where it is put. */}
               <div
                 id="fav-store-tooltip"
                 role="status"
                 aria-live="polite"
-                style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:var(--shadow-card);font-size:0.8rem;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
+                style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;max-width:min(20rem, calc(100vw - 1.5rem));background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;box-shadow:var(--shadow-card);font-size:0.8rem;line-height:1.45;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
               >
                 {t.store.loginToSave} <a id="fav-store-tooltip-link" href={`/seller/login?next=/${shopStore.slug}`} style="color:var(--color-accent);font-weight:600">{t.store.loginToSaveLink}</a>
               </div>
