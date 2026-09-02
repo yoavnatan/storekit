@@ -217,7 +217,7 @@ const strDemo      = t.demo.productBadge;
 
       const imgAreaHtml = hasImages
         ? `<div class="relative bg-[color:var(--color-surface)] aspect-[5/4] overflow-hidden border-b border-[color:var(--color-border)]">
-             <div class="pqv-slides flex w-full h-full overflow-x-scroll overflow-y-hidden [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">${p.images.map((img) => `<div class="${slideClasses}" data-loading><img data-src="${pqvEsc(cdnSrc(img, 900))}" alt="${pqvEsc(p.name)}" class="${imgClasses}" loading="lazy" decoding="async" /></div>`).join('')}</div>
+             <div class="pqv-slides flex w-full h-full overflow-x-scroll overflow-y-hidden [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x_pan-y_pinch-zoom] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">${p.images.map((img) => `<div class="${slideClasses}" data-loading><img data-src="${pqvEsc(cdnSrc(img, 900))}" alt="${pqvEsc(p.name)}" class="${imgClasses}" loading="lazy" decoding="async" /></div>`).join('')}</div>
              ${hasMultiple ? `<div class="pqv-dots absolute bottom-[7px] left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 py-1 px-2 rounded-full bg-white/15 [backdrop-filter:blur(8px)] border-[0.75px] border-white/20 z-[3] pointer-events-none" aria-hidden="true">${p.images.map((_, i) => `<span class="${dotClasses}"${i === 0 ? ' data-active' : ''}></span>`).join('')}</div>` : ''}
              ${saleBadgeHtml(pqvPriceView(p), strings.saleBadge)}
            </div>`

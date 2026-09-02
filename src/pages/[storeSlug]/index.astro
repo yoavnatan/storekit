@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { isSharedDemoSeller } from '../../lib/demo-viewer.js';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import LoadingSweep from '../../components/LoadingSweep.astro';
 import StoreDemoBar from '../../components/StoreDemoBar.astro';
@@ -336,7 +337,11 @@ const saleScopeLabel = saleScopeCategoryLabel(storeCategories, shopStore.sale, t
 // button opens the store in a separate preview tab, and on iOS a link-opened tab has no
 // history to go Back through). On a custom domain the dashboard lives on another origin,
 // so the link has to be absolute there.
-const isOwner = !!userId && userId === shopStore.sellerId;
+// `isSharedDemoSeller` is the one narrowing: the demonstration's shared account owns all four
+// showcase shops, so treating it as an owner left a visitor unable to buy anywhere on the
+// site — which is half of what the demonstration is for. Everyone else is unaffected; the
+// helper says why in full.
+const isOwner = !!userId && userId === shopStore.sellerId && !(await isSharedDemoSeller(userId));
 const onCustomDomain = shopStore.customDomain?.status === 'active';
 const dashboardHref = onCustomDomain ? `${platform.url}/seller/dashboard` : '/seller/dashboard';
 

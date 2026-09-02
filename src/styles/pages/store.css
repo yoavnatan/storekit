@@ -1416,7 +1416,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  touch-action: pan-x;
+  /* **`pan-x pan-y pinch-zoom`, and the missing `pan-y` was the bug.** `pan-x` alone tells the
+     browser that this element handles horizontal panning and NOTHING else — so a finger that lands
+     on a product photo and drags upward moves nothing at all, and on a phone the whole store page
+     simply refuses to scroll wherever a picture is under the thumb, which is most of it (owner,
+     2026-08-28, on the live demo). Naming both axes lets the browser keep driving the horizontal
+     snap carousel while a vertical drag scrolls the page behind it, which is the behaviour every
+     native carousel has. `pinch-zoom` is kept so a shopper can still magnify a photo. */
+  touch-action: pan-x pan-y pinch-zoom;
   overscroll-behavior-x: contain;
 }
 .product-card__slides::-webkit-scrollbar { display: none; }
@@ -1440,7 +1447,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   scroll-snap-stop: always;
   height: 100%;
   position: relative;
-  touch-action: pan-x;
+  /* **`pan-x pan-y pinch-zoom`, and the missing `pan-y` was the bug.** `pan-x` alone tells the
+     browser that this element handles horizontal panning and NOTHING else — so a finger that lands
+     on a product photo and drags upward moves nothing at all, and on a phone the whole store page
+     simply refuses to scroll wherever a picture is under the thumb, which is most of it (owner,
+     2026-08-28, on the live demo). Naming both axes lets the browser keep driving the horizontal
+     snap carousel while a vertical drag scrolls the page behind it, which is the behaviour every
+     native carousel has. `pinch-zoom` is kept so a shopper can still magnify a photo. */
+  touch-action: pan-x pan-y pinch-zoom;
   overflow: hidden;
 }
 
@@ -1572,7 +1586,14 @@ body:has(.store-banner-pin.is-stuck) .store-banner {
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  touch-action: pan-x;
+  /* **`pan-x pan-y pinch-zoom`, and the missing `pan-y` was the bug.** `pan-x` alone tells the
+     browser that this element handles horizontal panning and NOTHING else — so a finger that lands
+     on a product photo and drags upward moves nothing at all, and on a phone the whole store page
+     simply refuses to scroll wherever a picture is under the thumb, which is most of it (owner,
+     2026-08-28, on the live demo). Naming both axes lets the browser keep driving the horizontal
+     snap carousel while a vertical drag scrolls the page behind it, which is the behaviour every
+     native carousel has. `pinch-zoom` is kept so a shopper can still magnify a photo. */
+  touch-action: pan-x pan-y pinch-zoom;
   overscroll-behavior-x: contain;
 }
 .pm-slides::-webkit-scrollbar { display: none; }

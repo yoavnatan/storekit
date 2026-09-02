@@ -441,8 +441,13 @@ const strEmpty   = t.store.noProductsFound;
           does, and the script at the bottom of this file adds it. */}
       {demoMode && (
         <details class="relative" id="hdr-tour">
+          {/* Two labels, one control. The full words below 640px cost 77px of a 390px row and the
+              store's own name was the thing that gave way — it rendered as "…klar" next to a
+              control explaining the demonstration, which is the wrong thing to protect. Both spans
+              are always in the markup so nothing has to run for the right one to show. */}
           <summary class="lang-toggle-btn list-none cursor-pointer select-none [&::-webkit-details-marker]:hidden">
-            {t.home.tourTitle}
+            <span class="sm:hidden">{t.home.tourTitleShort}</span>
+            <span class="hidden sm:inline">{t.home.tourTitle}</span>
           </summary>
           {/* A FORM, not two links. Signing somebody in is a state change, and a GET that creates a
               session is both bad practice and outside the CSRF token's protection —

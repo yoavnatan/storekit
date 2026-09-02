@@ -52,6 +52,10 @@ export const translations = {
          looking around, not signing in — and because the same two links appear on the login page
          for anyone who arrives there instead. */
       tourTitle: 'סיור באתר',
+      // The phone label. Nine characters of "סיור באתר" cost 77px of a 390px header row, which is
+      // what squeezed the store's own name down to "…klar" beside it (owner, 2026-08-28). Four
+      // characters cost about half that and still say what the control is.
+      tourTitleShort: 'סיור',
       /* "עמוד הבית" and not the nav strip's 'בית' (owner, 2026-08-27). The same destination, and
          deliberately a different word: the strip is a compact row where one syllable is right, and
          this is a menu whose other two rows are two-word phrases — "בית" beside "דשבורד מוכרים"
@@ -3061,6 +3065,7 @@ export const translations = {
       searchFailed: 'Search is unavailable right now. Please try again.',
       allStores: 'All Stores',
       tourTitle: 'Take a tour',
+      tourTitleShort: 'Tour',
       tourHome: 'Home page',
       tourSellerGroup: 'Seller dashboard',
       tourSeller: 'A running shop',

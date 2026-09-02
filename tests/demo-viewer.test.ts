@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { APIContext, AstroCookies } from 'astro';
 import { query } from '../src/lib/db.js';
-import { demoWriteRefusal, DEMO_WRITE_ALLOWED } from '../src/lib/demo-viewer.js';
+import { demoWriteRefusal, DEMO_WRITE_ALLOWED, isSharedDemoSeller } from '../src/lib/demo-viewer.js';
 import { DEMO_SELLER_EMAIL, DEMO_BUYER_EMAIL, DEMO_NEW_SELLER_EMAIL } from '../src/lib/demo-mode.js';
 import { setAdminCookie } from '../src/lib/admin-auth.js';
 import { setSellerSession } from '../src/lib/seller-auth.js';
@@ -153,6 +153,27 @@ describe('the whole write surface, asked of the source tree', () => {
       expect((await demoWriteRefusal(ctx('POST', path, asSeller(SHARED_SELLER))))?.status, path).toBe(403);
       expect((await demoWriteRefusal(ctx('POST', path, asAdmin('viewer'))))?.status, path).toBe(403);
     }
+  });
+});
+
+describe('buying from a shop the shared account owns', () => {
+  /* A seller may not buy from his own store — the order is real in every way that matters, so a
+     curious click around his own shop must not create one (`lib/own-store-guard.ts`). The shared
+     demo account is the one case where that defeats the product: it owns all four showcase shops,
+     so a visitor who pressed "חנות פעילה" to look at the dashboard could not buy anything anywhere
+     on the site, and completing a purchase is the other half of what the demonstration shows. */
+  it('is allowed for the shared account, and only for it', async () => {
+    expect(await isSharedDemoSeller(SHARED_SELLER)).toBe(true);
+    expect(await isSharedDemoSeller(NEW_SELLER)).toBe(true);
+    // The half that matters more: a visitor who registered a shop is an ordinary seller in it and
+    // still cannot buy from himself.
+    expect(await isSharedDemoSeller(OWN_ACCOUNT)).toBe(false);
+    expect(await isSharedDemoSeller(null)).toBe(false);
+  });
+
+  it('is not allowed outside demo mode, whatever the account', async () => {
+    delete process.env.DEMO_MODE;
+    expect(await isSharedDemoSeller(SHARED_SELLER)).toBe(false);
   });
 });
 

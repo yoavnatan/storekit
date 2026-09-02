@@ -138,6 +138,30 @@ function refusal(): Response {
  * has an account of their own and is an ordinary seller in it, and the application's own ownership
  * checks already keep them away from the showcase shops.
  */
+/**
+ * Is this seller id the demonstration's shared account — the one that owns all four showcase shops?
+ *
+ * **What it is for, and it is not the read-only rule.** A seller may not buy from a store he owns:
+ * such an order is real in every way that matters — stock, commission, seller mail, and the units
+ * that drive the `popular`/`bestseller` label in the ad feed (`lib/own-store-guard.ts` carries the
+ * full reasoning, and `/api/checkout` is where it is actually enforced). That rule stays for
+ * everybody with an account of their own, including a visitor who registered a shop here.
+ *
+ * The shared account is the one case where it defeats the product instead of protecting it: it owns
+ * every showcase shop, so a visitor who pressed "חנות פעילה" to look at the dashboard could no
+ * longer buy anything anywhere on the site — and completing a purchase is the other half of what
+ * the demonstration exists to show (owner, 2026-08-28: *"אי אפשר להדגים הוספה לעגלה ורכישה, בגלל
+ * שכל החנויות שם נחשבות החנות שלך"*).
+ *
+ * Keyed on the ACCOUNT and on demo mode, never on "is this a showcase store": the shops are
+ * ordinary shops and a real seller's ownership of his own must keep meaning what it means.
+ */
+export async function isSharedDemoSeller(sellerId: string | null | undefined): Promise<boolean> {
+  if (!isDemoMode() || !sellerId) return false;
+  const seller = await getSellerById(sellerId);
+  return isSharedDemoAccount(seller?.email);
+}
+
 async function isSharedDemoSession(context: APIContext): Promise<boolean> {
   const admin = adminRole(context.cookies);
 

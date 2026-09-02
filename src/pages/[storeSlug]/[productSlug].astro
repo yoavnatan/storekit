@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import { Image } from 'astro:assets';
+import { isSharedDemoSeller } from '../../lib/demo-viewer.js';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice, storeHeaderLogo } from '../../lib/stores.js';
 import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
@@ -117,7 +118,11 @@ const t = getT(lang);
 // store is one surface, and a preview that announces itself only on the front page
 // leaves him guessing on every page he clicks into (see OwnerStoreBar.astro). On a
 // custom domain the dashboard is on another origin, so the link has to be absolute.
-const isOwner = !!userId && userId === shopStore.sellerId;
+// `isSharedDemoSeller` is the one narrowing: the demonstration's shared account owns all four
+// showcase shops, so treating it as an owner left a visitor unable to buy anywhere on the
+// site — which is half of what the demonstration is for. Everyone else is unaffected; the
+// helper says why in full.
+const isOwner = !!userId && userId === shopStore.sellerId && !(await isSharedDemoSeller(userId));
 const dashboardHref = shopStore.customDomain?.status === 'active'
   ? `${platform.url}/seller/dashboard`
   : '/seller/dashboard';
@@ -477,7 +482,7 @@ const pmI18n = {
                data-no-tooltip>
             {images.length > 0
               ? <div id="main-slides"
-                     class="flex w-full h-full overflow-x-scroll overflow-y-hidden cursor-zoom-in [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">
+                     class="flex w-full h-full overflow-x-scroll overflow-y-hidden cursor-zoom-in [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x_pan-y_pinch-zoom] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">
                   {images.map((img, i) => (
                     <div class="relative shrink-0 w-full h-full [scroll-snap-align:start] [scroll-snap-stop:always]">
                       {/* Plain <img> (not <Image />) to carry a hi-DPI srcset — the main image

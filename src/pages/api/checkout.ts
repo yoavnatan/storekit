@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import type { APIContext } from 'astro';
 import { getStoreBySlug, getStoreBySlugOrPrevious, canStoreSell } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
+import { isSharedDemoSeller } from '../../lib/demo-viewer.js';
 import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
 import { createOrder, updateOrder } from '../../lib/orders.js';
 import type { Order, OrderItem, StoreSubtotal } from '../../lib/orders.js';
@@ -411,7 +412,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // directly callable. This is the guarantee; that is only the explanation.
     //
     // Buying from ANOTHER seller's store is untouched by this — the rule is about his own.
-    if (buyerSellerIds.has(preStore.sellerId)) return json({ error: 'own-store' }, 403);
+    // …with ONE narrowing, and it is an account rather than a rule: the demonstration's shared
+    // seller owns every showcase shop, so this refusal made the whole demo unbuyable for a
+    // visitor who had looked at the dashboard (`lib/demo-viewer.ts#isSharedDemoSeller`).
+    if (buyerSellerIds.has(preStore.sellerId) && !(await isSharedDemoSeller(preStore.sellerId))) {
+      return json({ error: 'own-store' }, 403);
+    }
     // **No clearing account, no sale.** Under the split model the buyer's money goes straight into
     // the SELLER's own merchant account (`lib/seller-merchant.ts`), so a seller who has not opened
     // one has nowhere for it to land. Taking the order anyway would mean either holding his money —
