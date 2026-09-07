@@ -20,6 +20,12 @@ const REQUIRED = [
   // account — which reaches the visitor as a redirect to the login form that never works. That
   // is the exact failure this gate exists to turn into a refusal to boot.
   { name: 'DATABASE_URL', what: 'is the Postgres connection — seller accounts are read from it' },
+  // Added 2026-09-07 with the seller's own clearing credentials (`lib/secret-box.ts`). Same shape as
+  // the two above: `requiredSecret` throws in production rather than falling back, so without it the
+  // server boots healthy and then fails on the first seller who opens his payments screen or takes
+  // an order. And unlike a session secret, the wrong value here is silent — every stored credential
+  // simply stops decrypting, which reads as "no seller has connected a terminal".
+  { name: 'SECRET_BOX_KEY', devDefault: 'dev-insecure-secret-box', what: "encrypts the sellers' clearing credentials" },
 ];
 
 const problems = [];

@@ -43,6 +43,9 @@ const REAL = {
   AUTH_SECRET: 'a'.repeat(64),
   ADMIN_SECRET: 'b'.repeat(64),
   DATABASE_URL: 'postgres://u:p@db.example/storekit',
+  // The sellers' clearing credentials are encrypted with this (`lib/secret-box.ts`), and the wrong
+  // value fails silently rather than loudly — every stored terminal simply stops decrypting.
+  SECRET_BOX_KEY: 'c'.repeat(64),
 };
 
 describe('the production start gate', () => {

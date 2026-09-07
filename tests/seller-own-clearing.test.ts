@@ -37,9 +37,14 @@ describe('secret-box', () => {
   it('refuses a value somebody edited in the database', () => {
     const sealed = sealSecret('hunter2');
     const parts = sealed.split('.');
-    // Flip one character of the ciphertext — the shape a write-capable attacker would use to swap a
+    // Flip a BIT of the ciphertext, not a base64 character. The last character of a base64url string
+    // can carry unused bits, so two different characters there decode to identical bytes — a first
+    // version of this test edited that character and passed only by luck, which would have made it a
+    // test that proves nothing. This is the shape a write-capable attacker would use to swap a
     // seller's terminal for their own.
-    parts[3] = parts[3].slice(0, -1) + (parts[3].endsWith('A') ? 'B' : 'A');
+    const bytes = Buffer.from(parts[3], 'base64url');
+    bytes[0] ^= 0x01;
+    parts[3] = bytes.toString('base64url');
     expect(openSecret(parts.join('.'))).toBeNull();
   });
 
