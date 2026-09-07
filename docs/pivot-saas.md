@@ -81,3 +81,41 @@ not a marketplace agreement.
 Related memories: `project_split_model_payme`, `project_shipping_model`,
 `project_shipping_provider_direct`, `project_business_model_pricing`,
 `project_launch_three_conditions`, `project_dezabin_stopped_job_search`.
+
+---
+
+## The multi-store checkout, and what the market actually offers (2026-09-07)
+
+The owner's objection to the SaaS shape is the right one: **one cart across stores is what a
+marketplace is for**, and separate clearing means a buyer with two stores in the cart enters a card
+twice.
+
+**Checked against official docs, not marketing pages** (`feedback_verify_before_recommending`):
+
+- **PayPlus** — the full endpoint index at `docs.payplus.co.il/llms.txt` was read. Customers, bank
+  accounts, tokens, recurring, transactions (J2/J4/J5), payment pages, coupons, cashiers, devices,
+  books, SMS/OTP, gift cards. **No marketplace, no sub-merchant, no split, no merchant creation.**
+- **Cardcom** — `cardcom.solutions/developers` documents charge, suspended transaction, token,
+  3DS, invoices, documents. **Nothing multi-vendor.**
+- **Phoenix Gama** markets itself as *"מאגד הסליקה הגדול בישראל"* — an aggregator for a single
+  business's rates, not a split API. No sub-merchant onboarding, no pricing published.
+
+So the earlier note that "the market re-opened" is **wrong as applied to split**: PayMe is still the
+only Israeli provider with a documented marketplace programme, and its 8,000₪ has no cheaper
+substitute to find. The choice is the 8,000₪ or a checkout that clears per store — not a search.
+
+### The UX that makes per-store clearing acceptable (owner's idea, 2026-09-07)
+
+Not "payment, then another payment". The shopper is **inside one store**; that store's cart is what
+checkout shows and charges, and the other stores stay **in the background** — present in the drawer,
+not owed. He pays here, keeps browsing, and pays the other store when he is in it.
+
+**Half of this already exists.** `src/lib/cart-sovereignty.ts#sortCurrentStoreFirst` floats the
+current store's cart above a "מחנויות אחרות" heading in `CartDrawer.astro`, and `checkout.astro`
+starts that store — and only it — selected, with `?store=` carrying the origin. The model is already
+per-store; what is missing is the *framing*.
+
+**The rule, if this is ever built: never render a queue.** No "1 מתוך 3", no progress bar, no
+"המשך לחנות הבאה" after a successful payment. A queue turns two ordinary purchases into one broken
+one. The other carts survive the payment untouched and are re-entered by walking into that store,
+which is the same motion the shopper used the first time.
