@@ -67,12 +67,15 @@ describe('who the credentials are written for', () => {
 });
 
 describe('which providers the route accepts', () => {
-  it('refuses one whose fields nobody has verified', async () => {
-    const res = await POST(ctx({ provider: 'cardcom', terminal: '1000' }));
-    expect(res.status).toBe(400);
-    // Named in the answer: a seller who picked it must be told it is not available rather than be
-    // shown a saved form that never works.
-    expect((await res.json()).error).toContain('קארדקום');
+  it('offers only providers whose fields were read from the vendor', async () => {
+    // The route's refusal for an unverified provider exists for the day one is added; today every
+    // entry has been read from its vendor, so what is asserted here is that state — a provider that
+    // appears in the list with no verified fields would be a seller filling in a form that can never
+    // work, and this fails the moment somebody adds one without reading the docs.
+    const { CLEARING_PROVIDERS } = await import('../src/lib/clearing-providers.js');
+    for (const p of CLEARING_PROVIDERS) {
+      expect(p.fieldsVerified && p.fields.length > 0, `${p.id} is listed but unaskable`).toBe(true);
+    }
   });
 
   it('refuses a provider that does not exist', async () => {

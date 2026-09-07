@@ -117,7 +117,11 @@ describe('saving and reading a seller’s credentials', () => {
   });
 
   it('refuses a provider we cannot actually talk to yet', async () => {
-    expect(await saveSellerClearing(sellerId, 'cardcom', { anything: 'x' })).toBeNull();
+    // Every entry in the registry happens to be verified today, so the id below is one that does not
+    // exist at all. The `fieldsVerified` half of the rule is asserted on the registry itself above —
+    // an unverified entry may carry no fields, which is what makes it unaskable — and the day one is
+    // added back, that invariant is what keeps it out of the seller's list.
+    expect(await saveSellerClearing(sellerId, 'not-a-provider', { anything: 'x' })).toBeNull();
     expect(await sellerClearingFor(sellerId)).toBeNull();
   });
 });

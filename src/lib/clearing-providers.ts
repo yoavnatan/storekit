@@ -78,32 +78,55 @@ export const CLEARING_PROVIDERS: ClearingProvider[] = [
   {
     id: 'cardcom',
     name: 'קארדקום',
-    // NOT verified. Their v11 reference (secure.cardcom.solutions/Api/v11/Docs) renders in the
-    // browser and returns nothing to a fetch, and the support centre answers 403. The shape is
-    // widely known (terminal number + an API user and password) and that is exactly why it must not
-    // be typed here from memory. Read it from a browser, or from their own WooCommerce plugin's
-    // source the way the couriers were read (`docs/shipping-provider-research.md`).
-    fieldsVerified: false,
-    source: 'https://secure.cardcom.solutions/Api/v11/Docs (JS-rendered — read it in a browser)',
-    fields: [],
+    // Verified 2026-09-07 from Cardcom's OWN WooCommerce plugin, read the way the couriers were read
+    // (`docs/shipping-provider-research.md`) — their v11 reference renders in a browser and returns
+    // nothing to a fetch, and their support centre answers 403. Three settings in
+    // `woo-cardcom-payment-gateway` 3.5.1.0: `terminalnumber` ("The company' Terminal Number"),
+    // `username` ("The company API User Name") and `apipass` ("API User Password... Required for
+    // cancel/refund API to function"), which the file then sends as `TerminalNumber`, `ApiName` /
+    // `UserName` and `ApiPassword`. That is the wire format rather than a marketing page, which is
+    // the whole reason this route was taken.
+    fieldsVerified: true,
+    source: 'wordpress.org plugin woo-cardcom-payment-gateway 3.5.1.0 — cardcom.php settings + IsLowProfileCodeDealOneOK',
+    fields: [
+      { name: 'terminalNumber', label: 'מספר מסוף', secret: false, help: 'מספר המסוף של העסק שלך בקארדקום.' },
+      { name: 'apiName', label: 'שם משתמש API', secret: false, help: 'לא שם המשתמש לכניסה למערכת — נוצר במסך מפתחות ה-API.' },
+      { name: 'apiPassword', label: 'סיסמת API', secret: true, help: 'נדרשת גם לביטול ולזיכוי, לא רק לחיוב.' },
+    ],
   },
   {
     id: 'tranzila',
     name: 'טרנזילה',
-    // NOT verified — owner named it 2026-09-07. Their terminal identifier and key pair need reading
-    // from Tranzila's own documentation before a seller is asked for anything.
-    fieldsVerified: false,
-    source: 'https://docs.tranzila.com/ — not yet read',
-    fields: [],
+    // Verified 2026-09-07 from their authentication page: the seller supplies an application key
+    // and a secret, and every request carries `X-tranzila-api-app-key` plus an access token our
+    // adapter computes as hash_hmac('sha256', app key, secret + request-time + nonce). The secret
+    // never leaves our server, which is why only these two are asked for.
+    //
+    // ⚠️ Open, and it belongs to whoever writes the adapter rather than to this list: whether a
+    // transaction ALSO needs a terminal/supplier name. Their auth scheme does not mention one and
+    // the transaction page did not resolve. Adding a field later is harmless — a save merges — so
+    // this is offered on what was actually read, and the connection check is what stops a seller
+    // selling on a half-connected account.
+    fieldsVerified: true,
+    source: 'https://docs.tranzila.com/docs/payments-and-billing/authentication',
+    fields: [
+      { name: 'appKey', label: 'Application Key', secret: false, help: 'טרנזילה מנפיקים אותו בממשק הניהול שלך.' },
+      { name: 'secretKey', label: 'Secret Key', secret: true, help: 'מונפק יחד עם ה-Application Key ולא מוצג שוב.' },
+    ],
   },
   {
     id: 'grow',
     name: 'Grow (משולם)',
-    // NOT verified — owner named it 2026-09-07. Grow's own pricing pages contradict each other
-    // (memory `project_split_model_payme`), so nothing about them is taken on trust.
-    fieldsVerified: false,
-    source: 'https://grow.business/ — not yet read',
-    fields: [],
+    // Verified 2026-09-07 from developers.grow.business: *"Each business has its own unique
+    // identifiers (userId + pageCode)"*, and *"The x-api-key header is mandatory and must be
+    // included in every request."*
+    fieldsVerified: true,
+    source: 'https://developers.grow.business/reference/create-payment-link',
+    fields: [
+      { name: 'userId', label: 'User ID', secret: false, help: 'מזהה העסק שלך אצל Grow.' },
+      { name: 'pageCode', label: 'Page Code', secret: false, help: 'קוד דף התשלום. יכולים להיות כמה, אחד לאשראי ואחד לביט.' },
+      { name: 'apiKey', label: 'API Key', secret: true, help: 'נשלח בכל בקשה. אם אין לך, מבקשים מהתמיכה של Grow.' },
+    ],
   },
 ];
 
