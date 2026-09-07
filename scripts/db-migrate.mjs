@@ -30,10 +30,15 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createClient, requireDatabaseUrl } from './lib/pg-connect.mjs';
+import { protectedDatabaseReason, protectedRefusal } from './lib/protected-db.mjs';
 
 const MIGRATIONS_DIR = path.join(process.cwd(), 'migrations');
 const checkOnly = process.argv.includes('--check');
 const dryRun = process.argv.includes('--dry') || checkOnly;
+// Applying to a database that is serving something real — the live demonstration, or anything
+// marked with `npm run db:protect` — takes saying so. Reading it never does: `--check` runs on
+// every verify and must stay silent about which connection it is looking at.
+const allowLive = process.argv.includes('--live');
 
 // `--check` is a gate that runs on every verify, including on a clone with no database configured.
 // Demanding one there would make "I have not set up Postgres yet" look like a failing migration,
@@ -280,6 +285,22 @@ async function main() {
       console.log('\nThe database is behind migrations/. Run: npm run db:migrate');
       process.exitCode = 1;
     }
+    return;
+  }
+
+  // Last thing before the first write, and deliberately after the dry-run return above: listing
+  // what is pending is safe on any database, so `--dry`/`--check` never reach this and never need
+  // the flag. Only the loop below changes anything.
+  const protection = await protectedDatabaseReason(client);
+  if (protection && !allowLive) {
+    console.error(
+      protectedRefusal(
+        protection,
+        `Applying ${pending.length} pending migration(s)`,
+        'npm run db:migrate -- --live',
+      ),
+    );
+    process.exitCode = 1;
     return;
   }
 
