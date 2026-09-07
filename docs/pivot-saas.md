@@ -53,9 +53,14 @@ not a marketplace agreement.
 
 ## What changes in code — measured, not estimated
 
-- `src/lib/payment.ts` — 158 lines, still a **mock seam**; no PayMe call was ever written against
-  it. It stops being a goods-payment gateway and becomes the *subscription* gateway. The checkout
-  charges through the seller's provider instead.
+- **⚠️ CORRECTION 2026-09-07 — the split is BUILT, and an earlier draft of this file said it was
+  not.** `src/lib/payment.ts` is a 158-line seam, but beside it sit `payment-payme.ts` (1,258 lines,
+  every rule MEASURED against `sandbox.payme.io` on 2026-08-21), `payment-split.ts`,
+  `payment-hyp.ts`, `payment-intent.ts` and seven `payme-*` test files including
+  `payme-split-checkout.test.ts`, `payme-chargeback.test.ts` and `payme-invoice-sync.test.ts`. The
+  memory this file was first written from predates that work. **So the pivot does not skip building
+  a payment layer — it discards one that already exists and was measured against a live sandbox.**
+  What survives the pivot is the seam and the Hyp adapter; the split transport does not.
 - `src/lib/shipping.ts` — 138 lines, rates are placeholders, 13 files consume it. `SHIPPING_RATES`
   becomes per-store data instead of a platform constant; `offersSelfPickup` and
   `availableDeliveryMethods` survive unchanged in meaning.
@@ -114,6 +119,11 @@ not owed. He pays here, keeps browsing, and pays the other store when he is in i
 current store's cart above a "מחנויות אחרות" heading in `CartDrawer.astro`, and `checkout.astro`
 starts that store — and only it — selected, with `?store=` carrying the origin. The model is already
 per-store; what is missing is the *framing*.
+
+**⚠️ And this UX may not be needed at all.** `payment-payme.ts#captureBuyerToken` exists precisely so
+the buyer types a card ONCE and every store is then charged against that permanent token — one card
+entry, N stores, already written and sandbox-measured. The per-store framing below is the fallback
+for the SaaS shape, not an improvement on the split.
 
 **The rule, if this is ever built: never render a queue.** No "1 מתוך 3", no progress bar, no
 "המשך לחנות הבאה" after a successful payment. A queue turns two ordinary purchases into one broken
