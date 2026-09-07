@@ -102,14 +102,15 @@ export const CLEARING_PROVIDERS: ClearingProvider[] = [
     // adapter computes as hash_hmac('sha256', app key, secret + request-time + nonce). The secret
     // never leaves our server, which is why only these two are asked for.
     //
-    // ⚠️ Open, and it belongs to whoever writes the adapter rather than to this list: whether a
-    // transaction ALSO needs a terminal/supplier name. Their auth scheme does not mention one and
-    // the transaction page did not resolve. Adding a field later is harmless — a save merges — so
-    // this is offered on what was actually read, and the connection check is what stops a seller
-    // selling on a half-connected account.
+    // A transaction ALSO carries the terminal, and that was checked rather than assumed: their
+    // handshake endpoint (`POST /v2/handshake/create`, `docs/payments-and-billing/handshake-v2/
+    // createhandshakev2`) takes `terminal_name` as a required parameter. The keys authenticate the
+    // account; the terminal says which of its terminals the money lands in, so a seller with two
+    // would otherwise be charging into whichever one we guessed.
     fieldsVerified: true,
-    source: 'https://docs.tranzila.com/docs/payments-and-billing/authentication',
+    source: 'https://docs.tranzila.com/docs/payments-and-billing/authentication + .../handshake-v2/createhandshakev2',
     fields: [
+      { name: 'terminalName', label: 'שם מסוף (terminal_name)', secret: false, help: 'שם המסוף שלך בטרנזילה, מה שמופיע גם בכתובת הכניסה לממשק.' },
       { name: 'appKey', label: 'Application Key', secret: false, help: 'טרנזילה מנפיקים אותו בממשק הניהול שלך.' },
       { name: 'secretKey', label: 'Secret Key', secret: true, help: 'מונפק יחד עם ה-Application Key ולא מוצג שוב.' },
     ],
