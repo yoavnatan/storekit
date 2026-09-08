@@ -10,7 +10,7 @@ export const translations = {
      * says the one word that does the same job in a breath.
      */
     brand: {
-      tagline: 'מתחם חנויות דיגיטלי',
+      tagline: 'מתחם החנויות של ישראל',
     },
     nav: {
       home: 'בית',
@@ -131,7 +131,7 @@ export const translations = {
       // `/terms` keeps "marketplace" and is not an exception: its Hebrew is
       // "זירת מסחר", a different word doing a legal job, and "marketplace" is
       // its correct twin.
-      startSelling: 'מתחם חנויות דיגיטלי',
+      startSelling: 'מתחם החנויות של ישראל',
       // **It no longer lists what the chips under it list** (owner, 2026-08-24: *"גם בעמוד הראשי
       // חסר לי שם ב-CTA למטה — להגיד שהסליקה גם מובנית… ללא תוספים חיצוניים"*). Adding a fourth
       // item would have made this sentence the list a second time, one line above the list; so the
@@ -1860,7 +1860,7 @@ export const translations = {
       bulkDiscountError: 'לא הצלחנו להחיל את המבצע',
       // The subtitle under the Overview head. Replaced the floating `TabHint` line: the one fact
       // the screen does not state is that every stat below is a button.
-      ovSubtitle: 'מבט מהיר על מה שקורה בחנות עכשיו. כל כרטיס לחיץ ופותח את הלשונית שמטפלת בו.',
+      ovSubtitle: 'מבט מהיר על מה שקורה בחנות עכשיו.',
       onbTitle: 'שלבים ראשונים',
       onbSubtitle: 'מה שיביא את החנות למצב פעיל ומוכר. ניתן לבצע בכל סדר, והרשימה מתעדכנת לבד.',
       onbStepProduct: 'להוסיף מוצר ראשון',
@@ -2145,7 +2145,7 @@ export const translations = {
       ordersTitle: 'הזמנות',
       // Owner, 2026-08-24 — the old line claimed the seller messages the buyer here, and he does
       // not: that is a thread in the Messages tab. What is here is the status and the tracking.
-      ordersSubtitle: 'ניהול ומעקב אחר ההזמנות — סימון "נשלח" והזנת מספר מעקב.',
+      ordersSubtitle: 'ניהול ומעקב אחר ההזמנות.',
       noOrders: 'עדיין לא נכנסו הזמנות.',
       // Shown when orders exist but none match the toolbar's search/filter — distinct from
       // noOrders above, which means the store has never had one.

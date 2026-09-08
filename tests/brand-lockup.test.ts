@@ -420,7 +420,16 @@ describe('the second line is small, centred, and tracked by language', () => {
     // in a breath (owner, 2026-08-21). Not a translation, and not a shared key —
     // `home.startSelling` is the homepage h1's accessible name and stays a
     // sentence.
-    expect(translations.he.brand.tagline).toBe('מתחם חנויות דיגיטלי');
+    //
+    // The Hebrew is asserted by SHAPE, not by its words. It was pinned as a
+    // literal until the inline copy editor made re-wording it a click
+    // (2026-09-08), and a test that goes red on every re-wording teaches the
+    // owner to stop re-wording — the opposite of what that editor is for. What
+    // has to survive a re-wording is the thing the owner decided: the two
+    // languages differ in KIND, a Hebrew phrase against a single English word.
+    const he = translations.he.brand.tagline;
+    expect(he).toMatch(/^[\u0590-\u05FF]/);
+    expect(he.split(' ').length).toBeGreaterThan(1);
     expect(translations.en.brand.tagline).toBe('MARKETPLACE');
     expect(read('src/components/BrandLogo.astro')).toContain('t.brand.tagline');
   });
