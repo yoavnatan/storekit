@@ -42,22 +42,28 @@ function render({ currentId = '', missing = [] as string[], hintOnFile = '' } = 
         ownClearingMissing: 'חסר עוד {n} שדות כדי שהחנות תוכל לקבל תשלום',
         ownClearingMissingOne: 'חסר עוד שדה אחד כדי שהחנות תוכל לקבל תשלום',
         ownClearingFailed: 'לא הצלחנו לשמור את הפרטים. נסו שוב.',
+        ownClearingPickFirst: 'יש לבחור חברת סליקה',
+        fieldRequired: 'יש למלא שדה זה',
+        ownClearingNone: 'עדיין לא נבחרה חברת סליקה',
+        ownClearingChosen: 'נבחרה {name}',
       },
     })}</script>
     <section id="own-clearing">
       <div id="own-clearing-summary" hidden><p id="own-clearing-summary-line"></p>
-        <button type="button" id="own-clearing-edit">ערוך</button></div>
+        <button type="button" id="own-clearing-edit">ערוך</button>
+        <button type="button" id="own-clearing-disconnect">ניתוק</button></div>
       <form id="own-clearing-form" data-unsaved-guard>
         <input type="hidden" name="provider" id="own-clearing-provider" value="${currentId}">
+        <span id="own-clearing-state"></span>
         <div id="own-clearing-pick">
           <button type="button" data-provider="hyp" aria-pressed="${currentId === 'hyp'}">Hyp / יעד שריג</button>
           <button type="button" data-provider="payplus" aria-pressed="${currentId === 'payplus'}">PayPlus</button>
         </div>
         ${fieldset('hyp', [['masof', false], ['apiKey', true], ['passp', true]])}
         ${fieldset('payplus', [['paymentPageUid', false], ['apiKey', true], ['secretKey', true]])}
-        <p id="own-clearing-missing" ${missing.length ? '' : 'hidden'}></p>
         <p class="hidden" id="own-clearing-error"></p>
         <button type="submit" id="own-clearing-save">שמירת פרטי הסליקה</button>
+        <button type="button" id="own-clearing-clear" ${currentId ? '' : 'hidden'}>ביטול הבחירה</button>
         <button type="button" id="own-clearing-cancel" hidden>ביטול</button>
       </form>
     </section>`;
@@ -138,12 +144,25 @@ describe('picking a provider', () => {
     expect(document.querySelector<HTMLElement>('[data-provider-fields="payplus"]')!.hidden).toBe(true);
   });
 
-  it('drops the "still missing" count when the provider changes', () => {
-    // Switching providers throws the previous one's fields away on the server too, so the old count
-    // is about a list that no longer exists.
-    render({ currentId: 'hyp', missing: ['apiKey'] });
+  it('clears the marks on the fields when the provider changes', () => {
+    // A mark belongs to the provider that was chosen; the new one has been asked nothing yet.
+    // (It used to be a COUNT in one line; the owner rejected that as neither good Hebrew nor the
+    // way this site reports an incomplete form — `scripts/form-validity.ts` marks the field.)
+    render({ currentId: 'hyp' });
+    const field = document.querySelector<HTMLInputElement>('[data-provider-fields="hyp"] [name="apiKey"]')!;
+    field.setAttribute('aria-invalid', 'true');
     click('[data-provider="payplus"]');
-    expect(document.getElementById('own-clearing-missing')!.hidden).toBe(true);
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it('answers a save pressed with nothing chosen', () => {
+    // A silent `return` reads as a dead button — the class `silent-failure-guard.test.ts` scans for.
+    render();
+    submit();
+    const err = document.getElementById('own-clearing-error')!;
+    expect(err.classList.contains('hidden')).toBe(false);
+    expect(err.textContent).toBeTruthy();
+    expect(sent, 'nothing may be posted without a provider').toBeNull();
   });
 });
 
@@ -197,14 +216,15 @@ describe('after a save', () => {
     });
   });
 
-  it('stays open, with the count, while a field is still empty', async () => {
+  it('stays open and MARKS the empty fields, one message each', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => answer({ missing: ['apiKey', 'passp'] }) } as Response)));
     render({ currentId: 'hyp' });
     submit();
     await vi.waitFor(() => {
-      const line = document.getElementById('own-clearing-missing')!;
-      expect(line.hidden).toBe(false);
-      expect(line.textContent).toContain('2');
+      expect(document.querySelector('[data-provider-fields="hyp"] [name="apiKey"]')!.getAttribute('aria-invalid')).toBe('true');
+      expect(document.querySelector('[data-provider-fields="hyp"] [name="passp"]')!.getAttribute('aria-invalid')).toBe('true');
+      // The one the server did NOT name is left alone — a form that marks everything marks nothing.
+      expect(document.querySelector('[data-provider-fields="hyp"] [name="masof"]')!.getAttribute('aria-invalid')).toBeNull();
       expect(document.getElementById('own-clearing-form')!.hidden).toBe(false);
     });
   });
@@ -227,7 +247,9 @@ describe('after a save', () => {
     // state this checks is also the state before the save, so a `waitFor` over the assertions alone
     // passes on the first poll and proves nothing. The count line only appears once the response has
     // been rendered, so it is the signal that the save actually completed.
-    await vi.waitFor(() => expect(document.getElementById('own-clearing-missing')!.hidden).toBe(false));
+    await vi.waitFor(() => expect(
+      document.querySelector('[data-provider-fields="hyp"] [name="passp"]')!.getAttribute('aria-invalid'),
+    ).toBe('true'));
 
     expect(document.querySelector<HTMLInputElement>('#own-clearing-provider')!.value).toBe('hyp');
     expect(document.querySelector<HTMLElement>('[data-provider-fields="hyp"]')!.hidden).toBe(false);
@@ -286,12 +308,23 @@ describe('the component the fixture above copies', () => {
       .toMatch(/SKIP\s*=\s*\{[^}]*password:\s*1/);
   });
 
+  it('tells every password manager to keep away from the secret fields', () => {
+    /* Chrome ignores `autocomplete="off"` on a password field and fills it — with the text input
+       beside it — as if the card were a sign-in form. The owner met that: an email and a password
+       appearing in his clearing details every time he opened the tab, and an unsaved-changes bar on
+       a form he had not touched, because an autofilled field is a changed field. */
+    const src = readSource(CARD);
+    expect(src).toContain("autocomplete={f.secret ? 'new-password' : 'off'}");
+    expect(src).toContain('data-1p-ignore');
+    expect(src).toContain('data-lpignore');
+  });
+
   it('keeps the ids and hooks this file’s fixture is written against', () => {
     const src = readSource(CARD);
     for (const hook of [
-      'own-clearing-form', 'own-clearing-provider', 'own-clearing-pick', 'own-clearing-missing',
+      'own-clearing-form', 'own-clearing-provider', 'own-clearing-pick', 'own-clearing-state',
       'own-clearing-error', 'own-clearing-save', 'own-clearing-cancel', 'own-clearing-summary-line',
-      'data-provider-fields',
+      'own-clearing-clear', 'own-clearing-disconnect', 'data-provider-fields',
     ]) {
       expect(src, `${CARD} no longer spells ${hook}`).toContain(hook);
     }

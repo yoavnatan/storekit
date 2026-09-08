@@ -60,7 +60,6 @@ const { providers, currentId, onFile, missing, d } = Astro.props;
 const current = providers.find((p) => p.id === currentId) ?? null;
 /** Connected AND nothing left to paste — the closed summary state, same shape the bank block uses. */
 const settled = !!current && missing.length === 0;
-const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownClearingMissing.replace('{n}', String(missing.length));
 ---
 
 <section class="card card--flat p-4 md:p-5 mb-4" id="own-clearing">
@@ -134,11 +133,29 @@ const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownCleari
             {/* `dir="ltr"`: every one of these values is ASCII, and ASCII on an RTL page groups the
                 wrong way round when left to inherit. Same rule the bank fields follow.
                 A secret renders EMPTY with its hint underneath — see the header. */}
+            {/* ── `autocomplete="new-password"`, and it is not a style choice ──
+                Chrome ignores `autocomplete="off"` on a password field: it sees `type="password"`
+                with a text input near it, decides this is a sign-in form, and fills the pair with
+                a saved email and password. The owner met exactly that (2026-09-08 —
+                *"למה כל פעם כשאני חוזר לתשלומים זה מזין לי איזה מייל וסיסמה"*), and it also
+                explains the second half of what he saw: an autofilled field is a CHANGED field, so
+                the unsaved-changes bar fired on a tab he had not touched.
+
+                `new-password` is the one value Chrome honours as "this is not a credential you
+                have": it suppresses the saved-credential fill. `data-1p-ignore` and
+                `data-lpignore` say the same thing to 1Password and LastPass, which have their own
+                heuristics and ignore the standard attribute.
+
+                The type stays `password`. It is what keeps the value out of FormFallbackGuard's
+                localStorage draft (its `SKIP` map is keyed on the type), which is a security
+                property and not a cosmetic one. */}
             <input
               class="input"
               name={f.name}
               dir="ltr"
-              autocomplete="off"
+              autocomplete={f.secret ? 'new-password' : 'off'}
+              data-1p-ignore
+              data-lpignore="true"
               maxlength="200"
               type={f.secret ? 'password' : 'text'}
               value={f.secret ? '' : (onFile[f.name]?.hint ?? '')}
@@ -154,7 +171,10 @@ const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownCleari
       </div>
     ))}
 
-    <p class="m-0 mt-3 text-[0.82rem]" id="own-clearing-missing" hidden={!current || missing.length === 0}>{missingLine}</p>
+    {/* No "3 fields are still missing" line. What is missing is marked on the FIELDS, after a save,
+        the way `scripts/form-validity.ts` marks an incomplete form everywhere else on this site —
+        a message under the field itself rather than a count the seller then has to match against
+        six boxes. */}
     <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="own-clearing-error" role="alert"></p>
     <div class="flex items-center gap-2 mt-3">
       <button type="submit" class="btn btn--sm" id="own-clearing-save">{d.ownClearingSave}</button>

@@ -16,6 +16,7 @@
 // the correct behaviour rather than a convenience, and it is why this module posts the form as-is
 // instead of "filling in" what is already on file.
 import { showToast, showErrorToast } from '../../lib/toast.js';
+import { showFieldError, clearFieldError, isValidatableField } from '../../lib/field-validity.js';
 import { busyButton } from './btn-busy.js';
 import { announceValueChange, discardChanges } from './unsaved-guard.js';
 
@@ -39,15 +40,22 @@ export function initOwnClearingCard(): void {
   const form = document.getElementById('own-clearing-form') as HTMLFormElement | null;
   if (!root || !form) return;
 
+  // Captured after the guard above so the rest of the file has non-null values: TypeScript's
+  // narrowing from `if (!root || !form) return;` does not reach into a function declared later.
+  const cardEl = root;
+  const formEl = form;
+
   const t = i18n();
   const providerInput = document.getElementById('own-clearing-provider') as HTMLInputElement;
   const summary = document.getElementById('own-clearing-summary');
   const summaryLine = document.getElementById('own-clearing-summary-line');
-  const missingLine = document.getElementById('own-clearing-missing');
   const errorLine = document.getElementById('own-clearing-error');
   const cancelBtn = document.getElementById('own-clearing-cancel');
   const stateLine = document.getElementById('own-clearing-state');
   const clearBtn = document.getElementById('own-clearing-clear');
+  /** What the SERVER rendered — i.e. the provider actually stored, as against one merely picked in
+   *  this session. The difference decides whether clearing is an undo or a deletion. */
+  const savedProvider = providerInput.value;
 
   const pickButtons = (): HTMLButtonElement[] =>
     Array.from(root.querySelectorAll<HTMLButtonElement>('#own-clearing-pick [data-provider]'));
@@ -99,9 +107,11 @@ export function initOwnClearingCard(): void {
     if (providerInput.value === id) return;
     providerInput.value = id;
     paintPicker();
-    // What is still missing belongs to the provider that WAS chosen — a different list now, or none
-    // at all. Saying nothing beats leaving the old count under different fields.
-    if (missingLine) missingLine.hidden = true;
+    errorLine?.classList.add('hidden');
+    // A mark belongs to the provider that WAS chosen. The new one has been asked nothing yet, so it
+    // starts unmarked rather than inheriting somebody else's answer.
+    fieldsets().forEach((box) => box.querySelectorAll<HTMLInputElement>('input')
+      .forEach((input) => { if (isValidatableField(input)) clearFieldError(input); }));
     announceValueChange(providerInput);
   }
 
@@ -118,7 +128,16 @@ export function initOwnClearingCard(): void {
       choose(providerInput.value === id ? '' : id);
     });
   });
-  clearBtn?.addEventListener('click', () => choose(''));
+  /* ── Clearing is only harmless while nothing is stored (owner, 2026-09-08) ──
+     *"אם כבר יש חברת סליקה, אני לא רוצה שבטעות מישהו יבטל את הבחירה בצורה קלה מדי"*. Before a save
+     it is a local undo of a click and nothing is at stake. Once an account IS connected the same
+     press throws away credentials he pasted from another system — so it asks first, and then it
+     really disconnects rather than leaving a saved row behind an emptied screen, which is the state
+     that would let him believe he had removed something he had not. */
+  clearBtn?.addEventListener('click', () => {
+    if (!savedProvider || providerInput.value !== savedProvider) { choose(''); return; }
+    askDisconnect((t.ownClearingClearAsk ?? '').replace('{name}', nameOf(savedProvider)));
+  });
 
   form.addEventListener('dash:fieldsrewritten', paintPicker);
 
@@ -133,11 +152,12 @@ export function initOwnClearingCard(): void {
   // A different act from clearing the choice, and it is asked for: this DELETES what he pasted.
   // Through `ConfirmModal` like every destructive action on this site (native `confirm()` is banned
   // site-wide), and its OK button is danger-red by default, which is right here.
-  document.getElementById('own-clearing-disconnect')?.addEventListener('click', () => {
-    const name = providerInput.value ? nameOf(providerInput.value) : '';
+  /** Ask, then delete. One function so the summary's "disconnect" and the form's "clear" cannot
+   *  drift into two behaviours for one outcome — they differ only in the question they ask. */
+  function askDisconnect(title: string): void {
     window.dispatchEvent(new CustomEvent('confirm:open', {
       detail: {
-        title: (t.ownClearingDisconnectAsk ?? '').replace('{name}', name),
+        title,
         message: t.ownClearingDisconnectBody ?? '',
         okLabel: t.ownClearingDisconnectOk ?? '',
         onConfirm: async () => {
@@ -147,16 +167,20 @@ export function initOwnClearingCard(): void {
           // Back to the form, with nothing chosen — which is the state he just asked for, and the
           // one the row above the pills now says out loud.
           if (summary) summary.hidden = true;
-          form.hidden = false;
+          formEl.hidden = false;
           providerInput.value = '';
           paintPicker();
-          root.querySelectorAll<HTMLInputElement>('#own-clearing-form input:not([type="hidden"])')
+          cardEl.querySelectorAll<HTMLInputElement>('#own-clearing-form input:not([type="hidden"])')
             .forEach((input) => { input.value = ''; });
           render(state);
           showToast(t.ownClearingDisconnected ?? '');
         },
       },
     }));
+  }
+
+  document.getElementById('own-clearing-disconnect')?.addEventListener('click', () => {
+    askDisconnect((t.ownClearingDisconnectAsk ?? '').replace('{name}', nameOf(providerInput.value)));
   });
 
   cancelBtn?.addEventListener('click', () => {
@@ -168,7 +192,19 @@ export function initOwnClearingCard(): void {
   // ── Saving ──────────────────────────────────────────────────────────────────
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!providerInput.value) return;
+    /* ── A press with nothing chosen used to do NOTHING ── (owner, 2026-09-08: *"מה קורה כשלוחצים
+       על שמירת פרטי סליקה כשלא בחרתי שום סליקה? כלום"*.) A `return` looks like a guard and reads
+       to the person pressing as a dead button — the silent-failure class this repo keeps a
+       tree-wide guard for. It says what is missing, in the same line every other refusal on this
+       form uses, and puts the focus where the answer is. */
+    if (!providerInput.value) {
+      if (errorLine) {
+        errorLine.textContent = t.ownClearingPickFirst ?? '';
+        errorLine.classList.remove('hidden');
+      }
+      pickButtons()[0]?.focus();
+      return;
+    }
 
     const body: Record<string, string> = { provider: providerInput.value };
     // Only the CHOSEN provider's fieldset — the others are rendered and hidden, and sweeping the
@@ -234,12 +270,20 @@ export function initOwnClearingCard(): void {
     root!.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach((input) => { input.value = ''; });
 
     const settled = !!state.provider && state.missing.length === 0;
-    if (missingLine) {
-      missingLine.hidden = settled || !state.provider;
-      missingLine.textContent = state.missing.length === 1
-        ? (t.ownClearingMissingOne ?? '')
-        : (t.ownClearingMissing ?? '').replace('{n}', String(state.missing.length));
-    }
+    /* ── What is missing is marked ON the fields, the way every other form here marks one ──
+       It used to be one sentence counting them: *"חסר עוד 3 שדות כדי שהחנות תוכל לקבל תשלום"*. The
+       owner rejected it twice over — the Hebrew, and the fact that it is not how this site reports
+       an incomplete form anywhere else (`scripts/form-validity.ts` → `showFieldError`, a message
+       under the field itself, focus on the first one). A count also leaves him hunting for WHICH
+       three among six.
+       Partial saves stay legal, which is why the fields are not `required`: he pastes what he has,
+       and what he has not is marked rather than refused (`feedback_seller_form_burden`). */
+    const chosen = fieldsets().find((box) => box.dataset.providerFields === state.provider);
+    chosen?.querySelectorAll<HTMLInputElement>('input').forEach((input) => {
+      if (!isValidatableField(input)) return;
+      if (state.missing.includes(input.name)) showFieldError(input, t.fieldRequired ?? '');
+      else clearFieldError(input);
+    });
     if (settled) {
       if (summaryLine && state.provider) {
         summaryLine.textContent = (t.ownClearingOnFile ?? '').replace('{name}', nameOf(state.provider));

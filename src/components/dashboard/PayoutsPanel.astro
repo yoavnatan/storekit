@@ -36,7 +36,6 @@ import type { PayoutDetails } from '../../lib/payout-details.js';
 import GoLiveSteps from './GoLiveSteps.astro';
 import OwnClearingCard from './OwnClearingCard.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
-import FeeScheduleCard from './FeeScheduleCard.astro';
 import type { PublishHold } from '../../lib/store-publication.js';
 import type { SellerTierId } from '../../lib/pricing.js';
 import type { StoreFeeLine } from '../../lib/store-plan.js';
@@ -245,22 +244,13 @@ const goLiveDone = !!store?.publishedAt;
       split model is switched off, not deleted, and the day it is switched on this form comes back
       rather than being rebuilt. What was removed is the ASKING. */}
 
-  {/* ── §8: the tariff, closed, where the Q&A block used to be ──
-      *"אולי צריך סקשן בסוף של מחירים (שלדעתי צריך להיות בתוך אקורדיון סגור)."* It answers a
-      different question from the fee report on the Reports tab — what he IS charged, not what he
-      HAS been — and it is the one thing at the foot of this screen worth keeping, because a tariff
-      is reference material a seller comes back to twice a year. `invoicingActive` is false until
-      PayMe provision the service, and the row simply does not render. */}
-  {clearing && store && (
-    <FeeScheduleCard
-      tier={store.tier as SellerTierId | undefined}
-      planName={planName}
-      paying={subscriptionPaying}
-      businessType={seller.businessType}
-      invoicingActive={false}
-      d={d}
-    />
-  )}
+  {/* ── "התמחור שלכם" is gone (owner, 2026-09-08: *"נשמע לי מיותר"*) ──
+      It was a closed accordion listing what a seller is charged, and it earned its place when that
+      was five things from two parties: a plan fee, a per-sale commission, the processor's fixed ₪1
+      and monthly minimum, a setup fee, and invoicing. Every one of those went with the split model
+      — he pays one monthly price and his own processor bills him separately for clearing, under an
+      agreement we are not party to. An accordion whose contents are one number that is already on
+      the card above it is furniture. */}
 
   {/* ── "איך זה עובד" was removed on 2026-08-26 (owner, סשן א׳ §3) ──
       *"החלק של איך זה עובד לא צריך להיות שם בכלל. אפשר לרשום את היועבר בעשירי לכל חודש תחת היתרה
