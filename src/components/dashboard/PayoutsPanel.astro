@@ -35,6 +35,7 @@
 import { maskedBankLine, businessSummaryLine, type PayoutDetails } from '../../lib/payout-details.js';
 import { ISRAELI_BANKS, bankName } from '../../lib/israeli-banks.js';
 import GoLiveSteps from './GoLiveSteps.astro';
+import OwnClearingCard from './OwnClearingCard.astro';
 import SubscriptionCard from './SubscriptionCard.astro';
 import FeeScheduleCard from './FeeScheduleCard.astro';
 import type { PublishHold } from '../../lib/store-publication.js';
@@ -42,6 +43,7 @@ import type { SellerTierId } from '../../lib/pricing.js';
 import type { StoreFeeLine } from '../../lib/store-plan.js';
 import type { MerchantKyc } from '../../lib/merchant-kyc.js';
 import type { ClearingStatus } from '../../lib/seller-merchant.js';
+import type { ClearingProvider } from '../../lib/clearing-providers.js';
 import type { getT } from '../../i18n/index.js';
 
 interface Props {
@@ -54,6 +56,18 @@ interface Props {
    *  GO_LIVE §7 plans — nothing is blocked, so a line about being blocked would describe a rule
    *  that is not in force. The block renders only when there is really something to say. */
   clearing: ClearingStatus | null;
+  /** ── The seller's OWN clearing account (SaaS shape, `docs/pivot-saas.md`) ──
+   *  Ungated, unlike `clearing` above: that one describes the merchant account WE open for him
+   *  through PayMe and is null whenever PayMe is not configured, which is every environment in this
+   *  shape. This is the account he already has, and it is the first thing on the money screen
+   *  because it is what decides whether his shop can be paid at all. */
+  ownClearing: {
+    providers: ClearingProvider[];
+    coming: ClearingProvider[];
+    currentId: string | null;
+    onFile: Record<string, { set: boolean; hint: string }>;
+    missing: string[];
+  };
   /** What PayMe require about the business, as far as it has been filled in. Rendered under the
    *  bank block (owner, 2026-08-23) — one screen owns everything to do with money, and the
    *  "your shop is not live" card on the overview links straight here. */
@@ -87,7 +101,7 @@ interface Props {
   payer: { name: string; email: string; phone: string };
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { seller, multiStore, clearing, kyc, derivedCategory, kycComplete, holds, store, planNames, planName, subscription, subscriptionPaying, payer, d } = Astro.props;
+const { seller, multiStore, clearing, ownClearing, kyc, derivedCategory, kycComplete, holds, store, planNames, planName, subscription, subscriptionPaying, payer, d } = Astro.props;
 
 /** A card is on file and PayMe have nothing yet — the state a seller spends the clearing review in
  *  (`lib/subscription-arm.ts`). Derived from the same two facts the server derives it from, rather
@@ -125,6 +139,19 @@ const businessSummary = businessSummaryLine(seller, TYPE_LABEL, d.payBusinessMis
     <h2 class="m-0 text-base font-semibold">{d.payTitle}</h2>
     <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle}</p>
   </div>
+
+  {/* ── His own clearing account, FIRST on the money screen ──
+      Every other block here answers "what happens to money that has already moved". This one
+      answers whether it can move at all, and a seller who has not connected an account has no
+      reason to read anything below it yet. `OwnClearingCard.astro`'s header carries the rest. */}
+  <OwnClearingCard
+    providers={ownClearing.providers}
+    coming={ownClearing.coming}
+    currentId={ownClearing.currentId}
+    onFile={ownClearing.onFile}
+    missing={ownClearing.missing}
+    d={d}
+  />
 
   {/* ── The money on its way to his bank — the first thing on the screen the screen is named after ──
       Owner, סשן א׳ §1 (2026-08-25): *"איפה המוכר בעצם רואה כמה כסף יועבר לו, אני רוצה שהוא בכלל לא

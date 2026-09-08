@@ -1,0 +1,154 @@
+---
+/**
+ * Where a seller connects his OWN clearing account — the screen the SaaS shape turns on.
+ *
+ * ── What this is NOT ──
+ * It is not a form we send anywhere. Under the split model the seller handed us ten facts about his
+ * business and we opened a merchant account FOR him (`ClearingDetailsForm.astro`); under this shape
+ * he already has an account at his own provider, the buyer's money goes straight into it, and we
+ * never hold a shekel of it. So the whole screen is "paste what your provider gave you", and the
+ * strings are written to a person reading them with that provider's admin open in another tab —
+ * every label is what HE is looking for over there, not what we would have called it
+ * (`clearing-providers.ts` carries the same rule for the field labels themselves).
+ *
+ * ── Why the provider is buttons and not a dropdown ──
+ * Native `<select>` is banned site-wide, and the list is short enough that opening something to
+ * discover it holds five things is worse than showing five things. Same treatment the gender pair
+ * in `ClearingDetailsForm` uses — `btn--accent` for the chosen one — so the two choosers on this
+ * screen say "picked" the same way.
+ *
+ * ── The providers we cannot talk to yet are RENDERED, disabled, with the reason ──
+ * Leaving uPay out would read as "we don't support it" to a seller who uses it, and he would go
+ * looking. Saying "not yet, because they don't publish their fields" is the truth, is short, and is
+ * the one sentence that stops him from filling a form that could never work. `/api/seller/own-clearing`
+ * refuses these ids independently — the disabled attribute is the courtesy, the server is the gate.
+ *
+ * ── What is on file is a HINT, never a value ──
+ * A secret comes back from the server as four characters (`secret-box.ts#secretHint`), and the
+ * input for it is left EMPTY with "leave blank to keep it unchanged" underneath. That is why
+ * `saveSellerClearing` merges rather than replaces: an untouched secret arrives empty from the
+ * browser, and a replace would wipe the key he did not retype every time he corrected a terminal
+ * number.
+ *
+ * ── What this screen deliberately does NOT claim ──
+ * It never says the shop can now take payment. `canTakePayments` also requires a successful
+ * connection check against the provider, and that check does not exist yet (one adapter per
+ * provider; GO_LIVE §3.1). Reporting "fields on file" is the honest half, and a card that promised
+ * selling would be the promise a buyer discovers is false.
+ */
+import type { ClearingProvider } from '../../lib/clearing-providers.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  /** Verified providers, in registry order — what a seller may actually pick today. */
+  providers: ClearingProvider[];
+  /** Listed but not offered: no vendor documentation, so no field list. */
+  coming: ClearingProvider[];
+  /** The provider he is on, or null when he has never connected one. */
+  currentId: string | null;
+  /** Per field name: is it set, and the hint to show beside it. Never a secret's value. */
+  onFile: Record<string, { set: boolean; hint: string }>;
+  /** Field names still empty on the CURRENT provider. */
+  missing: string[];
+  d: ReturnType<typeof getT>['dashboard'];
+}
+
+const { providers, coming, currentId, onFile, missing, d } = Astro.props;
+
+const current = providers.find((p) => p.id === currentId) ?? null;
+/** Connected AND nothing left to paste — the closed summary state, same shape the bank block uses. */
+const settled = !!current && missing.length === 0;
+const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownClearingMissing.replace('{n}', String(missing.length));
+---
+
+<section class="card card--flat p-4 md:p-5 mb-4" id="own-clearing">
+  <h3 class="text-[1.05rem] font-bold m-0">{d.ownClearingTitle}</h3>
+  {/* The instruction, only while there is something to do. Left standing over the closed summary it
+      told a seller who had already connected an account to go and connect one — prose above a screen
+      that argues with the screen (`feedback_no_standing_screen_prose`). Seen on the real card, not
+      reasoned about: the settled state was screenshotted with the sentence still on it. */}
+  {!settled && <p class="muted m-0 mt-1 text-[0.82rem]">{d.ownClearingLead}</p>}
+
+  {/* ── The closed summary ──
+      Both halves are SERVER-rendered with `hidden` on the one that does not apply, never revealed by
+      a script on load: a JS-gated visibility is the flash class this project already has a memory
+      for (`project_injected_overlay_flash`). The server knows which state this is. */}
+  <div
+    id="own-clearing-summary"
+    class="flex items-center justify-between gap-3 flex-wrap mt-3 p-3 border [border-color:var(--color-border)] rounded-[var(--radius)]"
+    hidden={!settled}
+  >
+    <p class="m-0 text-[0.9rem] font-semibold" id="own-clearing-summary-line">
+      {current ? d.ownClearingOnFile.replace('{name}', current.name) : ''}
+    </p>
+    <button type="button" class="btn btn--ghost btn--sm shrink-0" id="own-clearing-edit">{d.ownClearingEdit}</button>
+  </div>
+
+  <form id="own-clearing-form" hidden={settled} data-unsaved-guard>
+    {/* The value lives in a real hidden INPUT so `FormData` carries it like every other field, and
+        so the unsaved-changes bar can be told it moved through `announceValueChange` — the one
+        sanctioned way to say so (guarded by `tests/unsaved-notice.test.ts`). */}
+    <input type="hidden" name="provider" id="own-clearing-provider" value={currentId ?? ''} />
+
+    <fieldset class="border-0 p-0 m-0 mt-4">
+      <legend class="text-[0.85rem] mb-1.5 p-0">{d.ownClearingPick}</legend>
+      <div class="flex gap-2 flex-wrap" id="own-clearing-pick">
+        {providers.map((p) => (
+          <button
+            type="button"
+            class:list={['btn btn--sm', p.id === currentId ? 'btn--accent' : 'btn--ghost']}
+            data-provider={p.id}
+            aria-pressed={p.id === currentId}
+          >{p.name}</button>
+        ))}
+        {coming.map((p) => (
+          <button type="button" class="btn btn--ghost btn--sm" disabled data-tooltip={d.ownClearingComingWhy}>
+            {p.name} · {d.ownClearingComing}
+          </button>
+        ))}
+      </div>
+      {coming.length > 0 && <p class="muted m-0 mt-2 text-[0.76rem]">{d.ownClearingComingWhy}</p>}
+    </fieldset>
+
+    {/* One fieldset per provider, all server-rendered, all but the chosen one `hidden`. Rendering
+        only the chosen one would mean a round trip on every press of a button whose whole job is to
+        show the seller what he is about to be asked for. */}
+    {providers.map((p) => (
+      <div class="mt-4 grid gap-3 sm:grid-cols-2" data-provider-fields={p.id} hidden={p.id !== currentId}>
+        {p.fields.map((f) => (
+          <label class="field">
+            <span class="text-[0.85rem]">{f.label}</span>
+            {/* `dir="ltr"`: every one of these values is ASCII, and ASCII on an RTL page groups the
+                wrong way round when left to inherit. Same rule the bank fields follow.
+                A secret renders EMPTY with its hint underneath — see the header. */}
+            <input
+              class="input"
+              name={f.name}
+              dir="ltr"
+              autocomplete="off"
+              maxlength="200"
+              type={f.secret ? 'password' : 'text'}
+              value={f.secret ? '' : (onFile[f.name]?.hint ?? '')}
+            />
+            <p class="muted m-0 mt-1 text-[0.76rem]">
+              {f.help}
+              {f.secret && onFile[f.name]?.set && (
+                <> · <code dir="ltr">{onFile[f.name]!.hint}</code> {d.ownClearingSecretOnFile} · {d.ownClearingSecretKeep}</>
+              )}
+            </p>
+          </label>
+        ))}
+      </div>
+    ))}
+
+    <p class="m-0 mt-3 text-[0.82rem]" id="own-clearing-missing" hidden={!current || missing.length === 0}>{missingLine}</p>
+    <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="own-clearing-error" role="alert"></p>
+    <div class="flex items-center gap-2 mt-3">
+      <button type="submit" class="btn btn--sm" id="own-clearing-save">{d.ownClearingSave}</button>
+      {/* Present always, hidden until there is something to go back to — cancelling with nothing
+          saved would close the fields over an empty summary card. Same reasoning as the bank
+          block's cancel. */}
+      <button type="button" class="btn btn--ghost btn--sm" id="own-clearing-cancel" hidden={!settled}>{d.ownClearingCancel}</button>
+    </div>
+  </form>
+</section>

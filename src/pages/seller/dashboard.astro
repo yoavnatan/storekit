@@ -53,6 +53,8 @@ import { buildOnboardingSteps } from '../../lib/seller-onboarding.js';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 import { ensureMerchantAccount, clearingStatusFor, merchantKycFor, missingForClearingAccount } from '../../lib/seller-merchant.js';
+import { sellerClearingFor, forDisplay } from '../../lib/seller-own-clearing.js';
+import { CLEARING_PROVIDERS, connectableProviders } from '../../lib/clearing-providers.js';
 
 import { paymeCategoryForStore } from '../../lib/merchant-category.js';
 import { publishHoldsFor, syncStorePublication } from '../../lib/store-publication.js';
@@ -439,6 +441,24 @@ const derivedMerchantCategory = clearingStatus ? paymeCategoryForStore(allStores
 // the status is PayMe's integer, `payment-payme.ts` is the only place it is interpreted, and NULL
 // (a card on file with nothing at PayMe yet) is a state no comparison would have handled.
 const subscription = clearingStatus ? await subscriptionFor(sellerId) : null;
+// ── His OWN clearing account (SaaS shape, `docs/pivot-saas.md`) ──
+// Read unconditionally, unlike everything above: those are gated on `clearingStatus`, which is null
+// whenever PayMe is not configured — i.e. in this shape, always. This one is the account he already
+// holds at his own provider, and it is the whole of what makes his shop payable, so a gate that
+// hides it would hide the only money screen that still applies.
+const ownClearingRow = shows('payouts') ? await sellerClearingFor(sellerId) : null;
+const ownClearing = {
+  providers: connectableProviders(),
+  // Listed but not offered — no vendor documentation, so no field list to ask for. The card renders
+  // them disabled with the reason rather than omitting them: a seller who uses one would otherwise
+  // read the gap as "not supported" and go looking (`clearing-providers.ts`).
+  coming: CLEARING_PROVIDERS.filter((p) => !p.fieldsVerified),
+  currentId: ownClearingRow?.provider.id ?? null,
+  // `forDisplay`, never the credentials: it answers per field with a flag and a four-character
+  // hint, and a decrypted value must not reach a page (`seller-own-clearing.ts`'s one rule).
+  onFile: forDisplay(ownClearingRow),
+  missing: ownClearingRow?.missing ?? [],
+};
 /** Plan id → its display name. Built once here because the names live in the PRICING copy and the
  *  go-live screen renders them, and a component reaching sideways into another screen's
  *  translations is the coupling this hand-off exists to avoid. */
@@ -3043,6 +3063,7 @@ const orderStatusColors: Record<string, string> = {
             seller={seller}
             multiStore={allStores.length > 1}
             clearing={clearingStatus}
+            ownClearing={ownClearing}
             kyc={merchantKyc}
             derivedCategory={derivedMerchantCategory}
             kycComplete={merchantKycComplete}
@@ -4185,17 +4206,19 @@ const orderStatusColors: Record<string, string> = {
     },
 
     payouts: async () => {
-      const [{ initPayoutsTab, watchPayoutsFreshness }, { initMerchantKycForm }, { initSubscriptionCard }] = await Promise.all([
+      const [{ initPayoutsTab, watchPayoutsFreshness }, { initMerchantKycForm }, { initSubscriptionCard }, { initOwnClearingCard }] = await Promise.all([
         import('../../scripts/dashboard/payouts.js'),
         // A separate module and a separate form: the two post to different routes and save
         // independently, so a seller can fill in his bank today and his ת.ז tomorrow.
         import('../../scripts/dashboard/merchant-kyc.js'),
         import('../../scripts/dashboard/subscription.js'),
+        import('../../scripts/dashboard/own-clearing.js'),
       ]);
       return () => {
         initPayoutsTab();
         initMerchantKycForm();
         initSubscriptionCard();
+        initOwnClearingCard();
         // Once per page: it survives the panel being replaced by a refresh, which `initPayoutsTab`
         // deliberately does not (it binds the form that was just swapped out).
         watchPayoutsFreshness();
