@@ -44,6 +44,43 @@ const SKELETON_OPENERS = [
   'בוא נפרק', 'בוא נעשה סדר', 'יש כאן שתי שכבות', 'יש כאן שלוש',
 ]
 
+// ── The sentence shape he named twice on 2026-09-07, quoting two of my own lines back ──
+//
+//   "והחולשה האמיתית, שקיימת בשני המודלים: הערך שלך למוכר הוא תנועה, ואין לך תנועה ביום הראשון."
+//   "זה שיקול לגיטימי, והוא גם קובע סדר נכון: קודם הגרסה שלא עולה כלום, ואחר כך ... החלטה מול
+//    נתונים ולא מול תקווה."
+//
+// His words: *"איך שאתה מרכיב משפט, איך שאתה מסביר לוגיקה, זה כאילו אתה עוטף הכל באיזה זיוף הגיוני
+// כזה"* — and then, an hour later, *"אני שונא גם את הסגנון הזה שלך"* about the second one. Ordinary
+// reasoning dressed as a maxim, which is exactly the dressing he cannot check.
+//
+// Three habits, each detectable on its own, and a note names the one it found rather than the class.
+
+/** Announcing a fact's importance before saying it. He decides what is important. */
+const IMPORTANCE_LABELS = [
+  'החולשה האמיתית', 'הבעיה האמיתית', 'השאלה האמיתית', 'הסיבה האמיתית', 'מה שבאמת',
+  'הדבר החשוב', 'הנקודה האמיתית', 'העיקר הוא', 'מה שחשוב באמת', 'האמת היא ש',
+  'וזה הדבר החשוב', 'הדבר המשמעותי', 'מה שקובע באמת',
+]
+
+/** Ratifying his own decision back to him before answering it. */
+const RATIFYING_OPENERS = [
+  'זה שיקול לגיטימי', 'שיקול לגיטימי', 'זו החלטה נכונה', 'ההחלטה שלך נכונה', 'זה הגיוני לגמרי',
+  'אתה צודק לחלוטין', 'וזה בדיוק הסדר הנכון', 'זה בדיוק הסדר הנכון',
+]
+
+/**
+ * A sentence that ends on a BALANCED contrast — "…החלטה מול נתונים ולא מול תקווה." — which is the
+ * flourish that turns a fact into a slogan.
+ *
+ * The discriminator is the repeated word, and it was found by watching the first version fail: a
+ * plain tail match flagged "שמור את הטוקן בקובץ ולא בקוד שרץ", which is an instruction and not a
+ * slogan. What makes the slogan version a slogan is the mirroring — the same word on both sides of
+ * the ולא, so the two halves scan alike. A note that fires on ordinary sentences gets ignored, and
+ * then it guards nothing.
+ */
+const CONTRAST_TAIL = /(\S{2,})\s+\S+\s+(?:ולא|אלא)\s+\1\s+\S+\s*[.!]/
+
 const SELF_TALK = [
   'סליחה שהצפתי', 'סליחה, הצפתי', 'צודק, וזו התשובה', 'אתה צודק לגמרי', 'התנצלותי',
   'שים לב שאני', 'כפי שאמרתי קודם', 'כמו שכתבתי למעלה',
@@ -109,9 +146,15 @@ export function check(text) {
   const headers = lines.filter(l => /^\s{0,3}#{1,6}\s/.test(l))
   if (headers.length) block.push(`כותרות markdown (${headers.length}) — זו שיחה, לא מסמך.`)
 
+  // `-`, `*`, `+` and `1.` are MARKDOWN list syntax: the renderer builds a `<ul>`, which lays the
+  // marker out left-to-right and flips the Hebrew line with it. A literal `•` is not syntax — it is
+  // a neutral character that takes the paragraph's own direction, so it sits on the RIGHT and the
+  // line reads normally. The owner asked for structured lines on 2026-09-08 ("זה לא נוח ככה") and
+  // this is the shape that gives them without the thing the rule was protecting against. Verify in
+  // a real terminal before widening this again — the original ban came from seeing it break.
   const listLines = lines.filter(l => /^\s*([-*+]|\d+[.)])\s/.test(l))
   if (listLines.length) {
-    block.push(`${listLines.length} שורות רשימה — הופכות כיוון בעברית. פסקאות קצרות במקום.`)
+    block.push(`${listLines.length} שורות רשימה עם ${'`-`'} או ${'`1.`'} — markdown הופך אותן LTR. פתח את השורה ב-• במקום.`)
   }
 
   const boldLead = lines.filter(l => /^\s{0,3}\*\*/.test(l))
@@ -140,6 +183,17 @@ export function check(text) {
 
   const selfTalk = SELF_TALK.find(s => p.includes(s))
   if (selfTalk) note.push(`דיבור על עצמי: "${selfTalk}".`)
+
+  const label = IMPORTANCE_LABELS.find(l => p.includes(l))
+  if (label) note.push(`"${label}" מכריז שמשהו חשוב במקום להגיד אותו. תוריד את ההכרזה.`)
+
+  const ratify = RATIFYING_OPENERS.find(r => p.includes(r))
+  if (ratify) note.push(`"${ratify}" מאשר לו את ההחלטה שלו במקום לענות עליה.`)
+
+  const contrast = p.match(CONTRAST_TAIL)
+  if (contrast) {
+    note.push(`משפט שנסגר על ניגוד: "${contrast[0].trim().slice(-50)}" — תגיד את זה בשני משפטים.`)
+  }
 
   return { block, note }
 }
