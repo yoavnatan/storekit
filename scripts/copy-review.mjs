@@ -15,128 +15,13 @@
 // so `git diff` after a review shows the copy changes and nothing else.
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// The walk over translations.ts is shared with the inline copy editor's write-back route
+// (src/pages/api/dev/copy.ts) — see that module's header for why it is not duplicated.
+import { ROOT, SOURCE, scanLanguageBlock, replaceLeaves, sourceFiles } from './lib/translations-source.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCE = path.join(ROOT, 'src/i18n/translations.ts');
 // Dot-prefixed and `.tmp-`: both already covered by .gitignore, so a review in progress can never
 // be committed by accident and no ignore rule has to be added for it.
 const REVIEW_FILE = path.join(ROOT, '.tmp-copy-review.txt');
-
-// --- reading translations.ts -------------------------------------------------------------------
-
-// Returns the index just past a `//` or `/* */` comment starting at `i`, or -1 if there is none.
-function skipComment(src, i) {
-  if (src[i] !== '/') return -1;
-  if (src[i + 1] === '/') {
-    const end = src.indexOf('\n', i);
-    return end === -1 ? src.length : end;
-  }
-  if (src[i + 1] === '*') return src.indexOf('*/', i) + 2;
-  return -1;
-}
-
-// Returns the index just past the string literal opening at `i`.
-function skipString(src, i) {
-  const quote = src[i];
-  let j = i + 1;
-  while (j < src.length && src[j] !== quote) j += src[j] === '\\' ? 2 : 1;
-  return j + 1;
-}
-
-// Reads `identifier:` at `i` and returns [identifier, indexPastColon] — or [null, indexPastWord]
-// when no colon follows, i.e. a bare word inside an expression rather than a key.
-function readKey(src, i) {
-  let j = i;
-  while (j < src.length && /[\w$]/.test(src[j])) j++;
-  let k = j;
-  while (/\s/.test(src[k])) k++;
-  return src[k] === ':' ? [src.slice(i, j), k + 1] : [null, j];
-}
-
-// Walks one language block and returns every string leaf with the exact source range of its
-// literal. A regex per line cannot do this: the block holds comments (some containing quotes and
-// braces), nested objects, and an array of objects whose keys repeat per element.
-function scanLanguageBlock(src, lang) {
-  const header = new RegExp(`^\\s*${lang}:\\s*\\{`, 'm');
-  const headerMatch = header.exec(src);
-  if (!headerMatch) throw new Error(`No \`${lang}:\` block found in ${path.relative(ROOT, SOURCE)}`);
-
-  let i = src.indexOf('{', headerMatch.index);
-  const leaves = [];
-  const stack = [];
-  const segments = [];
-  let pendingKey = null;
-
-  // In an array the position is the key; in an object it is whatever identifier preceded the colon.
-  const takeSegment = () => {
-    const top = stack[stack.length - 1];
-    if (top && top.type === 'array') return String(top.index++);
-    const key = pendingKey;
-    pendingKey = null;
-    return key;
-  };
-
-  while (i < src.length) {
-    const c = src[i];
-
-    const afterComment = skipComment(src, i);
-    if (afterComment !== -1) {
-      i = afterComment;
-      continue;
-    }
-
-    if (c === '{' || c === '[') {
-      const segment = stack.length ? takeSegment() : null;
-      if (segment !== null) segments.push(segment);
-      stack.push(c === '{' ? { type: 'object' } : { type: 'array', index: 0 });
-      i++;
-      continue;
-    }
-
-    if (c === '}' || c === ']') {
-      stack.pop();
-      if (stack.length) segments.pop();
-      i++;
-      if (!stack.length) break; // end of the language block
-      continue;
-    }
-
-    if (c === "'" || c === '"' || c === '`') {
-      const start = i;
-      i = skipString(src, i);
-      const segment = takeSegment();
-      if (segment !== null) {
-        leaves.push({
-          key: [...segments, segment].join('.'),
-          start,
-          end: i,
-          value: unescapeLiteral(src.slice(start + 1, i - 1)),
-        });
-      }
-      continue;
-    }
-
-    if (/[A-Za-z_$]/.test(c)) {
-      const [identifier, next] = readKey(src, i);
-      if (identifier) pendingKey = identifier;
-      i = next;
-      continue;
-    }
-
-    i++;
-  }
-
-  return leaves;
-}
-
-function unescapeLiteral(raw) {
-  return raw.replace(/\\(.)/g, (_, ch) => (ch === 'n' ? '\n' : ch === 't' ? '\t' : ch));
-}
-
-function escapeLiteral(value) {
-  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
-}
 
 // --- export ------------------------------------------------------------------------------------
 
@@ -265,12 +150,7 @@ function runApply() {
     return;
   }
 
-  // Right to left, so each replacement leaves the earlier offsets valid.
-  let out = src;
-  for (const change of [...changes].sort((a, b) => b.leaf.start - a.leaf.start)) {
-    out = out.slice(0, change.leaf.start) + `'${escapeLiteral(change.value)}'` + out.slice(change.leaf.end);
-  }
-  fs.writeFileSync(SOURCE, out, 'utf8');
+  fs.writeFileSync(SOURCE, replaceLeaves(src, changes), 'utf8');
 
   console.log(`\n${entries.length} strings read · ${changes.length} changed · ${entries.length - changes.length} left as they were.`);
   console.log(`\nUpdated in ${path.relative(ROOT, SOURCE)}:\n`);
@@ -338,11 +218,7 @@ function runSetEnglish(jsonPath) {
     .map(([key, value]) => ({ key, value, leaf: leaves.get(key) }))
     .filter((c) => c.value !== c.leaf.value);
 
-  let out = src;
-  for (const change of [...changes].sort((a, b) => b.leaf.start - a.leaf.start)) {
-    out = out.slice(0, change.leaf.start) + `'${escapeLiteral(change.value)}'` + out.slice(change.leaf.end);
-  }
-  fs.writeFileSync(SOURCE, out, 'utf8');
+  fs.writeFileSync(SOURCE, replaceLeaves(src, changes), 'utf8');
   console.log(`\n${changes.length} English string(s) updated (${Object.keys(wanted).length - changes.length} already matched).\n`);
 }
 
@@ -361,9 +237,7 @@ function reportStaleFallbacks(changes) {
   }
 
   const hits = [];
-  for (const file of walk(path.join(ROOT, 'src'))) {
-    if (file === SOURCE) continue;
-    if (!/\.(ts|js|astro|mjs)$/.test(file)) continue;
+  for (const file of sourceFiles()) {
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, index) => {
       for (const [oldValue, related] of byOldValue) {
@@ -381,14 +255,6 @@ function reportStaleFallbacks(changes) {
   if (!hits.length) return;
   console.log(`\n${hits.length} place(s) in the code still carry the OLD Hebrew as a hard-coded fallback:\n`);
   for (const hit of hits) console.log(`  ${hit.file}:${hit.line}  (${hit.keys}) → should read: ${hit.now}`);
-}
-
-function* walk(dir) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else yield full;
-  }
 }
 
 // --- entry -------------------------------------------------------------------------------------

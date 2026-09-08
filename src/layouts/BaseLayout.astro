@@ -12,6 +12,7 @@ import StoreProductModal from '../components/StoreProductModal.astro';
 import ToastContainer from '../components/ToastContainer.astro';
 import ConsentBanner from '../components/ConsentBanner.astro';
 import MessageCompose from '../components/MessageCompose.astro';
+import CopyEditor from '../components/dev/CopyEditor.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
 import { needsDashboardI18n } from '../lib/i18n-island.js';
 import { store as platform } from '../config/store.config.js';
@@ -388,6 +389,10 @@ const initialUnreadCount = notifySurface ? await getUnreadCountForUser(sessionUs
     <StoreProductModal />
     <ToastContainer />
     <MessageCompose />
+    {/* Hover a sentence, click it, rewrite it — straight into translations.ts. `import.meta.env.DEV`
+        is a compile-time constant, so a production build contains neither the dictionary this ships
+        nor the script that reads it; `tests/dev-copy-editor.test.ts` holds that. */}
+    {import.meta.env.DEV && <CopyEditor />}
     <script>import '../lib/cart-sync.js';</script>
     <script>import { initErrorReporter } from '../scripts/error-reporter.js'; initErrorReporter();</script>
     <script>import { initIconTooltips } from '../scripts/icon-tooltips.js'; initIconTooltips();</script>

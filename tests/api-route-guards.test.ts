@@ -58,6 +58,22 @@ const ESTABLISHES_IDENTITY =
 
 const MUTATING_HANDLER = /export (?:const|async function) (?:POST|PUT|PATCH|DELETE)\b/;
 
+/**
+ * A route that does not exist off a dev server, and is therefore outside this question rather than
+ * an exception to it — there is no deployed surface for anyone, authorized or not, to reach.
+ *
+ * It is NOT an entry in PUBLIC_BY_DESIGN, and the distinction is the point: those routes answer a
+ * stranger in production and each one had to justify that. This shape answers 404 in production, so
+ * "who is calling" has no meaning for it. The first such route is the inline copy editor's
+ * write-back (`api/dev/copy.ts`), which writes SOURCE FILES — exactly the thing that must be
+ * unreachable rather than merely authorized.
+ *
+ * The pattern is deliberately the whole line, not `import.meta.env.DEV` anywhere in the file: a
+ * mention in a comment or a nested condition must not buy the exemption. `tests/dev-copy-editor.test.ts`
+ * carries the rest of the proof — that the layout mounts nothing in a build either.
+ */
+const DEV_ONLY = /if\s*\(\s*!import\.meta\.env\.DEV\s*\)\s*return new Response\([^)]*\{\s*status:\s*404/;
+
 // Public by design, each for a reason that has to survive being read out loud. A route joins this
 // list only with its reason written here — an entry with no sentence is the shape that rots.
 const PUBLIC_BY_DESIGN: Record<string, string> = {
@@ -86,10 +102,19 @@ describe('every API route establishes who is calling before it writes', () => {
       const rel = posix(f);
       if (rel in PUBLIC_BY_DESIGN) return false;
       const src = readFileSync(f, 'utf8');
+      if (DEV_ONLY.test(src)) return false;
       return MUTATING_HANDLER.test(src) && !ESTABLISHES_IDENTITY.test(src);
     }).map(posix);
 
     expect(offenders).toEqual([]);
+  });
+
+  it('does not hand the dev-only exemption to a route that merely mentions the constant', () => {
+    // The counter-examples this pattern has to reject, since an exemption nobody has watched fail is
+    // an exemption that will one day cover a route it should not (`feedback_guards_must_be_proved_to_fail`).
+    expect(DEV_ONLY.test('// guarded by import.meta.env.DEV somewhere else\nexport const POST = () => {};')).toBe(false);
+    expect(DEV_ONLY.test('if (import.meta.env.DEV) { doDevThing(); }')).toBe(false);
+    expect(DEV_ONLY.test("if (!import.meta.env.DEV) return new Response('Not found', { status: 404 });")).toBe(true);
   });
 
   it('keeps every public-by-design entry pointing at a route that still exists', () => {

@@ -1,0 +1,20 @@
+---
+/**
+ * The inline copy editor's mount — DEV ONLY, and `BaseLayout` renders it behind
+ * `import.meta.env.DEV` so a production build contains neither this markup nor the script.
+ *
+ * It ships two things: the whole Hebrew dictionary as JSON, and the client that turns it into
+ * "hover any sentence on the site, click it, rewrite it". Why that dictionary is un-gated here when
+ * `#i18n-data` beside it is carefully sliced per surface — see `lib/dev-copy-map.ts`.
+ */
+import { jsonForScript } from '../../lib/json-script.js';
+import { devCopyMap } from '../../lib/dev-copy-map.js';
+
+const payload = jsonForScript(devCopyMap);
+---
+
+<script type="application/json" id="dev-copy-data" is:inline set:html={payload}></script>
+<script>
+  import { initCopyEditor } from '../../scripts/dev/copy-editor.js';
+  initCopyEditor();
+</script>
