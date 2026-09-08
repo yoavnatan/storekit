@@ -15,6 +15,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { initTabAlertEdges } from '../src/scripts/dashboard/tab-alert-edges.js';
+import { readSource, sourceGuard } from './helpers/source-guard.js';
 
 // jsdom has no layout — every rect is 0×0 — so the geometry is stubbed. The
 // strip is the window [0,300]; each tab is placed by the test.
@@ -181,7 +182,11 @@ describe('the marker contract', () => {
     // A new badge without data-tab-alert is invisible to the beacon and nothing
     // else complains. Creation sites only — a querySelector that reads one back
     // needs nothing.
-    const files = ['src/pages/seller/dashboard.astro', 'src/scripts/dashboard/orders.ts'];
+    const files = [
+      'src/pages/seller/dashboard.astro',
+      'src/scripts/dashboard/orders.ts',
+      'src/scripts/dashboard/messages.ts',
+    ];
     for (const rel of files) {
       const src = read(rel);
       for (const match of src.matchAll(/(?:class="|className\s*=\s*')dash-tab-badge/g)) {
@@ -193,14 +198,53 @@ describe('the marker contract', () => {
     }
   });
 
-  it('the Messages tab dot is found by its severity attribute, not by "a span with a label"', () => {
+  it('the Messages tab marker is found by its severity attribute, not by "a span with a label"', () => {
     // `#tab-messages span[aria-label]` named no particular element and would
-    // claim any labelled span the tab grew later; it also let the SSR dot and
+    // claim any labelled span the tab grew later; it also let the SSR marker and
     // the polled one drift apart (one drew --color-danger, the other #ef4444).
     const src = read('src/scripts/dashboard/messages.ts');
     expect(src).not.toContain('span[aria-label]');
     expect(src).toContain("'[data-tab-alert]'");
     expect(src).not.toContain('#ef4444');
+  });
+
+  // ── One marker shape (owner, 2026-09-08: "אין סיבה שזה לא יהיה עקבי") ──
+  // The strip used to carry two: a counted pill on Orders/Returns/Products and a bare 7px dot on
+  // Overview/Messages/Advertising. Every dot had a real number behind it and was throwing it away.
+  // The guard is on the CLASS rather than on any one tab, because the way this comes back is a
+  // sixth marker site copying the shape of whichever neighbour it was written next to.
+  it('no tab marker is a bare dot — the pill is the only shape', () => {
+    const dotClass = /class(?:Name)?\s*=\s*["']?[^"'>]*\bdash-tab-dot\b/;
+    for (const rel of [
+      'src/pages/seller/dashboard.astro',
+      'src/pages/admin/index.astro',
+      'src/scripts/dashboard/messages.ts',
+      'src/scripts/dashboard/orders.ts',
+      'src/scripts/dashboard/payouts.ts',
+    ]) {
+      expect(
+        sourceGuard({
+          file: rel,
+          rule: 'a tab marker is a counted .dash-tab-badge, never a bare .dash-tab-dot',
+          find: (text) => text.match(new RegExp(dotClass, 'g')) ?? [],
+          mustReject: '<span class="dash-tab-dot" data-tab-alert="danger"></span>',
+        }),
+      ).toEqual([]);
+    }
+    // And the class it replaced is gone from the stylesheet, so a copy-paste of the old markup
+    // renders nothing rather than rendering a dot again. `readSource`, not the local `read`: the
+    // note above the rule NAMES the deleted class, and only the shared stripper handles a block
+    // comment whose inner lines carry no leading `*`.
+    expect(readSource('src/styles/pages/dashboard.css')).not.toContain('.dash-tab-dot');
+  });
+
+  it('the warning colour comes from the attribute, not from a utility on one badge', () => {
+    // The Products badge carried `![background:var(--color-warning)]` in its class list, which is
+    // what made the pill look like a danger-only shape and left a dot as the only way to draw an
+    // amber marker. The attribute already said `warning`; now it paints it.
+    const css = read('src/styles/pages/dashboard.css');
+    expect(css).toContain('.dash-tab-badge[data-tab-alert="warning"]');
+    expect(read('src/pages/seller/dashboard.astro')).not.toContain('![background:var(--color-warning)]');
   });
 
   it('both dashboards mark up their tab counts', () => {

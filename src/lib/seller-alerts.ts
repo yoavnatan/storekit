@@ -2,7 +2,7 @@ import { getStoresBySellerId, storeLifecycle } from './stores.js';
 import { getStoreSlugsWithPendingOrders } from './orders.js';
 import { getStoreIdsWithUnreadMessages } from './messages.js';
 import { getStoreIdsWithStockAlerts } from './store-products.js';
-import { getStoreIdsWithStalledCampaigns } from './ad-campaigns.js';
+import { stalledCampaignsByStore } from './ad-campaigns.js';
 import { LOW_STOCK_THRESHOLD } from './variant-combo.js';
 
 /**
@@ -59,7 +59,7 @@ import { LOW_STOCK_THRESHOLD } from './variant-combo.js';
  * buyer's follow-up inside an already-opened thread is new mail, and two places deciding that is
  * how the dot and the inbox come to disagree. Same for the two new ones — the stock threshold is
  * `variant-combo.ts#LOW_STOCK_THRESHOLD` and the badge's own query, and which pause reasons need a
- * human is `ad-campaign-health.ts`'s answer, read through `getStoreIdsWithStalledCampaigns`.
+ * human is `ad-campaign-health.ts`'s answer, read through `stalledCampaignsByStore`.
  */
 export type StoreAlertLevel = 'danger' | 'warning';
 
@@ -98,7 +98,7 @@ async function collect(sellerId: string, withWarnings: boolean): Promise<SellerA
     getStoreSlugsWithPendingOrders(stores.map((s) => s.slug)),
     getStoreIdsWithUnreadMessages(sellerId, ids),
     withWarnings ? getStoreIdsWithStockAlerts(ids, LOW_STOCK_THRESHOLD) : new Set<string>(),
-    withWarnings ? getStoreIdsWithStalledCampaigns(ids) : new Set<string>(),
+    withWarnings ? stalledCampaignsByStore(ids) : new Map<string, number>(),
   ]);
   const byStore: Record<string, StoreAlertLevel> = {};
   for (const s of stores) {

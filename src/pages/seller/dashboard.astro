@@ -104,7 +104,7 @@ import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-perfo
 import { getViewStatsForStore, EMPTY_VIEW_STATS } from '../../lib/store-pageviews.js';
 import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.js';
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
-import { getStoreIdsWithStalledCampaigns } from '../../lib/ad-campaigns.js';
+import { stalledCampaignsByStore } from '../../lib/ad-campaigns.js';
 import { boostFeePercent, resolveTier, type SellerTierId } from '../../lib/pricing.js';
 import { chargedCommissionPercentForStore } from '../../lib/store-plan.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote } from '../../lib/ad-scope-label.js';
@@ -574,7 +574,7 @@ const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1
 // `wishlistCounts` is scoped to this store, not the whole platform: it used to be every wishlist
 // count that existed, read in order to label the products of one shop.
 const [
-  productsUnsorted, storeCategoryList, wishlistCounts, purchasedCounts, storeFavoriteCount, stockAlertCount, productCounts, stalledAdStoreIds,
+  productsUnsorted, storeCategoryList, wishlistCounts, purchasedCounts, storeFavoriteCount, stockAlertCount, productCounts, stalledAdCounts,
 ] = store
   ? await Promise.all([
       only(CATALOG_PANELS, () => getProductsByStoreId(store.id), [] as StoreProduct[]),
@@ -584,16 +584,16 @@ const [
       only(['overview'], () => countFavoriteStores(store.id), 0),
       countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
       getProductCountsByStore([store.id]),
-      // Ungated for the same reason as the two above: it is the Advertising tab's dot, and a tab
+      // Ungated for the same reason as the two above: it is the Advertising tab's marker, and a tab
       // announces itself while you are looking at another one. It is the current store's slice of
       // exactly the query the store switcher runs across every store (`seller-alerts.ts`), so the
-      // tab dot and the switcher row dot can never claim different things about the same shop.
-      getStoreIdsWithStalledCampaigns([store.id]),
+      // tab pill and the switcher row dot can never claim different things about the same shop.
+      stalledCampaignsByStore([store.id]),
     ])
   // The no-store fallback, typed the same as the resolved tuple so the readers below see arrays
   // rather than `readonly []` — a seller who has not opened a shop yet reaches this page too.
-  : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0, new Map<string, StoreProductCounts>(), new Set<string>()];
-const adNeedsAttention = !!store && stalledAdStoreIds.has(store.id);
+  : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0, new Map<string, StoreProductCounts>(), new Map<string, number>()];
+const stalledAdCount = store ? (stalledAdCounts.get(store.id) ?? 0) : 0;
 // Which products an external sync can never reach: past three variant types there are no option
 // columns left to spell a combination out in, so a file — ours or the seller's own system's —
 // cannot address one, and their stock is dashboard-only (store-products-import.ts says the same
@@ -1240,9 +1240,11 @@ const orderStatusColors: Record<string, string> = {
               working in Products or Settings had nothing telling him his shop is not on the site.
               A `warning` and not a `danger`: nobody is waiting on him — but it is the one state
               where the shop does not exist for anybody, so it travels the same chain every other
-              dot does (`seller-alerts.ts`), from the store switcher down to here. */}
+              marker does (`seller-alerts.ts`), from the store switcher down to here. The number is
+              how many holds are still standing, not a decoration: he opens the tab to a card that
+              lists exactly that many rows. */}
           {publishHolds.length > 0 && (
-            <span class="dash-tab-dot" data-tab-alert="warning" aria-label={d.pubTitle}></span>
+            <span class="dash-tab-badge" data-tab-alert="warning" aria-label={d.pubTitle}>{publishHolds.length}</span>
           )}
         </button>
         <button
@@ -1284,7 +1286,7 @@ const orderStatusColors: Record<string, string> = {
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span class="dash-tab__label">{t.dashboard.tabMessages}</span>
           {unreadMsgRows > 0 && (
-            <span class="dash-tab-dot" data-tab-alert="danger" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
+            <span class="dash-tab-badge" data-tab-alert="danger" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}>{unreadMsgRows}</span>
           )}
         </button>
         <div class="dash-nav-sep" aria-hidden="true"></div>
@@ -1301,7 +1303,7 @@ const orderStatusColors: Record<string, string> = {
           {/* The severity this marker declares to scripts/dashboard/tab-alert-edges.ts, so the tab
               strip's edge can flag it while this tab is scrolled off screen. "warning" — a wrong
               state that can wait; the red ones below are someone waiting on the seller. */}
-          <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tab-alert="warning" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
+          <span id="products-stock-badge" class="dash-tab-badge" data-tab-alert="warning" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
         </button>
         <button
           class={`dash-tab${initialPanel === 'promotions' ? ' dash-tab--active' : ''}`}
@@ -1324,10 +1326,11 @@ const orderStatusColors: Record<string, string> = {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg><span class="dash-tab__label">{d.tabAdvertising}</span>
           {/* "warning", like the stock badge: the campaign has already STOPPED, so nothing is
               being spent while it waits — but it stays stopped until the seller puts the products
-              back or uploads a photo, which is why it is a dot at all. The self-healing pause
-              (sold out) is excluded at the source, `ad-campaigns.ts#getStoreIdsWithStalledCampaigns`. */}
-          {adNeedsAttention && (
-            <span class="dash-tab-dot" data-tab-alert="warning" aria-label={d.adTabAttention}></span>
+              back or uploads a photo, which is why it is marked at all. The count is stalled
+              campaigns; the self-healing pause (sold out) is excluded at the source,
+              `ad-campaigns.ts#stalledCampaignsByStore`. */}
+          {stalledAdCount > 0 && (
+            <span class="dash-tab-badge" data-tab-alert="warning" aria-label={d.adTabAttention}>{stalledAdCount}</span>
           )}
         </button>
         <button

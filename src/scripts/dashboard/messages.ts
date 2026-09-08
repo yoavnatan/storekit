@@ -83,6 +83,30 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     replyByEmail: msgDashI18nDict.msgReplyByEmail ?? 'הקונה הזה הזמין ללא חשבון — התשובה שלך תישלח אליו במייל, והמשך ההתכתבות יהיה שם.',
     you: msgDashI18nDict.msgYou ?? 'אתה',
   };
+  /** The tab pill's label, with its `{n}` filled in. No Hebrew fallback, unlike the row strings
+   *  above: this one is read only by a screen reader, so a missing key has to be visible as a
+   *  missing key rather than silently correct in one language. */
+  const msgUnreadLabel = (n: number): string =>
+    (msgDashI18nDict.msgUnreadCount ?? '').replace('{n}', String(n));
+
+  /** Write the Messages tab's count pill — the ONE place that draws it, because two places drew it
+   *  before and they disagreed: the poll built a hand-rolled span whose colour had drifted to a raw
+   *  #ef4444 while the server drew `--color-danger`, so the marker changed shade the moment the
+   *  poll rebuilt it. Matched on `data-tab-alert` rather than on `span[aria-label]`, which named no
+   *  particular element and would have claimed any labelled span the tab grew later; the attribute
+   *  is the marker's real identity and is also what the strip's off-screen beacon reads
+   *  (tab-alert-edges.ts). */
+  function syncMsgTabBadge(n: number): void {
+    const tabBtn = document.getElementById('tab-messages');
+    const existing = tabBtn?.querySelector<HTMLElement>('[data-tab-alert]');
+    if (n <= 0) { existing?.remove(); return; }
+    const badge = existing ?? document.createElement('span');
+    badge.className = 'dash-tab-badge';
+    badge.setAttribute('data-tab-alert', 'danger');
+    badge.setAttribute('aria-label', msgUnreadLabel(n));
+    badge.textContent = String(n);
+    if (!existing && tabBtn) tabBtn.appendChild(badge);
+  }
 
   const MSG_SORT_OPTIONS: { col: 'date' | 'unread' | 'product'; dir: 'asc' | 'desc'; label: () => string }[] = [
     { col: 'date', dir: 'desc', label: () => msgI18n.msgSortOptDateDesc },
@@ -502,10 +526,12 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       row.classList.remove('msg-table__row--unread');
       row.querySelector('.msg-unread-sr')?.remove();
       repliesEl?.querySelectorAll('.msg-thread-unread-dot').forEach((el) => el.remove());
-      // The tab dot reflects ALL threads — only drop it once no other row is
+      // The tab pill reflects ALL threads — only drop it once no other row is
       // still unread (with the system thread now being many rows instead of
-      // one pinned row, an unconditional remove was wrong).
-      if (!document.querySelector('.msg-table__row--unread')) document.querySelector('#tab-messages [data-tab-alert]')?.remove();
+      // one pinned row, an unconditional remove was wrong). Now that it carries a
+      // number it also has to COUNT DOWN here: leaving that to pollSellerUnread
+      // would show a stale figure beside a row the seller just opened.
+      syncMsgTabBadge(document.querySelectorAll('.msg-table__row--unread').length);
       onAlertsChanged();
       if (!rowMatchesMsgFilters(row)) row.hidden = true;
       fetch(markReadUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -856,32 +882,16 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
 
   // Live unread polling — one pass over every row in the table, buyer and
   // system alike, so a seller with zero buyer-unread but a fresh system
-  // message still keeps the tab dot (a buyer-only unreadIds.length check used
+  // message still keeps the tab pill (a buyer-only unreadIds.length check used
   // to wipe it either way).
   function pollSellerUnread() {
     Promise.all([
       fetch(`/api/messages?role=seller&unread=1&storeId=${encodeURIComponent(currentStoreIdForMsgs)}`).then((r) => r.json()) as Promise<{ unreadIds: string[] }>,
       fetch('/api/admin-messages?unread=1').then((r) => r.json()) as Promise<{ unreadThreadIds: string[] }>,
     ]).then(([{ unreadIds }, { unreadThreadIds }]) => {
-      const tabBtn = document.getElementById('tab-messages');
-      // Matched on data-tab-alert, not on `span[aria-label]`: that selector named
-      // no particular element and would have claimed any labelled span the tab
-      // grew later. The attribute is the dot's real identity — it is also what
-      // the strip's off-screen beacon reads (tab-alert-edges.ts).
-      const tabDot = tabBtn?.querySelector<HTMLElement>('[data-tab-alert]');
-      const hasAnyUnread = unreadIds.length > 0 || unreadThreadIds.length > 0;
-      if (hasAnyUnread && !tabDot && tabBtn) {
-        const dot = document.createElement('span');
-        dot.setAttribute('aria-label', 'הודעות שלא נקראו');
-        dot.setAttribute('data-tab-alert', 'danger');
-        // Byte-for-byte the SSR dot's style (dashboard.astro, Messages tab). It
-        // had drifted to a raw #ef4444 while the server drew --color-danger, so
-        // the same dot changed shade the moment the poll rebuilt it.
-        dot.style.cssText = 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%';
-        tabBtn.appendChild(dot);
-      } else if (!hasAnyUnread) {
-        tabDot?.remove();
-      }
+      // Buyer threads and system threads are two lists and one pill — a seller with
+      // zero buyer-unread but a fresh system message still has something waiting.
+      syncMsgTabBadge(unreadIds.length + unreadThreadIds.length);
       document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
         const id = row.dataset.msgId!;
         const isSystemRow = row.dataset.msgKind === 'system';

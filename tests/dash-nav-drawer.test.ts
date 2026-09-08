@@ -67,7 +67,7 @@ function render(): void {
         <div class="dash-tabs" role="tablist" id="dash-nav-list" data-rail>
           ${tab('overview', 'סקירה כללית')}
           ${tab('products', 'מוצרים', '<span class="dash-tab-badge" data-tab-alert="warning">3</span>')}
-          ${tab('orders', 'הזמנות', '<span class="dash-tab-dot" data-tab-alert="danger"></span>')}
+          ${tab('orders', 'הזמנות', '<span class="dash-tab-badge" data-tab-alert="danger">2</span>')}
         </div>
       </div>
     </div>`;

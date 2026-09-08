@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { query } from '../src/lib/db.js';
 import { getStoreIdsWithStockAlerts } from '../src/lib/store-products.js';
-import { getStoreIdsWithStalledCampaigns } from '../src/lib/ad-campaigns.js';
+import { stalledCampaignsByStore } from '../src/lib/ad-campaigns.js';
 import { getSellerAlerts, getSellerStoreAlerts } from '../src/lib/seller-alerts.js';
 import { LOW_STOCK_THRESHOLD } from '../src/lib/variant-combo.js';
 
@@ -43,7 +43,7 @@ describe('getStoreIdsWithStockAlerts', () => {
   });
 });
 
-describe('getStoreIdsWithStalledCampaigns', () => {
+describe('stalledCampaignsByStore', () => {
   const setCampaign = (status: string, reason: string | null, archived = false) =>
     query(
       `UPDATE ad_campaigns SET status = $2, paused_reason = $3,
@@ -53,23 +53,25 @@ describe('getStoreIdsWithStalledCampaigns', () => {
     );
 
   it('names only the pauses a human has to undo', async () => {
-    expect(await getStoreIdsWithStalledCampaigns([KERAMIKA])).toEqual(new Set()); // active
+    expect(await stalledCampaignsByStore([KERAMIKA])).toEqual(new Map()); // active
 
+    // The VALUE is the tab pill's number, so it is asserted rather than only `.has()` — a Map that
+    // answered 0 would still satisfy `has` and would draw a marker reading "0".
     await setCampaign('paused', 'unavailable');
-    expect((await getStoreIdsWithStalledCampaigns([KERAMIKA])).has(KERAMIKA)).toBe(true);
+    expect(await stalledCampaignsByStore([KERAMIKA])).toEqual(new Map([[KERAMIKA, 1]]));
 
     await setCampaign('paused', 'no-image');
-    expect((await getStoreIdsWithStalledCampaigns([KERAMIKA])).has(KERAMIKA)).toBe(true);
+    expect(await stalledCampaignsByStore([KERAMIKA])).toEqual(new Map([[KERAMIKA, 1]]));
 
     // The one that undoes itself: the sweep resumes a sold-out campaign the moment stock returns,
     // and the Products badge is already saying the shelf is empty. A dot here would be the same
     // fact twice, and one the seller cannot clear from this tab.
     await setCampaign('paused', 'out-of-stock');
-    expect(await getStoreIdsWithStalledCampaigns([KERAMIKA])).toEqual(new Set());
+    expect(await stalledCampaignsByStore([KERAMIKA])).toEqual(new Map());
 
     // A cancelled campaign is a financial record, not something to act on.
     await setCampaign('paused', 'unavailable', true);
-    expect(await getStoreIdsWithStalledCampaigns([KERAMIKA])).toEqual(new Set());
+    expect(await stalledCampaignsByStore([KERAMIKA])).toEqual(new Map());
 
     await setCampaign('active', null);
   });

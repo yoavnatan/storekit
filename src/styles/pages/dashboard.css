@@ -2506,15 +2506,10 @@ html:has(#dash-main-card.dash-nav-side) {
   border-radius: 2px;
   background: var(--color-primary);
 }
-/* A count or a dot belongs at the END of a full-width row, not tucked against the label. The dots
-   are `position:absolute` in the horizontal strip because a tab there is only as wide as its
-   label; here the row has somewhere to put them. */
+/* A count belongs at the END of a full-width row, not tucked against the label. In the horizontal
+   strip the pill sits right after the label because a tab there is only as wide as its label; here
+   the row has somewhere to put it. */
 #dash-main-card.dash-nav-side .dash-tab-badge { margin-inline-start: auto; }
-#dash-main-card.dash-nav-side .dash-tab-dot {
-  position: static;
-  margin-inline-start: auto;
-  flex-shrink: 0;
-}
 /* No edge fades on a column: nothing scrolls sideways, so the two overlays `ui.ts` injects would
    be blank strips lying across the first and last item. `syncEdges()` already leaves them at
    opacity 0 (a column's scrollWidth never exceeds its clientWidth), but they still occupy their
@@ -2742,8 +2737,7 @@ html:has(#dash-main-card.dash-nav-side) {
      1px `--color-border` ring the header's own markers use. The COUNT is not lost: it is the
      span's `aria-label`, which is where a screen reader was reading it from all along, and it is
      back in full the moment the rail opens. */
-  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-badge,
-  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-dot {
+  html.dash-nav-mini #dash-main-card.dash-nav-side .dash-tab-badge {
     position: absolute;
     margin: 0;
     top: 0.3rem;
@@ -3220,22 +3214,21 @@ html.dash-nav-mini[dir="rtl"] .dash-rail-toggle__icon { transform: scaleX(1); }
   margin-inline-start: 4px;
   vertical-align: middle;
 }
+/* Amber for "a wrong state that can wait", red for "someone is waiting on you" — the same two-value
+   vocabulary `data-tab-alert` already spoke to tab-alert-edges.ts, now painted from the attribute
+   instead of from a `![background:...]` utility written onto one badge in the markup. That utility
+   was the reason a second marker shape could exist at all: a badge that could not say "warning"
+   left a dot as the only way to draw one.
 
-/* ── The alert dots the tab strip already had, as a class ──
-   They were four copies of the same seven inline declarations (orders, advertising, messages,
-   payouts). A class is what lets the rail place them at the end of a row instead of pinned to a
-   corner — an inline style cannot be overridden — and four copies of one rule were the next thing
-   to drift anyway. */
-.dash-tab-dot {
-  position: absolute;
-  top: 0.45rem;
-  inset-inline-end: 0.6rem;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-danger);
-}
-.dash-tab-dot[data-tab-alert="warning"] { background: var(--color-warning); }
+   ── Why there is no `.dash-tab-dot` any more (2026-09-08) ──
+   The strip carried two marker shapes: this pill on Orders/Returns/Products, and a bare 7px dot on
+   Overview/Messages/Advertising. Owner: *"אין סיבה שזה לא יהיה עקבי"*. Every one of the three dots
+   had a real count behind it and was throwing it away — unread threads, publish holds, stalled
+   campaigns — so the pill won and the dot class went. The COLLAPSED form is unchanged and is still
+   a dot: `html.dash-nav-mini` below shrinks a pill to 8px on the icon's corner, which is the one
+   place a dot was ever the right shape. Don't re-add a dot to spare a query — a marker whose number
+   nobody could name is the state this removed. */
+.dash-tab-badge[data-tab-alert="warning"] { background: var(--color-warning); }
 
 /* Sticky title bar — used on panels that carry a control (Orders/Messages:
    search+sort+filter; Settings: save button; Performance: the date-range picker;

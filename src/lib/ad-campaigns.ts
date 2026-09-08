@@ -303,21 +303,28 @@ export async function getStoreIdsWithLiveCampaigns(): Promise<string[]> {
  * back) and `no-image` (a photo has to be uploaded before the catalogue will carry it at all).
  * `out-of-stock` is deliberately absent: the sweep resumes that one by itself the moment stock
  * returns, and the seller is already told about the stock through the Products badge, which would
- * make it two dots for one fact.
+ * make it two markers for one fact.
  *
  * One statement for every store, same rule as `getStoreSlugsWithPendingOrders`. Archived campaigns
  * are excluded — a cancelled campaign is a financial record, not something to act on.
+ *
+ * **A Map of counts, not a Set of ids (2026-09-08).** Every caller still asks it the yes/no question
+ * with `.has()`, which a Map answers identically — but the seller's Advertising tab now draws the
+ * same counted pill the rest of the strip draws, and the number it needs was being thrown away by a
+ * `DISTINCT` one line from where it was counted. Keep it a count: a second query to re-derive it
+ * would be the thing this avoided.
  */
-export async function getStoreIdsWithStalledCampaigns(storeIds: string[]): Promise<Set<string>> {
+export async function stalledCampaignsByStore(storeIds: string[]): Promise<Map<string, number>> {
   const ids = storeIds.filter(isUuid);
-  if (!ids.length) return new Set();
-  const found = await rows<{ store_id: string }>(
-    `SELECT DISTINCT store_id FROM ad_campaigns
+  if (!ids.length) return new Map();
+  const found = await rows<{ store_id: string; n: string }>(
+    `SELECT store_id, COUNT(*)::text AS n FROM ad_campaigns
       WHERE store_id = ANY($1::uuid[]) AND archived_at IS NULL
-        AND status = 'paused' AND paused_reason IN ('unavailable', 'no-image')`,
+        AND status = 'paused' AND paused_reason IN ('unavailable', 'no-image')
+      GROUP BY store_id`,
     [ids],
   );
-  return new Set(found.map((r) => r.store_id));
+  return new Map(found.map((r) => [r.store_id, Number(r.n)]));
 }
 
 /** The cancelled ones, newest first. Read-only everywhere: nothing may be resumed or re-budgeted
