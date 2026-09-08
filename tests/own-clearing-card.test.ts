@@ -216,6 +216,23 @@ describe('after a save', () => {
     });
   });
 
+  it('does not say "saved" while fields are still empty', async () => {
+    // The button confirmed on every 200, and a save with nothing typed IS a 200: it stores the
+    // provider and reports which fields are missing. The screen therefore said "פרטי הסליקה נשמרו"
+    // over three fields marked in red — seen in a browser. A partial save is still stored; it just
+    // does not claim to be finished.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => answer({ missing: ['passp'] }) } as Response)));
+    render({ currentId: 'hyp' });
+    document.querySelector<HTMLInputElement>('[data-provider-fields="hyp"] [name="masof"]')!.value = '001';
+    submit();
+    await vi.waitFor(() => expect(
+      document.querySelector('[data-provider-fields="hyp"] [name="passp"]')!.getAttribute('aria-invalid'),
+    ).toBe('true'));
+    expect(document.getElementById('own-clearing-save')!.classList.contains('btn--confirmed')).toBe(false);
+    // And what he DID paste is still on screen — the save stored it, so it must not be thrown back.
+    expect(document.querySelector<HTMLInputElement>('[data-provider-fields="hyp"] [name="masof"]')!.value).toBe('001');
+  });
+
   it('stays open and MARKS the empty fields, one message each', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => answer({ missing: ['apiKey', 'passp'] }) } as Response)));
     render({ currentId: 'hyp' });

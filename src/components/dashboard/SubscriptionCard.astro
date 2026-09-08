@@ -294,15 +294,13 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
             `inputmode="tel"` for the numeric keypad; the value is normalised server-side by
             `normalizeMerchantKyc`, which accepts +972 and landlines alike, so nothing here
             rejects a number the clearing form would have taken. */}
-        {!payer.phone && (
-          <div class="field m-0 mb-3 max-w-[22ch]">
-            <span class="text-[0.8rem] whitespace-nowrap">{d.subCardPhone}</span>
-            <input type="tel" inputmode="tel" autocomplete="tel" class="input h-[2.6rem]" id="sub-card-phone" name="subCardPhone" />
-            {/* The hint under this field explained that the processor wants a cardholder phone and
-                that we would keep it — our storage behaviour, in a sentence, on a field labelled
-                "טלפון". The label is the whole message. */}
-          </div>
-        )}
+        {/* ── The phone field left this form on 2026-09-08 ──
+            It was here because the tokenizer refuses a charge without one, and the owner read the
+            screen and said what that looks like: *"מוזר לי שבפרטי כרטיס יש טלפון"* — a fact about
+            the PERSON, asked beside a card number as if it were printed on the card. It is on
+            "החשבון שלי" in Settings now (`SellerAccountCard.astro`), asked once, and every later
+            charge reads it. `payer.phone` still arrives here and still goes to the tokenizer; what
+            changed is where it is collected. */}
         <div class="grid gap-3 sm:grid-cols-[minmax(0,22ch)_9ch_7ch]">
           <div class="field m-0">
             <span class="text-[0.8rem] whitespace-nowrap">{d.subCardNumber}</span>

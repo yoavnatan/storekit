@@ -238,6 +238,22 @@ export function initOwnClearingCard(): void {
         return;
       }
 
+      /* ── "נשמרו" only when something really is ──
+         The button confirmed on every 200, and a save with nothing typed is a 200: it stores the
+         chosen provider and reports back that three fields are empty. So the screen said
+         *"פרטי הסליקה נשמרו"* over three fields marked in red — seen in the browser, not reasoned
+         about. A partial save is still legal and still stored (`feedback_seller_form_burden`); what
+         it must not do is claim to be finished. With fields outstanding the marks are the message
+         and the button simply settles back. */
+      if (state.missing.length) {
+        // `dash:saved` and NOT `discardChanges`, for the reason spelled out a few lines down: what
+        // he typed WAS stored, so it is the new baseline. Discarding here would throw his two
+        // pasted values back to empty on the way to telling him a third is missing.
+        window.dispatchEvent(new CustomEvent('dash:saved', { detail: { form: formEl } }));
+        render(state);
+        return;
+      }
+
       // The confirmation goes IN the button, not into a toast in the corner of a screen the seller
       // is not looking at — the same ruling `payouts.ts` carries for the form directly below this.
       busy.confirm(t.ownClearingSaved ?? 'Saved');

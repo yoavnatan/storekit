@@ -1,0 +1,62 @@
+---
+/**
+ * "החשבון שלי" — the person behind the account, as against the shop.
+ *
+ * ── Why it exists (owner, 2026-09-08) ──
+ * The seller dashboard had nowhere to edit the account itself. His name and email were set at
+ * registration and never seen again, and his PHONE was collected inside the subscription's card
+ * form because the tokenizer refuses a charge without one — *"מוזר לי שבפרטי כרטיס יש טלפון… זה
+ * אמור להיות בתוך פרטים אישיים"*. He is right: a phone is a fact about him that a payment terminal
+ * happens to need, not a property of a card, and asking for it beside a card number implies it is
+ * printed on one.
+ *
+ * ── Why it is on Settings and OUTSIDE the store form ──
+ * Settings is where a seller goes to change what he set up. The store form posts to `/api/store`
+ * and is governed by one "save changes" bar; this posts to `/api/user/update-profile` and saves on
+ * its own button. Putting it inside that form would put a bar over fields it does not save — the
+ * exact confusion the panel's own head comment argues against for the categories tree.
+ *
+ * ── The email is editable, and that is deliberate ──
+ * It is the login identity, so it is the one field here that can lock him out — but `updateSeller`
+ * already owns that decision (uniqueness, the shared-demo refusal), and a field he can see and not
+ * change is a field that makes him write to support. The route validates; this screen asks.
+ */
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  name: string;
+  email: string;
+  /** From `merchant_kyc.ownerPhone`, which is where the subscription reads it. Empty is normal. */
+  phone: string;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { name, email, phone, d } = Astro.props;
+---
+
+<section class="card card--flat p-4 md:p-5 mb-5" id="seller-account">
+  <h3 class="text-[1.05rem] font-bold m-0">{d.accountTitle}</h3>
+  <p class="muted m-0 mt-1 text-[0.82rem]">{d.accountLead}</p>
+
+  <form id="seller-account-form" class="mt-4" data-unsaved-guard>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.accountName}</span>
+        <input class="input" name="name" autocomplete="name" maxlength="120" value={name} required />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.accountEmail}</span>
+        {/* `dir="ltr"`: an address is ASCII, and ASCII on an RTL page groups the wrong way round
+            when left to inherit. */}
+        <input class="input" name="email" type="email" dir="ltr" autocomplete="email" maxlength="200" value={email} required />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.accountPhone}</span>
+        <input class="input" name="phone" type="tel" dir="ltr" inputmode="tel" autocomplete="tel" maxlength="20" value={phone} />
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.accountPhoneWhy}</p>
+      </label>
+    </div>
+
+    <p class="hidden text-sm [color:var(--color-danger)] mt-2" id="seller-account-error" role="alert"></p>
+    <button type="submit" class="btn btn--sm mt-3" id="seller-account-save">{d.accountSave}</button>
+  </form>
+</section>

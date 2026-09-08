@@ -115,11 +115,18 @@ describe('the browser cannot tokenise without one', () => {
     })).toEqual([]);
   });
 
-  it('asks for a phone exactly when there is none to reuse', () => {
-    const src = readSource('src/components/dashboard/SubscriptionCard.astro');
-    // Conditional, not unconditional: a seller who filled step 1 has answered this already, and
-    // asking twice is the burden `feedback_seller_form_burden` forbids.
-    expect(src).toMatch(/\{!payer\.phone && \(/);
-    expect(src).toContain('id="sub-card-phone"');
+  it('asks for the phone on the ACCOUNT, not beside the card', () => {
+    /* The field was here, rendered when we had no phone. The owner read that screen on 2026-09-08:
+       *"מוזר לי שבפרטי כרטיס יש טלפון"* — it is a fact about the person, asked next to a card
+       number as if it were printed on one. It moved to "החשבון שלי" in Settings, asked once, and
+       every later charge reads it. The rest of this file is unchanged and is the part that
+       mattered: an empty phone still cannot leave for the tokenizer, and a phone is still STORED
+       as `ownerPhone` rather than spent on one charge. */
+    const card = readSource('src/components/dashboard/SubscriptionCard.astro');
+    expect(card).not.toContain('id="sub-card-phone"');
+    const account = readSource('src/components/dashboard/SellerAccountCard.astro');
+    expect(account).toContain('name="phone"');
+    // And the route that screen posts to is the one that writes `ownerPhone`.
+    expect(readSource('src/pages/api/user/update-profile.ts')).toContain('ownerPhone');
   });
 });

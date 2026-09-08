@@ -25,6 +25,7 @@ import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astr
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import DashNavDrawer from '../../components/dashboard/DashNavDrawer.astro';
 import DashRailFoot from '../../components/dashboard/DashRailFoot.astro';
+import SellerAccountCard from '../../components/dashboard/SellerAccountCard.astro';
 import DashRailToggle from '../../components/dashboard/DashRailToggle.astro';
 import BulkActionBar from '../../components/dashboard/BulkActionBar.astro';
 import { compactCount, isCompacted } from '../../lib/format-count.js';
@@ -3070,6 +3071,12 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Settings ── -->
       <SellerPanelShell panel="settings" active={shows('settings')} title={d.tabSettings}>
+        {/* ── The ACCOUNT, above the shop ──
+            Its own form and its own route (`/api/user/update-profile`): the big form below posts to
+            `/api/store` and is governed by one "save changes" bar, and a bar over fields it does not
+            save is the confusion the head comment below already argues against. */}
+        <SellerAccountCard name={seller?.name ?? ''} email={seller?.email ?? ''} phone={merchantKyc.ownerPhone ?? ''} d={d} />
+
         {/* Head stays INSIDE the form on purpose: its sticky scope is the form, so the
             "save changes" bar rides only over the fields it actually saves and releases
             at the form's end — the categories tree + custom-domain below save live per
@@ -4217,7 +4224,7 @@ const orderStatusColors: Record<string, string> = {
     settings: async () => {
       // No feed-sync here: its panel is rendered by `products`, which now wires it. Binding it from
       // both would answer every click twice, which is the documented cost of a second init.
-      const [img, tree, domain, lifecycle, url, storeCats, headerLogo, headerPreview] = await Promise.all([
+      const [img, tree, domain, lifecycle, url, storeCats, headerLogo, headerPreview, account] = await Promise.all([
         import('../../scripts/dashboard/store-image.js'),
         import('../../scripts/dashboard/category-tree.js'),
         import('../../scripts/dashboard/custom-domain.js'),
@@ -4226,9 +4233,12 @@ const orderStatusColors: Record<string, string> = {
         import('../../scripts/store-category-picker.js'),
         import('../../scripts/dashboard/header-logo.js'),
         import('../../scripts/dashboard/header-preview.js'),
+        // Its own form and its own route — the account is not the shop.
+        import('../../scripts/dashboard/seller-account.js'),
         imageEditors(),
       ]);
       return () => {
+      account.initSellerAccountCard();
       const i18n = dashI18n();
       const labels = {
         upload: i18n.uploadImage ?? 'Upload image',
