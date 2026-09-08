@@ -993,12 +993,12 @@ export const translations = {
       csvExport: 'ייצוא קטלוג (CSV)',
       csvTemplate: 'הורד תבנית לדוגמה',
       csvImportLead: 'עדכון או הוספת מספר מוצרים בבת אחת, דרך קובץ Excel/Sheets:',
+      // This panel reads only OUR column names (csv-bulk.ts#mapHeader) — a POS/Shopify export fails
+      // it with "missing name/price", and the foreign-file path is the feed panel, one button over.
+      // The bullet that SAID so was deleted by the owner on 2026-09-08; the fact is kept here
+      // because it is about the panel, not about the sentence that happened to carry it.
       csvImportPoints: [
-        'עדכון מוצרים קיימים: ייצא את הקטלוג כקובץ, ערוך ב-Excel/Sheets וייבא בחזרה.',
-        // The panel here reads only OUR column names (csv-bulk.ts#mapHeader) — a POS/Shopify export
-        // fails it with "missing name/price". The foreign-file path is the feed panel, one button over.
-        'ניתן להעלות קובץ ממקור מלאי חיצוני על ידי לחיצה על כפתור "סנכרון מלאי חיצוני".',
-        'מאקסל (xlsx): שמור קודם כ-CSV (קובץ ← שמור בשם ← CSV) ואז ייבא.',
+        'עדכון מוצרים קיימים: ייצא את הקטלוג כקובץ, ערוך ב-Excel/Sheets וייבא בחזרה כקובץ CSV.',
         'איך מזוהה מוצר קיים: לפי עמודת "מזהה", ואם היא ריקה — לפי מק"ט זהה שכבר קיים בחנות. אין התאמה = מוצר חדש.',
         'תא ריק בשורת עדכון = הערך הקיים נשמר (לא נמחק).',
         // The one thing the format cannot do, said where the seller decides to use it. A file-created
@@ -3579,8 +3579,6 @@ export const translations = {
       csvImportLead: 'Update or add several products at once, via an Excel/Sheets file:',
       csvImportPoints: [
         'Update existing products: export the catalog as a file, edit it in Excel/Sheets, then import it back.',
-        'To upload a file from an external inventory source, use the "External inventory sync" button.',
-        'From Excel (xlsx): save as CSV first (File → Save As → CSV), then import.',
         'How an existing product is matched: by the "ID" column, or — if it\'s blank — by a matching SKU already in the store. No match = a new product.',
         'A blank cell on an update row = the current value is kept (not cleared).',
         'The file carries no images: a product it creates starts with no photo, and without a photo it cannot be advertised on Google or Meta. Photos are added in the product card.',

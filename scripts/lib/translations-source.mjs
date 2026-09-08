@@ -127,11 +127,25 @@ export function scanLanguageBlock(src, lang) {
 }
 
 export function unescapeLiteral(raw) {
-  return raw.replace(/\\(.)/g, (_, ch) => (ch === 'n' ? '\n' : ch === 't' ? '\t' : ch));
+  // `r` alongside `n` and `t`, so a round trip through escapeLiteral returns the string it was given.
+  return raw.replace(/\\(.)/g, (_, ch) => (ch === 'n' ? '\n' : ch === 't' ? '\t' : ch === 'r' ? '\r' : ch));
 }
 
+/**
+ * `\r` is escaped for the same reason `\n` is, and it was missing: a carriage return is a JavaScript
+ * LineTerminator, so one written raw into a single-quoted literal does not produce a wrong string —
+ * it produces a file that does not parse, taking the dev server and the build down with it.
+ *
+ * It is reachable: text pasted out of Word or off a Windows machine carries `\r\n`, `tidy` collapses
+ * spaces and trims but touches neither, and the inline editor's textarea is a paste target. U+2028
+ * and U+2029 need no escaping — they have been legal inside string literals since ES2019.
+ */
 export function escapeLiteral(value) {
-  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
 }
 
 /**
@@ -144,6 +158,66 @@ export function replaceLeaves(src, changes) {
     out = out.slice(0, change.leaf.start) + `'${escapeLiteral(change.value)}'` + out.slice(change.leaf.end);
   }
   return out;
+}
+
+/**
+ * Whether a leaf is one item of an ARRAY of strings — the shape where "delete this line" means the
+ * item goes away, not that it becomes empty.
+ *
+ * Emptying a plain key leaves the element that prints it on screen with nothing in it; emptying an
+ * array item leaves a bullet showing its marker and no words, which is worse and is what the owner
+ * actually hit (2026-09-08: *"הבולט עצמו נשאר, פשוט ריק"*). The last segment being a number is the
+ * whole test, because that is how `scanLanguageBlock` names an array position.
+ */
+export function arrayIndexOf(key) {
+  const last = key.slice(key.lastIndexOf('.') + 1);
+  return /^\d+$/.test(last) && key.includes('.') ? Number(last) : null;
+}
+
+/** The leaves of the array `key` belongs to, in index order. */
+export function siblingsOf(leaves, key) {
+  const prefix = key.slice(0, key.lastIndexOf('.') + 1);
+  return leaves
+    .filter((l) => l.key.startsWith(prefix) && arrayIndexOf(l.key) !== null)
+    .sort((a, b) => arrayIndexOf(a.key) - arrayIndexOf(b.key));
+}
+
+/**
+ * Delete a leaf's whole line when the literal has one to itself — which is how every array of
+ * strings in this file is written, one item per line.
+ *
+ * Comments between items live on their own lines and are left alone: only the line the literal sits
+ * on goes. When the literal SHARES a line (a one-line array), just the literal and one trailing
+ * comma go, so the rest of that line survives intact.
+ */
+export function removeLeafLine(src, leaf) {
+  const lineStart = src.lastIndexOf('\n', leaf.start) + 1;
+  const nextNewline = src.indexOf('\n', leaf.end);
+  const lineEnd = nextNewline === -1 ? src.length : nextNewline + 1;
+
+  const ownsTheLine =
+    /^\s*$/.test(src.slice(lineStart, leaf.start)) && /^\s*,?\s*$/.test(src.slice(leaf.end, lineEnd));
+  if (ownsTheLine) return src.slice(0, lineStart) + src.slice(lineEnd);
+
+  let end = leaf.end;
+  if (src[end] === ',') end += 1;
+  if (src[end] === ' ') end += 1;
+  return src.slice(0, leaf.start) + src.slice(end);
+}
+
+/**
+ * Put a string back on its own line beside `anchor`, at the indentation the neighbours use.
+ * `after` places it below the anchor instead of above — the case where the removed item was last.
+ */
+export function insertLeafLine(src, anchor, value, after = false) {
+  const lineStart = src.lastIndexOf('\n', anchor.start) + 1;
+  const indent = /^[ \t]*/.exec(src.slice(lineStart))[0];
+  const line = `${indent}'${escapeLiteral(value)}',\n`;
+  if (!after) return src.slice(0, lineStart) + line + src.slice(lineStart);
+
+  const nextNewline = src.indexOf('\n', anchor.end);
+  const lineEnd = nextNewline === -1 ? src.length : nextNewline + 1;
+  return src.slice(0, lineEnd) + line + src.slice(lineEnd);
 }
 
 /** Every `.ts/.js/.astro/.mjs` file under `src/`, except translations.ts itself. */

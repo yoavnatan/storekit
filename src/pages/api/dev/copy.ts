@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import {
   validateEdit,
+  tidy,
   mayRewriteFallbacks,
   mergeEnglishTodo,
   regenerateFor,
@@ -35,13 +36,24 @@ import {
   scanLanguageBlock,
   escapeLiteral,
   replaceLeaves,
+  removeLeafLine,
+  insertLeafLine,
+  arrayIndexOf,
+  siblingsOf,
   sourceFiles,
 } from '../../../../scripts/lib/translations-source.mjs';
 
 /** Keys edited here, so the English can be brought level afterwards. Gitignored via `.tmp-`. */
 const EN_TODO = `${ROOT}/.tmp-copy-en-todo.json`;
 
-type Body = { key?: unknown; value?: unknown; allowEmpty?: unknown };
+type Body = {
+  key?: unknown;
+  value?: unknown;
+  allowEmpty?: unknown;
+  insert?: unknown;
+  /** The English the deletion took with it, handed back on an undo. Nothing else still holds it. */
+  valueEn?: unknown;
+};
 
 function reject(message: string, status = 400, confirm?: string): Response {
   return new Response(JSON.stringify({ ok: false, error: message, confirm }), {
@@ -85,6 +97,42 @@ function rewriteFallbacks(oldValue: string, newValue: string, unique: boolean) {
   return found;
 }
 
+/**
+ * Do to the English twin whatever was just done to the Hebrew, when the edit was a DELETION.
+ *
+ * A reword deliberately leaves English behind — that is what `.tmp-copy-en-todo.json` is for, and a
+ * half-translated sentence is still a sentence. A deletion is not like that: `tests/i18n-parity.test.ts`
+ * fails on a key that is empty on one side only, and on an array that is not the same length in both
+ * blocks. Deleting a bullet in Hebrew and leaving the English array one longer is a red suite the
+ * owner would meet with no idea why, and every index past it would name a different line.
+ *
+ * Sequential, on the text as it stands AFTER the Hebrew edit: the two blocks live in one file, so
+ * English offsets taken before the Hebrew side moved are stale.
+ */
+function mirrorDeletion(src: string, key: string, removed: boolean): { text: string; was: string | null } {
+  const twin = scanLanguageBlock(src, 'en').find((l) => l.key === key);
+  if (!twin) return { text: src, was: null };
+  return {
+    text: removed ? removeLeafLine(src, twin) : replaceLeaves(src, [{ leaf: twin, value: '' }]),
+    was: twin.value,
+  };
+}
+
+/** Put a value back into an array at `index`, in whichever language block `lang` names. */
+function insertInto(
+  src: string,
+  lang: 'he' | 'en',
+  key: string,
+  index: number,
+  value: string,
+): string | null {
+  const siblings = siblingsOf(scanLanguageBlock(src, lang), key);
+  const at = siblings.find((l) => arrayIndexOf(l.key) === index);
+  const last = siblings[siblings.length - 1];
+  if (!at && !last) return null;
+  return insertLeafLine(src, at ?? last, value, !at);
+}
+
 function noteForEnglish(key: string): void {
   let parsed: unknown;
   try {
@@ -108,13 +156,59 @@ export const POST: APIRoute = async ({ request }) => {
 
   const src = fs.readFileSync(SOURCE, 'utf8');
   const leaves = scanLanguageBlock(src, 'he');
+
+  // Putting a REMOVED array item back. Its line is gone and every index past it moved up, so there
+  // is no leaf left to address — this is an insert at a position, not an edit of a key.
+  if (body.value.insert === true) {
+    const index = arrayIndexOf(key);
+    if (index === null) return reject('רק פריט ברשימה נמחק מהקובץ, וזה לא אחד', 400);
+    const restored = tidy(raw);
+    if (!restored) return reject('אין מה להחזיר');
+
+    // Hebrew first, then English on the text that came out of it. The English line goes back even
+    // when all we have is the Hebrew — an array shorter on one side is what breaks the parity test.
+    const withHe = insertInto(src, 'he', key, index, restored);
+    if (!withHe) return reject('הרשימה ריקה — אין לְמה להצמיד את השורה', 409);
+    const twinValue = typeof body.value.valueEn === 'string' ? body.value.valueEn : restored;
+    const withEn = insertInto(withHe, 'en', key, index, twinValue) ?? withHe;
+
+    fs.writeFileSync(SOURCE, withEn, 'utf8');
+    return new Response(
+      JSON.stringify({ ok: true, key, now: restored, unchanged: false, removed: false, fallbacks: [], regenerate: null }),
+      { headers: { 'content-type': 'application/json' } },
+    );
+  }
+
   const leaf = leaves.find((l) => l.key === key);
   if (!leaf) return reject(`המפתח ${key} לא קיים ב-translations.ts`, 404);
 
   // Emptying a string is refused once and done on the second ask — `validateEdit` carries why.
   const edit = validateEdit(leaf.value, raw, body.value.allowEmpty === true);
-  if (!edit.ok) return reject(edit.error, 400, edit.confirm);
+  if (!edit.ok) {
+    // The two emptyings end differently, so they are asked differently: a list item goes away, a
+    // plain key keeps the element that prints it and loses only its words.
+    const question =
+      edit.confirm === 'empty' && arrayIndexOf(key) !== null
+        ? 'ריק — השורה תוסר מהרשימה. עוד לחיצה על שמירה מסירה אותה'
+        : edit.error;
+    return reject(question, 400, edit.confirm);
+  }
   const { value } = edit;
+
+  // Restoring a BLANKED plain key: the English was emptied with it, so it comes back with it. That
+  // old English value rode out to the browser in `wasEn` and rides back in here.
+  const englishBack = typeof body.value.valueEn === 'string' ? body.value.valueEn : null;
+  if (englishBack && value) {
+    const heBack = replaceLeaves(src, [{ leaf, value }]);
+    const twinNow = scanLanguageBlock(heBack, 'en').find((l) => l.key === key);
+    if (twinNow?.value === '') {
+      fs.writeFileSync(SOURCE, replaceLeaves(heBack, [{ leaf: twinNow, value: englishBack }]), 'utf8');
+      return new Response(
+        JSON.stringify({ ok: true, key, was: leaf.value, now: value, unchanged: false, removed: false, fallbacks: [], regenerate: regenerateFor(key) }),
+        { headers: { 'content-type': 'application/json' } },
+      );
+    }
+  }
 
   if (value === leaf.value) {
     return new Response(JSON.stringify({ ok: true, key, was: leaf.value, now: value, unchanged: true, fallbacks: [], regenerate: null }), {
@@ -122,7 +216,14 @@ export const POST: APIRoute = async ({ request }) => {
     });
   }
 
-  fs.writeFileSync(SOURCE, replaceLeaves(src, [{ leaf, value }]), 'utf8');
+  // An emptied ARRAY item is REMOVED, not blanked. Blanking leaves a bullet on screen showing its
+  // marker and no words — the thing the owner asked about. A plain key has no such option: the
+  // element that prints it belongs to the markup, and taking that away is a code change.
+  const removed = value === '' && arrayIndexOf(key) !== null;
+  const afterHe = removed ? removeLeafLine(src, leaf) : replaceLeaves(src, [{ leaf, value }]);
+  // Only a DELETION crosses into the English block; a reword leaves it behind on purpose.
+  const twin = value === '' ? mirrorDeletion(afterHe, key, removed) : { text: afterHe, was: null };
+  fs.writeFileSync(SOURCE, twin.text, 'utf8');
 
   const unique = mayRewriteFallbacks(leaves.map((l) => l.value), leaf.value);
   const fallbacks = rewriteFallbacks(leaf.value, value, unique);
@@ -137,6 +238,8 @@ export const POST: APIRoute = async ({ request }) => {
       was: leaf.value,
       now: value,
       unchanged: false,
+      removed,
+      wasEn: twin.was,
       fallbacks,
       regenerate: regenerateFor(key),
     }),

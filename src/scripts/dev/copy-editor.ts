@@ -23,6 +23,8 @@
  *    reported as "not found" rather than approximated.
  */
 
+import { tidy } from '../../lib/dev-copy-edit.js';
+
 type Dict = Record<string, string>;
 
 interface Match {
@@ -47,11 +49,6 @@ const ARMED_KEY = '__dev_copy_armed';
 const TODO_KEY = '__dev_copy_todo';
 /** Attributes a visitor reads that come from the dictionary. `value` covers submit buttons. */
 const TEXT_ATTRS = ['placeholder', 'aria-label', 'title', 'alt', 'value'];
-
-/** The server's `tidy`, mirrored for the one case the response did not carry the saved value. */
-function tidyLike(raw: string): string {
-  return raw.trim().replace(/ {2,}/g, ' ');
-}
 
 function normalise(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -81,7 +78,10 @@ function readDict(): Dict {
  */
 type Pending =
   | { kind: 'redraw'; command: string }
-  | { kind: 'restore'; key: string; value: string };
+  /** `insert` marks an ARRAY item whose whole line was removed, so putting it back is an insert at
+   *  that index rather than an edit of a key that no longer exists. `valueEn` is the English the
+   *  deletion took with it — nothing else in the running app still holds it. */
+  | { kind: 'restore'; key: string; value: string; valueEn: string | null; insert: boolean };
 
 function readTodo(): Pending[] {
   try {
@@ -96,7 +96,15 @@ function readTodo(): Pending[] {
         return [{ kind: 'redraw', command: row.command }];
       }
       if (row.kind === 'restore' && typeof row.key === 'string' && typeof row.value === 'string') {
-        return [{ kind: 'restore', key: row.key, value: row.value }];
+        return [
+          {
+            kind: 'restore',
+            key: row.key,
+            value: row.value,
+            valueEn: typeof row.valueEn === 'string' ? row.valueEn : null,
+            insert: row.insert === true,
+          },
+        ];
       }
       return [];
     });
@@ -195,6 +203,44 @@ function applyOnScreen(key: string, oldValue: string, newValue: string): number 
   }
 
   return hits;
+}
+
+/**
+ * Take a REMOVED list item off the screen, marker and all.
+ *
+ * `applyOnScreen` can only blank the words, and a bullet with no words still shows its marker and
+ * its spacing — the state the owner asked about. So for a removal the element holding nothing but
+ * this string goes with it: the nearest ancestor whose entire text is the removed string, which is
+ * the `<li>` for a bullet and the paragraph for a line, and never one that also holds a sibling.
+ *
+ * Returns how many were taken out; 0 means the reload is the honest answer.
+ */
+export function removeOnScreen(oldValue: string): number {
+  const flat = normalise(oldValue);
+  if (!flat) return 0;
+
+  /** The two elements that are the page itself rather than anything on it. */
+  const root = (el: Element): boolean => el === document.body || el === document.documentElement;
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
+
+  let gone = 0;
+  for (const node of nodes) {
+    if (normalise(node.nodeValue ?? '') !== flat) continue;
+    let el = node.parentElement;
+    if (!el || root(el)) continue;
+    // Climb only while the ancestor still holds NOTHING but this string, so a wrapper carrying a
+    // second line is never the one removed — and never onto `<body>`/`<html>`, which match this
+    // test on a page whose whole text IS the removed line and would take the document with them.
+    while (el.parentElement && !root(el.parentElement) && normalise(el.parentElement.textContent ?? '') === flat) {
+      el = el.parentElement;
+    }
+    el.remove();
+    gone++;
+  }
+  return gone;
 }
 
 export function initCopyEditor(): void {
@@ -360,16 +406,40 @@ export function initCopyEditor(): void {
       undo.textContent = 'החזר';
       undo.addEventListener('click', () => {
         undo.disabled = true;
-        // No `skipReloadUntil` here on purpose: an emptied element holds no text to patch, so the
+        // No `skipReloadUntil` here on purpose: a deleted element holds no text to patch, so the
         // reload Vite is about to fire IS what puts the words back on screen.
         void fetch('/api/dev/copy', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ key: entry.key, value: entry.value }),
-        }).then(() => {
-          writeTodo(readTodo().filter((e) => !(e.kind === 'restore' && e.key === entry.key)));
-          paintStanding();
-        });
+          body: JSON.stringify({
+            key: entry.key,
+            value: entry.value,
+            valueEn: entry.valueEn ?? undefined,
+            insert: entry.insert,
+          }),
+        })
+          .then((res) => res.json() as Promise<{ ok?: boolean; error?: string }>)
+          .then((data) => {
+            if (data.ok) {
+              writeTodo(readTodo().filter((e) => !(e.kind === 'restore' && e.key === entry.key)));
+              paintStanding();
+              return;
+            }
+            throw new Error(data.error ?? 'ההחזרה נכשלה');
+          })
+          .catch((err: Error) => {
+            // Dropping the row on a failed restore is how the words would be lost for good — the
+            // page no longer holds them and this strip is the only place they still exist. So the
+            // row stays, says why, and shows the text itself to be copied out by hand.
+            undo.disabled = false;
+            name.textContent = `${entry.key} — ${err.message}`;
+            if (!row.nextElementSibling?.classList.contains('dev-copy-todo')) {
+              const text = document.createElement('div');
+              text.className = 'dev-copy-todo';
+              text.textContent = entry.value;
+              row.after(text);
+            }
+          });
       });
       row.appendChild(undo);
       standing.appendChild(row);
@@ -516,6 +586,8 @@ export function initCopyEditor(): void {
           was?: string;
           now?: string;
           unchanged?: boolean;
+          removed?: boolean;
+          wasEn?: string | null;
           fallbacks?: { file: string; line: number; rewritten: boolean }[];
           regenerate?: string | null;
         };
@@ -529,13 +601,17 @@ export function initCopyEditor(): void {
         // The reverse index has to move with the dictionary, not just the dictionary — the sentence
         // you just changed has to stay hoverable, and the page is no longer reloading underneath to
         // rebuild it.
-        const saved = data.now ?? tidyLike(area.value);
+        // `tidy` imported rather than mirrored: the client's copy and the server's drifting apart is
+        // how the reverse index ends up holding a string the file does not contain.
+        const saved = data.now ?? tidy(area.value);
         reindex(key, saved);
 
         // Patch the screen and keep it. The reload is skipped only when the patch actually landed:
         // a string with a placeholder is printed with the hole filled, so the words on screen are
         // not the words that were edited, and there the reload is the only honest answer.
-        const patched = applyOnScreen(key, data.was ?? '', saved);
+        const patched = data.removed
+          ? removeOnScreen(data.was ?? '')
+          : applyOnScreen(key, data.was ?? '', saved);
         if (patched >= 0) skipReloadUntil = Date.now() + 2000;
         const stale = (data.fallbacks ?? []).filter((f) => !f.rewritten);
         const left: string[] = [];
@@ -562,7 +638,10 @@ export function initCopyEditor(): void {
           // An emptied string leaves no text to hover, so the strip is the only route back to it.
           const was = data.was;
           const list = readTodo().filter((e) => !(e.kind === 'restore' && e.key === key));
-          writeTodo([...list, { kind: 'restore', key, value: was }]);
+          writeTodo([
+            ...list,
+            { kind: 'restore', key, value: was, valueEn: data.wasEn ?? null, insert: data.removed === true },
+          ]);
           paintStanding();
         }
         if (left.length) {
@@ -574,9 +653,11 @@ export function initCopyEditor(): void {
         // used to answer by itself — whether the screen behind the panel is showing the new words.
         note.textContent = data.unchanged
           ? 'ללא שינוי'
-          : patched > 0
-            ? `נשמר · עודכן ב-${patched} מקומות בלי לרענן`
-            : 'נשמר · הדף יתרענן';
+          : data.removed
+            ? 'השורה הוסרה מהרשימה'
+            : patched > 0
+              ? `נשמר · עודכן ב-${patched} מקומות בלי לרענן`
+              : 'נשמר · הדף יתרענן';
         closePanel();
       } catch {
         note.dataset.bad = '1';

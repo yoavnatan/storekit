@@ -19,7 +19,11 @@ export function placeholdersOf(text: string): string[] {
  * matching `copy:apply` — a textarea leaves the same marks a hand-edited text file does.
  */
 export function tidy(raw: string): string {
-  return raw.trim().replace(/ {2,}/g, ' ');
+  // `\r` goes first, and not for tidiness: a carriage return is a JavaScript LineTerminator, so one
+  // reaching `translations.ts` raw would leave a file that does not parse. Text pasted out of Word
+  // or off a Windows machine carries `\r\n`, and a textarea is a paste target. `escapeLiteral`
+  // covers it too — this is the layer that keeps it out of the string in the first place.
+  return raw.replace(/\r\n?/g, '\n').trim().replace(/ {2,}/g, ' ');
 }
 
 export type EditResult =

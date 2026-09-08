@@ -27,7 +27,14 @@ import {
   REGENERATE_AFTER,
 } from '../src/lib/dev-copy-edit.js';
 import { devCopyMap } from '../src/lib/dev-copy-map.js';
-import { scanLanguageBlock, replaceLeaves } from '../scripts/lib/translations-source.mjs';
+import {
+  scanLanguageBlock,
+  replaceLeaves,
+  removeLeafLine,
+  insertLeafLine,
+  arrayIndexOf,
+  siblingsOf,
+} from '../scripts/lib/translations-source.mjs';
 
 const REPO = path.join(import.meta.dirname, '..');
 
@@ -178,6 +185,26 @@ describe('writing one string back into translations.ts', () => {
     expect(out.replace("'התחברות'", "'כניסה'")).toBe(fixture);
   });
 
+  it('escapes a carriage return, which would otherwise produce a file that does not parse', () => {
+    // Not a wrong string — a broken FILE. `\r` is a JavaScript LineTerminator, so one written raw
+    // into a single-quoted literal ends the literal and takes the dev server and the build with it.
+    // Reachable: text pasted out of Word carries `\r\n`, and the inline editor is a paste target.
+    const leaves = scanLanguageBlock(fixture, 'he');
+    const leaf = leaves.find((l) => l.key === 'nav.login')!;
+    const out = replaceLeaves(fixture, [{ leaf, value: 'שתי\r\nשורות' }]);
+    expect(out).toContain("login: 'שתי\\r\\nשורות'");
+    expect(out).not.toMatch(/login: '[^']*\r/);
+    // And it survives the round trip, so the editor reopens on what it wrote.
+    expect(scanLanguageBlock(out, 'he').find((l) => l.key === 'nav.login')?.value).toBe('שתי\r\nשורות');
+  });
+
+  it('never lets one reach the file in the first place', () => {
+    // Two layers on purpose: `escapeLiteral` above is what makes a stray `\r` harmless, and `tidy`
+    // is what keeps it out of the string, so what is stored is the text a person meant to type.
+    expect(tidy('שתי\r\nשורות')).toBe('שתי\nשורות');
+    expect(validateEdit('א', 'שתי\r\nשורות')).toEqual({ ok: true, value: 'שתי\nשורות' });
+  });
+
   it('does not confuse the two language blocks', () => {
     const english = scanLanguageBlock(fixture, 'en');
     expect(english.find((l) => l.key === 'nav.home')?.value).toBe('Home');
@@ -297,6 +324,98 @@ describe('the strings that are drawn, not read', () => {
 
   it('says nothing for a string that is only ever read at runtime', () => {
     expect(regenerateFor('nav.home')).toBeNull();
+  });
+});
+
+describe('deleting a LIST item takes the line, not just the words', () => {
+  const fixture = [
+    'export const translations = {',
+    '  he: {',
+    '    dashboard: {',
+    '      points: [',
+    "        'ראשון',",
+    '        // a comment that belongs to the item under it',
+    "        'שני',",
+    "        'שלישי',",
+    '      ],',
+    '    },',
+    '  },',
+    "  en: { dashboard: { points: ['first', 'second', 'third'] } },",
+    '};',
+  ].join('\n');
+
+  const heLeaf = (src: string, key: string) => scanLanguageBlock(src, 'he').find((l) => l.key === key)!;
+
+  it('knows an array position from a plain key', () => {
+    expect(arrayIndexOf('dashboard.points.2')).toBe(2);
+    expect(arrayIndexOf('dashboard.title')).toBeNull();
+    // A bare top-level number has no parent array, and must not be treated as an item of one.
+    expect(arrayIndexOf('0')).toBeNull();
+  });
+
+  it('removes the whole line and leaves the comment above it alone', () => {
+    const out = removeLeafLine(fixture, heLeaf(fixture, 'dashboard.points.1'));
+    expect(out).not.toContain("'שני'");
+    expect(out).toContain('a comment that belongs to the item under it');
+    expect(scanLanguageBlock(out, 'he').map((l) => l.value)).toEqual(['ראשון', 'שלישי']);
+  });
+
+  it('takes only the literal when the array is written on one line', () => {
+    const oneLine = scanLanguageBlock(fixture, 'en').find((l) => l.key === 'dashboard.points.1')!;
+    const out = removeLeafLine(fixture, oneLine);
+    expect(scanLanguageBlock(out, 'en').map((l) => l.value)).toEqual(['first', 'third']);
+    // The line survived AS a line — this is the branch that must not eat its neighbours.
+    expect(out).toContain('en: { dashboard: { points: [');
+  });
+
+  it('puts a removed item back at the index it came from', () => {
+    const gone = removeLeafLine(fixture, heLeaf(fixture, 'dashboard.points.1'));
+    const anchor = scanLanguageBlock(gone, 'he').find((l) => l.key === 'dashboard.points.1')!;
+    expect(scanLanguageBlock(insertLeafLine(gone, anchor, 'שני'), 'he').map((l) => l.value)).toEqual([
+      'ראשון',
+      'שני',
+      'שלישי',
+    ]);
+  });
+
+  it('appends when the removed item was the last one', () => {
+    const gone = removeLeafLine(fixture, heLeaf(fixture, 'dashboard.points.2'));
+    const siblings = siblingsOf(scanLanguageBlock(gone, 'he'), 'dashboard.points.2');
+    const back = insertLeafLine(gone, siblings[siblings.length - 1], 'שלישי', true);
+    expect(scanLanguageBlock(back, 'he').map((l) => l.value)).toEqual(['ראשון', 'שני', 'שלישי']);
+  });
+
+  it('keeps an apostrophe intact on the way back in', () => {
+    const gone = removeLeafLine(fixture, heLeaf(fixture, 'dashboard.points.1'));
+    const anchor = scanLanguageBlock(gone, 'he').find((l) => l.key === 'dashboard.points.1')!;
+    const back = insertLeafLine(gone, anchor, "it's back");
+    expect(scanLanguageBlock(back, 'he').find((l) => l.key === 'dashboard.points.1')?.value).toBe("it's back");
+  });
+});
+
+describe('a deletion crosses into the English block, a reword does not', () => {
+  it('mirrors a deletion into `en`, and puts a restored line back into both', () => {
+    // `tests/i18n-parity.test.ts` fails on a key empty on one side only AND on arrays of different
+    // lengths, so deleting a bullet in Hebrew alone is a red suite with no visible cause. The
+    // counter-example is the route as it was before this existed — writing only the Hebrew — which
+    // is exactly the diff a later tidy-up produces.
+    const offenders = sourceGuard({
+      file: 'src/pages/api/dev/copy.ts',
+      rule: 'a deletion is applied to the English twin, and a restore is inserted into both blocks',
+      find: (src) => {
+        const missing: string[] = [];
+        if (!/const twin = value === ''\s*\?\s*mirrorDeletion\(/.test(src)) {
+          missing.push('the write path does not mirror a deletion into `en`');
+        }
+        if (!/insertInto\(withHe, 'en'/.test(src)) missing.push('a restored line goes back into `he` only');
+        return missing;
+      },
+      mustReject: `
+        const removed = value === '' && arrayIndexOf(key) !== null;
+        fs.writeFileSync(SOURCE, removed ? removeLeafLine(src, leaf) : replaceLeaves(src, [{ leaf, value }]), 'utf8');
+      `,
+    });
+    expect(offenders).toEqual([]);
   });
 });
 

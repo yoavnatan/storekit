@@ -28,3 +28,7 @@ export function unescapeLiteral(raw: string): string;
 export function escapeLiteral(value: string): string;
 export function replaceLeaves(src: string, changes: { leaf: CopyLeaf; value: string }[]): string;
 export function sourceFiles(): Generator<string>;
+export function arrayIndexOf(key: string): number | null;
+export function siblingsOf(leaves: CopyLeaf[], key: string): CopyLeaf[];
+export function removeLeafLine(src: string, leaf: CopyLeaf): string;
+export function insertLeafLine(src: string, anchor: CopyLeaf, value: string, after?: boolean): string;
