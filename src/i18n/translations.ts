@@ -642,7 +642,7 @@ export const translations = {
       // to is worse than no line. What replaces them is not prose — inside a shop the drawer holds
       // that shop's cart and nothing else, and the two strings below are the signpost that keeps
       // the rest from LOOKING lost. Never a queue: no "1 מתוך 3", no "continue to the next store".
-      elsewhereTitle: 'שמור לכם גם בחנויות אחרות',
+      elsewhereTitle: 'עגלות מחנויות אחרות',
       elsewhereCount: '{n} פריטים',
       elsewhereCountOne: 'פריט אחד',
       // "העגלה ריקה" over a list of two shops holding items is the site contradicting itself, and
@@ -3334,7 +3334,7 @@ export const translations = {
       subtotal: 'Subtotal',
       cartTotal: 'Cart total',
       checkout: 'Checkout',
-      elsewhereTitle: 'Also saved for you at other stores',
+      elsewhereTitle: 'Carts at other stores',
       elsewhereCount: '{n} items',
       elsewhereCountOne: '1 item',
       emptyHere: 'Nothing from this store yet',

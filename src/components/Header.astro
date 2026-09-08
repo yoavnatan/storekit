@@ -581,10 +581,17 @@ const strEmpty   = t.store.noProductsFound;
             (function () {
               try {
                 var cartCount = 0;
+                // The shop this page belongs to, or '' off a storefront. Server-rendered on the
+                // <body> tag, which is already parsed by the time this inline script runs — the
+                // header is inside it.
+                var here = (document.body && document.body.dataset.storeSlug) || '';
                 for (var i = 0; i < localStorage.length; i++) {
                   var k = localStorage.key(i);
                   if (!k || k.indexOf('store_cart_v2_') !== 0) continue;
                   var c = JSON.parse(localStorage.getItem(k) || 'null') || {};
+                  // Inside a shop the badge counts THAT shop only, same as getCount(slug) and same
+                  // as the drawer under it.
+                  if (here && c.storeSlug !== here) continue;
                   var cartItems = c.items ? Object.values(c.items) : [];
                   // MUST stay identical to getActiveStoreCarts() in lib/cart.js — an
                   // unavailable line is listed in the drawer but is not part of what the
@@ -859,7 +866,10 @@ const strEmpty   = t.store.noProductsFound;
   function refresh(opts?: { animate?: boolean }) {
     const el = document.getElementById('cart-count');
     if (!el) return;
-    const count = getCount();
+    // The shop the shopper is inside, or null off a storefront — `<body data-store-slug>` is set by
+    // BaseLayout on the server, which is also what the drawer reads, so the badge and the drawer
+    // can never disagree about which shop is current.
+    const count = getCount(document.body.dataset.storeSlug || null);
     updateBadge(el, count > 0 ? String(count) : null, opts);
   }
 

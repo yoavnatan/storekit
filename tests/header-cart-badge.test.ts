@@ -33,7 +33,10 @@ function extractSeedScript(): string {
   return seed[0]!;
 }
 
-function paintBadges(): void {
+/** `here` = the shop the page belongs to, as BaseLayout writes it onto <body>. Empty means the
+ *  shopper is not inside a shop (home, search, /stores), where the badge is the whole bag. */
+function paintBadges(here = ''): void {
+  document.body.dataset.storeSlug = here;
   document.body.innerHTML = '<span id="cart-count" hidden></span><span id="wishlist-count" hidden></span>';
   new Function(extractSeedScript())();
 }
@@ -92,13 +95,45 @@ describe('header cart badge: inline seed agrees with lib/cart getCount()', () =>
   ];
 
   for (const [name, setup] of cases) {
-    it(`agrees for ${name}`, () => {
-      setup();
-      paintBadges();
-      const truth = getCount();
-      expect(seededCart() ?? '0').toBe(String(truth > 0 ? truth : 0));
-    });
+    // Every case is run off a storefront AND inside each shop it touches: the seed and the module
+    // now both narrow to one shop, and a disagreement about WHICH shop rolls the badge exactly the
+    // way a disagreement about the count did.
+    for (const here of ['', 'alpha', 'beta']) {
+      it(`agrees for ${name}${here ? ` (inside ${here})` : ''}`, () => {
+        setup();
+        paintBadges(here);
+        const truth = getCount(here || null);
+        expect(seededCart() ?? '0').toBe(String(truth > 0 ? truth : 0));
+      });
+    }
   }
+
+  it('inside a shop the badge counts that shop alone', () => {
+    // Owner, 2026-09-08: the drawer under this icon shows one shop's cart, so a badge counting
+    // every shop names a number the drawer does not contain.
+    writeCart('alpha', { 'a|': line('a'), 'b|': line('b') });
+    writeCart('beta', { 'c|': line('c') });
+
+    paintBadges('alpha');
+    expect(seededCart()).toBe('2');
+    expect(getCount('alpha')).toBe(2);
+
+    paintBadges('beta');
+    expect(seededCart()).toBe('1');
+    expect(getCount('beta')).toBe(1);
+
+    // And off a storefront it is the whole bag, which is what the drawer shows there.
+    paintBadges('');
+    expect(seededCart()).toBe('3');
+    expect(getCount()).toBe(3);
+  });
+
+  it('hides the badge in a shop the buyer has not added anything from', () => {
+    writeCart('alpha', { 'a|': line('a') });
+    paintBadges('gamma');
+    expect(document.getElementById('cart-count')!.hidden).toBe(true);
+    expect(getCount('gamma')).toBe(0);
+  });
 
   it('leaves the badge hidden when the seed counts nothing', () => {
     writeCart('alpha', { 'a|': line('a', { gone: true }) });

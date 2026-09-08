@@ -256,8 +256,22 @@ export function getActiveStoreCarts(): ActiveStoreCart[] {
   return result;
 }
 
-export function getCount(): number {
-  return getActiveStoreCarts().reduce((s, c) => s + c.count, 0);
+/**
+ * The header badge's number.
+ *
+ * **Scoped to one shop when the shopper is inside one (owner, 2026-09-08):** *"אם אני נמצא בתוך
+ * חנות, לא אהבתי שהמספר שעל העגלה מייצג גם מוצרים מחנויות אחרות."* The drawer beneath that icon
+ * already shows one shop's cart, so a badge counting every shop labelled a number the drawer does
+ * not contain. Off a storefront there is no current shop and the badge is the whole bag, which is
+ * what the drawer shows there too.
+ *
+ * `storeSlug` is passed in rather than read from the DOM here: this module is also loaded by the
+ * checkout page and by tests, and a lib that reaches into `document.body` cannot be either.
+ */
+export function getCount(storeSlug?: string | null): number {
+  return getActiveStoreCarts()
+    .filter((c) => !storeSlug || c.storeSlug === storeSlug)
+    .reduce((s, c) => s + c.count, 0);
 }
 
 /** What this store's line-up costs. An unavailable line contributes nothing — showing it inside
