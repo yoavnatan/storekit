@@ -171,6 +171,44 @@ describe('writing one string back into translations.ts', () => {
   });
 });
 
+describe('saving does not close the screen the sentence was on', () => {
+  it('keeps the hook that abandons Vite\'s full reload', () => {
+    // Writing translations.ts makes Vite reload the page, and the reload closed whatever was open:
+    // an edit modal, the bulk-upload panel — so fixing three lines in one dialog meant re-opening
+    // the dialog three times (owner, 2026-09-08: *"אני עושה שמור וזה מרענן וסוגר את זה וצריך לחזור
+    // לפתוח את זה... סיוט"*). The editor patches the DOM itself and skips that one reload.
+    //
+    // Nothing else can notice if this goes: the tool still saves, still shows the right words for a
+    // moment, and quietly goes back to being unusable inside a dialog. That is exactly the shape a
+    // source guard is for.
+    const offenders = sourceGuard({
+      file: 'src/scripts/dev/copy-editor.ts',
+      rule: "a vite:beforeFullReload listener throws to abandon the reload after an in-place patch",
+      find: (src) =>
+        /import\.meta\.hot[\s\S]{0,200}?'vite:beforeFullReload'[\s\S]{0,400}?throw new Error/.test(src)
+          ? []
+          : ['no vite:beforeFullReload hook that throws'],
+      mustReject: `
+        async function save(): Promise<void> {
+          const res = await fetch('/api/dev/copy', { method: 'POST' });
+          reindex(key, area.value);
+          closePanel();
+        }
+      `,
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  it('only ever skips ONE reload, and only just after a save', () => {
+    // A blanket suppression would break every other edit on the dev server — mine to a component
+    // would stop refreshing his page, which is a worse bug than the one being fixed. The window is
+    // a deadline set at save time and cleared the moment it is used.
+    const src = fs.readFileSync(path.join(REPO, 'src/scripts/dev/copy-editor.ts'), 'utf8');
+    expect(src).toMatch(/skipReloadUntil = Date\.now\(\) \+ \d+/);
+    expect(src).toMatch(/if \(Date\.now\(\) > skipReloadUntil\) return;\s*\n\s*skipReloadUntil = 0;/);
+  });
+});
+
 describe('the strings that are drawn, not read', () => {
   /**
    * Every `translations.he.x.y` / `translations.en.x.y` a generator reads, i.e. every string whose

@@ -35,8 +35,23 @@ interface Match {
 }
 
 const ARMED_KEY = '__dev_copy_armed';
+/**
+ * Commands left outstanding by edits made so far, kept across the reload that Vite fires the moment
+ * `translations.ts` is written.
+ *
+ * Saving a string that is DRAWN into committed files is the one case where the editor has something
+ * the owner must act on, and it is also the one message the reload was guaranteed to destroy — it
+ * appeared in the panel for the fraction of a second before Vite swapped the page. A note that
+ * cannot be read is worse than none: the edit still looks finished.
+ */
+const TODO_KEY = '__dev_copy_todo';
 /** Attributes a visitor reads that come from the dictionary. `value` covers submit buttons. */
 const TEXT_ATTRS = ['placeholder', 'aria-label', 'title', 'alt', 'value'];
+
+/** The server's `tidy`, mirrored for the one case the response did not carry the saved value. */
+function tidyLike(raw: string): string {
+  return raw.trim().replace(/ {2,}/g, ' ');
+}
 
 function normalise(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -55,6 +70,107 @@ function readDict(): Dict {
   } catch {
     return {};
   }
+}
+
+function readTodo(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(sessionStorage.getItem(TODO_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((c): c is string => typeof c === 'string') : [];
+  } catch {
+    // A private window throws on read, and a hand-edited value parses to anything at all.
+    return [];
+  }
+}
+
+function writeTodo(list: string[]): void {
+  try {
+    sessionStorage.setItem(TODO_KEY, JSON.stringify(list));
+  } catch {
+    // Nothing to do — the strip still shows for this page, it just will not survive the reload.
+  }
+}
+
+/**
+ * Writing `translations.ts` makes Vite reload the whole page, and the reload is the thing that made
+ * this tool painful to use: a sentence inside an edit modal, or inside the bulk-upload panel, was
+ * saved — and the save closed the screen it was on, so fixing three lines in one dialog meant
+ * re-opening the dialog three times (owner, 2026-09-08: *"אני עושה שמור וזה מרענן וסוגר את זה
+ * וצריך לחזור לפתוח את זה... סיוט"*).
+ *
+ * So the editor patches the screen itself and tells the Vite client to skip that one reload.
+ * Throwing out of `vite:beforeFullReload` is how it is abandoned — the client notifies its listeners
+ * before calling `location.reload()` and does not catch.
+ *
+ * The window is deliberately short and single-shot: the NEXT full reload, from any source, is a real
+ * one. An edit to a component of mine must still refresh the page it is on.
+ */
+let skipReloadUntil = 0;
+
+if (import.meta.hot) {
+  import.meta.hot.on('vite:beforeFullReload', () => {
+    if (Date.now() > skipReloadUntil) return;
+    skipReloadUntil = 0;
+    throw new Error('dev copy editor: text patched in place, reload skipped');
+  });
+}
+
+/**
+ * Put the new words everywhere the old ones are showing, and into the JSON that client renderers
+ * read, so a panel opened AFTER the edit says the new thing too.
+ *
+ * Returns the number of places changed, or -1 for a string the screen cannot be trusted to hold:
+ * one with a placeholder is printed with the hole already filled, so what is on screen is not the
+ * string that was edited and only a reload can be right.
+ */
+function applyOnScreen(key: string, oldValue: string, newValue: string): number {
+  if (/\{\w+\}/.test(oldValue) || /\{\w+\}/.test(newValue)) return -1;
+  const flat = normalise(oldValue);
+  if (!flat) return -1;
+
+  let hits = 0;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
+  for (const node of nodes) {
+    if (normalise(node.nodeValue ?? '') !== flat) continue;
+    node.nodeValue = newValue;
+    hits++;
+  }
+
+  for (const el of document.querySelectorAll<HTMLElement>('*')) {
+    for (const attr of TEXT_ATTRS) {
+      const raw = el.getAttribute(attr);
+      if (raw && normalise(raw) === flat) {
+        el.setAttribute(attr, newValue);
+        hits++;
+      }
+    }
+  }
+
+  // `#i18n-data` holds the same dotted tree, sliced per surface. A renderer that runs later reads it
+  // rather than the DOM, so without this the next modal would open saying the old thing.
+  const island = document.getElementById('i18n-data');
+  if (island?.textContent) {
+    try {
+      const data = JSON.parse(island.textContent) as Record<string, unknown>;
+      const path = key.split('.');
+      let node: Record<string, unknown> | undefined = data;
+      for (const segment of path.slice(0, -1)) {
+        node = node?.[segment] as Record<string, unknown> | undefined;
+        if (!node || typeof node !== 'object') break;
+      }
+      const leaf = path[path.length - 1];
+      if (node && typeof node[leaf] === 'string') {
+        node[leaf] = newValue;
+        island.textContent = JSON.stringify(data);
+        hits++;
+      }
+    } catch {
+      // Not shaped the way this expects — the DOM is still patched, which is what is on screen.
+    }
+  }
+
+  return hits;
 }
 
 export function initCopyEditor(): void {
@@ -126,6 +242,12 @@ export function initCopyEditor(): void {
     .dev-copy-note[data-bad="1"]{color:#b91c1c}
     .dev-copy-todo{margin-top:8px;padding:8px;border-radius:6px;background:#fef3c7;color:#78350f;
       font:500 11px/1.5 ui-monospace,monospace;direction:ltr;text-align:left;user-select:all}
+    .dev-copy-standing{position:fixed;inset-inline-start:12px;bottom:56px;z-index:2147482998;
+      max-width:340px;background:#fef3c7;color:#78350f;border:1px solid #f59e0b55;border-radius:8px;
+      padding:8px 10px;box-shadow:0 2px 10px #0002;direction:rtl;font:500 11px/1.5 system-ui,sans-serif}
+    .dev-copy-standing-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+    .dev-copy-standing-x{margin-inline-start:auto;border:0;background:none;cursor:pointer;
+      color:inherit;font:600 14px/1 system-ui,sans-serif;padding:0 2px}
     body.dev-copy-armed *{cursor:crosshair !important}
   `;
   document.head.appendChild(style);
@@ -139,6 +261,44 @@ export function initCopyEditor(): void {
   ring.className = 'dev-copy-ring';
   ring.hidden = true;
   document.body.appendChild(ring);
+
+  // Outstanding redraw commands, shown whether or not the editor is armed: the reason to disarm is
+  // usually that the editing is finished, which is exactly when this still has to be read.
+  const standing = document.createElement('div');
+  standing.className = 'dev-copy-standing';
+  standing.hidden = true;
+  document.body.appendChild(standing);
+
+  function paintStanding(): void {
+    const list = readTodo();
+    standing.textContent = '';
+    standing.hidden = !list.length;
+    if (!list.length) return;
+
+    const head = document.createElement('div');
+    head.className = 'dev-copy-standing-head';
+    head.append('הטקסט נשמר, אבל הוא מצויר לתוך קבצים — צריך לצייר מחדש:');
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'dev-copy-standing-x';
+    dismiss.setAttribute('aria-label', 'סגירה');
+    dismiss.textContent = '×';
+    dismiss.addEventListener('click', () => {
+      writeTodo([]);
+      paintStanding();
+    });
+    head.appendChild(dismiss);
+    standing.appendChild(head);
+
+    // textContent per command rather than one innerHTML: the strings come from our own map today,
+    // and a map is exactly the thing someone later fills from somewhere else.
+    for (const command of list) {
+      const row = document.createElement('div');
+      row.className = 'dev-copy-todo';
+      row.textContent = command;
+      standing.appendChild(row);
+    }
+  }
 
   let panel: HTMLDivElement | null = null;
 
@@ -271,6 +431,8 @@ export function initCopyEditor(): void {
         const data = (await res.json()) as {
           ok: boolean;
           error?: string;
+          was?: string;
+          now?: string;
           unchanged?: boolean;
           fallbacks?: { file: string; line: number; rewritten: boolean }[];
           regenerate?: string | null;
@@ -280,11 +442,17 @@ export function initCopyEditor(): void {
           note.textContent = data.error ?? 'השמירה נכשלה';
           return;
         }
-        // The reverse index has to move with the dictionary, not just the dictionary. Vite reloads
-        // the page a moment later and rebuilds both, but "a moment later" is long enough to hover
-        // the sentence you just changed — and finding it unmatchable reads as the tool losing track
-        // of its own edit.
-        reindex(key, area.value.trim().replace(/ {2,}/g, ' '));
+        // The reverse index has to move with the dictionary, not just the dictionary — the sentence
+        // you just changed has to stay hoverable, and the page is no longer reloading underneath to
+        // rebuild it.
+        const saved = data.now ?? tidyLike(area.value);
+        reindex(key, saved);
+
+        // Patch the screen and keep it. The reload is skipped only when the patch actually landed:
+        // a string with a placeholder is printed with the hole filled, so the words on screen are
+        // not the words that were edited, and there the reload is the only honest answer.
+        const patched = applyOnScreen(key, data.was ?? '', saved);
+        if (patched >= 0) skipReloadUntil = Date.now() + 2000;
         const stale = (data.fallbacks ?? []).filter((f) => !f.rewritten);
         const left: string[] = [];
         if (stale.length) {
@@ -296,7 +464,11 @@ export function initCopyEditor(): void {
         if (data.regenerate) {
           // The tagline is drawn into the lockups as outlines, so the dictionary being right does
           // not make the logo right. Nothing downstream can notice that — not the reload, not the
-          // suite — which is why it is said here, and why the panel stays open holding it.
+          // suite. Recorded BEFORE it is shown, because the write to translations.ts has already
+          // started Vite's reload and this panel may not survive to be read.
+          const list = readTodo();
+          if (!list.includes(data.regenerate)) writeTodo([...list, data.regenerate]);
+          paintStanding();
           todo.textContent = data.regenerate;
           todo.hidden = false;
           left.push('צריך לצייר מחדש');
@@ -306,7 +478,13 @@ export function initCopyEditor(): void {
           note.textContent = `נשמר · ${left.join(' · ')}`;
           return;
         }
-        note.textContent = data.unchanged ? 'ללא שינוי' : 'נשמר';
+        // "נשמר ורוענן" would be a lie now, and "נשמר" alone leaves the open question the reload
+        // used to answer by itself — whether the screen behind the panel is showing the new words.
+        note.textContent = data.unchanged
+          ? 'ללא שינוי'
+          : patched > 0
+            ? `נשמר · עודכן ב-${patched} מקומות בלי לרענן`
+            : 'נשמר · הדף יתרענן';
         closePanel();
       } catch {
         note.dataset.bad = '1';
@@ -374,4 +552,5 @@ export function initCopyEditor(): void {
   });
 
   paintToggle();
+  paintStanding();
 }
