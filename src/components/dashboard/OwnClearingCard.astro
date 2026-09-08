@@ -17,11 +17,15 @@
  * in `ClearingDetailsForm` uses — `btn--accent` for the chosen one — so the two choosers on this
  * screen say "picked" the same way.
  *
- * ── The providers we cannot talk to yet are RENDERED, disabled, with the reason ──
- * Leaving uPay out would read as "we don't support it" to a seller who uses it, and he would go
- * looking. Saying "not yet, because they don't publish their fields" is the truth, is short, and is
- * the one sentence that stops him from filling a form that could never work. `/api/seller/own-clearing`
- * refuses these ids independently — the disabled attribute is the courtesy, the server is the gate.
+ * ── The providers we cannot talk to yet are NOT shown at all (owner, 2026-09-08) ──
+ * They were rendered disabled with a sentence explaining why. He read the screen and said the
+ * quiet part: *"זה לא צריך להיות משהו שהיוזר בכלל רואה"*. He is right — a greyed-out row with an
+ * apology beside it is our roadmap on a seller's settings screen, and it makes a list of six read
+ * as a list of six choices, one of which is broken. A seller whose processor is missing learns
+ * that from the list itself.
+ * The registry still HOLDS them (`clearing-providers.ts`), the route still refuses them by id, and
+ * `connectableProviders()` is what this list is built from — so an entry becomes visible the day
+ * its fields are read from the vendor, and not before.
  *
  * ── What is on file is a HINT, never a value ──
  * A secret comes back from the server as four characters (`secret-box.ts#secretHint`), and the
@@ -42,8 +46,6 @@ import type { getT } from '../../i18n/index.js';
 interface Props {
   /** Verified providers, in registry order — what a seller may actually pick today. */
   providers: ClearingProvider[];
-  /** Listed but not offered: no vendor documentation, so no field list. */
-  coming: ClearingProvider[];
   /** The provider he is on, or null when he has never connected one. */
   currentId: string | null;
   /** Per field name: is it set, and the hint to show beside it. Never a secret's value. */
@@ -53,7 +55,7 @@ interface Props {
   d: ReturnType<typeof getT>['dashboard'];
 }
 
-const { providers, coming, currentId, onFile, missing, d } = Astro.props;
+const { providers, currentId, onFile, missing, d } = Astro.props;
 
 const current = providers.find((p) => p.id === currentId) ?? null;
 /** Connected AND nothing left to paste — the closed summary state, same shape the bank block uses. */
@@ -107,10 +109,6 @@ const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownCleari
         <span id="own-clearing-state" class:list={['font-semibold', current ? '' : '[color:var(--color-muted)]']}>
           {current ? d.ownClearingChosen.replace('{name}', current.name) : d.ownClearingNone}
         </span>
-        {/* Clearing the choice is a local undo — nothing is stored until he saves — so it is a quiet
-            ghost button and not a destructive one. Disconnecting an account that IS stored is a
-            different act and lives on the closed summary, behind a confirmation. */}
-        <button type="button" class="btn btn--ghost btn--sm" id="own-clearing-clear" hidden={!currentId}>{d.ownClearingClear}</button>
       </div>
 
       <div class="flex gap-2 flex-wrap" id="own-clearing-pick">
@@ -122,13 +120,7 @@ const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownCleari
             aria-pressed={p.id === currentId}
           >{p.name}</button>
         ))}
-        {coming.map((p) => (
-          <button type="button" class="btn btn--ghost btn--sm" disabled data-tooltip={d.ownClearingComingWhy}>
-            {p.name} · {d.ownClearingComing}
-          </button>
-        ))}
       </div>
-      {coming.length > 0 && <p class="muted m-0 mt-2 text-[0.76rem]">{d.ownClearingComingWhy}</p>}
     </fieldset>
 
     {/* One fieldset per provider, all server-rendered, all but the chosen one `hidden`. Rendering
@@ -166,6 +158,13 @@ const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownCleari
     <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="own-clearing-error" role="alert"></p>
     <div class="flex items-center gap-2 mt-3">
       <button type="submit" class="btn btn--sm" id="own-clearing-save">{d.ownClearingSave}</button>
+      {/* Beside Save, not up by the pills (owner, 2026-09-08). Undoing a choice is an ACTION, and
+          the actions of this form are on its action row — a control living next to the thing it
+          talks about is the arrangement everywhere else, and this was the exception. Clearing is a
+          local undo (nothing is stored until he saves), so it is a ghost button; disconnecting an
+          account that IS stored is destructive and lives on the closed summary behind a
+          confirmation. */}
+      <button type="button" class="btn btn--ghost btn--sm" id="own-clearing-clear" hidden={!currentId}>{d.ownClearingClear}</button>
       {/* Present always, hidden until there is something to go back to — cancelling with nothing
           saved would close the fields over an empty summary card. Same reasoning as the bank
           block's cancel. */}

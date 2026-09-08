@@ -298,7 +298,9 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
           <div class="field m-0 mb-3 max-w-[22ch]">
             <span class="text-[0.8rem] whitespace-nowrap">{d.subCardPhone}</span>
             <input type="tel" inputmode="tel" autocomplete="tel" class="input h-[2.6rem]" id="sub-card-phone" name="subCardPhone" />
-            <p class="muted m-0 mt-1 text-[0.78rem]">{d.subCardPhoneHint}</p>
+            {/* The hint under this field explained that the processor wants a cardholder phone and
+                that we would keep it — our storage behaviour, in a sentence, on a field labelled
+                "טלפון". The label is the whole message. */}
           </div>
         )}
         <div class="grid gap-3 sm:grid-cols-[minmax(0,22ch)_9ch_7ch]">

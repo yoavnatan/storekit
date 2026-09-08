@@ -54,7 +54,7 @@ import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 import { ensureMerchantAccount, clearingStatusFor, merchantKycFor, missingForClearingAccount } from '../../lib/seller-merchant.js';
 import { sellerClearingFor, forDisplay } from '../../lib/seller-own-clearing.js';
-import { CLEARING_PROVIDERS, connectableProviders } from '../../lib/clearing-providers.js';
+import { connectableProviders } from '../../lib/clearing-providers.js';
 
 import { paymeCategoryForStore } from '../../lib/merchant-category.js';
 import { publishHoldsFor, syncStorePublication } from '../../lib/store-publication.js';
@@ -449,10 +449,6 @@ const subscription = clearingStatus ? await subscriptionFor(sellerId) : null;
 const ownClearingRow = shows('payouts') ? await sellerClearingFor(sellerId) : null;
 const ownClearing = {
   providers: connectableProviders(),
-  // Listed but not offered — no vendor documentation, so no field list to ask for. The card renders
-  // them disabled with the reason rather than omitting them: a seller who uses one would otherwise
-  // read the gap as "not supported" and go looking (`clearing-providers.ts`).
-  coming: CLEARING_PROVIDERS.filter((p) => !p.fieldsVerified),
   currentId: ownClearingRow?.provider.id ?? null,
   // `forDisplay`, never the credentials: it answers per field with a flag and a four-character
   // hint, and a decrypted value must not reach a page (`seller-own-clearing.ts`'s one rule).

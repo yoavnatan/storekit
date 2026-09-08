@@ -52,7 +52,6 @@ function render({ currentId = '', missing = [] as string[], hintOnFile = '' } = 
         <div id="own-clearing-pick">
           <button type="button" data-provider="hyp" aria-pressed="${currentId === 'hyp'}">Hyp / יעד שריג</button>
           <button type="button" data-provider="payplus" aria-pressed="${currentId === 'payplus'}">PayPlus</button>
-          <button type="button" disabled>uPay · עוד לא זמין</button>
         </div>
         ${fieldset('hyp', [['masof', false], ['apiKey', true], ['passp', true]])}
         ${fieldset('payplus', [['paymentPageUid', false], ['apiKey', true], ['secretKey', true]])}
@@ -298,14 +297,16 @@ describe('the component the fixture above copies', () => {
     }
   });
 
-  it('renders the providers we cannot talk to yet as disabled, with the reason', () => {
-    // Omitting them would read as "not supported" to a seller who uses one, and he would go looking.
+  it('shows only the providers a seller can actually connect', () => {
+    /* They were rendered disabled with a sentence explaining why, and the owner read that screen:
+       *"זה לא צריך להיות משהו שהיוזר בכל רואה"*. A greyed-out row with an apology beside it is our
+       roadmap on a settings screen, and it turns a list of choices into a list one of which is
+       broken. The registry still holds them and the route still refuses them by id — what changed
+       is that the card is built from `connectableProviders()` alone. */
     const src = readSource(CARD);
-    expect(src).toContain('coming.map');
-    expect(src).toContain('disabled');
-    expect(src).toContain('ownClearingComingWhy');
-    // And they must never be `data-provider`, which is what the picker binds: a disabled button
-    // that could still be pressed by a script would set a provider the route refuses.
-    expect(src).not.toMatch(/coming\.map[\s\S]{0,400}data-provider=/);
+    expect(src).not.toContain('coming');
+    expect(src).not.toContain('ownClearingComingWhy');
+    // The pills come from the verified list and nothing else.
+    expect(src).toContain('providers.map');
   });
 });
