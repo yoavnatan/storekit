@@ -67,14 +67,27 @@ describe('who the credentials are written for', () => {
 });
 
 describe('which providers the route accepts', () => {
-  it('offers only providers whose fields were read from the vendor', async () => {
-    // The route's refusal for an unverified provider exists for the day one is added; today every
-    // entry has been read from its vendor, so what is asserted here is that state — a provider that
-    // appears in the list with no verified fields would be a seller filling in a form that can never
-    // work, and this fails the moment somebody adds one without reading the docs.
+  it('every provider a seller may pick has fields that were read from the vendor', async () => {
+    // A provider offered with no verified fields is a seller filling in a form that can never work,
+    // and he finds out on his first real buyer rather than here.
+    const { connectableProviders } = await import('../src/lib/clearing-providers.js');
+    for (const p of connectableProviders()) {
+      expect(p.fieldsVerified && p.fields.length > 0, `${p.id} is offered but unaskable`).toBe(true);
+    }
+  });
+
+  it('refuses the ones we cannot talk to yet, by name', async () => {
+    // uPay (owner, 2026-09-08) is the first entry we could not settle from the vendor — they sell
+    // the API document rather than publishing it, so the fields are unknown and the entry is listed
+    // rather than offered. The refusal has to happen HERE: without it a seller would pick it from a
+    // future settings screen, be told it saved, and find his shop still cannot take money.
     const { CLEARING_PROVIDERS } = await import('../src/lib/clearing-providers.js');
-    for (const p of CLEARING_PROVIDERS) {
-      expect(p.fieldsVerified && p.fields.length > 0, `${p.id} is listed but unaskable`).toBe(true);
+    const coming = CLEARING_PROVIDERS.filter((p) => !p.fieldsVerified);
+    expect(coming.length, 'this test asserts nothing if every provider is verified').toBeGreaterThan(0);
+    for (const p of coming) {
+      const res = await POST(ctx({ provider: p.id }));
+      expect(res.status, `${p.id} was accepted`).toBe(400);
+      expect(await res.json()).toMatchObject({ field: 'provider' });
     }
   });
 

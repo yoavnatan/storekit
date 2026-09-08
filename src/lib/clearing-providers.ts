@@ -129,6 +129,34 @@ export const CLEARING_PROVIDERS: ClearingProvider[] = [
       { name: 'apiKey', label: 'API Key', secret: true, help: 'נשלח בכל בקשה. אם אין לך, מבקשים מהתמיכה של Grow.' },
     ],
   },
+  {
+    id: 'upay',
+    name: 'uPay',
+    // ── Asked for by the owner (2026-09-08), and it is the first entry that CANNOT be verified from
+    // outside — which is exactly the case this flag exists for. ──
+    //
+    // Every other provider here was settled by reading the vendor: PayPlus and Grow publish a
+    // reference, Tranzila publishes an authentication page, and Cardcom's fields came out of their
+    // own WooCommerce plugin when their docs answered nothing. uPay publishes no developer
+    // documentation at all. Checked 2026-09-08: `upay.co.il/mdrykym` is a marketing guides index
+    // with no API section, no `docs.`/`developers.` host answers, and no public integration (plugin,
+    // SDK, repo) exists for the ISRAELI uPay — every "upay" package on GitHub and wordpress.org is a
+    // different company in Kuwait, Bangladesh or crypto. Their reseller check-box.co.il states the
+    // reason plainly: *"מסמך API – תוספת חד פעמית של 250 ש"ח עבור הקמה"*. The document is sold, not
+    // published.
+    //
+    // So the fields are NOT guessed. `feedback_verify_before_recommending`, and the header above:
+    // a field list from memory is worse than a missing provider, because the seller pastes what he
+    // was asked for and his first real buyer is the one who finds out. `fieldsVerified: false` keeps
+    // it out of `connectableProviders()` and makes `/api/seller/own-clearing` refuse it outright.
+    //
+    // **To finish it:** buy or request the API document (03-8008729 / their contact form), then fill
+    // `fields` from it and quote the wire names here the way the four above do. That is a purchase
+    // decision, so it is the owner's — it is in GO_LIVE_CHECKLIST §3.1 rather than left here alone.
+    fieldsVerified: false,
+    source: 'no public developer documentation — checked upay.co.il 2026-09-08; the API document is a paid, support-issued PDF',
+    fields: [],
+  },
 ];
 
 /** The providers a seller may pick today. Everything else is listed as coming, never offered. */
