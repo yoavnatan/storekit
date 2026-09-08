@@ -11,8 +11,15 @@ import { PAYME_SUB_STATUS } from './payment-payme.js';
 // the top stage ("visited the register page") needs a captured pageview.
 export interface SellerFunnel {
   registerViews: number; // distinct sessions that opened /seller/register
-  registered: number;    // seller accounts created
-  withStore: number;     // sellers who created ≥1 store
+  /**
+   * EVERY account with a login, not only the ones that set out to sell: a buyer account and a
+   * seller account are one row in `sellers` (0001_init.sql, at the table), and owning a store is
+   * what makes an account a seller. The row was labelled "נרשמו כמוכרים" until 2026-09-08, which
+   * read as a population it was never counting — and it is the denominator of the step below it.
+   * The label is now what the query is.
+   */
+  registered: number;
+  withStore: number;     // accounts that created ≥1 store — the same figure as PlatformOverview.sellersWithStore
   withProduct: number;   // sellers with ≥1 store that has ≥1 product
   /**
    * ── The four stages between a built shop and a selling one (2026-08-24) ──

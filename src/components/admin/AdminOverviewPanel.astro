@@ -21,9 +21,21 @@ const { overview, emptyStoreCount, emptyStoresHref } = Astro.props;
     the only tab revenue is actually derived from — there's no dedicated
     revenue tab. */}
 <div class="admin-stat-grid admin-stat-grid--aligned">
+  {/* **"נרשמו לאתר", not "מוכרים" (owner, סשן א׳ §5: *"מס׳ יוזרים שנרשמו לאתר - ולכמה מהם יש
+      חנות"*).** The number never changed; the label was wrong. A buyer account and a seller account
+      are one row in `sellers` — 0001_init.sql says so at the table — so this card was counting every
+      shopper who ever made an account and calling them sellers, on the one screen that answers "is
+      the business working". The pair below is the honest reading, and it is the funnel's top two
+      steps at a glance: the full walk stays on the נתונים tab. */}
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="sellers">
-    <dt>מוכרים</dt>
-    <dd>{overview.totalSellers}</dd>
+    <dt title="כל מי שפתח חשבון באתר — קונה ומוכר הם אותה רשומה, ומה שהופך חשבון למוכר זו חנות">נרשמו לאתר</dt>
+    <dd>{overview.totalUsers}</dd>
+  </button>
+  <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="sellers">
+    {/* Distinct OWNERS, so it can never exceed the card beside it — a seller with three shops is
+        one person past registration. Demo stores excluded, same as the חנויות card. */}
+    <dt title="מתוך הנרשמים — כמה מחזיקים חנות אחת לפחות (ללא חנויות ההדגמה)">מהם עם חנות</dt>
+    <dd>{overview.sellersWithStore}</dd>
   </button>
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="stores">
     {/* Real stores only — the showcase ones are counted separately rather than

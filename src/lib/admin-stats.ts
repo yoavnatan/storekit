@@ -87,7 +87,22 @@ export function getStoreRevenueMap(orders: Order[], monthKey: string): Map<strin
 }
 
 export interface PlatformOverview {
-  totalSellers: number;
+  /**
+   * Every account with a login, and the name says so (2026-09-08). It used to be `totalSellers` and
+   * the card above it read "מוכרים", which was never what the number counted: a buyer account and a
+   * seller account are ONE row in `sellers` (0001_init.sql says so at the table), and owning a store
+   * is the only thing that makes an account a seller. So the platform's headline roster figure was
+   * inflated by every shopper who ever made an account, on the one screen the owner uses to judge
+   * whether the business is working.
+   *
+   * The honest pair is this and `sellersWithStore` below — which is also the question he asked for
+   * (*"מס׳ יוזרים שנרשמו לאתר - ולכמה מהם יש חנות"*).
+   */
+  totalUsers: number;
+  /** Of `totalUsers`, how many own at least one REAL store — same demo exclusion as `totalStores`,
+   *  so the two cards can be read against each other. `seller-funnel.ts#withStore` is the same
+   *  count from the database side and `tests/reporting-invariants.test.ts` holds them equal. */
+  sellersWithStore: number;
   /** REAL stores only. The showcase/demo stores (lib/demo-stores.ts) are excluded:
    *  they are platform-owned fixtures that refuse checkout outright, so counting them
    *  told the owner he had more of a marketplace than he does — the one number on
@@ -112,10 +127,14 @@ export interface PlatformOverview {
 /** The roster half of the Overview card. The three ORDER figures are a query
  *  (`order-reporting.ts#getPlatformOrderTotals`) and are merged in by the caller — this is what is
  *  left once the part that had to scan every order stopped being arithmetic over an array. */
-export function getStoreOverview(totalSellers: number, stores: Store[]): Pick<PlatformOverview, 'totalSellers' | 'totalStores' | 'demoStores'> {
+export function getStoreOverview(totalUsers: number, stores: Store[]): Pick<PlatformOverview, 'totalUsers' | 'sellersWithStore' | 'totalStores' | 'demoStores'> {
   const realStores = stores.filter((s) => !isDemoStore(s));
   return {
-    totalSellers,
+    totalUsers,
+    // DISTINCT owner, not `realStores.length`: a seller with three shops is one person who got past
+    // registration, and the pair "registered → has a shop" is meaningless if the second number can
+    // exceed the first.
+    sellersWithStore: new Set(realStores.map((s) => s.sellerId)).size,
     totalStores: realStores.length,
     demoStores: stores.length - realStores.length,
   };
