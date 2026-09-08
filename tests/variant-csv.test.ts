@@ -243,3 +243,99 @@ describe('productsToCsv variant round trip', () => {
     expect(raw!.cells.option1Name).toBeFalsy();
   });
 });
+
+/**
+ * ── A product's own columns are stated ONCE, not on every combo (owner, 2026-09-08) ──
+ *
+ * *"בלתי אפשרי לערוך את זה, זה תוקע לחלוטין את המחשב באקסל, אז מה השימוש של זה בכלל?"* — on the
+ * `סהר` showcase store the export was 112 products, 1,163 rows, and every one of those rows carried
+ * the same name, price, category, tag list, sale price, weight and a description up to 360
+ * characters long. 350KB of file for about 25KB of facts.
+ *
+ * It was worse than noise. `finalizeGroup` reads the shared fields from the group's FIRST row and
+ * ignores the rest, so editing the price on row 5 of 12 changed nothing and reported nothing — a
+ * silent no-op on a money column.
+ *
+ * Continuation rows are blank now, which is Shopify's own convention for the same file, and the
+ * same store exports at 148KB. What each case below holds:
+ *   · the export really does leave them blank, and keeps what identifies the row;
+ *   · that file round-trips to the same product, which is the only thing that makes it safe;
+ *   · a file with every value REPEATED — every export written before today, and every file a seller
+ *     keeps in his own system — still imports identically, because the pass fills blanks and never
+ *     overwrites;
+ *   · a group never inherits from the product above it.
+ */
+describe('a variant group states the product once', () => {
+  const cats = [{ id: 'c1', storeId: 's1', name: 'הנעלה', parentId: null, position: 0 }] as unknown as StoreCategory[];
+  const shoe = {
+    id: 'p9', storeId: 's1', slug: 'boot', name: 'מגף', description: 'תיאור ארוך מאוד',
+    price: 559, stock: 30, categoryId: 'c1', tags: ['חורף'],
+    variants: [{ name: 'מידה', options: ['37', '38'] }],
+    variantStock: { [comboKey({ מידה: '37' })]: 20, [comboKey({ מידה: '38' })]: 10 },
+    createdAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as StoreProduct;
+
+  /** The export's data rows, split on commas — every cell in these fixtures is comma-free. */
+  const exported = (): string[][] =>
+    productsToCsv([shoe], cats, 'he').split('\r\n').slice(1).map((l) => l.split(','));
+  const at = (r: string[], key: (typeof COLS)[number]): string => r[COLS.indexOf(key)] ?? '';
+
+  it('writes the shared columns on the first row and blanks them on the rest', () => {
+    const [first, second] = exported();
+    expect(at(first!, 'name')).toBe('מגף');
+    expect(at(first!, 'price')).toBe('559');
+    expect(at(first!, 'description')).toBe('תיאור ארוך מאוד');
+    expect(at(first!, 'category')).toBe('הנעלה');
+
+    for (const key of ['name', 'price', 'description', 'category', 'tags', 'weight', 'salePrice'] as const) {
+      expect(at(second!, key), `${key} is repeated on a continuation row`).toBe('');
+    }
+    // What a continuation row is FOR — and the group label, which is what ties it to the row above.
+    expect(at(second!, 'id')).toBe('p9');
+    expect(at(second!, 'stock')).toBe('10');
+    expect(at(second!, 'option1Value')).toBe('38');
+    expect(at(second!, 'group')).toBe('מגף');
+  });
+
+  it('round-trips: the blank file imports back to the same product', () => {
+    const csv = productsToCsv([shoe], cats, 'he');
+    const merged = mergeVariantGroups(validateRows(toRawRows(parseCsv(csv), map), new Set(['p9'])));
+    expect(merged.length).toBe(1);
+    expect(merged[0]!.action).toBe('update');
+    const input = merged[0]!.input!;
+    expect(input.name).toBe('מגף');
+    expect(input.price).toBe(559);
+    expect(input.description).toBe('תיאור ארוך מאוד');
+    expect(input.variantStock![comboKey({ מידה: '38' })]).toBe(10);
+  });
+
+  it('still accepts a file that repeats every value on every row', () => {
+    // The compatibility case, and the reason the pass FILLS rather than sets: this is what every
+    // export written before today looks like, and what a seller's own spreadsheet will keep looking
+    // like. It must produce exactly what the blank form produces.
+    const repeated = merge([
+      row({ id: 'p9', name: 'מגף', price: '559', description: 'תיאור ארוך מאוד', category: 'הנעלה', stock: '20', group: 'מגף', option1Name: 'מידה', option1Value: '37' }),
+      row({ id: 'p9', name: 'מגף', price: '559', description: 'תיאור ארוך מאוד', category: 'הנעלה', stock: '10', group: 'מגף', option1Name: 'מידה', option1Value: '38' }),
+    ], new Set(['p9']));
+    expect(repeated.length).toBe(1);
+    expect(repeated[0]!.action).toBe('update');
+    expect(repeated[0]!.input!.price).toBe(559);
+    expect(repeated[0]!.input!.variantStock![comboKey({ מידה: '38' })]).toBe(10);
+  });
+
+  it('never inherits across two adjacent products', () => {
+    // The failure this shape could have: a blank name on the first row of the SECOND group reading
+    // as the first group's product. Two groups, and the second one's own values have to survive.
+    const both = merge([
+      row({ name: 'מגף', price: '559', stock: '20', group: 'a', option1Name: 'מידה', option1Value: '37' }),
+      row({ stock: '10', group: 'a', option1Name: 'מידה', option1Value: '38' }),
+      row({ name: 'סנדל', price: '199', stock: '4', group: 'b', option1Name: 'מידה', option1Value: '37' }),
+      row({ stock: '6', group: 'b', option1Name: 'מידה', option1Value: '38' }),
+    ]);
+    expect(both.length).toBe(2);
+    expect(both[0]!.input!.name).toBe('מגף');
+    expect(both[0]!.input!.price).toBe(559);
+    expect(both[1]!.input!.name).toBe('סנדל');
+    expect(both[1]!.input!.price).toBe(199);
+  });
+});

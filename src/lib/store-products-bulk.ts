@@ -301,8 +301,24 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
     // A readable group label ties the rows together for re-grouping; the id column (below) is what
     // actually marks every row as an update to this same product on re-import.
     const group = groupLabel(p);
-    return generateCombos(dims).map((combo) => {
+    /* ── The shared columns are written ONCE, on the group's first row (2026-09-08) ──
+       They used to be repeated on every combo, and a real store showed what that costs: 112
+       products became 1,163 rows, median 12 per product, and each of those rows carried the same
+       name, price, category, tag list, sale price, weight and a description up to 360 characters
+       long. 350KB of file for about 25KB of facts, and the seller who opened it in Excel could not
+       work in it (owner, 2026-09-08: *"בלתי אפשרי לערוך את זה"*).
+       It was worse than noise. `variant-csv.ts#finalizeGroup` takes the shared fields from the
+       group's FIRST row and ignores the rest, so editing the price on row 5 of 12 changed nothing
+       and said nothing — a silent no-op on a money column.
+       Blank continuation rows are Shopify's own convention for the same file, and they are what a
+       person can read: one line per product with everything on it, then a short line per combo
+       carrying only what differs — its sku, its stock and its option values. An older file with
+       every value repeated still imports exactly as before: the importer FILLS blanks and never
+       overwrites (`csv-bulk.ts#inheritGroupFields`). */
+    return generateCombos(dims).map((combo, row) => {
       const key = comboKey(combo);
+      const firstRow = row === 0;
+      const only = <T,>(cells: T[], blank: T): T[] => (firstRow ? cells : cells.map(() => blank));
       // One name/value pair per dimension slot, in the product's own dimension order; unused slots blank.
       const optionCells = Array.from({ length: CSV_MAX_DIMENSIONS }, (_, j) => {
         const dim = dims[j];
@@ -311,7 +327,7 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
       return [
         p.id,
         sanitizeCsvCell(p.variantSku?.[key] ?? ''),
-        ...shared,
+        ...only(shared, ''),
         // BLANK for a combo with no bucket of its own, never the shared pool's number. Writing the
         // pool into each combo's own cell made the file assert a per-combo count that does not
         // exist, and re-importing it read every one of those cells back as a bucket: a product
@@ -319,13 +335,15 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
         // what the importer reads as "no override" (variant-csv.ts), so an untouched export now
         // round-trips to the same product.
         p.variantStock?.[key] !== undefined ? String(p.variantStock[key]) : '',
-        ...tail,
+        ...only(tail, ''),
+        // The group label stays on EVERY row: it is what ties them together, so it is the one
+        // shared value a continuation row cannot do without.
         sanitizeCsvCell(group),
         ...optionCells,
-        salePriceCell(p),
-        // The weight is the PRODUCT's, not the combo's, so every row of a variant group carries
-        // the same number — the same treatment name/price/description already get above.
-        weightCell(p),
+        ...only([salePriceCell(p)], ''),
+        // The weight is the PRODUCT's, not the combo's — so, like the rest of the shared block, it
+        // is stated once.
+        ...only([weightCell(p)], ''),
       ].map(toCsvCell).join(',');
     });
   });

@@ -190,6 +190,62 @@ export interface SkuMatchTarget {
   price: number;
 }
 
+/** The columns that belong to the PRODUCT rather than to one of its combos.
+ *
+ *  `stock`, `sku` and the three option pairs are deliberately absent: those are exactly what a
+ *  continuation row exists to say. `group` is absent too — it is what ties the rows together, so it
+ *  is on every one of them. */
+const GROUP_SHARED_FIELDS = [
+  'name', 'price', 'category', 'subcategory1', 'subcategory2', 'tags', 'description',
+  'salePrice', 'weight',
+] as const satisfies ReadonlyArray<CsvField['key']>;
+
+/**
+ * A variant group's continuation rows inherit the product's shared columns from its first row.
+ *
+ * ── Why the file is written that way (2026-09-08) ──
+ * The export used to repeat name, price, category, tags, description, sale price and weight on
+ * every combo. On a real store that turned 112 products into 1,163 rows carrying the same
+ * 360-character description a dozen times each — a file a person cannot work in, and one where
+ * editing the price on row 5 of 12 silently did nothing, because `variant-csv.ts#finalizeGroup`
+ * reads those fields from the group's FIRST row and ignores the rest.
+ *
+ * ── FILLS, never overwrites ──
+ * That is the whole compatibility story. A file with every value repeated — every export written
+ * before today, and every file a seller keeps in his own system — arrives with nothing blank to
+ * fill and comes out of here untouched. A blank cell has always meant "say nothing about this",
+ * and on a continuation row the thing it says nothing about is a property of the product, which
+ * the row above already stated.
+ *
+ * Runs BEFORE validation for the same reason `resolveSkuMatches` does: `name` and `price` are
+ * required per row, so a continuation row that inherited neither would be rejected before anything
+ * had a chance to group it.
+ *
+ * Grouped by the same two keys `mergeVariantGroups` uses — an explicit `group`, else a repeated
+ * `id` — because a row that inherits from a product it will not be merged into would be a row
+ * carrying another product's price.
+ */
+export function inheritGroupFields(rows: RawImportRow[]): RawImportRow[] {
+  const idCounts = new Map<string, number>();
+  for (const r of rows) {
+    const id = r.cells.id?.trim();
+    if (id) idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+  }
+  const firstOfGroup = new Map<string, RawImportRow>();
+  for (const r of rows) {
+    const group = r.cells.group?.trim();
+    const id = r.cells.id?.trim();
+    const key = group ? `g:${group}` : (id && (idCounts.get(id) ?? 0) > 1 ? `id:${id}` : '');
+    if (!key) continue;
+    const first = firstOfGroup.get(key);
+    if (!first) { firstOfGroup.set(key, r); continue; }
+    for (const field of GROUP_SHARED_FIELDS) {
+      if (!r.cells[field]?.trim()) r.cells[field] = first.cells[field];
+    }
+  }
+  return rows;
+}
+
 /** Runs on every import (manual upload AND external-feed sync). A seller who manages inventory
  *  elsewhere — or just re-uploads their own Excel — keys rows by their OWN sku, never our internal
  *  UUID, so a row whose sku already exists in the catalog IS an update to that product. This resolves
@@ -254,6 +310,12 @@ export interface BulkRowResult {
  *  a collision with the rest of the catalog and — since a row's own current sku is its own entry here —
  *  distinguishing "this row keeps its own sku" from a real conflict). */
 export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, existingSkuOwners: Map<string, string> = new Map()): BulkRowResult[] {
+  // Called HERE rather than by the pipeline, and that placement is the point: `name` and `price`
+  // are required per row, so a continuation row that has not inherited them yet is rejected before
+  // anything can group it. A caller that forgot the pass would get a file that exports cleanly and
+  // fails to import — the kind of seam a second entry point acquires silently. It fills blanks
+  // only, so calling it on rows that already went through it changes nothing.
+  inheritGroupFields(rawRows);
   const skuClaimedInBatch = new Map<string, number>(); // sku → line that already claimed it in this same import
   return rawRows.map((raw): BulkRowResult => {
     const errors: string[] = [];
