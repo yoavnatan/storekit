@@ -217,6 +217,21 @@ export function getPool(): pg.Pool {
   pool.on('error', (err) => {
     console.error('[db] idle client error:', err.message);
   });
+  // ── Say WHICH database, once, at the moment the pool is created ──
+  // Cost an afternoon on 2026-09-08. The migration was applied, a direct query confirmed the table,
+  // and the dev server still answered `relation "seller_clearing_credentials" does not exist` —
+  // because **`node --env-file` does not override a variable already exported in the shell.** A
+  // stale `DATABASE_URL` in one terminal pointed a whole dev server at a different database, and
+  // nothing anywhere said so: every error was about the schema, which was the one thing that was
+  // right. One line at boot turns "why does the code not see my table" into a fact you can read.
+  //
+  // Host and database name only, built from the PARSED url — never the raw string, which carries
+  // the password. Wrapped because an unparseable URL must not throw here: failing to NAME the
+  // database must never fail to open it.
+  try {
+    const u = new URL(stripSslMode(connectionString));
+    console.log(`[db] connected to ${u.hostname}${u.pathname}`);
+  } catch { /* an unparseable URL still connects, or fails on its own terms */ }
   return pool;
 }
 

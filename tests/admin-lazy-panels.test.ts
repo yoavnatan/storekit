@@ -65,7 +65,7 @@ describe('every tab has a shell, and only one is filled', () => {
     for (const [, data, component] of source.matchAll(/\{(\w+) && (?:\w+ && )*<(Admin\w+Panel)/g)) {
       expect(data, component).toBeTruthy();
     }
-    for (const nullable of ['sellersTab', 'ordersPage', 'threadsPage', 'moneyLog', 'performanceTab', 'advertisingTab']) {
+    for (const nullable of ['sellersTab', 'ordersPage', 'threadsPage', 'performanceTab', 'advertisingTab']) {
       expect(source, `${nullable} is null for every other tab — its panel body must be guarded`)
         .toMatch(new RegExp(`\\{${nullable}(?: && \\w+)* && <Admin`));
     }

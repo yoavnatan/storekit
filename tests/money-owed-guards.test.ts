@@ -196,21 +196,13 @@ describe('every state where money moved and the purchase did not is reported som
 });
 
 describe('the money vocabulary stays complete', () => {
-  it('every event type has a Hebrew label, because the search matches the label', () => {
-    // The admin's free-text box resolves a Hebrew word to a `type` before the query runs
-    // (moneylog-search.ts). A type with no label is a type nobody can search for by the word on its
-    // own chip.
+  it('every event type has a Hebrew label', () => {
+    // The label used to be searchable text on the admin's journal tab, which is gone (2026-09-08 —
+    // every event in it is about a buyer's payment, and the seller clears those into his own
+    // account now). The rule survives it: a type with no word for it is a row nobody could read
+    // the day this journal is looked at, and it is looked at when something has gone wrong.
     for (const type of MONEY_EVENT_TYPES) {
       expect(MONEY_EVENT_LABELS[type], `${type} has no Hebrew label`).toBeTruthy();
-    }
-  });
-
-  it('every event type has a tone on the panel that renders it', () => {
-    // TypeScript already requires this (the map is a Record over the union), and it is asserted here
-    // as well because the compiler's version of the rule is invisible to someone reading the guards.
-    const panel = fs.readFileSync(path.join(process.cwd(), 'src/components/admin/AdminMoneyLogPanel.astro'), 'utf8');
-    for (const type of MONEY_EVENT_TYPES) {
-      expect(panel, `${type} has no tone in AdminMoneyLogPanel`).toContain(`${type}:`);
     }
   });
 

@@ -1,4 +1,6 @@
 ---
+import AdminReconciliationCard from './AdminReconciliationCard.astro';
+import type { ReconciliationReport } from '../../lib/reconcile.js';
 import { formatAgorot } from '../../lib/money.js';
 import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import TopProductsList from '../dashboard/TopProductsList.astro';
@@ -19,6 +21,14 @@ import { VISITOR_RETENTION_DAYS } from '../../lib/visitor-retention.js';
 // event and on its own search/paging fetches).
 interface Props {
   summary: PerformanceSummary;
+  /** ── The money cross-check, moved here on 2026-09-08 ──
+   *  It lived inside the "יומן כספי" tab, which went with the journal it listed: every event in
+   *  that journal was about a BUYER's payment, and the seller clears those into his own account
+   *  now, so none of it is ours to record. The reconciliation is a different thing and survives —
+   *  it checks the ORDER records' own arithmetic (line items vs subtotal, total vs parts, GMV vs
+   *  rows, negative totals, oversized discounts), which stays ours whoever took the money. This is
+   *  the money screen, so it is where it belongs. */
+  reconciliation: ReconciliationReport;
   revenue: PlatformRevenue;
   storePage: StoreRowsPage;
   /** Products that sold anywhere on the platform in range — the "N" in "top 5 of N". */
@@ -28,7 +38,7 @@ interface Props {
   lang: Lang;
   dir: 'rtl' | 'ltr';
 }
-const { summary, revenue, storePage, productsTotal, fromISO, toISO, lang, dir } = Astro.props;
+const { summary, revenue, storePage, productsTotal, reconciliation, fromISO, toISO, lang, dir } = Astro.props;
 const d = getT(lang).dashboard;
 const isRtl = dir === 'rtl';
 const stores = storePage.rows;
@@ -142,6 +152,10 @@ const productsNote = productsTotal === 0 ? '' : d.perfTopProductsNote
 <p class="mt-2 mb-0 text-[0.72rem] [color:var(--color-muted)]">
   {d.perfRetentionNote.replace('{days}', String(VISITOR_RETENTION_DAYS))}
 </p>
+
+{/* The cross-check first: a figure that does not reconcile makes every number under it a
+    question, so it is read before them and not after. */}
+<AdminReconciliationCard reconciliation={reconciliation} />
 
 {/* Two cards, because they answer two different questions and mixing them was
     the reported gap (CURRENT_TASK.md → סשן ב׳ item 2):

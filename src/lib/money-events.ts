@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
 import { isUuid, query, rows } from './db.js';
 import { BUSINESS_TIMEZONE, isDayISO } from './business-day.js';
-import { searchClauses } from './moneylog-search.js';
 import type { MoneyEventType } from './money-event-types.js';
 
 // The vocabulary and its Hebrew labels live in `money-event-types.ts` — the SQL builder above needs
@@ -147,28 +146,10 @@ export async function recordMoneyEvent(event: Omit<MoneyEvent, 'id' | 'at'>): Pr
   return entry;
 }
 
-/** Always aliased `e`, in every query below and in `moneylog-search.ts`: the permalink rank joins
- *  this table to itself, where an unqualified `id` is ambiguous rather than merely untidy — and one
- *  spelling everywhere is what stops the two modules' fragments from only composing by luck. */
+/** Always aliased `e` in every query below: the alias outlived the self-join that needed it (the
+ *  permalink rank, deleted with the admin tab), and one spelling everywhere costs nothing. */
 const EVENT_COLUMNS = `e.id, e.at, e.type, e.order_id, e.checkout_ref, e.store_slug, e.seller_id,
                        e.amount_agorot, e.from_value, e.to_value, e.actor, e.detail`;
-
-/** The narrowing shared by every read here: the type filter, the business-day window, and the
- *  free-text search. Returns SQL fragments and appends their parameters to `params`, so the caller
- *  decides what to select and how to slice. */
-function narrowingClauses(n: MoneyLogNarrowing, params: unknown[]): string {
-  return [...windowClauses(n.type, n.from, n.to, params), ...searchClauses(n.q ?? '', params)].join(' AND ');
-}
-
-/** What the admin's toolbar narrows the journal by — the subset of `MoneyLogQuery`
- *  (admin-moneylog-filter.ts) that the database can answer. Declared here rather than imported so
- *  this module keeps depending on nothing that knows about URLs. */
-export interface MoneyLogNarrowing {
-  type?: MoneyEventType;
-  q?: string;
-  from?: string;
-  to?: string;
-}
 
 /**
  * The narrowing every read of this journal shares, as SQL.
@@ -254,88 +235,19 @@ export async function getSellerStreamEvents(
   return found.map(toEvent);
 }
 
-/** One page of the journal, with the total behind it — everything the admin panel renders.
- *
- *  Narrowing, ordering, counting and slicing are ALL in the query. What used to happen instead:
- *  every row of the window travelled from Neon, was turned into objects, was filtered in JS, and
- *  fifteen of them were kept. The three costs that removes are the network transfer, the allocation,
- *  and the (terms × rows) scan on a single-threaded SSR server — none of which grows with anything
- *  the admin can see.
- *
- *  The total comes back with the page rather than from a second round trip: the pager needs the
- *  exact figure, and the database is over the network (~64ms a crossing regardless of the query).
- *
- *  **`LEFT JOIN … ON true`, not `count(*) OVER ()`**, and the difference is a real bug rather than a
- *  style choice: a window function has no row to ride on when the page is past the end of the
- *  result (a hand-typed `?mlpage=999`), so the total would come back as 0 and the pager would say
- *  the journal is empty. Joining the page ONTO the count always yields the count. */
-export interface MoneyEventsPage {
-  events: MoneyEvent[];
-  /** Rows matching the narrowing, across all pages. */
-  total: number;
-}
+/* ── The PAGED reader and the permalink rank went with the admin tab (2026-09-08) ──
+   `getMoneyEventsPage` and `moneyEventPage` existed for one screen: "יומן כספי", which listed this
+   journal with a free-text search, a business-day window and a `?mev=` permalink that had to
+   resolve a row to its page in SQL. That tab is gone — every event in the journal is about a
+   BUYER's payment, and the seller clears those into his own account now, so none of it is the
+   platform's to show. `moneylog-search.ts` went with them.
 
-export async function getMoneyEventsPage(
-  narrowing: MoneyLogNarrowing,
-  offset: number,
-  limit: number,
-): Promise<MoneyEventsPage> {
-  const params: unknown[] = [];
-  const where = narrowingClauses(narrowing, params);
-  params.push(limit, offset);
-  const found = await rows<Partial<EventRow> & { total_count: string | number }>(
-    `WITH n AS (SELECT count(*) AS total_count FROM money_events e WHERE ${where}),
-          p AS (SELECT ${EVENT_COLUMNS} FROM money_events e
-                 WHERE ${where}
-                 ORDER BY e.at DESC, e.id
-                 LIMIT $${params.length - 1} OFFSET $${params.length})
-     SELECT n.total_count, p.* FROM n LEFT JOIN p ON true`,
-    params,
-  );
-  return {
-    // A page past the end still returns the count row, with every event column NULL.
-    events: found.filter((r) => r.id).map((r) => toEvent(r as EventRow)),
-    // `count` is a bigint: a string from `pg`, a number from PGlite (§8).
-    total: Number(found[0]?.total_count ?? 0),
-  };
-}
+   **The journal itself stays, and so do the writes.** `/api/checkout` still runs the old path and
+   still appends; an append-only record is not something to stop keeping while the thing it records
+   is still happening. `getMoneyEvents` below is the plain reader that proves the append/read
+   contract in `tests/money-events-db.test.ts`. When the checkout moves to the seller's own account,
+   the writes go too and this file goes with them. */
 
-/** Which page of the current result set holds `eventId`, and whether it is in it at all — the
- *  answer to "open this link and show me that row", which no client can know: the row's page depends
- *  on the filters and on every row appended since the link was copied.
- *
- *  The rank is counted in SQL rather than by finding the row in a list, for the same reason the page
- *  is: the list no longer exists in memory. `ORDER BY at DESC, id` is a MIXED ordering, so "comes
- *  before" is spelled out rather than written as a row-value comparison, which would silently mean
- *  something else.
- *
- *  `null` = the row is not in this result set (wrong filter, or a journal that no longer has it),
- *  and the panel says so rather than silently showing page 1. */
-export async function moneyEventPage(
-  narrowing: MoneyLogNarrowing,
-  eventId: string,
-  pageSize: number,
-): Promise<number | null> {
-  // Postgres REJECTS a malformed uuid literal rather than simply not matching it, so a hand-edited
-  // `?mev=nonsense` would be a 500 on the whole dashboard.
-  if (!isUuid(eventId)) return null;
-  const params: unknown[] = [eventId];
-  const where = narrowingClauses(narrowing, params);
-  // ONE round trip, not two: the rank and "is it even in this result set" are both needed before a
-  // page can be chosen, and the database is over the network.
-  const [found] = await rows<{ rank: string | number | null; present: boolean }>(
-    `WITH target AS (SELECT at, id FROM money_events WHERE id = $1)
-     SELECT
-       (SELECT count(*) FROM money_events e, target t
-         WHERE ${where} AND (e.at > t.at OR (e.at = t.at AND e.id < t.id))) AS rank,
-       EXISTS (SELECT 1 FROM money_events e WHERE e.id = $1 AND ${where}) AS present`,
-    params,
-  );
-  // The row itself must be inside the narrowing, not merely newer than rows that are: a `?mev=` to
-  // an event the current filter excludes has to report itself missing rather than land on page 1.
-  if (!found?.present) return null;
-  return Math.floor(Number(found.rank ?? 0) / pageSize) + 1;
-}
 
 /**
  * The business day one event landed on, or `null` when there is no such row.

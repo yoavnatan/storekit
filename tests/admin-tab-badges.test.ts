@@ -98,13 +98,14 @@ describe('every badge survives a dashboard that only builds one panel', () => {
     }
     // The tab strip reads the same object the panels do, so a badge and its panel cannot disagree.
     //
-    // `badgeFor` SPREADS `badgeCounts` rather than being it, and the difference is one deliberate
-    // extra key: `moneylog`, the reconciliation's discrepancy count (2026-08-20). It is not one of
-    // the five COUNTs because it is not a count of arrivals — it is a CONDITION, and it clears when
-    // the money reconciles rather than when the tab is opened. What this still refuses is the thing
-    // that matters: every one of the five must reach the strip through `badgeCounts` and not be
+    // `badgeFor` SPREADS `badgeCounts` rather than simply being it. It carried one deliberate extra
+    // key until 2026-09-08 — `moneylog`, the reconciliation's discrepancy count, which was a
+    // CONDITION rather than a count of arrivals and cleared when the money reconciled instead of
+    // when the tab was opened. That tab went with the journal it listed, and the spread is kept
+    // because the shape is what the next such key would use. What this refuses either way is the
+    // thing that matters: every count must reach the strip through `badgeCounts` and not be
     // recomputed from a list the page only loads for one panel.
-    expect(source).toMatch(/const badgeFor: Record<string, number> = \{ \.\.\.badgeCounts[,}]/);
+    expect(source).toMatch(/const badgeFor: Record<string, number> = \{ \.\.\.badgeCounts\s*[,}]/);
     expect(source).toMatch(/badgeFor\[tab\.id\]/);
   });
 

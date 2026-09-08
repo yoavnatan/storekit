@@ -17,7 +17,6 @@ const QUERY_PARSERS = [
   'src/lib/admin-orders-filter.ts',
   'src/lib/admin-threads-query.ts',
   'src/lib/platform-performance.ts',
-  'src/lib/admin-moneylog-filter.ts',
 ].map((p) => join(process.cwd(), p));
 
 // `panel` is the tab selector itself — owned by no single tab, and the one param
@@ -76,14 +75,14 @@ describe('stripForeignTabParams', () => {
   });
 
   it('keeps the active tab selector itself', () => {
-    const url = stripForeignTabParams(new URL('https://x.test/admin?panel=moneylog&mtype=order_created&sq=dani'), 'moneylog');
-    expect(url.searchParams.get('panel')).toBe('moneylog');
-    expect(url.searchParams.get('mtype')).toBe('order_created');
+    const url = stripForeignTabParams(new URL('https://x.test/admin?panel=orders&opage=3&sq=dani'), 'orders');
+    expect(url.searchParams.get('panel')).toBe('orders');
+    expect(url.searchParams.get('opage')).toBe('3');
     expect(url.searchParams.get('sq')).toBeNull();
   });
 
   it('leaves an unknown panel with nothing but the selector', () => {
-    const url = stripForeignTabParams(new URL('https://x.test/admin?panel=nope&sq=dani&mtype=order_created'), 'nope');
+    const url = stripForeignTabParams(new URL('https://x.test/admin?panel=nope&sq=dani&opage=3'), 'nope');
     expect([...url.searchParams.keys()]).toEqual(['panel']);
   });
 });

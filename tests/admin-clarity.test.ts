@@ -22,7 +22,6 @@ const footerCss = read('src/styles/components/footer.css');
 const dashCss = read('src/styles/pages/dashboard.css');
 const adminPage = read('src/pages/admin/index.astro');
 const reconCard = read('src/components/admin/AdminReconciliationCard.astro');
-const moneyLog = read('src/components/admin/AdminMoneyLogPanel.astro');
 const contact = read('src/pages/contact.astro');
 
 describe('admin inbox — who wrote it', () => {
@@ -135,9 +134,9 @@ describe('the money journal explains itself', () => {
   });
 
   it('names the checkout reference as a reference to a PAYMENT', () => {
-    expect(moneyLog).toContain('אסמכתת תשלום');
+    // Two of the three surfaces that had to agree on this word were the journal tab and its
+    // toolbar, both deleted on 2026-09-08. The reconciliation is where the phrase still appears.
     expect(read('src/lib/reconcile.ts')).toContain('אסמכתת תשלום');
-    expect(read('src/components/admin/AdminMoneyLogToolbar.astro')).toContain('אסמכתת תשלום');
   });
 });
 
@@ -210,11 +209,13 @@ describe('every admin tab has a heading pinned under the strip', () => {
     // סטיקי… ממש קשה שאתה מזניח את הדשבורד אדמין"*). The strip pins; whatever is under it must too,
     // or three screens into a list there is nothing on screen naming what you are looking at.
     // Asserted over EVERY shell call site rather than a list of names, so a fourteenth tab added
-    // later cannot arrive without one. The floor moved 14 → 13 on 2026-08-21, when the
-    // "תשלומים למוכרים" tab went with the custodial model — it is a floor against a tab arriving
-    // unheaded, not a count of the tabs there ought to be.
+    // later cannot arrive without one. The floor has moved twice, each time because a tab went with
+    // the model it described: 14 → 13 on 2026-08-21 with "תשלומים למוכרים" and the custodial
+    // arrangement, 13 → 12 on 2026-09-08 with "יומן כספי", whose every row was a buyer payment the
+    // platform no longer touches. It is a floor against a tab arriving UNHEADED, not a count of the
+    // tabs there ought to be.
     const shells = [...adminPage.matchAll(/<AdminPanelShell panel="([a-z]+)"([^>]*)>/g)];
-    expect(shells.length).toBeGreaterThanOrEqual(13);
+    expect(shells.length).toBeGreaterThanOrEqual(12);
     for (const [, panel, attrs] of shells) {
       if ((attrs ?? '').includes('title=')) continue;
       // No shell title — then the panel composes its own heading, and that one has to be a
@@ -228,7 +229,6 @@ describe('every admin tab has a heading pinned under the strip', () => {
 
   it('does not leave a second copy of a heading the shell now renders', () => {
     expect(read('src/components/admin/AdminReturnsPanel.astro')).not.toContain('>החזרות</h2>');
-    expect(moneyLog).not.toContain('>יומן אירועים כספיים</h2>');
   });
 });
 

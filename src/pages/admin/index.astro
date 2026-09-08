@@ -58,7 +58,6 @@ import AdminModerationStatus from '../../components/admin/AdminModerationStatus.
 import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.astro';
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
-import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
 import AdminPanelShell from '../../components/admin/AdminPanelShell.astro';
 import AdminReturnsPanel from '../../components/admin/AdminReturnsPanel.astro';
 import { getOpenReturns, getClosedReturns, getLatestReturnsByOrder } from '../../lib/return-requests.js';
@@ -76,7 +75,6 @@ const ADMIN_RETURN_CHIP: Record<ReturnStatus, string> = {
   offered: 'הוצע החזר חלקי',
   rejected: '', refunded: '', expired: '',
 };
-import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
@@ -107,7 +105,6 @@ const tabs = [
   // The two money tabs, in timeline order: what already happened (the journal) and what a closed
   // period ADDS UP TO. There is no third tab in front of them any more — "תשלומים למוכרים" was a
   // screen for deciding what to send, and under the split model nothing here sends anything.
-  { id: 'moneylog', label: 'יומן כספי' },
   { id: 'statement', label: 'דוח חשבונאי' },
 ] as const;
 
@@ -203,7 +200,7 @@ const shows = (panel: string): boolean => panel === initialPanel;
 // readers and are gated separately: the Messages tab names sellers and never touches stores, while
 // the Advertising tab and the money journal's reconciliation are the other way round.
 const SELLER_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'performance', 'messages', 'reviews'] as const;
-const STORE_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'advertising', 'performance', 'moneylog', 'reviews'] as const;
+const STORE_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'advertising', 'performance', 'reviews'] as const;
 /** Products per store: the counts behind the seller cards, the store rows, the overview's
  *  empty-catalogue figure and the feed figures on the advertising tab. */
 const COUNT_PANELS = ['overview', 'sellers', 'stores', 'advertising'] as const;
@@ -273,7 +270,7 @@ const [
   sellers, stores, newSince, openOrdersByStore, orderTotals, revenueByStore,
   orderStoreNamesRaw, orderSellersRaw, threadsPage, errorsAll,
   brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings,
-  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog, openReturns, returnRates, closedReturns, statement,
+  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, openReturns, returnRates, closedReturns, statement,
 ] = await Promise.all([
   only(SELLER_ROSTER_PANELS, getAllSellers, []),
   only(STORE_ROSTER_PANELS, getAllStores, []),
@@ -315,8 +312,6 @@ const [
   only(['data'], getSellerFunnel, null),
   // Narrowing, search, count and page slice are ALL in the query now (money-events.ts) — this tab
   // used to read every row of its 30-day window to display fifteen of them, over a network. Its own
-  // three-step chain (permalink → window → page) is stated once, in admin-moneylog-panel.ts.
-  only(['moneylog'], () => loadMoneyLogPanel(sp), null),
   only(['returns'], () => getOpenReturns(), []),
   only(['returns'], () => returnRateByStore(), { stores: [], platformRate: 0, outliers: [], disputeOutliers: [] }),
   // The history reads its OWN params, so a search and a page survive a reload and can be linked —
@@ -589,13 +584,6 @@ const performanceTab = shows('performance') ? (() => {
 // pass over the whole catalogue (§3). A product that has since been deleted simply has no entry,
 // and the panel already falls back to rendering the id.
 
-// ── Money journal tab ──
-// Nothing left here: type, business-day window, free-text search, count and page slice are all in
-// the query, and the three-step permalink chain that decides WHICH page is in `admin-moneylog-
-// panel.ts` (fetched in wave 1 above). What used to be here read every row of a 30-day window over
-// the network in order to render fifteen of them, then re-applied in JS the narrowing it had just
-// asked the database for.
-
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
 // Fetched in wave 2 above, as five COUNTs in one statement (admin-tab-badges.ts). They used to be
 // JS filters over lists this page happened to have already loaded — free while every tab was built
@@ -606,13 +594,12 @@ const performanceTab = shows('performance') ? (() => {
 // Indexed by tab id for the strip below, which walks `tabs` and knows only the id — a cast inside
 // the template is a compile error in `.astro`, so the widening happens here.
 //
-// **`moneylog` is the one badge that is not a count of ARRIVALS, and it is deliberate.** Every
-// other number here means "rows you have not seen in that tab" and opening the tab answers it. This
-// one is a CONDITION — money that does not reconcile is still not reconciled after it has been
-// read — so it clears when the discrepancy is fixed, not when it is looked at. The moderation term
-// inside `alerts` already works that way (admin-tab-badges.ts says why), so this is the vocabulary
-// the strip already has rather than a new one.
-const badgeFor: Record<string, number> = { ...badgeCounts, moneylog: reconciliation.discrepancies.length };
+// **The `moneylog` badge went with its tab (2026-09-08)** — it was the one number here that was a
+// CONDITION rather than a count of arrivals (money that does not reconcile is still not reconciled
+// after it has been read), and the journal it sat on was a record of buyer payments the platform
+// no longer touches. The reconciliation itself moved to the Performance tab, where it is a card
+// rather than a number on a strip.
+const badgeFor: Record<string, number> = { ...badgeCounts };
 
 // The same five counts, summed, for the BROWSER TAB — "(3) Admin Dashboard".
 //
@@ -820,6 +807,7 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
           revenue={performanceTab!.revenue}
           storePage={performanceTab!.storePage}
           productsTotal={performanceTab!.productsTotal}
+          reconciliation={reconciliation}
           fromISO={perfFromISO}
           toISO={perfToISO}
           lang={perfLang}
@@ -921,27 +909,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
         <AdminReturnsPanel requests={openReturns} outliers={returnRates.outliers} platformRate={returnRates.platformRate} disputeOutliers={returnRates.disputeOutliers} closed={closedReturns} closedQuery={sp.get('rq') ?? ''} tabUrl={tabUrl} />
       </AdminPanelShell>
 
-      {/* `reconciliation` is no longer part of the condition: it is computed on every render now
-          (it feeds this tab's own badge), so only the journal page decides whether the panel is
-          built. */}
-      <AdminPanelShell panel="moneylog" title="יומן אירועים כספיים" active={!!moneyLog}>
-        {moneyLog && <AdminMoneyLogPanel
-          events={moneyLog!.events}
-          query={moneyLog!.query}
-          targetMissing={moneyLog!.targetMissing}
-          total={moneyLog!.total}
-          page={moneyLog!.page}
-          totalPages={moneyLog!.totalPages}
-          buildUrl={(p) => tabUrl('moneylog', {
-            mtype: moneyLog!.query.type,
-            mq: moneyLog!.query.q || undefined,
-            mfrom: moneyLog!.query.from || undefined,
-            mto: moneyLog!.query.to || undefined,
-            mlpage: p > 1 ? String(p) : undefined,
-          })}
-          reconciliation={reconciliation}
-        />}
-      </AdminPanelShell>
     </div>
   </div>
 </BaseLayout>
@@ -958,7 +925,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
   import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
   import { initAdminPlatformPerformance } from '../../scripts/admin/platform-performance.js';
   import { initAdminDataPanel } from '../../scripts/admin/data-panel.js';
-  import { initAdminMoneyLogPanel } from '../../scripts/admin/moneylog.js';
   import { initAdminStatementPanel } from '../../scripts/admin/statement.js';
   import { initAdminNotifications } from '../../scripts/admin/notifications.js';
   import { initLazyAdminPanels } from '../../scripts/admin/lazy-panels.js';
@@ -984,7 +950,6 @@ const badgeTotal = Object.values(badgeFor).reduce((sum, n) => sum + n, 0);
   initPerformanceTab();
   initAdminPlatformPerformance();
   initAdminDataPanel();
-  initAdminMoneyLogPanel();
   initAdminStatementPanel();
   // Outside every swapped panel, so it initialises once and guards itself against a second call
   // (`bellBtn.dataset.ready`) — a panel swap re-runs this block.
