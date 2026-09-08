@@ -34,8 +34,19 @@ export const VAT_PERCENT = 18;
  * by an agora on some inputs, and this spelling guarantees that **net + vat === gross exactly**,
  * which is the property an invoice has to have. A document whose lines do not add up to its total
  * is rejected by a bookkeeper before it is rejected by anything automated.
+ *
+ * ── `vatPercent` is REQUIRED, and that is the fix for a real defect (2026-09-08) ──
+ * It used to default to `VAT_PERCENT`, and two call sites took the default on a charge that is the
+ * PLATFORM's: the seller's own fee report and `planPlatformInvoice`. The platform is an עוסק פטור
+ * (`PLATFORM_BUSINESS_TYPE`), so a ₪99 subscription carries no VAT at all — both were splitting it
+ * into ₪83.90 + ₪15.10 and handing the seller a document inviting him to deduct input VAT nobody
+ * charged him. Each was internally consistent; only the question they were answering was wrong.
+ *
+ * A default is what made that possible: the two planes (`platformVatPercent` for what WE bill,
+ * `chargesVat(seller.businessType)` for what HE bills a buyer) are impossible to tell apart at a
+ * call site that names neither. Requiring the argument makes the compiler ask.
  */
-export function vatWithinAgorot(grossAgorot: number, vatPercent: number = VAT_PERCENT): number {
+export function vatWithinAgorot(grossAgorot: number, vatPercent: number): number {
   if (!Number.isFinite(grossAgorot) || grossAgorot <= 0) return 0;
   if (!Number.isFinite(vatPercent) || vatPercent <= 0) return 0;
   return grossAgorot - Math.round(grossAgorot / (1 + vatPercent / 100));

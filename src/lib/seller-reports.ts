@@ -31,7 +31,7 @@ import { countsAsRevenue } from './orders.js';
 import { orderNetForStore } from './admin-stats.js';
 import { allocateAgorot, toAgorot } from './money.js';
 import { commissionOnAgorot } from './pricing.js';
-import { vatWithinAgorot } from './vat.js';
+import { VAT_PERCENT, platformVatPercent, vatWithinAgorot } from './vat.js';
 import { businessDayISO } from './business-day.js';
 import type { StoreProduct } from './store-products.js';
 // Ids and row shapes live in their own leaf module so the reports TAB can import them without
@@ -260,8 +260,19 @@ export function buildStockReport(products: readonly StoreProduct[]): {
  *  Extraction rather than addition, always: every amount that reaches this function is a GROSS —
  *  what was really deducted or debited — and `vatWithinAgorot` is spelled so that net + vat is the
  *  gross exactly. Grossing a net up instead would let a row's three cells disagree by an agora. */
-function split(grossAgorot: number): Pick<FeeRow, 'amountAgorot' | 'vatAgorot' | 'totalAgorot'> {
-  const vatAgorot = vatWithinAgorot(grossAgorot);
+/**
+ *  ── Whose VAT, and the bug that made the question worth asking (2026-09-08) ──
+ *  This ledger carries rows from two billers. A commission and a subscription are the PLATFORM's
+ *  charge, so the rate is `platformVatPercent()` — our own status, and while we are an עוסק פטור it
+ *  is 0, which makes the VAT column a dash rather than input VAT the seller is not entitled to
+ *  deduct. A clearing fee is the PROCESSOR's, invoiced by them under their own registration, so it
+ *  carries the statutory rate whatever we are.
+ *
+ *  `vatWithinAgorot` used to default the rate and every call here took the default, which was right
+ *  for one of the two payees by accident. The argument is required now, so the question cannot be
+ *  skipped at a call site again. */
+function split(grossAgorot: number, payee: FeeRow['payee']): Pick<FeeRow, 'amountAgorot' | 'vatAgorot' | 'totalAgorot'> {
+  const vatAgorot = vatWithinAgorot(grossAgorot, payee === 'platform' ? platformVatPercent() : VAT_PERCENT);
   return { amountAgorot: grossAgorot - vatAgorot, vatAgorot, totalAgorot: grossAgorot };
 }
 
@@ -297,18 +308,18 @@ export function buildFeesReport(input: {
       // gross that differ by a rounding, on a document whose whole job is that its columns add up.
       const gross = commissionOnAgorot(net, rate);
       if (gross <= 0) continue;
-      rows.push({ dayISO: day, kind: 'commission', reference: order.id, baseAgorot: net, ...split(gross), payee: 'platform' });
+      rows.push({ dayISO: day, kind: 'commission', reference: order.id, baseAgorot: net, ...split(gross, 'platform'), payee: 'platform' });
     }
   }
 
   // The processor's figures already contain the tax (GO_LIVE §3.1.0 — their per-charge fees are
   // reported after VAT), so they are SPLIT, never grossed up a second time.
   for (const c of clearing) {
-    rows.push({ dayISO: c.dayISO, kind: 'clearing', reference: c.reference, baseAgorot: c.baseAgorot, ...split(c.feeAgorot), payee: 'processor' });
+    rows.push({ dayISO: c.dayISO, kind: 'clearing', reference: c.reference, baseAgorot: c.baseAgorot, ...split(c.feeAgorot, 'processor'), payee: 'processor' });
   }
   // The standing order's price is the billed figure since 2026-08-26 (`store-plan.ts`), i.e. gross.
   for (const sub of subscription) {
-    rows.push({ dayISO: sub.dayISO, kind: 'subscription', reference: sub.reference, baseAgorot: 0, ...split(sub.amountAgorot), payee: 'platform' });
+    rows.push({ dayISO: sub.dayISO, kind: 'subscription', reference: sub.reference, baseAgorot: 0, ...split(sub.amountAgorot, 'platform'), payee: 'platform' });
   }
 
   // Newest first, and by kind within a day so the two fees on one sale sit together rather than

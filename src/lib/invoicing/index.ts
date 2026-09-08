@@ -1,7 +1,7 @@
 import type { InvoicingAdapter } from './adapter.js';
 import { createConsoleInvoicingAdapter } from './console-adapter.js';
 import { planDocument, type InvoiceDocument } from './documents.js';
-import { vatWithinAgorot, chargesVat } from '../vat.js';
+import { VAT_PERCENT, platformVatPercent, vatWithinAgorot, chargesVat } from '../vat.js';
 import { orderNetForStore } from '../admin-stats.js';
 import { commissionOnAgorot } from '../pricing.js';
 import type { Order } from '../orders.js';
@@ -74,7 +74,8 @@ export async function planBuyerInvoice(
   const grossAgorot = orderNetForStore(order, storeSlug);
   if (grossAgorot <= 0) return null;
 
-  const vatAgorot = chargesVat(seller.businessType) ? vatWithinAgorot(grossAgorot) : 0;
+  // HIS status and the statutory rate — this document is issued in the seller's name.
+  const vatAgorot = chargesVat(seller.businessType) ? vatWithinAgorot(grossAgorot, VAT_PERCENT) : 0;
 
   return planDocument({
     direction: 'seller_to_buyer',
@@ -104,8 +105,18 @@ export async function planBuyerInvoice(
  * The ad margin is passed in for the third version of the same reason: it depends on real ad spend,
  * which is still mock data until an ad account is connected (GO_LIVE §2).
  *
- * VAT here is OUR VAT — the platform is a company and charges it — so it does not depend on the
- * seller's business type at all. That asymmetry is the whole point of two separate functions.
+ * VAT here is OUR VAT, so it does not depend on the seller's business type at all — that asymmetry
+ * is the whole point of two separate functions. **What it does depend on is our own status**, and
+ * until 2026-09-08 this did not ask: the header said "the platform is a company and charges it" and
+ * the code took `vatWithinAgorot`'s 18% default. `PLATFORM_BUSINESS_TYPE` is what decides, it says
+ * `exempt` today, and an עוסק פטור may neither charge VAT nor issue a חשבונית מס. The document was
+ * both — a false tax document, issued monthly, in our name.
+ *
+ * So the rate comes from `platformVatPercent()` and the KIND follows it: `tax_invoice` while we are
+ * registered, `receipt` while we are exempt — the existing value rather than a new one, and the
+ * right one, because what an עוסק פטור hands over for money taken is a קבלה. `/terms` says the same
+ * thing from the other side and deliberately names no document type, because this variable can
+ * change under it.
  */
 export async function planPlatformInvoice(input: {
   seller: Pick<Seller, 'id'>;
@@ -125,14 +136,15 @@ export async function planPlatformInvoice(input: {
   const { seller, periodKey, commissionAgorot, adMarginAgorot = 0, subscriptionAgorot = 0, commissionRate = 0 } = input;
   const grossAgorot = commissionAgorot + subscriptionAgorot + adMarginAgorot;
   if (grossAgorot <= 0) return null;
+  const vatPercent = platformVatPercent();
 
   return planDocument({
     direction: 'platform_to_seller',
     sellerId: seller.id,
     periodKey,
-    kind: 'tax_invoice',
+    kind: vatPercent > 0 ? 'tax_invoice' : 'receipt',
     amountAgorot: grossAgorot,
-    vatAgorot: vatWithinAgorot(grossAgorot),
+    vatAgorot: vatWithinAgorot(grossAgorot, vatPercent),
     // The three streams named individually. A seller reconciling their books needs to see which
     // figure is which — and the commission is the only one already deducted from their payout.
     detail: `commission ${commissionAgorot} (deducted at source) + subscription ${subscriptionAgorot} + ad margin ${adMarginAgorot}, at ${commissionRate}%`,

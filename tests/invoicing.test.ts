@@ -7,7 +7,7 @@
  * from a figure it was never added to, misstates a real business's affairs on a document carrying
  * their name.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import crypto from 'node:crypto';
 import { query } from '../src/lib/db.js';
 import { planBuyerInvoice, planPlatformInvoice } from '../src/lib/invoicing/index.js';
@@ -16,6 +16,12 @@ import { vatWithinAgorot, chargesVat, VAT_PERCENT } from '../src/lib/vat.js';
 import { monthlyFeeForTier } from '../src/lib/pricing.js';
 import { toAgorot } from '../src/lib/money.js';
 import type { Order } from '../src/lib/orders.js';
+// The platform's own tax status is a RUNTIME variable (`lib/runtime-env.ts`), so the only honest way
+// to assert both of its states is to set it. Mocked at the module boundary rather than by writing to
+// `process.env`, which vitest shares across files running in the same worker.
+import { serverEnv } from '../src/lib/runtime-env.js';
+
+vi.mock('../src/lib/runtime-env.js', () => ({ serverEnv: vi.fn(() => '') }));
 
 async function makeSeller(businessType?: string): Promise<string> {
   const id = crypto.randomUUID();
@@ -56,7 +62,7 @@ describe('VAT is extracted, never added', () => {
     // The property a bookkeeper checks first: the lines add up to the total. Awkward amounts, since
     // round numbers agree under any implementation.
     for (const gross of [1, 99, 100, 3_333, 11_811, 99_999, 1_234_567]) {
-      const vat = vatWithinAgorot(gross);
+      const vat = vatWithinAgorot(gross, VAT_PERCENT);
       expect(gross - vat + vat).toBe(gross);
       expect(vat).toBeLessThan(gross);
       expect(vat).toBeGreaterThanOrEqual(0);
@@ -72,10 +78,10 @@ describe('VAT is extracted, never added', () => {
   });
 
   it('refuses nonsense instead of producing a negative line', () => {
-    expect(vatWithinAgorot(0)).toBe(0);
-    expect(vatWithinAgorot(-500)).toBe(0);
+    expect(vatWithinAgorot(0, VAT_PERCENT)).toBe(0);
+    expect(vatWithinAgorot(-500, VAT_PERCENT)).toBe(0);
     expect(vatWithinAgorot(1000, 0)).toBe(0);
-    expect(vatWithinAgorot(Number.NaN)).toBe(0);
+    expect(vatWithinAgorot(Number.NaN, VAT_PERCENT)).toBe(0);
   });
 
   it('an עוסק פטור charges none, and an unknown business type is treated as none', () => {
@@ -103,7 +109,7 @@ describe("the buyer's invoice, owed by the seller", () => {
     expect(doc!.direction).toBe('seller_to_buyer');
     expect(doc!.sellerId).toBe(sellerId);
     expect(doc!.status).toBe('pending');
-    expect(doc!.vatAgorot).toBe(vatWithinAgorot(10_000));
+    expect(doc!.vatAgorot).toBe(vatWithinAgorot(10_000, VAT_PERCENT));
   });
 
   it('shows no VAT for an עוסק פטור', async () => {
@@ -167,13 +173,31 @@ describe("the platform's invoice to the seller", () => {
     expect(doc!.detail).toContain('ad margin 500');
   });
 
-  it('charges OUR VAT regardless of the seller\'s business type', async () => {
-    // The asymmetry that justifies two functions: on this document the platform is the issuer, so
-    // an exempt seller's status is irrelevant.
+  /**
+   * ── OUR status decides this document, and until 2026-09-08 nothing asked what it was ──
+   *
+   * The seller's business type is irrelevant here, which is the asymmetry that justifies two
+   * functions, and that half was always right. The half that was wrong is that the rate came from
+   * `vatWithinAgorot`'s 18% default rather than from `platformVatPercent()` — so while the platform
+   * is an עוסק פטור (`PLATFORM_BUSINESS_TYPE`, its state today) we issued a monthly חשבונית מס with
+   * VAT on it, in our own name, for tax we may not charge and he may not deduct.
+   *
+   * Both directions are asserted, because a fix that only checked the exempt case would pass with
+   * the rate hard-wired to zero.
+   */
+  it('takes the rate and the document KIND from our own tax status, not the seller\'s', async () => {
     const sellerId = await makeSeller('exempt');
-    const doc = await planPlatformInvoice({ seller: { id: sellerId }, periodKey: '2026-08', commissionAgorot: 10_000 });
-    expect(doc!.vatAgorot).toBe(vatWithinAgorot(doc!.amountAgorot));
-    expect(doc!.vatAgorot).toBeGreaterThan(0);
+
+    vi.mocked(serverEnv).mockImplementation((k: string) => (k === 'PLATFORM_BUSINESS_TYPE' ? 'exempt' : ''));
+    const exempt = await planPlatformInvoice({ seller: { id: sellerId }, periodKey: '2026-08', commissionAgorot: 10_000 });
+    expect(exempt!.vatAgorot, 'an עוסק פטור charges none').toBe(0);
+    expect(exempt!.kind, 'and may not issue a חשבונית מס').toBe('receipt');
+
+    const other = await makeSeller('exempt');
+    vi.mocked(serverEnv).mockImplementation((k: string) => (k === 'PLATFORM_BUSINESS_TYPE' ? 'licensed' : ''));
+    const registered = await planPlatformInvoice({ seller: { id: other }, periodKey: '2026-08', commissionAgorot: 10_000 });
+    expect(registered!.vatAgorot, "the SELLER being exempt changes nothing").toBe(vatWithinAgorot(registered!.amountAgorot, VAT_PERCENT));
+    expect(registered!.kind).toBe('tax_invoice');
   });
 
   it('plans ONE document per seller per month', async () => {

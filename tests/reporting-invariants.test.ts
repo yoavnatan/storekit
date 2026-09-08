@@ -471,6 +471,45 @@ describe('the three seller reports reconcile with each other and with Performanc
     expect(fees.totals.netAgorot + fees.totals.vatAgorot).toBe(fees.totals.totalAgorot);
   });
 
+  /**
+   * ── Whose VAT, per ROW — and it was the statutory constant for both until 2026-09-08 ──
+   *
+   * This ledger carries two billers. A commission and a subscription are OURS, so the rate is
+   * `platformVatPercent()`; a clearing fee is the PROCESSOR's, invoiced under their registration,
+   * so it carries the statutory rate whatever we are. Every call took `vatWithinAgorot`'s 18%
+   * default, which was right for one of the two by accident — and while `PLATFORM_BUSINESS_TYPE`
+   * says `exempt` it split a ₪99 subscription into ₪83.90 + ₪15.10 and handed the seller a ledger
+   * inviting him to deduct input VAT nobody charged him.
+   *
+   * Asserted through the env rather than by hard-wiring a zero: a fix that always returned 0 would
+   * be just as wrong the day we register, and the processor's row is what proves the two rates did
+   * not collapse into one.
+   */
+  it('takes the VAT rate per row from whoever actually billed it', () => {
+    const before = process.env['PLATFORM_BUSINESS_TYPE'];
+    process.env['PLATFORM_BUSINESS_TYPE'] = 'exempt';
+    try {
+      const fees = buildFeesReport({
+        orders: [],
+        rateFor: new Map(),
+        fromISO: FROM,
+        toISO: TO,
+        subscription: [{ dayISO: '2026-07-05', reference: '2026-07', amountAgorot: 9900 }],
+        clearing: [{ dayISO: '2026-07-05', reference: 'sale-1', baseAgorot: 10_000, feeAgorot: 118 }],
+      });
+      const ours = fees.rows.find((r) => r.payee === 'platform')!;
+      expect(ours.vatAgorot, 'an עוסק פטור charges none').toBe(0);
+      expect(ours.amountAgorot, 'so the whole charge is the net').toBe(9900);
+
+      const theirs = fees.rows.find((r) => r.payee === 'processor')!;
+      expect(theirs.vatAgorot, "the processor's own invoice is unaffected by our status").toBe(18);
+      expect(theirs.amountAgorot).toBe(100);
+    } finally {
+      if (before === undefined) delete process.env['PLATFORM_BUSINESS_TYPE'];
+      else process.env['PLATFORM_BUSINESS_TYPE'] = before;
+    }
+  });
+
   it('the fee ledger charges nothing for a cancelled order', () => {
     const fees = buildFeesReport({ orders, rateFor: new Map([[STORE, RATE]]), fromISO: FROM, toISO: TO });
     // `r3` is the cancelled one. A commission row for it would be us billing for a sale that did
