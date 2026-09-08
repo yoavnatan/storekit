@@ -44,7 +44,10 @@ Asked for on 2026-08-24 — *"ליצור סדר מופתי עם תרשים מס�
 several sessions on clearing and on plans had left the answer spread across five modules and three
 screens. **The same nine stages are counted in the admin's נתונים tab** (`lib/seller-funnel.ts` →
 `AdminDataPanel.astro`), so the picture below and the bars there are the same funnel: this says what
-happens, that says how many people it happened to.
+happens, that says how many people it happened to. Its top row is **"נרשמו לאתר"** and it counts
+every account — a buyer account and a seller account are one row in `sellers` — while every stage
+under it excludes the platform's own showcase shops, exactly as the admin Overview card does; the
+two tabs answered that question with two different numbers until 2026-09-08.
 
 ```
   VISITOR                     free — no card is ever asked for here
@@ -63,6 +66,12 @@ happens, that says how many people it happened to.
     ═══════════════════════════════════ the line where he COMMITS ════
     ▼                                                              │
   ⑤ sends clearing details ········· his, minutes                  │
+    │   ⚠️ this step is being REPLACED (2026-09-08). Under the SaaS │
+    │   shape he does not send us anything — he CONNECTS his own    │
+    │   clearing account, which he already has, and the buyer's     │
+    │   money never comes near us. Built: the screen he does it on  │
+    │   (OwnClearingCard). Not built: the checkout charging through │
+    │   it, so ⑤–⑦ below are still what actually runs.              │
     ▼                                                              │
   ⑥ picks a plan, saves a card ····· his, one click ◄──────────────┘
     │                                 NOTHING IS CHARGED HERE
@@ -171,9 +180,10 @@ refund — the whole flow is built against *"לא לבנות עכשיו חודש
 | 1 | Finds a product: platform home, `/stores`, search, a store's own grid, or a store's custom domain | `lib/product-listing.ts`, `pages/search.astro` | ✅ |
 | 2 | Opens it — full page, or the shared modal from a card (which pushStates the product's URL) | `pages/[storeSlug]/[productSlug].astro` · `components/StoreProductModal.astro` | ✅ |
 | 3 | Adds to cart. Cart is per-store in `localStorage`, synced server-side for signed-in buyers | `lib/cart.ts` · `lib/user-carts.ts` | ✅ |
+| 3b | **Inside a shop the drawer shows that shop's cart alone** — one total, one checkout. The other carts are kept and named underneath (shop, count, link in); off a storefront all of them are listed. There is no "pay all stores" | `components/CartDrawer.astro` | ✅ (2026-09-08) |
 | 4 | Checks out as guest or signed in. Prices are **re-derived server-side**; the cart is never trusted | `/api/checkout` · `lib/discounts.ts` | ✅ |
 | 5 | Pays — **authorize → write orders → capture**, in that order, so money and orders cannot exist without each other | `lib/payment.ts` · `lib/payment-split.ts` | 🔶 (mock provider in dev) |
-| 6 | One card entry, one authorization, **one capture per store**; shipping is a separate capture to OUR account | `lib/payment-split.ts` | 🔶 |
+| 6 | One card entry, one authorization, **one capture per store**; shipping is a separate capture to OUR account | `lib/payment-split.ts` | 🔶 — and this is the SPLIT model, which the SaaS shape replaces: each seller clears into his OWN account, so a payment covers one shop. He connects that account today (`OwnClearingCard.astro`); the checkout charging THROUGH it is the next piece, and until it exists this row is what runs |
 | 7 | Order rows are written **one per store** — seller isolation — sharing a `checkoutRef` | `lib/orders.ts` | ✅ |
 | 8 | Stock came off the shelf before the charge, in one statement, and goes back on any failure | `store-products.ts#decrementStock` | ✅ |
 | 9 | Confirmation mail to the buyer, "new order" to each seller. Neither can fail the purchase | `lib/email/` · `lib/notifications.ts` | ✅ (mail is a stub, ⚠️ §4) |
