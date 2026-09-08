@@ -13,9 +13,6 @@ import {
 import {
   salesReportCsv, productSalesReportCsv, stockReportCsv, feesReportCsv, reportFileName,
 } from '../../../lib/seller-reports-csv.js';
-import { merchantAccountFor } from '../../../lib/seller-merchant.js';
-import { activePaymeCredentials, getSellerTransactions } from '../../../lib/payment-payme.js';
-import { paymeDay } from '../../../lib/seller-transfers.js';
 import { getSellerStreamEvents } from '../../../lib/money-events.js';
 import { SUBSCRIPTION_EVENT_STREAM } from '../../../lib/seller-subscription.js';
 import { businessDayISO } from '../../../lib/business-day.js';
@@ -31,7 +28,6 @@ const MAX_DAYS = 731;
 /** How many of the processor's transactions one fee report reads. Their endpoint has no date
  *  filter — it answers newest-first — so this is the depth of the window we can honestly cover,
  *  and a report whose period reaches past it says so (`processor: 'partial'`). */
-const PROCESSOR_PAGE = 200;
 
 /**
  * The seller's three reports, as a table (`format=json`) or as a file (`format=csv`).
@@ -102,49 +98,25 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
    * (AI_INSTRUCTIONS → no silent caps).
    */
   if (report === 'fees') {
-    const rateFor = new Map(stores.map((s) => [s.slug, chargedCommissionPercentForStore(s)]));
-    const creds = activePaymeCredentials();
-    const [orderSets, account, subCharges] = await Promise.all([
-      Promise.all(stores.map((s) => getOrdersByStoreSlugInRange(s.slug, from, to))),
-      creds ? merchantAccountFor(sellerId) : Promise.resolve(null),
-      getSellerStreamEvents(sellerId, SUBSCRIPTION_EVENT_STREAM, from, to),
-    ]);
-    // One order can name several of this seller's shops, so the sets overlap — de-duplicated by id
-    // before the builder sees them, or a two-shop order would contribute its commission twice.
-    const orders = [...new Map(orderSets.flat().map((o) => [o.id, o])).values()];
-
-    let processor: 'ok' | 'partial' | 'unavailable' | 'none' = 'none';
-    let clearing: { dayISO: string; reference: string; baseAgorot: number; feeAgorot: number }[] = [];
-    if (creds && account?.providerRef) {
-      try {
-        const txs = await getSellerTransactions(account.providerRef, creds, PROCESSOR_PAGE);
-        clearing = txs
-          .map((t) => ({ dayISO: paymeDay(t.at), reference: t.saleId, baseAgorot: t.priceAgorot, feeAgorot: t.processingAgorot }))
-          .filter((c) => c.dayISO >= from && c.dayISO <= to && c.feeAgorot > 0);
-        // The oldest row we were given is still inside the window, so there may be older ones we
-        // never saw. Said, not guessed at silently.
-        const oldest = txs.length === PROCESSOR_PAGE ? paymeDay(txs[txs.length - 1]!.at) : '';
-        processor = oldest && oldest >= from ? 'partial' : 'ok';
-      } catch {
-        // Not rethrown: our own rows are still a true and useful document, and a report that
-        // refuses to render because a third party is down is worse than one that says so.
-        processor = 'unavailable';
-      }
-    }
-
+    /* ── One source since 2026-09-08, and it is ours ──
+       This used to merge two: our per-sale commission, derived from the orders, and the processor's
+       own per-charge fee, READ live from PayMe over the seller's merchant account. Both are gone —
+       we take no share of a sale, and there is no merchant account of his at our processor to read.
+       So the report is the subscription charges we have a RECORD of, and there is no third party on
+       the request path any longer: no `processor` state to degrade, no page limit to disclose. */
+    const subCharges = await getSellerStreamEvents(sellerId, SUBSCRIPTION_EVENT_STREAM, from, to);
     const { rows, totals } = buildFeesReport({
-      orders,
-      rateFor,
+      orders: [],
+      rateFor: new Map(),
       fromISO: from,
       toISO: to,
-      clearing,
       subscription: subCharges.map((e) => ({
         dayISO: businessDayISO(new Date(e.at)),
         reference: e.detail ?? '',
         amountAgorot: e.amountAgorot ?? 0,
       })),
     });
-    return wantsCsv ? csv(feesReportCsv(rows, lang)) : json({ ok: true, rows, totals, processor });
+    return wantsCsv ? csv(feesReportCsv(rows, lang)) : json({ ok: true, rows, totals, processor: 'none' });
   }
 
   if (report === 'stock') {

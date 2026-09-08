@@ -426,71 +426,64 @@ describe('the three seller reports reconcile with each other and with Performanc
     // behind it — so a difference here is the one that gets noticed and never explained.
     const perf = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, FROM, TO, 'day', RATE);
     expect(sales.totals.netAgorot).toBe(perf.totalRevenueAgorot);
-    expect(sales.totals.commissionAgorot).toBe(perf.platformCommissionAgorot);
     expect(sales.totals.rows).toBeGreaterThan(perf.totalOrders); // the cancelled row is listed, not counted
   });
 
-  it('a cancelled order is listed, contributes nothing, and is charged no commission', () => {
+  it('a cancelled order is listed and contributes nothing', () => {
     const row = sales.rows.find((r) => r.orderId === 'r3');
     expect(row?.countsAsRevenue).toBe(false);
-    expect(row?.commissionAgorot).toBe(0);
+    // Its own money is real — the row is there to be seen — and none of it reaches the totals.
+    expect(row?.grossAgorot).toBeGreaterThan(0);
     expect(sales.totals.grossAgorot).toBe(1999 + 4001 + 1999 * 3);
   });
 
-  it('every payout is net minus commission, and no figure is ever negative', () => {
+  it('no figure on a sales row is ever negative', () => {
+    // It used to also require `payout === net − commission`. Nothing is deducted from a sale since
+    // 2026-09-08, so net IS what the seller keeps and the two columns collapsed into one.
     for (const r of sales.rows) {
-      expect(r.payoutAgorot).toBe(r.netAgorot - r.commissionAgorot);
-      for (const v of [r.grossAgorot, r.netAgorot, r.commissionAgorot, r.payoutAgorot]) expect(v).toBeGreaterThanOrEqual(0);
+      for (const v of [r.grossAgorot, r.discountAgorot, r.netAgorot, r.shippingAgorot]) expect(v).toBeGreaterThanOrEqual(0);
     }
   });
 
   /**
-   * ── The fee ledger against the sales report (owner, סשן א׳ §1, 2026-08-26) ──
+   * ── The fee ledger is one kind of fee now (2026-09-08) ──
    *
-   * They are read side by side: the sales report's commission column is what a seller was charged
-   * on his sales, and the fee report is the document his bookkeeper posts. Two different modules
-   * computing "what the mall took this month" is exactly the shape this file exists for.
+   * It used to hold three, from two parties, and this block asserted the hardest of them: that the
+   * ledger's TOTAL equalled the sales report's commission column, and that a processor row came
+   * APART (their figures already contain VAT) rather than having tax added to it — the mistake that
+   * would have inflated a seller's stated expenses by 18%.
    *
-   * The one difference is deliberate and is asserted rather than tolerated: the fee ledger splits
-   * every charge into סכום · מע״מ · סה״כ, so its TOTAL is the sales report's commission and its
-   * `amountAgorot` is that figure net of the tax inside it.
+   * Both are gone with their rows: we take no share of a sale, and the processor now bills him
+   * directly under an agreement we are not party to. The extraction rule itself survives, because
+   * the subscription is also a GROSS figure (`store-plan.ts` bills the price with VAT in it), and
+   * that is what these two assert on the one row shape left.
    */
-  it('the fee ledger and the sales report agree about what the mall took', () => {
-    const fees = buildFeesReport({
-      orders,
-      rateFor: new Map([[STORE, RATE]]),
-      fromISO: FROM,
-      toISO: TO,
-    });
-    expect(fees.totals.totalAgorot).toBe(sales.totals.commissionAgorot);
-    expect(fees.totals.commissionAgorot).toBe(fees.totals.netAgorot);
-    // Every row closes on its own three numbers, which is the property a document a person adds up
-    // has to have — and the reason the VAT is summed from the rows rather than extracted from the
-    // total (`buildFeesReport`).
-    for (const row of fees.rows) expect(row.amountAgorot + row.vatAgorot).toBe(row.totalAgorot);
-    expect(fees.totals.netAgorot + fees.totals.vatAgorot).toBe(fees.totals.totalAgorot);
-  });
-
-  it('the fee ledger charges nothing for a cancelled order', () => {
-    const fees = buildFeesReport({ orders, rateFor: new Map([[STORE, RATE]]), fromISO: FROM, toISO: TO });
-    // `r3` is the cancelled one. A commission row for it would be us billing for a sale that did
-    // not happen, on the document a seller checks us against.
-    expect(fees.rows.some((r) => r.reference === 'r3')).toBe(false);
-  });
-
-  it('the fee ledger SPLITS a processor fee instead of grossing it up again', () => {
-    // PayMe report their fees after VAT (GO_LIVE §3.1.0), so a row of theirs must come apart rather
-    // than have tax added to it — the mistake would inflate a seller's stated expenses by 18%.
+  it('every fee row comes APART into סכום · מע״מ · סה״כ, never grossed up', () => {
     const fees = buildFeesReport({
       orders: [],
       rateFor: new Map(),
       fromISO: FROM,
       toISO: TO,
-      clearing: [{ dayISO: '2026-07-05', reference: 'SALE-1', baseAgorot: 12000, feeAgorot: 118 }],
+      // 116.82 is 99 + VAT — the figure the standing order really debits.
+      subscription: [{ dayISO: '2026-07-05', reference: '2026-07', amountAgorot: 11682 }],
     });
-    expect(fees.totals.totalAgorot).toBe(118);
-    expect(fees.rows[0]!.amountAgorot).toBe(100);
-    expect(fees.rows[0]!.vatAgorot).toBe(18);
+    expect(fees.totals.totalAgorot).toBe(11682);
+    expect(fees.rows[0]!.amountAgorot).toBe(9900);
+    expect(fees.rows[0]!.vatAgorot).toBe(1782);
+    // Every row closes on its own three numbers, which is the property a document a person adds up
+    // has to have — and the reason the VAT is summed from the rows rather than extracted from the
+    // total (`buildFeesReport`).
+    for (const row of fees.rows) expect(row.amountAgorot + row.vatAgorot).toBe(row.totalAgorot);
+    expect(fees.totals.netAgorot + fees.totals.vatAgorot).toBe(fees.totals.totalAgorot);
+    expect(fees.totals.subscriptionAgorot).toBe(fees.totals.netAgorot);
+  });
+
+  it('the fee ledger bills nothing for a sale, cancelled or not', () => {
+    // `r3` is the cancelled one, and the others are not — none of them produces a row, because the
+    // platform charges nothing on a sale at all.
+    const fees = buildFeesReport({ orders, rateFor: new Map([[STORE, RATE]]), fromISO: FROM, toISO: TO });
+    expect(fees.rows).toEqual([]);
+    expect(fees.totals.totalAgorot).toBe(0);
   });
 
   it('the stock report values the shelf at the same agorot every money surface uses', () => {

@@ -80,9 +80,10 @@ export function columnsFor(report: ReportId, t: Record<string, string>): Column<
     { key: 'items', head: t.repColItems ?? '', num: true, cell: (r) => String(r.items) },
     { key: 'gross', head: t.repColGross ?? '', num: true, cell: (r) => money(r.grossAgorot) },
     { key: 'discount', head: t.repColDiscount ?? '', num: true, cell: (r) => (r.discountAgorot ? `−${money(r.discountAgorot)}` : '—') },
-    { key: 'net', head: t.repColNet ?? '', num: true, cell: (r) => money(r.netAgorot), sortBy: (r) => r.netAgorot },
-    { key: 'commission', head: t.repColCommission ?? '', num: true, cell: (r) => (r.commissionAgorot ? `−${money(r.commissionAgorot)}` : '—') },
-    { key: 'payout', head: t.repColPayout ?? '', num: true, cell: (r) => `<strong>${money(r.payoutAgorot)}</strong>`, sortBy: (r) => r.payoutAgorot },
+    // ── "commission" and "payout" were two columns here until 2026-09-08 ──
+    // The platform takes no share of a sale, so one of them was a permanent dash and the other a
+    // copy of `net`. Net IS the payout now, which is why it carries the emphasis they used to.
+    { key: 'net', head: t.repColNet ?? '', num: true, cell: (r) => `<strong>${money(r.netAgorot)}</strong>`, sortBy: (r) => r.netAgorot },
     {
       key: 'state',
       head: t.repColState ?? '',
@@ -136,7 +137,7 @@ export function columnsFor(report: ReportId, t: Record<string, string>): Column<
       cell: (r) => esc(t[FEE_KIND_KEY[r.kind]] ?? ''),
       sortBy: (r) => r.kind,
     },
-    { key: 'payee', head: t.repColFeePayee ?? '', cell: (r) => esc(t[r.payee === 'processor' ? 'repFeePayeeProcessor' : 'repFeePayeePlatform'] ?? '') },
+    { key: 'payee', head: t.repColFeePayee ?? '', cell: () => esc(t.repFeePayeePlatform ?? '') },
     // ── The reference, SHORTENED on screen and whole in the file ──
     // A commission row references an order id and a clearing row references the processor's sale
     // id; both are 36-character machine strings, and printed in full they were the widest column
@@ -233,8 +234,6 @@ function tableHtml(report: ReportId, rows: AnyRow[], t: Record<string, string>, 
 /** Fee kind → the translation key that names it. A map rather than a chain, so a kind added to
  *  `FeeKind` without a word here is a missing key rather than a silently blank cell. */
 const FEE_KIND_KEY: Record<FeeRow['kind'], string> = {
-  commission: 'repFeeKindCommission',
-  clearing: 'repFeeKindClearing',
   subscription: 'repFeeKindSubscription',
 };
 
@@ -245,9 +244,9 @@ function summaryText(report: ReportId, totals: Record<string, number>, t: Record
       `${t.repSumFeesNet ?? ''} ${money(n('netAgorot'))}`,
       `${t.repSumFeesVat ?? ''} ${money(n('vatAgorot'))}`,
       `${t.repSumFeesTotal ?? ''} ${money(n('totalAgorot'))}`,
-      `${t.repFeeKindCommission ?? ''} ${money(n('commissionAgorot'))}`,
-      `${t.repFeeKindClearing ?? ''} ${money(n('clearingAgorot'))}`,
-      n('subscriptionAgorot') ? `${t.repFeeKindSubscription ?? ''} ${money(n('subscriptionAgorot'))}` : '',
+      // The per-kind breakdown was three lines while three parties charged him. One kind left, and
+      // its subtotal IS `netAgorot` above — a second line naming the same figure is the same fact
+      // twice (`feedback_no_standing_screen_prose`).
     ].filter(Boolean).join(' · ');
   }
   if (report === 'stock') {
@@ -266,9 +265,9 @@ function summaryText(report: ReportId, totals: Record<string, number>, t: Record
   }
   return [
     `${t.repSumOrders ?? ''} ${n('rows')}`,
+    // Net is what he keeps: nothing is deducted from a sale, so "commission" and "payout" were a
+    // zero and a duplicate.
     `${t.repSumNet ?? ''} ${money(n('netAgorot'))}`,
-    `${t.repSumCommission ?? ''} ${money(n('commissionAgorot'))}`,
-    `${t.repSumPayout ?? ''} ${money(n('payoutAgorot'))}`,
   ].join(' · ');
 }
 

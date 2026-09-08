@@ -52,12 +52,12 @@ export interface SalesRow {
   grossAgorot: number;
   discountAgorot: number;
   couponCode: string;
-  /** gross − discount, floored at zero. The figure commission is taken on. */
+  /** gross − discount, floored at zero. **What the sale is worth to the seller**, shipping excluded.
+   *  It used to be the figure a commission was taken ON, with `commissionAgorot` and
+   *  `payoutAgorot` beside it; the platform takes no share of a sale since 2026-09-08, so the two
+   *  became a zero and a copy of this column. */
   netAgorot: number;
   shippingAgorot: number;
-  commissionAgorot: number;
-  /** net − commission. What the sale is worth to the seller, shipping excluded. */
-  payoutAgorot: number;
   paymentStatus: Order['paymentStatus'];
   shippingStatus: Order['shippingStatus'];
   countsAsRevenue: boolean;
@@ -69,8 +69,6 @@ export interface ReportTotals {
   discountAgorot: number;
   netAgorot: number;
   shippingAgorot: number;
-  commissionAgorot: number;
-  payoutAgorot: number;
 }
 
 export interface ProductSalesRow {
@@ -118,7 +116,14 @@ export interface StockRow {
  * seller shown a single deduction concludes the platform took all of it. So `payee` is a column of
  * the data and not a footnote.
  */
-export type FeeKind = 'commission' | 'clearing' | 'subscription';
+/**
+ * **One kind since 2026-09-08, and the union is kept as a union on purpose.**
+ * `commission` went when the platform stopped taking a share of a sale, and `clearing` went with
+ * the merchant account we used to open for the seller — his processing fee is now charged by HIS
+ * processor under HIS agreement, at a rate we neither set nor can read, so printing it would be us
+ * reporting somebody else's invoice. What is left is the one thing we really charge him.
+ */
+export type FeeKind = 'subscription';
 
 export interface FeeRow {
   /** Business-day ISO. For a processor fee it is PayMe's own calendar day, sliced never parsed
@@ -148,15 +153,15 @@ export interface FeeRow {
    *  re-added at every renderer so the row a spreadsheet sums and the row a screen prints are the
    *  same three numbers. */
   totalAgorot: number;
-  /** Who charges it. Two parties, and the seller must be able to tell them apart. */
-  payee: 'platform' | 'processor';
+  /** Who charges it. One party now — us — and the field survives because a document stating who
+   *  billed a line is right whether or not there is currently more than one biller. */
+  payee: 'platform';
 }
 
 export interface FeeTotals {
   rows: number;
-  /** Each kind's own subtotal, BEFORE VAT — the same convention as the rows. */
-  commissionAgorot: number;
-  clearingAgorot: number;
+  /** BEFORE VAT, the same convention as the rows. It was three subtotals — commission, clearing,
+   *  subscription — while three parties took a cut of a sale. */
   subscriptionAgorot: number;
   /** Everything before VAT, the VAT on it, and the sum of the two. Three figures rather than one,
    *  because that is what a seller copies into his books. */

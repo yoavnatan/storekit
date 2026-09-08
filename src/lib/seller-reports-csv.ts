@@ -47,8 +47,6 @@ const SALES_HEADERS: Header[] = [
   { he: 'קוד קופון', en: 'Coupon code' },
   { he: 'סכום המכירה', en: 'Sale total' },
   { he: 'משלוח', en: 'Shipping' },
-  { he: 'עמלת פלטפורמה', en: 'Platform commission' },
-  { he: 'לתשלום למוכר', en: 'Seller payout' },
   { he: 'סטטוס תשלום', en: 'Payment status' },
   { he: 'סטטוס משלוח', en: 'Shipping status' },
   { he: 'נכלל בהכנסות', en: 'Counted as revenue' },
@@ -88,12 +86,12 @@ const FEE_HEADERS: Header[] = [
  *  dashboard's translations for the reason `SALES_HEADERS` is: a CSV is read by a bookkeeper in a
  *  spreadsheet, so its words are part of the document, not of a screen. */
 const FEE_KIND: Record<Lang, Record<FeeRow['kind'], string>> = {
-  he: { commission: 'עמלת מכירה', clearing: 'עמלת סליקה', subscription: 'מנוי חודשי' },
-  en: { commission: 'Sale commission', clearing: 'Clearing fee', subscription: 'Monthly subscription' },
+  he: { subscription: 'מנוי חודשי' },
+  en: { subscription: 'Monthly subscription' },
 };
 const FEE_PAYEE: Record<Lang, Record<FeeRow['payee'], string>> = {
-  he: { platform: 'המתחם', processor: 'חברת הסליקה' },
-  en: { platform: 'The mall', processor: 'The processor' },
+  he: { platform: 'המתחם' },
+  en: { platform: 'The mall' },
 };
 
 const YES_NO: Record<Lang, [string, string]> = { he: ['כן', 'לא'], en: ['Yes', 'No'] };
@@ -113,7 +111,7 @@ export function salesReportCsv(rows: readonly SalesRow[], lang: Lang): string {
   return serialize(SALES_HEADERS, rows.map((r) => [
     r.dayISO, r.orderId, r.buyerName, r.city, String(r.items),
     money(r.grossAgorot), money(r.discountAgorot), r.couponCode, money(r.netAgorot),
-    money(r.shippingAgorot), money(r.commissionAgorot), money(r.payoutAgorot),
+    money(r.shippingAgorot),
     r.paymentStatus, r.shippingStatus, r.countsAsRevenue ? yes : no,
   ]), lang);
 }

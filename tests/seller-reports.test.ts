@@ -92,18 +92,19 @@ describe('sales report', () => {
     expect(cancelled?.countsAsRevenue).toBe(false);
     // The row is present — a seller reconciling a month has to see the cancellation, not a gap.
     expect(cancelled?.grossAgorot).toBe(10000);
-    // ...and charges no commission on it. Billing for a sale that did not happen is the one number
-    // that would make a seller distrust the whole tab.
-    expect(cancelled?.commissionAgorot).toBe(0);
+    // Its money stays out of the totals, which is the assertion the commission column used to make
+    // before the platform stopped taking a share of a sale.
     expect(built.totals.rows).toBe(3);
     expect(built.totals.grossAgorot).toBe(20000 + 50000);
   });
 
-  it('nets the discount out and takes commission on the net, not the gross', () => {
+  it('nets the discount out, and the net is what the seller keeps', () => {
+    // It used to assert the commission taken ON that net (12% of 450.00 = 54.00) and the payout
+    // under it. Nothing is deducted from a sale now, so net IS the payout — which is why the column
+    // it feeds carries the emphasis the payout column used to.
     const discounted = built.rows.find((r) => r.orderId === 'o2');
+    expect(discounted?.grossAgorot).toBe(50000);
     expect(discounted?.netAgorot).toBe(45000);
-    expect(discounted?.commissionAgorot).toBe(5400); // 12% of 450.00
-    expect(discounted?.payoutAgorot).toBe(45000 - 5400);
     expect(discounted?.couponCode).toBe('AUG10');
   });
 
@@ -117,7 +118,7 @@ describe('sales report', () => {
 
   it('every total is the sum of the counting rows — parts sum to the whole', () => {
     const counting = built.rows.filter((r) => r.countsAsRevenue);
-    for (const key of ['grossAgorot', 'discountAgorot', 'netAgorot', 'shippingAgorot', 'commissionAgorot', 'payoutAgorot'] as const) {
+    for (const key of ['grossAgorot', 'discountAgorot', 'netAgorot', 'shippingAgorot'] as const) {
       expect(built.totals[key]).toBe(counting.reduce((n, r) => n + r[key], 0));
     }
   });

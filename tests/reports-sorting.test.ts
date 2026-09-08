@@ -21,11 +21,13 @@ const T: Record<string, string> = {
 const col = (report: 'sales' | 'products' | 'stock', key: string): Column<never> | undefined =>
   columnsFor(report, T).find((c) => c.key === key);
 
-function sale(id: string, payoutAgorot: number, dayISO: string): SalesRow {
+/** `netAgorot` is what the seller keeps — the column that used to be `payout`, before the platform
+ *  stopped taking a share of a sale (2026-09-08). */
+function sale(id: string, netAgorot: number, dayISO: string): SalesRow {
   return {
     orderId: id, dayISO, buyerName: 'ב', city: 'ח', items: 1,
-    grossAgorot: payoutAgorot, discountAgorot: 0, couponCode: '', netAgorot: payoutAgorot,
-    shippingAgorot: 0, commissionAgorot: 0, payoutAgorot,
+    grossAgorot: netAgorot, discountAgorot: 0, couponCode: '', netAgorot,
+    shippingAgorot: 0,
     paymentStatus: 'paid', shippingStatus: 'delivered', countsAsRevenue: true,
   };
 }
@@ -34,10 +36,10 @@ describe('report sorting', () => {
   it('orders money by its value, not by the string it renders as', () => {
     // 90.00 ₪ vs 1,000.00 ₪ — the pair that exposes a string sort.
     const rows: AnyRow[] = [sale('a', 9000, '2026-08-01'), sale('b', 100000, '2026-08-02'), sale('c', 50, '2026-08-03')];
-    const asc = sortRows(rows, col('sales', 'payout'), 1) as SalesRow[];
-    expect(asc.map((r) => r.payoutAgorot)).toEqual([50, 9000, 100000]);
-    const desc = sortRows(rows, col('sales', 'payout'), -1) as SalesRow[];
-    expect(desc.map((r) => r.payoutAgorot)).toEqual([100000, 9000, 50]);
+    const asc = sortRows(rows, col('sales', 'net'), 1) as SalesRow[];
+    expect(asc.map((r) => r.netAgorot)).toEqual([50, 9000, 100000]);
+    const desc = sortRows(rows, col('sales', 'net'), -1) as SalesRow[];
+    expect(desc.map((r) => r.netAgorot)).toEqual([100000, 9000, 50]);
   });
 
   it('never reorders the array the totals and the export were built from', () => {

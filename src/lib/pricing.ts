@@ -8,9 +8,9 @@
  *  lower rate. The commission going is what collapsed the ladder: with the rate gone the four rows
  *  differed in nothing but price. `SELLER_TIERS` below carries what is left of that history.
  *
- *  ⚠️ THE NUMBERS BELOW ARE PLACEHOLDERS. The tier *shape* is decided; the real fees and
- *  percentages are not (see CURRENT_TASK.md / GO_LIVE_CHECKLIST.md). They live here, in one
- *  table, precisely so settling on the real ones is a single edit and nothing else moves.
+ *  The monthly fee is DECIDED — 99₪ per shop, before VAT (owner, 2026-09-08). The advertising
+ *  margin below it is still a placeholder. Both live here, in one table, precisely so settling on a
+ *  number is a single edit and nothing else moves.
  *
  *  Nothing here charges anybody: no money moves anywhere in the app yet (the split-payment
  *  provider isn't wired). Today these figures drive the reporting-only "platform commission /
@@ -172,8 +172,10 @@ export const SELLER_SETUP_FEE = 99;
  * zero, which is the true number. Deleting the SCREENS that report a permanent zero is cleanup and
  * is tracked separately; leaving the field would be the shape that quietly starts charging again.
  *
- * ⚠️ 99₪ is the old Starter fee carried over, and it is still a PLACEHOLDER like every number in
- * this file — the owner has not set the single price.
+ * **99₪ is DECIDED, not a placeholder (owner, 2026-09-08: *"כרגע מבחינתי המחיר הגלובלי הוא חנות
+ * ב-99 ש״ח לחודש"*).** It is the same figure the old Starter row carried, which is why nothing
+ * moved when the ladder collapsed onto it — but it is now a price somebody chose rather than one
+ * nobody had got round to. Before VAT, like every number in this file, and per SHOP.
  *
  * The union keeps its four ids so no stored `stores.tier` value can fail to resolve; `resolveTier`
  * maps every one of them to this row.
