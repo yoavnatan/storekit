@@ -240,8 +240,12 @@ export function initCopyEditor(): void {
     .dev-copy-row button.primary{background:#111;color:#fff;border-color:#111}
     .dev-copy-note{margin-inline-start:auto;color:#666;font-size:11px}
     .dev-copy-note[data-bad="1"]{color:#b91c1c}
-    .dev-copy-todo{margin-top:8px;padding:8px;border-radius:6px;background:#fef3c7;color:#78350f;
-      font:500 11px/1.5 ui-monospace,monospace;direction:ltr;text-align:left;user-select:all}
+    /* One outstanding command inside the standing strip. user-select:all so a single click takes
+       the whole line — it is meant to be pasted into a terminal, not read. No backticks in here:
+       one inside a template literal ends the literal (memory project_astro_inline_template_backtick). */
+    .dev-copy-todo{margin-top:4px;padding:6px 8px;border-radius:5px;background:#0000000d;
+      color:inherit;font:500 11px/1.5 ui-monospace,monospace;direction:ltr;text-align:left;
+      user-select:all}
     .dev-copy-standing{position:fixed;inset-inline-start:12px;bottom:56px;z-index:2147482998;
       max-width:340px;background:#fef3c7;color:#78350f;border:1px solid #f59e0b55;border-radius:8px;
       padding:8px 10px;box-shadow:0 2px 10px #0002;direction:rtl;font:500 11px/1.5 system-ui,sans-serif}
@@ -393,17 +397,13 @@ export function initCopyEditor(): void {
       `<button type="button" class="primary" data-act="save">שמירה</button>` +
       `<button type="button" data-act="cancel">ביטול</button>` +
       `<span class="dev-copy-note">⌘↵ לשמירה · Esc לביטול</span>` +
-      `</div>` +
-      // Shown only when the saved string is one of the few DRAWN into committed files. `user-select:all`
-      // so one click takes the whole command — it is meant to be pasted into a terminal, not read.
-      `<div class="dev-copy-todo" hidden></div>`;
+      `</div>`;
     document.body.appendChild(panel);
 
     const area = panel.querySelector('textarea') as HTMLTextAreaElement;
     const keyLine = panel.querySelector('.dev-copy-key') as HTMLElement;
     const pick = panel.querySelector('.dev-copy-pick') as HTMLSelectElement | null;
     const note = panel.querySelector('.dev-copy-note') as HTMLElement;
-    const todo = panel.querySelector('.dev-copy-todo') as HTMLElement;
 
     // The SOURCE string, not what is on screen: a sentence rendered with `{n}` already filled in
     // would lose its placeholder the moment it was saved back.
@@ -469,8 +469,6 @@ export function initCopyEditor(): void {
           const list = readTodo();
           if (!list.includes(data.regenerate)) writeTodo([...list, data.regenerate]);
           paintStanding();
-          todo.textContent = data.regenerate;
-          todo.hidden = false;
           left.push('צריך לצייר מחדש');
         }
         if (left.length) {
