@@ -153,10 +153,6 @@ const productsNote = productsTotal === 0 ? '' : d.perfTopProductsNote
   {d.perfRetentionNote.replace('{days}', String(VISITOR_RETENTION_DAYS))}
 </p>
 
-{/* The cross-check first: a figure that does not reconcile makes every number under it a
-    question, so it is read before them and not after. */}
-<AdminReconciliationCard reconciliation={reconciliation} />
-
 {/* Two cards, because they answer two different questions and mixing them was
     the reported gap (CURRENT_TASK.md → סשן ב׳ item 2):
       left  — the buyer's money. The platform is not even a pass-through since
@@ -218,6 +214,14 @@ const productsNote = productsTotal === 0 ? '' : d.perfTopProductsNote
     </dl>
   </div>
 </div>
+
+{/* ── The cross-check, UNDER the money it qualifies ──
+    It was placed above them for a day, on the reasoning that a figure which does not reconcile
+    makes every number under it a question. Driven, that argument lost to the screen: forty
+    discrepancies on real data is a wall of red text, and the tab a reader opened for figures had
+    none of them above the fold. It is red, it carries a count in its own heading, and it cannot be
+    missed from here — which is all the first position was buying. */}
+<AdminReconciliationCard reconciliation={reconciliation} />
 
 <script type="application/json" id="perf-initial-summary" set:html={summaryJson} />
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5" data-perf-rtl={isRtl ? '1' : '0'}>
