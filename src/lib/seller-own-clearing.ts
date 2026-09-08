@@ -116,6 +116,22 @@ export async function saveSellerClearing(
   return sellerClearingFor(sellerId);
 }
 
+/**
+ * Disconnect: forget the provider and everything pasted for it.
+ *
+ * A real DELETE and not a blanking, because a row holding a provider with empty credentials is a
+ * state the screen would read as "chosen, half-finished" — which is exactly what a seller who has
+ * just pressed "disconnect" did not do. `canTakePayments` answers false either way; the difference
+ * is what he is shown.
+ *
+ * There is nothing here to undo. He pastes the values again from his provider's own screen, which
+ * is where they live — we never held anything he cannot get back.
+ */
+export async function disconnectSellerClearing(sellerId: string): Promise<void> {
+  if (!isUuid(sellerId)) return;
+  await query('DELETE FROM seller_clearing_credentials WHERE seller_id = $1', [sellerId]);
+}
+
 /** Record that these credentials were proved to work. Called by the connection check, never by a
  *  save — see the note on `saveSellerClearing`. */
 export async function markClearingVerified(sellerId: string): Promise<void> {

@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { saveSellerClearing, sellerClearingFor, forDisplay, canTakePayments } from '../../../lib/seller-own-clearing.js';
+import { saveSellerClearing, sellerClearingFor, forDisplay, canTakePayments, disconnectSellerClearing } from '../../../lib/seller-own-clearing.js';
 import { clearingProvider } from '../../../lib/clearing-providers.js';
 
 /**
@@ -41,6 +41,20 @@ async function state(sellerId: string): Promise<Record<string, unknown>> {
 export async function GET({ cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
+  return json(await state(sellerId));
+}
+
+/**
+ * Disconnect the account entirely (owner, 2026-09-08: *"אפשרות לבטל בחירה"*).
+ *
+ * Session-scoped like everything else here — a seller can only ever disconnect his own. It answers
+ * with the same `state` shape as GET and POST, so the screen redraws from one thing whichever verb
+ * it used.
+ */
+export async function DELETE({ cookies }: APIContext): Promise<Response> {
+  const sellerId = getSellerSession(cookies);
+  if (!sellerId) return json({ error: 'Unauthorized' }, 401);
+  await disconnectSellerClearing(sellerId);
   return json(await state(sellerId));
 }
 

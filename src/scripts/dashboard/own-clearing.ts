@@ -15,7 +15,7 @@
 // only sent when the seller actually types one — that is what makes `saveSellerClearing`'s merge
 // the correct behaviour rather than a convenience, and it is why this module posts the form as-is
 // instead of "filling in" what is already on file.
-import { showErrorToast } from '../../lib/toast.js';
+import { showToast, showErrorToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
 import { announceValueChange, discardChanges } from './unsaved-guard.js';
 
@@ -46,6 +46,8 @@ export function initOwnClearingCard(): void {
   const missingLine = document.getElementById('own-clearing-missing');
   const errorLine = document.getElementById('own-clearing-error');
   const cancelBtn = document.getElementById('own-clearing-cancel');
+  const stateLine = document.getElementById('own-clearing-state');
+  const clearBtn = document.getElementById('own-clearing-clear');
 
   const pickButtons = (): HTMLButtonElement[] =>
     Array.from(root.querySelectorAll<HTMLButtonElement>('#own-clearing-pick [data-provider]'));
@@ -79,25 +81,44 @@ export function initOwnClearingCard(): void {
       btn.setAttribute('aria-pressed', String(on));
     });
     fieldsets().forEach((box) => { box.hidden = box.dataset.providerFields !== id; });
+    // The row that says it in words. A filled pill among six is a state a reader has to find; the
+    // one that matters most — none chosen — has no pill to find at all.
+    if (stateLine) {
+      stateLine.textContent = id
+        ? (t.ownClearingChosen ?? '').replace('{name}', nameOf(id))
+        : (t.ownClearingNone ?? '');
+      stateLine.classList.toggle('[color:var(--color-muted)]', !id);
+    }
+    if (clearBtn) clearBtn.hidden = !id;
+  }
+
+  /** Choose, or un-choose. Writing the field and repainting from it is the whole operation — the
+   *  same path a press, a clear and a `dash:fieldsrewritten` all take, so none of them can leave a
+   *  pill lit over another provider's fields. */
+  function choose(id: string): void {
+    if (providerInput.value === id) return;
+    providerInput.value = id;
+    paintPicker();
+    // What is still missing belongs to the provider that WAS chosen — a different list now, or none
+    // at all. Saying nothing beats leaving the old count under different fields.
+    if (missingLine) missingLine.hidden = true;
+    announceValueChange(providerInput);
   }
 
   // The press has to MOVE something, or it reads as a broken field — the no-op this site bans
   // (`feedback_noop_interactions_invisible`). It moves three things: the pressed button's fill, the
   // visible fieldset, and the hidden input the form actually submits. `aria-pressed` stays beside
   // the fill, because colour alone is never a state.
+  // Pressing the chosen one again UN-chooses it (owner, 2026-09-08: *"אפשרות לבטל בחירה"*). A
+  // toggle rather than a one-way select, because a seller who picked the wrong company otherwise
+  // has no way back to "I have not decided" — only to a different wrong answer.
   pickButtons().forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.provider!;
-      if (providerInput.value === id) return;
-      providerInput.value = id;
-      paintPicker();
-      // Switching providers throws the previous one's fields away on the server too
-      // (`saveSellerClearing`), so what is still missing is now a different list. Saying nothing is
-      // more honest than leaving the old count standing under a different provider's fields.
-      if (missingLine) missingLine.hidden = true;
-      announceValueChange(providerInput);
+      choose(providerInput.value === id ? '' : id);
     });
   });
+  clearBtn?.addEventListener('click', () => choose(''));
 
   form.addEventListener('dash:fieldsrewritten', paintPicker);
 
@@ -106,6 +127,36 @@ export function initOwnClearingCard(): void {
     if (summary) summary.hidden = true;
     form.hidden = false;
     form.querySelector<HTMLInputElement>('input:not([type="hidden"]):not([hidden])')?.focus();
+  });
+
+  // ── Disconnecting an account that is already stored ──
+  // A different act from clearing the choice, and it is asked for: this DELETES what he pasted.
+  // Through `ConfirmModal` like every destructive action on this site (native `confirm()` is banned
+  // site-wide), and its OK button is danger-red by default, which is right here.
+  document.getElementById('own-clearing-disconnect')?.addEventListener('click', () => {
+    const name = providerInput.value ? nameOf(providerInput.value) : '';
+    window.dispatchEvent(new CustomEvent('confirm:open', {
+      detail: {
+        title: (t.ownClearingDisconnectAsk ?? '').replace('{name}', name),
+        message: t.ownClearingDisconnectBody ?? '',
+        okLabel: t.ownClearingDisconnectOk ?? '',
+        onConfirm: async () => {
+          const res = await fetch('/api/seller/own-clearing', { method: 'DELETE' });
+          if (!res.ok) { showErrorToast(t.ownClearingFailed ?? ''); return; }
+          const state = await res.json() as ClearingState;
+          // Back to the form, with nothing chosen — which is the state he just asked for, and the
+          // one the row above the pills now says out loud.
+          if (summary) summary.hidden = true;
+          form.hidden = false;
+          providerInput.value = '';
+          paintPicker();
+          root.querySelectorAll<HTMLInputElement>('#own-clearing-form input:not([type="hidden"])')
+            .forEach((input) => { input.value = ''; });
+          render(state);
+          showToast(t.ownClearingDisconnected ?? '');
+        },
+      },
+    }));
   });
 
   cancelBtn?.addEventListener('click', () => {

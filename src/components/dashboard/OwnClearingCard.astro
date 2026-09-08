@@ -81,7 +81,11 @@ const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownCleari
     <p class="m-0 text-[0.9rem] font-semibold" id="own-clearing-summary-line">
       {current ? d.ownClearingOnFile.replace('{name}', current.name) : ''}
     </p>
-    <button type="button" class="btn btn--ghost btn--sm shrink-0" id="own-clearing-edit">{d.ownClearingEdit}</button>
+    <div class="flex items-center gap-2 shrink-0">
+      <button type="button" class="btn btn--ghost btn--sm" id="own-clearing-edit">{d.ownClearingEdit}</button>
+      {/* Danger-red by default in `ConfirmModal`, which is right: this deletes what he pasted. */}
+      <button type="button" class="btn btn--ghost btn--sm" id="own-clearing-disconnect">{d.ownClearingDisconnect}</button>
+    </div>
   </div>
 
   <form id="own-clearing-form" hidden={settled} data-unsaved-guard>
@@ -92,6 +96,23 @@ const missingLine = missing.length === 1 ? d.ownClearingMissingOne : d.ownCleari
 
     <fieldset class="border-0 p-0 m-0 mt-4">
       <legend class="text-[0.85rem] mb-1.5 p-0">{d.ownClearingPick}</legend>
+
+      {/* ── Which one is chosen, said in words (owner, 2026-09-08) ──
+          A filled pill among six is a state a reader has to FIND before he can read it, and the one
+          state that matters most — none chosen — has no filled pill to find at all. So the choice
+          is stated on its own row above the pills, and the button beside it is what undoes it.
+          `aria-live`: the row is rewritten under a press, and the press moves nothing else a screen
+          reader would announce. */}
+      <div class="flex items-center gap-2 flex-wrap mb-2 text-[0.84rem]" aria-live="polite">
+        <span id="own-clearing-state" class:list={['font-semibold', current ? '' : '[color:var(--color-muted)]']}>
+          {current ? d.ownClearingChosen.replace('{name}', current.name) : d.ownClearingNone}
+        </span>
+        {/* Clearing the choice is a local undo — nothing is stored until he saves — so it is a quiet
+            ghost button and not a destructive one. Disconnecting an account that IS stored is a
+            different act and lives on the closed summary, behind a confirmation. */}
+        <button type="button" class="btn btn--ghost btn--sm" id="own-clearing-clear" hidden={!currentId}>{d.ownClearingClear}</button>
+      </div>
+
       <div class="flex gap-2 flex-wrap" id="own-clearing-pick">
         {providers.map((p) => (
           <button

@@ -26,7 +26,7 @@
  * The four `p.tiers` entries stay in the copy: `resolveTier` still answers for stored ids from the
  * four-tier era, and a name for each is what keeps an old `stores.tier` value renderable.
  */
-import { SELLER_TIERS, SELLER_SETUP_FEE } from '../lib/pricing.js';
+import { SELLER_TIERS } from '../lib/pricing.js';
 import type { getT } from '../i18n/index.js';
 
 interface Props {
@@ -59,8 +59,9 @@ const plan = SELLER_TIERS[0]!;
 </div>
 
 {/* The facts that belong under a price and nowhere else on the page, in the order a reader asks
-    them: per shop, what happens if he stops, when we start charging, and the one charge that is NOT
-    the price — his processor's account-opening fee, which is his and was never ours.
+    them: per shop, what happens if he stops, and when we start charging. A fourth line named a
+    ₪99 account-opening fee — the processor's price for the merchant account WE used to open for
+    him. We open none, and what his own provider charges him is a number we do not know.
 
     **Per shop** is a price fact a seller planning two shops has to have before he presses the
     button, not on the payment screen afterwards. **Cancelling** is here because the question that
@@ -69,7 +70,6 @@ const plan = SELLER_TIERS[0]!;
 <p class="m-0 mt-3 text-[0.84rem] font-semibold">{p.perStore}</p>
 <p class="muted m-0 mt-1 text-[0.82rem]">{p.cancelAny}</p>
 <p class="muted m-0 mt-1 text-[0.82rem]">{p.whenBody}</p>
-<p class="muted m-0 mt-1 text-[0.82rem]">{p.setupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
 
 {/* Where a signed-in seller goes to actually start paying. Rendered as a plain link rather than
     filled by a script: with one plan the button above has nothing to save, so the page is the same

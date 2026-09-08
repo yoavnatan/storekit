@@ -32,7 +32,7 @@
  * which is the only figure that is his and true. Printing a guessed rate on the screen a seller
  * checks us against is the exact failure this project has a rule about.
  */
-import { resolveTier, SELLER_SETUP_FEE, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
+import { resolveTier, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
 import { formatAgorot, toAgorot } from '../../lib/money.js';
 import { chargesVat, platformVatPercent } from '../../lib/vat.js';
 import type { getT } from '../../i18n/index.js';
@@ -86,12 +86,9 @@ const withGross = (agorot: number): string =>
           merchant account and knew the number; now it would be us quoting somebody else's price.
           What he pays us is one line: the monthly plan. */}
 
-      {!paying && (
-        <>
-          <dt class="muted">{d.feeSchedSetup}</dt>
-          <dd class="m-0 font-semibold">{withGross(toAgorot(SELLER_SETUP_FEE))}</dd>
-        </>
-      )}
+      {/* The one-off setup fee went on 2026-09-08 with the account it was charged for: ₪99 was the
+          processor's price for the merchant account WE opened for a seller, and we open none. What
+          his own provider charges him to open his is his arrangement and a number we do not have. */}
 
       {invoicingActive && (
         <>

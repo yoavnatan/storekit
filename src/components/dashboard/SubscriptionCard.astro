@@ -32,7 +32,7 @@
  * the month he already paid for (owner, 2026-08-24). A seller who knows that is a seller who is not
  * cancelling in a hurry to avoid being charged again.
  */
-import { resolveTier, SELLER_SETUP_FEE, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
+import { resolveTier, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
 import { formatAgorot, fromAgorot, toAgorot } from '../../lib/money.js';
 import { chargesVat, platformVatPercent } from '../../lib/vat.js';
 import { CANCEL_REASONS, cancelReasonKey } from '../../lib/subscription-cancel.js';
@@ -331,8 +331,11 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
             Both lines are about the FIRST charge, so they are absent once there is a card being
             billed — on a REPLACEMENT they would promise a seller who is already paying that nothing
             will be taken, which is the opposite of true. */}
-        {!hasCard && <p class="m-0 mt-2 text-[0.8rem] font-semibold">{d.subCardNoCharge}</p>}
-        {!hasCard && <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>}
+        {/* Two sentences went here on 2026-09-08, both describing an arrangement that ended: the
+            first charge waiting on "the processor approving the business" (we do not open him an
+            account, so nobody approves anything) and a ₪99 setup fee (that was the processor's
+            price for the account WE opened — whatever his own provider charges him is between the
+            two of them, and we do not know the number). */}
       </div>
 
   </div>
@@ -522,7 +525,6 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
           : (
             <>
               <p class="muted m-0 mt-2 text-[0.78rem]">{d.subGoingToProcessor}</p>
-              <p class="muted m-0 mt-1 text-[0.78rem]">{d.subSetupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
             </>
           )}
       </div>
