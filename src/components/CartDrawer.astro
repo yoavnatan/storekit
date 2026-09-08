@@ -168,10 +168,12 @@
     const singleStore = carts.length === 1;
 
     lines.innerHTML = carts.map((c, idx) => {
-      const isCurrent = c.storeSlug === currentSlug;
+      // No `cart-store-group--current` any more: inside a shop there is exactly one group and it is
+      // always the current one, and off a storefront there is no current shop to mark. The class it
+      // set had one job — spacing before the "other stores" heading — and that heading is gone.
       const divider = idx > 0 ? '<hr class="cart-store-divider">' : '';
       return `${divider}
-      <div class="cart-store-group${isCurrent ? ' cart-store-group--current' : ''}" data-store-slug="${esc(c.storeSlug)}">
+      <div class="cart-store-group" data-store-slug="${esc(c.storeSlug)}">
         <div class="cart-store-group__head">
           <a href="/${esc(c.storeSlug)}" class="cart-store-group__name">${esc(c.storeName)}</a>
           <span class="cart-store-group__count">${c.count} ${c.count !== 1 ? (i18n.items ?? 'items') : (i18n.item ?? 'item')}</span>
