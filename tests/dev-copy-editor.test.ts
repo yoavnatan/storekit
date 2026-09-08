@@ -88,8 +88,21 @@ describe('the editor cannot reach production', () => {
 });
 
 describe('a string is reworded, never damaged', () => {
-  it('refuses an empty result', () => {
-    expect(validateEdit('שלח הודעה', '   ')).toEqual({ ok: false, error: 'הטקסט לא יכול להיות ריק' });
+  it('asks before emptying a string, and does it when asked again', () => {
+    // Deleting a line of copy is ordinary work (owner, 2026-09-08: *"אם אני רוצה למחוק שורה, זה לא
+    // נותן"*), so this is a question rather than a refusal — `confirm` is what tells the panel to
+    // offer the second press instead of just printing an error.
+    const asked = validateEdit('שלח הודעה', '   ');
+    expect(asked.ok).toBe(false);
+    expect(asked.ok === false && asked.confirm).toBe('empty');
+
+    expect(validateEdit('שלח הודעה', '   ', true)).toEqual({ ok: true, value: '' });
+  });
+
+  it('does not let the confirmation buy anything else', () => {
+    // `allowEmpty` says one thing: an empty result is intended. A dropped placeholder in a
+    // NON-empty string is still damage, and the second press must not wave it through.
+    expect(validateEdit('נשלחו {n} הודעות', 'נשלחו הודעות', true).ok).toBe(false);
   });
 
   it('refuses a lost placeholder, naming the one that went missing', () => {
@@ -206,6 +219,39 @@ describe('saving does not close the screen the sentence was on', () => {
     const src = fs.readFileSync(path.join(REPO, 'src/scripts/dev/copy-editor.ts'), 'utf8');
     expect(src).toMatch(/skipReloadUntil = Date\.now\(\) \+ \d+/);
     expect(src).toMatch(/if \(Date\.now\(\) > skipReloadUntil\) return;\s*\n\s*skipReloadUntil = 0;/);
+  });
+});
+
+describe('the editor\'s own chrome is not part of the page being edited', () => {
+  it('takes the crosshair back off the panel and the strip', () => {
+    // `body.dev-copy-armed *` is a `!important` crosshair on every element, and the panel is an
+    // element (owner, 2026-09-08: *"על תיבת הטקסט עצמה של העריכה העכבר עדיין צלב"*). A crosshair
+    // over a textarea says "clicking here picks a sentence", which is exactly what it does not do.
+    const offenders = sourceGuard({
+      file: 'src/scripts/dev/copy-editor.ts',
+      rule: 'the armed crosshair is overridden inside .dev-copy-panel and .dev-copy-standing',
+      find: (src) => {
+        const missing: string[] = [];
+        if (!/body\.dev-copy-armed \.dev-copy-panel textarea\{cursor:text/.test(src)) {
+          missing.push('the textarea still shows the crosshair');
+        }
+        if (!/body\.dev-copy-armed \.dev-copy-standing \*\{cursor:auto/.test(src)) {
+          missing.push('the standing strip still shows the crosshair');
+        }
+        return missing;
+      },
+      mustReject: 'body.dev-copy-armed *{cursor:crosshair !important}',
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  it('gives an emptied string a way back, since the page cannot offer one', () => {
+    // Empty text cannot be hovered, so once a line is deleted the panel can never be reopened on
+    // it. The strip's restore row is the only route back — without it, "delete" is a one-way door
+    // and the confirmation above would be an invitation to lose a string.
+    const src = fs.readFileSync(path.join(REPO, 'src/scripts/dev/copy-editor.ts'), 'utf8');
+    expect(src).toMatch(/kind: 'restore'; key: string; value: string/);
+    expect(src).toMatch(/if \(!saved && data\.was\)/);
   });
 });
 

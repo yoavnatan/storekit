@@ -72,17 +72,41 @@ function readDict(): Dict {
   }
 }
 
-function readTodo(): string[] {
+/**
+ * What the strip beside the toggle is holding.
+ *
+ * `redraw` — a string drawn into committed files left a command to run.
+ * `restore` — a string was emptied, and an empty string cannot be hovered, so the ONLY way back to
+ * it from the page is this row. Without it, deleting a line is a one-way door.
+ */
+type Pending =
+  | { kind: 'redraw'; command: string }
+  | { kind: 'restore'; key: string; value: string };
+
+function readTodo(): Pending[] {
   try {
     const parsed: unknown = JSON.parse(sessionStorage.getItem(TODO_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((c): c is string => typeof c === 'string') : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((entry): Pending[] => {
+      // A bare string is the shape this list held before it carried restores.
+      if (typeof entry === 'string') return [{ kind: 'redraw', command: entry }];
+      if (!entry || typeof entry !== 'object') return [];
+      const row = entry as Record<string, unknown>;
+      if (row.kind === 'redraw' && typeof row.command === 'string') {
+        return [{ kind: 'redraw', command: row.command }];
+      }
+      if (row.kind === 'restore' && typeof row.key === 'string' && typeof row.value === 'string') {
+        return [{ kind: 'restore', key: row.key, value: row.value }];
+      }
+      return [];
+    });
   } catch {
     // A private window throws on read, and a hand-edited value parses to anything at all.
     return [];
   }
 }
 
-function writeTodo(list: string[]): void {
+function writeTodo(list: Pending[]): void {
   try {
     sessionStorage.setItem(TODO_KEY, JSON.stringify(list));
   } catch {
@@ -249,10 +273,25 @@ export function initCopyEditor(): void {
     .dev-copy-standing{position:fixed;inset-inline-start:12px;bottom:56px;z-index:2147482998;
       max-width:340px;background:#fef3c7;color:#78350f;border:1px solid #f59e0b55;border-radius:8px;
       padding:8px 10px;box-shadow:0 2px 10px #0002;direction:rtl;font:500 11px/1.5 system-ui,sans-serif}
-    .dev-copy-standing-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+    .dev-copy-standing-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:600}
+    .dev-copy-standing-line{display:flex;align-items:center;gap:8px;margin-top:4px}
+    .dev-copy-standing-line button{margin-inline-start:auto;border:1px solid #78350f33;background:#fff;
+      color:inherit;border-radius:5px;padding:3px 9px;font:600 11px/1 system-ui,sans-serif;cursor:pointer}
+    .dev-copy-standing-line button[disabled]{opacity:.5}
     .dev-copy-standing-x{margin-inline-start:auto;border:0;background:none;cursor:pointer;
       color:inherit;font:600 14px/1 system-ui,sans-serif;padding:0 2px}
     body.dev-copy-armed *{cursor:crosshair !important}
+    /* The crosshair means "clicking here picks a sentence", and inside the editor's own chrome that
+       is false — a textarea showing a crosshair reads as a control that will not take the caret. */
+    body.dev-copy-armed .dev-copy-panel,
+    body.dev-copy-armed .dev-copy-panel *,
+    body.dev-copy-armed .dev-copy-standing,
+    body.dev-copy-armed .dev-copy-standing *{cursor:auto !important}
+    body.dev-copy-armed .dev-copy-panel textarea{cursor:text !important}
+    body.dev-copy-armed .dev-copy-toggle,
+    body.dev-copy-armed .dev-copy-panel button,
+    body.dev-copy-armed .dev-copy-panel select,
+    body.dev-copy-armed .dev-copy-standing button{cursor:pointer !important}
   `;
   document.head.appendChild(style);
 
@@ -281,7 +320,7 @@ export function initCopyEditor(): void {
 
     const head = document.createElement('div');
     head.className = 'dev-copy-standing-head';
-    head.append('הטקסט נשמר, אבל הוא מצויר לתוך קבצים — צריך לצייר מחדש:');
+    head.append('אחרי השמירה');
     const dismiss = document.createElement('button');
     dismiss.type = 'button';
     dismiss.className = 'dev-copy-standing-x';
@@ -294,12 +333,45 @@ export function initCopyEditor(): void {
     head.appendChild(dismiss);
     standing.appendChild(head);
 
-    // textContent per command rather than one innerHTML: the strings come from our own map today,
-    // and a map is exactly the thing someone later fills from somewhere else.
-    for (const command of list) {
+    // Built as nodes, never one innerHTML: a key and a command come from our own files today, and
+    // "our own files" is exactly the assumption someone later changes.
+    for (const entry of list) {
+      if (entry.kind === 'redraw') {
+        const label = document.createElement('div');
+        label.className = 'dev-copy-standing-line';
+        label.textContent = 'מצויר לתוך קבצים — צריך לצייר מחדש:';
+        standing.appendChild(label);
+
+        const row = document.createElement('div');
+        row.className = 'dev-copy-todo';
+        row.textContent = entry.command;
+        standing.appendChild(row);
+        continue;
+      }
+
       const row = document.createElement('div');
-      row.className = 'dev-copy-todo';
-      row.textContent = command;
+      row.className = 'dev-copy-standing-line';
+      const name = document.createElement('span');
+      name.textContent = `נמחק: ${entry.key}`;
+      row.appendChild(name);
+
+      const undo = document.createElement('button');
+      undo.type = 'button';
+      undo.textContent = 'החזר';
+      undo.addEventListener('click', () => {
+        undo.disabled = true;
+        // No `skipReloadUntil` here on purpose: an emptied element holds no text to patch, so the
+        // reload Vite is about to fire IS what puts the words back on screen.
+        void fetch('/api/dev/copy', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key: entry.key, value: entry.value }),
+        }).then(() => {
+          writeTodo(readTodo().filter((e) => !(e.kind === 'restore' && e.key === entry.key)));
+          paintStanding();
+        });
+      });
+      row.appendChild(undo);
       standing.appendChild(row);
     }
   }
@@ -411,8 +483,17 @@ export function initCopyEditor(): void {
       keyLine.textContent = key;
       area.value = dict[key] ?? '';
     };
+    // Emptying is refused once and done on the second ask. The consent belongs to the text that was
+    // in the box when it was given, so typing anything, or moving to another key, withdraws it.
+    let deleteConfirmed = false;
     load(match.keys[0]);
-    pick?.addEventListener('change', () => load(pick.value));
+    pick?.addEventListener('change', () => {
+      deleteConfirmed = false;
+      load(pick.value);
+    });
+    area.addEventListener('input', () => {
+      if (area.value.trim()) deleteConfirmed = false;
+    });
     area.focus();
     area.select();
 
@@ -426,11 +507,12 @@ export function initCopyEditor(): void {
         const res = await fetch('/api/dev/copy', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ key, value: area.value }),
+          body: JSON.stringify({ key, value: area.value, allowEmpty: deleteConfirmed }),
         });
         const data = (await res.json()) as {
           ok: boolean;
           error?: string;
+          confirm?: string;
           was?: string;
           now?: string;
           unchanged?: boolean;
@@ -438,6 +520,8 @@ export function initCopyEditor(): void {
           regenerate?: string | null;
         };
         if (!data.ok) {
+          // `confirm` is a question, not a rejection: the same press again carries the answer.
+          if (data.confirm === 'empty') deleteConfirmed = true;
           note.dataset.bad = '1';
           note.textContent = data.error ?? 'השמירה נכשלה';
           return;
@@ -466,10 +550,20 @@ export function initCopyEditor(): void {
           // not make the logo right. Nothing downstream can notice that — not the reload, not the
           // suite. Recorded BEFORE it is shown, because the write to translations.ts has already
           // started Vite's reload and this panel may not survive to be read.
+          const command = data.regenerate;
           const list = readTodo();
-          if (!list.includes(data.regenerate)) writeTodo([...list, data.regenerate]);
+          if (!list.some((e) => e.kind === 'redraw' && e.command === command)) {
+            writeTodo([...list, { kind: 'redraw', command }]);
+          }
           paintStanding();
           left.push('צריך לצייר מחדש');
+        }
+        if (!saved && data.was) {
+          // An emptied string leaves no text to hover, so the strip is the only route back to it.
+          const was = data.was;
+          const list = readTodo().filter((e) => !(e.kind === 'restore' && e.key === key));
+          writeTodo([...list, { kind: 'restore', key, value: was }]);
+          paintStanding();
         }
         if (left.length) {
           note.dataset.bad = '1';

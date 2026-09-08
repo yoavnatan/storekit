@@ -22,17 +22,30 @@ export function tidy(raw: string): string {
   return raw.trim().replace(/ {2,}/g, ' ');
 }
 
-export type EditResult = { ok: true; value: string } | { ok: false; error: string };
+export type EditResult =
+  | { ok: true; value: string }
+  /** `confirm` marks a refusal the owner can overrule by asking again, not a damaged string. */
+  | { ok: false; error: string; confirm?: 'empty' };
 
 /**
  * Judge a proposed replacement for `current`.
  *
  * Errors are in Hebrew because they are read in the editor's own panel, on the page, by the person
  * who typed the text — not in a log.
+ *
+ * **Empty is a QUESTION, not a refusal (owner, 2026-09-08: *"אם אני רוצה למחוק שורה, זה לא נותן"*).**
+ * It was a flat no because an emptied value is one of the three ways hand-editing a review file
+ * damages a string rather than rewording it — but there the emptying was an ACCIDENT, a line deleted
+ * out of a text file, and here it is a person clicking a sentence and clearing it on purpose.
+ * Deleting a line of copy is ordinary work, so the first attempt asks and the second one does it.
  */
-export function validateEdit(current: string, raw: string): EditResult {
+export function validateEdit(current: string, raw: string, allowEmpty = false): EditResult {
   const value = tidy(raw);
-  if (!value) return { ok: false, error: 'הטקסט לא יכול להיות ריק' };
+  if (!value) {
+    return allowEmpty
+      ? { ok: true, value: '' }
+      : { ok: false, error: 'ריק — המשפט יימחק מהמסך. עוד לחיצה על שמירה מוחקת אותו', confirm: 'empty' };
+  }
 
   const lost = placeholdersOf(current).filter((p) => !placeholdersOf(value).includes(p));
   if (lost.length) {

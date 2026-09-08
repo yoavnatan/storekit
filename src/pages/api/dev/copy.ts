@@ -41,10 +41,10 @@ import {
 /** Keys edited here, so the English can be brought level afterwards. Gitignored via `.tmp-`. */
 const EN_TODO = `${ROOT}/.tmp-copy-en-todo.json`;
 
-type Body = { key?: unknown; value?: unknown };
+type Body = { key?: unknown; value?: unknown; allowEmpty?: unknown };
 
-function reject(message: string, status = 400): Response {
-  return new Response(JSON.stringify({ ok: false, error: message }), {
+function reject(message: string, status = 400, confirm?: string): Response {
+  return new Response(JSON.stringify({ ok: false, error: message, confirm }), {
     status,
     headers: { 'content-type': 'application/json' },
   });
@@ -111,8 +111,9 @@ export const POST: APIRoute = async ({ request }) => {
   const leaf = leaves.find((l) => l.key === key);
   if (!leaf) return reject(`המפתח ${key} לא קיים ב-translations.ts`, 404);
 
-  const edit = validateEdit(leaf.value, raw);
-  if (!edit.ok) return reject(edit.error);
+  // Emptying a string is refused once and done on the second ask — `validateEdit` carries why.
+  const edit = validateEdit(leaf.value, raw, body.value.allowEmpty === true);
+  if (!edit.ok) return reject(edit.error, 400, edit.confirm);
   const { value } = edit;
 
   if (value === leaf.value) {
