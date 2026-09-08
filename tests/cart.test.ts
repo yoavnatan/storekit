@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addItem, applyServerPrices, applyStockLimit, getCartQty, getCount, getGrandTotal, getStoreItems, getSubtotal, hasBuyableItems, itemSaving, makeCartKey, mergeStoreCart, readStoreCartForHandoff, removeItem, setQty } from '../src/lib/cart.js';
+import { addItem, applyServerPrices, applyStockLimit, getCartQty, getCount, getStoreItems, getSubtotal, hasBuyableItems, itemSaving, makeCartKey, mergeStoreCart, readStoreCartForHandoff, removeItem, setQty } from '../src/lib/cart.js';
 
 const STORE = 'test-store';
 const PRODUCT = { slug: 'widget', name: 'Widget', price: 50, image: 'w.png' };
@@ -303,12 +303,14 @@ describe('a line that can no longer be bought', () => {
     expect(items[0]!.qty).toBe(2);
   });
 
-  it('leaves it out of the store subtotal and the grand total', () => {
+  it('leaves it out of the store subtotal', () => {
+    // `getGrandTotal` was asserted here too and is gone with its only caller: the cart drawer's
+    // all-stores figure, which went when separate clearing made "pay all stores" impossible
+    // (2026-09-08). Every total on screen is now one shop's.
     addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 2);
     expect(getSubtotal(STORE)).toBe(100);
     gone();
     expect(getSubtotal(STORE)).toBe(0);
-    expect(getGrandTotal()).toBe(0);
   });
 
   it('leaves it out of the item count the header badge shows', () => {

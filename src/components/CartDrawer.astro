@@ -14,10 +14,11 @@
   <header class="cart-drawer__head flex between">
     <div class="cart-drawer__title-wrap">
       <h2 id="cart-drawer-title">Cart</h2>
-      <span id="cart-info" class="cart-info" tabindex="0" role="note" hidden>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
-        <span id="cart-info-bubble" class="cart-info__bubble" role="tooltip"></span>
-      </span>
+      {/* The "pay each store separately or all together" tooltip lived here and is gone with the
+          thing it described (owner, סשן א׳ §1, 2026-09-08): each shop clears into its own account,
+          so paying several at once is not something the site can do. A tooltip is the wrong place
+          to correct that anyway — the drawer now simply shows one shop's cart while the shopper is
+          inside a shop, which is the same fact stated by the screen instead of about it. */}
     </div>
     <button id="cart-close" aria-label="Close cart">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -28,7 +29,7 @@
 
 
 <script>
-  import { getActiveStoreCarts, getSubtotal, getGrandTotal, hasBuyableItems, setQtyQuiet, removeItem } from '../lib/cart.js';
+  import { getActiveStoreCarts, getSubtotal, hasBuyableItems, setQtyQuiet, removeItem } from '../lib/cart.js';
   import { refreshCartPrices, watchCartPrices } from '../lib/cart-prices.js';
   import { sortCurrentStoreFirst } from '../lib/cart-sovereignty.js';
   import { formatPrice, cdnThumb } from '../config/store.config.js';
@@ -45,27 +46,6 @@
   const overlay = document.getElementById('cart-overlay') as HTMLElement | null;
   const lines   = document.getElementById('cart-lines') as HTMLElement | null;
   const titleEl = document.getElementById('cart-drawer-title') as HTMLElement | null;
-  const infoEl     = document.getElementById('cart-info') as HTMLElement | null;
-  const infoBubble = document.getElementById('cart-info-bubble') as HTMLElement | null;
-
-  // The tooltip is anchored to a tiny icon near the drawer edge; depending on the
-  // title width / viewport it could extend past the screen edge. On reveal, measure
-  // it and nudge it horizontally so it always stays fully on-screen (8px margin).
-  // Applied via `translate` (separate property) so the CSS hover transform is untouched.
-  if (infoEl && infoBubble) {
-    const clampBubble = () => {
-      infoBubble.style.setProperty('--cart-tip-shift', '0px');
-      const r = infoBubble.getBoundingClientRect();
-      const M = 8;
-      let shift = 0;
-      if (r.left < M) shift = M - r.left;
-      else if (r.right > window.innerWidth - M) shift = (window.innerWidth - M) - r.right;
-      infoBubble.style.setProperty('--cart-tip-shift', `${Math.round(shift)}px`);
-    };
-    infoEl.addEventListener('mouseenter', clampBubble);
-    infoEl.addEventListener('focusin', clampBubble);
-  }
-
   let prevFocus: HTMLElement | null = null;
   let suppressNextRender = false;
 
@@ -130,48 +110,67 @@
     if (!lines) return;
     const i18n = getI18n().cart ?? {};
     const currentSlug = getCurrentStoreSlug();
-    // Shared with the checkout page, which orders its store blocks the same way — see
-    // lib/cart-sovereignty.ts for why the comparator is not written twice.
-    const carts = sortCurrentStoreFirst(getActiveStoreCarts(), currentSlug);
+    const allCarts = sortCurrentStoreFirst(getActiveStoreCarts(), currentSlug);
+
+    /* ── Inside a shop, the drawer IS that shop's cart (owner, סשן א׳ §1, 2026-09-08) ──
+       The drawer used to float the current shop to the top and list every other one under a
+       "מחנויות אחרות" heading. That was the right answer while one card entry could pay every shop
+       at once. Each shop now clears into its own account, so it is not: a list of shops that cannot
+       be paid together is a list of things to do, which is the queue this must never become —
+       *"שאין חוויה של ״תשלום 1 מתוך 3״ אלא של זרימה בין חנות לחנות"*.
+
+       So while the shopper is inside a shop he sees ONE cart, with one total and one checkout
+       button, exactly as if that shop were the only site he is on. Nothing is deleted: the other
+       carts are untouched on the server and he meets them by walking into that shop — the same
+       motion he used the first time. The `elsewhere` block below is what stops that from reading as
+       loss, and it is a signpost rather than a step: a name, a count, a link, no price and no
+       "continue to the next store".
+
+       Off a storefront — the homepage, /search, /stores — there is no current shop, so every cart
+       is shown, each with its own total and its own checkout. That is the one place the whole bag
+       is the honest picture. */
+    const insideStore = !!currentSlug;
+    const carts = insideStore ? allCarts.filter((c) => c.storeSlug === currentSlug) : allCarts;
+    const elsewhere = insideStore ? allCarts.filter((c) => c.storeSlug !== currentSlug) : [];
 
     if (titleEl) titleEl.textContent = i18n.title ?? 'Cart';
     const closeBtn = document.getElementById('cart-close');
     if (closeBtn) closeBtn.setAttribute('aria-label', i18n.closeCart ?? 'Close cart');
 
-    // The "pay separately / together" note only makes sense with 2+ stores.
-    if (infoBubble) infoBubble.textContent = i18n.payInfo ?? '';
-    if (infoEl) {
-      infoEl.setAttribute('aria-label', i18n.payInfo ?? '');
-      infoEl.hidden = carts.length <= 1;
-    }
+    /** The other shops, named and linked, under the cart that is actually here. Rendered even when
+     *  THIS shop's cart is empty — that is the case where silence would read as "my basket was
+     *  emptied", which is the one thing this block exists to prevent. */
+    const elsewhereHtml = elsewhere.length ? `
+      <div class="cart-elsewhere">
+        <div class="cart-elsewhere__title">${esc(i18n.elsewhereTitle ?? 'Also saved for you at')}</div>
+        ${elsewhere.map((c) => `
+          <a class="cart-elsewhere__row" href="/${esc(c.storeSlug)}">
+            <span class="cart-elsewhere__name">${esc(c.storeName)}</span>
+            <span class="cart-elsewhere__count">${c.count === 1
+              ? esc(i18n.elsewhereCountOne ?? '1 item')
+              : esc((i18n.elsewhereCount ?? '{n} items').replace('{n}', String(c.count)))}</span>
+          </a>`).join('')}
+      </div>` : '';
 
     if (!carts.length) {
-      lines.innerHTML = `<p class="cart-empty">${i18n.empty ?? 'Your cart is empty'}</p>`;
+      // "העגלה ריקה" is only true when it IS. Standing in a shop he has not bought from, with two
+      // other carts listed underneath, that sentence is the drawer contradicting itself on the same
+      // screen — seen in the real drawer, not reasoned about.
+      const emptyText = elsewhere.length
+        ? (i18n.emptyHere ?? 'Nothing from this store yet')
+        : (i18n.empty ?? 'Your cart is empty');
+      lines.innerHTML = `<p class="cart-empty">${esc(emptyText)}</p>${elsewhereHtml}`;
       return;
     }
 
-    const grandTotal = getGrandTotal();
+    // Every block on screen now belongs to one shop while inside one, so the per-store "subtotal"
+    // wording is only right off a storefront, where several are listed.
     const singleStore = carts.length === 1;
-
-    // Store-sovereignty: the store the shopper is currently inside floats to the
-    // top (sorted above) with no heading of its own; the remaining stores then
-    // sit under an "other stores" heading — shown whenever the shopper is inside
-    // a store, even if the current store has nothing in the cart.
-    const insideStore = !!currentSlug;
-    let otherLabelShown = false;
 
     lines.innerHTML = carts.map((c, idx) => {
       const isCurrent = c.storeSlug === currentSlug;
-      let sectionLabel = '';
-      if (insideStore && !isCurrent && !otherLabelShown) {
-        otherLabelShown = true;
-        sectionLabel = `<div class="cart-other-stores-label">${esc(i18n.otherStores ?? 'From other stores')}</div>`;
-      }
-      // The "other stores" heading (with its own underline) is itself the
-      // separator for the current→others transition, so no hr there — it would
-      // just double the line. A plain divider only between groups with no heading.
-      const divider = idx > 0 && !sectionLabel ? '<hr class="cart-store-divider">' : '';
-      return `${divider}${sectionLabel}
+      const divider = idx > 0 ? '<hr class="cart-store-divider">' : '';
+      return `${divider}
       <div class="cart-store-group${isCurrent ? ' cart-store-group--current' : ''}" data-store-slug="${esc(c.storeSlug)}">
         <div class="cart-store-group__head">
           <a href="/${esc(c.storeSlug)}" class="cart-store-group__name">${esc(c.storeName)}</a>
@@ -222,17 +221,13 @@
           </a>` : ''}
         </div>
       </div>`;
-    }).join('') +
-      (carts.length > 1 ? `
-        <div class="cart-grand-total">
-          <div class="cart-grand-total__row">
-            <span>${i18n.total ?? 'Total'} (${carts.length} ${i18n.stores ?? 'stores'})</span>
-            <strong>${formatPrice(grandTotal)}</strong>
-          </div>
-          <a href="/checkout" class="btn btn--accent cart-checkout">
-            ${i18n.payAll ?? 'Pay all stores'}
-          </a>
-        </div>` : '');
+    /* No grand total and no "pay all stores" button (owner, סשן א׳ §1, 2026-09-08). It summed
+       several shops into one figure and offered one checkout for all of them — the shape PayMe's
+       buyer token made possible and separate clearing does not: each shop charges into its own
+       account, so a single button could only ever have become a queue. Every block already carries
+       its own total and its own checkout, which is the same information without a promise the
+       payment step cannot keep. */
+    }).join('') + elsewhereHtml;
   }
 
   lines?.addEventListener('click', (e) => {
@@ -291,8 +286,6 @@
       }
       const subtotalEl = storeGroup?.querySelector<HTMLElement>('.cart-store-group__subtotal strong');
       if (subtotalEl) subtotalEl.textContent = formatPrice(getSubtotal(store));
-      const grandEl = lines?.querySelector<HTMLElement>('.cart-grand-total__row strong');
-      if (grandEl) grandEl.textContent = formatPrice(getGrandTotal());
 
       suppressNextRender = true;
       window.dispatchEvent(new CustomEvent('cart:change'));

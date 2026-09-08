@@ -591,7 +591,8 @@ for (const s of await getVisibleStores()) {
         if (labelledHere) {
           otherLabelShown = true;
           // Underline sized to the TEXT, not to the column — inline-block, exactly as
-          // .cart-other-stores-label does it in the drawer.
+          // The drawer no longer has a twin for this: inside a shop it shows that shop's cart
+          // alone (סשן א׳, 2026-09-08). This page is the one place several are still listed.
           html += `<div class="inline-block text-[.72rem] font-semibold [color:var(--color-muted)] pb-[.15rem] mt-6 mb-1 border-b [border-color:var(--color-border)]">${esc(i18n['otherStores'] ?? 'מחנויות אחרות')}</div>`;
         }
 

@@ -636,8 +636,19 @@ export const translations = {
       subtotal: 'סכום לחנות',
       cartTotal: 'סה"כ בעגלה',
       checkout: 'לתשלום',
-      payAll: 'תשלום לכל החנויות',
-      payInfo: 'ניתן לשלם לכל חנות בנפרד או לכל החנויות ביחד',
+      // ── One store per payment, and the drawer says so by SHOWING one store (owner, סשן א׳ §1) ──
+      // `payAll` and `payInfo` are gone: each shop clears into its own account now, so "pay all
+      // stores together" is not a thing the site can do, and an explanatory line about being able
+      // to is worse than no line. What replaces them is not prose — inside a shop the drawer holds
+      // that shop's cart and nothing else, and the two strings below are the signpost that keeps
+      // the rest from LOOKING lost. Never a queue: no "1 מתוך 3", no "continue to the next store".
+      elsewhereTitle: 'שמור לכם גם בחנויות אחרות',
+      elsewhereCount: '{n} פריטים',
+      elsewhereCountOne: 'פריט אחד',
+      // "העגלה ריקה" over a list of two shops holding items is the site contradicting itself, and
+      // it is exactly the state the signpost above exists for. When the shopper is standing in a
+      // shop he has not added anything from, THIS shop's cart is empty and his is not.
+      emptyHere: 'עדיין לא הוספתם משהו מהחנות הזאת',
       removeTitle: 'הסר פריט?',
       removeMsg: 'להסיר מהעגלה?',
       removeOk: 'הסר',
@@ -3323,8 +3334,10 @@ export const translations = {
       subtotal: 'Subtotal',
       cartTotal: 'Cart total',
       checkout: 'Checkout',
-      payAll: 'Pay all stores',
-      payInfo: 'Pay each store separately or all stores together',
+      elsewhereTitle: 'Also saved for you at other stores',
+      elsewhereCount: '{n} items',
+      elsewhereCountOne: '1 item',
+      emptyHere: 'Nothing from this store yet',
       removeTitle: 'Remove item?',
       removeMsg: 'Remove from your cart?',
       removeOk: 'Remove',

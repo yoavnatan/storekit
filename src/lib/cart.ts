@@ -445,10 +445,6 @@ export function applyServerPrices(rows: CartServerRow[]): CartPriceChange[] {
   return changes;
 }
 
-export function getGrandTotal(): number {
-  return getActiveStoreCarts().reduce((sum, c) => sum + getSubtotal(c.storeSlug), 0);
-}
-
 export function syncCartImages(
   storeSlug: string,
   products: Pick<CartItem, 'slug' | 'name' | 'price' | 'image' | 'basePrice'>[]
