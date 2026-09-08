@@ -47,7 +47,7 @@ export interface SellerFunnel {
 
 // Minimal shapes so the pure builder is testable without the full domain types.
 interface FSeller { id: string }
-interface FStore { id: string; sellerId: string; slug: string; publishedAt?: string }
+interface FStore { id: string; sellerId: string; slug: string; publishedAt?: string; demo?: boolean }
 interface FProduct { storeId: string }
 interface FOrderItem { storeSlug: string }
 interface FOrder { items: FOrderItem[] }
@@ -66,6 +66,13 @@ export function buildSellerFunnel(
 ): SellerFunnel {
   const storesBySeller = new Map<string, FStore[]>();
   for (const s of stores) {
+    // Showcase stores are excluded, on the SAME rule `admin-stats.ts#getStoreOverview` applies to
+    // the store count beside this (2026-09-08). They are platform-owned fixtures with no person
+    // behind them, so counting them puts our own three shops into a funnel that answers "of the
+    // people who came here to open a shop, where do they stop" — and, worse, made the נתונים tab's
+    // "פתחו חנות" a different number from the Overview card's "מהם עם חנות", which is one fact and
+    // must not have two answers a tab apart.
+    if (s.demo) continue;
     const list = storesBySeller.get(s.sellerId) ?? [];
     list.push(s);
     storesBySeller.set(s.sellerId, list);
@@ -109,6 +116,8 @@ export function buildSellerFunnel(
  *
  * `deleted_at IS NULL` matches what `getAllStores` returns — a store the seller deleted never
  * counted toward "opened a store", and the JS this replaces was handed the same filtered list.
+ * `demo = false` is the same exclusion `getStoreOverview` applies, and it is what keeps the נתונים
+ * tab's "פתחו חנות" and the Overview card's "מהם עם חנות" a single number.
  */
 export async function getSellerFunnel(): Promise<SellerFunnel> {
   const [counts, registerViews] = await Promise.all([
@@ -134,7 +143,7 @@ export async function getSellerFunnel(): Promise<SellerFunnel> {
          COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
            SELECT 1 FROM order_items it WHERE it.store_slug = s.slug::text))    AS with_sale
        FROM stores s
-      WHERE s.deleted_at IS NULL`,
+      WHERE s.deleted_at IS NULL AND s.demo = false`,
       // PayMe's own integers, from the ONE module that interprets them — never literals here, or
       // this becomes a second definition of "paying" that can drift from the publication gate.
       [[PAYME_SUB_STATUS.active, PAYME_SUB_STATUS.retrying]],

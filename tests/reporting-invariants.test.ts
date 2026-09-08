@@ -576,6 +576,30 @@ describe('the admin surfaces reconcile with each other', () => {
     expect(overview.demoStores).toBe(1);
   });
 
+  it('“registered” and “of them, with a shop” are two counts of PEOPLE, not of shops', () => {
+    /* ── The pair the owner asked for (סשן א׳ §5, 2026-09-08) ──
+       The card beside this one used to read "מוכרים" over a count of every ACCOUNT — a buyer account
+       and a seller account are one row in `sellers` (0001_init.sql), and owning a store is the only
+       thing that makes an account a seller. The labels are honest now, and these are the two
+       properties that keep them honest whatever the reporting is refactored into:
+         · `sellersWithStore` counts distinct OWNERS, so two shops of one seller are one person;
+         · it can therefore never exceed `totalUsers`, which is what makes the pair readable as
+           "of the people who registered, this many have a shop". */
+    const overview = getStoreOverview(5, [
+      { slug: 'a', name: 'A', sellerId: 's1' },
+      { slug: 'b', name: 'B', sellerId: 's1' },
+      { slug: 'c', name: 'C', sellerId: 's2' },
+      // Excluded on the same rule as `totalStores`, or the two cards could not be read against
+      // each other: a showcase shop has no registered person behind it.
+      { slug: 'd', name: 'D', sellerId: 's9', demo: true },
+    ] as never);
+    expect(overview.totalUsers).toBe(5);
+    expect(overview.sellersWithStore, 'two shops of one seller are one person').toBe(2);
+    expect(overview.sellersWithStore).toBeLessThanOrEqual(overview.totalUsers);
+    expect(overview.sellersWithStore).toBeLessThanOrEqual(overview.totalStores);
+  });
+
+
   it('an order can never contribute more than it is worth', () => {
     // An upper bound rather than an exact figure: it holds no matter how the
     // reporting is refactored, and it is what catches a future double-count.
@@ -1253,6 +1277,41 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
       },
     );
     expect(fromDb).toEqual(fromJs);
+  });
+
+  it('the Overview card and the funnel row are the SAME count, with a showcase shop present', async () => {
+    /* ── Two screens, one fact, and they disagreed in production but not in a fixture ──
+       "How many registered people have a shop" is answered on the Overview grid (JS over the stores
+       it already holds, `getStoreOverview`) and on the נתונים tab (a `COUNT(DISTINCT)` in
+       `getSellerFunnel`). The Overview side excluded showcase stores from the day it was written;
+       the funnel side never did. So on the real database — which has showcase sellers owning
+       nothing else — the two tabs printed different numbers for the same sentence, while every test
+       agreed, because the fixture has no demo store at all. That is this repo's recurring shape:
+       each side right on its own, only the JOIN wrong.
+
+       So the row is CREATED here rather than assumed. Without `AND s.demo = false` in the query this
+       test fails by exactly one. */
+    const owner = crypto.randomUUID();
+    const store = crypto.randomUUID();
+    await query(
+      `INSERT INTO sellers (id, name, email, password_hash) VALUES ($1, 'Showcase', $2, '')`,
+      [owner, `showcase-${owner}@invariants.test`],
+    );
+    await query(
+      `INSERT INTO stores (id, seller_id, slug, name, demo) VALUES ($1, $2, $3, 'Showcase', true)`,
+      [store, owner, `showcase-${store}`],
+    );
+    try {
+      const overview = getStoreOverview(0, await getAllStores());
+      const funnel = await getSellerFunnel();
+      expect(overview.sellersWithStore, 'Overview vs the נתונים funnel').toBe(funnel.withStore);
+      // And the showcase owner is in neither: he registered — so he counts once, at the top — but
+      // he did not open a shop.
+      expect(funnel.registered).toBeGreaterThan(funnel.withStore);
+    } finally {
+      await query('DELETE FROM stores WHERE id = $1', [store]);
+      await query('DELETE FROM sellers WHERE id = $1', [owner]);
+    }
   });
 
   it('the seller funnel never reports a stage above the one that contains it', async () => {
