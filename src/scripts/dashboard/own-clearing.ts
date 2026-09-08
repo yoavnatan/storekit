@@ -135,8 +135,23 @@ export function initOwnClearingCard(): void {
      really disconnects rather than leaving a saved row behind an emptied screen, which is the state
      that would let him believe he had removed something he had not. */
   clearBtn?.addEventListener('click', () => {
-    if (!savedProvider || providerInput.value !== savedProvider) { choose(''); return; }
-    askDisconnect((t.ownClearingClearAsk ?? '').replace('{name}', nameOf(savedProvider)));
+    if (savedProvider && providerInput.value === savedProvider) {
+      askDisconnect((t.ownClearingClearAsk ?? '').replace('{name}', nameOf(savedProvider)));
+      return;
+    }
+    /* ── Clearing has to put the FIELDS back too, or the bar has nothing to offer ──
+       Owner, 2026-09-08: *"יש שינויים שלא שמרת בתשלומים כשמבטלים חברת סליקה, הרי אין שם איך לשמור
+       את הביטול"*. Un-choosing wrote `provider = ''` and left whatever he had typed sitting in the
+       now-hidden fieldset, so the form still differed from its baseline — and the unsaved-changes
+       bar fired over a state that CANNOT be saved, because a save needs a provider.
+       `discardChanges` is the right tool and not a bigger hammer: it restores the whole form to
+       what the page rendered, which for a shopper who has chosen nothing is exactly "no provider,
+       no values" — the state he just asked for. It also fires `dash:fieldsrewritten`, so the picker
+       repaints from the field like any other rewrite. */
+    discardChanges(formEl);
+    errorLine?.classList.add('hidden');
+    fieldsets().forEach((box) => box.querySelectorAll<HTMLInputElement>('input')
+      .forEach((input) => { if (isValidatableField(input)) clearFieldError(input); }));
   });
 
   form.addEventListener('dash:fieldsrewritten', paintPicker);

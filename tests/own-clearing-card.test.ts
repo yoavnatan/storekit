@@ -20,7 +20,7 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
 import { readSource, sourceGuard } from './helpers/source-guard.js';
 import { initOwnClearingCard } from '../src/scripts/dashboard/own-clearing.js';
-import { initUnsavedGuard } from '../src/scripts/dashboard/unsaved-guard.js';
+import { initUnsavedGuard, hasUnsavedChanges } from '../src/scripts/dashboard/unsaved-guard.js';
 
 const CARD = 'src/components/dashboard/OwnClearingCard.astro';
 
@@ -142,6 +142,24 @@ describe('picking a provider', () => {
     expect(document.querySelector<HTMLButtonElement>('[data-provider="payplus"]')!.classList.contains('btn--accent')).toBe(false);
     expect(document.querySelector<HTMLElement>('[data-provider-fields="hyp"]')!.hidden).toBe(false);
     expect(document.querySelector<HTMLElement>('[data-provider-fields="payplus"]')!.hidden).toBe(true);
+  });
+
+  it('clearing the choice puts the FIELDS back, so nothing is left unsaveable', () => {
+    /* Un-choosing used to write `provider = ''` and leave what he had typed in the hidden fieldset,
+       so the form still differed from its baseline and the unsaved-changes bar fired over a state
+       that cannot be saved — a save needs a provider (owner, 2026-09-08). */
+    render();
+    // First contact takes the baseline, exactly as `remember` does on the real page.
+    document.getElementById('own-clearing-form')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    click('[data-provider="hyp"]');
+    const masof = document.querySelector<HTMLInputElement>('[data-provider-fields="hyp"] [name="masof"]')!;
+    masof.value = '0010131918';
+    expect(hasUnsavedChanges()).toBe(true);
+
+    click('#own-clearing-clear');
+    expect(document.querySelector<HTMLInputElement>('#own-clearing-provider')!.value).toBe('');
+    expect(masof.value).toBe('');
+    expect(hasUnsavedChanges(), 'the bar must have nothing left to offer').toBe(false);
   });
 
   it('clears the marks on the fields when the provider changes', () => {
