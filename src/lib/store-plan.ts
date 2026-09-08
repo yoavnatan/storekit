@@ -147,7 +147,7 @@ export async function setStoreTier(storeId: string, tier: SellerTierId): Promise
  * Put a store's plan back exactly as it was, **including back to never-chosen**.
  *
  * The undo half of `setStoreTier`, and it exists because `setStoreTier` cannot express the state a
- * store starts in. `/api/seller/tier` writes the new plan provisionally — the price has to be
+ * store starts in. The deleted `/api/seller/tier` used to write a new plan provisionally — the price had to be
  * derived from the row — and rolls it back if PayMe refuse. Rolling back with `setStoreTier` was
  * impossible for a store that had never chosen: the column was NULL, there is no tier id for that,
  * and the refused plan simply stayed written. Our row would then say Enterprise while the card went

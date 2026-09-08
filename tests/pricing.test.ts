@@ -34,22 +34,33 @@ describe('tier table shape', () => {
 });
 
 describe('resolveTier', () => {
-  it('resolves a known tier', () => {
-    expect(resolveTier('pro').id).toBe('pro');
+  it('there is exactly ONE plan (owner, 2026-09-08)', () => {
+    // The ladder existed because a higher fee bought a lower commission. With the commission gone —
+    // the seller clears into his own account, so there is nothing to take a percentage of — four
+    // rows differing only in price is four prices for one product.
+    expect(SELLER_TIERS).toHaveLength(1);
+    expect(SELLER_TIERS[0]!.commissionPercent).toBe(0);
   });
 
-  it('falls back to the default for absent / unknown / junk values rather than throwing', () => {
-    for (const bad of [undefined, null, '', 'platinum', 'STARTER']) {
-      expect(resolveTier(bad).id).toBe(DEFAULT_TIER);
+  it('every stored tier id still resolves, including the three that no longer exist', () => {
+    // Real `stores.tier` rows carry `growth`/`pro`/`enterprise` from the four-tier era. A resolve
+    // that threw — or answered undefined — would break the dashboard of a seller who chose one.
+    for (const id of ['pro', 'growth', 'enterprise', undefined, null, '', 'platinum', 'STARTER']) {
+      expect(resolveTier(id).id).toBe(DEFAULT_TIER);
     }
   });
 });
 
 describe('commissionPercentForTier / monthlyFeeForTier', () => {
-  it('reads both numbers off the seller tier', () => {
-    const pro = SELLER_TIERS.find((t) => t.id === 'pro')!;
-    expect(commissionPercentForTier('pro')).toBe(pro.commissionPercent);
-    expect(monthlyFeeForTier('pro')).toBe(pro.monthlyFee);
+  it('reads both numbers off the one plan, whatever id is stored', () => {
+    const only = SELLER_TIERS[0]!;
+    for (const id of ['pro', 'growth', undefined]) {
+      expect(commissionPercentForTier(id)).toBe(only.commissionPercent);
+      expect(monthlyFeeForTier(id)).toBe(only.monthlyFee);
+    }
+    // Stated separately from the table above, because this is the business rule rather than a
+    // reading of it: nothing the platform charges is a share of a sale.
+    expect(commissionPercentForTier('pro')).toBe(0);
   });
 
   it('a seller with no tier recorded is charged the default tier, not zero', () => {
@@ -99,10 +110,13 @@ describe('buildPlatformStoreInputs', () => {
     expect(out[1]).toMatchObject({ slug: 'b', name: 'B', blocked: true });
   });
 
-  it('TWO SHOPS OF ONE SELLER on different plans produce different rates — the whole point', () => {
+  it('two shops of one seller are on the same plan, because there is only one', () => {
+    // This used to assert the OPPOSITE — different plans, different rates, "the whole point" of a
+    // per-store tier. The per-store part survives (each shop is billed) and the rate does not.
     const out = buildPlatformStoreInputs(stores);
     expect(stores[0]!.sellerId).toBe(stores[1]!.sellerId);
-    expect(out[0]!.commissionPercent).not.toBe(out[1]!.commissionPercent);
+    expect(out[0]!.commissionPercent).toBe(out[1]!.commissionPercent);
+    expect(out[0]!.commissionPercent).toBe(0);
   });
 });
 

@@ -8,7 +8,7 @@
  *    and we look at still agrees with itself;
  *  · a cancellation that ends on the click takes back days somebody paid for;
  *  · a cancellation with no end at all is what the platform did until today — the card stopped and
- *    the shop stayed on the site, selling, with our commission still coming off it.
+ *    the shop stayed on the site, selling, for nothing.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildStoreFeeLines, commissionPercentForStore, storeTier, totalFeeAgorot } from '../src/lib/store-plan.js';
@@ -16,18 +16,29 @@ import { DEFAULT_TIER, commissionPercentForTier, monthlyFeeForTier } from '../sr
 import { toAgorot } from '../src/lib/money.js';
 
 describe('what a shop is on', () => {
-  it('reads the plan off the store', () => {
-    expect(storeTier({ tier: 'enterprise' })).toBe('enterprise');
-    expect(commissionPercentForStore({ tier: 'enterprise' })).toBe(commissionPercentForTier('enterprise'));
+  // ── One plan since 2026-09-08, and these two tests used to assert the opposite ──
+  // `storeTier` answered the column and `commissionPercentForStore` answered that shop's own rate,
+  // because a higher fee bought a lower rate. The commission went with the split (the seller clears
+  // into his own account), and with it the only thing the four tiers differed in. What SURVIVES is
+  // per-shop BILLING — every shop is a line and the standing order is their sum — which is the half
+  // of the 2026-08-24 ruling that was never about the ladder.
+  it('answers the one plan whatever the column holds, including a retired name', () => {
+    // Real rows still carry `growth`/`pro`/`enterprise`. Falling back rather than throwing was
+    // already the rule; it is now the only path, and a shop must still render and still be charged.
+    for (const store of [{ tier: 'enterprise' }, { tier: 'growth' }, { tier: 'platinum' }, {}]) {
+      expect(storeTier(store)).toBe(DEFAULT_TIER);
+      expect(monthlyFeeForTier(storeTier(store))).toBeGreaterThan(0);
+    }
   });
 
-  // Reading falls back on purpose, exactly as `pricing.ts#resolveTier` does: a shop whose column is
-  // empty, or holds a plan name we have since retired, must render and must be charged something
-  // real. Never zero commission, which is the direction that costs the platform silently.
-  it('falls back to the default plan for an absent or unknown one, never to nothing', () => {
-    expect(storeTier({})).toBe(DEFAULT_TIER);
-    expect(storeTier({ tier: 'platinum' })).toBe(DEFAULT_TIER);
-    expect(commissionPercentForStore({})).toBeGreaterThan(0);
+  it('charges no share of a sale, on any shop', () => {
+    // The direction that used to be dangerous was a silent ZERO — a shop we forgot to take
+    // commission from. It is now the rule, so the assertion is inverted and stated once, loudly:
+    // nothing the platform bills is a percentage of what a buyer paid.
+    for (const store of [{ tier: 'enterprise' }, {}, { tier: 'platinum' }]) {
+      expect(commissionPercentForStore(store)).toBe(0);
+    }
+    expect(commissionPercentForTier('enterprise')).toBe(0);
   });
 });
 
@@ -38,19 +49,21 @@ describe('the monthly charge', () => {
     { id: 'c', name: 'ג' },
   ];
 
-  it('is one line per shop, at that shop\'s own price', () => {
+  it('is one line per shop, and every line is the one plan', () => {
+    // The line-per-shop half of the ruling is what survives; "at that shop's own price" does not,
+    // because there is one price. A shop dropped from this list is still a shop we never charge
+    // for, with every screen agreeing with itself — which is why the count is asserted too.
     const lines = buildStoreFeeLines(SHOPS);
-    expect(lines.map((l) => l.tier)).toEqual(['growth', 'starter', DEFAULT_TIER]);
-    expect(lines[0]!.feeAgorot).toBe(toAgorot(monthlyFeeForTier('growth')));
+    expect(lines).toHaveLength(SHOPS.length);
+    expect(lines.map((l) => l.tier)).toEqual([DEFAULT_TIER, DEFAULT_TIER, DEFAULT_TIER]);
+    expect(lines[0]!.feeAgorot).toBe(toAgorot(monthlyFeeForTier(DEFAULT_TIER)));
   });
 
   // **The whole ruling, as one assertion.** Before it, three shops cost what one costs.
   it('is the SUM of them, not the price of one', () => {
     const total = totalFeeAgorot(buildStoreFeeLines(SHOPS));
-    expect(total).toBe(
-      toAgorot(monthlyFeeForTier('growth')) + toAgorot(monthlyFeeForTier('starter')) + toAgorot(monthlyFeeForTier(DEFAULT_TIER)),
-    );
-    expect(total).toBeGreaterThan(toAgorot(monthlyFeeForTier('growth')));
+    expect(total).toBe(SHOPS.length * toAgorot(monthlyFeeForTier(DEFAULT_TIER)));
+    expect(total).toBeGreaterThan(toAgorot(monthlyFeeForTier(DEFAULT_TIER)));
   });
 
   // Agorot integers all the way, never a sum of shekel floats — the rounding `lib/money.ts` exists

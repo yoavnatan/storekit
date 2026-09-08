@@ -375,13 +375,13 @@ export const translations = {
     //  described: selling is blocked until the subscription starts, so nobody sells first —
     //  `lib/pricing.ts` has the whole account.)
     pricing: {
-      title: 'מסלולים ומחירים',
-      metaDesc: 'דמי מנוי חודשיים ועמלה על כל מכירה. בונים חנות שלמה בלי כרטיס אשראי, ומשלמים כשרוצים שהיא תעלה לאוויר.',
-      heading: 'מסלולים',
+      title: 'מחיר',
+      metaDesc: 'מחיר חודשי אחד לכל חנות, בלי עמלה על מכירות. בונים חנות שלמה בלי כרטיס אשראי, ומשלמים כשרוצים שהיא תעלה לאוויר.',
+      heading: 'מחיר',
       // "ללא דמי הקמה" stood here until 2026-08-24 and came off with the ruling that PayMe's ₪99
       // account-opening fee is the seller's (`lib/pricing.ts#SELLER_SETUP_FEE`). Promising no setup
       // fee beside a flow that charges one is the VAT mistake in another costume.
-      lede: 'מנוי חודשי ועמלה על כל מכירה, ללא התחייבות.',
+      lede: 'מחיר חודשי אחד, בלי עמלה על מכירות ובלי התחייבות.',
       // ── The three sentences that say this is not another shop builder ──
       // Owner, 2026-08-24: *"הדף הזה גם נראה כאילו זה מערכת לחנויות רגילה"*, and then *"הכל הרי
       // במקום אחד, גם הפרסום, המשלוחים, אפשרות לחשבוניות, סליקה, הכל כבר מחובר... זה לא חנות
@@ -413,7 +413,7 @@ export const translations = {
       // The honest headline of the whole model, and the reason the page is a comparison and not a
       // feature matrix: the tiers differ ONLY in the ratio between fee and commission. Inventing a
       // feature difference to make a table look fuller would be inventing a product.
-      sameEverything: 'כל המסלולים כוללים את אותם דברים. ההבדל היחיד הוא היחס בין המנוי לעמלה.',
+      sameEverything: 'הכסף מהמכירות נכנס ישירות לחשבון הסליקה שלכם. אנחנו לא לוקחים אחוזים ממכירה.',
       vatNote: 'כל המחירים אינם כוללים מע״מ.',
       // Named wherever paying is discussed, and never in the small print alone: it is the one
       // charge a seller meets that is not on this table, and it is not ours — PayMe take it to open
@@ -453,9 +453,9 @@ export const translations = {
       // **Cancelling**, in the same breath as the price, because the question that stops somebody
       // pressing a plan is not what it costs but what happens if he stops. One charge, one card,
       // one line per shop.
-      perStore: 'המסלול הוא לכל חנות. חנות שנייה היא מסלול נוסף — חיוב אחד בכרטיס, שורה לכל חנות.',
+      perStore: 'המחיר הוא לכל חנות. חנות שנייה מוסיפה שורה — חיוב אחד בכרטיס, שורה לכל חנות.',
       cancelAny: 'אפשר לבטל בכל רגע מהדשבורד. החנות נשארת באוויר עד סוף התקופה ששולמה, והמוצרים וההזמנות נשמרים.',
-      includedTitle: 'מה כלול בכל מסלול',
+      includedTitle: 'מה כלול',
       // The whole build-before-you-pay model in one line, at the bottom of the list of what a plan
       // includes — which is where a reader is asking "and what does it cost me to find out".
       includedFree: 'הכול נבנה ונראה בלי כרטיס אשראי. התשלום פותח את המכירה, את כלי הפרסום ואת ההופעה בגוגל ובמתחם.',
@@ -480,7 +480,7 @@ export const translations = {
       adsPoint1: 'אתם קובעים תקציב חודשי, ואנחנו בונים ומנהלים את הקמפיין',
       adsPoint2: 'התקציב הוא תקרה — מה שלא נוצל לא נגבה',
       adsPoint3: 'אין צורך בחשבון מודעות משלכם ובלי הגדרות',
-      choose: 'בחירת המסלול',
+      choose: 'פתיחת חנות',
       // Which shop the choice is about. The plan is per shop, so on an account with more than one
       // the button is meaningless without it — and on an account with one it would be noise, so it
       // renders only when there really is a choice to disambiguate.
@@ -493,7 +493,7 @@ export const translations = {
       // זה מופיע?"*). Shown only after a successful save, and only to somebody signed in — for a
       // visitor the save is a redirect to registration and this line would name a screen he has no
       // account for.
-      savedWhere: 'המסלול מופיע בדשבורד, בלשונית תשלומים.',
+      savedWhere: 'המנוי מנוהל בדשבורד, בלשונית תשלומים.',
       savedWhereLink: 'מעבר לתשלומים',
       // Said only to a seller who is ALREADY being billed: his standing order at PayMe has just
       // been patched to the new amount (`seller-subscription.ts#propagateTierToSubscription`), and
@@ -1204,7 +1204,7 @@ export const translations = {
       // 2026-08-24). A stranger arrives asking what it costs; a seller with an account is not
       // shopping for a price, he is looking at the plan he is on — and "מחירים" is the word he
       // would search for in Google, which is why the public footer keeps it.
-      navPlans: 'מסלולים',
+      navPlans: 'מחירים',
       /** The rail's width control. One button, two names — it says what pressing it will DO, so
        *  the name has to follow the state rather than describe the rail. */
       navCollapse: 'כווץ תפריט',
@@ -1395,7 +1395,7 @@ export const translations = {
       // Everything cleared and the shop not up yet — the minutes between the last hold lifting and
       // the sweep running. Saying החנות באוויר here would be the one lie this screen can tell.
       glStateGoingUp: 'הכול אושר. החנות עולה לאוויר בדקות הקרובות, ותקבלו על כך התראה.',
-      glStateLive: 'החנות לא באוויר — נשאר לבחור מסלול ולשמור כרטיס. לא ייגבה כלום עד שהיא עולה.',
+      glStateLive: 'החנות לא באוויר — נשאר לשמור כרטיס. לא ייגבה כלום עד שהיא עולה.',
       glStateReady: 'החנות באוויר.',
       glStepDetails: 'פרטי העסק',
       glStepDetailsNote: 'לאישור על ידי חברת הסליקה.',
@@ -1415,8 +1415,8 @@ export const translations = {
       // a decision that has been made, and name the only door there is — their own page.
       glStepApprovalRejected: 'חברת הסליקה לא אישרה את בית העסק, ולכן החנות אינה יכולה למכור. הסיבה נמסרת על ידם בלבד — אפשר לפנות אליהם בקישור שלמטה, ואנחנו כאן אם צריך עזרה.',
       glStateRejected: 'חברת הסליקה לא אישרה את בית העסק',
-      glStepSubscription: 'מסלול ואמצעי תשלום',
-      glStepSubscriptionNote: 'בוחרים מסלול ושומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
+      glStepSubscription: 'אמצעי תשלום',
+      glStepSubscriptionNote: 'שומרים כרטיס. לא נגבה כלום עד שהחנות עולה לאוויר.',
       // The plan is met HERE, at the moment it starts costing him — not on a screen of its own
       // earlier in the flow (owner, 2026-08-24). Four pills, and a way to the full comparison for
       // the seller who wants one.
@@ -3203,9 +3203,9 @@ export const translations = {
       help: 'Help',
     },
     pricing: {
-      title: 'Plans and pricing',
+      title: 'Pricing',
       metaDesc: 'A monthly subscription and a commission on each sale. Build the whole shop with no card, and pay when you want it live.',
-      heading: 'Plans',
+      heading: 'Pricing',
       lede: 'A monthly subscription and a commission on each sale, with no commitment.',
       pillar1Title: 'It is all connected already',
       pillar1Body: 'Payments, delivery, advertising and order management in one system. Nothing to connect and nothing to install.',
@@ -3215,7 +3215,7 @@ export const translations = {
       pillar3Body: 'Add another channel without running it twice: your existing stock connects with one file and updates here automatically every hour.',
       pillar4Title: 'The platform keeps improving',
       pillar4Body: 'Every improvement reaches every shop the same day — no version upgrade, no plugin to buy.',
-      sameEverything: 'Every plan includes the same things. The only difference is the ratio between the subscription and the commission.',
+      sameEverything: 'Money from your sales goes straight into your own clearing account. We take no percentage of a sale.',
       vatNote: 'All prices exclude VAT.',
       setupFee: 'In addition, the payment provider charges a one-off account-opening fee of ₪{amount} when your clearing account is opened.',
       perMonth: 'per month',
@@ -3227,7 +3227,7 @@ export const translations = {
       calcClose: '{tier} is the best value at this level of turnover.',
       calcGap: '{tier} saves you {amount} a month over {other}.',
       whenBody: 'The subscription is charged from the moment your shop goes live, and renews monthly.',
-      perStore: 'A plan is per shop. A second shop is a second plan — one charge on one card, with a line per shop.',
+      perStore: 'The price is per shop. A second shop adds a line — one charge on one card, with a line per shop.',
       cancelAny: 'Cancel any time from the dashboard. The shop stays live to the end of the period you have paid for, and products and orders are kept.',
       includedFree: 'Everything is built and previewed with no card. Paying is what opens selling, the advertising tools and being found on Google and in the marketplace.',
       includedTitle: 'In every plan',
@@ -3242,12 +3242,12 @@ export const translations = {
       adsPoint1: 'You set a monthly budget, and we build and run the campaign',
       adsPoint2: 'The budget is a ceiling — whatever is not spent is never charged',
       adsPoint3: 'No ad account of your own, and no settings to touch',
-      choose: 'Choose this plan',
+      choose: 'Open a shop',
       chooseFor: 'This applies to {store}.',
       current: 'Your plan',
       saving: 'Saving…',
       saved: 'Plan saved',
-      savedWhere: 'Your plan is shown in the dashboard, on the Payments tab.',
+      savedWhere: 'Your subscription is managed in the dashboard, on the Payments tab.',
       savedWhereLink: 'Go to Payments',
       savedNextCharge: 'The new amount is charged from your next monthly payment.',
       saveGateway: 'We could not update your subscription with the payment provider, so your plan was not changed. Try again or contact us.',
@@ -3773,7 +3773,7 @@ export const translations = {
       navMenu: 'Dashboard menu',
       navMenuClose: 'Close menu',
       navReportFault: 'Report a fault',
-      navPlans: 'Plans',
+      navPlans: 'Pricing',
       navCollapse: 'Collapse menu',
       navExpand: 'Expand menu',
       tabProducts: 'Products',
@@ -3888,7 +3888,7 @@ export const translations = {
       glStateApproval: 'This store is not live — the processor is reviewing your business. Nothing to do meanwhile.',
       glStateApprovalArmed: 'Everything is done on your side — the account is with the processor for approval. Once approved the store goes live automatically and the subscription charge takes effect.',
       glStateGoingUp: 'Everything is approved. The store goes live within a few minutes, and you will be notified.',
-      glStateLive: 'This store is not live — pick a plan and save a card. Nothing is charged until it goes up.',
+      glStateLive: 'This store is not live — save a card. Nothing is charged until it goes up.',
       glStateReady: 'This store is live.',
       glStepDetails: 'Business details',
       glStepDetailsNote: 'For the payment processor to approve.',
@@ -3898,8 +3898,8 @@ export const translations = {
       glStepApprovalWaiting: 'Starts once your business details are sent, takes up to 7 business days.',
       glStepApprovalRejected: 'The processor did not approve the business, so the store cannot sell. Only they can give the reason — you can reach them at the link below, and we are here if you need help.',
       glStateRejected: 'The processor did not approve the business',
-      glStepSubscription: 'Plan and payment method',
-      glStepSubscriptionNote: 'Pick a plan and save a card. Nothing is charged until the store goes live.',
+      glStepSubscription: 'Payment method',
+      glStepSubscriptionNote: 'Save a card. Nothing is charged until the store goes live.',
       glPlanTitle: "This store's plan",
       glPlanSwitchable: 'The plan can be changed later, including after the store is live.',
       glPlanCompare: 'Compare the plans',

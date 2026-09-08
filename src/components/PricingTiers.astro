@@ -1,213 +1,81 @@
 ---
 /**
- * The four plans, side by side, and the one input that says which of them is cheapest for you.
+ * The price, on `/pricing`.
  *
- * ── Why a comparison and not a feature matrix ──
- * Every tier includes exactly the same product. The ONLY thing that differs is the ratio between
- * the monthly fee and the per-sale commission (`lib/pricing.ts` — the ladder is tuned so each tier
- * owns a real revenue band). A table with ticks and crosses would therefore have to invent
- * differences, and inventing one is inventing a product. So the page states the sameness plainly and
- * spends its space on the only question a seller actually has: which row is cheapest for me.
+ * ── It was four plans and a calculator until 2026-09-08 ──
+ * The tiers differed in exactly one thing: a higher monthly fee bought a lower per-sale commission.
+ * The commission went when the seller started clearing into his OWN account (`docs/pivot-saas.md`)
+ * — the buyer's money never passes through us, so there is nothing to take a percentage of — and
+ * with it the ladder had no dimension left. Four prices for one product is a page where every
+ * reader picks the cheapest, and a "which plan is right for you" calculator that can only ever
+ * answer "the 99₪ one" is a decision aid for a decision that no longer exists.
  *
- * ── The numbers are read, never typed ──
- * `SELLER_TIERS` is the single source since 2026-07-27, and every figure on this page interpolates
- * from it. `+ מע״מ` sits beside each one because these are B2B prices the seller reclaims — the
- * convention is the opposite of the storefront's, and pricing.ts's header is where that is argued.
+ * **What that removed is worth naming, because each piece was there for a reason:** a revenue field
+ * the reader typed his own number into, a cheapest-plan badge that moved as he typed, a saving line
+ * ("Growth saves you 500₪ a month" — exact, because the clearing fee is identical on every plan and
+ * cancels in a difference), the four cards, and the signed-in flow that let a seller choose from
+ * here and have `/api/seller/tier` amend his standing order. All of it answered "which one", and
+ * there is no "which one".
  *
- * ── The calculator's arithmetic lives in the DOM, not in a JSON blob ──
- * Each card carries its own fee and commission as `data-` attributes, so the script re-reads the
- * same numbers the page rendered rather than a second copy of them shipped alongside. It also keeps
- * a `<script is:inline>`-shaped JSON payload off the page entirely (memory
- * `project_attribute_escaping_xss`).
+ * **What deliberately did NOT come back:** a monthly TOTAL. The owner ruled it out on 2026-08-24
+ * (*"לא צריך להראות למוכר כמה הוא ישלם לנו בחודש עם המכירות, זה רעיון גרוע, זה נראה מפחיד"*) and
+ * the reasoning survives the simplification — a bill he has not earned yet, standing beside the
+ * subscription as if the subscription had been a lie. With one plan the price IS the total, which
+ * is the same rule reached from the other side.
  *
- * ── The page ARRIVES with an answer on it (2026-08-24) ──
- * Owner: *"הדף מאוד מת"*. It was: four cards with an empty line where the figure goes, and nothing
- * on screen until somebody typed. So the example below is computed HERE, on the server, and the
- * field opens holding it — the reader sees a worked comparison at a glance, and the same script
- * recomputes the moment he changes the number. It also means the whole calculator works with
- * JavaScript off, which the empty version did not.
- *
- * **5,000₪ is the example on purpose.** It is a plausible first year, and it is the band where the
- * honest answer is "these plans are within twenty-odd shekels of each other" — which is what the
- * page says there, rather than dressing a 24₪ gap as a saving (owner: *"המחשבון מגוחך"*).
+ * The four `p.tiers` entries stay in the copy: `resolveTier` still answers for stored ids from the
+ * four-tier era, and a name for each is what keeps an old `stores.tier` value renderable.
  */
 import { SELLER_TIERS, SELLER_SETUP_FEE } from '../lib/pricing.js';
 import type { getT } from '../i18n/index.js';
-import type { SellerTierId } from '../lib/pricing.js';
 
 interface Props {
   p: ReturnType<typeof getT>['pricing'];
   lang: 'he' | 'en';
-  /** Only a signed-in seller is told where his choice landed — for a visitor the same click is a
+  /** Only a signed-in seller is told where a choice would land — for a visitor the same button is a
    *  redirect to registration, and a line naming a dashboard tab he has no account for is noise. */
   isLoggedIn: boolean;
 }
-const { p, lang, isLoggedIn } = Astro.props;
+const { p, isLoggedIn } = Astro.props;
 
-/** The worked example the page opens on. Not a placeholder digit — every figure below is this
- *  number run through the same arithmetic the script uses. */
-const EXAMPLE_REVENUE = 5000;
-const locale = lang === 'he' ? 'he-IL' : 'en-GB';
-const ils = (n: number): string => `₪${Math.round(n).toLocaleString(locale)}`;
-
-const costs = SELLER_TIERS.map((tier) => ({
-  tier,
-  cost: tier.monthlyFee + (EXAMPLE_REVENUE * tier.commissionPercent) / 100,
-}));
-const cheapest = costs.reduce((a, b) => (b.cost < a.cost ? b : a));
-const dearest = costs.reduce((a, b) => (b.cost > a.cost ? b : a));
-const spread = dearest.cost - cheapest.cost;
-/** Whether the gap is worth naming — relative to the BILL, not an absolute shekel figure: 24₪ off
- *  699₪ is noise, 24₪ off 220₪ is not. Below the line the sentence still names the marked plan and
- *  simply says nothing about the gap; it never argues with the badge. Five percent, and
- *  `scripts/pricing-tiers.ts` holds the same line — it is the same sentence, recomputed. */
-const isClose = spread < cheapest.cost * 0.05;
-const summary = isClose
-  ? p.calcClose.replace('{tier}', p.tiers[cheapest.tier.id as SellerTierId].name)
-  : p.calcGap
-      .replace('{tier}', p.tiers[cheapest.tier.id as SellerTierId].name)
-      .replace('{amount}', ils(spread))
-      .replace('{other}', p.tiers[dearest.tier.id as SellerTierId].name);
+const plan = SELLER_TIERS[0]!;
 ---
 
-<section class="mt-8" aria-labelledby="calc-title">
-  <h2 id="calc-title" class="text-[1.05rem] font-bold m-0">{p.calcTitle}</h2>
-  <p class="muted m-0 mt-1 text-[0.88rem] max-w-[46rem]">{p.sameEverything}</p>
-  <div class="pricing-panel mt-3">
-    <label for="calc-revenue" class="block font-semibold text-[0.92rem]">{p.calcQuestion}</label>
-    {/* `inputmode="numeric"` and not `type="number"`: the field takes a formatted amount with
-        separators, and a number input rejects them outright on some browsers and silently blanks
-        itself on others. The script parses digits out of whatever is typed. */}
-    <div class="flex items-center gap-2 mt-2">
-      <span class="text-[1.05rem] font-bold" aria-hidden="true">₪</span>
-      <input
-        id="calc-revenue"
-        type="text"
-        inputmode="numeric"
-        autocomplete="off"
-        value={EXAMPLE_REVENUE.toLocaleString(locale)}
-        placeholder={p.calcPlaceholder}
-        class="input max-w-[12rem]"
-      />
-    </div>
-    {/* The sentence the whole calculator exists to produce, and the only line under the field —
-        the hint that used to sit beneath it ("enter an amount and we will mark the cheapest") said
-        what this sentence demonstrates. `aria-live` because it changes under a field being typed
-        in. */}
-    <p class="m-0 mt-3 text-[0.9rem] font-semibold" id="calc-summary" aria-live="polite">{summary}</p>
-  </div>
-</section>
+{/* One price, stated once. No grid: a single card in a four-column layout reads as three cards
+    that failed to load, and a lone card centred in an empty row is a shape this site does not use
+    anywhere else. It is a panel the width of the prose above it. */}
+<div class="pricing-panel mt-4" data-tier={plan.id}>
+  <p class="m-0 flex items-baseline gap-1.5 flex-wrap">
+    <span class="text-[2rem] font-bold tabular-nums">₪{plan.monthlyFee}</span>
+    <span class="muted text-[0.9rem]">{p.perMonth}</span>
+    <span class="muted text-[0.9rem]">· {p.vatNote}</span>
+  </p>
+  {/* The plan's NAME ("בסיס") is not printed. It was the label that told four cards apart, and with
+      one price it names nothing — a heading over a single item. The id lives on in the data because
+      stored `stores.tier` rows still carry it. */}
+  <p class="muted m-0 mt-2 text-[0.88rem] max-w-[46rem]">{p.sameEverything}</p>
 
-<ul
-  id="tier-list"
-  role="list"
-  class="list-none p-0 m-0 mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-  data-label-best={p.calcBest}
-  data-label-close={p.calcClose}
-  data-label-gap={p.calcGap}
-  data-label-choose={p.choose}
-  data-label-current={p.current}
-  data-label-saving={p.saving}
-  data-label-saved={p.saved}
-  data-label-failed={p.saveFailed}
-  data-label-gateway={p.saveGateway}
-  data-label-for={p.chooseFor}
->
-  {costs.map(({ tier }) => {
-    const copy = p.tiers[tier.id as SellerTierId];
-    const best = tier.id === cheapest.tier.id;
-    // `card--flat`: the card itself is not clickable — the button inside it is — and a shadow on
-    // hover would claim otherwise (Hard rules → a shadow means the surface FLOATS).
-    // The calculator sets `data-best` on the winning card; what that LOOKS like is decided in
-    // `cards.css`, beside the `.card` rule it has to beat — a Tailwind
-    // `data-[best]:[border-color:…]` here would be dead, because unlayered legacy CSS wins over a
-    // layered utility whatever the specificity. It was written that way first and
-    // `tests/unlayered-css-beats-utility.test.ts` refused it.
-    return (
-      <li
-        class="card card--flat p-4 flex flex-col"
-        data-tier={tier.id}
-        data-fee={String(tier.monthlyFee)}
-        data-commission={String(tier.commissionPercent)}
-        data-best={best ? '' : undefined}
-      >
-        <div class="flex items-center justify-between gap-2">
-          <h3 class="text-[1.05rem] font-bold m-0">{copy.name}</h3>
-          {/* Rendered on every card and shown on one — the winner moves as the field changes, and a
-              badge the script has to build is a badge that arrives a frame late. */}
-          <span class="pricing-best-badge" data-role="best-badge">{p.calcBest}</span>
-        </div>
-        {/* The audience line ("for a shop just starting out") is gone: the calculator answers the
-            same question with the seller's own number, and four cards each carrying six facts is
-            what made the page read as complicated. */}
-        <p class="m-0 mt-3 flex items-baseline gap-1">
-          <span class="text-[1.45rem] font-bold tabular-nums">₪{tier.monthlyFee}</span>
-          <span class="muted text-[0.84rem]">{p.perMonth}</span>
-        </p>
-        <p class="m-0 mt-1 text-[0.88rem]">
-          <span class="font-semibold tabular-nums">{tier.commissionPercent}%</span>
-          <span class="muted"> {p.commissionLabel}</span>
-        </p>
+  <button type="button" class="btn btn--accent mt-4" data-role="choose">{p.choose}</button>
+</div>
 
-        {/* **The monthly bill is deliberately NOT on this card** (owner, 2026-08-24: *"לא צריך
-            להראות למוכר כמה הוא ישלם לנו בחודש עם המכירות, זה רעיון גרוע, זה נראה מפחיד... בראש שלו
-            זה נראה כאילו למה לי לשלם על חנות כל כך הרבה כסף בחודש? בלי שהוא מבין שזה כולל את כל
-            הסליקה והכל"*).
-            It was here for a day, as "₪675 לחודש · 13.5% מהמחזור", and the reasoning was that a
-            figure with no size means nothing. That is true of a PRICE and wrong about this number:
-            fee-plus-commission at a revenue he just guessed is not a price, it is a bill he has not
-            earned yet, and it lands beside a 99₪ subscription as if the subscription had been a
-            lie. **And it was not even the real total** — PayMe take a clearing fee on top of both
-            numbers (`docs/payme-correspondence.md`), so what the page called "סה״כ לחודש" was a
-            figure nobody would ever be charged (owner, 2026-08-24: *"אין פה שיקוף אמיתי של המחיר אז
-            אין בשביל מה להראות אותו"*).
-            **The saving survives that objection and the total does not**, which is why one stayed:
-            the clearing fee is the same on every plan, so it cancels in a difference between two of
-            them. "Growth saves you 500₪ a month" is exact; "you will pay 675₪" never was. What the calculator says instead is which plan is cheapest FOR HIM, and — only when
-            the gap is worth acting on — what choosing it saves. */}
+{/* The facts that belong under a price and nowhere else on the page, in the order a reader asks
+    them: per shop, what happens if he stops, when we start charging, and the one charge that is NOT
+    the price — his processor's account-opening fee, which is his and was never ours.
 
-        {/* Pushed to the bottom so the four buttons line up however uneven the copy above them is.
-            The cheapest card's button is the filled one: the page has four identical actions and
-            exactly one of them is the answer to the question the reader just asked. */}
-        <button
-          type="button"
-          class:list={['btn btn--sm mt-4', best ? 'btn--accent' : 'btn--ghost']}
-          data-role="choose"
-        >
-          {p.choose}
-        </button>
-      </li>
-    );
-  })}
-</ul>
-
-{/* The facts that belong under a price table and nowhere else on the page, in the order a reader
-    asks them: what a plan covers, when we start charging, what happens if he stops, that these are
-    pre-VAT figures, and the one charge that is NOT in the table — PayMe's account-opening fee,
-    which is his and used to be absorbed by us.
-
-    The first two lines are new on 2026-08-24 and neither is decoration. **Per shop** is a price
-    fact a seller planning two shops has to have before he picks one, not on the payment screen
-    afterwards. **Cancelling** is here because the question that stops somebody pressing a plan is
-    not what it costs — it is what happens if he stops, and leaving that to a terms page is what
-    makes a decision feel irreversible. */}
+    **Per shop** is a price fact a seller planning two shops has to have before he presses the
+    button, not on the payment screen afterwards. **Cancelling** is here because the question that
+    stops somebody pressing is not what it costs — it is what happens if he stops, and leaving that
+    to a terms page is what makes a decision feel irreversible. */}
 <p class="m-0 mt-3 text-[0.84rem] font-semibold">{p.perStore}</p>
 <p class="muted m-0 mt-1 text-[0.82rem]">{p.cancelAny}</p>
-<p class="muted m-0 mt-1 text-[0.82rem]">{p.whenBody} {p.vatNote}</p>
+<p class="muted m-0 mt-1 text-[0.82rem]">{p.whenBody}</p>
 <p class="muted m-0 mt-1 text-[0.82rem]">{p.setupFee.replace('{amount}', String(SELLER_SETUP_FEE))}</p>
 
-{/* Which shop a choice would apply to. Rendered empty and filled by the script, because WHICH shop
-    is a per-seller answer and this page is one cached document for everybody (`/api/seller/tier`).
-    It stays empty for a seller with one shop — naming it there is noise, not clarity. */}
-{isLoggedIn && <p class="!hidden m-0 mt-3 text-[0.86rem] font-semibold" id="tier-for-store"></p>}
-
+{/* Where a signed-in seller goes to actually start paying. Rendered as a plain link rather than
+    filled by a script: with one plan the button above has nothing to save, so the page is the same
+    cached document for everybody and the only per-seller fact left is whether he has an account. */}
 {isLoggedIn && (
-  <p class="!hidden m-0 mt-3 text-[0.88rem]" id="tier-saved-where">
-    {/* Shown only when the seller is already being billed: the endpoint answers `fromNextCharge`
-        and the standing order at PayMe has just been patched. It is the first thing in the line
-        because it is the part that is about his money. */}
-    <span class="!hidden font-semibold" id="tier-saved-next">{p.savedNextCharge}</span>{' '}
-    <span>{p.savedWhere}</span>{' '}
-    <a href="/seller/dashboard?panel=payouts">{p.savedWhereLink}</a>
+  <p class="m-0 mt-3 text-[0.88rem]">
+    {p.savedWhere}{' '}<a href="/seller/dashboard?panel=payouts">{p.savedWhereLink}</a>
   </p>
 )}

@@ -36,7 +36,7 @@ const platformTotals = (bs: readonly SellerBalance[]) => ({
   commissionVatAgorot: bs.reduce((a, b) => a + b.commissionVatAgorot, 0),
   totalEarnedAgorot: bs.reduce((a, b) => a + b.totalEarnedAgorot, 0),
 });
-import { commissionOnAgorot, commissionPercentForTier } from '../src/lib/pricing.js';
+import { commissionPercentForTier } from '../src/lib/pricing.js';
 import { chargedCommissionPercentForStore } from '../src/lib/store-plan.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
 import { EMPTY_VIEW_STATS, getPlatformViewStats, getStoreViewStats, type StoreViewStats } from '../src/lib/store-pageviews.js';
@@ -660,20 +660,24 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     expectSameMoney(totals.commissionAgorot + totals.commissionVatAgorot + totals.totalEarnedAgorot, totals.grossRevenueAgorot, 'platform totals close');
   });
 
-  it('the VAT is a real part of the split, and it is not ours', () => {
-    // Non-vacuous on purpose: a zero here would let the three-way close above pass as the old
-    // two-way one and hide exactly the regression it was rewritten for.
+  it('the seller keeps the whole sale — no commission, and therefore no VAT on one', () => {
+    /* ── Inverted on 2026-09-08, and NOT weakened ──
+       It used to require `commissionVatAgorot > 0` and match it against the gap between the quoted
+       rate and the rate the processor deducts. There is no commission now: the seller clears into
+       his OWN account and the buyer's money never passes through us.
+
+       A test asserting three zeros would pass just as well against a balance module that had
+       stopped computing anything, which is the exact vacuity the original comment warned about. So
+       the assertion is the seller's side: the revenue is REAL, and every agora of it is his. The
+       two-rate rule itself — VAT on a commission is charged as a bigger percentage — is proved at a
+       literal 12% in `tests/platform-vat.test.ts`, where it survives the plan being zero. */
     const balances = buildSellerBalances(SELLERS, STORES, REVENUE);
     const withRevenue = balances.filter((b) => b.grossRevenueAgorot > 0);
     expect(withRevenue.length).toBeGreaterThan(0);
     for (const b of withRevenue) {
-      expect(b.commissionVatAgorot).toBeGreaterThan(0);
-      // Our income never carries it: the VAT is exactly the gap between the quoted rate and the
-      // rate PayMe deduct, and `chargedCommissionPercentForStore` is the only definition of that.
-      const expected = b.stores.reduce((a, st) => a
-        + commissionOnAgorot(st.grossRevenueAgorot, chargedCommissionPercentForStore({ tier: STORES.find((x) => x.id === st.storeId)!.tier }))
-        - commissionOnAgorot(st.grossRevenueAgorot, commissionPercentForTier(STORES.find((x) => x.id === st.storeId)!.tier as 'starter')), 0);
-      expectSameMoney(b.commissionVatAgorot, expected, `${b.sellerId}: vat is the gap between the two rates`);
+      expectSameMoney(b.totalEarnedAgorot, b.grossRevenueAgorot, `${b.sellerId}: keeps the gross`);
+      expect(b.commissionAgorot).toBe(0);
+      expect(b.commissionVatAgorot).toBe(0);
     }
   });
 
@@ -703,29 +707,23 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     );
   });
 
-  it('applies each STORE\'s own plan, not one rate for everybody', () => {
-    // A single platform-wide percent gets this wrong the moment a second plan is sold — and it gets
-    // it wrong silently, in the platform's favour.
+  it('still reports every shop separately, even though they are all on one plan', () => {
+    /* This used to prove that a seller holding two shops on two plans was charged two rates, and
+       that his headline was the blend. One plan since 2026-09-08, so what is left to protect is the
+       structure the ladder was built on and which outlived it: **a shop is its own row**. A balance
+       that quietly merged a seller's shops would be invisible in every total — the sums would still
+       close — and it is what the per-shop standing order is billed from. */
     const byId = new Map(buildSellerBalances(SELLERS, STORES, REVENUE).map((b) => [b.sellerId, b]));
-    const starter = commissionPercentForTier('starter');
-    const enterprise = commissionPercentForTier('enterprise');
-
-    // Per store, which is where the charge actually happens.
     const aStores = new Map(byId.get('sel-a')!.stores.map((st) => [st.storeSlug, st]));
-    expect(aStores.get(STORE)!.commissionAgorot).toBe(commissionOnAgorot(123_457, starter));
-    expect(aStores.get(OTHER)!.commissionAgorot).toBe(commissionOnAgorot(8_999, enterprise));
-
-    // And the seller HEADLINE is the blend his own money produced — between the two rates, equal to
-    // neither, because he is on both. A single plan's percent here would be a number he could hold
-    // us to and we would not be charging.
-    const aRate = byId.get('sel-a')!.commissionRate;
-    expect(aRate).toBeLessThan(starter);
-    expect(aRate).toBeGreaterThan(enterprise);
-
-    // One shop, one plan: the blend is that plan exactly.
-    expect(byId.get('sel-b')!.commissionRate).toBe(enterprise);
-    // A shop with no plan recorded is the default plan, never zero commission.
-    expect(commissionPercentForTier(undefined)).toBeGreaterThan(0);
+    expect([...aStores.keys()].sort()).toEqual([OTHER, STORE].sort());
+    // Each row carries its OWN revenue, which is the thing a merge would destroy.
+    expect(aStores.get(STORE)!.grossRevenueAgorot).toBe(123_457);
+    expect(aStores.get(OTHER)!.grossRevenueAgorot).toBe(8_999);
+    // And nothing is deducted from either, on any plan name a row might still hold.
+    expect(aStores.get(STORE)!.commissionAgorot).toBe(0);
+    expect(aStores.get(OTHER)!.commissionAgorot).toBe(0);
+    expect(byId.get('sel-a')!.commissionRate).toBe(0);
+    expect(commissionPercentForTier(undefined)).toBe(0);
   });
 
   it('is the same number the seller\'s own performance tab shows', () => {
@@ -748,10 +746,15 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
       [{ id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a', tier }],
       new Map([[STORE, { totalRevenueAgorot: summary.totalRevenueAgorot, monthRevenueAgorot: 0 }]]),
     );
-    // Non-vacuous: two surfaces agreeing on zero would prove nothing, and the commission on this
-    // revenue does not divide evenly, so it is a real rounding both sides have to make the same way.
+    /* Non-vacuous, and the guard had to be rewritten on 2026-09-08 rather than dropped. It used to
+       be "the commission on this revenue does not divide evenly", which proved the two surfaces
+       made the SAME rounding — a real risk while there was a rate. With the rate at zero there is
+       no rounding to disagree about, and two surfaces agreeing on zero proves nothing. What still
+       cannot pass by accident is the REVENUE: it is a real figure, it is what the seller keeps, and
+       a module answering zeros would fail on the line below. */
     expect(summary.totalRevenueAgorot).toBeGreaterThan(0);
-    expect((summary.totalRevenueAgorot * rate) % 100).not.toBe(0);
+    expect(rate).toBe(0);
+    expectSameMoney(summary.netProfitAgorot, summary.totalRevenueAgorot, 'nothing is deducted from the seller');
     expectSameMoney(balances[0]!.totalEarnedAgorot, summary.netProfitAgorot, 'admin balance vs seller net profit');
     // The seller's tab states the whole deduction; the admin card splits it into our income and the
     // tax. Same money, named twice — so the two must add back up to the one number he was charged.
@@ -786,10 +789,13 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     const balances = buildSellerBalances([SELLERS[0]!], stores, revenueBySlug);
     const totals = platformTotals(balances);
 
-    // Non-vacuous: zero on both sides would prove nothing, and the VAT has to be a real figure or
-    // this passes just as well against the bug it was written for.
+    /* Non-vacuous. The VAT figure this used to require is zero now — no commission, so no tax on
+       one — so the weight moves to the REVENUE, which is real and which both sides have to carry
+       through unchanged. A platform panel answering zeros fails on the first line; a panel that
+       lost a seller's row fails on the last. */
     expect(perf.summary.totalRevenueAgorot).toBeGreaterThan(0);
-    expect(totals.commissionVatAgorot).toBeGreaterThan(0);
+    expect(totals.totalEarnedAgorot).toBe(perf.summary.totalRevenueAgorot);
+    expect(totals.commissionVatAgorot).toBe(0);
 
     expectSameMoney(perf.summary.platformCommissionAgorot, totals.commissionAgorot, 'platform commission income vs seller rows');
     expectSameMoney(perf.summary.netProfitAgorot, totals.totalEarnedAgorot, 'platform seller payout vs seller rows');

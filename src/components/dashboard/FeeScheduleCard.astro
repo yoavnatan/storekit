@@ -78,17 +78,13 @@ const withGross = (agorot: number): string =>
       <dt class="muted">{d.feeSchedPlan}</dt>
       <dd class="m-0 font-semibold">{d.feeSchedPlanValue.replace('{name}', planName).replace('{amount}', withGross(toAgorot(plan.monthlyFee)))}</dd>
 
-      <dt class="muted">{d.feeSchedCommission}</dt>
-      {/* A percentage, so the VAT cannot be shown as a second figure beside it without inventing a
-          sale to apply it to. The line says the rate and that tax is added — the fee report is
-          where a real deduction appears with its own מע״מ column. */}
-      <dd class="m-0 font-semibold">
-        {d.feeSchedCommissionValue.replace('{percent}', String(plan.commissionPercent))}
-        {platformVat && <span class="muted font-normal">{' '}{d.feeSchedPlusVat}</span>}
-      </dd>
-
-      <dt class="muted">{d.feeSchedClearing}</dt>
-      <dd class="m-0">{d.feeSchedClearingValue}</dd>
+      {/* ── Two rows went on 2026-09-08, and for opposite reasons ──
+          The COMMISSION is not charged any more: the seller clears into his own account and the
+          buyer's money never passes through us, so there is no percentage of anything to take.
+          The CLEARING FEE is still charged — but by HIS processor, under HIS agreement, at a rate
+          we do not set and cannot read. Printing it in our tariff was right while we opened his
+          merchant account and knew the number; now it would be us quoting somebody else's price.
+          What he pays us is one line: the monthly plan. */}
 
       {!paying && (
         <>

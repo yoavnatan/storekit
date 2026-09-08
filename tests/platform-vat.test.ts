@@ -39,16 +39,29 @@ describe('what the platform bills a seller', () => {
     expect(billedTotalAgorot(lines)).toBe(feeWithVatAgorot(totalFeeAgorot(lines)));
   });
 
-  it('sends PayMe the rate that is actually deducted, not the rate we quote', () => {
+  it('takes no share of a sale at all, so both rates are zero', () => {
+    /* ── This assertion is inverted, and the pair it guards is kept ──
+       Until 2026-09-08 the two functions answered two different numbers on purpose:
+       `commissionPercentForStore` was the platform's quoted revenue (12%, ex-VAT) and
+       `chargedCommissionPercentForStore` was what the processor actually deducted (14.16% — VAT on
+       a commission has no line to sit on inside a transaction, so it is charged as a bigger
+       percentage). Conflating them overstated our own income by 18%.
+
+       The commission itself is gone: the seller clears into his OWN account, so the buyer's money
+       never passes through us. Both functions therefore answer 0, which is the true number, and
+       they are kept rather than deleted because `market_fee` is still SENT — the split transport
+       is intact and switched off, not removed (`docs/pivot-saas.md`). The distinction is asserted
+       below, at a non-zero rate, so the rule survives the day a commission comes back. */
     const store = { tier: 'starter' };
-    expect(commissionPercentForStore(store)).toBe(12);
-    // 12% + VAT. `market_fee` is a percentage, so charging tax on a commission means sending a
-    // bigger percentage — there is no line to add inside a transaction.
-    expect(chargedCommissionPercentForStore(store)).toBeCloseTo(14.16, 10);
-    // And the two produce different money on a real sale, which is the whole reason they are two
-    // functions: 10,000 agorot at 12% is 1,200 and at 14.16% is 1,416.
-    expect(commissionOnAgorot(10000, commissionPercentForStore(store))).toBe(1200);
-    expect(commissionOnAgorot(10000, chargedCommissionPercentForStore(store))).toBe(1416);
+    expect(commissionPercentForStore(store)).toBe(0);
+    expect(chargedCommissionPercentForStore(store)).toBe(0);
+    expect(commissionOnAgorot(10000, commissionPercentForStore(store))).toBe(0);
+
+    // The two-rate rule itself, proved on a rate rather than on the plan: quoted 12 → charged 14.16,
+    // and 10,000 agorot is 1,200 against 1,416. Zeroing the plan must never zero the arithmetic.
+    expect(feeWithVatPercent(12)).toBeCloseTo(14.16, 10);
+    expect(commissionOnAgorot(10000, 12)).toBe(1200);
+    expect(commissionOnAgorot(10000, feeWithVatPercent(12))).toBe(1416);
   });
 
   it('keeps every plan on the same rule', () => {

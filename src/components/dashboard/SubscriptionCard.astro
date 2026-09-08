@@ -33,7 +33,6 @@
  * cancelling in a hurry to avoid being charged again.
  */
 import { resolveTier, SELLER_SETUP_FEE, feeWithVatAgorot, type SellerTierId } from '../../lib/pricing.js';
-import PlanPills from './PlanPills.astro';
 import { formatAgorot, fromAgorot, toAgorot } from '../../lib/money.js';
 import { chargesVat, platformVatPercent } from '../../lib/vat.js';
 import { CANCEL_REASONS, cancelReasonKey } from '../../lib/subscription-cancel.js';
@@ -58,7 +57,6 @@ interface Props {
   /** What every plan is called, for the chooser. Handed in for the same reason `planName` is: the
    *  words live in the pricing copy, and a dashboard component that reaches into another screen's
    *  translations is the one that goes stale when that screen is rewritten. */
-  planNames: Record<SellerTierId, string>;
   /** What is on file: `null` = none yet, `paying` = billing is running, otherwise it was created and
    *  nobody has paid it. `endsAt` is present only on a cancelled one still inside its paid period. */
   subscription: {
@@ -113,7 +111,7 @@ interface Props {
   bare?: boolean;
   d: ReturnType<typeof getT>['dashboard'];
 }
-const { storeId, tier, planName, planNames, subscription, paying, storeInPlan = false, cardOnFile = false, payer, businessType, bare = false, d } = Astro.props;
+const { storeId, tier, planName, subscription, paying, storeInPlan = false, cardOnFile = false, payer, businessType, bare = false, d } = Astro.props;
 
 /** Read here rather than passed in: it is a fact about the SERVER, not about this card, and a
  *  prop would be one more thing every caller has to remember to thread through correctly. */
@@ -155,17 +153,9 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
 ---
 
 <section class={bare ? '' : 'card card--flat p-4 md:p-5 mt-4'} id="sub-card" data-paying={String(paying)} data-store={storeId}>
-  {/* ── Choosing, at the moment it starts costing him ──
-      First thing in the step, because the figure two rows below is the one it decides. Only in
-      `bare`: on the standalone card a live shop is already ON a plan, and four pills at the top of
-      a card whose subject is "your subscription is running" invites a decision nobody came to make.
-      There it sits behind the switch button instead. */}
-  {bare && (
-    <div class="mb-3">
-      <p class="m-0 text-[0.84rem] font-semibold mb-2">{d.glPlanTitle}</p>
-      <PlanPills storeId={storeId} tier={tier} planNames={planNames} d={d} />
-    </div>
-  )}
+  {/* ── There is nothing to choose any more (owner, 2026-09-08) ──
+      Four pills stood here, and the choice they offered was real while a higher fee bought a lower
+      commission. With one plan the step is a price, not a decision, and the row below states it. */}
   {!bare && (
     <>
       <h3 class="text-[1.05rem] font-bold m-0">{d.subTitle}</h3>
@@ -187,10 +177,10 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
         <dd class="m-0 font-semibold">{d.subPlanValue.replace('{name}', planName).replace('{fee}', String(plan.monthlyFee)).replace('{per}', d.subPerMonth)}</dd>
       </>
     )}
-    <dt class="muted">{d.subCommission}</dt>
-    {/* Named so a plan change can repaint it without reloading the tab — it is the only figure on
-        this card that the choice moves. */}
-    <dd class="m-0 font-semibold" id="sub-commission">{plan.commissionPercent}%</dd>
+    {/* ── The per-sale commission row is GONE (owner, 2026-09-08) ──
+        The seller clears into his OWN account, so the buyer's money never passes through us and
+        there is nothing to take a percentage of. We bill the monthly fee and nothing else. The row
+        had an id because a plan change repainted it; the plan now moves one figure, the fee. */}
     {showBreakdown && (
       <>
         {/* **The answer to "why am I charged ₪224".** One standing order, several shops — without
@@ -373,9 +363,7 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
               A toggle rather than four pills on show: this card's resting state is a statement that
               the subscription is running, and a chooser standing open under it reads as a decision
               being asked for. Pressed, it is the same pills and the same handler as the go-live
-              step — `/api/seller/tier` patches the standing order at PayMe first and records the
-              plan only if they accepted. */}
-          <button type="button" class="btn btn--ghost btn--sm" id="sub-plan-toggle" aria-expanded="false" aria-controls="sub-plan-picker">{d.subChangePlan}</button>
+              step. */}
           <button type="button" class="btn btn--ghost btn--sm" id="sub-cancel">{d.subCancel}</button>
         </div>
       </div>
@@ -395,18 +383,8 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
         <button type="button" class="btn btn--ghost btn--sm shrink-0" id="sub-card-replace" aria-controls="sub-card-fields" aria-expanded="false">{d.subCardReplace}</button>
       </div>
 
-      <div class="!hidden mt-3" id="sub-plan-picker">
-        <PlanPills storeId={storeId} tier={tier} planNames={planNames} showNote={false} d={d} />
-        {/* The date, not "your next charge" — he is deciding whether to switch, and the one thing he
-            wants to know is when it starts costing the new amount. PayMe's own next-charge string,
-            the same one shown two rows above, so the two cannot disagree. */}
-        <p class="muted m-0 mt-2 text-[0.78rem]">
-          {subscription?.nextCharge
-            ? d.subChangePlanDated.replace('{date}', subscription.nextCharge.slice(0, 10))
-            : d.subChangePlanNote}
-          {' '}<a href="/pricing?from=payouts">{d.glPlanCompare}</a>
-        </p>
-      </div>
+      {/* The plan picker that sat here is gone with the ladder: one plan means the only change a
+          seller can make to his subscription is to end it, which the button above does. */}
 
       {/* ── The retention step ──
           Hidden until he presses cancel, and it is not a wall: the cancel button below is the same
@@ -460,12 +438,10 @@ const vatAgorot = Math.max(0, (subscription?.priceAgorot ?? 0) - linesNetAgorot)
         </fieldset>
 
         <div class="flex flex-wrap items-center gap-2 mt-3">
-          {/* The retention offer now DOES the thing instead of linking to a page about it. It was
-              an `<a href="/pricing">` because a cheaper plan could not be chosen from this card at
-              all — so the only honest offer was a marketing page, off the dashboard, with the
-              cancel dialog abandoned behind it. With the chooser two rows up, "move to a cheaper
-              plan" opens it. */}
-          <button type="button" class="btn btn--ghost btn--sm" data-open-plans>{d.subCancelCheaper}</button>
+          {/* "Move to a cheaper plan" is gone with the plan ladder (2026-09-08): there is one plan,
+              so the only thing cheaper than it is not having a shop. What survives as a retention
+              offer is the line beside this — closing ONE shop rather than the subscription — which
+              is a real alternative and the one a seller with several shops usually wants. */}
           {lines.length > 1 && <span class="muted text-[0.8rem]">{d.subCancelOneStore}</span>}
           <button type="button" class="btn btn--sm" id="sub-cancel-confirm">{d.subCancelConfirm}</button>
         </div>

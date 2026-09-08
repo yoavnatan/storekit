@@ -49,141 +49,14 @@ export function initSubscriptionCard(): void {
     error.classList.remove('hidden');
   };
 
-  // ── Opening the chooser on a shop that is already live ────────────────────────────────────
-  // On the go-live step the pills are simply there — choosing is the errand. On the card of a
-  // running subscription they start closed: that card's job is to say the subscription is running,
-  // and four pills standing open under it read as a decision being asked for. The pills themselves
-  // are the same element with the same handler either way (`PlanPills.astro`).
-  const planToggle = document.getElementById('sub-plan-toggle');
-  const planPicker = document.getElementById('sub-plan-picker');
-  const openPlans = (): void => {
-    planPicker?.classList.remove('!hidden');
-    planToggle?.setAttribute('aria-expanded', 'true');
-    // `block: 'nearest'` — the smallest scroll that makes it visible, never a jump to the top of
-    // the viewport (`feedback_noop_interactions_invisible`).
-    planPicker?.scrollIntoView({ block: 'nearest' });
-  };
-  // The retention step's "move to a cheaper plan" is the same action as the toggle, reached from
-  // inside the cancel dialog.
-  for (const btn of document.querySelectorAll('[data-open-plans]')) btn.addEventListener('click', openPlans);
-  planToggle?.addEventListener('click', () => {
-    // `!hidden` and not `hidden`: the picker sits in a flex context, where Tailwind's `hidden`
-    // loses to `display:flex` on specificity (`project_css_cascade_traps`).
-    const opening = planPicker?.classList.contains('!hidden') ?? false;
-    planPicker?.classList.toggle('!hidden', !opening);
-    planToggle.setAttribute('aria-expanded', String(opening));
-  });
-
-  // ── Which plan this shop is on ────────────────────────────────────────────────────────────
-  // Four pills. The write goes through `/api/seller/tier`, which patches the standing order at
-  // PayMe FIRST and records the plan only if they accepted — so a refusal here leaves the shop on
-  // the plan the card is actually paying for, and the button simply springs back.
-  const plans = document.getElementById('go-live-plans');
-  const storeId = plans?.dataset['store'] ?? document.getElementById('sub-start')?.dataset['store'] ?? '';
-  /**
-   * ── A plan change is explained BEFORE it happens (owner, סשן א׳ §5, 2026-08-26) ──
-   *
-   * *"כשיוזר רוצה להחליף מסלול צריכה להיפתח לו הודעה במודל שמסבירה לו על השינוי, מתי יבוצע השינוי,
-   * במה זה כרוך."* Until now one click on a pill moved the money silently and the only feedback was
-   * a toast afterwards — and when it FAILED, the toast said the clearing company had refused,
-   * which he could not make sense of either: *"למה חברת הסליקה היא זו שאמורה לאשר את שינוי המסלול
-   * בכלל?"*
-   *
-   * The honest answer is the sentence this dialog now carries. The monthly fee is collected by a
-   * standing order held at the processor, so changing the plan means changing the AMOUNT of that
-   * standing order — one `set-price` call to them. They are not approving a business decision of
-   * ours; they are being asked to amend an instruction on his card, and that request can fail like
-   * any other. Because it goes to them FIRST and our row follows only on success
-   * (`api/seller/tier.ts`), a refusal leaves him on the plan his card is actually paying — which is
-   * the one state that is never a lie, and is why the wording says the plan did not change rather
-   * than that something went wrong.
-   *
-   * **Only when there is a standing order to amend.** A seller still choosing his first plan has
-   * nothing at the processor and nothing is charged, so a dialog about a next charge would be a
-   * ceremony in front of a decision he is allowed to change freely.
-   */
-  const subCard = document.getElementById('sub-card');
-  const isPaying = subCard?.dataset['paying'] === 'true';
-
-  plans?.querySelectorAll<HTMLButtonElement>('[data-role="plan"]').forEach((btn) => {
-    const apply = async (): Promise<void> => {
-      const busy = busyButton(btn, btn.textContent?.trim() ?? '');
-      try {
-        const res = await fetch('/api/seller/tier', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tier: btn.dataset['tier'], storeId }),
-        });
-        if (!res.ok) {
-          // 502 is the gateway refusing to move a standing order; anything else is ours. Both mean
-          // the same thing to the seller — the plan did not change — so both say it.
-          // 502 is the gateway refusing to amend the standing order; anything else is ours. Both
-          // mean the same thing to the seller — the plan did not change and he is still on the one
-          // his card pays for — so both say that, and the 502 additionally names WHO refused,
-          // because "try again" is the right next move for one and not for the other.
-          showErrorToast(res.status === 502 ? (t['subGatewayFailed'] ?? '') : (t['subFailed'] ?? ''));
-          return;
-        }
-        const body = await res.json().catch(() => ({})) as { fromNextCharge?: boolean };
-
-        /**
-         * ── Repainted, not reloaded (owner, 2026-08-25) ──
-         *
-         * *"עדיין ללחוץ על שינוי מסלול שם מרענן את כל העמוד."* — and a full reload for a one-click
-         * choice is the heaviest possible answer: the seller loses his scroll position, the card
-         * iframes are torn down and re-drawn by PayMe's SDK, and any half-typed card number goes
-         * with them. On the one screen whose whole job is to get a card typed.
-         *
-         * A plan change moves exactly three things on this screen, so exactly three are written:
-         * which pill is filled, the commission percent, and the amount the tokenizer will quote.
-         * Everything else on the card — the VAT note, the breakdown, the next-charge date — is
-         * unaffected by WHICH plan this shop is on.
-         */
-        for (const other of plans.querySelectorAll<HTMLButtonElement>('[data-role="plan"]')) {
-          const mine = other === btn;
-          other.classList.toggle('btn--accent', mine);
-          other.classList.toggle('btn--ghost', !mine);
-        }
-        const commission = document.getElementById('sub-commission');
-        if (commission && btn.dataset['commission']) commission.textContent = `${btn.dataset['commission']}%`;
-        // What the card issuer's confirmation screen will say. Read by `tokenize` at press time, so
-        // writing it here is what keeps that figure and the marked pill the same fact.
-        // Looked up at click time rather than closed over: the card box is declared further down
-        // this file, and a handler that reaches backwards for it would depend on the order two
-        // unrelated blocks happen to sit in.
-        // The GROSS, from the pill's own `data-fee-gross` — the figure the standing order really
-        // debits, and the one the card issuer's confirmation will show. `data-fee` is the quoted
-        // price and belongs to the label, not to the charge (2026-08-26).
-        const box = document.getElementById('sub-card-fields');
-        if (box && btn.dataset['feeGross']) box.dataset['amount'] = btn.dataset['feeGross'];
-
-        showToast(body.fromNextCharge ? (t['subPlanFromNextCharge'] ?? '') : (t['subPlanSaved'] ?? ''));
-      } catch {
-        showErrorToast(t['subFailed'] ?? '');
-      } finally {
-        busy.done();
-      }
-    };
-
-    btn.addEventListener('click', () => {
-      if (btn.classList.contains('btn--accent')) return;  // already on it: a no-op click moves nothing
-      if (!isPaying) { void apply(); return; }
-      const next = document.getElementById('sub-next-charge')?.textContent?.trim().slice(0, 10) ?? '';
-      window.dispatchEvent(new CustomEvent('confirm:open', {
-        detail: {
-          title: (t['subPlanConfirmTitle'] ?? '').replace('{plan}', btn.textContent?.trim() ?? ''),
-          // Dated when we know the date, and the rule when we do not — the same pair the cancel
-          // dialog uses, because a seller deciding about money wants the day and not the policy.
-          message: next
-            ? (t['subPlanConfirmBodyDated'] ?? '').replace('{date}', next)
-            : (t['subPlanConfirmBody'] ?? ''),
-          okLabel: t['subPlanConfirmOk'] ?? '',
-          tone: 'primary',
-          onConfirm: () => void apply(),
-        },
-      }));
-    });
-  });
+  /* ── The plan chooser and everything that served it are GONE (owner, 2026-09-08) ──
+     There was one plan ladder, four pills, a confirm dialog explaining that the processor was
+     about to be asked to amend a standing order, a 502 branch for their refusal, and a repaint of
+     the figures the pressed pill decided. All of it existed because a higher fee bought a lower
+     per-sale commission — and the commission went when the seller started clearing into his own
+     account, which left four rows differing in nothing but price. One plan means the only change a
+     seller can make to his subscription is to end it, which `sub-cancel` below does.
+     `tests/plan-chooser-guard.test.ts` holds the whole history and forbids the regrowth. */
 
   // ── The card, typed here rather than on PayMe's page ──────────────────────────────────────
   //

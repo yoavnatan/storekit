@@ -1,8 +1,12 @@
 /** Seller pricing tiers — the single source of truth for "what does this seller pay us".
  *
- *  The model (decided 2026-07-21): a tier is a **fixed monthly fee + a per-sale commission**, both
- *  charged additively, where a higher tier buys a LOWER commission. Advertising is billed
- *  separately (pay-per-actual-spend + margin) and is never offset against either number.
+ *  The model (owner, 2026-09-08): **one plan, a fixed monthly fee, and no per-sale commission.**
+ *  The seller clears into his own account, so the sale never touches us. Advertising is billed
+ *  separately (pay-per-actual-spend + margin) and is never offset against the fee.
+ *
+ *  It was four tiers of fee + commission from 2026-07-21 until then, tuned so a higher fee bought a
+ *  lower rate. The commission going is what collapsed the ladder: with the rate gone the four rows
+ *  differed in nothing but price. `SELLER_TIERS` below carries what is left of that history.
  *
  *  ⚠️ THE NUMBERS BELOW ARE PLACEHOLDERS. The tier *shape* is decided; the real fees and
  *  percentages are not (see CURRENT_TASK.md / GO_LIVE_CHECKLIST.md). They live here, in one
@@ -150,35 +154,42 @@ export const DEFAULT_TIER: SellerTierId = 'starter';
  */
 export const SELLER_SETUP_FEE = 99;
 
-/** Ordered cheapest-first. Higher tier = higher fixed fee, lower commission.
+/**
+ * ── ONE plan, and no commission (owner, 2026-09-08) ──
  *
- *  The commission ladder is deliberately SHALLOW (2026-07-27). The monthly fees only span 99→199₪,
- *  so a steep commission drop would make the top tier pay for itself at trivial volume and the
- *  platform would collect ~4% from exactly the sellers who generate the most — commission, not
- *  subscription, is where the revenue actually is at this fee scale.
+ * Both halves were decided in the same breath and the second follows from the first. The seller
+ * clears into his OWN account (`docs/pivot-saas.md`), so the buyer's money never passes through us
+ * and there is nothing to take a percentage of — the commission had to go. And a ladder of four
+ * fees whose ONLY difference was the commission rate is, without it, four prices for one product,
+ * where nobody would ever choose any but the cheapest.
  *
- *  The constraint each row is tuned against: **upgrade break-evens must rise**. A tier is only
- *  worth offering if there's a revenue band where it beats both neighbours; break-even between two
- *  tiers = (fee difference) / (commission difference). With these numbers:
- *    Starter → Growth      26₪ / 1.00%  ≈  2,600₪ monthly revenue
- *    Growth  → Pro         54₪ / 0.75%  ≈  7,200₪
- *    Pro     → Enterprise  20₪ / 0.25%  ≈  8,000₪
- *  Rising, so each tier owns a real band. If a fee or percent changes, re-check that ordering —
- *  tests/pricing.test.ts asserts it, because getting it backwards silently makes a tier a tier
- *  nobody should ever choose. */
+ * **What that deletes is the whole apparatus of choosing**, and it was substantial: the break-even
+ * arithmetic each row used to be tuned against, the pricing page's calculator, the plan pills, the
+ * plan-change amendment to a running standing order. A price is now a price.
+ *
+ * `commissionPercent: 0` rather than removing the field: every derived figure — the seller's
+ * balance, the platform's income line, the admin reconciliation — keeps its arithmetic and answers
+ * zero, which is the true number. Deleting the SCREENS that report a permanent zero is cleanup and
+ * is tracked separately; leaving the field would be the shape that quietly starts charging again.
+ *
+ * ⚠️ 99₪ is the old Starter fee carried over, and it is still a PLACEHOLDER like every number in
+ * this file — the owner has not set the single price.
+ *
+ * The union keeps its four ids so no stored `stores.tier` value can fail to resolve; `resolveTier`
+ * maps every one of them to this row.
+ */
 export const SELLER_TIERS: readonly SellerTier[] = [
-  { id: 'starter',    monthlyFee: 99,  commissionPercent: 12 },
-  { id: 'growth',     monthlyFee: 125, commissionPercent: 11 },
-  { id: 'pro',        monthlyFee: 179, commissionPercent: 10.25 },
-  { id: 'enterprise', monthlyFee: 199, commissionPercent: 10 },
+  { id: 'starter', monthlyFee: 99, commissionPercent: 0 },
 ] as const;
 
 const TIER_BY_ID = new Map<SellerTierId, SellerTier>(SELLER_TIERS.map((t) => [t.id, t]));
 
-/** Resolves a stored tier id to its tier. Unknown/absent falls back to the default rather than
- *  throwing — a bad value in the data must never break a dashboard render. */
-export function resolveTier(id: string | undefined | null): SellerTier {
-  return TIER_BY_ID.get((id ?? '') as SellerTierId) ?? TIER_BY_ID.get(DEFAULT_TIER)!;
+/** Resolves a stored tier id to its tier. There is one plan, so every id resolves to it — including
+ *  `growth`/`pro`/`enterprise`, which real rows still carry from the four-tier era. Falling back
+ *  rather than throwing was already the rule (a bad value must never break a dashboard render) and
+ *  it is now the ONLY path. */
+export function resolveTier(_id?: string | null): SellerTier {
+  return TIER_BY_ID.get(DEFAULT_TIER)!;
 }
 
 /** The per-sale commission percent for a seller's tier — what the split-payment provider will be
