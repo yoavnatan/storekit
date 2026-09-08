@@ -112,22 +112,20 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
   <section class={`${SECTION} mb-4 statement-owner-only`}>
     <h3 class="m-0 text-[0.9rem] font-semibold mb-2">שורה תחתונה</h3>
     <ul class="m-0 p-0 list-none flex flex-col gap-2">
+      {/* ── The sales-commission line went on 2026-09-08 ──
+          It named where most of the income came from, and it named a stream that no longer exists:
+          each seller clears into his own account, so nothing of a buyer's money reaches us and
+          there is no percentage to accrue. The two lines under it explained WHEN that commission
+          was collected, which is a question with no subject now. What is left is what we really
+          bill — the monthly subscription, and the margin on advertising. */}
       <li class="text-[0.85rem] leading-relaxed">
         <strong class="tabular-nums">{formatAgorot(s.incomeAccruedAgorot)}</strong> — ההכנסה שלך בתקופה:
-        עמלות <span class="tabular-nums">{formatAgorot(s.commissionAccruedAgorot)}</span>
-        {' '}+ דמי מנוי <span class="tabular-nums">{formatAgorot(s.subscriptionsAccruedAgorot)}</span>
+        דמי מנוי <span class="tabular-nums">{formatAgorot(s.subscriptionsAccruedAgorot)}</span>
         {s.adMarginAgorot !== null && <> + עמלות קמפיינים <span class="tabular-nums">{formatAgorot(s.adMarginAgorot)}</span></>}.
       </li>
       <li class="text-[0.85rem] leading-relaxed">
-        {/* What replaced three lines here on 2026-08-21: how much was collected, what was about to
-            come in on the payout day, and how much of the bank account was somebody else's. All
-            three were facts about money passing through us, and none of them can be stated now —
-            the processor takes our commission inside each transaction and transfers it monthly, and
-            nothing of a seller's ever reaches our account. What is left to say is where the income
-            came from, above, and where the gap is. */}
-        <strong class="tabular-nums">{formatAgorot(s.commissionAccruedAgorot)}</strong> — מזה עמלות מכירה,
-        והן נגבות מאליהן בתוך כל עסקה ומועברות אלינו על ידי חברת הסליקה אחת לחודש.
-        דמי המנוי והפרסום הם חיוב נפרד מול המוכר, וטרם מחוברים.
+        הכסף מהמכירות עובר ישירות לחשבון הסליקה של המוכר ואינו עובר דרכנו, ולכן אין עמלת מכירה.
+        דמי המנוי הם החיוב היחיד שלנו מול המוכר.
       </li>
     </ul>
   </section>
@@ -146,8 +144,7 @@ const SECTION = 'rounded-[var(--radius)] border [border-color:var(--color-border
           COLLECTED at the payout, and the figure for the collected half is the last line of the
           table beside this one, which is where the sentence points. */}
       <p class={`m-0 mt-0.5 mb-3 ${NOTE}`}>
-        לפי מועד ההזמנה — מה שהרווחנו בתקופה, גם אם הכסף עדיין בהמתנה. בפועל העמלה נגבית מאוחר יותר,
-        כשהיא מנוכה מהתשלום למוכר ("עמלה שנגבתה בפועל", בטבלה שלצד).
+        לפי מועד ההזמנה — מה שהרווחנו בתקופה, גם אם הכסף עדיין בהמתנה.
       </p>
       {/* The mall's turnover, named as a line and kept OUT of the totalled list. The owner looked
           for "מכירות" and did not find the word (2026-08-12), so it is the label now — but it stays

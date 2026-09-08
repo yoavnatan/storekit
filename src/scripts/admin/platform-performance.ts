@@ -203,14 +203,10 @@ async function fetchTable(): Promise<void> {
 
 function updateSplitCard(summary: PerformanceSummary): void {
   setText('plat-gmv', fmtAgorot(summary.totalRevenueAgorot));
-  setText('plat-commission', fmtAgorot(summary.platformCommissionAgorot));
-  setText('plat-commission-rate', String(summary.commissionRate));
   setText('plat-payout', fmtAgorot(summary.netProfitAgorot));
 }
 
 function updateIncomeCard(revenue: PlatformRevenue): void {
-  setText('plat-inc-commission', fmtAgorot(revenue.commissionAgorot));
-  setText('plat-inc-commission-note', fill('perfIncomeCommissionNote', { rate: revenue.commissionRate }));
   setText('plat-inc-subscriptions', fmtAgorot(revenue.subscriptionsAgorot));
   setText('plat-inc-subs-note', fill('perfIncomeSubscriptionsNote', { count: revenue.subscribers }));
   setText('plat-inc-ad-margin', fmtAgorot(revenue.adMarginAgorot));

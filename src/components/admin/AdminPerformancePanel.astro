@@ -145,11 +145,13 @@ const productsNote = productsTotal === 0 ? '' : d.perfTopProductsNote
 
 {/* Two cards, because they answer two different questions and mixing them was
     the reported gap (CURRENT_TASK.md → סשן ב׳ item 2):
-      left  — the buyer's money: GMV in, seller payouts out. The platform is a
-              pass-through here; the commission is the only part it keeps.
-      right — the platform's OWN income, split by where it comes from: sales
-              commission, subscription fees, campaign margin. Three independent
-              streams that a single "commission" figure was hiding.
+      left  — the buyer's money. The platform is not even a pass-through since
+              2026-09-08: each seller clears into his own account, so every agora
+              of GMV is his and we keep none of it. The card says that rather
+              than showing a commission row of ₪0.
+      right — the platform's OWN income: subscriptions and campaign margin. It
+              held a third stream, the sales commission, which is exactly the
+              thing that stopped existing.
     Updated on range change by platform-performance.ts (own ids, not #perf-*). */}
 {/* items-start: the two cards carry a different number of lines, so stretching
     them to a shared height leaves a dead gap under the shorter one. */}
@@ -166,10 +168,6 @@ const productsNote = productsTotal === 0 ? '' : d.perfTopProductsNote
         <dt class="[color:var(--color-muted)]">{d.perfPlatformGmv}</dt>
         <dd class="m-0 font-medium" id="plat-gmv">{formatAgorot(summary.totalRevenueAgorot)}</dd>
       </div>
-      <div class="flex items-center justify-between gap-3">
-        <dt class="[color:var(--color-muted)]">{d.perfPlatformCommissionIncome} <span class="text-[0.78rem]">(<span id="plat-commission-rate">{summary.commissionRate}</span>%)</span></dt>
-        <dd class="m-0 font-medium [color:var(--color-success)]" id="plat-commission">{formatAgorot(summary.platformCommissionAgorot)}</dd>
-      </div>
       <div class="flex items-center justify-between gap-3 pt-2 border-t [border-color:var(--color-border)]">
         <dt class="font-semibold">{d.perfPlatformSellerPayout}</dt>
         <dd class="m-0 font-medium" id="plat-payout">{formatAgorot(summary.netProfitAgorot)}</dd>
@@ -185,13 +183,6 @@ const productsNote = productsTotal === 0 ? '' : d.perfTopProductsNote
       </button>
     </div>
     <dl class="m-0 flex flex-col gap-2 text-[0.86rem]">
-      <div class="flex items-start justify-between gap-3">
-        <dt>
-          <span class="[color:var(--color-muted)]">{d.perfIncomeCommission}</span>
-          <span class="block text-[0.72rem] [color:var(--color-muted)]" id="plat-inc-commission-note">{d.perfIncomeCommissionNote.replace('{rate}', String(revenue.commissionRate))}</span>
-        </dt>
-        <dd class="m-0 font-medium shrink-0" id="plat-inc-commission">{formatAgorot(revenue.commissionAgorot)}</dd>
-      </div>
       <div class="flex items-start justify-between gap-3">
         <dt>
           <span class="[color:var(--color-muted)]">{d.perfIncomeSubscriptions}</span>
